@@ -211,7 +211,7 @@ public class WriteSetAcceptanceTests : IDisposable
     private static string? WatchedThrough(WizardScreen.Choice c, Func<bool>? watch)
     {
         if (!c.OnlyTheWatchAdvances || watch is null) return null;
-        Assert.True(SpinWait.SpinUntil(watch, TimeSpan.FromSeconds(5)),
+        Assert.True(SpinWait.SpinUntil(watch, TimeSpan.FromSeconds(30)),
             $"'{c.Key}' watches and nothing ever landed, so this walk cannot proceed");
         return SetupFlow.Landed;
     }

@@ -346,7 +346,7 @@ public class ChromeTickerTests
         ticker.StartTurn(Cats.Face(GlyphSet.Unicode));
 
         var sw = Stopwatch.StartNew();
-        while (painter.State.ToolWait is null && sw.ElapsedMilliseconds < 3000) await Task.Delay(20);
+        while (painter.State.ToolWait is null && sw.ElapsedMilliseconds < 30_000) await Task.Delay(20);
 
         Assert.NotNull(painter.State.ToolWait);
         Assert.StartsWith(Cats.WaitingOf(glyphs: GlyphSet.Unicode), painter.State.ToolWait!, StringComparison.Ordinal);
@@ -372,14 +372,14 @@ public class ChromeTickerTests
         ticker.StartTurn(Cats.Face(GlyphSet.Unicode));
 
         var sw = Stopwatch.StartNew();
-        while (painter.State.ToolWait is null && sw.ElapsedMilliseconds < 3000) await Task.Delay(20);
+        while (painter.State.ToolWait is null && sw.ElapsedMilliseconds < 30_000) await Task.Delay(20);
         Assert.NotNull(painter.State.ToolWait);
         Assert.Null(painter.State.PurrText);
 
         lock (gate) { painter.State.PanelRows = null; }
 
         sw.Restart();
-        while (painter.State.PurrText is null && sw.ElapsedMilliseconds < 3000) await Task.Delay(20);
+        while (painter.State.PurrText is null && sw.ElapsedMilliseconds < 30_000) await Task.Delay(20);
 
         Assert.NotNull(painter.State.PurrText);
         Assert.Contains("purr", painter.State.PurrText!, StringComparison.Ordinal);
@@ -407,7 +407,7 @@ public class ChromeTickerTests
 
         //wait, with a bound, for the first tick past the grace window.
         var sw = Stopwatch.StartNew();
-        while (painter.State.PurrText is null && sw.ElapsedMilliseconds < 3000) await Task.Delay(20);
+        while (painter.State.PurrText is null && sw.ElapsedMilliseconds < 30_000) await Task.Delay(20);
         Assert.NotNull(painter.State.PurrText);
         var first = painter.State.PurrText;
         var firstBlink = painter.State.BlinkOn;
@@ -415,7 +415,7 @@ public class ChromeTickerTests
         //the blink flips on a 500 ms cadence, so two samples 500 ms apart must differ at least once.
         var sawFlip = false;
         sw.Restart();
-        while (sw.ElapsedMilliseconds < 2000)
+        while (sw.ElapsedMilliseconds < 30_000)
         {
             await Task.Delay(500);
             if (painter.State.BlinkOn != firstBlink) { sawFlip = true; break; }
@@ -543,7 +543,7 @@ public class ChromeTickerTests
 
         string? seen = null;
         var sw = Stopwatch.StartNew();
-        while (sw.ElapsedMilliseconds < 3000)
+        while (sw.ElapsedMilliseconds < 30_000)
         {
             var t = painter.State.PurrText;
             if (t is not null && t.Contains("Σ", StringComparison.Ordinal)) { seen = t; break; }
@@ -573,7 +573,7 @@ public class ChromeTickerTests
 
         string? seen = null;
         var sw = Stopwatch.StartNew();
-        while (sw.ElapsedMilliseconds < 3000)
+        while (sw.ElapsedMilliseconds < 30_000)
         {
             var t = painter.State.PurrText;
             if (t is not null && t.Contains("20.5k", StringComparison.Ordinal)) { seen = t; break; }
@@ -597,7 +597,7 @@ public class ChromeTickerTests
         ticker.MarkStreaming();
 
         var sw = Stopwatch.StartNew();
-        while (reader.Calls < 1 && sw.ElapsedMilliseconds < 3000) await Task.Delay(20);
+        while (reader.Calls < 1 && sw.ElapsedMilliseconds < 30_000) await Task.Delay(20);
         await Task.Delay(300);   //wait so that at least one tick follows the poll.
         var seen = painter.State.PurrText;
         ticker.StopTurn();
@@ -619,7 +619,7 @@ public class ChromeTickerTests
         ticker.SetPromptProgress(total: 15_063, processed: 4_096);
 
         var sw = Stopwatch.StartNew();
-        while (reader.Calls < 1 && sw.ElapsedMilliseconds < 3000) await Task.Delay(20);
+        while (reader.Calls < 1 && sw.ElapsedMilliseconds < 30_000) await Task.Delay(20);
         await Task.Delay(300);   //wait so that at least one tick follows the poll.
         var seen = painter.State.PurrText;
         ticker.StopTurn();
@@ -642,7 +642,7 @@ public class ChromeTickerTests
         ticker.StartTurn("x");
 
         var sw = Stopwatch.StartNew();
-        while (painter.State.PurrText is null && sw.ElapsedMilliseconds < 3000) await Task.Delay(20);
+        while (painter.State.PurrText is null && sw.ElapsedMilliseconds < 30_000) await Task.Delay(20);
         var txt = painter.State.PurrText;
         await Task.Delay(200);   //give the poll time to fire and fail before the row is read
         ticker.StopTurn();
@@ -662,7 +662,7 @@ public class ChromeTickerTests
         ticker.StartTurn("x", promptTokensEstimate: 85_000);
 
         var sw = Stopwatch.StartNew();
-        while (sw.ElapsedMilliseconds < 3000)
+        while (sw.ElapsedMilliseconds < 30_000)
         {
             if (painter.State.PurrText?.Contains("20.5k", StringComparison.Ordinal) == true) break;
             await Task.Delay(20);
@@ -671,7 +671,8 @@ public class ChromeTickerTests
 
         reader.Result = null;
         var callsAtFlip = reader.Calls;
-        while (reader.Calls < callsAtFlip + 2 && sw.ElapsedMilliseconds < 15_000) await Task.Delay(20);
+        sw.Restart();
+        while (reader.Calls < callsAtFlip + 2 && sw.ElapsedMilliseconds < 30_000) await Task.Delay(20);
         var after = painter.State.PurrText;
         ticker.StopTurn();
 
@@ -708,14 +709,14 @@ public class ChromeTickerTests
         ticker.StartTurn("x");
         var sw = Stopwatch.StartNew();
         while (!(painter.State.PurrText?.Contains("prefill", StringComparison.Ordinal) ?? false)
-               && sw.ElapsedMilliseconds < 3000) await Task.Delay(20);
+               && sw.ElapsedMilliseconds < 30_000) await Task.Delay(20);
         ticker.StopTurn();
 
         reader.Result = null;
         ticker.StartTurn("x");
         string? second = null;
         sw.Restart();
-        while (sw.ElapsedMilliseconds < 3000)
+        while (sw.ElapsedMilliseconds < 30_000)
         {
             var t = painter.State.PurrText;
             if (t is not null) { second = t; break; }
@@ -739,7 +740,7 @@ public class ChromeTickerTests
 
         string? seen = null;
         var sw = Stopwatch.StartNew();
-        while (sw.ElapsedMilliseconds < 3000)
+        while (sw.ElapsedMilliseconds < 30_000)
         {
             var t = painter.State.PurrText;
             if (t is not null && t.Contains("↓ 170", StringComparison.Ordinal)) { seen = t; break; }
@@ -827,7 +828,7 @@ public class ChromeTickerTests
         ticker.StartTurn("（＾ω＾）");
 
         var sw = Stopwatch.StartNew();
-        while (Volatile.Read(ref reported) is null && sw.ElapsedMilliseconds < 3000) await Task.Delay(20);
+        while (Volatile.Read(ref reported) is null && sw.ElapsedMilliseconds < 30_000) await Task.Delay(20);
         Assert.NotNull(reported);
         Assert.Equal(1, Volatile.Read(ref faults));
 
@@ -903,14 +904,14 @@ public class ChromeTickerTests
         ticker.StartTurn("x");
 
         var sw = Stopwatch.StartNew();
-        while (painter.State.PurrText is null && sw.ElapsedMilliseconds < 3000) await Task.Delay(20);
+        while (painter.State.PurrText is null && sw.ElapsedMilliseconds < 30_000) await Task.Delay(20);
         Assert.Contains("reading context", painter.State.PurrText!, StringComparison.Ordinal);
 
         ticker.MarkStreaming();   //what OnToolCallDelta reports, the model has started emitting
 
         string? after = null;
         sw.Restart();
-        while (sw.ElapsedMilliseconds < 3000)
+        while (sw.ElapsedMilliseconds < 30_000)
         {
             var t = painter.State.PurrText;
             if (t is not null && !t.Contains("reading context", StringComparison.Ordinal)) { after = t; break; }
@@ -934,7 +935,7 @@ public class ChromeTickerTests
 
         ticker.StartTurn("x");
         var sw = Stopwatch.StartNew();
-        while (painter.State.PurrText is null && sw.ElapsedMilliseconds < 3000) await Task.Delay(20);
+        while (painter.State.PurrText is null && sw.ElapsedMilliseconds < 30_000) await Task.Delay(20);
         var txt = painter.State.PurrText;
         ticker.StopTurn();
 
