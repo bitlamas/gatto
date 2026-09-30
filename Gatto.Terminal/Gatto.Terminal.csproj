@@ -1,0 +1,21 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <RootNamespace>Gatto.Terminal</RootNamespace>
+    <AssemblyName>Gatto.Terminal</AssemblyName>
+    <InvariantGlobalization>true</InvariantGlobalization>
+  </PropertyGroup>
+
+  <!-- the exe bundles this assembly, so a release build must strip the build machine's paths here too,
+       the same way the exe project does. -->
+  <PropertyGroup Condition="'$(Configuration)' == 'Release'">
+    <DebugType>embedded</DebugType>
+    <PathMap>$(MSBuildProjectDirectory)=/gatto.terminal</PathMap>
+    <EnableSourceLink>false</EnableSourceLink>
+  </PropertyGroup>
+  <ItemGroup>
+    <InternalsVisibleTo Include="Gatto.Tests" />
+  </ItemGroup>
+</Project>

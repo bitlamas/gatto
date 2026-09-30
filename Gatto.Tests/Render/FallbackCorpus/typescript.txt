@@ -1,0 +1,42 @@
+interface User {
+KKKKKKKKK.TTTT.P
+  name: string;
+......P.KKKKKKP
+  age?: number;
+.....PP.KKKKKKP
+}
+P
+----
+type Id = string | number;
+KKKK.TT.P.KKKKKK.P.KKKKKKP
+----
+function greet(user: User): string {
+KKKKKKKK.FFFFFP....P.....PP.KKKKKK.P
+  return `hi ${user.name}`;
+..KKKKKK.SSS.PP....P....PSP
+}
+P
+----
+const list: Array<string> = [];
+KKKKK.....P......PKKKKKKP.P.PPP
+const n = value as number;
+KKKKK...P.......KK.KKKKKKP
+----
+class Admin implements User {
+KKKKK.TTTTT.KKKKKKKKKK......P
+  readonly name: string = "root";
+..KKKKKKKK.....P.KKKKKK.P.SSSSSSP
+}
+P
+----
+enum Color { Red, Green }
+KKKK.TTTTT.P....P.......P
+----
+let u: User = load();
+KKK..P......P.FFFFPPP
+----
+type Name = "open
+KKKK.TTTT.P.SSSSS
+----
+interface Pro
+KKKKKKKKK.TTT

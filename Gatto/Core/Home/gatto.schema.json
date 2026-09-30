@@ -1,0 +1,225 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "gatto.json",
+  "description": "settings that apply to every project. gatto writes this file next to the schema it names, and rewrites the schema on every launch.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["endpoints", "default_endpoint"],
+  "properties": {
+    "$schema": {
+      "description": "points at this file. gatto accepts the key and never reads its value, so editing it changes nothing gatto does and no type is declared here."
+    },
+    "endpoints": {
+      "type": "object",
+      "description": "every place gatto can talk to a model. each key names one endpoint.",
+      "additionalProperties": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "base_url": {
+            "type": "string",
+            "pattern": "^https?://",
+            "description": "the server address, an absolute http or https url. only the endpoint named local may omit it."
+          },
+          "key_env": {
+            "type": "string",
+            "description": "name of the environment variable holding the api key. gatto reads the variable, never the key itself."
+          },
+          "context": {
+            "type": "integer",
+            "description": "context window in tokens, used as the budget for this endpoint."
+          },
+          "thinking": {
+            "type": "object",
+            "description": "per level request fields for a model that exposes reasoning effort. each value is an object or null.",
+            "additionalProperties": { "type": ["object", "null"] }
+          }
+        }
+      }
+    },
+    "default_endpoint": {
+      "type": "string",
+      "description": "which endpoint gatto opens on. must name a key under endpoints."
+    },
+    "default_model": {
+      "type": ["string", "null"],
+      "description": "which model gatto arms at launch. a fresh home leaves it unset."
+    },
+    "default_publisher": {
+      "type": "string",
+      "enum": ["lmstudio-community", "bartowski", "unsloth", "ggml-org", "mradermacher", "Qwen", "google", "microsoft", "mistralai", "nvidia", "CohereLabs"],
+      "description": "which publisher the model shelf opens on. the list is compiled in, so adding one needs a new gatto release. leave it out to use the shipped default."
+    },
+    "llama_server": {
+      "type": "string",
+      "description": "path to the llama-server executable that gatto serve starts."
+    },
+    "context_files": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "which project notes gatto reads at launch.",
+      "properties": {
+        "compat": {
+          "type": "boolean",
+          "default": false,
+          "description": "also read other harnesses context files, not only GATTO.md."
+        },
+        "home": {
+          "type": "boolean",
+          "default": true,
+          "description": "read the GATTO.md in your gatto folder as the first layer, under any project file."
+        }
+      }
+    },
+    "theme": {
+      "type": "string",
+      "enum": ["dark", "light", "auto"],
+      "default": "auto",
+      "description": "colour palette. auto probes the terminal background."
+    },
+    "glyphs": {
+      "type": "string",
+      "enum": ["auto", "unicode", "ascii"],
+      "default": "auto",
+      "description": "which glyph vocabulary to draw. auto reads the host: unicode on Windows Terminal and VS Code, ascii on a legacy console with no glyph for the marks."
+    },
+    "reasoning": {
+      "type": "string",
+      "enum": ["collapsed", "expanded"],
+      "default": "collapsed",
+      "description": "how reasoning is displayed. collapsed streams then folds to one row, expanded stays open."
+    },
+    "regions": {
+      "deprecated": true,
+      "description": "accepted and ignored. the display mode it selected no longer exists, and gatto still loads a file that carries it."
+    },
+    "search": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "which providers web_search uses, and their settings. listing tavily requires search.tavily.apiKey, and listing searxng requires search.searxng.url, or gatto refuses to start.",
+      "properties": {
+        "providers": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "default": ["ddg"],
+          "description": "the provider chain, tried in order. a provider succeeds when it returns at least one result.",
+          "items": {
+            "type": "string",
+            "enum": ["ddg", "tavily", "searxng"]
+          }
+        },
+        "tavily": {
+          "type": "object",
+          "additionalProperties": false,
+          "description": "settings for the tavily provider.",
+          "properties": {
+            "apiKey": {
+              "type": "string",
+              "description": "your tavily api key, stored in this file as text."
+            }
+          }
+        },
+        "searxng": {
+          "type": "object",
+          "additionalProperties": false,
+          "description": "settings for a searxng instance.",
+          "properties": {
+            "url": {
+              "type": "string",
+              "pattern": "^https?://",
+              "description": "the instance address, an absolute http or https url."
+            }
+          }
+        }
+      }
+    },
+    "weights_root": {
+      "type": "string",
+      "description": "the folder new model files are fetched into, and the folder gatto scans for gguf files that have no model profile yet."
+    },
+    "think": {
+      "type": "string",
+      "enum": ["on", "off"],
+      "description": "session default for a model whose reasoning is a switch. absent leaves the server default."
+    },
+    "alt_screen": {
+      "type": "boolean",
+      "default": true,
+      "description": "use the alternate screen. false keeps gatto on the main screen and in native scrollback."
+    },
+    "dump_on_exit": {
+      "type": "boolean",
+      "default": false,
+      "description": "print the whole transcript to the main screen when gatto exits."
+    },
+    "stop_server_on_exit": {
+      "type": "boolean",
+      "default": false,
+      "description": "stop llama-server when you leave gatto with /quit or with Ctrl+C. closing the window does not stop it. leave this off when two gatto windows use one server, because the first window to quit stops the server for both."
+    },
+    "mouse": {
+      "type": "boolean",
+      "default": true,
+      "description": "capture the mouse for wheel scrolling and click to expand. off when alt_screen is false."
+    },
+    "wheel_lines": {
+      "type": "integer",
+      "minimum": 1,
+      "default": 3,
+      "description": "lines scrolled per wheel notch."
+    },
+    "copy_on_select": {
+      "type": "boolean",
+      "default": false,
+      "description": "copy a mouse selection to the clipboard when the drag ends."
+    },
+    "auto_compact": {
+      "description": "when to compact the conversation, as a fraction of the context window. false turns it off.",
+      "default": 0.8,
+      "oneOf": [
+        {
+          "type": "number",
+          "minimum": 0.5,
+          "maximum": 0.95
+        },
+        {
+          "const": false
+        }
+      ]
+    },
+    "deny_reason": {
+      "type": "boolean",
+      "default": false,
+      "description": "after denying a tool call, offer to type a reason the model will read."
+    },
+    "memory": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "the memory files gatto may write and recall.",
+      "properties": {
+        "enabled": {
+          "type": "boolean",
+          "default": true,
+          "description": "allow memory. false stops memory_write and keeps memory out of the prompt."
+        },
+        "index_budget": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "tokens the memory index may use. unset lets gatto derive it from the context window."
+        }
+      }
+    },
+    "update_check": {
+      "type": "boolean",
+      "description": "may gatto ask github whether a newer release exists. absent means never asked, and nothing is sent."
+    },
+    "extensions": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "object"
+      },
+      "description": "settings for installed extensions, one object per extension name. gatto checks only that each value is an object; the extension reads its own keys."
+    }
+  }
+}

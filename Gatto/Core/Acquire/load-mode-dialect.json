@@ -1,0 +1,24 @@
+{
+  "_comment": [
+    "The llama-server flags gatto writes into a profile that a later engine build no longer accepts, each with the build that retired it and its replacement.",
+    "Read from each build's --help. b10703 added -lm and --lazy-mode and printed the old load-mode flags as deprecated in favour of --load-mode; b11071 removed them and refuses them at start.",
+    "A profile carrying a retired flag is rewritten to the replacement, order kept, when its engine moves to a build at or past retired_in. An empty replacement drops the flag, because it spelled the default.",
+    "Hand-reviewed at the pin, like families.json and streamed-tensors.json: a test holds reviewed_release equal to the engine pin, so an engine bump fails the build until someone re-reads the new build's help.",
+    "spelling is how the pinned build names the load mode and the lazy mode, which the scaffold writes into every new profile."
+  ],
+  "reviewed_release": "b11071",
+  "reviewed": "2026-09-21",
+  "spelling": {
+    "load_mode": "-lm",
+    "lazy_mode": "--lazy-mode"
+  },
+  "retired": [
+    { "flag": "--no-mmap", "retired_in": 11071, "replacement": ["-lm", "none"] },
+    { "flag": "--mmap", "retired_in": 11071, "replacement": ["-lm", "mmap"] },
+    { "flag": "--mlock", "retired_in": 11071, "replacement": ["-lm", "mlock"] },
+    { "flag": "-dio", "retired_in": 11071, "replacement": ["-lm", "direct-io"] },
+    { "flag": "--direct-io", "retired_in": 11071, "replacement": ["-lm", "direct-io"] },
+    { "flag": "-ndio", "retired_in": 11071, "replacement": [] },
+    { "flag": "--no-direct-io", "retired_in": 11071, "replacement": [] }
+  ]
+}

@@ -1,0 +1,3 @@
+
+ESC[38;2;178;94;0m(^· ·^)ⳊESC[0m  ESC[38;2;178;94;0mESC[1mgattoESC[0m ESC[38;2;17;17;17mserve stopESC[0mESC[38;2;95;95;95m · ESC[0mESC[38;2;95;95;95mv0.5.1 · build f22c6eaESC[0m
+

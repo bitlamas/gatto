@@ -1,0 +1,40 @@
+<?xml version="1.0" encoding="utf-8"?>
+PPKKK.AAAAAAAPSSSSS.AAAAAAAAPSSSSSSSPP
+<Project Sdk="Microsoft.NET.Sdk">
+PKKKKKKK.AAAPSSSSSSSSSSSSSSSSSSSP
+  <PropertyGroup>
+..PKKKKKKKKKKKKKP
+    <TargetFramework>net10.0</TargetFramework>
+....PKKKKKKKKKKKKKKKP.......PPKKKKKKKKKKKKKKKP
+  </PropertyGroup>
+..PPKKKKKKKKKKKKKP
+</Project>
+PPKKKKKKKP
+----
+<item name="a b" kind='single' xmlns:x="urn:example"/>
+PKKKK.AAAAPSS.SS.AAAAPSSSSSSSS.AAAAAAAPSSSSSSSSSSSSSPP
+----
+<!-- a note that holds <item name="x"/>
+CCCC.C.CCCC.CCCC.CCCCC.CCCCC.CCCCCCCCCC
+     over two lines -->
+.....CCCC.CCC.CCCCC.CCC
+<item/>
+PKKKKPP
+----
+<script><![CDATA[ if (a <b> & c) ]]></script>
+PKKKKKKPSSSSSSSSS.SS.SS.SSS.S.SS.SSSPPKKKKKKP
+----
+<note>fish &amp; chips &lt;3 and 2 > 1</note>
+PKKKKP................................PPKKKKP
+----
+<Compile Include="a.cs" />
+PKKKKKKK.AAAAAAAPSSSSSS.PP
+----
+<item name="still arriving
+PKKKK.AAAAPSSSSSS.SSSSSSSS
+----
+<!-- not closed yet
+CCCC.CCC.CCCCCC.CCC
+----
+<PropertyGr
+PKKKKKKKKKK

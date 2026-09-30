@@ -1,0 +1,16 @@
+  gatto setup                                                               v0.5.0 · build 1a2b3c4
+  machine ✓ · engine ✓ · model ✓ · check ✓ · ❯ done
+────────────────────────────────────────────────────────────────────────────────────────────────────
+  Should gatto check for updates?
+
+  Once a week, gatto asks GitHub whether a newer release exists. Nothing about you or your machine
+  is sent.
+
+  Say no and gatto never contacts the network on its own. You can change it later with the
+  update_check key in gatto.json.
+
+  1. Yes, check weekly
+  2. No
+
+────────────────────────────────────────────────────────────────────────────────────────────────────
+  ↑↓ choose   Enter confirm   Esc leave

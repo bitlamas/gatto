@@ -1,0 +1,29 @@
+  gatto setup                                                               v0.5.0 · build 1a2b3c4
+  machine ✓ · engine ✓ · ❯ model · check · done
+────────────────────────────────────────────────────────────────────────────────────────────────────
+  Which model should gatto start with?
+
+  gemma · qwen · deepseek · glm · mistral · all                                 publisher  unsloth
+
+     model               params  size · quant    kind      runs      │ gemma-3-4b-it                
+  1. gemma-4-31B-it       30.7B  18.3 GB Q4_K_M  dense     ✗ too big │ by unsloth                   
+  2. gemma-3-27b-it       27.0B  16.5 GB Q4_K_M  dense     ✗ too big │ older generation             
+  3. gemma-4-26B-A4B-it   25.2B  16.9 GB Q4_K_M  MoE A4B   ✗ too big │                              
+  4. gemma-4-12b-it       11.9B  7.1 GB Q4_K_M   dense     ⚠ RAM     │ context up to 131,072        
+  5. gemma-3-12b-it       11.8B  7.3 GB Q4_K_M   dense     ⚠ RAM     │ ◈ vision · can see images    
+  6. gemma-4-E4B-it        7.5B  5.0 GB Q4_K_M   dense     ✓ GPU     │ reads all 4.3B params/token  
+  7. gemma-3n-E4B-it       6.9B  4.5 GB Q4_K_M   dense     ✓ GPU     │ arch      gemma3             
+❯ 8. gemma-3-4b-it         4.3B  2.5 GB Q4_K_M   dense     ✓ GPU     │ ✗ not measured by gatto yet  
+  9. gemma-3-1b-it         1.0B  0.8 GB Q4_K_M   dense     ✓ GPU     │                              
+     gemma-3-270m-it       0.3B  0.3 GB Q4_K_M   dense     ✓ GPU     │ files (26)                   
+                                                                     │   … 1 lighter ↑              
+                                                                     │ › Q4_K_M     2.5 GB  ✓ GPU   
+                                                                     │   Q5_K_S     2.8 GB  ✓ GPU   
+                                                                     │   Q5_K_M     2.8 GB  ✓ GPU   
+                                                                     │   … 2 heavier ↓              
+
+  1–10 of 10 · older and too-big rows shown, a hides them
+
+❯ search models…                                                                       / to search
+────────────────────────────────────────────────────────────────────────────────────────────────────
+  Enter next   m local   d search   a all sizes   b back   Esc leave   | ✓ GPU · ⚠ RAM · ✗ too big

@@ -1,0 +1,8 @@
+--- stdout ---
+
+--- stderr ---
+gatto model needs a terminal it can ask questions in. Run it directly rather than through a pipe or a script. To see the models you have, use /model inside a session.
+
+
+--- exit ---
+2

@@ -1,0 +1,14 @@
+  gatto setup                                                               v0.5.0 · build 1a2b3c4
+  machine ✓ · engine ✓ · model ✓ · ❯ check · done
+────────────────────────────────────────────────────────────────────────────────────────────────────
+  Can it run commands and edit files?     (^· ·^)⟆ purrrrrrr... 1m 12s
+
+  Nothing to do here, gatto starts the server, loads the model, gives it the five tasks and
+  watches what happens.
+
+  model         gemma-4-26B-A4B-it-UD-Q4_K_M.gguf
+  running       task 3 of 5 · run a command
+  done          1) read a file · 2) write a file
+
+────────────────────────────────────────────────────────────────────────────────────────────────────
+  Esc stop the check                                         | stopping keeps it set up, unchecked

@@ -1,0 +1,8 @@
+(^· ·^)Ⳋ  gatto setup · v0.5.1 · build f22c6ea · 2026-09-15
+
+fetched   llama-b10076-bin-win-vulkan-x64.zip · digest matched
+into      C:\Users\you\.gatto\llama\b10076\
+model     qwen3.6-35b-a3b · ~23.8 GB
+checked   llama-server.exe ran, and it is the path gatto wrote to its config
+
+run gatto to start a session

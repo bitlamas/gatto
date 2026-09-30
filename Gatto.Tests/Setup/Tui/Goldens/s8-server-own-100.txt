@@ -1,0 +1,16 @@
+  gatto setup                                                               v0.5.0 · build 1a2b3c4
+  machine ✓ · ❯ server · check · done
+────────────────────────────────────────────────────────────────────────────────────────────────────
+  Which server should gatto talk to?
+
+  The server at http://127.0.0.1:1235 is gatto's own, it is serving gemma-4-26B-A4B-it, which is
+  the road option 1 on the engine screen takes. No other server answered.
+
+  Start the server you run yourself, then look again, or type its address if it lives
+  somewhere else.
+
+❯ 1. Look again
+
+❯ type the server's address… e.g. http://127.0.0.1:8080                           Tab or ↓ to type
+────────────────────────────────────────────────────────────────────────────────────────────────────
+  Tab area   Enter next   b back   Esc leave

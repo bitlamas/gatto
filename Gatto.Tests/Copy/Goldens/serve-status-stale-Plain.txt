@@ -1,0 +1,2 @@
+not serving · stale serve.json (pid 2844 is not a running llama-server)
+clear it with gatto serve stop, or replace it with gatto serve start [model].

@@ -1,0 +1,1 @@
+ESC[38;2;232;232;232mnot servingESC[0mESC[38;2;153;153;153m · stale serve.json (pid 2844 gone), cleaned upESC[0m

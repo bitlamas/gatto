@@ -1,0 +1,7 @@
+
+ESC[38;2;255;166;77m(^· ·^)ⳊESC[0mESC[38;2;232;232;232m bye ~ !ESC[0m
+
+ESC[38;2;153;153;153msession saved · ESC[0mESC[38;2;75;190;205mgatto --continueESC[0mESC[38;2;153;153;153m to resumeESC[0m
+
+ESC[38;2;232;232;232mllama-server stoppedESC[0mESC[38;2;153;153;153m · ESC[0mESC[38;2;220;154;91mqwen3.6-35b-a3bESC[0mESC[38;2;232;232;232m unloadedESC[0m
+

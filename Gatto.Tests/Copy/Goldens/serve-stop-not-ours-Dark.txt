@@ -1,0 +1,1 @@
+ESC[38;2;153;153;153mpid 2844ESC[0mESC[38;2;232;232;232m is ESC[0mESC[38;2;220;154;91mnotepadESC[0mESC[38;2;232;232;232m now, not llama-server. gatto left it alone and cleared its record.ESC[0m

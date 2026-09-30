@@ -1,0 +1,5 @@
+    machine   what this computer can run
+    engine    ✓ already on this machine
+    model     pick one from Hugging Face, or bring your own
+    check     gatto proves it works
+    done      start talking to gatto

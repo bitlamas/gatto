@@ -1,0 +1,20 @@
+data: {"choices":[{"finish_reason":null,"index":0,"delta":{"role":"assistant","content":null}}],"created":1785169729,"id":"chatcmpl-laTj2IjXFRIaPNzPO8hMKFA1K4HcKgBT","model":"C:\\models\\wire fixtures\\laguna-s-2.1-Q4_K_M.gguf","system_fingerprint":"b1-2bd55d0","object":"chat.completion.chunk"}
+
+data: {"choices":[{"finish_reason":null,"index":0,"delta":{"tool_calls":[{"index":0,"id":"fyX8snekNd2l1CL08WwpuY25nEfVFQse","type":"function","function":{"name":"get_weather","arguments":"{"}}]}}],"created":1785169729,"id":"chatcmpl-laTj2IjXFRIaPNzPO8hMKFA1K4HcKgBT","model":"C:\\models\\wire fixtures\\laguna-s-2.1-Q4_K_M.gguf","system_fingerprint":"b1-2bd55d0","object":"chat.completion.chunk"}
+
+data: {"choices":[{"finish_reason":null,"index":0,"delta":{"tool_calls":[{"index":0,"function":{"arguments":"\"city\":"}}]}}],"created":1785169729,"id":"chatcmpl-laTj2IjXFRIaPNzPO8hMKFA1K4HcKgBT","model":"C:\\models\\wire fixtures\\laguna-s-2.1-Q4_K_M.gguf","system_fingerprint":"b1-2bd55d0","object":"chat.completion.chunk"}
+
+data: {"choices":[{"finish_reason":null,"index":0,"delta":{"tool_calls":[{"index":0,"function":{"arguments":"\""}}]}}],"created":1785169729,"id":"chatcmpl-laTj2IjXFRIaPNzPO8hMKFA1K4HcKgBT","model":"C:\\models\\wire fixtures\\laguna-s-2.1-Q4_K_M.gguf","system_fingerprint":"b1-2bd55d0","object":"chat.completion.chunk"}
+
+data: {"choices":[{"finish_reason":null,"index":0,"delta":{"tool_calls":[{"index":0,"function":{"arguments":"Paris"}}]}}],"created":1785169729,"id":"chatcmpl-laTj2IjXFRIaPNzPO8hMKFA1K4HcKgBT","model":"C:\\models\\wire fixtures\\laguna-s-2.1-Q4_K_M.gguf","system_fingerprint":"b1-2bd55d0","object":"chat.completion.chunk"}
+
+data: {"choices":[{"finish_reason":null,"index":0,"delta":{"tool_calls":[{"index":0,"function":{"arguments":"\""}}]}}],"created":1785169729,"id":"chatcmpl-laTj2IjXFRIaPNzPO8hMKFA1K4HcKgBT","model":"C:\\models\\wire fixtures\\laguna-s-2.1-Q4_K_M.gguf","system_fingerprint":"b1-2bd55d0","object":"chat.completion.chunk"}
+
+data: {"choices":[{"finish_reason":null,"index":0,"delta":{"tool_calls":[{"index":0,"function":{"arguments":"}"}}]}}],"created":1785169730,"id":"chatcmpl-laTj2IjXFRIaPNzPO8hMKFA1K4HcKgBT","model":"C:\\models\\wire fixtures\\laguna-s-2.1-Q4_K_M.gguf","system_fingerprint":"b1-2bd55d0","object":"chat.completion.chunk"}
+
+data: {"choices":[{"finish_reason":"tool_calls","index":0,"delta":{}}],"created":1785169730,"id":"chatcmpl-laTj2IjXFRIaPNzPO8hMKFA1K4HcKgBT","model":"C:\\models\\wire fixtures\\laguna-s-2.1-Q4_K_M.gguf","system_fingerprint":"b1-2bd55d0","object":"chat.completion.chunk"}
+
+data: {"choices":[],"created":1785169730,"id":"chatcmpl-laTj2IjXFRIaPNzPO8hMKFA1K4HcKgBT","model":"C:\\models\\wire fixtures\\laguna-s-2.1-Q4_K_M.gguf","system_fingerprint":"b1-2bd55d0","object":"chat.completion.chunk","usage":{"completion_tokens":23,"prompt_tokens":140,"total_tokens":163,"prompt_tokens_details":{"cached_tokens":135}},"timings":{"cache_n":135,"prompt_n":5,"prompt_ms":857.633,"prompt_per_token_ms":171.5266,"prompt_per_second":5.829999545260035,"predicted_n":23,"predicted_ms":751.773,"predicted_per_token_ms":32.685782608695654,"predicted_per_second":30.59434164302256}}
+
+data: [DONE]
+

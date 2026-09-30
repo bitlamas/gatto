@@ -1,0 +1,39 @@
+❯ can you read the README and tell me what this repo does
+
+● It's a native C#/.NET harness for local models — a streaming client, an agent loop with hooks,
+  six built-in tools and JSONL sessions. The README's first line says it plainly.
+
+❯ /model add
+
+────────────────────────────────────────────────────────────────────────────── gatto · generalist ──
+  ❯ model · check · done
+
+  Which model should gatto add?
+
+  gatto found 2 models on this machine not yet on its list, m shows them
+
+  gemma · qwen · deepseek · glm · mistral · all                                 publisher  unsloth
+
+     model               params  size · quant    kind     │ gemma-4-26B-A4B-it                      
+  1. gemma-4-31B-it       30.7B  18.3 GB Q4_K_M  dense    │ by unsloth                              
+❯ 2. gemma-4-26B-A4B-it   25.2B  16.9 GB Q4_K_M  MoE A4B  │                                         
+  3. gemma-4-12b-it       11.9B  7.1 GB Q4_K_M   dense    │ context up to 262,144                   
+  4. gemma-4-E4B-it        7.5B  5.0 GB Q4_K_M   dense    │ ◈ vision · can see images               
+                                                          │ reads 4B params/token                   
+                                                          │ arch      gemma4                        
+                                                          │ ✗ not measured by gatto yet             
+                                                          │                                         
+                                                          │ files (22)                              
+                                                          │   … 4 lighter ↑                         
+                                                          │ › Q4_K_M    16.9 GB  ✓ fits             
+                                                          │   Q5_K_S    18.9 GB  ✓ fits             
+                                                          │   Q5_K_M    21.2 GB  ✓ fits             
+                                                          │   … 2 heavier ↓                         
+
+  1–4 of 10 · 6 older, a shows all
+
+❯ search models…                                                                       / to search
+────────────────────────────────────────────────────────────────────────────────────────────────────
+  Tab area   Enter next   m local   d search   a all sizes   Esc back      | fewer params = faster
+────────────────────────────────────────────────────────────────────────────────────────────────────
+  ~\projects\demo · master · qwen-qwen3.6-35b-a3b · ↑ 1.4k ↓ 312 · ctx 2%

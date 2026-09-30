@@ -1,0 +1,7 @@
+--- stdout ---
+
+--- stderr ---
+gatto setup needs a terminal it can ask questions in. Run it directly rather than through a pipe or a script. To check an existing setup instead, run: gatto doctor
+
+--- exit ---
+2

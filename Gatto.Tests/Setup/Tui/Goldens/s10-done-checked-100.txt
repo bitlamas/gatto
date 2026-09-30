@@ -1,0 +1,27 @@
+❯ can you read the README and tell me what this repo does
+
+● It's a native C#/.NET harness for local models — a streaming client, an agent loop with hooks,
+  six built-in tools and JSONL sessions. The README's first line says it plainly.
+
+❯ /model add
+
+────────────────────────────────────────────────────────────────────────────── gatto · generalist ──
+  model ✓ · check ✓ · ❯ done
+
+  gemma-4-26B-A4B-it is added.
+
+  model     gemma-4-26B-A4B-it-UD-Q4_K_M.gguf · 16.9 GB · verified
+  check     ✓ passed, it ran commands and edited files
+  config    C:\Users\you\.gatto\gatto.json
+
+  Stay on gemma-4-26B-A4B-it, or go back to qwen-qwen3.6-35b-a3b?
+  The check ran gemma-4-26B-A4B-it on the server, so qwen-qwen3.6-35b-a3b's server has already
+  stopped. Either way, your next message reads the whole conversation again before it's answered.
+
+❯ 1. Stay on gemma-4-26B-A4B-it, it's already running
+  2. Go back to qwen-qwen3.6-35b-a3b, restarts its server
+
+────────────────────────────────────────────────────────────────────────────────────────────────────
+  Enter choose   Esc go back to qwen-qwen3.6-35b-a3b
+────────────────────────────────────────────────────────────────────────────────────────────────────
+  ~\projects\demo · master · qwen-qwen3.6-35b-a3b · ↑ 1.4k ↓ 312 · ctx 2%

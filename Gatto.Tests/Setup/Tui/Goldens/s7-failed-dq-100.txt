@@ -1,0 +1,25 @@
+  gatto setup                                                               v0.5.0 · build 1a2b3c4
+  machine ✓ · engine ✓ · model ✓ · ❯ check · done
+────────────────────────────────────────────────────────────────────────────────────────────────────
+  Can it run commands and edit files?     (^· ·^)⟆ purred for 2m 12s
+
+✗ This model struggled to run commands and edit files · 3 of 5 tasks
+
+  ✓ read a file
+  ✓ write a file
+  ✓ run a command
+  ✗ use two tools in order, got stuck repeating the same step
+  ✗ say so when a file is missing, made up the contents of a file that doesn't exist
+
+  quant         Q4_K_M
+  sampling      defaults
+  thinking      template default
+  speed         ~31.4 tok/s, usable
+
+  You can still use it if you want to.
+
+❯ 1. Pick a different model
+  2. Use it anyway
+
+────────────────────────────────────────────────────────────────────────────────────────────────────
+  Enter choose   Esc leave

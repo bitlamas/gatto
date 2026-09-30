@@ -1,0 +1,148 @@
+{
+  "_comment": [
+    "Which chip a model sits under on the shelf, as SETS of general.architecture values.",
+    "Hand-curated and dated -- the arch namespace is llama.cpp's and the chips are gatto's, so",
+    "no generator can produce this file. What IS mechanical is the check: every arch named here",
+    "must exist in llama-architectures.json, and every arch there that carries a family's own",
+    "naming stem must be named here or excluded below with a reason. A build fails on either.",
+    "",
+    "The one-directional check is the trap this file was born from. A validator that only asks",
+    "'does this arch exist' cannot see an arch that exists and was LEFT OUT -- which is exactly",
+    "how six qwen and four gemma architectures went missing from the first draft unnoticed.",
+    "",
+    "R52's discipline, inherited: this file bumps in the SAME COMMIT as llama-architectures.json,",
+    "and a test reads both. A set generated from one release and shipped beside another is worse",
+    "than no set at all.",
+    "",
+    "It answers WHICH CHIP and nothing else. No quality flag, no recommendation, no positive",
+    "predicate a caller could render as a tick -- the same asymmetry SupportedArchitectures keeps",
+    "by shipping WillNotLoad and deliberately having no Supports."
+  ],
+  "reviewed": "2026-09-21",
+  "architectures_release": "b11071",
+
+  "_ladder_comment": [
+    "Render order, and it is a decision: gemma first is what the least expert user sees, and",
+    "'all' closes the row because it is the way out of a filter rather than another filter."
+  ],
+  "ladder": ["gemma", "qwen", "deepseek", "glm", "mistral", "all"],
+
+  "_families_comment": [
+    "standalone = a model that gets its own row. variant = a same-origin BUILD of one, folded",
+    "into the row it belongs to and never rendered alone.",
+    "",
+    "Two axes, and conflating them deletes a feature: family membership controls what is LISTED,",
+    "the cardData.base_model fold controls what gets a ROW. gemma4-assistant is Gemma 4's",
+    "speculative-decoding draft model -- the gemma equivalent of qwen's -MTP repos, which the pane",
+    "already renders as 'speculative head inside'. Excluding it would never list its repos, so they",
+    "would never fold, and EVERY Gemma 4 row would silently lose its builds-zone option.",
+    "",
+    "A variant-arch repo with no base_model is DROPPED rather than rendered: losing a build option",
+    "quietly beats offering a draft model as though it were something to talk to."
+  ],
+  "families": {
+    "gemma": {
+      "standalone": ["gemma3", "gemma3n", "gemma4"],
+      "variant": ["gemma4-assistant"]
+    },
+    "qwen": {
+      "_comment": [
+        "qwen3vl and qwen3vlmoe are IN: they are standalone vision models and the pane renders",
+        "vision as a first-class fact, so leaving them out means Qwen3-VL can never reach the",
+        "qwen shelf at all."
+      ],
+      "standalone": ["qwen3", "qwen3moe", "qwen3next", "qwen35", "qwen35moe", "qwen3vl", "qwen3vlmoe", "qwen4exp"],
+      "variant": []
+    },
+    "deepseek": {
+      "standalone": ["deepseek2", "deepseek32", "deepseek4"],
+      "variant": []
+    },
+    "glm": {
+      "standalone": ["glm4", "glm4moe", "glm-dsa"],
+      "variant": []
+    },
+    "mistral": {
+      "standalone": ["mistral3", "mistral4"],
+      "variant": []
+    }
+  },
+
+  "_arch_tiers_comment": [
+    "\u00a75.2's other half: 'each arch carries a tier -- dated, hand-reviewed'. D7 narrowed the",
+    "QWEN family to a name-parsed tier because there is no qwen36 arch; it did not repeal tiers",
+    "for the families where the arch IS the honest key. gemma4 vs gemma3 is an arch split.",
+    "",
+    "The value is the GENERATION as major[.minor], parsed by the same reader as the pin, so a",
+    "shelf's ladder and its current-tier test cannot disagree about what a tier means.",
+    "",
+    "Qwen's arches are deliberately ABSENT: that family is name-parsed and an entry here would",
+    "give one repo two answers.",
+    "",
+    "glm-dsa is the one JUDGEMENT in this table and it is flagged for review. It carries no",
+    "generation in its name; it is GLM-4's sparse-attention arch, so it sits with glm4. The",
+    "alternative is leaving it untiered, which makes it 'unversioned' -- the bucket D7 demoted --",
+    "and would hide a live GLM arch from the default shelf. Overturn this row, not the scheme."
+  ],
+  "arch_tiers": {
+    "gemma4": "4",
+    "gemma4-assistant": "4",
+    "gemma3": "3",
+    "gemma3n": "3",
+
+    "deepseek4": "4",
+    "deepseek32": "3.2",
+    "deepseek2": "2",
+
+    "glm4": "4",
+    "glm4moe": "4",
+    "glm-dsa": "4",
+
+    "mistral4": "4",
+    "mistral3": "3"
+  },
+
+  "_excluded_comment": [
+    "An arch carrying a family's naming stem that is deliberately NOT on that shelf, with the",
+    "reason in one word. The list exists so the second direction of the validator has an answer",
+    "other than 'add it to a family' -- and so a new arch cannot arrive unclassified.",
+    "",
+    "Every reason here is about LISTING and never about display. 'Exclude it so it stays off the",
+    "shelf' is the move that deletes the builds zone: see gemma4-assistant above, which is",
+    "excluded from nothing and rendered as nothing."
+  ],
+  "excluded": {
+    "qwen": "superseded",
+    "qwen2": "superseded",
+    "qwen2moe": "superseded",
+    "qwen2vl": "superseded",
+    "rwkv6qwen2": "superseded",
+    "qwen3tts": "tts",
+    "gemma": "superseded",
+    "gemma2": "superseded",
+    "gemma-embedding": "embedding",
+    "deepseek": "superseded",
+    "deepseek2-ocr": "ocr",
+    "chatglm": "superseded"
+  },
+
+  "_current_comment": [
+    "The DATED PIN for each family whose tier is parsed from the model NAME rather than the arch.",
+    "Never derived from a listing: a default shelf that moved the day a publisher uploaded",
+    "something would answer a different question every morning.",
+    "",
+    "Only qwen needs one. gemma, deepseek, glm and mistral stay arch-keyed, where gemma4 vs gemma3",
+    "IS an arch split and the arch is the honest key. llama.cpp mints no arch per minor bump, so",
+    "Qwen3.5 and Qwen3.6 report the same one and the name is the only thing that can tell them",
+    "apart.",
+    "",
+    "current_tier_release names the engine release this pin was last re-read against. A test holds it",
+    "equal to the engine pin, so an engine bump fails the build until someone re-reads the newest",
+    "tier the Hub publishes and restamps. A release that adds models without an engine bump is",
+    "RELEASE.md's step, not this test's."
+  ],
+  "current_tier_release": "b11071",
+  "current_tier": {
+    "qwen": "3.8"
+  }
+}

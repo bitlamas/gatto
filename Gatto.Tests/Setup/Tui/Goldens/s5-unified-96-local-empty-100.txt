@@ -1,0 +1,17 @@
+  gatto setup                                                               v0.5.0 · build 1a2b3c4
+  machine ✓ · engine ✓ · ❯ model · check · done
+────────────────────────────────────────────────────────────────────────────────────────────────────
+  Which model should gatto start with?
+
+       (^·_·^)ﾉ
+
+       no models on this machine yet, gatto looked in:
+       C:\Users\you\.gatto\weights\
+       C:\Users\you\Downloads\
+
+       type a folder path below, gatto looks there and in its subfolders
+       press Esc to go back
+
+❯ ▏ type a folder path…                                                      Enter look · Esc back
+────────────────────────────────────────────────────────────────────────────────────────────────────
+  Esc back

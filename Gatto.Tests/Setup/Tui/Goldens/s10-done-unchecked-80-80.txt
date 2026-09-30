@@ -1,0 +1,30 @@
+❯ can you read the README and tell me what this repo does
+
+● It's a native C#/.NET harness for local models — a streaming client, an
+  agent loop with hooks, six built-in tools and JSONL sessions. The README's
+  first line says it plainly.
+
+❯ /model add
+
+────────────────────────────────────────────────────────── gatto · generalist ──
+  model ✓ · check ✓ · ❯ done
+
+  gemma-4-26B-A4B-it is added.
+
+  model     gemma-4-26B-A4B-it-UD-Q4_K_M.gguf · 16.9 GB · verified
+  check     ⚠ not run
+  config    C:\Users\you\.gatto\gatto.json
+
+  Switch to gemma-4-26B-A4B-it?
+  qwen-qwen3.6-35b-a3b's server stops and gemma-4-26B-A4B-it's starts in
+  its place.
+  Everything said so far has to be read again by the new model before it can
+  answer, the first message after the switch will take longer.
+
+❯ 1. Yes, unload qwen-qwen3.6-35b-a3b and load gemma-4-26B-A4B-it
+  2. No, stay on qwen-qwen3.6-35b-a3b
+
+────────────────────────────────────────────────────────────────────────────────
+  Enter choose   Esc stay on qwen-qwen3.6-35b-a3b
+────────────────────────────────────────────────────────────────────────────────
+  ~\projects\demo · master · qwen-qwen3.6-35b-a3b · ↑ 1.4k ↓ 312 · ctx 2%

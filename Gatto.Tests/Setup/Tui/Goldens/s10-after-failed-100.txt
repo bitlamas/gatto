@@ -1,0 +1,14 @@
+❯ /model add
+
+♯ gemma-4-26B-A4B-it added · gemma-4-26B-A4B-it-UD-Q4_K_M.gguf · check passed
+♯ couldn't start the server for gemma-4-26B-A4B-it.
+  ggml_vulkan: device memory allocation of size 1073741824 failed
+  llama_model_load: error loading model: unable to allocate Vulkan0 buffer
+  failed to load model
+♯ loading qwen-qwen3.6-35b-a3b back…
+♯ stayed on qwen-qwen3.6-35b-a3b, see above
+
+────────────────────────────────────────────────────────────────────────────── gatto · generalist ──
+❯ ▏
+────────────────────────────────────────────────────────────────────────────────────────────────────
+  ~\projects\demo · master · qwen-qwen3.6-35b-a3b · ↑ 1.4k ↓ 312 · ctx 2%

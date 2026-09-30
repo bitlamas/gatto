@@ -1,0 +1,13 @@
+  gatto setup                                                               v0.5.0 · build 1a2b3c4
+  machine ✓ · ❯ engine · model · check · done
+────────────────────────────────────────────────────────────────────────────────────────────────────
+  Which engine build fits this machine?
+
+✗ That runs, but it isn't the llama-server gatto drives, some builds ship a single combined
+  program instead. Look for llama-server.exe specifically.
+
+  tested       C:\llama\llama-cli.exe
+
+❯ ▏ type the path to llama-server.exe…
+────────────────────────────────────────────────────────────────────────────────────────────────────
+  Enter check the path   Esc back

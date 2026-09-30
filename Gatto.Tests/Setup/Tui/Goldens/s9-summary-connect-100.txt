@@ -1,0 +1,17 @@
+  gatto setup                                                               v0.5.0 · build 1a2b3c4
+  machine ✓ · server ✓ · check ✓ · ❯ done
+────────────────────────────────────────────────────────────────────────────────────────────────────
+  gatto is set up.
+
+  server    http://127.0.0.1:1234
+  model     qwen/qwen3-30b-a3b-2507
+  context   65,536 · your input, the server didn't report its context window
+  check     ✓ it loads and answers
+  gatto     ✓ installed, any terminal finds it
+  config    C:\Users\you\.gatto\gatto.json
+
+❯ 1. Start gatto now
+  2. Not now, show me how to start it later
+
+────────────────────────────────────────────────────────────────────────────────────────────────────
+  Enter choose   Esc leave

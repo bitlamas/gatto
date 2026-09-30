@@ -1,0 +1,43 @@
+# a bom inside a shipped extension would change its bytes and move the vetting hash
+[Gatto/Shipped/**]
+charset = utf-8
+
+# a bom in the config schema would change the bytes written into every home and make the
+# byte comparison in EnsureInitialized rewrite the file on every launch over a difference
+# nobody can see
+[Gatto/Core/Home/gatto.schema.json]
+charset = utf-8
+
+# an adopted analyzer rule is error or none, never warning, so a fresh build that counts zero
+# warnings still means a clean tree
+[*.cs]
+dotnet_diagnostic.VSTHRD100.severity = error
+dotnet_diagnostic.VSTHRD101.severity = error
+dotnet_diagnostic.VSTHRD110.severity = error
+dotnet_diagnostic.CA2016.severity = error
+dotnet_diagnostic.CA5350.severity = error
+
+# every other rule of the package is off. the blocking waits it would flag are the documented sync
+# seams of the command paths and the wizard probes, and a build rule would need a suppression at each
+dotnet_diagnostic.VSTHRD001.severity = none
+dotnet_diagnostic.VSTHRD002.severity = none
+dotnet_diagnostic.VSTHRD003.severity = none
+dotnet_diagnostic.VSTHRD004.severity = none
+dotnet_diagnostic.VSTHRD010.severity = none
+dotnet_diagnostic.VSTHRD011.severity = none
+dotnet_diagnostic.VSTHRD012.severity = none
+dotnet_diagnostic.VSTHRD102.severity = none
+dotnet_diagnostic.VSTHRD103.severity = none
+dotnet_diagnostic.VSTHRD104.severity = none
+dotnet_diagnostic.VSTHRD105.severity = none
+dotnet_diagnostic.VSTHRD106.severity = none
+dotnet_diagnostic.VSTHRD107.severity = none
+dotnet_diagnostic.VSTHRD108.severity = none
+dotnet_diagnostic.VSTHRD109.severity = none
+dotnet_diagnostic.VSTHRD111.severity = none
+dotnet_diagnostic.VSTHRD112.severity = none
+dotnet_diagnostic.VSTHRD113.severity = none
+dotnet_diagnostic.VSTHRD114.severity = none
+dotnet_diagnostic.VSTHRD115.severity = none
+dotnet_diagnostic.VSTHRD200.severity = none
+dotnet_diagnostic.VSTHRD201.severity = none

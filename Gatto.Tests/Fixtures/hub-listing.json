@@ -1,0 +1,27 @@
+[
+  {
+    "id": "lmstudio-community/Qwen3.6-35B-A3B-GGUF",
+    "downloads": 184213,
+    "gated": false,
+    "gguf": {
+      "architecture": "qwen3moe",
+      "context_length": 262144,
+      "total": 35000000000
+    }
+  },
+  {
+    "id": "google/gemma-4-26b-it-qat-GGUF",
+    "downloads": 41022,
+    "gated": "manual",
+    "gguf": {
+      "architecture": "gemma4",
+      "context_length": 262144,
+      "total": 26000000000
+    }
+  },
+  {
+    "id": "bartowski/Some-Model-Without-Expand-GGUF",
+    "downloads": 77,
+    "gated": false
+  }
+]

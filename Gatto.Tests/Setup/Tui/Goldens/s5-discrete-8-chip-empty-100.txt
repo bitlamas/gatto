@@ -1,0 +1,16 @@
+  gatto setup                                                               v0.5.0 · build 1a2b3c4
+  machine ✓ · engine ✓ · ❯ model · check · done
+────────────────────────────────────────────────────────────────────────────────────────────────────
+  Which model should gatto start with?
+
+  ❯ gemma · qwen · deepseek · glm · mistral · all
+
+       (^·_·^)ﾉ
+
+       No gemma model fits this machine's memory · 27 too big, a shows all
+
+  Type a model's name from Hugging Face
+
+❯ search models…                                                                       / to search
+────────────────────────────────────────────────────────────────────────────────────────────────────
+  Enter next   m local   d search   a all sizes   b back   Esc back    | ✓ GPU · ⚠ RAM · ✗ too big

@@ -1,0 +1,2 @@
+already serving qwen3.6-35b-a3b (pid 2844)
+stop it with gatto serve stop.

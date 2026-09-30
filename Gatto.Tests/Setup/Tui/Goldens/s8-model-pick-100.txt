@@ -1,0 +1,16 @@
+  gatto setup                                                               v0.5.0 · build 1a2b3c4
+  machine ✓ · ❯ server · check · done
+────────────────────────────────────────────────────────────────────────────────────────────────────
+  Which model should gatto ask for?
+
+  This server lists several. gatto names one on every request; you can change it later
+  in gatto.json.
+
+❯ qwen/qwen3-30b-a3b-2507
+  google/gemma-3-12b
+  mistralai/devstral-small-2507
+  openai/gpt-oss-20b
+  liquid/lfm2-1.2b
+
+────────────────────────────────────────────────────────────────────────────────────────────────────
+  ↑↓ move   Enter choose   b back   Esc leave

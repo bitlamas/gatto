@@ -1,0 +1,25 @@
+  gatto setup                                                               v0.5.0 · build 1a2b3c4
+  machine ✓ · engine ✓ · ❯ model · check · done
+────────────────────────────────────────────────────────────────────────────────────────────────────
+  Which model should gatto start with?     (^· ·^)⟆ purr..  12m 40s
+
+  gatto couldn't reach Hugging Face, so this time the download is yours, everything below is
+  exact. It is two files: download both into one folder.
+
+  download   ✓ gemma-4-26B-A4B-it-UD-Q4_K_M.gguf, here
+  and        ✗ mmproj-F16.gguf · 851 MB · still missing
+  from       huggingface.co/unsloth/gemma-4-26B-A4B-it-GGUF/tree/main
+
+  One of the two files is here. The model can't see images without its encoder, the link above has
+  both; gatto keeps watching.
+
+  It is watching:                                                       checking every few seconds
+    C:\Users\you\.gatto\weights\gemma-4-26b-a4b-it\
+    C:\Users\you\Downloads\
+
+❯ 1. Use it text-only
+  2. Pick a different model
+
+❯ type the path to the downloaded file or folder…                                 Tab or ↓ to type
+────────────────────────────────────────────────────────────────────────────────────────────────────
+  Tab area   Enter choose   b back   Esc leave

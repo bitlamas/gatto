@@ -1,0 +1,18 @@
+  gatto setup                                                               v0.5.0 · build 1a2b3c4
+  machine ✓ · engine ✓ · ❯ model · check · done
+────────────────────────────────────────────────────────────────────────────────────────────────────
+  Which model should gatto start with?     (^· ·^)⟆ purred for 1h 12m 4s
+
+✓ gemma-4-26B-A4B-it-UD-Q4_K_M.gguf arrived, byte for byte the file Hugging Face publishes.
+
+  found      C:\Users\you\Downloads\gemma-4-26B-A4B-it-UD-Q4_K_M.gguf
+  with       mmproj-F16.gguf · verified
+
+  Downloads is where files land, not where models live, a cleared Downloads folder would take the
+  model with it.
+
+❯ 1. Move files into C:\Users\you\.gatto\weights\gemma-4-26b-a4b-it\
+  2. Leave them in Downloads
+
+────────────────────────────────────────────────────────────────────────────────────────────────────
+  Enter choose   b back   Esc leave

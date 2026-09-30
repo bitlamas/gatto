@@ -1,0 +1,28 @@
+❯ can you read the README and tell me what this repo does
+
+● It's a native C#/.NET harness for local models — a streaming client, an agent loop with hooks,
+  six built-in tools and JSONL sessions. The README's first line says it plainly.
+
+❯ /model add
+
+────────────────────────────────────────────────────────────────────────────── gatto · generalist ──
+  model ✓ · check ✓ · ❯ done
+
+  Q6_K is added to gemma-4-e4b-it.
+
+  model     gemma-4-e4b-it · 2 files
+  files     Q4_K_M · 5.0 GB · in use   Q6_K · 7.1 GB · verified · new
+  check     Q4_K_M ✓ passed   Q6_K ⚠ not run
+  config    C:\Users\you\.gatto\gatto.json
+
+  Run gemma-4-e4b-it on Q6_K from now on?
+  gemma-4-e4b-it is the model you're on, so its server restarts with Q6_K. Everything said so far
+  has to be read again before it can answer, the first message after the switch will take longer.
+
+❯ 1. Yes, switch this model to Q6_K
+  2. No, keep Q4_K_M; Q6_K stays on disk
+
+────────────────────────────────────────────────────────────────────────────────────────────────────
+  Enter choose   Esc keep Q4_K_M
+────────────────────────────────────────────────────────────────────────────────────────────────────
+  ~\projects\demo · master · gemma-4-e4b-it · ↑ 1.4k ↓ 312 · ctx 2%

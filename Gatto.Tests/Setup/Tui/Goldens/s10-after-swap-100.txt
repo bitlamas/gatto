@@ -1,0 +1,10 @@
+❯ /model add
+
+♯ gemma-4-26B-A4B-it added · gemma-4-26B-A4B-it-UD-Q4_K_M.gguf · check passed
+  (^· ·^)⟆ purred for 38s
+♯ now on gemma-4-26B-A4B-it, everything said so far is read again on your next message
+
+────────────────────────────────────────────────────────────────────────────── gatto · generalist ──
+❯ ▏
+────────────────────────────────────────────────────────────────────────────────────────────────────
+  ~\projects\demo · master · gemma-4-26B-A4B-it · ↑ 1.4k ↓ 312 · ctx 2%

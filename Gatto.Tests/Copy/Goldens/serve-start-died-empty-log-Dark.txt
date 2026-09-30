@@ -1,0 +1,2 @@
+ESC[38;2;232;232;232mllama-server exited before it became readyESC[0mESC[38;2;153;153;153m · last 10 log linesESC[0m
+  serve.log was empty

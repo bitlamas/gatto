@@ -1,0 +1,45 @@
+{
+  "query": "llama.cpp",
+  "follow_up_questions": null,
+  "answer": null,
+  "images": [],
+  "results": [
+    {
+      "url": "https://example.com/tavily/result-1/",
+      "title": "Example Tavily One - local inference notes",
+      "content": "An invented summary of an example page about running language models on a local machine, written only so that a test has text of a realistic length to read. An invented summary of an example page about running language models on a local machine, written only so that a test has text of a realistic length to read. An invented summary of an example page about running language models on a local machine, written only so that a test has text of a realistic length to read. An invented summary of an example page about running language models on a local machine, written only so that a test has text of a realistic length to read. An invented summary of an example page about running language models on a local machine, written only so that a test has text of a realistic length to read. An invented summary of an example page about running language models on a local machine, written only so that a test has text of a realistic length to read. An invented summary of an example page about r",
+      "score": 0.94251215,
+      "raw_content": null
+    },
+    {
+      "url": "https://example.net/tavily/result-2/",
+      "title": "Example Tavily Two - building from source",
+      "content": "An invented summary of an example page about running language models on a local machine, written only so that a test has text of a realistic length to read. An invented summary of an example page about running language models on a local machine, written only so that a test has text of a realistic length to read. An invented summary of an example page about running language models on a local machine, written only so that a test has text of a realistic length to read. An invented summary of an example page about running language models on a local machine, written only so that a test has text of a realistic length to read. An invented summary of an example page about running language models on a local machine, written only so that a test has text of a realistic length to read. An invented summary of an example page about running language models on a local machine, written only so that a test has text of a realistic length to read. An invented summary of an example page about running language models on a local mac",
+      "score": 0.9184877,
+      "raw_content": null
+    },
+    {
+      "url": "https://example.org/tavily/result-3/",
+      "title": "Example tavily result 3 - notes on local inference",
+      "content": "An invented summary of an example page about running language models on a local machine, written only so that a test has text of a realistic length to read. An invented summary of an example page about running language models on a local machine, written only so that a test has text of a realistic length to read. An invented summary of an example page about running language models on a local machine, written only so that a test has text of a realistic length to read. An invented summary of an example page about running language models on a local machine, written only so that a test has text of a realistic length to read. An invented summary of an example page about running language models on a local machine, written only so that a test has text of a realistic length to read. An invented summary of an example page about running language models on a local machine, written only so that a test has text of a realistic length to read. An invented summary of an example page about running language models on a local machine, written only so that a test has text of a realistic length to read. An invented summary of an example page about running language m",
+      "score": 0.8399576,
+      "raw_content": null
+    },
+    {
+      "url": "https://example.com/tavily/result-4/",
+      "title": "Example tavily result 4 - notes on local inference",
+      "content": "An invented summary of an example page about running language models on a local machine, written only so that a test has text of a realistic length to read. An invented summary of an example page about running language models on a local machine, written only so that a test has text of a realistic length to read. An invented summary of an example page about running language models on a local machine, written only so that a test has text of a realistic length to read. An invented summary of an example page about running language models on a local machine, written only so that a test has text of a realistic length to read. An invented summary of an example page about running language models on a local machine, written only so that a test has text of a realistic length to read. An invented summary of an example page about running language models on a local machine, written only so that a test has text of a realistic length to read. An invented summary of an example page about running language models on a local machine, written only so that a",
+      "score": 0.83093774,
+      "raw_content": null
+    },
+    {
+      "url": "https://example.net/tavily/result-5/",
+      "title": "Example tavily result 5 - notes on local inference",
+      "content": "An invented summary of an example page about running language models on a local machine, written only so that a test has text of a realistic length to read. An invented summary of an example page about running language models on a local machine, written only so that a test has text of a realistic length to read. An invented summary of an example page about running language models on a local machine, written only so that a test has text of a realistic length to read. An invented summary of an example page about running language models on a local machine, written only so that a test has text of a realistic length to read. An invented summary of an example page about running language models on a local machine, written only so that a test has text of a realistic length to read. An invented summary of an example page about running language models on a local machine, written only so that a test has text of a realistic length to read. An invented summary of an example page about running language models on a local machine, written only so that a test has text of a realistic length to read..",
+      "score": 0.8173562,
+      "raw_content": null
+    }
+  ],
+  "response_time": 0.93,
+  "request_id": "00000000-0000-4000-8000-000000000000"
+}

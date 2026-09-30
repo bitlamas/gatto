@@ -1,0 +1,11 @@
+ESC[38;2;232;232;232mllama-server exited before it became readyESC[0mESC[38;2;153;153;153m · last 10 log linesESC[0m
+  line 3 of the engine's log
+  line 4 of the engine's log
+  line 5 of the engine's log
+  line 6 of the engine's log
+  line 7 of the engine's log
+  line 8 of the engine's log
+  line 9 of the engine's log
+  line 10 of the engine's log
+  line 11 of the engine's log
+  line 12 of the engine's log

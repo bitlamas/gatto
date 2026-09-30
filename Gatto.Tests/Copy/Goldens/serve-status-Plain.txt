@@ -1,0 +1,12 @@
+--- stdout ---
+
+(^· ·^)Ⳋ  gatto serve status · v0.5.1 · build f22c6ea
+
+not serving
+run gatto serve start [model] to launch one.
+
+
+--- stderr ---
+
+--- exit ---
+0

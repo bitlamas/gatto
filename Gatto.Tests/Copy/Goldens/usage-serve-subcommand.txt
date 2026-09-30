@@ -1,0 +1,12 @@
+--- stdout ---
+
+--- stderr ---
+unknown serve subcommand 'wobble'. Valid: start, stop, status
+gatto, a terminal assistant that runs AI models on your own computer
+usage: gatto [role|command] [options]
+  roles:    generalist (default) | coder | oracle | <any ~/.gatto/roles/*.json>
+  commands: setup | serve start [model] [--detach] | serve stop|status | doctor | status | audition | model new [gguf] [id] | update | uninstall
+  options:  -m <model>  -p <prompt>  -e <endpoint>  --effort <level>  --continue[ <id>]  --yes  --auto  --version  -h
+
+--- exit ---
+2

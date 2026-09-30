@@ -1,0 +1,14 @@
+  gatto setup                                                               v0.5.0 · build 1a2b3c4
+  machine ✓ · ❯ server · check · done
+────────────────────────────────────────────────────────────────────────────────────────────────────
+  Which server should gatto talk to?
+
+  No server answered on the ports llama.cpp and LM Studio usually use on this machine.
+
+  Start your server, then look again, or type its address if it lives somewhere else.
+
+❯ 1. Look again
+
+❯ type the server's address… e.g. http://127.0.0.1:8080                           Tab or ↓ to type
+────────────────────────────────────────────────────────────────────────────────────────────────────
+  Tab area   Enter next   b back   Esc leave

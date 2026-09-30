@@ -1,0 +1,15 @@
+  gatto setup                                                               v0.5.0 · build 1a2b3c4
+  machine ✓ · ❯ engine · model · check · done
+────────────────────────────────────────────────────────────────────────────────────────────────────
+  Which engine build fits this machine?
+
+✗ That build needs the Microsoft Visual C++ runtime, and this Windows doesn't have it. Install the
+  'Visual C++ Redistributable (x64)' from Microsoft.
+
+  tested       C:\Users\you\.gatto\llama\b11071\llama-server.exe
+
+❯ 1. Check it again
+
+❯ type the path to llama-server.exe…                                              Tab or ↓ to type
+────────────────────────────────────────────────────────────────────────────────────────────────────
+  Tab area   Enter next   b back   Esc leave

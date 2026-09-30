@@ -1,0 +1,17 @@
+  gatto setup                                                               v0.5.0 · build 1a2b3c4
+  machine ✓ · ❯ server · check · done
+────────────────────────────────────────────────────────────────────────────────────────────────────
+  Which server should gatto talk to?
+
+  gatto will talk to this server as it is, it can't switch models or change settings on a server
+  it didn't start.
+
+  server    http://127.0.0.1:8080
+  serving   Qwen3-30B-A3B-Instruct-2507-Q4_K_M.gguf
+  context   131,072 tokens · reported by the server
+
+❯ 1. Use this server
+
+❯ type another server's address… e.g. http://127.0.0.1:8080                       Tab or ↓ to type
+────────────────────────────────────────────────────────────────────────────────────────────────────
+  Tab area   Enter next   b back   Esc leave

@@ -1,0 +1,16 @@
+✓ tool-calling verified · 4 of 5 tasks · 2026-09-15
+
+  ✓ B1  answers with the right tool    2.4s
+  ✓ B2  reads back what it fetched     5.1s
+  ✗ B3  keeps the schema               8.0s  asked for it in a way gatto couldn't read
+  ✓ B4  refuses the impossible         3.3s
+  ✓ B5  finishes the loop              6.6s
+
+  model        qwen3.6-35b-a3b.gguf
+  quant        Q4_K_M
+  context      131072
+  sampling     temperature 1.0, top_k 40
+  speed        ~62 tok/s generating · good for daily driving
+  gatto build  f22c6ea
+
+  ran in 84 s

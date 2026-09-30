@@ -1,0 +1,12 @@
+--- stdout ---
+
+ESC[38;2;255;166;77m(^· ·^)ⳊESC[0m  ESC[38;2;255;166;77mESC[1mgattoESC[0m ESC[38;2;232;232;232mserve statusESC[0mESC[38;2;153;153;153m · ESC[0mESC[38;2;153;153;153mv0.5.1 · build f22c6eaESC[0m
+
+ESC[38;2;232;232;232mnot servingESC[0m
+ESC[38;2;232;232;232mrun ESC[0mESC[38;2;75;190;205mgatto serve start [model]ESC[0mESC[38;2;232;232;232m to launch one.ESC[0m
+
+
+--- stderr ---
+
+--- exit ---
+0

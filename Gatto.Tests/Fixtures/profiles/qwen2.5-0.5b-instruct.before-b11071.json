@@ -1,0 +1,24 @@
+{
+  "files": [
+    {
+      "path": "C:\\models\\qwen2.5-0.5b-instruct\\qwen2.5-0.5b-instruct-fp16.gguf",
+      "active": true
+    }
+  ],
+  "port": 1235,
+  "context": 8192,
+  "gpu_layers": 99,
+  "cache_type_k": "q8_0",
+  "cache_type_v": "q8_0",
+  "extra_args": [
+    "-np",
+    "1",
+    "-fa",
+    "on",
+    "--no-mmap",
+    "--jinja",
+    "--no-context-shift",
+    "--cache-reuse",
+    "0"
+  ]
+}

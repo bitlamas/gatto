@@ -1,0 +1,45 @@
+=== gatto machine capture v3 ===
+capture_date: 2026-09-08 12:25
+shape: 32gb-integrated-1gb-carveout
+collects: memory, display-adapter registry, vulkan  |  excludes: hostname, user, serials, system model
+note: cpu= is RAW, trailing spaces included; trimming is the display side, do not edit it here
+
+--- [1] memory ---
+installed=34359738368
+visible=33155784704
+
+--- [2] cpu ---
+cpu=AMD Ryzen 5 PRO 2500U w/ Radeon Vega Mobile Gfx
+os=Microsoft Windows 10 IoT Enterprise LTSC 10.0.19044.0
+
+--- [3] display adapters, registry ---
+adapter_0000=1073741824 | AMD Radeon(TM) Vega 8 Graphics | PCI\VEN_1002&DEV_15DD&SUBSYS_512217AA&REV_D1
+
+--- [4] vulkan ---
+vulkan=ok physical_devices=1
+device_0_name=AMD Radeon(TM) Vega 8 Graphics
+device_0_type=INTEGRATED_GPU (1)
+device_0_vendor=0x1002 device_id=0x15DD
+device_0_api=1.3.260 driver_raw=8388887
+device_0_heap_count=3 type_count=16
+device_0_heap_0=805306368 flags=0x03 DEVICE_LOCAL|MULTI_INSTANCE
+device_0_heap_1=16308502528 flags=0x00 -
+device_0_heap_2=268435456 flags=0x03 DEVICE_LOCAL|MULTI_INSTANCE
+device_0_type_0=heap 0 flags=0x0001
+device_0_type_1=heap 1 flags=0x0006
+device_0_type_2=heap 2 flags=0x0007
+device_0_type_3=heap 1 flags=0x000E
+device_0_type_4=heap 0 flags=0x00C1
+device_0_type_5=heap 1 flags=0x00C6
+device_0_type_6=heap 2 flags=0x00C7
+device_0_type_7=heap 1 flags=0x00CE
+device_0_type_8=heap 0 flags=0x0001
+device_0_type_9=heap 1 flags=0x0006
+device_0_type_10=heap 2 flags=0x0007
+device_0_type_11=heap 1 flags=0x000E
+device_0_type_12=heap 0 flags=0x00C1
+device_0_type_13=heap 1 flags=0x00C6
+device_0_type_14=heap 2 flags=0x00C7
+device_0_type_15=heap 1 flags=0x00CE
+
+=== end of capture -- please send this file back (it contains no identifying data) ===

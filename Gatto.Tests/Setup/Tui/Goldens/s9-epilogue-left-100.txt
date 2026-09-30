@@ -1,0 +1,12 @@
+(^· ·^)Ⳋ  gatto setup · left at the check · v0.5.0 · build 1a2b3c4 · 2026-08-25
+
+machine   128 GB shared with the graphics chip · about 88 GB for a model
+engine    llama.cpp b11071 · Vulkan · C:\Users\you\.gatto\llama\b11071\
+model     gemma-4-26B-A4B-it-UD-Q4_K_M.gguf · 16.9 GB · verified
+check     ⚠ not run, gatto audition gemma-4-26B-A4B-it runs the check whenever you want it
+gatto     not installed, runs from C:\Users\you\Downloads\gatto\gatto.exe
+config    C:\Users\you\.gatto\gatto.json
+
+gatto is set up and pointed at gemma-4-26B-A4B-it. Two questions weren't reached, installing
+gatto, and the weekly update check, so gatto setup asks them next time. Until then, run it from
+the file above.

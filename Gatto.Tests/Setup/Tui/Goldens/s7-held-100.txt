@@ -1,0 +1,16 @@
+  gatto setup                                                               v0.5.0 · build 1a2b3c4
+  machine ✓ · engine ✓ · model ✓ · ❯ check · done
+────────────────────────────────────────────────────────────────────────────────────────────────────
+  Can it run commands and edit files?
+
+⚠ gatto can't check this model right now.
+
+  server        minimax-m2.7-REAP-139B-A10B-Q4_K_S is running
+                checking gemma-4-26B-A4B-it would unload it
+
+  The check couldn't run, so gatto can't judge this model yet. Once
+  minimax-m2.7-REAP-139B-A10B-Q4_K_S is no longer running, type gatto audition gemma-4-26B-A4B-it
+  in a terminal to run the same check.
+
+────────────────────────────────────────────────────────────────────────────────────────────────────
+  Enter next   Esc leave

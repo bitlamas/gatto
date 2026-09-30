@@ -1,0 +1,48 @@
+=== gatto machine capture v3 ===
+capture_date: 2026-09-08 18:09
+shape: 128gb-integrated-96gb-carveout
+collects: memory, display-adapter registry, vulkan  |  excludes: hostname, user, serials, system model
+note: cpu= is RAW, trailing spaces included; trimming is the display side, do not edit it here
+
+--- [1] memory ---
+installed=137438953472
+visible=33982058496
+
+--- [2] cpu ---
+cpu=AMD RYZEN AI MAX+ 395 w/ Radeon 8060S          
+os=Microsoft Windows 11 Pro 10.0.26200.0
+
+--- [3] display adapters, registry ---
+adapter_0000=103079215104 | AMD Radeon(TM) 8060S Graphics | PCI\VEN_1002&DEV_1586&SUBSYS_15141043&REV_C1
+adapter_0001=(absent) | Microsoft Remote Display Adapter | RdpIdd_IndirectDisplay
+adapter_0002=(absent) | Microsoft Remote Display Adapter | RdpIdd_IndirectDisplay
+adapter_0003=(absent) | Microsoft Remote Display Adapter | RdpIdd_IndirectDisplay
+adapter_0004=(absent) | Microsoft Remote Display Adapter | RdpIdd_IndirectDisplay
+
+--- [4] vulkan ---
+vulkan=ok physical_devices=1
+device_0_name=AMD Radeon(TM) 8060S Graphics
+device_0_type=INTEGRATED_GPU (1)
+device_0_vendor=0x1002 device_id=0x1586
+device_0_api=1.4.349 driver_raw=8389003
+device_0_heap_count=2 type_count=16
+device_0_heap_0=16990994432 flags=0x00 -
+device_0_heap_1=103079215104 flags=0x03 DEVICE_LOCAL|MULTI_INSTANCE
+device_0_type_0=heap 1 flags=0x0001
+device_0_type_1=heap 0 flags=0x0006
+device_0_type_2=heap 1 flags=0x0007
+device_0_type_3=heap 0 flags=0x000E
+device_0_type_4=heap 1 flags=0x00C1
+device_0_type_5=heap 0 flags=0x00C6
+device_0_type_6=heap 1 flags=0x00C7
+device_0_type_7=heap 0 flags=0x00CE
+device_0_type_8=heap 1 flags=0x0001
+device_0_type_9=heap 0 flags=0x0006
+device_0_type_10=heap 1 flags=0x0007
+device_0_type_11=heap 0 flags=0x000E
+device_0_type_12=heap 1 flags=0x00C1
+device_0_type_13=heap 0 flags=0x00C6
+device_0_type_14=heap 1 flags=0x00C7
+device_0_type_15=heap 0 flags=0x00CE
+
+=== end of capture -- please send this file back (it contains no identifying data) ===

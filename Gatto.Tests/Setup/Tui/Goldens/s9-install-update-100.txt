@@ -1,0 +1,16 @@
+  gatto setup                                                               v0.5.0 · build 1a2b3c4
+  machine ✓ · engine ✓ · model ✓ · check ✓ · ❯ done
+────────────────────────────────────────────────────────────────────────────────────────────────────
+  A newer gatto is running than the one installed
+
+  Installed: 0.4.2 at C:\Users\you\AppData\Local\Programs\gatto\
+  This one:  0.5.0
+
+  Updating copies this gatto over the installed one. Nothing is downloaded, the files are
+  already here.
+
+  1. Update the installed copy
+  2. Leave it
+
+────────────────────────────────────────────────────────────────────────────────────────────────────
+  ↑↓ choose   Enter confirm   Esc leave

@@ -1,0 +1,31 @@
+=== gatto machine capture v3 ===
+capture_date: 2026-09-08 12:22
+shape: 12gb-integrated-intel
+collects: memory, display-adapter registry, vulkan  |  excludes: hostname, user, serials, system model
+note: cpu= is RAW, trailing spaces included; trimming is the display side, do not edit it here
+
+--- [1] memory ---
+installed=12884901888
+visible=12797128704
+
+--- [2] cpu ---
+cpu=Intel(R) Core(TM) i5-8250U CPU @ 1.60GHz
+os=Microsoft Windows 11 Famille 10.0.26200.0
+
+--- [3] display adapters, registry ---
+adapter_0000=(absent) | (no DriverDesc) | (none)
+adapter_0001=(absent) | Intel(R) UHD Graphics 620 | PCI\VEN_8086&DEV_5917
+
+--- [4] vulkan ---
+vulkan=ok physical_devices=1
+device_0_name=Intel(R) UHD Graphics 620
+device_0_type=INTEGRATED_GPU (1)
+device_0_vendor=0x8086 device_id=0x5917
+device_0_api=1.3.215 driver_raw=1656924
+device_0_heap_count=1 type_count=3
+device_0_heap_0=6398564352 flags=0x01 DEVICE_LOCAL
+device_0_type_0=heap 0 flags=0x0001
+device_0_type_1=heap 0 flags=0x0007
+device_0_type_2=heap 0 flags=0x000F
+
+=== end of capture -- please send this file back (it contains no identifying data) ===

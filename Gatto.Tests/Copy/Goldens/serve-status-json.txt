@@ -1,0 +1,7 @@
+--- stdout ---
+{"model_path":null,"n_ctx":null,"model_id":null,"matches_model":null,"schema_version":1}
+
+--- stderr ---
+
+--- exit ---
+0

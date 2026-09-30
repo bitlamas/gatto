@@ -1,0 +1,26 @@
+  gatto setup                                                               v0.5.0 · build 1a2b3c4
+  machine ✓ · engine ✓ · model ✓ · ❯ check · done
+────────────────────────────────────────────────────────────────────────────────────────────────────
+  Can it run commands and edit files?
+
+✗ The server exited while loading the model, nothing was measured.
+
+  model         gemma-4-26B-A4B-it-UD-Q4_K_M.gguf
+  last lines    llama_model_load: error loading model: tensor 'blk.61.ffn_down.weight' data is not
+                within the file bounds, model is corrupted or incomplete
+                llama_model_load_from_file_impl: failed to load model
+                srv    load_model: failed to load model,
+                'D:\ai\test\exploration\.lmstudio\models\lmstudio-community\Llama-3.3-70B\Llama-3.3-
+                70B-Instruct-IQ2_XS.gguf'
+                main: exiting due to model loading error
+                full log: C:\Users\you\.gatto\serve.log
+
+  The check couldn't run, so gatto can't judge this model yet, the lines above are the server's
+  own account of what happened.
+
+❯ 1. Try the check again
+  2. Pick a different model
+  3. Carry on, use it unchecked
+
+────────────────────────────────────────────────────────────────────────────────────────────────────
+  Enter choose   Esc leave

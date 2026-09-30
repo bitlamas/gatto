@@ -1,0 +1,18 @@
+  gatto setup                                                               v0.5.0 · build 1a2b3c4
+  machine ✓ · engine ✓ · model ✓ · check ✓ · ❯ done
+────────────────────────────────────────────────────────────────────────────────────────────────────
+  gatto is set up.
+
+  model     gemma-4-26B-A4B-it-UD-Q4_K_M.gguf · 16.9 GB · verified
+            C:\Users\you\.gatto\weights\gemma-4-26B-A4B-it\
+  engine    llama.cpp b11071 · Vulkan · C:\Users\you\.gatto\llama\b11071\
+  check     ✓ passed, it ran commands and edited files
+  gatto     runs from C:\Users\you\Downloads\gatto\gatto.exe, gatto is also installed
+            at C:\Users\you\AppData\Local\Programs\gatto\
+  config    C:\Users\you\.gatto\gatto.json
+
+❯ 1. Start gatto now
+  2. Not now, show me how to start it later
+
+────────────────────────────────────────────────────────────────────────────────────────────────────
+  Enter choose   Esc leave

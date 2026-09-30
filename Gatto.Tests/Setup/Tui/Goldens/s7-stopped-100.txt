@@ -1,0 +1,20 @@
+  gatto setup                                                               v0.5.0 · build 1a2b3c4
+  machine ✓ · engine ✓ · model ✓ · ❯ check · done
+────────────────────────────────────────────────────────────────────────────────────────────────────
+  Can it run commands and edit files?     (^· ·^)⟆ purred for 2m 27s
+
+✗ The server stopped while the check was running, nothing was measured.
+
+  model         gemma-4-26B-A4B-it-UD-Q4_K_M.gguf
+  done          1) read a file · 2) write a file · 3) run a command
+  last lines    none, the server exited without writing anything
+
+  The check couldn't finish, so gatto can't judge this model yet. Type
+  gatto serve start gemma-4-26B-A4B-it in a new terminal to see what the server does on its own.
+
+❯ 1. Try the check again
+  2. Pick a different model
+  3. Carry on, use it unchecked
+
+────────────────────────────────────────────────────────────────────────────────────────────────────
+  Enter choose   Esc leave

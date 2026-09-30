@@ -1,0 +1,11 @@
+  gatto setup                                                               v0.5.0 · build 1a2b3c4
+  machine ✓ · ❯ server · check · done
+────────────────────────────────────────────────────────────────────────────────────────────────────
+  What model should gatto ask for?
+
+  This server didn't list its models. gatto names one on every request, so it needs the name this
+  server answers to.
+
+❯ ▏ the name of the model this server answers to…
+────────────────────────────────────────────────────────────────────────────────────────────────────
+  Enter next   Esc back

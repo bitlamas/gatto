@@ -1,0 +1,8 @@
+(^· ·^)Ⳋ  gatto setup · v0.5.0 · build 1a2b3c4 · 2026-08-25
+
+server    http://127.0.0.1:1234 · qwen/qwen3-30b-a3b-2507 · context 65,536 (your input)
+check     ✓ it loads and answers
+gatto     ✓ installed, any terminal finds it
+config    C:\Users\you\.gatto\gatto.json
+
+starting gatto in 3s…

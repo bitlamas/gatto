@@ -1,0 +1,26 @@
+visible=8588824576
+cpu=AMD RYZEN AI MAX+ 395 w/ Radeon 8060S          
+vulkan=ok physical_devices=1
+device_0_name=AMD Radeon(TM) 8060S Graphics
+device_0_type=INTEGRATED_GPU (1)
+device_0_vendor=0x1002 device_id=0x1586
+device_0_api=1.4.349 driver_raw=8389003
+device_0_heap_count=2 type_count=16
+device_0_heap_0=44321800192 flags=0x00 -
+device_0_heap_1=88643731456 flags=0x03 DEVICE_LOCAL|MULTI_INSTANCE
+device_0_type_0=heap 1 flags=0x0001
+device_0_type_1=heap 0 flags=0x0006
+device_0_type_2=heap 1 flags=0x0007
+device_0_type_3=heap 0 flags=0x000E
+device_0_type_4=heap 1 flags=0x00C1
+device_0_type_5=heap 0 flags=0x00C6
+device_0_type_6=heap 1 flags=0x00C7
+device_0_type_7=heap 0 flags=0x00CE
+device_0_type_8=heap 1 flags=0x0001
+device_0_type_9=heap 0 flags=0x0006
+device_0_type_10=heap 1 flags=0x0007
+device_0_type_11=heap 0 flags=0x000E
+device_0_type_12=heap 1 flags=0x00C1
+device_0_type_13=heap 0 flags=0x00C6
+device_0_type_14=heap 1 flags=0x00C7
+device_0_type_15=heap 0 flags=0x00CE

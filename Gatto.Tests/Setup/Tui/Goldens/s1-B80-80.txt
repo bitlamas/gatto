@@ -1,0 +1,26 @@
+  (^· ·^)Ⳋ  gatto setup                                   v0.5.0 · build 1a2b3c4
+  machine ✓ · engine ✓ · ❯ model · check · done
+────────────────────────────────────────────────────────────────────────────────
+  Which model should gatto start with?
+
+  gemma · qwen · deepseek · glm · mistral · all
+  unsloth   search ▏…   [ Search ]
+
+     model               params  size · quant     runs          
+  1. gemma-4-31B-it       30.7B  18.3 GB Q4_K_M   dense         
+  2. gemma-3-27b-it       27.0B  16.5 GB Q4_K_M   dense         
+❯ 3. gemma-4-26B-A4B-it   25.2B  16.9 GB Q4_K_M   MoE · 8 of 128
+  4. gemma-4-12b-it       11.9B  7.1 GB Q4_K_M    dense         
+  5. gemma-3-12b-it       11.8B  7.3 GB Q4_K_M    dense         
+  6. gemma-4-E4B-it        7.5B  5.0 GB Q4_K_M    dense         
+  … 5 smaller
+  6 of 11 shown · all fit this machine
+
+────────────────────────────────────────────────────────────────────────────────
+  gemma-4-26B-A4B-it  ·  MoE, reads 8 of 128 experts per token
+  context up to 262,144 · sees images · mmproj 1.2 GB
+  files  ❯ Q4_K_M 16.9 GB · Q5_K_M 21.2 GB · Q6_K 23.2 GB
+  nothing measured yet, the check runs after download
+────────────────────────────────────────────────────────────────────────────────
+  MoE reads a fraction of its weights per token · faster
+  ↑↓ pick · Enter next → · ← back · Esc leave · f publisher · s sort · / search

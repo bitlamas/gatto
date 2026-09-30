@@ -1,0 +1,18 @@
+  gatto setup                                           v0.5.0 · build 1a2b3c4
+  ❯ machine · engine · model · check · done
+────────────────────────────────────────────────────────────────────────────────
+  What can this machine run?
+
+  This machine: 128 GB of memory shared with the graphics chip, a model can
+  use about 76 GB of it.
+
+  cpu           AMD RYZEN AI MAX+ 395
+  graphics      AMD Radeon 8060S Graphics, integrated, same memory as
+                the processor
+  memory        128 GB installed, the graphics chip draws from it as needed
+  models        up to about 76 GB, 7 GB kept for the engine
+  windows       sees 127 GB; at least 51 GB stays free for Windows, browser
+                and other apps
+
+────────────────────────────────────────────────────────────────────────────────
+  Enter next   Esc leave

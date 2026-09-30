@@ -1,0 +1,21 @@
+  gatto setup                                                               v0.5.0 · build 1a2b3c4
+  machine ✓ · engine ✓ · ❯ model · check · done
+────────────────────────────────────────────────────────────────────────────────────────────────────
+  Which model should gatto start with?     (^· ·^)⟆ purr    18m 2s
+
+✗ A file with the right name is here, but it isn't the published one.
+
+  expected   a1b29c…44e0 · the file's fingerprint on Hugging Face
+  got        7c3df1…9aa2 · the file in C:\Users\you\Downloads\
+
+  A broken copy looks like this, downloading it again usually fixes it. gatto keeps watching.
+
+  It is watching:                                                       checking every few seconds
+    C:\Users\you\.gatto\weights\gemma-4-26b-a4b-it\
+    C:\Users\you\Downloads\
+
+❯ 1. Pick a different model
+
+❯ type the path to the downloaded file or folder…                                 Tab or ↓ to type
+────────────────────────────────────────────────────────────────────────────────────────────────────
+  Tab area   Enter next   b back   Esc leave

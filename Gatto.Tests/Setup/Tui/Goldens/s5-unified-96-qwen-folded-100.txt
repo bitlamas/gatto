@@ -1,0 +1,31 @@
+  gatto setup                                                               v0.5.0 · build 1a2b3c4
+  machine ✓ · engine ✓ · ❯ model · check · done
+────────────────────────────────────────────────────────────────────────────────────────────────────
+  Which model should gatto start with?
+
+  gemma · qwen · deepseek · glm · mistral · all                                 publisher  unsloth
+
+     model                        params  size · quant    kind     │ Qwen3.6-35B-A3B                
+  1. Qwen3-Coder-Next              79.7B  48.5 GB Q4_K_M  MoE      │ by unsloth                     
+  2. Qwen3-Next-80B-A3B-Instruct   79.7B  48.5 GB Q4_K_M  MoE A3B  │                                
+  3. Qwen3-Next-80B-A3B-Thinking   79.7B  48.5 GB Q4_K_M  MoE A3B  │ context up to 262,144          
+  4. Qwen3.5-35B-A3B               35.5B  22.6 GB Q4_K_M  MoE A3B  │ ◈ vision · can see images      
+❯ 5. Qwen3.6-35B-A3B               34.7B  22.1 GB Q4_K_M  MoE A3B  │ reads 3B params/token          
+  6. Qwen-AgentWorld-35B-A3B       34.7B  22.1 GB Q4_K_M  MoE A3B  │ ✗ not measured by gatto yet    
+     … 14 more below                                               │                                
+                                                                   │ files                          
+                                                                   │ › Q4_K_M    22.1 GB  ✓ fits    
+                                                                   │   Q5_K_M    26.5 GB  ✓ fits    
+                                                                   │   Q6_K      29.3 GB  ✓ fits    
+                                                                   │                                
+                                                                   │                                
+                                                                   │                                
+                                                                   │ builds of this model           
+                                                                   │ › standard plain build         
+                                                                   │   MTP      speculative head    
+
+  1–6 of 20 · 13 older · 9 too big, a shows all
+
+❯ search models…                                                                       / to search
+────────────────────────────────────────────────────────────────────────────────────────────────────
+  Enter next   m local   d search   a all sizes   b back   Esc leave       | fewer params = faster

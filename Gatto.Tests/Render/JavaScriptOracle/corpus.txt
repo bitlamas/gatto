@@ -1,0 +1,49 @@
+const port = 0xFF;
+let count = 1_000;
+var big = 10n;
+const small = .5 + 1e3;
+const a = 'single', b = "double";
+----
+function add(a, b) {
+  return a + b;
+}
+const twice = (x) => add(x, x);
+add(1, 2);
+----
+class Widget extends Base {
+  constructor(name) {
+    super();
+    this.name = name;
+  }
+  render() {
+    return this.name;
+  }
+}
+----
+const label = `id ${user.id}: ${`inner ${count}`} and ${"text"}`;
+----
+const ratio = a / b / c;
+const re = /ab+c/gi;
+----
+// a line comment
+/* a block
+   comment */
+const url = "https://example.com // not a comment";
+const t = `/* not a comment either */`;
+----
+import fs from 'fs';
+export async function load(path) {
+  const data = await fs.promises.readFile(path);
+  return require('./parse')(data);
+}
+----
+const x = obj.class + obj.new + opt?.default;
+----
+if (a < b && c > d) { go(); }
+----
+const t = `open
+still open
+----
+let x = 1; /* not closed
+----
+const total = items.redu

@@ -1,0 +1,23 @@
+❯ can you read the README and tell me what this repo does
+
+● It's a native C#/.NET harness for local models — a streaming client, an agent loop with hooks,
+  six built-in tools and JSONL sessions. The README's first line says it plainly.
+
+❯ /model add
+
+────────────────────────────────────────────────────────────────────────────── gatto · generalist ──
+  model ✓ · ❯ check · done
+
+  Can it run commands and edit files?     (^· ·^)⟆ purrrrrrr... 1m 12s
+
+  Nothing to do here, gatto starts the server, loads the model, gives it the five tasks and
+  watches what happens.
+
+  model         gemma-4-26B-A4B-it-UD-Q4_K_M.gguf
+  running       task 3 of 5 · run a command
+  done          1) read a file · 2) write a file
+
+────────────────────────────────────────────────────────────────────────────────────────────────────
+  Esc stop the check                                          | stopping keeps it added, unchecked
+────────────────────────────────────────────────────────────────────────────────────────────────────
+  ~\projects\demo · master · qwen-qwen3.6-35b-a3b · ↑ 1.4k ↓ 312 · ctx 2%

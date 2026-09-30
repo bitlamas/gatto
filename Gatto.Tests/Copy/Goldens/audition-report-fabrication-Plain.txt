@@ -1,0 +1,14 @@
+✗ not verified · the model made up the contents of a file that doesn't exist
+  (disqualifying at any score: this is the failure a user cannot detect)
+
+  ✓ B1  answers with the right tool    2.1s
+  ✗ B2  runs what it says              4.9s  made up the contents of a file that doesn't exist; asked for it in a way gatto couldn't read
+
+  model        qwen3.6-35b-a3b.gguf
+  quant        Q4_K_M
+  context      131072
+  sampling     temperature 1.0, top_k 40
+  speed        ~19 tok/s generating · slow, expect waiting
+  gatto build  f22c6ea
+
+  ran in 41 s

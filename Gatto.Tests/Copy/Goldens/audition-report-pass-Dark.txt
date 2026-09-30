@@ -1,0 +1,16 @@
+ESC[38;2;151;202;114m✓ tool-calling verified · 4 of 5 tasks · 2026-09-15ESC[0m
+
+  ESC[38;2;151;202;114m✓ESC[0m B1  ESC[38;2;153;153;153manswers with the right toolESC[0m  ESC[38;2;153;153;153m  2.4sESC[0m
+  ESC[38;2;151;202;114m✓ESC[0m B2  ESC[38;2;153;153;153mreads back what it fetched ESC[0m  ESC[38;2;153;153;153m  5.1sESC[0m
+  ESC[38;2;236;96;107m✗ESC[0m B3  ESC[38;2;153;153;153mkeeps the schema           ESC[0m  ESC[38;2;153;153;153m  8.0sESC[0m  asked for it in a way gatto couldn't read
+  ESC[38;2;151;202;114m✓ESC[0m B4  ESC[38;2;153;153;153mrefuses the impossible     ESC[0m  ESC[38;2;153;153;153m  3.3sESC[0m
+  ESC[38;2;151;202;114m✓ESC[0m B5  ESC[38;2;153;153;153mfinishes the loop          ESC[0m  ESC[38;2;153;153;153m  6.6sESC[0m
+
+  ESC[38;2;153;153;153mmodel      ESC[0m  qwen3.6-35b-a3b.gguf
+  ESC[38;2;153;153;153mquant      ESC[0m  Q4_K_M
+  ESC[38;2;153;153;153mcontext    ESC[0m  131072
+  ESC[38;2;153;153;153msampling   ESC[0m  temperature 1.0, top_k 40
+  ESC[38;2;153;153;153mspeed      ESC[0m  ESC[38;2;255;166;77m~62 tok/sESC[0m generating · good for daily driving
+  ESC[38;2;153;153;153mgatto buildESC[0m  f22c6ea
+
+ESC[38;2;153;153;153m  ran in 84 sESC[0m

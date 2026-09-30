@@ -1,0 +1,26 @@
+  gatto setup                                                               v0.5.0 · build 1a2b3c4
+  machine ✓ · engine ✓ · ❯ model · check · done
+────────────────────────────────────────────────────────────────────────────────────────────────────
+  Which model should gatto start with?     (^· ·^)⟆ purr..  1h 4m 12s
+
+  gatto couldn't reach Hugging Face, so this time the download is yours, everything below is
+  exact. It is two files: download both into one folder.
+
+  download   gemma-4-26B-A4B-it-UD-Q4_K_M.gguf · 16.9 GB
+  and        mmproj-F16.gguf · 851 MB
+  from       huggingface.co/unsloth/gemma-4-26B-A4B-it-GGUF/tree/main
+
+  gatto is watching for it, you don't need to press anything.
+
+  It is watching:                                          checking every few seconds, nothing yet
+    C:\Users\you\.gatto\weights\gemma-4-26b-a4b-it\
+    C:\Users\you\Downloads\
+
+  This can take hours on a big model. You can leave with Esc and run gatto setup again later,
+  gatto will find the file.
+
+❯ 1. Pick a different model
+
+❯ type the path to the downloaded file or folder…                                 Tab or ↓ to type
+────────────────────────────────────────────────────────────────────────────────────────────────────
+  Tab area   Enter next   b back   Esc leave

@@ -1,0 +1,4 @@
+loading qwen3.6-35b-a3b…
+left it loading qwen3.6-35b-a3b, ~23.8 GB (pid 7777)
+check with gatto serve status.
+

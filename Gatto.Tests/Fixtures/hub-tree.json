@@ -1,0 +1,41 @@
+[
+  {
+    "type": "file",
+    "path": "README.md",
+    "size": 4213
+  },
+  {
+    "type": "file",
+    "path": "Qwen3.6-35B-A3B-Q4_K_M.gguf",
+    "size": 21474836480,
+    "lfs": {
+      "oid": "9f2c1b7a5e4d3c2b1a0f9e8d7c6b5a49382716059f2c1b7a5e4d3c2b1a0f9e8d",
+      "size": 21474836480,
+      "pointerSize": 135
+    }
+  },
+  {
+    "type": "file",
+    "path": "Qwen3.6-35B-A3B-Q6_K.gguf",
+    "size": 30064771072,
+    "lfs": {
+      "oid": "1a2b3c4d5e6f708192a3b4c5d6e7f8091a2b3c4d5e6f708192a3b4c5d6e7f809",
+      "size": 30064771072,
+      "pointerSize": 135
+    }
+  },
+  {
+    "type": "file",
+    "path": "mmproj-Qwen3.6-35B-A3B-BF16.gguf",
+    "size": 1342177280,
+    "lfs": {
+      "oid": "deadbeefcafef00dbaadf00d0123456789abcdefdeadbeefcafef00dbaadf00d",
+      "size": 1342177280,
+      "pointerSize": 135
+    }
+  },
+  {
+    "type": "directory",
+    "path": "original"
+  }
+]

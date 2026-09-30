@@ -1,0 +1,17 @@
+  gatto setup                                                               v0.5.0 · build 1a2b3c4
+  machine ✓ · ❯ engine · model · check · done
+────────────────────────────────────────────────────────────────────────────────────────────────────
+  Which engine build fits this machine?
+
+✓ llama-server.exe is already on this machine.
+
+  found     C:\llama\llama-b11071-bin-win-vulkan-x64\llama-server.exe
+  build     b11071 · the release gatto is tested with
+  checked   it ran, and it answered as the server gatto drives
+
+❯ 1. Use it
+  2. Use a server you start yourself, LM Studio, Ollama, or another
+
+❯ type the path to llama-server.exe…                                              Tab or ↓ to type
+────────────────────────────────────────────────────────────────────────────────────────────────────
+  Tab area   Enter choose   Esc leave

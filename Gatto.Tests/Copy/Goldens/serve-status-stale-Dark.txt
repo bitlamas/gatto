@@ -1,0 +1,2 @@
+ESC[38;2;232;232;232mnot servingESC[0mESC[38;2;153;153;153m · stale serve.json (pid 2844 is not a running llama-server)ESC[0m
+ESC[38;2;232;232;232mclear it with ESC[0mESC[38;2;75;190;205mgatto serve stopESC[0mESC[38;2;232;232;232m, or replace it with ESC[0mESC[38;2;75;190;205mgatto serve start [model]ESC[0mESC[38;2;232;232;232m.ESC[0m

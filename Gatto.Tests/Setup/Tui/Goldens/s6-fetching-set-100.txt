@@ -1,0 +1,15 @@
+  gatto setup                                                               v0.5.0 · build 1a2b3c4
+  machine ✓ · engine ✓ · ❯ model · check · done
+────────────────────────────────────────────────────────────────────────────────────────────────────
+  Which model should gatto start with?     (^· ·^)⟆ purr... 4m 52s
+
+  This model is 2 files, gatto fetches them one by one into one folder, and checks each file, byte
+  for byte, as it lands.
+
+  fetching   Qwen3-Next-80B-A3B-Instruct-UD-Q4_K_M-00001-of-00002.gguf · file 1 of 2
+             ━━━━━━━━━━━━━─────────────────  11.2 of 25.1 GB · 39.3 MB/s · ~6 min left
+  then       Qwen3-Next-80B-A3B-Instruct-UD-Q4_K_M-00002-of-00002.gguf · 23.4 GB
+  into       C:\Users\you\.gatto\weights\qwen3-next-80b-a3b-instruct\
+
+────────────────────────────────────────────────────────────────────────────────────────────────────
+  Space pause   Esc stop, deletes the partial

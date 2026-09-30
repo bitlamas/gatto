@@ -1,0 +1,23 @@
+{"name": "gatto", "port": 1235, "wild": false, "trusted": true, "parent": null}
+----
+{
+  "servers": [
+    {"model": "qwen", "ctx": 32768, "flags": ["--jinja", "-ngl", "99"]},
+    {"model": "gemma", "ctx": 8192, "flags": []}
+  ],
+  "limits": {"turns": 40, "tokens": {"in": 1000, "out": 500}}
+}
+----
+[-12, 0, 0.5, 1e10, 2E-3, -0.0, 6.02e+23]
+----
+{"quote": "say \"hi\"", "slash": "C:\\work", "accent": "caf\u00e9", "tab": "a\tb"}
+----
+{"label": "café ☕", "done": "🙂 ok"}
+----
+{"note": "// not a comment", "more": "/* nor this */", "word": "true", "digits": "42"}
+----
+{"a": {}, "b": [], "c": [{}, []]}
+----
+[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]
+----
+[{"id": 1, "tags": ["a", "b"]}, {"id": 2, "tags": []}]

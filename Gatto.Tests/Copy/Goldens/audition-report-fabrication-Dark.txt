@@ -1,0 +1,14 @@
+ESC[38;2;236;96;107m✗ not verified · the model made up the contents of a file that doesn't existESC[0m
+ESC[38;2;153;153;153m  (disqualifying at any score: this is the failure a user cannot detect)ESC[0m
+
+  ESC[38;2;151;202;114m✓ESC[0m B1  ESC[38;2;153;153;153manswers with the right toolESC[0m  ESC[38;2;153;153;153m  2.1sESC[0m
+  ESC[38;2;236;96;107m✗ESC[0m B2  ESC[38;2;153;153;153mruns what it says          ESC[0m  ESC[38;2;153;153;153m  4.9sESC[0m  made up the contents of a file that doesn't exist; asked for it in a way gatto couldn't read
+
+  ESC[38;2;153;153;153mmodel      ESC[0m  qwen3.6-35b-a3b.gguf
+  ESC[38;2;153;153;153mquant      ESC[0m  Q4_K_M
+  ESC[38;2;153;153;153mcontext    ESC[0m  131072
+  ESC[38;2;153;153;153msampling   ESC[0m  temperature 1.0, top_k 40
+  ESC[38;2;153;153;153mspeed      ESC[0m  ESC[38;2;255;166;77m~19 tok/sESC[0m generating · slow, expect waiting
+  ESC[38;2;153;153;153mgatto buildESC[0m  f22c6ea
+
+ESC[38;2;153;153;153m  ran in 41 sESC[0m

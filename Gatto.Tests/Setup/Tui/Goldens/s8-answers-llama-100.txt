@@ -1,0 +1,14 @@
+  gatto setup                                                               v0.5.0 · build 1a2b3c4
+  machine ✓ · server ✓ · ❯ check · done
+────────────────────────────────────────────────────────────────────────────────────────────────────
+  Does it answer?     (^· ·^)⟆ purred for 3s
+
+✓ It answers.
+
+  server    http://127.0.0.1:8080
+  model     Qwen3-30B-A3B-Instruct-2507-Q4_K_M.gguf
+  context   131,072 · reported by the server
+  speed     ~38.2 tok/s, usable
+
+────────────────────────────────────────────────────────────────────────────────────────────────────
+  Enter next   Esc leave

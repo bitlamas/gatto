@@ -1,0 +1,2 @@
+ESC[38;2;232;232;232mcouldn't stop ESC[0mESC[38;2;153;153;153mpid 2844ESC[0mESC[38;2;232;232;232m: access is denied.ESC[0m
+ESC[38;2;232;232;232mstop it in Task Manager, or run ESC[0mESC[38;2;75;190;205mgattoESC[0mESC[38;2;232;232;232m as administrator.ESC[0m

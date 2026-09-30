@@ -1,0 +1,1 @@
+the byte this corpus plants so its comparer is tested on every run

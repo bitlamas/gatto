@@ -1,0 +1,4 @@
+
+ESC[38;2;255;166;77m(^· ·^)ⳊESC[0mESC[38;2;232;232;232m reusing llama-server started 7m agoESC[0m
+
+ESC[38;2;220;154;91mqwen3.8-flash-next-q4-k-xl-dn4.ggufESC[0mESC[38;2;153;153;153m · ~95.4 GBESC[0m

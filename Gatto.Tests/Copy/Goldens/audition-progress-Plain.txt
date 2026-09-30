@@ -1,0 +1,4 @@
+  using the server already running for qwen3.6-35b-a3b
+  ✓ B1  read a file
+  ✗ B2  write a file
+  stopped early. Enough tasks had failed that the result was already clear

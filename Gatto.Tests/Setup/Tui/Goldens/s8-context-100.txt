@@ -1,0 +1,13 @@
+  gatto setup                                                               v0.5.0 · build 1a2b3c4
+  machine ✓ · ❯ server · check · done
+────────────────────────────────────────────────────────────────────────────────────────────────────
+  How much context should gatto use?
+
+  This server didn't report its context window, so gatto has to ask. If the server reports its own
+  context later, that number overrides this answer.
+
+❯ 1. Use 65,536
+
+❯ or type a number of tokens…                                                     Tab or ↓ to type
+────────────────────────────────────────────────────────────────────────────────────────────────────
+  Tab area   Enter next   Esc leave

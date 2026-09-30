@@ -1,0 +1,1 @@
+ESC[38;2;232;232;232mserving ESC[0mESC[38;2;220;154;91mqwen3.6-35b-a3bESC[0mESC[38;2;153;153;153m · port 1235 (pid 2844) · ESC[0mESC[38;2;232;232;232mhealth: okESC[0m

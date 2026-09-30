@@ -1,0 +1,19 @@
+  gatto setup                                                               v0.5.0 · build 1a2b3c4
+  machine ✓ · ❯ engine · model · check · done
+────────────────────────────────────────────────────────────────────────────────────────────────────
+  Which engine build fits this machine?
+
+  Models don't run by themselves, they need an engine: llama.cpp, the open-source server gatto
+  drives. gatto looked in the usual places and hasn't found it.
+
+  fetch     llama-b11071-bin-win-vulkan-x64.zip · 214 MB
+            b11071, the release gatto is tested with
+  from      github.com/ggml-org/llama.cpp · checked against GitHub's own digest
+  into      C:\Users\you\.gatto\llama\b11071\
+
+❯ 1. Fetch it now
+  2. Use a server you start yourself, LM Studio, Ollama, or another
+
+❯ type the path to llama-server.exe…                                              Tab or ↓ to type
+────────────────────────────────────────────────────────────────────────────────────────────────────
+  Tab area   Enter choose   Esc leave

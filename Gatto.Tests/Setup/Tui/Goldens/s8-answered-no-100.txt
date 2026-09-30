@@ -1,0 +1,18 @@
+  gatto setup                                                               v0.5.0 · build 1a2b3c4
+  machine ✓ · server ✓ · ❯ check · done
+────────────────────────────────────────────────────────────────────────────────────────────────────
+  Does it answer?
+
+✗ The server answered, but said no.
+
+  server    http://127.0.0.1:1234
+  said      400 · "No models loaded. Please load a model in the developer page or use the 'lms
+            load' command."
+
+  A server that answers is one gatto can talk to. Do what it asks, then try again.
+
+❯ 1. Try again
+  2. Finish anyway, I'll look into it
+
+────────────────────────────────────────────────────────────────────────────────────────────────────
+  Enter choose   Esc leave

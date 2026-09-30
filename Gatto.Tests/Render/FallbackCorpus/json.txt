@@ -1,0 +1,36 @@
+"name": "gatto",
+VVVVVVP.SSSSSSSP
+"version": "0.5.1",
+VVVVVVVVVP.SSSSSSSP
+"private": true,
+VVVVVVVVVP.KKKKP
+----
+{
+P
+  // the port the server listens on
+..CC.CCC.CCCC.CCC.CCCCCC.CCCCCCC.CC
+  "port": 1235, /* the default */
+..VVVVVVP.NNNNP.CC.CCC.CCCCCCC.CC
+  "host": "127.0.0.1"
+..VVVVVVP.SSSSSSSSSSS
+}
+P
+----
+{
+P
+  "items": [1, 2, 3,],
+..VVVVVVVP.PNP.NP.NPPP
+  "ok": false,
+..VVVVP.KKKKKP
+}
+P
+----
+{
+P
+  "path": "src/main
+..VVVVVVP.SSSSSSSSS
+  "next": null
+..VVVVVVP.KKKK
+----
+{"ok": tr
+PVVVVP...

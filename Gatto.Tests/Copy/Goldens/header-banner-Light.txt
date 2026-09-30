@@ -1,0 +1,8 @@
+
+ESC[38;2;178;94;0m  /l、ESC[0m
+ESC[38;2;178;94;0m（＾､＾７ESC[0m
+ESC[38;2;178;94;0m  l  ~ヽESC[0m
+ESC[38;2;178;94;0m  じしf_,)ノESC[0m
+
+ESC[38;2;178;94;0mESC[1mgattoESC[0m ESC[38;2;17;17;17muninstallESC[0mESC[38;2;95;95;95m · ESC[0mESC[38;2;95;95;95mv0.5.1 · build f22c6eaESC[0m
+

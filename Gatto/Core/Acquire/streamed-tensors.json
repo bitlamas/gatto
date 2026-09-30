@@ -1,0 +1,15 @@
+{
+  "_comment": [
+    "Tensors the pinned llama.cpp build never places on the GPU under any load mode, by architecture and exact name.",
+    "The fit subtracts their bytes from the file, because pricing them against the GPU budget refuses a model the machine serves.",
+    "Hand-reviewed at the pin, like families.json: a model's code flags a tensor TENSOR_READ_LAZY in llama-model.cpp, and llama-arch.cpp gives it op GET_ROWS on the input layer.",
+    "The Hub shelf keys on the listing's architecture, which it has before any header read, so an architecture belongs here only when its files carry such a tensor.",
+    "per_layer_token_embd.weight: the per-layer input table of the per-layer-embedding architectures. 28,800,138,240 bytes in Qwen3.8-Flash-Next Q4_K_XL-DN4."
+  ],
+  "release": "b11071",
+  "reviewed": "2026-09-21",
+  "architectures": {
+    "qwen4exp": ["per_layer_token_embd.weight"],
+    "gemma3n": ["per_layer_token_embd.weight"]
+  }
+}

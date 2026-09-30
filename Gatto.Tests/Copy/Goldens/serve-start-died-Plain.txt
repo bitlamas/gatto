@@ -1,0 +1,2 @@
+llama-server exited before it became ready · last 10 log lines
+  no serve.log, and a foreground start writes none

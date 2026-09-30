@@ -1,0 +1,18 @@
+✗ not verified · failed 2 of the 3 tasks that ran
+  never called a tool (B1); stopped, nothing came back at all (B2)
+  stopped early. Enough tasks had failed that the result was already clear, so 2 tasks were not run
+
+  ✗ B1  answers with the right tool    3.2s  never called a tool
+  ✗ B2  reads back what it fetched     6.0s  stopped, nothing came back at all
+  ✓ B3  keeps the schema               4.4s
+  · B4  refuses the impossible               not run: the result was already clear
+  · B5  finishes the loop                    not run: the result was already clear
+
+  model        qwen3.6-35b-a3b.gguf
+  quant        Q4_K_M
+  context      131072
+  sampling     temperature 1.0, top_k 40
+  speed        not reported · this server sends no timings
+  gatto build  f22c6ea
+
+  ran in 63 s

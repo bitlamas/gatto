@@ -1,0 +1,2 @@
+--- stderr ---
+qwen3.6-35b-a3b.gguf is running. Stop it with gatto serve stop, or open gatto without -m to talk to qwen3.6-35b-a3b.gguf. Running several servers at once comes later.

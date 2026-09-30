@@ -1,0 +1,89 @@
+ls -la | grep foo | wc -l
+FF.AAA.P.FFFF.....P.FF.AA
+----
+cd src && make || echo failed
+FF.....PP.FFFF.PP.FFFF.......
+----
+echo $HOME ${name:-default} $1 $@ $?
+FFFF.VVVVV.VVVVVVVVVVVVVVVV.VV.VV.VV
+echo "hello $name" '$name'
+FFFF.SSSSSS.VVVVVS.SSSSSSS
+----
+echo $(git rev-parse HEAD) `date`
+FFFF.PPFFF...............P.PFFFFP
+----
+export PATH="$HOME/bin:$PATH"
+FFFFFF.VVVVPSVVVVVSSSSSVVVVVS
+FOO=1 make test
+VVVPN.FFFF.....
+----
+if [ -f file ]; then echo found; fi
+KK.F.AA.......P.KKKK.FFFF......P.KK
+if [[ $x == y ]]; then true; fi
+KK.KK.VV.PP...KKP.KKKK.FFFFP.KK
+----
+for f in *.log; do rm "$f"; done
+KKK...KK......P.KK.FF.SVVSP.KKKK
+while read line; do echo "$line"; done < input.txt
+KKKKK.FFFF.....P.KK.FFFF.SVVVVVSP.KKKK.P..........
+case $1 in
+KKKK.VV.KK
+  start|run) echo go ;;
+.......P...P.FFFF....PP
+  *) echo stop ;;
+...P.FFFF......PP
+esac
+KKKK
+----
+greet() { echo hi; }
+FFFFFPP.P.FFFF...P.P
+function bye { echo bye; }
+KKKKKKKK.FFF.P.FFFF....P.P
+----
+cat <<EOF
+FFF.PPSSS
+hello $USER
+SSSSS.VVVVV
+EOF
+SSS
+cat <<'EOF'
+FFF.PPSSSSS
+no $expansion here
+SS.SSSSSSSSSS.SSSS
+EOF
+SSS
+----
+#!/usr/bin/env bash
+CCCCCCCCCCCCCC.CCCC
+# build the tree
+C.CCCCC.CCC.CCCC
+echo a # tail
+FFFF...C.CCCC
+echo a#b
+FFFF....
+----
+dotnet test > out.log 2>&1; cat a >> b < c
+FFFFFF......P.........PPPPP.FFF...PP...P..
+----
+docker run --rm \
+FFFFFF.....AAAA.P
+  -v data:/data image
+..AA.................
+----
+echo if then
+FFFF........
+----
+git push --force && head -n 5 log.txt
+FFF......AAAAAAA.PP.FFFF.AA.N........
+----
+echo $((1 + 2)) ${#arr[@]}
+FFFF.PPPN.P.NPP.VVVVVVVVVV
+----
+echo "still arriving
+FFFF.SSSSSS.SSSSSSSS
+----
+echo $(git log
+FFFF.PPFFF....
+----
+git status && dotn
+FFF........PP.FFFF

@@ -1,0 +1,59 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <RootNamespace>Gatto</RootNamespace>
+    <AssemblyName>gatto</AssemblyName>
+    <InvariantGlobalization>true</InvariantGlobalization>
+    <Version>0.5.3-rc</Version>
+  </PropertyGroup>
+
+  <!-- a published build must not carry the paths of the machine that built it.
+       PathMap rewrites source paths, and an embedded symbol file removes the absolute
+       pdb path the exe would otherwise record. the build stamp above is untouched. -->
+  <PropertyGroup Condition="'$(Configuration)' == 'Release'">
+    <DebugType>embedded</DebugType>
+    <PathMap>$(MSBuildProjectDirectory)=/gatto</PathMap>
+    <EnableSourceLink>false</EnableSourceLink>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\Gatto.Terminal\Gatto.Terminal.csproj" />
+    <InternalsVisibleTo Include="Gatto.Tests" />
+  </ItemGroup>
+
+  <!-- stamp the git commit into the informational version, so the banner and gatto version name the exact build a live check runs. git describe adds dirty when a tracked file is uncommitted, and untracked files don't count -->
+  <Target Name="StampBuildInfo" BeforeTargets="AddSourceRevisionToInformationalVersion">
+    <Exec Command="git describe --always --dirty --abbrev=7 --exclude=*" ConsoleToMSBuild="true" ContinueOnError="true">
+      <Output TaskParameter="ConsoleOutput" PropertyName="SourceRevisionId" />
+    </Exec>
+  </Target>
+  <ItemGroup>
+    <PackageReference Include="Microsoft.CodeAnalysis.CSharp.Scripting" Version="5.6.0" />
+    <PackageReference Include="Microsoft.VisualStudio.Threading.Analyzers" Version="18.7.23" PrivateAssets="all" />
+  </ItemGroup>
+
+  <!-- without these entries the matching Load throws resource-not-found at runtime.
+       a missing allowlist leaves the wizard nothing to search. a missing architecture set
+       disarms the will-not-load warning, so a user pays for it with a very large download
+       that fails at the end. -->
+  <ItemGroup>
+    <EmbeddedResource Include="Core\Acquire\uploader-allowlist.json" />
+    <EmbeddedResource Include="Core\Acquire\llama-architectures.json" />
+    <EmbeddedResource Include="Core\Acquire\llama-siblings.json" />
+    <EmbeddedResource Include="Core\Acquire\model-kinds.json" />
+    <EmbeddedResource Include="Core\Acquire\families.json" />
+    <EmbeddedResource Include="Core\Acquire\streamed-tensors.json" />
+    <EmbeddedResource Include="Core\Acquire\load-mode-dialect.json" />
+    <!-- the json schema for gatto.json, written into the home beside the file it describes.
+         deliberately NOT under Shipped\, whose glob would give it manifest semantics: a deletion that
+         sticks and a user edit that survives. this file is overwritten whenever it differs. -->
+    <EmbeddedResource Include="Core\Home\gatto.schema.json" />
+    <!-- the shipped tree: extensions, agents and roles as files. LogicalName gives them
+         the shipped/ prefix the loader strips, and the logical name MIXES separators, which is
+         why the loader normalises them. a file dropped in this folder becomes a shipped default
+         in every user home, which SHIPPED_KEYS_ARE_EXACTLY_THESE makes deliberate. -->
+    <EmbeddedResource Include="Shipped\**" LogicalName="shipped/%(RecursiveDir)%(Filename)%(Extension)" />
+  </ItemGroup>
+</Project>

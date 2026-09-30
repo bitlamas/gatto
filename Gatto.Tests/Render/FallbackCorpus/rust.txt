@@ -1,0 +1,72 @@
+fn main() {
+KK.FFFFPP.P
+    let name = "gatto";
+....KKK......P.SSSSSSSP
+    let mut count = 0;
+....KKK.KKK.......P.NP
+    println!("{} {}", name, count);
+....FFFFFFFPPSSS.SSSP.....P......PP
+}
+P
+----
+struct Point { x: i32, y: i32 }
+KKKKKK.TTTTT.P..P.TTTP..P.TTT.P
+impl Point {
+KKKK.......P
+    pub fn norm(&self) -> Self { Self { x: self.x.abs(), y: self.y } }
+....KKK.KK.FFFFPPKKKKP.PP.KKKK.P.KKKK.P..P.KKKKP.PFFFPPP..P.KKKKP..P.P
+}
+P
+----
+enum Shape { Circle(f64), Square }
+KKKK.TTTTT.P.......PTTTPP........P
+match shape {
+KKKKK.......P
+    Shape::Circle(r) => r * r,
+.........PP......P.P.PP...P..P
+    _ => 0.0,
+......PP.NNNP
+}
+P
+----
+fn first<'a>(s: &'a str) -> &'a str { s }
+KK.FFFFFPTTPP.P.PTT.TTTP.PP.PTT.TTT.P...P
+----
+let cs = ['a', '\'', '\u{1F600}', b'a'];
+KKK....P.PSSSP.SSSSP.SSSSSSSSSSSP.SSSSPP
+----
+let path = r"C:\work";
+KKK......P.SSSSSSSSSSP
+let quoted = r#"a "quoted" word"#;
+KKK........P.SSSS.SSSSSSSS.SSSSSSP
+----
+/* a /* b */ c */ let x = 1;
+CC.C.CC.C.CC.C.CC.KKK...P.NP
+----
+#[derive(Debug, Clone)]
+PPTTTTTTP.....P......PP
+#![allow(dead_code)]
+PPPTTTTTP.........PP
+----
+let n = 1_000u32 + 0xFFu8 as u32;
+KKK...P.NNNNNNNN.P.NNNNNN.KK.TTTP
+let f = 2.5f64;
+KKK...P.NNNNNNP
+----
+use std::collections::HashMap;
+KKK....PP...........PP.......P
+let v: Vec<Option<String>> = Vec::new();
+KKK..P....P......P......PP.P....PPFFFPPP
+let inc = |x| x + 1;
+KKK.....P.P.P...P.NP
+----
+let s = "still arriving
+KKK...P.SSSSSS.SSSSSSSS
+and more
+SSS.SSSS
+----
+/* outer /* inner */ still open
+CC.CCCCC.CC.CCCCC.CC.CCCCC.CCCC
+----
+let count = vec.le
+KKK.......P....P..

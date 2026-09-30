@@ -1,0 +1,17 @@
+  gatto setup                                                               v0.5.0 · build 1a2b3c4
+  machine ✓ · engine ✓ · model ✓ · check ✓ · ❯ done
+────────────────────────────────────────────────────────────────────────────────────────────────────
+  gatto is installed, but only this window can find it
+
+  A copy is already at C:\Users\you\AppData\Local\Programs\gatto\.
+  Windows doesn't know to look there yet, so typing gatto in a new window won't work until
+  it does.
+
+  The installed copy is the same version (0.5.0), so gatto will leave it in place and just make
+  it findable.
+
+❯ 1. Fix that for me  recommended
+  2. Not now
+
+────────────────────────────────────────────────────────────────────────────────────────────────────
+  Enter choose   Esc leave

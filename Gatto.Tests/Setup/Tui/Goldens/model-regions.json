@@ -1,0 +1,91 @@
+{
+  "s1-B-REPL100-100.txt": [
+    9,
+    10,
+    11
+  ],
+  "s10-check-100.txt": [
+    2,
+    3
+  ],
+  "s10-check-ask-100.txt": [
+    2,
+    3
+  ],
+  "s10-check-ask-80-80.txt": [
+    2,
+    3,
+    4
+  ],
+  "s10-done-checked-100.txt": [
+    2,
+    3
+  ],
+  "s10-done-second-quant-100.txt": [
+    2,
+    3
+  ],
+  "s10-done-unchecked-100.txt": [
+    2,
+    3
+  ],
+  "s10-done-unchecked-80-80.txt": [
+    2,
+    3,
+    4
+  ],
+  "s10-download-100.txt": [
+    2,
+    3
+  ],
+  "s10-download-80-80.txt": [
+    2,
+    3,
+    4
+  ],
+  "s10-download-armed-100.txt": [
+    2,
+    3
+  ],
+  "s10-hub-failed-100.txt": [
+    2,
+    3
+  ],
+  "s10-local-100.txt": [
+    2,
+    3
+  ],
+  "s10-local-have-100.txt": [
+    2,
+    3
+  ],
+  "s10-local-landing-100.txt": [
+    2,
+    3
+  ],
+  "s10-shelf-100.txt": [
+    2,
+    3
+  ],
+  "s10-shelf-80-80.txt": [
+    2,
+    3,
+    4
+  ],
+  "s10-shelf-added-100.txt": [
+    2,
+    3
+  ],
+  "s10-shelf-loaded-100.txt": [
+    2,
+    3
+  ],
+  "s10-shelf-news-100.txt": [
+    2,
+    3
+  ],
+  "s10-shelf-two-100.txt": [
+    2,
+    3
+  ]
+}

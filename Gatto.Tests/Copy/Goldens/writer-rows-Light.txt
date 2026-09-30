@@ -1,0 +1,6 @@
+a plain sentence in the body
+ESC[38;2;46;125;50m✓ESC[0m ESC[38;2;154;62;0mqwen3.6-35b-a3bESC[0m ESC[38;2;95;95;95m(pid 2844)ESC[0m
+ESC[38;2;17;17;17mrun ESC[0mESC[38;2;14;124;134mgatto serve stopESC[0mESC[38;2;95;95;95m to ejectESC[0m
+ESC[38;2;17;17;17mserving ESC[0mESC[38;2;154;62;0mqwen3.6-35b-a3bESC[0mESC[38;2;95;95;95m on port 1235ESC[0m
+  a row subordinate to the one above it
+

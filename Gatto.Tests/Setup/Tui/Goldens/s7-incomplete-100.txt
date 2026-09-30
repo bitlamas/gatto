@@ -1,0 +1,20 @@
+  gatto setup                                                               v0.5.0 · build 1a2b3c4
+  machine ✓ · engine ✓ · model ✓ · ❯ check · done
+────────────────────────────────────────────────────────────────────────────────────────────────────
+  Can it run commands and edit files?
+
+✗ The model file is incomplete, gatto didn't try to load it.
+
+  file          Llama-3.3-70B-Instruct-IQ2_XS.gguf
+                in D:\ai\test\exploration\.lmstudio\models\lmstudio-community\Llama-3.3-70B\
+  found         18.4 GB on disk
+  expected      21.1 GB or more, the file's own header says so
+
+  A download or copy that stopped early looks like this. The check couldn't run, so gatto can't
+  judge this model yet, a complete copy of the same file may run fine.
+
+❯ 1. Pick a different model
+  2. Check it again
+
+────────────────────────────────────────────────────────────────────────────────────────────────────
+  Enter choose   Esc leave

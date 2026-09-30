@@ -1,0 +1,15 @@
+  gatto setup                                                               v0.5.0 · build 1a2b3c4
+  machine ✓ · engine ✓ · ❯ model · check · done
+────────────────────────────────────────────────────────────────────────────────────────────────────
+  Couldn't reach the model list
+
+  gatto couldn't reach Hugging Face, so there is no list to show. Nothing is wrong with
+  this machine.
+  The 1 model on this machine is one m away
+  You can point gatto at a model you already have, or name one directly.
+
+❯ 1. I already have a model, let me point at the folder
+  2. Type a model's name from Hugging Face
+
+────────────────────────────────────────────────────────────────────────────────────────────────────
+  Enter choose   m local   b back   Esc leave

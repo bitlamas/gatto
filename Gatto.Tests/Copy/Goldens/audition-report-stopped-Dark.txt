@@ -1,0 +1,18 @@
+ESC[38;2;236;96;107m✗ not verified · failed 2 of the 3 tasks that ranESC[0m
+  never called a tool (B1); stopped, nothing came back at all (B2)
+ESC[38;2;153;153;153m  stopped early. Enough tasks had failed that the result was already clear, so 2 tasks were not runESC[0m
+
+  ESC[38;2;236;96;107m✗ESC[0m B1  ESC[38;2;153;153;153manswers with the right toolESC[0m  ESC[38;2;153;153;153m  3.2sESC[0m  never called a tool
+  ESC[38;2;236;96;107m✗ESC[0m B2  ESC[38;2;153;153;153mreads back what it fetched ESC[0m  ESC[38;2;153;153;153m  6.0sESC[0m  stopped, nothing came back at all
+  ESC[38;2;151;202;114m✓ESC[0m B3  ESC[38;2;153;153;153mkeeps the schema           ESC[0m  ESC[38;2;153;153;153m  4.4sESC[0m
+  ESC[38;2;153;153;153m·ESC[0m B4  ESC[38;2;153;153;153mrefuses the impossible     ESC[0m  ESC[38;2;153;153;153m      ESC[0m  not run: the result was already clear
+  ESC[38;2;153;153;153m·ESC[0m B5  ESC[38;2;153;153;153mfinishes the loop          ESC[0m  ESC[38;2;153;153;153m      ESC[0m  not run: the result was already clear
+
+  ESC[38;2;153;153;153mmodel      ESC[0m  qwen3.6-35b-a3b.gguf
+  ESC[38;2;153;153;153mquant      ESC[0m  Q4_K_M
+  ESC[38;2;153;153;153mcontext    ESC[0m  131072
+  ESC[38;2;153;153;153msampling   ESC[0m  temperature 1.0, top_k 40
+  ESC[38;2;153;153;153mspeed      ESC[0m  not reported · this server sends no timings
+  ESC[38;2;153;153;153mgatto buildESC[0m  f22c6ea
+
+ESC[38;2;153;153;153m  ran in 63 sESC[0m

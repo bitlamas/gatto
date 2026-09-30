@@ -1,0 +1,15 @@
+  gatto setup                                                               v0.5.0 · build 1a2b3c4
+  ❯ machine · engine · model · check · done
+────────────────────────────────────────────────────────────────────────────────────────────────────
+  What can this machine run?
+
+  This machine: 32 GB of memory and no graphics driver gatto can use, so models run in system
+  memory, about 8 GB of it.
+
+  cpu           AMD Ryzen 5 PRO 2500U
+  graphics      no graphics driver gatto can use was found
+  memory        32 GB installed
+  models        run from system memory: 8 GB, half kept free for Windows, browser and other apps
+
+────────────────────────────────────────────────────────────────────────────────────────────────────
+  Enter next   Esc leave

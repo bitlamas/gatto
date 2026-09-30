@@ -1,0 +1,10 @@
+(^· ·^)Ⳋ  gatto setup · v0.5.0 · build 1a2b3c4 · 2026-08-25
+
+machine   32 GB · no graphics driver gatto can use · about 16 GB for a model
+engine    llama.cpp b11071 · Vulkan · C:\Users\you\.gatto\llama\b11071\
+model     gemma-4-26B-A4B-it-UD-Q4_K_M.gguf · 16.9 GB · verified
+check     ✓ passed, it ran commands and edited files
+gatto     ✓ installed, any terminal finds it
+config    C:\Users\you\.gatto\gatto.json
+
+starting gatto in 3s…

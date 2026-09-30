@@ -1,0 +1,13 @@
+  gatto setup                                                               v0.5.0 · build 1a2b3c4
+  machine ✓ · ❯ engine · model · check · done
+────────────────────────────────────────────────────────────────────────────────────────────────────
+  Which engine build fits this machine?     (^· ·^)⟆ purred for 12s
+
+✓ That's the one, fetched, verified, and it answers as the server gatto drives.
+
+  fetched      llama-b11071-bin-win-vulkan-x64.zip · digest matched
+  into         C:\Users\you\.gatto\llama\b11071\
+  checked      llama-server.exe ran, the path gatto writes to its config is the .exe that ran
+
+────────────────────────────────────────────────────────────────────────────────────────────────────
+  Enter next   Esc leave

@@ -1,0 +1,31 @@
+  gatto setup                                                               v0.5.0 · build 1a2b3c4
+  machine ✓ · engine ✓ · ❯ model · check · done
+────────────────────────────────────────────────────────────────────────────────────────────────────
+  Which model should gatto start with?
+
+  gemma · qwen · deepseek · glm · mistral · all                                 publisher  unsloth
+
+     model                         params  size · quant    kind    
+❯ 1. Qwen3-Coder-Next               79.7B  48.5 GB Q4_K_M  MoE     
+  2. Qwen3-Next-80B-A3B-Instruct    79.7B  48.5 GB Q4_K_M  MoE A3B 
+  3. Qwen3-Next-80B-A3B-Thinking    79.7B  48.5 GB Q4_K_M  MoE A3B 
+  4. Qwen3.6-35B-A3B-MTP            35.5B  22.7 GB Q4_K_M  MoE A3B 
+  5. Qwen3.5-35B-A3B-MTP            35.5B  22.6 GB Q4_K_M  MoE A3B 
+  6. Qwen3.6-35B-A3B                34.7B  22.1 GB Q4_K_M  MoE A3B 
+  7. Qwen-AgentWorld-35B-A3B        34.7B  22.1 GB Q4_K_M  MoE A3B 
+  8. Qwen3-32B                      32.8B  19.8 GB Q4_K_M  dense   
+  9. Qwen3-32B-128K                 32.8B  19.8 GB Q4_K_M  dense   
+     Qwen3-Coder-30B-A3B-Instruct   30.5B  18.6 GB Q4_K_M  MoE A3B 
+     … 29 more below
+
+  1–10 of 39 · 9 too big, a shows all
+
+────────────────────────────────────────────────────────────────────────────────────────────────────
+  Qwen3-Coder-Next  ·  by unsloth
+  context up to 262,144 · text only · reads 10 of 512 experts/token
+  files · › Q4_K_M 48.5 GB  ✓ fits
+  ✗ not measured yet
+
+❯ search models…                                                                       / to search
+────────────────────────────────────────────────────────────────────────────────────────────────────
+  Enter next   m local   d search   a all sizes   b back   Esc leave       | fewer params = faster

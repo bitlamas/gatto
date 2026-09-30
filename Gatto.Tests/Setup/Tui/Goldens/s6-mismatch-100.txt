@@ -1,0 +1,16 @@
+  gatto setup                                                               v0.5.0 · build 1a2b3c4
+  machine ✓ · engine ✓ · ❯ model · check · done
+────────────────────────────────────────────────────────────────────────────────────────────────────
+  Which model should gatto start with?
+
+✗ What arrived is not the file Hugging Face publishes, the copy broke somewhere on the way, so
+  gatto deleted it. Fetching again usually fixes it.
+
+  expected   a1b29c…44e0 · the file's sha256 fingerprint on Hugging Face
+  got        7c3df1…9aa2 · what actually arrived
+
+❯ 1. Fetch it again
+  2. Pick a different model
+
+────────────────────────────────────────────────────────────────────────────────────────────────────
+  Enter choose   b back   Esc leave

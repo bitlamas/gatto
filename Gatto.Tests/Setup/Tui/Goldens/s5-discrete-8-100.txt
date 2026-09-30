@@ -1,0 +1,28 @@
+  gatto setup                                                               v0.5.0 · build 1a2b3c4
+  machine ✓ · engine ✓ · ❯ model · check · done
+────────────────────────────────────────────────────────────────────────────────────────────────────
+  Which model should gatto start with?
+
+  gemma · qwen · deepseek · glm · mistral · all                                 publisher  unsloth
+
+     model           params  size · quant    kind      runs      │ gemma-4-E4B-it                   
+  1. gemma-4-12b-it   11.9B  7.1 GB Q4_K_M   dense     ⚠ RAM     │ by unsloth                       
+❯ 2. gemma-4-E4B-it    7.5B  5.0 GB Q4_K_M   dense     ✓ GPU     │                                  
+                                                                 │ context up to 131,072            
+                                                                 │ ◈ vision · can see images        
+                                                                 │ reads all 7.5B params/token      
+                                                                 │ arch      gemma4                 
+                                                                 │ ✗ not measured by gatto yet      
+                                                                 │                                  
+                                                                 │ files                            
+                                                                 │ › Q4_K_M     5.0 GB  ✓ GPU       
+                                                                 │   Q5_K_M     5.5 GB  ✓ GPU       
+                                                                 │   Q6_K       7.1 GB  ⚠ RAM       
+                                                                 │                                  
+                                                                 │                                  
+
+  1–2 of 10 · 5 older · 3 too big, a shows all
+
+❯ search models…                                                                       / to search
+────────────────────────────────────────────────────────────────────────────────────────────────────
+  Enter next   m local   d search   a all sizes   b back   Esc leave   | ✓ GPU · ⚠ RAM · ✗ too big

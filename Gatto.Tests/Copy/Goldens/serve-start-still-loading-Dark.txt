@@ -1,0 +1,2 @@
+ESC[38;2;232;232;232mleft it loading ESC[0mESC[38;2;220;154;91mqwen3.6-35b-a3bESC[0mESC[38;2;153;153;153m (pid 7777)ESC[0m
+ESC[38;2;232;232;232mcheck with ESC[0mESC[38;2;75;190;205mgatto serve statusESC[0mESC[38;2;232;232;232m.ESC[0m

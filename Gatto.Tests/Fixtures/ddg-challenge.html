@@ -1,0 +1,45 @@
+<!-- <!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN" "http://www.w3.org/TR/html4/loose.dtd"> -->
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <link rel="canonical" href="https://duckduckgo.com/">
+    <meta http-equiv="content-type" content="text/html; charset=UTF-8">
+    <title>rust borrow checker at DuckDuckGo</title>
+</head>
+
+<body>
+    <!-- Trimmed capture of the LIVE anomaly/bot-check challenge page lite.duckduckgo.com serves
+         (HTTP 202, 2026-07-12) when it flags a client. Note: NO rel="nofollow" result anchors —
+         the old parser saw this page as "no results". The detection markers are the
+         duckduckgo.com/anomaly.js form action and the anomaly-modal element/description. -->
+    <a class="header-url" href="/lite/">
+        <span class="header">DuckDuckGo</span>
+    </a>
+
+    <iframe name="ifr" width="0" height="0" border="0" class="hidden"></iframe>
+    <form id="challenge-form" action="//duckduckgo.com/anomaly.js?sv=lite&cc=botnet&st=1783869040&gk=d4cd0dabcf4caa22ad92fab40844c786&q=rust borrow checker&r=use" method="POST">
+        <div class="anomaly-modal__mask">
+            <div class="anomaly-modal__modal  is-ie" data-testid="anomaly-modal">
+                <div class="anomaly-modal__title">Unfortunately, bots use DuckDuckGo too.</div>
+                <div class="anomaly-modal__description">Please complete the following challenge to confirm this search was made by a human.</div>
+                <div class="anomaly-modal__instructions">Select all squares containing a duck:</div>
+                <div class="anomaly-modal__puzzle-margins">
+                    <div class="anomaly-modal__puzzle">
+                        <div class="anomaly-modal__box" data-index="0">
+                            <label class="" for="image-check_82fd90a42c4d2b0240a2d2f5fc3b9c53" data-testid="anomaly-modal-tile-0">
+                                <input type="checkbox" class="anomaly-modal__check" name="image-check_82fd90a42c4d2b0240a2d2f5fc3b9c53" id="image-check_82fd90a42c4d2b0240a2d2f5fc3b9c53">
+                                <img class="anomaly-modal__image" alt=" " src="../assets/anomaly/images/challenge/82fd90a42c4d2b0240a2d2f5fc3b9c53.jpg">
+                            </label>
+                        </div>
+                    </div>
+                </div>
+                <div class="anomaly-modal__controls">
+                    <button type="submit" class="anomaly-modal__submit" data-testid="anomaly-modal-submit">Submit</button>
+                </div>
+            </div>
+        </div>
+    </form>
+</body>
+
+</html>

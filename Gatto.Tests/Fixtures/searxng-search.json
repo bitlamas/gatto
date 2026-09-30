@@ -1,0 +1,1130 @@
+{
+  "query": "llama.cpp",
+  "results": [
+    {
+      "template": "default.html",
+      "url": "https://example.com/searxng/result-01/",
+      "title": "Example Result One - local inference notes",
+      "content": "An invented summary of an example page about running language models on a local machine, written only so that a test has text of a realistic length to read. An inve",
+      "publishedDate": null,
+      "thumbnail": "",
+      "engine": "brave",
+      "parsed_url": [
+        "https",
+        "example.com",
+        "/searxng/result-01/",
+        "",
+        "",
+        ""
+      ],
+      "img_src": "",
+      "priority": "",
+      "engines": [
+        "google cse",
+        "duckduckgo",
+        "startpage",
+        "brave"
+      ],
+      "positions": [
+        1,
+        1,
+        1,
+        1
+      ],
+      "score": 16.0,
+      "category": "general"
+    },
+    {
+      "template": "default.html",
+      "url": "https://example.net/searxng/result-02/",
+      "title": "Example Result Two - building from source",
+      "content": "An invented summary of an example page about running language models on a local machine, written only so that a test has text of a realistic length to read. An invented summary of an example page about running language models on a local machine,",
+      "publishedDate": null,
+      "thumbnail": "",
+      "engine": "brave",
+      "parsed_url": [
+        "https",
+        "example.net",
+        "/searxng/result-02/",
+        "",
+        "",
+        ""
+      ],
+      "img_src": "",
+      "priority": "",
+      "engines": [
+        "google cse",
+        "startpage",
+        "brave"
+      ],
+      "positions": [
+        2,
+        2,
+        2
+      ],
+      "score": 4.5,
+      "category": "general"
+    },
+    {
+      "template": "default.html",
+      "url": "https://example.org/searxng/result-03/",
+      "title": "Example result 03 - notes on local inference",
+      "content": "An invented summary of an example page about running language models on a local machine, written only so that a test has text of a realistic length to read. An inv",
+      "publishedDate": null,
+      "thumbnail": "",
+      "engine": "brave",
+      "parsed_url": [
+        "https",
+        "example.org",
+        "/searxng/result-03/",
+        "",
+        "",
+        ""
+      ],
+      "img_src": "",
+      "priority": "",
+      "engines": [
+        "google cse",
+        "duckduckgo",
+        "startpage",
+        "brave"
+      ],
+      "positions": [
+        4,
+        7,
+        7,
+        2
+      ],
+      "score": 4.142857142857142,
+      "category": "general"
+    },
+    {
+      "template": "default.html",
+      "url": "https://example.com/searxng/result-04/",
+      "title": "Example result 04 - notes on local inference",
+      "content": "An invented summary of an example page about running language models on a local machine, written only so that a test has text of a realistic length to read. An invented summary of an example page about running language models on a local machine, written only so that a test has text of a realistic length to read. An invented summary of an example page about running language models on a local machine, written only so that a test has text of a realistic length to read. An invented summary of an example page a",
+      "publishedDate": null,
+      "thumbnail": "",
+      "engine": "brave",
+      "parsed_url": [
+        "https",
+        "example.com",
+        "/searxng/result-04/",
+        "",
+        "",
+        ""
+      ],
+      "img_src": "",
+      "priority": "",
+      "engines": [
+        "google cse",
+        "startpage",
+        "brave"
+      ],
+      "positions": [
+        3,
+        6,
+        5,
+        4
+      ],
+      "score": 3.8,
+      "category": "general"
+    },
+    {
+      "url": "https://example.net/searxng/result-05/",
+      "title": "Example result 05 - notes on local inference",
+      "content": "An invented summary of an example page about running language models on a local machine, written only so that a test has text of a realistic length to read. A",
+      "publishedDate": null,
+      "engine": "startpage",
+      "template": "default.html",
+      "parsed_url": [
+        "https",
+        "example.net",
+        "/searxng/result-05/",
+        "",
+        "",
+        ""
+      ],
+      "img_src": "",
+      "thumbnail": "",
+      "priority": "",
+      "engines": [
+        "google cse",
+        "startpage"
+      ],
+      "positions": [
+        4,
+        5
+      ],
+      "score": 0.9,
+      "category": "general"
+    },
+    {
+      "template": "default.html",
+      "url": "https://example.org/searxng/result-06/",
+      "title": "Example result 06 - notes on local inference",
+      "content": "An invented summary of an example page about running language models on a local machine, written only so that a test has text of a realistic length to read. An inv",
+      "publishedDate": "2026-06-03T00:00:00",
+      "thumbnail": "",
+      "engine": "brave",
+      "parsed_url": [
+        "https",
+        "example.org",
+        "/searxng/result-06/",
+        "",
+        "",
+        ""
+      ],
+      "img_src": "",
+      "priority": "",
+      "engines": [
+        "google cse",
+        "startpage",
+        "brave"
+      ],
+      "positions": [
+        15,
+        10,
+        10
+      ],
+      "score": 0.8,
+      "category": "general",
+      "pubdate": "2026-06-03 00:00:00"
+    },
+    {
+      "template": "default.html",
+      "url": "https://example.com/searxng/result-07/",
+      "title": "Example result 07 - notes on local inference",
+      "content": "An invented summary of an example page about running language models on a local machine, written only.",
+      "publishedDate": null,
+      "thumbnail": "",
+      "engine": "brave",
+      "parsed_url": [
+        "https",
+        "example.com",
+        "/searxng/result-07/",
+        "",
+        "",
+        ""
+      ],
+      "img_src": "",
+      "priority": "",
+      "engines": [
+        "duckduckgo",
+        "brave"
+      ],
+      "positions": [
+        21,
+        3
+      ],
+      "score": 0.7619047619047619,
+      "category": "general"
+    },
+    {
+      "template": "default.html",
+      "title": "Example result 08 - notes on local inference",
+      "content": "An invented summary of an example page about running language models on a local machine, written only so that a test has text of a realistic length to read. An invented summary of an example page about running language models on a local machine, written only so that a.",
+      "img_src": "",
+      "iframe_src": "",
+      "audio_src": "",
+      "thumbnail": "",
+      "publishedDate": null,
+      "pubdate": "",
+      "length": null,
+      "views": "",
+      "author": "",
+      "metadata": "",
+      "priority": "",
+      "engines": [
+        "duckduckgo"
+      ],
+      "open_group": false,
+      "close_group": false,
+      "positions": [
+        5
+      ],
+      "score": 0.2,
+      "category": "general",
+      "url": "https://example.net/searxng/result-08/",
+      "engine": "duckduckgo",
+      "parsed_url": [
+        "https",
+        "example.net",
+        "/searxng/result-08/",
+        "",
+        "",
+        ""
+      ]
+    },
+    {
+      "template": "default.html",
+      "title": "Example result 09 - notes on local inference",
+      "content": "An invented summary of an example page about running language models on a local machine, written only so that a test has text of a realistic length to read. An invented summ",
+      "img_src": "",
+      "iframe_src": "",
+      "audio_src": "",
+      "thumbnail": "",
+      "publishedDate": null,
+      "pubdate": "",
+      "length": null,
+      "views": "",
+      "author": "",
+      "metadata": "",
+      "priority": "",
+      "engines": [
+        "duckduckgo"
+      ],
+      "open_group": false,
+      "close_group": false,
+      "positions": [
+        6
+      ],
+      "score": 0.16666666666666666,
+      "category": "general",
+      "url": "https://example.org/searxng/result-09/",
+      "engine": "duckduckgo",
+      "parsed_url": [
+        "https",
+        "example.org",
+        "/searxng/result-09/",
+        "",
+        "",
+        ""
+      ]
+    },
+    {
+      "template": "default.html",
+      "url": "https://example.com/searxng/result-10/",
+      "title": "Example result 10 - notes on local inference",
+      "content": "An invented summary of an example page about running language models on a local machine, written only so that a test has text of a realistic length to read. An invented summary of an example page about running language models on a local machine, written only so that a test has text of a realistic l",
+      "publishedDate": "2026-06-08T00:00:00",
+      "thumbnail": "https://example.com/thumbnails/10.jpg",
+      "engine": "brave",
+      "parsed_url": [
+        "https",
+        "example.com",
+        "/searxng/result-10/",
+        "",
+        "",
+        ""
+      ],
+      "img_src": "",
+      "priority": "",
+      "engines": [
+        "google cse",
+        "duckduckgo",
+        "startpage",
+        "brave"
+      ],
+      "positions": [
+        5,
+        3,
+        22,
+        3,
+        10
+      ],
+      "score": 5.0606060606060606,
+      "category": "general",
+      "pubdate": "2026-06-08 00:00:00"
+    },
+    {
+      "template": "default.html",
+      "url": "https://example.net/searxng/result-11/",
+      "title": "Example result 11 - notes on local inference",
+      "content": "An invented summary of an example page about running language models on a local machine, written only so that a test has text of a realistic length to read. An invented summary of an example page about running language models on a local machine, wr",
+      "publishedDate": "2024-12-10T00:00:00",
+      "thumbnail": "https://example.net/thumbnails/11.jpg",
+      "engine": "brave",
+      "parsed_url": [
+        "https",
+        "example.net",
+        "/searxng/result-11/",
+        "",
+        "",
+        ""
+      ],
+      "img_src": "",
+      "priority": "",
+      "engines": [
+        "google cse",
+        "startpage",
+        "brave"
+      ],
+      "positions": [
+        12,
+        6,
+        6
+      ],
+      "score": 1.25,
+      "category": "general",
+      "pubdate": "2024-12-10 00:00:00"
+    },
+    {
+      "template": "default.html",
+      "url": "https://example.org/searxng/result-12/",
+      "title": "Example result 12 - notes on local inference",
+      "content": "An invented summary of an example page about running language models on a local machine, written only so that a test has text of a realistic length to read. An invented summary of an example page about running language models on a local machine, written only so that a test has text of a realis",
+      "publishedDate": null,
+      "thumbnail": "https://example.org/thumbnails/12.jpg",
+      "engine": "brave",
+      "parsed_url": [
+        "https",
+        "example.org",
+        "/searxng/result-12/",
+        "",
+        "",
+        ""
+      ],
+      "img_src": "",
+      "priority": "",
+      "engines": [
+        "google cse",
+        "startpage",
+        "brave"
+      ],
+      "positions": [
+        7,
+        9,
+        8
+      ],
+      "score": 1.1369047619047619,
+      "category": "general"
+    },
+    {
+      "template": "default.html",
+      "url": "https://example.com/searxng/result-13/",
+      "title": "Example result 13 - notes on local inference",
+      "content": "An invented summary of an example page about running language models on a local machine, written only so that a test has text of a realistic length to read. An invented summary of an example page about running langu",
+      "publishedDate": "2025-10-19T00:00:00",
+      "thumbnail": "https://example.com/thumbnails/13.jpg",
+      "engine": "brave",
+      "parsed_url": [
+        "https",
+        "example.com",
+        "/searxng/result-13/",
+        "",
+        "",
+        ""
+      ],
+      "img_src": "",
+      "priority": "",
+      "engines": [
+        "google cse",
+        "startpage",
+        "brave"
+      ],
+      "positions": [
+        11,
+        8,
+        13
+      ],
+      "score": 0.8784965034965035,
+      "category": "general",
+      "pubdate": "2025-10-19 00:00:00"
+    },
+    {
+      "template": "default.html",
+      "url": "https://example.net/searxng/result-14/",
+      "title": "Example result 14 - notes on local inference",
+      "content": "An invented summary of an example page about running language models on a local machine, written only so that a test has text of a realistic length to read. An invented summary of an example page about running language models on a local machine, written only so that a test has text of a realistic length to read. An invented summa",
+      "publishedDate": null,
+      "thumbnail": "https://example.net/thumbnails/14.jpg",
+      "engine": "brave",
+      "parsed_url": [
+        "https",
+        "example.net",
+        "/searxng/result-14/",
+        "",
+        "",
+        ""
+      ],
+      "img_src": "",
+      "priority": "",
+      "engines": [
+        "duckduckgo",
+        "brave"
+      ],
+      "positions": [
+        13,
+        4
+      ],
+      "score": 0.6538461538461539,
+      "category": "general"
+    },
+    {
+      "template": "default.html",
+      "url": "https://example.org/searxng/result-15/",
+      "title": "Example result 15 - notes on local inference",
+      "content": "An invented summary of an example page about running language models on a local machine, written only so that a test has text of a realistic length to read. An invented summary of an example page about runn",
+      "publishedDate": "2025-10-11T00:00:00",
+      "thumbnail": "https://example.org/thumbnails/15.jpg",
+      "engine": "brave",
+      "parsed_url": [
+        "https",
+        "example.org",
+        "/searxng/result-15/",
+        "",
+        "",
+        ""
+      ],
+      "img_src": "",
+      "priority": "",
+      "engines": [
+        "google cse",
+        "brave"
+      ],
+      "positions": [
+        14,
+        11
+      ],
+      "score": 0.3246753246753247,
+      "category": "general",
+      "pubdate": "2025-10-11 00:00:00"
+    },
+    {
+      "template": "default.html",
+      "url": "https://example.com/searxng/result-16/",
+      "title": "Example result 16 - notes on local inference",
+      "content": "An invented summary of an example page about running language models on a local machine, written only so that a test has text of a realistic length to rea",
+      "publishedDate": null,
+      "thumbnail": "https://example.com/thumbnails/16.jpg",
+      "engine": "brave",
+      "parsed_url": [
+        "https",
+        "example.com",
+        "/searxng/result-16/",
+        "",
+        "",
+        ""
+      ],
+      "img_src": "",
+      "priority": "",
+      "engines": [
+        "google cse",
+        "brave"
+      ],
+      "positions": [
+        17,
+        12
+      ],
+      "score": 0.28431372549019607,
+      "category": "general"
+    },
+    {
+      "template": "default.html",
+      "url": "https://example.net/searxng/result-17/",
+      "title": "Example result 17 - notes on local inference",
+      "content": "An invented summary of an example page about running language models on a local machine, written only so that a test has text of a realistic length to read. An invented summary of an example page about running language models on a local machine, written only so that a t",
+      "publishedDate": "2024-10-28T00:00:00",
+      "thumbnail": "https://example.net/thumbnails/17.jpg",
+      "engine": "brave",
+      "parsed_url": [
+        "https",
+        "example.net",
+        "/searxng/result-17/",
+        "",
+        "",
+        ""
+      ],
+      "img_src": "",
+      "priority": "",
+      "engines": [
+        "brave"
+      ],
+      "positions": [
+        8
+      ],
+      "score": 0.125,
+      "category": "general",
+      "pubdate": "2024-10-28 00:00:00"
+    },
+    {
+      "template": "default.html",
+      "url": "https://example.org/searxng/result-18/",
+      "title": "Example result 18 - notes on local inference",
+      "content": "An invented summary of an example page about running language models on a local machine, written only so that a test has text of a realisti",
+      "publishedDate": null,
+      "thumbnail": "https://example.org/thumbnails/18.jpg",
+      "engine": "brave",
+      "parsed_url": [
+        "https",
+        "example.org",
+        "/searxng/result-18/",
+        "",
+        "",
+        ""
+      ],
+      "img_src": "",
+      "priority": "",
+      "engines": [
+        "brave"
+      ],
+      "positions": [
+        9
+      ],
+      "score": 0.1111111111111111,
+      "category": "general"
+    },
+    {
+      "template": "default.html",
+      "title": "Example result 19 - notes on local inference",
+      "content": "An invented summary of an example page about running language models on a local machine, written only so that a test has text of a realistic length to read. An invented summary of an example page about running language models on a local machi",
+      "img_src": "",
+      "iframe_src": "",
+      "audio_src": "",
+      "thumbnail": "",
+      "publishedDate": null,
+      "pubdate": "",
+      "length": null,
+      "views": "",
+      "author": "",
+      "metadata": "",
+      "priority": "",
+      "engines": [
+        "duckduckgo"
+      ],
+      "open_group": false,
+      "close_group": false,
+      "positions": [
+        7
+      ],
+      "score": 0.14285714285714285,
+      "category": "general",
+      "url": "https://example.com/searxng/result-19/",
+      "engine": "duckduckgo",
+      "parsed_url": [
+        "https",
+        "example.com",
+        "/searxng/result-19/",
+        "",
+        "",
+        ""
+      ]
+    },
+    {
+      "template": "default.html",
+      "title": "Example result 20 - notes on local inference",
+      "content": "An invented summary of an example page about running language models on a local machine, written only so that a test has text of a realistic length to read. An invented summary of an example page abo",
+      "img_src": "",
+      "iframe_src": "",
+      "audio_src": "",
+      "thumbnail": "",
+      "publishedDate": null,
+      "pubdate": "",
+      "length": null,
+      "views": "",
+      "author": "",
+      "metadata": "",
+      "priority": "",
+      "engines": [
+        "duckduckgo"
+      ],
+      "open_group": false,
+      "close_group": false,
+      "positions": [
+        8
+      ],
+      "score": 0.125,
+      "category": "general",
+      "url": "https://example.net/searxng/result-20/",
+      "engine": "duckduckgo",
+      "parsed_url": [
+        "https",
+        "example.net",
+        "/searxng/result-20/",
+        "",
+        "",
+        ""
+      ]
+    },
+    {
+      "template": "default.html",
+      "title": "Example result 21 - notes on local inference",
+      "content": "An invented summary of an example page about running language models on a local machine, written only so that a test has text of a realistic length to read. An invented summary of.",
+      "img_src": "",
+      "iframe_src": "",
+      "audio_src": "",
+      "thumbnail": "",
+      "publishedDate": null,
+      "pubdate": "",
+      "length": null,
+      "views": "",
+      "author": "",
+      "metadata": "",
+      "priority": "",
+      "engines": [
+        "duckduckgo"
+      ],
+      "open_group": false,
+      "close_group": false,
+      "positions": [
+        9
+      ],
+      "score": 0.1111111111111111,
+      "category": "general",
+      "url": "https://example.org/searxng/result-21/",
+      "engine": "duckduckgo",
+      "parsed_url": [
+        "https",
+        "example.org",
+        "/searxng/result-21/",
+        "",
+        "",
+        ""
+      ]
+    },
+    {
+      "template": "default.html",
+      "url": "https://example.com/searxng/result-22/",
+      "title": "Example result 22 - notes on local inference",
+      "content": "An invented summary of an example page about running language models on a local machine, written only so that a test has text of a realistic length to read. An invented summary of an example page about running language models on a local machine, written only so that a test has text of a realistic.",
+      "publishedDate": null,
+      "thumbnail": "",
+      "engine": "brave",
+      "parsed_url": [
+        "https",
+        "example.com",
+        "/searxng/result-22/",
+        "",
+        "",
+        ""
+      ],
+      "img_src": "",
+      "priority": "",
+      "engines": [
+        "brave"
+      ],
+      "positions": [
+        16
+      ],
+      "score": 0.0625,
+      "category": "general"
+    },
+    {
+      "template": "default.html",
+      "title": "Example result 23 - notes on local inference",
+      "content": "An invented summary of an example page about running language models on a local machine, written only so that a test has text of a realistic length to read",
+      "img_src": "",
+      "iframe_src": "",
+      "audio_src": "",
+      "thumbnail": "",
+      "publishedDate": null,
+      "pubdate": "",
+      "length": null,
+      "views": "",
+      "author": "",
+      "metadata": "",
+      "priority": "",
+      "engines": [
+        "google cse"
+      ],
+      "open_group": false,
+      "close_group": false,
+      "positions": [
+        16
+      ],
+      "score": 0.0625,
+      "category": "general",
+      "url": "https://example.net/searxng/result-23/",
+      "engine": "google cse",
+      "parsed_url": [
+        "https",
+        "example.net",
+        "/searxng/result-23/",
+        "",
+        "",
+        ""
+      ]
+    },
+    {
+      "template": "default.html",
+      "url": "https://example.org/searxng/result-24/",
+      "title": "Example result 24 - notes on local inference",
+      "content": "An invented summary of an example page about running language models on a local machine, written only so that a test has text of a realistic length to read. An invented summary of an example p",
+      "publishedDate": null,
+      "thumbnail": "",
+      "engine": "brave",
+      "parsed_url": [
+        "https",
+        "example.org",
+        "/searxng/result-24/",
+        "",
+        "",
+        ""
+      ],
+      "img_src": "",
+      "priority": "",
+      "engines": [
+        "brave"
+      ],
+      "positions": [
+        18
+      ],
+      "score": 0.05555555555555555,
+      "category": "general"
+    },
+    {
+      "template": "default.html",
+      "title": "Example result 25 - notes on local inference",
+      "content": "An invented summary of an example page about running language models on a local machine, written only so that a test has text of a realis",
+      "img_src": "",
+      "iframe_src": "",
+      "audio_src": "",
+      "thumbnail": "",
+      "publishedDate": null,
+      "pubdate": "",
+      "length": null,
+      "views": "",
+      "author": "",
+      "metadata": "",
+      "priority": "",
+      "engines": [
+        "google cse"
+      ],
+      "open_group": false,
+      "close_group": false,
+      "positions": [
+        18
+      ],
+      "score": 0.05555555555555555,
+      "category": "general",
+      "url": "https://example.com/searxng/result-25/",
+      "engine": "google cse",
+      "parsed_url": [
+        "https",
+        "example.com",
+        "/searxng/result-25/",
+        "",
+        "",
+        ""
+      ]
+    },
+    {
+      "template": "default.html",
+      "title": "Example result 26 - notes on local inference",
+      "content": "An invented summary of an example page about running language models on a local machine, written only so that a test has text of a realistic length to read. An",
+      "img_src": "",
+      "iframe_src": "",
+      "audio_src": "",
+      "thumbnail": "",
+      "publishedDate": null,
+      "pubdate": "",
+      "length": null,
+      "views": "",
+      "author": "",
+      "metadata": "",
+      "priority": "",
+      "engines": [
+        "google cse"
+      ],
+      "open_group": false,
+      "close_group": false,
+      "positions": [
+        19
+      ],
+      "score": 0.05263157894736842,
+      "category": "general",
+      "url": "https://example.net/searxng/result-26/",
+      "engine": "google cse",
+      "parsed_url": [
+        "https",
+        "example.net",
+        "/searxng/result-26/",
+        "",
+        "",
+        ""
+      ]
+    },
+    {
+      "template": "default.html",
+      "title": "Example result 27 - notes on local inference",
+      "content": "An invented summary of an example page about running language models on a local machine, written only so that a test has text of a realistic length to read. An inv",
+      "img_src": "",
+      "iframe_src": "",
+      "audio_src": "",
+      "thumbnail": "https://example.org/thumbnails/27.jpg",
+      "publishedDate": null,
+      "pubdate": "",
+      "length": null,
+      "views": "",
+      "author": "",
+      "metadata": "",
+      "priority": "",
+      "engines": [
+        "google cse"
+      ],
+      "open_group": false,
+      "close_group": false,
+      "positions": [
+        9
+      ],
+      "score": 0.1111111111111111,
+      "category": "general",
+      "url": "https://example.org/searxng/result-27/",
+      "engine": "google cse",
+      "parsed_url": [
+        "https",
+        "example.org",
+        "/searxng/result-27/",
+        "",
+        "",
+        ""
+      ]
+    },
+    {
+      "template": "default.html",
+      "title": "Example result 28 - notes on local inference",
+      "content": "An invented summary of an example page about running language models on a local machine, written only so that a test has text of a realistic length to read. An inve",
+      "img_src": "",
+      "iframe_src": "",
+      "audio_src": "",
+      "thumbnail": "https://example.com/thumbnails/28.jpg",
+      "publishedDate": null,
+      "pubdate": "",
+      "length": null,
+      "views": "",
+      "author": "",
+      "metadata": "",
+      "priority": "",
+      "engines": [
+        "google cse"
+      ],
+      "open_group": false,
+      "close_group": false,
+      "positions": [
+        14
+      ],
+      "score": 0.07142857142857142,
+      "category": "general",
+      "url": "https://example.com/searxng/result-28/",
+      "engine": "google cse",
+      "parsed_url": [
+        "https",
+        "example.com",
+        "/searxng/result-28/",
+        "",
+        "",
+        ""
+      ]
+    },
+    {
+      "template": "default.html",
+      "title": "Example result 29 - notes on local inference",
+      "content": "An invented summary of an example page about running language models on a local machine, written only so that a test has text of a realistic length to read. An i",
+      "img_src": "",
+      "iframe_src": "",
+      "audio_src": "",
+      "thumbnail": "https://example.net/thumbnails/29.jpg",
+      "publishedDate": null,
+      "pubdate": "",
+      "length": null,
+      "views": "",
+      "author": "",
+      "metadata": "",
+      "priority": "",
+      "engines": [
+        "google cse"
+      ],
+      "open_group": false,
+      "close_group": false,
+      "positions": [
+        15
+      ],
+      "score": 0.06666666666666667,
+      "category": "general",
+      "url": "https://example.net/searxng/result-29/",
+      "engine": "google cse",
+      "parsed_url": [
+        "https",
+        "example.net",
+        "/searxng/result-29/",
+        "",
+        "",
+        ""
+      ]
+    },
+    {
+      "template": "default.html",
+      "title": "Example result 30 - notes on local inference",
+      "content": "An invented summary of an example page about running language models on a local machine, written only so that a test has text of a realistic l",
+      "img_src": "",
+      "iframe_src": "",
+      "audio_src": "",
+      "thumbnail": "https://example.org/thumbnails/30.jpg",
+      "publishedDate": null,
+      "pubdate": "",
+      "length": null,
+      "views": "",
+      "author": "",
+      "metadata": "",
+      "priority": "",
+      "engines": [
+        "google cse"
+      ],
+      "open_group": false,
+      "close_group": false,
+      "positions": [
+        17
+      ],
+      "score": 0.058823529411764705,
+      "category": "general",
+      "url": "https://example.org/searxng/result-30/",
+      "engine": "google cse",
+      "parsed_url": [
+        "https",
+        "example.org",
+        "/searxng/result-30/",
+        "",
+        "",
+        ""
+      ]
+    },
+    {
+      "template": "default.html",
+      "url": "https://example.com/searxng/result-31/",
+      "title": "Example result 31 - notes on local inference",
+      "content": "An invented summary of an example page about running language models on a local machine, written only so that a test has text of a realistic length to read. An invented summary of an example page about running language models on a loc",
+      "publishedDate": null,
+      "thumbnail": "https://example.com/thumbnails/31.jpg",
+      "engine": "brave",
+      "parsed_url": [
+        "https",
+        "example.com",
+        "/searxng/result-31/",
+        "",
+        "",
+        ""
+      ],
+      "img_src": "",
+      "priority": "",
+      "engines": [
+        "brave"
+      ],
+      "positions": [
+        19
+      ],
+      "score": 0.05263157894736842,
+      "category": "general"
+    },
+    {
+      "template": "default.html",
+      "url": "https://example.net/searxng/result-32/",
+      "title": "Example result 32 - notes on local inference",
+      "content": "An invented summary of an example page about running language models on a local machine, written only so that a test has text of a realistic length to read. An invented summar",
+      "publishedDate": null,
+      "thumbnail": "https://example.net/thumbnails/32.jpg",
+      "engine": "brave",
+      "parsed_url": [
+        "https",
+        "example.net",
+        "/searxng/result-32/",
+        "",
+        "",
+        ""
+      ],
+      "img_src": "",
+      "priority": "",
+      "engines": [
+        "brave"
+      ],
+      "positions": [
+        20
+      ],
+      "score": 0.05,
+      "category": "general"
+    },
+    {
+      "template": "default.html",
+      "title": "Example result 33 - notes on local inference",
+      "content": "An invented summary of an example page about running language models on a local machine, written only so that a test has text of a realistic length to read. An inve",
+      "img_src": "",
+      "iframe_src": "",
+      "audio_src": "",
+      "thumbnail": "https://example.org/thumbnails/33.jpg",
+      "publishedDate": null,
+      "pubdate": "",
+      "length": null,
+      "views": "",
+      "author": "",
+      "metadata": "",
+      "priority": "",
+      "engines": [
+        "google cse"
+      ],
+      "open_group": false,
+      "close_group": false,
+      "positions": [
+        20
+      ],
+      "score": 0.05,
+      "category": "general",
+      "url": "https://example.org/searxng/result-33/",
+      "engine": "google cse",
+      "parsed_url": [
+        "https",
+        "example.org",
+        "/searxng/result-33/",
+        "",
+        "",
+        ""
+      ]
+    },
+    {
+      "template": "videos.html",
+      "url": "https://example.com/searxng/result-34/",
+      "title": "Example result 34 - notes on local inference",
+      "content": "An invented summary of an example page about running language models on a local machine, written only so that a test has text of a realistic length to read. An invented summary of an ex",
+      "publishedDate": null,
+      "thumbnail": "https://example.com/thumbnails/34.jpg",
+      "engine": "brave",
+      "parsed_url": [
+        "https",
+        "example.com",
+        "/searxng/result-34/",
+        "",
+        "",
+        ""
+      ],
+      "img_src": "",
+      "priority": "",
+      "engines": [
+        "brave"
+      ],
+      "positions": [
+        10
+      ],
+      "score": 0.1,
+      "category": "general",
+      "iframe_src": "https://example.com/embed/34"
+    }
+  ],
+  "answers": [
+    {
+      "url": "https://example.org/answer/",
+      "engine": "duckduckgo",
+      "parsed_url": [
+        "https",
+        "example.org",
+        "/answer/",
+        "",
+        "",
+        ""
+      ],
+      "template": "answer/legacy.html",
+      "answer": "An invented summary of an example page about running language models on a local machine, written only so that a test has text of a realistic length to read. An invented summary of an example page about running language models on a local machine, written only so that a test has text of a realistic length to read."
+    }
+  ],
+  "corrections": [],
+  "infoboxes": [],
+  "suggestions": [
+    "example suggestion 1",
+    "example suggestion 2",
+    "example suggestion 3",
+    "example suggestion 4",
+    "example suggestion 5",
+    "example suggestion 6",
+    "example suggestion 7",
+    "example suggestion 8"
+  ],
+  "unresponsive_engines": []
+}

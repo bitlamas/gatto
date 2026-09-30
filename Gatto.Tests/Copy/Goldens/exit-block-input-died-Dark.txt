@@ -1,0 +1,5 @@
+
+ESC[38;2;153;153;153msession saved · ESC[0mESC[38;2;75;190;205mgatto --continueESC[0mESC[38;2;153;153;153m to resumeESC[0m
+
+ESC[38;2;232;232;232mmodel still loadedESC[0mESC[38;2;153;153;153m (~95.4 GB) · ESC[0mESC[38;2;75;190;205mgatto serve stopESC[0mESC[38;2;153;153;153m to ejectESC[0m
+

@@ -1,0 +1,4 @@
+(^· ·^)Ⳋ  gatto model · v0.5.1 · build f22c6ea · 2026-09-15
+
+model     qwen3.6-35b-a3b · ~23.8 GB
+

@@ -1,0 +1,59 @@
+<!DOCTYPE html>
+<html lang="en">
+<head><title>query at DuckDuckGo Lite</title></head>
+<body>
+<form>
+  <input name="q" value="dotnet regex" />
+</form>
+<table border="0">
+  <tr>
+    <td valign="top">1.&nbsp;</td>
+    <td>
+      <a rel="nofollow" href="//duckduckgo.com/l/?uddg=https%3A%2F%2Fexample.com%2Fpage%2Done%3Fa%3D1%26b%3D2&amp;rut=aaa111" class="result-link">First &amp; Best &lt;Result&gt;</a>
+    </td>
+  </tr>
+  <tr>
+    <td>&nbsp;</td>
+    <td class="result-snippet">A snippet with &amp; ampersand, &lt;tags&gt;, &quot;quotes&quot;, &#39;apostrophe&#39;, a &#x2764; heart and a &#8364; euro.</td>
+  </tr>
+  <tr>
+    <td>&nbsp;</td>
+    <td><span class="link-text">example.com/page-one</span></td>
+  </tr>
+
+  <tr>
+    <td valign="top">2.&nbsp;</td>
+    <td>
+      <a rel="nofollow" href="//duckduckgo.com/l/?uddg=https%3A%2F%2Fdocs.example.org%2Fguide&amp;rut=bbb222" class="result-link">Second <b>Highlighted</b> Title</a>
+    </td>
+  </tr>
+  <tr>
+    <td>&nbsp;</td>
+    <td class="result-snippet">Second snippet, plain text only.</td>
+  </tr>
+
+  <tr>
+    <td valign="top">3.&nbsp;</td>
+    <td>
+      <a rel="nofollow" href="https://direct.example.net/no-redirect" class="result-link">Third Direct Href</a>
+    </td>
+  </tr>
+  <tr>
+    <td>&nbsp;</td>
+    <td class="result-snippet">Third snippet here.</td>
+  </tr>
+
+  <!-- malformed row: rel="nofollow" but NO href attribute — must be skipped, never error -->
+  <tr>
+    <td valign="top">4.&nbsp;</td>
+    <td>
+      <a rel="nofollow" class="result-link">Broken Result With No Href</a>
+    </td>
+  </tr>
+  <tr>
+    <td>&nbsp;</td>
+    <td class="result-snippet">Snippet for the broken row that should not surface.</td>
+  </tr>
+</table>
+</body>
+</html>

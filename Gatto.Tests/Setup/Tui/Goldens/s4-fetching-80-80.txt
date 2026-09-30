@@ -1,0 +1,14 @@
+  gatto setup                                           v0.5.0 · build 1a2b3c4
+  machine ✓ · ❯ engine · model · check · done
+────────────────────────────────────────────────────────────────────────────────
+  Which engine build fits this machine?     (^· ·^)⟆ purr    11s
+
+  Nothing to do here, gatto fetches the build, checks it against GitHub's own
+  digest, and moves on by itself.
+
+  fetching     llama-b11071-bin-win-vulkan-x64.zip
+               ━━━━━━━━━━──────────────  93 of 214 MB · 8.5 MB/s · ~14 s left
+  into         C:\Users\you\.gatto\llama\b11071\
+
+────────────────────────────────────────────────────────────────────────────────
+  Esc stop, deletes the partial

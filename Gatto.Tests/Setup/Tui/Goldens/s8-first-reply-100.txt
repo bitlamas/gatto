@@ -1,0 +1,13 @@
+  gatto setup                                                               v0.5.0 · build 1a2b3c4
+  machine ✓ · server ✓ · ❯ check · done
+────────────────────────────────────────────────────────────────────────────────────────────────────
+  Does it answer?     (^· ·^)⟆ purrrrrr     4s
+
+  Nothing to do here, gatto asks the server one small question and waits for the first word back.
+
+  server    http://127.0.0.1:1234
+  model     qwen/qwen3-30b-a3b-2507
+  asking    "Say OK.", waiting for the first reply
+
+────────────────────────────────────────────────────────────────────────────────────────────────────
+  Esc stop the check                                          | the server stays set up, unchecked

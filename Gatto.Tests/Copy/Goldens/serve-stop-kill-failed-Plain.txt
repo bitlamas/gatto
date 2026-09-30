@@ -1,0 +1,2 @@
+couldn't stop pid 2844: access is denied.
+stop it in Task Manager, or run gatto as administrator.

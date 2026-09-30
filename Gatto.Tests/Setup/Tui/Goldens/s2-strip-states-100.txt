@@ -1,0 +1,7 @@
+  ❯ machine · engine · model · check · done                   the wizard opens, one section live  
+
+  machine ✓ · engine ✓ · ❯ model · check · done           two sections answered, the shelf is up  
+
+  machine ✓ · ❯ engine ✓ · model · check · done           Tab to the strip: going BACK to engine  
+
+  machine ✓ · engine ✓ · model ✓ · check ✓ · ❯ done      the end, the epilogue prints the record  

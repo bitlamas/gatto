@@ -1,0 +1,3 @@
+visible=8588824576
+cpu=AMD RYZEN AI MAX+ 395 w/ Radeon 8060S          
+vulkan=create_instance_failed result=-9

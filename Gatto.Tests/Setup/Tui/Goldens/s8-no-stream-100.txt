@@ -1,0 +1,17 @@
+  gatto setup                                                               v0.5.0 · build 1a2b3c4
+  machine ✓ · server ✓ · ❯ check · done
+────────────────────────────────────────────────────────────────────────────────────────────────────
+  Does it answer?
+
+✗ The server answered, but didn't stream the reply.
+
+  server    http://127.0.0.1:1234
+  said      200 · a reply arrived whole, not streamed
+
+  gatto cannot talk to this server at all, it needs an OpenAI-compatible chat endpoint
+  that streams.
+
+❯ 1. Finish anyway, I'll look into it
+
+────────────────────────────────────────────────────────────────────────────────────────────────────
+  Enter next   Esc leave

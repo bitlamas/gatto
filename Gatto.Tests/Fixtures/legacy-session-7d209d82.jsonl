@@ -1,0 +1,4 @@
+{"role":"system","content":"you are gatto","schema_version":1,"ts":"2026-07-21T06:00:00.0000000Z"}
+{"role":"user","content":"list the files","ts":"2026-07-21T06:00:05.0000000Z"}
+{"role":"assistant","content":"","tool_calls":[{"id":"call_1","name":"shell","arguments":"{\u0022command\u0022:\u0022ls\u0022}"}],"usage":{"prompt_tokens":42,"completion_tokens":18},"timings":{"predicted_per_second":12.31,"predicted_n":18},"ts":"2026-07-21T06:00:12.0000000Z"}
+{"role":"tool","content":"3 files","tool_call_id":"call_1","ts":"2026-07-21T06:00:13.0000000Z"}

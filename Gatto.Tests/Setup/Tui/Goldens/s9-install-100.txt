@@ -1,0 +1,19 @@
+  gatto setup                                                               v0.5.0 · build 1a2b3c4
+  machine ✓ · engine ✓ · model ✓ · check ✓ · ❯ done
+────────────────────────────────────────────────────────────────────────────────────────────────────
+  Should gatto install itself?
+
+  gatto is running from the folder you unzipped it into.
+  Installing puts a copy in your account's programs folder, so you can type gatto in any terminal
+  instead of finding this file again.
+
+  from      C:\Users\you\Downloads\gatto\gatto.exe
+  to        C:\Users\you\AppData\Local\Programs\gatto\
+
+  Your account only, Windows won't ask for administrator permission.
+
+❯ 1. Yes, install it  recommended
+  2. Not now
+
+────────────────────────────────────────────────────────────────────────────────────────────────────
+  Enter choose   Esc leave

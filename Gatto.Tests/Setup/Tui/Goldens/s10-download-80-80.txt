@@ -1,0 +1,25 @@
+❯ can you read the README and tell me what this repo does
+
+● It's a native C#/.NET harness for local models — a streaming client, an
+  agent loop with hooks, six built-in tools and JSONL sessions. The README's
+  first line says it plainly.
+
+❯ /model add
+
+────────────────────────────────────────────────────────── gatto · generalist ──
+  ❯ model · check · done
+
+  Which model should gatto add?     (^· ·^)⟆ purr..  3m 8s
+
+  Nothing to do here, gatto fetches, checks each file is byte for byte the one
+  Hugging Face publishes, and moves on by itself.
+
+  fetching   gemma-4-26B-A4B-it-UD-Q4_K_M.gguf
+             ━━━━━━━━━━━─────────────  7.9 of 16.9 GB · 43.0 MB/s · ~4 min left
+  then       mmproj-F16.gguf · 851 MB
+  into       C:\Users\you\.gatto\weights\gemma-4-26b-a4b-it\
+
+────────────────────────────────────────────────────────────────────────────────
+  Space pause   p pause, go back   Esc stop, deletes the partial
+────────────────────────────────────────────────────────────────────────────────
+  ~\projects\demo · master · qwen-qwen3.6-35b-a3b · ↑ 1.4k ↓ 312 · ctx 2%

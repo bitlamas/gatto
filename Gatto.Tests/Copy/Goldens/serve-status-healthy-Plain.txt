@@ -1,0 +1,1 @@
+serving qwen3.6-35b-a3b · port 1235 (pid 2844) · health: ok

@@ -1,0 +1,11 @@
+llama-server exited before it became ready · last 10 log lines
+  line 3 of the engine's log
+  line 4 of the engine's log
+  line 5 of the engine's log
+  line 6 of the engine's log
+  line 7 of the engine's log
+  line 8 of the engine's log
+  line 9 of the engine's log
+  line 10 of the engine's log
+  line 11 of the engine's log
+  line 12 of the engine's log

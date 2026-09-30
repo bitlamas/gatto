@@ -1,0 +1,7 @@
+--- stdout ---
+gatto 0.5.1 (build f22c6ea)
+
+--- stderr ---
+
+--- exit ---
+0

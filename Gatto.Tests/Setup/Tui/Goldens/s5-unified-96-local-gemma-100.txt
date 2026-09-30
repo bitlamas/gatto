@@ -1,0 +1,23 @@
+  gatto setup                                                               v0.5.0 · build 1a2b3c4
+  machine ✓ · engine ✓ · ❯ model · check · done
+────────────────────────────────────────────────────────────────────────────────────────────────────
+  Which model should gatto start with?
+
+  gemma · qwen · deepseek · glm · mistral · all             folder  C:\Users\you\.lmstudio\models\
+
+     model                     params  size · quant    kind
+❯ 1. gemma-4-26B-A4B-it-UD-Q…   25.2B  16.9 GB Q4_K_M  MoE A4B 
+  2. gemma-3-12b-it-Q4_K_M      11.8B  7.3 GB Q4_K_M   dense   
+
+  1–2 of 5 · 3 in other families, all shows them
+
+────────────────────────────────────────────────────────────────────────────────────────────────────
+  gemma-4-26B-A4B-it-UD-Q4_K_M
+  C:\Users\you\.lmstudio\models\unsloth\gemma-4-26B-A4B-it\
+  context up to 262,144 · ◈ vision · reads 4B params/token
+  files · › Q4_K_M 16.9 GB · 1 file + mmproj  ✓ fits
+  ✗ not measured yet
+
+❯ search these, or type a .gguf to add, a folder to look in…                           / to search
+────────────────────────────────────────────────────────────────────────────────────────────────────
+  Tab area   Enter next   a all sizes   b back   m hub   Esc leave         | fewer params = faster

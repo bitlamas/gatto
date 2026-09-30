@@ -1,0 +1,269 @@
+Get-ChildItem
+----
+Get-ChildItem -Path C:\proj -Filter *.cs -Recurse
+----
+Get-ChildItem -Path "C:\proj\src" | Where-Object { $_.Length -gt 1kb } | Select-Object -First 5
+----
+git status --short
+----
+git log -1 --format=%H
+----
+dotnet test --nologo -o tmp/testbin -v q
+----
+dotnet build Gatto --no-incremental -o tmp/fresh > tmp/build.log
+----
+Set-Location "C:\Users\user\projects\gatto"; git diff --stat
+----
+Select-String -Path src\*.cs -Pattern 'TODO' -SimpleMatch
+----
+(Select-String ': warning ' tmp/build.log).Count
+----
+"exit=$LASTEXITCODE"
+----
+Test-Path $env:USERPROFILE\notes.md
+----
+$env:GATTO_HOME = "$env:TEMP\home"
+----
+Write-Host "Hello, $name! Today is $(Get-Date -Format 'yyyy-MM-dd')."
+----
+Write-Output 'single $notexpanded'
+----
+Write-Output 'it''s quoted'
+----
+Write-Output "say ""hi"" and `"escape`" and `$dollar"
+----
+Write-Output "${braced name} and $script:scoped and $global:g"
+----
+$x = 42
+----
+$y = 0x1F + 3.5e2 - 10mb
+----
+$z = 1..10 | ForEach-Object { $_ * 2 }
+----
+$list = @(1, 2, 3)
+----
+$table = @{ Name = 'gatto'; Size = 12; Nested = @{ Deep = $true } }
+----
+$sum = $a + $b * ($c - 1) / 2 % 3
+----
+$count++
+----
+$total += $item.Price
+----
+if ($x -eq 42) { 'yes' } elseif ($x -lt 0) { 'negative' } else { 'no' }
+----
+if (-not (Test-Path $file)) { New-Item -ItemType File -Path $file | Out-Null }
+----
+foreach ($file in Get-ChildItem *.txt) { $file.Name }
+----
+for ($i = 0; $i -lt 10; $i++) { Write-Host $i }
+----
+while ($true) { break }
+----
+do { $n-- } until ($n -le 0)
+----
+switch -Regex ($line) { '^\d+$' { 'number' } default { 'other' } }
+----
+try { Get-Item nope -ErrorAction Stop } catch [System.Management.Automation.ItemNotFoundException] { $_.Exception.Message } finally { 'done' }
+----
+function Get-Answer { param([int]$Seed = 1) return $Seed * 42 }
+----
+function Test-It {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory = $true, Position = 0)]
+        [string]$Name,
+        [switch]$Force
+    )
+    begin { $items = @() }
+    process { $items += $Name }
+    end { $items }
+}
+----
+[System.IO.File]::ReadAllText('a.txt')
+----
+[string]::IsNullOrEmpty($value)
+----
+[int[]]$numbers = 1, 2, 3
+----
+$dict = [System.Collections.Generic.Dictionary[string, int]]::new()
+----
+$text.Replace('a', 'b').Trim()
+----
+$bytes = [Text.Encoding]::UTF8.GetBytes($s)
+----
+& "C:\Program Files\tool\tool.exe" --version
+----
+& $scriptBlock -Arg 1
+----
+. .\helpers.ps1
+----
+.\build.ps1 -Configuration Release
+----
+Get-Process | Sort-Object CPU -Descending | Select-Object -First 3 Name, CPU
+----
+Get-Content log.txt -Tail 20 -Wait
+----
+Remove-Item -Recurse -Force tmp -ErrorAction SilentlyContinue
+----
+Copy-Item a.txt -Destination b.txt -Force:$true
+----
+Invoke-WebRequest -Uri https://example.com/file.zip -OutFile file.zip
+----
+$result = Invoke-Expression "1 + 1"
+----
+cmd /c dir 2>&1 | Out-String
+----
+Start-Process notepad -ArgumentList 'a.txt' -Wait > $null
+----
+Get-ChildItem *> out.txt
+----
+$files = Get-ChildItem -File; $files.Count
+----
+# a whole-line comment
+----
+Get-Date # a trailing comment
+----
+<# a block
+comment #> Get-Date
+----
+$h = @"
+Name: $name
+Path: $($item.FullName)
+"@
+----
+$raw = @'
+no $expansion here
+'@
+----
+Write-Host `
+    -Object "continued" `
+    -NoNewline
+----
+$p = Start-Process -FilePath dotnet -ArgumentList @('build', '-c', 'Release') -PassThru
+----
+$args | ForEach-Object -Begin { $n = 0 } -Process { $n++ } -End { $n }
+----
+Get-Item -Path $PSScriptRoot\..\config.json
+----
+$json = Get-Content config.json -Raw | ConvertFrom-Json
+----
+$json.settings.theme = 'dark'
+----
+$x -replace '\s+', ' '
+----
+'a,b,c' -split ','
+----
+@('a', 'b') -join ';'
+----
+'{0} of {1}' -f 3, 4
+----
+$name -like 'gat*' -and $size -ge 10 -or -not $done
+----
+$items -contains 'x'
+----
+$value -is [string]
+----
+$number = [math]::Round(3.14159, 2)
+----
+$ErrorActionPreference = 'Stop'
+----
+Set-StrictMode -Version Latest
+----
+exit $LASTEXITCODE
+----
+throw "failed: $reason"
+----
+return
+----
+Write-Output -5
+----
+Write-Output 5
+----
+Write-Output 5kb
+----
+Write-Output a5
+----
+Get-ChildItem -Path . -Include *.cs, *.csproj -Recurse
+----
+$splat = @{ Path = 'a'; Force = $true }; Copy-Item @splat
+----
+$null = New-Item -ItemType Directory -Force -Path out
+----
+[void](Get-Date)
+----
+$env:Path -split ';' | Where-Object { $_ -match 'dotnet' }
+----
+Get-CimInstance Win32_Process -Filter "Name='gatto.exe'" | Select-Object ProcessId, CommandLine
+----
+$sw = [Diagnostics.Stopwatch]::StartNew(); Start-Sleep -Milliseconds 100; $sw.ElapsedMilliseconds
+----
+$ok = $?
+----
+$last = $$
+----
+Get-ChildItem | Measure-Object -Property Length -Sum
+----
+[PSCustomObject]@{ Name = 'a'; Value = 1 }
+----
+filter Double { $_ * 2 }
+----
+trap { Write-Warning $_; continue }
+----
+data { 'text' }
+----
+using namespace System.Text
+----
+class Point { [int]$X; [int]$Y; Point([int]$x, [int]$y) { $this.X = $x; $this.Y = $y } }
+----
+enum Color { Red; Green; Blue }
+----
+$c = [Color]::Red
+----
+Write-Host 'It'"'"'s mixed'
+----
+Get-ChildItem -Path 'C:\a b\c' -Filter '*.log'
+----
+$path = Join-Path $HOME 'projects'
+----
+Push-Location ..; Pop-Location
+----
+Get-Help about_Operators -Online
+----
+$a = $b = 1
+----
+,$single
+----
+!$flag
+----
+$array[0]
+----
+$array[-1].Name
+----
+$hash['key'] = 'value'
+----
+$s.Substring(0, [Math]::Min(10, $s.Length))
+----
+Write-Output "nested $(if ($x) { "inner $y" } else { 'z' }) done"
+----
+Get-ChildItem | ? Name -like '*.cs' | % { $_.FullName }
+----
+Get-Service -Name 'W*' | Where Status -eq Running
+----
+$output = & git rev-parse HEAD 2>$null
+----
+Wait-Process -Id $pid -Timeout 5
+----
+New-Item -ItemType SymbolicLink -Path link -Target target
+----
+Get-ItemProperty -Path HKCU:\Software\Example -Name Value
+----
+$stamp = (Get-Date).ToString('o')
+----
+Write-Output ($a, $b)
+----
+$lines = @(Get-Content a.txt)
+----
+Get-Content a.txt | Set-Content -Path b.txt -Encoding utf8
+----
+Write-Output "size: $($file.Length) bytes and $($list[0].Name) from $(Get-Item x)"

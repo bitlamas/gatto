@@ -1,0 +1,15 @@
+  gatto setup                                                               v0.5.0 · build 1a2b3c4
+  machine ✓ · ❯ engine · model · check · done
+────────────────────────────────────────────────────────────────────────────────────────────────────
+  Which engine build fits this machine?     (^· ·^)⟆ purr    11s
+
+  Nothing to do here, gatto fetches both files into one folder, checks each against GitHub's own
+  digest, and moves on by itself.
+
+  fetching     llama-b11071-bin-win-cuda-12.4-x64.zip · file 1 of 2
+               ━━━━━━━━━━────────────────────  93 of 268 MB · 8.5 MB/s · ~21 s left
+  then         cudart-llama-bin-win-cuda-12.4-x64.zip · 380 MB
+  into         C:\Users\you\.gatto\llama\b11071\
+
+────────────────────────────────────────────────────────────────────────────────────────────────────
+  Esc stop, deletes the partial
