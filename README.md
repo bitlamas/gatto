@@ -20,9 +20,9 @@ gatto is a terminal-based LLM harness built with local models in mind. Even if y
 - pick a model that fits your hardware
 - test that model, to make sure it can use gatto's tools
 
-From there gatto gives the model real hands: running commands, searching the web, reading and writing files. You get a field engineer living in your terminal, working through your projects with you. Even if your PC is on the older side, gatto tries to be especially good with small models: the ones that need less hardware and are less capable at complex tasks.
+From there gatto gives the model real hands: running commands, searching the web, reading and writing files. You get a field engineer living in your terminal, working through your projects with you. Even if your PC is on the older side, gatto tries to steer good behavior with small models.
 
-A (large language) model is a file on your own hard drive. Everything you type and every file gatto opens with a local model stays on your machine. No account, no subscription, no telemetry of any kind.
+Private by default. A large language model (LLM) is a file on your own hard drive. Everything you type and every file gatto opens with a local model stays on your machine. No account, no subscription, no telemetry of any kind.
 
 > **Windows only.** Built, tested and walked end to end on Windows before every release. The core is platform-neutral and GPL-3.0.
 
@@ -84,7 +84,7 @@ gatto serve status
 gatto serve stop
 ```
 
-When you start a session, gatto launches the engine for you. When you close gatto, the engine keeps running by default: run `gatto serve stop` to eject the model, or set `"stop_server_on_exit": true` in `gatto.json`.
+When you start a session, gatto launches the engine for you. When you close gatto, the engine keeps running by default: run `gatto serve stop` to eject the model, or set `"stop_server_on_exit": true` in `gatto.json`, but unless you're running one single gatto session at a time it can be frustrating to get your server closed with other sessions open.
 
 ## building from source
 
@@ -97,9 +97,9 @@ dotnet test --nologo -o tmp/testbin    # the full suite
 
 `gatto --version` prints the exact build.
 
-## status
+## project status
 
-Beta. Used daily by one person (me) against a handful of local models. Found something broken? [Open an issue](https://github.com/bitlamas/gatto/issues) with `gatto doctor`'s output.
+Used daily by one person (me) against a handful of local models. Found something broken? [Open an issue](https://github.com/bitlamas/gatto/issues) and a gatto session will read it soon :-)
 
 ## license
 

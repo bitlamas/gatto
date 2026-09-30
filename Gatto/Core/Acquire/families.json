@@ -18,7 +18,7 @@
     "predicate a caller could render as a tick -- the same asymmetry SupportedArchitectures keeps",
     "by shipping WillNotLoad and deliberately having no Supports."
   ],
-  "reviewed": "2026-09-21",
+  "reviewed": "2026-09-30",
   "architectures_release": "b11071",
 
   "_ladder_comment": [

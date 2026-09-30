@@ -25,11 +25,12 @@ public class InputDeafnessWatchdogTests
 
         public int Peek(INPUT_RECORD[] buf) => 0;
 
+        //a closed console reports a failed write like the real one, since a check can still be in flight after the test ends
         public bool Write(INPUT_RECORD record)
         {
             Interlocked.Increment(ref _writes);
-            _queue.Add(record);
-            return true;
+            try { _queue.Add(record); return true; }
+            catch (InvalidOperationException) { return false; }
         }
 
         public void Dispose()
@@ -72,6 +73,19 @@ public class InputDeafnessWatchdogTests
 
         Assert.Equal('a', Assert.IsType<KeyEvent>(source.Read()).Key.KeyChar);
         Assert.Equal(2, source.RecordsRead);
+    }
+
+    //a check still in flight when the test closes its console must see a failed write, or its timer thread kills the test host
+    [Fact]
+    public void A_CHECK_AFTER_THE_CONSOLE_CLOSED_SEES_A_FAILED_WRITE()
+    {
+        var console = new FakeConsole();
+        var source = new ConsoleInputSource(console);
+        var watch = new InputDeafnessWatchdog(() => source.RecordsRead, console,
+            TimeSpan.FromHours(1), TimeSpan.FromSeconds(5));
+        console.Dispose();
+
+        Assert.True(watch.Check());
     }
 
     [Fact]

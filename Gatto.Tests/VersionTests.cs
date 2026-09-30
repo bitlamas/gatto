@@ -8,7 +8,7 @@ public class VersionTests
 {
     //a literal on purpose, nothing here reads the csproj, and a version bump updates it in the same commit
     [Fact]
-    public void Version_IsTheCsprojVersion() => Assert.Equal("0.5.3-rc", GattoVersion.String);
+    public void Version_IsTheCsprojVersion() => Assert.Equal("0.5.3", GattoVersion.String);
 
     //the build stamp is always a commit sha, and this test is the only one that fails if the csproj's --exclude=* is dropped
     [Fact]

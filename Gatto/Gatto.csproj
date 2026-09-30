@@ -7,7 +7,7 @@
     <RootNamespace>Gatto</RootNamespace>
     <AssemblyName>gatto</AssemblyName>
     <InvariantGlobalization>true</InvariantGlobalization>
-    <Version>0.5.3-rc</Version>
+    <Version>0.5.3</Version>
   </PropertyGroup>
 
   <!-- a published build must not carry the paths of the machine that built it.
