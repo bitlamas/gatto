@@ -17,8 +17,6 @@ internal static class SizeWords
               + gb.ToString("0.0", System.Globalization.CultureInfo.InvariantCulture) + " GB";
     }
 
-    //gigabytes with no decimal, the form every wizard sentence uses. a person deciding whether a model fits doesn't think in tenths
-
     //a download's size in the unit it is measured in: whole megabytes below a gigabyte, tenths of a gigabyte above
     public static string Auto(long bytes)
     {
@@ -45,6 +43,7 @@ internal static class SizeWords
                 .ToString(format, System.Globalization.CultureInfo.InvariantCulture);
     }
 
+    //whole gigabytes, for the machine's memory and what a model can use of it (nobody thinks of their RAM in tenths)
     public static string WholeGb(ulong bytes) =>
         Math.Round(bytes / (1024.0 * 1024 * 1024)).ToString("0",
             System.Globalization.CultureInfo.InvariantCulture) + " GB";

@@ -24,8 +24,6 @@ public sealed class CtxState
     //the growth-inclusive figure the auto-compact trigger acts on, so a fat tool result shows at once. pass null after a rotation to clear a stale percent
     public void RecordUsedTokens(int? usedTokens) => _usedTokens = usedTokens;
 
-    //the denominator is the budget when set, else the context window, and with neither the figure falls back rather than reporting 100%
-
     //the count behind Percent, from the same ladder so the two can't disagree, and the footer shows it beside the percent when there's room
     public int? Tokens =>
         _usedTokens is int u && (_estimateBudget is > 0 || ContextWindow is > 0)
@@ -34,6 +32,7 @@ public sealed class CtxState
                 ? _estimateTokens ?? 0
                 : ContextWindow is > 0 && _lastTotal is int t ? t : null;
 
+    //the denominator is the budget when set, else the context window, and with neither the figure falls back rather than reporting 100%
     public int? Percent =>
         _usedTokens is int lp && (_estimateBudget is > 0 || ContextWindow is > 0)
             ? (int)Math.Round(100.0 * lp / (_estimateBudget is int eb and > 0 ? eb : (int)ContextWindow!))
