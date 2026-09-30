@@ -458,15 +458,16 @@ public static class GattoApp
             returnProgress: endpointName == "local" && launchBaseUrl is not null);
         //a dropped attached image must warn the user, the sink paints a ♯ row in the REPL and stderr for -p
         client.OnImageUnavailable = m => warn.Warn(m);
-        //a separate client with a 2 second timeout, the main one is infinite for long local generations
+        //a separate client for the probes, untimed like every client, and each probe holds a 2 second deadline of its own
         var probeHttp = new HttpClient(new SocketsHttpHandler { ConnectTimeout = TimeSpan.FromSeconds(2) })
-            { Timeout = TimeSpan.FromSeconds(2) };
+            { Timeout = Timeout.InfiniteTimeSpan };
+        var probeDeadline = TimeSpan.FromSeconds(2);
         //the model's window on a local endpoint, the endpoint's on a cloud one, and no enforcement when neither is configured
         var contextBudget = model is not null ? model.Profile.Context : endpoint.Context;
         //cross-check /props at every launch and let the live answer win in both directions (it does not run when a model is present)
         if (model is null && launchBaseUrl is not null)
         {
-            var probedCtx = await ServeProbe.ProbeAsync(probeHttp, launchBaseUrl, CancellationToken.None, endpoint.ApiKey);
+            var probedCtx = await ServeProbe.ProbeAsync(probeHttp, launchBaseUrl, CancellationToken.None, endpoint.ApiKey, probeDeadline);
             var resolved = ConnectContext.Resolve(contextBudget, probedCtx?.NCtx);
             contextBudget = resolved.Budget;
             //warn with the line Resolve returned, so the budget and the message cannot disagree
@@ -478,10 +479,11 @@ public static class GattoApp
             var cachedUpdate = UpdateCheck.ReadCache(home);
             if (UpdateCheck.DueForRepl(config.UpdateCheck, cachedUpdate, DateTimeOffset.Now))
             {
-                //3s for the whole exchange and 1s to connect, both always set so a dead host cannot stall the check
-                using var updateHttp = UpdateCheck.Client(TimeSpan.FromSeconds(3), TimeSpan.FromSeconds(1));
+                //1s to connect on the client and 3s for the whole exchange on the check's own token, so a dead host cannot stall the check
+                using var updateHttp = UpdateCheck.Client(TimeSpan.FromSeconds(1));
+                using var updateRead = new CancellationTokenSource(TimeSpan.FromSeconds(3));
                 //the line is built from the cached state, this path does not download an update
-                if (await UpdateCheck.FetchAsync(updateHttp, DateTimeOffset.Now, CancellationToken.None) is { State: var fresh })
+                if (await UpdateCheck.FetchAsync(updateHttp, DateTimeOffset.Now, updateRead.Token) is { State: var fresh })
                 {
                     UpdateCheck.WriteCache(home, fresh);
                     cachedUpdate = fresh;
@@ -518,7 +520,7 @@ public static class GattoApp
                     LoadingLine.Over(loadingLine, glyphs, launchTheme), id => SizeWordsOnDiskOrNull(home, id),
                     CancellationToken.None);
             }
-            var launchLoaded = await ServeProbe.ProbeAsync(probeHttp, launchBaseUrl, CancellationToken.None, endpoint.ApiKey);   //the chat client's own key, since /props sits behind the server's api key and a keyed server would read as unknown
+            var launchLoaded = await ServeProbe.ProbeAsync(probeHttp, launchBaseUrl, CancellationToken.None, endpoint.ApiKey, probeDeadline);   //the chat client's own key, since /props sits behind the server's api key and a keyed server would read as unknown
             //computed once, so the refusal and the chip cannot end up describing two different servers
             var launchMismatch = ModelSwitch.DescribeProbe(model, launchLoaded, modelsDir);
             launchServing = new ServingProbe(
@@ -580,11 +582,11 @@ public static class GattoApp
             //a connect session reads only the server's vision bit, since with no model there is nothing to compare
             if (model is null)
             {
-                var connectLoaded = ServeProbe.ProbeAsync(probeHttp, launchBaseUrl, CancellationToken.None, endpoint.ApiKey)
+                var connectLoaded = ServeProbe.ProbeAsync(probeHttp, launchBaseUrl, CancellationToken.None, endpoint.ApiKey, probeDeadline)
                     .GetAwaiter().GetResult();
                 return new ServingProbe(null, connectLoaded?.NCtx, ThinkCapability.None, connectLoaded?.Vision);   //an unanswered probe leaves Vision null, which is unknown, so the refusal on false lets the attach go
             }
-            var loaded = ServeProbe.ProbeAsync(probeHttp, launchBaseUrl, CancellationToken.None, endpoint.ApiKey)
+            var loaded = ServeProbe.ProbeAsync(probeHttp, launchBaseUrl, CancellationToken.None, endpoint.ApiKey, probeDeadline)
                 .GetAwaiter().GetResult();
             var named = ModelSwitch.DescribeProbe(model, loaded, modelsDir);
             return new ServingProbe(named?.Name, loaded?.NCtx,
@@ -859,7 +861,7 @@ public static class GattoApp
             runAgent.UpdateReasoningHistory(reasoningHistory);
 
             //only after the switch is committed, a failed load or persist never reaches this line
-            var loaded = ServeProbe.ProbeAsync(probeHttp, launchBaseUrl!, CancellationToken.None, endpoint.ApiKey)   //only after the persist succeeded, so a doomed switch spends no round trip
+            var loaded = ServeProbe.ProbeAsync(probeHttp, launchBaseUrl!, CancellationToken.None, endpoint.ApiKey, probeDeadline)   //only after the persist succeeded, so a doomed switch spends no round trip
                 .GetAwaiter().GetResult();
             var mismatch = ModelSwitch.DescribeProbe(outcome.Model, loaded, modelsDir)?.Name;
 
@@ -890,7 +892,7 @@ public static class GattoApp
         {
             var loaded = launchBaseUrl is null
                 ? null
-                : ServeProbe.ProbeAsync(probeHttp, launchBaseUrl, CancellationToken.None, endpoint.ApiKey)
+                : ServeProbe.ProbeAsync(probeHttp, launchBaseUrl, CancellationToken.None, endpoint.ApiKey, probeDeadline)
                     .GetAwaiter().GetResult();
 
             //read once per open, so no two rows can disagree about the default
@@ -1859,8 +1861,9 @@ public static class GattoApp
     {
         var ctx = context ?? CommandContext.Production();
         var cwd = Environment.CurrentDirectory;
+        //untimed, the health read beneath status holds a 5s deadline of its own
         using var http = new HttpClient(new SocketsHttpHandler { ConnectTimeout = TimeSpan.FromSeconds(5) })
-            { Timeout = TimeSpan.FromSeconds(5) };
+            { Timeout = Timeout.InfiniteTimeSpan };
         //the one-line banner takes the glyph set so a host without those glyphs still draws the cat
         CommandBanner.WriteHeader(ctx.Out, ctx.Theme, "status", CommandBanner.GlyphsFor(ctx.Home),
             stamp: ctx.Stamp);

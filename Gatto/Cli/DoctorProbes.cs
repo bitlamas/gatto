@@ -9,8 +9,10 @@ internal sealed record DoctorProbes(
         new SocketsHttpHandler { ConnectTimeout = TimeSpan.FromSeconds(5) },
         async token =>
         {
-            using var updateHttp = UpdateCheck.Client(TimeSpan.FromSeconds(1), TimeSpan.FromMilliseconds(500));
+            using var updateHttp = UpdateCheck.Client(TimeSpan.FromMilliseconds(500));
+            using var read = CancellationTokenSource.CreateLinkedTokenSource(token);
+            read.CancelAfter(TimeSpan.FromSeconds(1));
             //doctor wants the state only, it reports whether a newer gatto exists and never downloads
-            return (await UpdateCheck.FetchAsync(updateHttp, DateTimeOffset.Now, token))?.State;
+            return (await UpdateCheck.FetchAsync(updateHttp, DateTimeOffset.Now, read.Token))?.State;
         });
 }

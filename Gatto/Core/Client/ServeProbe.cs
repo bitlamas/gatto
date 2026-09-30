@@ -10,20 +10,25 @@ public sealed record LoadedModel(string? ModelPath, int? NCtx, ThinkCapability C
 //one GET {base_url}/props against llama-server
 public static class ServeProbe
 {
+    //the probe's own deadline, since every client is untimed and a silent server would hold the read forever
+    public static readonly TimeSpan ReadDeadline = TimeSpan.FromSeconds(5);
+
     //null on any failure, unknown rather than a mismatch (send apiKey, --api-key guards /props too)
     public static async Task<LoadedModel?> ProbeAsync(
-        HttpClient http, string baseUrl, CancellationToken ct, string? apiKey = null)
+        HttpClient http, string baseUrl, CancellationToken ct, string? apiKey = null, TimeSpan? deadline = null)
     {
+        using var read = CancellationTokenSource.CreateLinkedTokenSource(ct);
+        read.CancelAfter(deadline ?? ReadDeadline);
         try
         {
             var url = baseUrl.TrimEnd('/') + "/props";
             using var req = new HttpRequestMessage(HttpMethod.Get, url);
             if (!string.IsNullOrWhiteSpace(apiKey))
                 req.Headers.Authorization = new AuthenticationHeaderValue("Bearer", apiKey);
-            using var resp = await http.SendAsync(req, ct).ConfigureAwait(false);
+            using var resp = await http.SendAsync(req, read.Token).ConfigureAwait(false);
             if (!resp.IsSuccessStatusCode) return null;
 
-            var body = await resp.Content.ReadAsStringAsync(ct).ConfigureAwait(false);
+            var body = await resp.Content.ReadAsStringAsync(read.Token).ConfigureAwait(false);
             using var doc = JsonDocument.Parse(body);
             var root = doc.RootElement;
             if (root.ValueKind != JsonValueKind.Object) return null;
@@ -65,7 +70,7 @@ public static class ServeProbe
         }
         catch (OperationCanceledException) when (ct.IsCancellationRequested)
         {
-            throw;   //a genuine cancel propagates, everything else is unknown
+            throw;   //a genuine cancel propagates, everything else is unknown, the probe's own deadline included
         }
         catch (Exception)
         {

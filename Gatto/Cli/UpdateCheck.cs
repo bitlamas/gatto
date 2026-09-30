@@ -165,9 +165,9 @@ internal static class UpdateCheck
         catch (Exception) { } //a cache we cannot write costs one extra check next week
     }
 
-    //both budgets, always (a client with only one timeout is not a budget)
-    public static HttpClient Client(TimeSpan total, TimeSpan connect) =>
-        new(new SocketsHttpHandler { ConnectTimeout = connect }) { Timeout = total };
+    //only the connect is bounded here, the whole exchange is the caller's token, since a timed client caps any deadline above it
+    public static HttpClient Client(TimeSpan connect) =>
+        new(new SocketsHttpHandler { ConnectTimeout = connect }) { Timeout = Timeout.InfiniteTimeSpan };
 
     //silent on every failure, a courtesy that interrupts a launch to report itself has stopped being one
     public static Task<Release?> FetchAsync(HttpClient http, DateTimeOffset now, CancellationToken ct) =>

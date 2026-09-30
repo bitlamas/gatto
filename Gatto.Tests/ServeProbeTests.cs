@@ -25,8 +25,42 @@ file sealed class ThrowingHandler : HttpMessageHandler
         throw new HttpRequestException("connection refused");
 }
 
+//holds every request until its token fires, as a server that accepts and never answers would
+file sealed class SilentHandler : HttpMessageHandler
+{
+    protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage req, CancellationToken ct)
+    {
+        await Task.Delay(Timeout.Infinite, ct);
+        throw new InvalidOperationException("unreachable, the delay ends only by its token");
+    }
+}
+
 public class ServeProbeTests
 {
+    //an untimed client over a silent server, so only the probe's own deadline can end the read
+    [Fact]
+    public async Task A_SILENT_SERVER_ENDS_AT_THE_PROBES_OWN_DEADLINE()
+    {
+        using var http = new HttpClient(new SilentHandler()) { Timeout = Timeout.InfiniteTimeSpan };
+
+        var probe = ServeProbe.ProbeAsync(http, "http://127.0.0.1:1235", CancellationToken.None);
+        var first = await Task.WhenAny(probe, Task.Delay(TimeSpan.FromSeconds(30)));
+
+        Assert.True(ReferenceEquals(probe, first), "the probe never finished, so nothing bounds its read but the client");
+        Assert.Null(await probe);
+    }
+
+    //the caller's cancel still throws where the probe's own deadline answers unknown, so the two stay apart
+    [Fact]
+    public async Task A_CALLERS_CANCEL_OVER_A_SILENT_SERVER_STILL_THROWS()
+    {
+        using var http = new HttpClient(new SilentHandler()) { Timeout = Timeout.InfiniteTimeSpan };
+        using var cts = new CancellationTokenSource(TimeSpan.FromMilliseconds(100));
+
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(
+            () => ServeProbe.ProbeAsync(http, "http://127.0.0.1:1235", cts.Token));
+    }
+
     private const string GoodProps = """
         {"default_generation_settings":{"params":{"temperature":1.0},"n_ctx":131072},
          "model_path":"C:\\models\\gemma-4-26B-A4B-it-Q6_K.gguf","total_slots":1}

@@ -54,9 +54,11 @@ internal static class UpdateCommand
             return 2;
         }
 
-        //the check's own client, with a whole-exchange budget, since the body is small JSON
-        using var checkHttp = UpdateCheck.Client(TimeSpan.FromSeconds(10), TimeSpan.FromSeconds(3));
-        var release = await deeds.Fetch(checkHttp, DateTimeOffset.Now, ct).ConfigureAwait(false);
+        //the check's own client, with a whole-exchange deadline of 10s, since the body is small JSON
+        using var checkHttp = UpdateCheck.Client(TimeSpan.FromSeconds(3));
+        using var checkRead = CancellationTokenSource.CreateLinkedTokenSource(ct);
+        checkRead.CancelAfter(TimeSpan.FromSeconds(10));
+        var release = await deeds.Fetch(checkHttp, DateTimeOffset.Now, checkRead.Token).ConfigureAwait(false);
         if (release is null)
         {
             cli.Say("couldn't reach GitHub just now. Try again later.");

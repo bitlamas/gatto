@@ -159,14 +159,12 @@ public class UpdateCheckTests : IDisposable
     }
 
     [Fact]
-    public void THE_CLIENT_SETS_BOTH_BUDGETS_never_just_the_token()
+    public void THE_CLIENT_CARRIES_NO_TIMEOUT_so_the_callers_token_is_the_deadline()
     {
-        //build the client for each consumer, a shared one can cap the deadline it was given
-        using var doctor = UpdateCheck.Client(TimeSpan.FromSeconds(1), TimeSpan.FromMilliseconds(500));
-        using var repl = UpdateCheck.Client(TimeSpan.FromSeconds(3), TimeSpan.FromSeconds(1));
+        //a timeout on the client is a budget beneath the caller's token, and a linked token cannot lengthen it
+        using var http = UpdateCheck.Client(TimeSpan.FromSeconds(1));
 
-        Assert.Equal(TimeSpan.FromSeconds(1), doctor.Timeout);
-        Assert.Equal(TimeSpan.FromSeconds(3), repl.Timeout);
+        Assert.Equal(Timeout.InfiniteTimeSpan, http.Timeout);
     }
 
     [Fact]
