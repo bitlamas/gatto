@@ -141,6 +141,10 @@ public sealed class Repl(
     Func<IReadOnlyList<(string Extension, string Line)>>? listPolicy = null,
     //the finished sentence for an over-budget memory index, printed once after the banner. a later re-truncation goes through the warn sink instead
     string? memoryWarning = null,
+    string? cloudNotice = null,   //said once per home, the first time a session runs on a cloud endpoint
+    bool cloud = false,           //the footer's mark before the model, fixed for the session since the endpoint is
+    //the provider's summed cost and latest quota, read at each footer rebuild, and null shows neither
+    Func<(decimal? Cost, Gatto.Core.Client.QuotaReading? Quota)>? readUsage = null,
     //the memory write half over the compact seam, banking candidates and composing the index. null marks memory off, and only a user-chosen compact reaches it
     Gatto.Core.Memory.PiggybackSeam? piggyback = null,
     //the rich loop's output surface, injectable so a test can drive the loop headlessly, and null uses the real console surface
@@ -1246,6 +1250,7 @@ public sealed class Repl(
         Console.WriteLine("(/quit to exit, /new to reset, Ctrl+C aborts a turn)");
         //the same system line the rich path commits, printed literally here, plain has no renderer to hang the marker on
         if (memoryWarning is not null) Console.WriteLine($"{_glyphs.Sharp} " + memoryWarning);
+        if (cloudNotice is not null) Console.WriteLine($"{_glyphs.Sharp} " + cloudNotice);
 
         var renderer = new PlainRenderer(reasoning, _glyphs);
         //the resumedFrom flag on its own still prints the marker, a compact-then-quit session has no turns to replay
@@ -1498,7 +1503,7 @@ public sealed class Repl(
         //a toggle-capable model's footer reads thinking on or off, so take the effective toggle-ness from GattoApp rather than the capability alone
         var status = new StatusInfo(cwd, modelName, roleName, ctx,
             Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), Wild: wild?.On == true,
-            Thinking: thinkingName, Serving: serving, ThinkingToggle: thinkingToggle);
+            Thinking: thinkingName, Serving: serving, ThinkingToggle: thinkingToggle, Cloud: cloud);
         var frame = new InputFrame(surface, theme, roleName, status, _glyphs);
         var focusTaught = false;   //the one-shot teaser for the first collapsed reasoning block, set once it has fired
 
@@ -1515,6 +1520,7 @@ public sealed class Repl(
                 : null;
             var focusHint = pasteHint ?? ComputeFocusHint(painter.Focus.Focused is not null,
                 painter.Model.Items.OfType<ReasoningItem>().Any(r => r.Collapsed), ref focusTaught, _glyphs);
+            var usage = readUsage?.Invoke() ?? (null, null);
             status = status with
             {
                 Model = modelName, Role = roleName, Branch = GitBranch.Read(cwd),
@@ -1522,6 +1528,7 @@ public sealed class Repl(
                 Serving = serving, ThinkingToggle = thinkingToggle, FocusHint = focusHint,
                 //an expired arm yields null at repaint so the chord hint vanishes on its own, and the paste hint wins over it
                 ChordHint = LivePasteHint() ?? chords.Hint,
+                Quota = usage.Quota, Cost = usage.Cost,
             };
             frame = new InputFrame(surface, theme, roleName, status, _glyphs);
             //the retarget takes the gate too, the ticker repaints from its own thread while this runs on the dispatcher's
@@ -1633,6 +1640,7 @@ public sealed class Repl(
 
         //the memory-truncation notice, a system row right after the banner and above any resumed transcript
         if (memoryWarning is not null) renderer.CommitSystem(memoryWarning);
+        if (cloudNotice is not null) renderer.CommitSystem(cloudNotice);
 
         //fire on resumedFrom alone, a compact-then-quit session has no chat turns even though its context was loaded
         if (resumedFrom is not null)

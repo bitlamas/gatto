@@ -99,6 +99,27 @@ public sealed class ExtensionHostTests : IClassFixture<RoslynWarmupFixture>, IDi
         Assert.Empty(diags);
     }
 
+    [Fact]
+    public async Task A_script_contributes_an_endpoint_with_headers_and_a_quota_reader()
+    {
+        WriteFile("hosted.csx", """
+            Gatto.Endpoint("hosted", "https://cloud.example.test/api", context: 4096,
+                thinking: "{\"none\":null,\"high\":{\"reasoning_effort\":\"high\"}}",
+                headers: ct => Task.FromResult<IReadOnlyDictionary<string, string>>(
+                    new Dictionary<string, string> { ["Authorization"] = "Bearer t", ["x-account"] = "a" }),
+                quota: usage => usage.TryGetProperty("left", out var n) ? new QuotaReading(n.GetInt64(), "big") : null);
+            """);
+        var diags = new List<string>();
+
+        var loaded = ExtensionHost.LoadAll(_dir, NewApi(), diags.Add);
+
+        Assert.Empty(diags);
+        var (name, config) = Assert.Single(Assert.Single(loaded).Registrations.Endpoints);
+        Assert.Equal("hosted", name);
+        Assert.Equal("a", (await config.Headers!(CancellationToken.None))["x-account"]);
+        Assert.Equal(new Gatto.Core.Client.QuotaReading(7, "big"), config.Quota!(JsonDocument.Parse("{\"left\":7}").RootElement));
+    }
+
     private sealed class FakeCtx : IToolContext
     {
         public string Cwd => "C:\\cwd";

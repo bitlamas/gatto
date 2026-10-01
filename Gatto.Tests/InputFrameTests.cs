@@ -172,35 +172,29 @@ public class InputFrameTests
     }
 
     [Fact]
-    public void StatusLine_ShowsEffort_Full_WhenThinkingSet()
+    public void StatusLine_ShowsEffort_InParentheses_AfterTheModel()
     {
         var s = Status() with { Thinking = "high" };
-        Assert.Contains("high effort", StripSgr(InputFrame.BuildStatusLine(s, 120, T, glyphs: GlyphSet.Unicode)));
+        Assert.Contains("qwen3.6-35b (high)", StripSgr(InputFrame.BuildStatusLine(s, 120, T, glyphs: GlyphSet.Unicode)));
 
         var off = StripSgr(InputFrame.BuildStatusLine(Status(), 120, T, glyphs: GlyphSet.Unicode));
-        Assert.DoesNotContain("effort", off);
+        Assert.DoesNotContain("(", off);
     }
 
     [Fact]
-    public void StatusLine_ToggleModel_ShowsThinkingOnOff_NotEffort()
+    public void StatusLine_ToggleModel_ReadsReasoningOrNonReasoning_AtEveryWidth()
     {
-        //a toggle model's footer shows thinking off as it is and keeps only the last word at the narrow tier
-        var s = Status() with { Thinking = "thinking off", ThinkingToggle = true };
-        var full = StripSgr(InputFrame.BuildStatusLine(s, 120, T, glyphs: GlyphSet.Unicode));
-        Assert.Contains("thinking off", full);
-        Assert.DoesNotContain("effort", full);
-
-        //the toggle phrase gets no effort suffix at any width, so the test sweeps the whole footer width
+        //a toggle model's footer names the mode in parentheses, never the old thinking on or off words
+        var on = Status() with { Thinking = "thinking on", ThinkingToggle = true };
+        var off = Status() with { Thinking = "thinking off", ThinkingToggle = true };
         for (var w = 40; w <= 120; w += 5)
         {
-            var line = StripSgr(InputFrame.BuildStatusLine(s, w, T, glyphs: GlyphSet.Unicode));
-            Assert.DoesNotContain("thinking off eff", line);
-            Assert.DoesNotContain(" eff", line);
+            var onLine = StripSgr(InputFrame.BuildStatusLine(on, w, T, glyphs: GlyphSet.Unicode));
+            var offLine = StripSgr(InputFrame.BuildStatusLine(off, w, T, glyphs: GlyphSet.Unicode));
+            Assert.Contains("(reasoning)", onLine);
+            Assert.Contains("(non-reasoning)", offLine);
+            Assert.DoesNotContain("thinking", onLine + offLine);
         }
-
-        var narrow = StripSgr(InputFrame.BuildStatusLine(s, 30, T, glyphs: GlyphSet.Unicode));
-        Assert.Contains(" off", narrow);           //at the narrow tier only the last word remains.
-        Assert.DoesNotContain("thinking off", narrow);
     }
 
     [Fact]
@@ -284,9 +278,9 @@ public class InputFrameTests
     }
 
     [Fact]
-    public void StatusLine_Narrow_DropsBranch_MergesTokensAndCtx_OneRow()
+    public void StatusLine_Tight_DropsBranch_KeepsCtx_OneRow()
     {
-        //the narrow tier joins tokens and ctx with a single space in place of the separator
+        //a tight row gives up the branch long before the ctx percent, and stays one line
         var s = Status(window: 1000, used: 340) with
         {
             Cwd = @"C:\Users\user\" + string.Join(@"\", Enumerable.Repeat("deep", 30)),
@@ -295,40 +289,31 @@ public class InputFrameTests
             TokensDown = 20_000,
         };
         var visible = StripSgr(InputFrame.BuildStatusLine(s, width: 52, T, glyphs: GlyphSet.Unicode));
-        Assert.True(UnicodeWidth.Of(visible) <= 52, $"footer {UnicodeWidth.Of(visible)} > 52 — must be one row");
+        Assert.True(UnicodeWidth.Of(visible) <= 52, $"footer {UnicodeWidth.Of(visible)} > 52, must be one row");
         Assert.DoesNotContain("a-very-long", visible);
-        Assert.Contains("↑ 3.8M ↓ 20.0k ctx 34%", visible);
+        Assert.Contains("ctx 34%", visible);
     }
 
     [Fact]
-    public void StatusLine_Tiers_FirstThatFitsWins_GlyphWidthAware()
+    public void StatusLine_Ladder_FirstRungThatFitsWins_GlyphWidthAware()
     {
-        //the cwd holds two wide glyphs (4 cells), so the tier fit measures cells rather than characters
+        //the cwd holds two wide glyphs (4 cells), so the fit measures cells rather than characters
         var s = Status(window: 1000, used: 260) with
         {
             Cwd = @"C:\Users\user\terra 月球\projects\cc-usage-monitor",
             Branch = "main", Thinking = "medium", TokensUp = 2300, TokensDown = 222,
         };
 
-        //at full width the footer shows the full path, full effort wording, spaced tokens, and separate ctx.
+        //at full width the footer shows the full path, the effort, tokens and ctx with its count
         var full = StripSgr(InputFrame.BuildStatusLine(s, width: 120, T, glyphs: GlyphSet.Unicode));
-        Assert.Contains("cc-usage-monitor", full);
-        Assert.Contains("medium effort", full);
+        Assert.Contains(@"terra 月球\projects\cc-usage-monitor", full);
+        Assert.Contains("qwen3.6-35b (medium)", full);
         Assert.Contains("↑ 2.3k ↓ 222", full);
-        Assert.Contains("ctx 26%", full);
-        Assert.True(UnicodeWidth.Of(full) <= 120);
+        Assert.Contains("ctx 26% (260)", full);
 
-        //at mid width the effort shortens to eff and the row stays within 87 columns
-        var mid = StripSgr(InputFrame.BuildStatusLine(s, width: 87, T, glyphs: GlyphSet.Unicode));
-        Assert.Contains("medium eff", mid);
-        Assert.DoesNotContain("medium effort", mid);
-        Assert.True(UnicodeWidth.Of(mid) <= 87, $"mid footer {UnicodeWidth.Of(mid)} > 87");
-
-        //at narrow width the effort becomes med, the branch drops, and the row stays one line
+        //at 52 the branch and the tokens are gone, the effort and the percent stay, and the row fits exactly
         var narrow = StripSgr(InputFrame.BuildStatusLine(s, width: 52, T, glyphs: GlyphSet.Unicode));
-        Assert.True(UnicodeWidth.Of(narrow) <= 52, $"narrow footer {UnicodeWidth.Of(narrow)} > 52");
-        Assert.DoesNotContain("main", narrow);
-        Assert.Contains("med", narrow);
+        Assert.Equal("  /cc-usage-monitor · qwen3.6-35b (medium) · ctx 26%", narrow);
     }
 
     [Theory]

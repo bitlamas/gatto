@@ -1,5 +1,6 @@
 using System.Text.Json;
 using System.Text.RegularExpressions;
+using Gatto.Core.Client;
 using Gatto.Core.Loop;
 using Gatto.Core.Tools;
 using Gatto.Core.Web;
@@ -15,14 +16,19 @@ public sealed class StagedRegistrations
     //the extension's one line of standing policy, null when it declared none (a load with a line and no tools is valid)
     public string? Policy { get; }
 
+    //the endpoints the extension contributes, by the name -e takes
+    public IReadOnlyList<(string Name, EndpointConfig Config)> Endpoints { get; }
+
     public StagedRegistrations(
         IReadOnlyList<(ITool Tool, bool ReadClass)> tools,
         IReadOnlyList<(string Evt, Func<HookPayload, Task> Handler)> hooks,
-        string? policy)
+        string? policy,
+        IReadOnlyList<(string Name, EndpointConfig Config)>? endpoints = null)
     {
         Tools = tools;
         Hooks = hooks;
         Policy = policy;
+        Endpoints = endpoints ?? Array.Empty<(string, EndpointConfig)>();
     }
 }
 
@@ -30,7 +36,7 @@ public sealed class StagedRegistrations
 public sealed class GattoApi
 {
     //bump on any additive change to this surface, the extension cache hash includes the version so a host upgrade recompiles every .csx
-    public const string HostApiVersion = "4";
+    public const string HostApiVersion = "5";
 
     private static readonly Regex NameRx = new("^[a-z0-9_]+$", RegexOptions.Compiled);
     private static readonly string[] ValidEvents = { "tool_call", "tool_result", "message_end", "session_summary" };
@@ -42,6 +48,7 @@ public sealed class GattoApi
     private List<(ITool Tool, bool ReadClass)> _tools = new();
     private List<(string Evt, Func<HookPayload, Task> Handler)> _hooks = new();
     private string? _policy;
+    private List<(string Name, EndpointConfig Config)> _endpoints = new();
 
     public string Home { get; }
     public string Cwd { get; }
@@ -129,6 +136,30 @@ public sealed class GattoApi
         _policy = trimmed;
     }
 
+    //stage an endpoint the user selects with -e, its base URL without the /v1 segment as base_url in gatto.json. headers runs before each request and quota reads the usage object of each response
+    public void Endpoint(
+        string name,
+        string baseUrl,
+        int? context = null,
+        string? thinking = null,
+        Func<CancellationToken, Task<IReadOnlyDictionary<string, string>>>? headers = null,
+        Func<JsonElement, QuotaReading?>? quota = null)
+    {
+        if (name is null || !NameRx.IsMatch(name))
+            throw new InvalidOperationException($"endpoint name '{name}' must match [a-z0-9_]+");
+        if (!Uri.TryCreate(baseUrl, UriKind.Absolute, out var uri)
+            || (uri.Scheme != Uri.UriSchemeHttps && !(uri.Scheme == Uri.UriSchemeHttp && uri.IsLoopback)))
+            throw new InvalidOperationException($"endpoint '{name}' baseUrl must be an absolute https URL, or http on loopback");
+        //the client appends /v1 itself, so a base that already ends in it would post to /v1/v1
+        if (uri.AbsolutePath.TrimEnd('/').EndsWith("/v1", StringComparison.OrdinalIgnoreCase))
+            throw new InvalidOperationException($"endpoint '{name}' baseUrl must not end in /v1, gatto adds it");
+        if (context is <= 0)
+            throw new InvalidOperationException($"endpoint '{name}' context must be a positive token count");
+        if (_endpoints.Any(e => e.Name == name))
+            throw new InvalidOperationException($"endpoint '{name}' is contributed twice by this extension");
+        _endpoints.Add((name, new EndpointConfig(baseUrl, Context: context, Thinking: ParseThinkingMap(name, thinking), Headers: headers, Quota: quota)));
+    }
+
     //start a fresh empty stage for a new extension load, whatever was staged before is dropped
     public void BeginExtension(string name)
     {
@@ -136,16 +167,36 @@ public sealed class GattoApi
         _tools = new();
         _hooks = new();
         _policy = null;
+        _endpoints = new();
     }
 
     //hand back the stage and clear it, so the next load starts empty
     public StagedRegistrations TakeStaged()
     {
-        var staged = new StagedRegistrations(_tools, _hooks, _policy);
+        var staged = new StagedRegistrations(_tools, _hooks, _policy, _endpoints);
         _tools = new();
         _hooks = new();
         _policy = null;
+        _endpoints = new();
         return staged;
+    }
+
+    //the thinking map as gatto.json writes it, one request-body fragment per level and null for a level that sends nothing
+    private static IReadOnlyDictionary<string, JsonElement?>? ParseThinkingMap(string name, string? thinking)
+    {
+        if (thinking is null) return null;
+        JsonDocument doc;
+        try { doc = JsonDocument.Parse(thinking); }
+        catch (JsonException) { throw new InvalidOperationException($"endpoint '{name}' thinking must be a JSON object"); }
+        using (doc)
+        {
+            if (doc.RootElement.ValueKind != JsonValueKind.Object)
+                throw new InvalidOperationException($"endpoint '{name}' thinking must be a JSON object");
+            var map = new Dictionary<string, JsonElement?>(StringComparer.Ordinal);
+            foreach (var p in doc.RootElement.EnumerateObject())
+                map[p.Name] = p.Value.ValueKind == JsonValueKind.Null ? null : p.Value.Clone();
+            return map;
+        }
     }
 
     private static void ValidateName(string name)

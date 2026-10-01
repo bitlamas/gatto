@@ -53,7 +53,7 @@ public sealed class OpenAiCompatClient : IChatClient
             catch (Exception) { } //fail-open, a debug instrument must never end a turn
         }
         msg.Content = new StringContent(body, Encoding.UTF8, "application/json");
-        Authorize(msg);
+        await AuthorizeAsync(msg, ct);
 
         HttpResponseMessage resp;
         try
@@ -85,6 +85,7 @@ public sealed class OpenAiCompatClient : IChatClient
         var pending = new SortedDictionary<int, (string Id, string Name, StringBuilder Args)>();
         string? finishReason = null;
         Usage? usage = null;
+        JsonElement? usageRaw = null;
         string? timings = null;
         var stream = await resp.Content.ReadAsStreamAsync(ct);
 
@@ -138,9 +139,13 @@ public sealed class OpenAiCompatClient : IChatClient
             try
             {
                 if (root.TryGetProperty("usage", out var u) && u.ValueKind == JsonValueKind.Object)
+                {
+                    //the whole object is kept for OnUsage, a provider's limits and cost sit beside the two counts the loop reads
+                    usageRaw = u.Clone();
                     usage = new Usage(
                         u.TryGetProperty("prompt_tokens", out var p) && p.ValueKind == JsonValueKind.Number ? p.GetInt32() : 0,
                         u.TryGetProperty("completion_tokens", out var c) && c.ValueKind == JsonValueKind.Number ? c.GetInt32() : 0);
+                }
 
                 //the server's timings arrive in the same final chunk and stay raw JSON, gatto has no opinion on their shape
                 if (root.TryGetProperty("timings", out var tm) && tm.ValueKind == JsonValueKind.Object)
@@ -218,21 +223,28 @@ public sealed class OpenAiCompatClient : IChatClient
 
         foreach (var (_, acc) in pending)
             yield return new StreamEvent.ToolCallReady(new ToolCall(acc.Id, acc.Name, acc.Args.ToString()));
+        if (usageRaw is { } reported && OnUsage is { } onUsage)
+        {
+            try { onUsage(reported); }
+            catch (Exception) { }   //fail-open, the footer's feed must never end a turn
+        }
         yield return new StreamEvent.Finished(finishReason, usage, timings);
     }
 
-    //add the endpoint's credential to the request, ApiKey first then KeyEnv, and no header at all when neither is set
-    private void Authorize(HttpRequestMessage msg) => EndpointAuth.Apply(msg, endpoint);
+    //add the endpoint's credential to the request, its header callback first, then ApiKey, then KeyEnv, and no header at all when none is set
+    private Task AuthorizeAsync(HttpRequestMessage msg, CancellationToken ct) => EndpointAuth.ApplyAsync(msg, endpoint, endpointName, ct);
 
     public async Task<int?> TryGetContextLengthAsync(CancellationToken ct = default)
     {
+        //a cloud endpoint is not a llama-server and has no /props, its window comes from its configuration
+        if (CloudEndpoint.Is(endpoint)) return null;
         try
         {
             using var cts = CancellationTokenSource.CreateLinkedTokenSource(ct);
             cts.CancelAfter(TimeSpan.FromSeconds(2));
             //authorize this probe too, llama-server's --api-key middleware guards /props and a 401 would read as unknown
             using var probe = new HttpRequestMessage(HttpMethod.Get, $"{baseUrl.TrimEnd('/')}/props");
-            Authorize(probe);
+            await AuthorizeAsync(probe, cts.Token);
             using var resp = await http.SendAsync(probe, cts.Token);
             if (!resp.IsSuccessStatusCode) return null;
             using var doc = JsonDocument.Parse(await resp.Content.ReadAsStringAsync(cts.Token));
@@ -309,6 +321,9 @@ public sealed class OpenAiCompatClient : IChatClient
 
     //raised when an attached image can't be sent, the caller prints a line and the request takes a text stub
     public Action<string>? OnImageUnavailable { get; set; }
+
+    //the raw usage of each finished request, once and at the end, so a run_agent child on this client feeds it too
+    public Action<JsonElement>? OnUsage { get; set; }
 
     private static string BuildBody(ChatRequest request, ImageCache images, Action<string>? onImageUnavailable,
         bool returnProgress)

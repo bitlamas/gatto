@@ -12,7 +12,10 @@ public sealed record StatusInfo(
     string? Branch = null, long TokensUp = 0, long TokensDown = 0, bool Wild = false,
     string? Thinking = null, string? Serving = null, bool ThinkingToggle = false,
     string? FocusHint = null,   //the Ctrl+↑/↓/R keymap, shown while focus is active (or as the first-collapse teaser)
-    string? ChordHint = null);  //the live Esc·Esc / Ctrl+C·Ctrl+C hint, drawn in the top rule's label slot
+    string? ChordHint = null,   //the live Esc·Esc / Ctrl+C·Ctrl+C hint, drawn in the top rule's label slot
+    bool Cloud = false,         //the endpoint is in the cloud, and the mark stands before the model
+    Gatto.Core.Client.QuotaReading? Quota = null,
+    decimal? Cost = null);      //the session sum of what the provider reported as cost, null when it reported none
 
 //the composed rows and the caret's row and column. the Composer field is the layout a mouse gesture must map through, null in an unframed frame
 public sealed record FrameLayout(
@@ -230,22 +233,27 @@ public sealed class InputFrame(ITermSurface surface, Theme theme, string role, S
         return (rendered, visible);
     }
 
-    private enum Tier { Full, Mid, Narrow }
-
     //one footer section: the visible text for the fit and erase math, paired with its themed rendering
     private readonly record struct Part(string Visible, string Rendered);
 
     //the minimum gap in cells between the left cluster and the flush-right focus hint
     private const int HintGap = 2;
 
-    //one physical row at any width: the widest tier that fits wins, below Narrow the row truncates. the focus hint sits flush-right and is shed first
+    //the rungs of the shed ladder after the hint, each gives up one more thing than the one before
+    private const int DropCtxCount = 1, ShortBranch = 2, DropBranch = 3, FolderLast = 4, ModelMid = 5,
+        DropTokens = 6, FolderCapped = 7, ModelShort = 8;
+
+    //quota warns at or below this share of the total, and only when the provider reported a total
+    private const int QuotaWarnPercent = 20;
+
+    //one physical row at any width: the hint goes first, then one rung at a time until the row fits
     private static (string rendered, string visible) StatusCore(StatusInfo s, int width, Theme theme,
         GlyphSet? glyphs)
     {
         var g = glyphs ?? GlyphSet.Unicode;
-        var full = Assemble(s, theme, Tier.Full, g);
+        var full = Assemble(s, theme, 0, g);
 
-        //the hint is only tried against the Full core: once the core itself needs elision the hint is already gone
+        //the hint is only tried against the whole core, once the core needs a rung the hint is already gone
         if (s.FocusHint is not null && width > 0)
         {
             var (coreR, coreV) = Render(full, theme, g);
@@ -255,74 +263,70 @@ public sealed class InputFrame(ITermSurface surface, Theme theme, string role, S
                 var spaces = new string(' ', HintGap + pad);   //pads the row so the hint ends at the right edge
                 return (coreR + spaces + theme.Paint(s.FocusHint, Theme.Dim), coreV + spaces + s.FocusHint);
             }
-            //the hint doesn't fit, so drop it and take the core through the ladder below
         }
 
-        if (width <= 0 || VisWidth(full, g) <= width) return Render(full, theme, g);   //a non-positive width skips truncation
+        if (width <= 0) return Render(full, theme, g);   //a non-positive width skips the ladder
 
-        var mid = Assemble(s, theme, Tier.Mid, g);
-        if (VisWidth(mid, g) <= width) return Render(mid, theme, g);
-
-        var (r, v) = Render(Assemble(s, theme, Tier.Narrow, g), theme, g);
-        if (UnicodeWidth.Of(v) > width)   //below Narrow the row truncates rather than wrapping, the same as ChromeTrunc
+        for (var rung = 0; rung <= ModelShort; rung++)
         {
-            v = TermText.TruncateCells(v, width, glyphs: g);
-            r = TermText.TruncateCells(r, width, glyphs: g);
+            var parts = rung == 0 ? full : Assemble(s, theme, rung, g);
+            if (VisWidth(parts, g) <= width) return Render(parts, theme, g);
         }
+
+        //past the last rung the row is cut rather than wrapped, the same as ChromeTrunc
+        var (r, v) = Render(Assemble(s, theme, ModelShort, g), theme, g);
+        v = TermText.TruncateCells(v, width, glyphs: g);
+        r = TermText.TruncateCells(r, width, glyphs: g);
         return (r, v);
     }
 
-    //the footer's sections for a tier: an absent part contributes nothing. in Narrow the branch goes and tokens and ctx merge with one space
-    private static List<Part> Assemble(StatusInfo s, Theme theme, Tier tier, GlyphSet g)
+    //the footer's sections at one rung of the ladder. the mark, the effort, ctx and the quota or cost are never shed by a rung
+    private static List<Part> Assemble(StatusInfo s, Theme theme, int rung, GlyphSet g)
     {
         var parts = new List<Part>();
 
-        //the focus hint is not assembled here, StatusCore adds it flush-right and drops it first
-        var folder = FolderText(s, tier, g);
+        var folder = FolderText(s, rung, g);
         parts.Add(new Part(folder, theme.Paint(folder, Theme.Dim)));
 
-        if (s.Branch is not null && tier != Tier.Narrow)
+        if (s.Branch is not null && rung < DropBranch)
         {
-            var branch = BranchText(s.Branch, tier, g);
+            var branch = rung >= ShortBranch ? ShortBranchText(s.Branch, g) : s.Branch;
             parts.Add(new Part(branch, theme.Paint(branch, Theme.Dim)));
         }
 
-        //the serving chip: the armed model and the loaded weights disagree. the chip stays, so a long session still sees which model it runs
-        var model = ModelText(s.Model, tier, g);
-        var modelVis = s.Serving is null ? model : model + $" {g.Warn} serving {s.Serving}";
-        var modelRen = theme.Paint(model, Theme.Dim)
-            + (s.Serving is null ? "" : theme.Paint($" {g.Warn} serving {s.Serving}", Theme.Warn));
-        parts.Add(new Part(modelVis, modelRen));
+        //the serving chip rides on the model part and is never shed, so a long session still sees which model it runs
+        var effort = EffortWord(s.Thinking, s.ThinkingToggle);
+        var model = (s.Cloud ? g.Cloud + " " : "") + ModelText(s.Model, rung, g)
+            + (effort is null ? "" : $" ({effort})");
+        var chip = s.Serving is null ? "" : $" {g.Warn} serving {s.Serving}";
+        parts.Add(new Part(model + chip,
+            theme.Paint(model, Theme.Dim) + (chip.Length == 0 ? "" : theme.Paint(chip, Theme.Warn))));
 
-        if (s.Thinking is not null)
+        if (rung < DropTokens && (s.TokensUp != 0 || s.TokensDown != 0))
         {
-            var effort = EffortText(s.Thinking, tier, s.ThinkingToggle);
-            parts.Add(new Part(effort, theme.Paint(effort, Theme.Dim)));
+            var tokens = $"{g.Up} {KFormat(s.TokensUp)} {g.Down} {KFormat(s.TokensDown)}";
+            parts.Add(new Part(tokens, theme.Paint(tokens, Theme.Dim)));
         }
 
-        var tokens = s.TokensUp != 0 || s.TokensDown != 0
-            ? $"{g.Up} {KFormat(s.TokensUp)} {g.Down} {KFormat(s.TokensDown)}" : null;
-        var pct = s.Ctx?.Percent;
-        //the token count appears at the wider tiers, a percentage alone says little in a large window. the narrow tier drops it first, the percent has to survive
-        var ctxTokens = tier == Tier.Narrow ? null : s.Ctx?.Tokens;
         //keep the count in parentheses, the · separator would make it read as a second section
-        var ctx = pct is int p
-            ? ctxTokens is int t ? $"ctx {p}% ({KFormat(t)})" : $"ctx {p}%"
-            : null;
-        var hot = pct >= 80;
-        var ctxColor = hot ? Theme.Warn : Theme.Dim;
-
-        if (tier == Tier.Narrow && tokens is not null && ctx is not null)
+        if (s.Ctx?.Percent is int p)
         {
-            //tokens and ctx join with one space rather than a · separator
-            var vis = tokens + " " + ctx;
-            var ren = theme.Paint(tokens, Theme.Dim) + " " + theme.Paint(ctx, ctxColor);
-            parts.Add(new Part(vis, ren));
+            var count = rung < DropCtxCount ? s.Ctx.Tokens : null;
+            var ctx = count is int t ? $"ctx {p}% ({KFormat(t)})" : $"ctx {p}%";
+            parts.Add(new Part(ctx, theme.Paint(ctx, p >= 80 ? Theme.Warn : Theme.Dim)));
         }
-        else
+
+        //the provider supplies the numbers and core writes the words, a quota turns warn only against a reported total
+        if (s.Quota is { } q)
         {
-            if (tokens is not null) parts.Add(new Part(tokens, theme.Paint(tokens, Theme.Dim)));
-            if (ctx is not null) parts.Add(new Part(ctx, theme.Paint(ctx, ctxColor)));
+            var quota = $"{q.Label} {q.Remaining.ToString(CultureInfo.InvariantCulture)} left";
+            var low = q.Total is long total and > 0 && q.Remaining * 100 <= total * QuotaWarnPercent;
+            parts.Add(new Part(quota, theme.Paint(quota, low ? Theme.Warn : Theme.Dim)));
+        }
+        if (s.Cost is decimal cost)
+        {
+            var money = "$" + cost.ToString("0.00", CultureInfo.InvariantCulture);
+            parts.Add(new Part(money, theme.Paint(money, Theme.Dim)));
         }
 
         return parts;
@@ -350,49 +354,37 @@ public sealed class InputFrame(ITermSurface surface, Theme theme, string role, S
         return (rendered.ToString(), visible.ToString());
     }
 
-    //tier-specific section text
+    //rung-specific section text
 
-    //the full tier shows the home-abbreviated path, the others show / plus the last segment, head-truncated to 20 or 12 cells
-    private static string FolderText(StatusInfo s, Tier tier, GlyphSet g)
+    //the home-abbreviated path, then / plus the last segment, then that segment head-truncated to 12 cells
+    private static string FolderText(StatusInfo s, int rung, GlyphSet g)
     {
-        if (tier == Tier.Full) return AbbreviateHome(s.Cwd, s.UserProfile);
+        if (rung < FolderLast) return AbbreviateHome(s.Cwd, s.UserProfile);
         var seg = "/" + LastSegment(s.Cwd);
-        return HeadTruncate(seg, tier == Tier.Mid ? 20 : 12, g);
+        return rung < FolderCapped ? seg : HeadTruncate(seg, 12, g);
     }
 
-    //verbatim until 6 cells, then an ellipsis plus the last 5 chars. the narrow tier never calls this
-    private static string BranchText(string branch, Tier tier, GlyphSet g)
-    {
-        if (tier == Tier.Full || UnicodeWidth.Of(branch) <= 6) return branch;
-        return g.Ellipsis + TailCells(branch, 5);
-    }
+    //verbatim until 6 cells, then an ellipsis plus the last 5 chars
+    private static string ShortBranchText(string branch, GlyphSet g) =>
+        UnicodeWidth.Of(branch) <= 6 ? branch : g.Ellipsis + TailCells(branch, 5);
 
-    //verbatim on the full tier, 15 cells with a middle ellipsis on Mid, 6 cells with a terminal one on Narrow
-    private static string ModelText(string model, Tier tier, GlyphSet g)
+    //verbatim, then 15 cells with a middle ellipsis, then 6 cells with a terminal one. the mark and the effort are not part of the name
+    private static string ModelText(string model, int rung, GlyphSet g)
     {
-        if (tier == Tier.Full) return model;
-        if (tier == Tier.Mid)
+        if (rung < ModelMid) return model;
+        if (rung < ModelShort)
             return UnicodeWidth.Of(model) <= 15
                 ? model
                 : HeadCells(model, 7) + g.Ellipsis + TailCells(model, 7);
         return HeadTruncate(model, 6, g);
     }
 
-    //the level plus effort on the full tier, plus eff at Mid, the first 3 cells at Narrow. the toggle phrase shows whole, or as its last word at Narrow
-    private static string EffortText(string thinking, Tier tier, bool toggle)
+    //the word in parentheses after the model: a toggle reads reasoning or non-reasoning, a level its name, and a model with no switch gets none
+    internal static string? EffortWord(string? thinking, bool toggle)
     {
-        if (toggle)
-        {
-            if (tier != Tier.Narrow) return thinking;
-            var sp = thinking.LastIndexOf(' ');
-            return sp >= 0 ? thinking[(sp + 1)..] : thinking;
-        }
-        return tier switch
-        {
-            Tier.Full => thinking + " effort",
-            Tier.Mid => thinking + " eff",
-            _ => HeadCells(thinking, 3),
-        };
+        if (thinking is null) return null;
+        if (toggle) return thinking.EndsWith(" on", StringComparison.Ordinal) ? "reasoning" : "non-reasoning";
+        return thinking == "none" ? "non-reasoning" : thinking;
     }
 
     //the last path component after the final separator, with a path that has none returned whole

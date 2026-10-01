@@ -36,7 +36,7 @@ public static class ExtensionHost
     {
         "System", "System.Collections.Generic", "System.Linq", "System.Text.Json",
         "System.Threading", "System.Threading.Tasks",
-        "Gatto.Core.Tools", "Gatto.Core.Loop", "Gatto.Core.Web",
+        "Gatto.Core.Tools", "Gatto.Core.Loop", "Gatto.Core.Web", "Gatto.Core.Client",
     };
 
     //public API
@@ -83,6 +83,39 @@ public static class ExtensionHost
         }
 
         return loaded;
+    }
+
+    //decide which loaded extensions stay before any endpoint is resolved, so a launch never builds its client on an extension that is skipped later. a clash skips the whole extension
+    public static IReadOnlyList<LoadedExtension> Survivors(
+        IReadOnlyList<LoadedExtension> loaded, IEnumerable<string> reservedTools, IEnumerable<string> reservedEndpoints,
+        Action<string> diagnostic)
+    {
+        var tools = new HashSet<string>(reservedTools, StringComparer.Ordinal);
+        var endpoints = new HashSet<string>(reservedEndpoints, StringComparer.Ordinal) { "local" };
+        var kept = new List<LoadedExtension>();
+        foreach (var ext in loaded)
+        {
+            var staged = ext.Registrations;
+            var within = new HashSet<string>(StringComparer.Ordinal);
+            string? clash = null;
+            foreach (var (tool, _) in staged.Tools)
+            {
+                if (tools.Contains(tool.Name)) { clash = $"tool '{tool.Name}' collides with an already-registered tool"; break; }
+                if (!within.Add(tool.Name)) { clash = $"tool '{tool.Name}' is registered twice by this extension"; break; }
+            }
+            if (clash is null)
+                foreach (var (name, _) in staged.Endpoints)
+                    if (endpoints.Contains(name)) { clash = $"endpoint '{name}' collides with an endpoint that already exists"; break; }
+            if (clash is not null)
+            {
+                diagnostic($"extension '{ext.Name}': {clash}, extension skipped");
+                continue;
+            }
+            foreach (var (tool, _) in staged.Tools) tools.Add(tool.Name);
+            foreach (var (name, _) in staged.Endpoints) endpoints.Add(name);
+            kept.Add(ext);
+        }
+        return kept;
     }
 
     //compile only, for doctor, and return one line per error, an empty list means everything compiles

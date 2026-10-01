@@ -17,7 +17,8 @@ public sealed record BaselineSources(
 
 public sealed record SessionBaseline(
     int Seq, string Role, string Model, string ReasoningHistory, ThinkingMark Thinking,
-    IReadOnlyList<ToolMark> Tools, BaselineSources Sources);
+    IReadOnlyList<ToolMark> Tools, BaselineSources Sources,
+    string? Endpoint = null);   //the endpoint name the session ran on, null only in a record written before the field existed
 
 //a composed system text and the baseline it came from, built only in full, since a dropped baseline makes the next resume reset
 public sealed record ComposedSystem(string Text, SessionBaseline? Baseline);

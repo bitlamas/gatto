@@ -222,6 +222,49 @@ public static class GattoApp
         //declared here so both closures below see the filled list, and it must be read through the variable rather than captured
         var policyLines = new List<(string Extension, string Line)>();
 
+        //stderr until the rich loop rebinds it to a ♯ system line, so a mid-session diagnostic never corrupts the alt-screen frame
+        var warn = new Gatto.Core.WarningSink(m => Console.Error.WriteLine($"! {m}"));
+        //null until the prompters are built below, so an extension that asks at load time gets the no-interactive-input error
+        IUserPrompter? prompter = null;
+        var sessions = new SessionStore(home, cwd);
+
+        //extensions
+
+        //loaded before the role resolves, since an extension can contribute the endpoint the launch names. a throwing script fails that extension alone
+        var extensionsDir = Path.Combine(home, "extensions");
+        Action<string> extDiag = m => warn.Warn($"extension: {m}");
+        //the configured searxng origin is the only SSRF exemption config can grant, exactly that scheme, host and port
+        var allowedOrigins = config.Search.SearxngUrl is { } sxUrl
+            ? new[] { UrlGuard.Origin(new Uri(sxUrl)) }
+            : null;
+        var (extApi, ledger, _) = ExtensionHost.BuildApi(   //scripts get the guarded fetch and this session's citation ledger, which stays in memory until the session file exists
+            home, cwd,
+            ledgerPath: () => sessions.CurrentPath is { } sp
+                ? Path.Combine(Path.GetDirectoryName(sp)!, Path.GetFileNameWithoutExtension(sp) + ".ledger.jsonl")
+                : null,
+            prompter: () => prompter,
+            log: extDiag,
+            configSection: SectionReader(config.Raw),
+            allowedOrigins: allowedOrigins);
+        //every name a built-in registers below, so an extension that would collide is skipped here and never lends the launch its endpoint
+        var reservedTools = new List<string>
+        {
+            new ReadFileTool().Name, new WriteFileTool().Name, new EditFileTool().Name,
+            new GlobTool().Name, new GrepTool().Name, new ShellTool().Name, "task_restate",
+        };
+        if (memoryOn) reservedTools.AddRange(new[] { "memory_write", "recall_memory" });
+        var loadedExtensions = ExtensionHost.Survivors(
+            ExtensionHost.LoadAll(extensionsDir, extApi, extDiag), reservedTools, config.Endpoints.Keys, extDiag);
+        //the table every resolution reads: the endpoints of gatto.json plus the ones the surviving extensions contributed
+        var endpoints = new Dictionary<string, EndpointConfig>(config.Endpoints, StringComparer.Ordinal);
+        var endpointOwner = new Dictionary<string, string>(StringComparer.Ordinal);
+        foreach (var ext in loadedExtensions)
+            foreach (var (epName, epConfig) in ext.Registrations.Endpoints)
+            {
+                endpoints[epName] = epConfig;
+                endpointOwner[epName] = ext.Name;
+            }
+
         //one resolution of role, endpoint, model and composition, run at launch and by /role, which fails before any client is built
         RoleResolution ResolveRole(string roleArg)
         {
@@ -238,9 +281,9 @@ public static class GattoApp
 
             //the -e endpoint is read here too, so a /role with no endpoint of its own keeps the launch one
             var endpointName = args.Endpoint ?? role.Endpoint ?? config.DefaultEndpoint;
-            if (!config.Endpoints.TryGetValue(endpointName, out var ep))
+            if (!endpoints.TryGetValue(endpointName, out var ep))
                 throw new GattoConfigException(args.Endpoint is not null
-                    ? $"-e names endpoint '{endpointName}', which is not defined in gatto.json. Endpoints: {string.Join(", ", config.Endpoints.Keys.OrderBy(k => k, StringComparer.Ordinal))}"
+                    ? $"-e names endpoint '{endpointName}', which is not defined in gatto.json. Endpoints: {string.Join(", ", endpoints.Keys.OrderBy(k => k, StringComparer.Ordinal))}"
                     : $"role '{role.Name}' targets endpoint '{endpointName}', which is not defined in gatto.json");
 
             //the endpoint's thinking-map keys are parsed here, so a bad key fails the launch with the endpoint named
@@ -310,6 +353,16 @@ public static class GattoApp
         RoleResolution launchRes;
         try { launchRes = ResolveRole(args.Role); }
         catch (GattoConfigException ex) { Console.Error.WriteLine(ex.Message); return 2; }
+        //a session continues on the endpoint it was recorded on, checked before anything starts. a record with no endpoint is from before the field and gets no check
+        if (args.Continue && (continueById ?? sessions.LatestPathForCwd()) is { } recordedPath
+            && SessionStore.LoadBaseline(recordedPath)?.Endpoint is { } recordedEndpoint
+            && recordedEndpoint != launchRes.EndpointName)
+        {
+            Console.Error.WriteLine(endpoints.ContainsKey(recordedEndpoint)
+                ? $"this session was recorded on endpoint '{recordedEndpoint}' and the launch resolves to '{launchRes.EndpointName}'. Add -e {recordedEndpoint} to continue it"
+                : $"this session was recorded on endpoint '{recordedEndpoint}', which no longer exists. Endpoints: {string.Join(", ", endpoints.Keys.OrderBy(k => k, StringComparer.Ordinal))}");
+            return 2;
+        }
         //set once from the launch resolution, so a refused /role and a later /effort cannot change what shell children read
         Environment.SetEnvironmentVariable("GATTO_ENDPOINT", launchRes.EndpointName);
         Environment.SetEnvironmentVariable("GATTO_MODEL", launchRes.ModelString);
@@ -335,6 +388,8 @@ public static class GattoApp
         var lastComposedSources = comp.Sources;
         //the base URL the client below is built for, /role refuses any switch that resolves to another one
         var launchBaseUrl = endpoint.BaseUrl;
+        //a cloud endpoint is no llama-server, so nothing below sends it a /props probe
+        var cloud = CloudEndpoint.Is(endpoint);
 
         var tools = new ToolRegistry();
         tools.Register(new ReadFileTool());
@@ -350,9 +405,6 @@ public static class GattoApp
             tools.Register(new RecallMemoryTool());
         }
 
-        //stderr until the rich loop rebinds it to a ♯ system line, so a mid-session diagnostic never corrupts the alt-screen frame
-        var warn = new Gatto.Core.WarningSink(m => Console.Error.WriteLine($"! {m}"));
-
         var hooks = new HookBus();
         hooks.OnHandlerError += (evt, ex) => warn.Warn($"hook error ({evt}): {ex.Message}");
         //the theme is resolved on the interactive REPL path only, so a -p run stays byte-pure and never sends the background query
@@ -360,7 +412,6 @@ public static class GattoApp
         //hoisted so the launch notices render through the themed layer, and the prompters share it so the background probe runs once
         Theme? launchTheme = null;
         IPermissionPrompter? permPrompter;
-        IUserPrompter? prompter;
 
         //the launch asker must be pump-less, the pump's reader thread does not exist until Repl.RunRichAsync starts it
         IWizardPrompter? launchAsker = null;
@@ -458,6 +509,9 @@ public static class GattoApp
             returnProgress: endpointName == "local" && launchBaseUrl is not null);
         //a dropped attached image must warn the user, the sink paints a ♯ row in the REPL and stderr for -p
         client.OnImageUnavailable = m => warn.Warn(m);
+        //every request on this client feeds the footer's cost and quota, run_agent children included since they share it
+        var usageMeter = new UsageMeter(endpoint.Quota);
+        client.OnUsage = u => _ = usageMeter.Record(u);
         //a separate client for the probes, untimed like every client, and each probe holds a 2 second deadline of its own
         var probeHttp = new HttpClient(new SocketsHttpHandler { ConnectTimeout = TimeSpan.FromSeconds(2) })
             { Timeout = Timeout.InfiniteTimeSpan };
@@ -465,7 +519,7 @@ public static class GattoApp
         //the model's window on a local endpoint, the endpoint's on a cloud one, and no enforcement when neither is configured
         var contextBudget = model is not null ? model.Profile.Context : endpoint.Context;
         //cross-check /props at every launch and let the live answer win in both directions (it does not run when a model is present)
-        if (model is null && launchBaseUrl is not null)
+        if (model is null && launchBaseUrl is not null && !cloud)
         {
             var probedCtx = await ServeProbe.ProbeAsync(probeHttp, launchBaseUrl, CancellationToken.None, endpoint.ApiKey, probeDeadline);
             var resolved = ConnectContext.Resolve(contextBudget, probedCtx?.NCtx);
@@ -499,7 +553,6 @@ public static class GattoApp
             warn.Warn(ctxWarn);   //a null budget turns off elision and compaction, and a /model cannot reach null since a profile's context is an int
         //a model property, so a cloud endpoint with no model takes the default
         var reasoningHistory = model?.Profile.ReasoningHistory ?? ReasoningHistory.All;
-        var sessions = new SessionStore(home, cwd);
 
         //launch probe
 
@@ -578,7 +631,7 @@ public static class GattoApp
         //a closure so the Repl never references Gatto.Roles, capturing the same mutable model and base URL so a /model switch is picked up
         Func<ServingProbe> probeServing = () =>
         {
-            if (launchBaseUrl is null) return new ServingProbe(null, null);
+            if (launchBaseUrl is null || cloud) return new ServingProbe(null, null);
             //a connect session reads only the server's vision bit, since with no model there is nothing to compare
             if (model is null)
             {
@@ -594,27 +647,16 @@ public static class GattoApp
                 named?.OnTheShelf ?? false);
         };
 
-        //extensions
+        //extension commit
 
-        //loaded after every built-in and before the loop, and a name collision or a throwing script fails that extension alone
-        var extensionsDir = Path.Combine(home, "extensions");
-        Action<string> extDiag = m => warn.Warn($"extension: {m}");
-        //the configured searxng origin is the only SSRF exemption config can grant, exactly that scheme, host and port
-        var allowedOrigins = config.Search.SearxngUrl is { } sxUrl
-            ? new[] { UrlGuard.Origin(new Uri(sxUrl)) }
-            : null;
-        var (extApi, ledger, _) = ExtensionHost.BuildApi(   //scripts get the guarded fetch and this session's citation ledger, which stays in memory until the session file exists
-            home, cwd,
-            ledgerPath: () => sessions.CurrentPath is { } sp
-                ? Path.Combine(Path.GetDirectoryName(sp)!, Path.GetFileNameWithoutExtension(sp) + ".ledger.jsonl")
-                : null,
-            prompter: () => prompter,
-            log: extDiag,
-            configSection: SectionReader(config.Raw),
-            allowedOrigins: allowedOrigins);
-        var loadedExtensions = ExtensionHost.LoadAll(extensionsDir, extApi, extDiag);
         //every extension that committed, in discovery order, and a tool-less one is a legal load with no tool row
         var (committedExt, committedExtensions) = ExtensionHost.Commit(loadedExtensions, tools, hooks, extDiag);
+        //the early pass should have skipped it already, and a launch must not run on the endpoint of an extension that did not commit
+        if (endpointOwner.TryGetValue(endpointName, out var owner) && !committedExtensions.Any(e => e.Name == owner))
+        {
+            Console.Error.WriteLine($"endpoint '{endpointName}' comes from extension '{owner}', which was skipped");
+            return 2;
+        }
         //a read-class claim counts only from a vetted shipped extension, and an unvetted one still prompts
         ExtensionHost.GrantVettedReadClass(committedExt, ShippedExtensions.IsVetted, gate.AllowReadClass);   //keyed on the owning extension, so a colliding tool from an unvetted one gets nothing
 
@@ -673,7 +715,7 @@ public static class GattoApp
         ThinkingMark ThinkingOf(Composition c) => new(c.Thinking.ToString().ToLowerInvariant(), c.ThinkingBody?.GetRawText());
         //the thinking is the one in force, which the effort switch and the toggle move away from what a fresh composition picks
         SessionBaseline NextBaseline(BaselineSources sources) => new(++baselineSeq, role.Name, modelString,
-            reasoningHistory == ReasoningHistory.None ? "none" : "all", ThinkingOf(comp), BaselineMarks.ToolsOf(tools.Specs()), sources);
+            reasoningHistory == ReasoningHistory.None ? "none" : "all", ThinkingOf(comp), BaselineMarks.ToolsOf(tools.Specs()), sources, endpointName);
 
         //hoisted above switchRole and switchModel, so their rebuilds read the toggle state and the footer keeps the capability
         var reasoningMap = model?.Profile.Thinking ?? endpoint.Thinking;
@@ -1189,6 +1231,16 @@ public static class GattoApp
         var policyRows = policyLines.ToList();
         Func<IReadOnlyList<(string Extension, string Line)>> listPolicy = () => policyRows;
 
+        //said the first time this home runs an interactive session on a cloud endpoint, and the marker file is what makes it once
+        string? cloudNotice = null;
+        var cloudMarker = Path.Combine(home, "cloud-notice-shown");
+        if (cloud && args.Prompt is null && !File.Exists(cloudMarker))
+        {
+            cloudNotice = CloudEndpoint.Notice(modelString);
+            try { File.WriteAllText(cloudMarker, ""); }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException) { }   //a home that cannot take the marker says the notice again next launch
+        }
+
         var slotsHttp = new HttpClient(new SocketsHttpHandler { ConnectTimeout = TimeSpan.FromSeconds(2) })   //untimed, since a timed client aborts each poll and the ticker's own ceiling is the deadline, and ConnectTimeout still fails fast
             { Timeout = System.Threading.Timeout.InfiniteTimeSpan };
         Gatto.Core.Client.ISlotsReader? slotsReader = endpointName == "local" && launchBaseUrl is not null   //a local llama-server only, the fallback for a server that streams no progress
@@ -1198,7 +1250,7 @@ public static class GattoApp
 
         //the hint reads the same two locals as the reuse line, so the two sentences cannot disagree about what is loaded
         var repl = new Gatto.Repl.Repl(loop, convo, role.Name, modelString, sessions, client, endpoint.Context, contextBudget, cwd, recomposeSystem, toggleAuto, switchRole, resetGrounding, wildState, on => permissions.SetWild(on, persist: true), hooks, themeMode, subagentProgress, resumedFrom: resumedFrom, reasoning: config.ReasoningMode, thinkingName: initialThinkingName, setEffort: setEffort, listEfforts: listEfforts, glyphs: glyphs, purrSet: Gatto.Repl.Render.PurrFrames.RandomFromPool, versionLine: CommandBanner.DottedVersion(Gatto.Core.GattoVersion.String, Gatto.Core.GattoVersion.Build ?? "", CommandBanner.IsDevBuild(), glyphs), pump: pump, chrome: chrome, switchModel: switchModel, setDefault: id => ModelSwitch.Persist(home, id),   //the role name as ResolveRole cased it from disk, which the banner and the status line key on
-                    launchServing: launchServing, probeServing: probeServing, listModels: listModels, picker: replPicker, slotsReader: slotsReader, warn: warn, altScreen: config.AltScreen, dumpOnExit: config.DumpOnExit, thinkingIsToggle: thinkCap == ThinkCapability.Toggle, thinkingIsUnavailable: ThinkingUnavailable(), mouseEnabled: config.Mouse && config.AltScreen && pump is not null, wheelLines: config.WheelLines, copyOnSelect: config.CopyOnSelect, resumedPath: continuePath, resumeLine: resumeLine, autoCompact: config.AutoCompact, permissions: permissions, listTools: listTools, listPolicy: listPolicy, memoryWarning: launchRes.MemoryTruncatedLines > 0 ? MemoryTruncationWarning(launchRes.MemoryTruncatedLines) : null, piggyback: piggyback, turnAbort: turnAbort,
+                    launchServing: launchServing, probeServing: probeServing, listModels: listModels, picker: replPicker, slotsReader: slotsReader, warn: warn, altScreen: config.AltScreen, dumpOnExit: config.DumpOnExit, thinkingIsToggle: thinkCap == ThinkCapability.Toggle, thinkingIsUnavailable: ThinkingUnavailable(), mouseEnabled: config.Mouse && config.AltScreen && pump is not null, wheelLines: config.WheelLines, copyOnSelect: config.CopyOnSelect, resumedPath: continuePath, resumeLine: resumeLine, autoCompact: config.AutoCompact, permissions: permissions, listTools: listTools, listPolicy: listPolicy, memoryWarning: launchRes.MemoryTruncatedLines > 0 ? MemoryTruncationWarning(launchRes.MemoryTruncatedLines) : null, cloudNotice: cloudNotice, cloud: cloud, readUsage: usageMeter.Read, piggyback: piggyback, turnAbort: turnAbort,
             //a session with no model talks to a server gatto does not manage, so the notice says that instead of offering a model fix
             unmanagedNotice: model is null ? UnmanagedSession.ModelUnavailable(launchBaseUrl) : null,
             unmanagedVisionNotice: model is null ? UnmanagedSession.VisionUnavailable(launchBaseUrl) : null,

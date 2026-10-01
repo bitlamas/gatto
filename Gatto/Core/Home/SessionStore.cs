@@ -220,6 +220,7 @@ public sealed class SessionStore(string homePath, string cwd)
         foreach (var t in b.Tools) { w.WriteStartObject(); w.WriteString("name", t.Name); w.WriteString("sha256", t.Sha256); w.WriteEndObject(); }
         w.WriteEndArray();
         WriteSources(w, b.Sources);
+        if (b.Endpoint is not null) w.WriteString("endpoint", b.Endpoint);
         w.WriteEndObject();
     }
 
@@ -252,7 +253,8 @@ public sealed class SessionStore(string homePath, string cwd)
             var tools = b.GetProperty("tools").EnumerateArray()
                 .Select(t => new ToolMark(t.GetProperty("name").GetString()!, t.GetProperty("sha256").GetString()!)).ToList();
             return new SessionBaseline(b.GetProperty("seq").GetInt32(), b.GetProperty("role").GetString()!, b.GetProperty("model").GetString()!,
-                b.GetProperty("reasoning_history").GetString()!, thinking, tools, ReadSources(b.GetProperty("sources")));
+                b.GetProperty("reasoning_history").GetString()!, thinking, tools, ReadSources(b.GetProperty("sources")),
+                b.TryGetProperty("endpoint", out var ep) && ep.ValueKind == JsonValueKind.String ? ep.GetString() : null);   //absent in a record from before the field, and a required read would reset every such session
         }
         catch (Exception e) when (e is KeyNotFoundException or InvalidOperationException or FormatException) { return null; }
     }

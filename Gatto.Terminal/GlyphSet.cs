@@ -65,6 +65,7 @@ public sealed class GlyphSet
         Bar = "\u258f", Sharp = "\u266f", Angle = "\u203a", Approx = "\u2248", Elbow = "\u23bf",
         HeavyRule = "\u2501", Caret = "\u25be", Triangle = "\u25b8", Bullet = "\u2022",
         AtMost = "\u2264", Sum = "\u03a3", Ring = "\u25cb", Times = "\u00d7", Range = "\u2013",
+        Cloud = "\U0001F6C8",
         Box = new("\u250c", "\u252c", "\u2510", "\u251c", "\u253c", "\u2524",
                   "\u2514", "\u2534", "\u2518", "\u2502"),
         Wild = "\u2265^\u2022-\u2022^\u2264",
@@ -83,6 +84,7 @@ public sealed class GlyphSet
         Bar = "|", Sharp = "#", Angle = ">", Approx = "~", Elbow = "`-",
         HeavyRule = "=", Caret = "v", Triangle = ">", Bullet = "*",
         AtMost = "<=", Sum = "sum", Ring = "o", Times = "x", Range = "-",
+        Cloud = "@",
         Box = new("+", "+", "+", "+", "+", "+", "+", "+", "+", "|"),
         Wild = AsciiWild,
     };
@@ -208,6 +210,9 @@ public sealed class GlyphSet
 
     //the separator inside a range. its own member even though it draws identically to NotRun, typography and status are different things
     public required string Range { get; init; }
+
+    //before the model name when the endpoint is in the cloud, the one sign of it on the footer
+    public required string Cloud { get; init; }
 
     //the table frame, see BoxSet
     public required BoxSet Box { get; init; }
