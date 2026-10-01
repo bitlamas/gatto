@@ -191,6 +191,24 @@ public sealed class ContributedEndpointTests
     }
 
     [Fact]
-    public void The_notice_names_the_model() =>
-        Assert.StartsWith("big-model runs in the cloud", CloudEndpoint.Notice("big-model"), StringComparison.Ordinal);
+    public void The_notice_opens_with_the_mark_and_the_model() =>
+        Assert.StartsWith("@ big-model is a cloud model: ", CloudEndpoint.Notice("@", "big-model"), StringComparison.Ordinal);
+
+    [Fact]
+    public void An_endpoint_keeps_its_model_names_in_order()
+    {
+        var ext = Ext("acme", api => api.Endpoint("acme", "https://cloud.example.test/api", models: new[] { "small", "big" }));
+        Assert.Equal(new[] { "small", "big" }, Assert.Single(ext.Registrations.Endpoints).Config.Models);
+    }
+
+    [Theory]
+    [InlineData()]
+    [InlineData("a", "a")]
+    [InlineData("a", " ")]
+    public void A_model_list_that_is_empty_or_repeats_or_holds_a_blank_fails_the_load(params string[] models)
+    {
+        var api = ExtensionHostTests.NewApi(out _, out _);
+        api.BeginExtension("x");
+        Assert.Throws<InvalidOperationException>(() => api.Endpoint("acme", "https://cloud.example.test/api", models: models));
+    }
 }

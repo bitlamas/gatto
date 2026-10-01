@@ -7,8 +7,8 @@ namespace Gatto.Core.Client;
 public static class CloudEndpoint
 {
     //what the user is told once per home, with the model the session runs
-    public static string Notice(string model) =>
-        $"{model} runs in the cloud, meaning your prompts are sent to a data center. Keep in mind the privacy implications.";
+    public static string Notice(string mark, string model) =>
+        $"{mark} {model} is a cloud model: what you type and the files gatto reads are sent to its provider.";
 
     public static bool Is(EndpointConfig endpoint)
     {

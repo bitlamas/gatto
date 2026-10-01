@@ -13,11 +13,13 @@ public sealed record EndpointConfig(
     IReadOnlyDictionary<string, JsonElement?>? Thinking = null,
     string? ApiKey = null,
     Func<CancellationToken, Task<IReadOnlyDictionary<string, string>>>? Headers = null,
-    Func<JsonElement, QuotaReading?>? Quota = null)
+    Func<JsonElement, QuotaReading?>? Quota = null,
+    IReadOnlyList<string>? Models = null)   //the model names the endpoint offers, the first is the one a launch with no -m takes
 {
     //redacted on purpose, the record's own ToString would print ApiKey into any log line or error message
     public override string ToString() =>
         $"EndpointConfig {{ BaseUrl = {BaseUrl}, KeyEnv = {KeyEnv}, Context = {Context}, " +
         $"Thinking = {Thinking}, ApiKey = {(ApiKey is null ? "null" : "***")}, " +
-        $"Headers = {(Headers is null ? "null" : "set")}, Quota = {(Quota is null ? "null" : "set")} }}";
+        $"Headers = {(Headers is null ? "null" : "set")}, Quota = {(Quota is null ? "null" : "set")}, " +
+        $"Models = {(Models is null ? "null" : string.Join(",", Models))} }}";
 }

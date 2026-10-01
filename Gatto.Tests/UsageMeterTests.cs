@@ -83,6 +83,33 @@ public class UsageMeterTests
     }
 
     [Fact]
+    public async Task Changed_fires_once_the_new_reading_is_readable()
+    {
+        //the footer repaints on this, so the reading it reads must already be the new one
+        var meter = new UsageMeter(u => new QuotaReading(u.GetProperty("left").GetInt64(), "max"));
+        long? seen = null;
+        meter.Changed = () => seen = meter.Read().Quota?.Remaining;
+
+        await meter.Record(Usage("""{"left":17}"""));
+
+        Assert.Equal(17, seen);
+    }
+
+    [Fact]
+    public async Task Changed_fires_for_a_cost_alone_and_a_throwing_handler_is_contained()
+    {
+        //an endpoint with no quota reader still repaints for its cost, and a failing repaint stays inside the meter
+        var meter = new UsageMeter();
+        var calls = 0;
+        meter.Changed = () => { calls++; throw new InvalidOperationException("paint broke"); };
+
+        await meter.Record(Usage("""{"cost":0.2}"""));
+
+        Assert.Equal(1, calls);
+        Assert.Equal(0.2m, meter.Read().Cost);
+    }
+
+    [Fact]
     public async Task A_reader_that_never_returns_does_not_hold_the_caller()
     {
         //the reader runs off the stream's thread, so a script that blocks costs a pool thread and not the turn

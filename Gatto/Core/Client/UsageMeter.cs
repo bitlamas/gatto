@@ -26,22 +26,32 @@ public sealed class UsageMeter(Func<JsonElement, QuotaReading?>? quota = null)
                 && c.TryGetDecimal(out var spent))
                 _cost = (_cost ?? 0m) + spent;
         }
-        if (quota is null) return Task.CompletedTask;
         var raw = usage.Clone();
         return Task.Run(() =>
         {
-            QuotaReading? reading;
-            try { reading = Bounded(quota(raw)); }
-            catch (Exception) { return; }   //extension code, a failure costs the quota part only
-            if (reading is null) return;
-            lock (_gate)
-            {
-                //an older request finishing late must not overwrite a newer reading
-                if (seq < _quotaSeq) return;
-                _quotaSeq = seq;
-                _quota = reading;
-            }
+            StoreQuota(raw, seq);
+            try { Changed?.Invoke(); }
+            catch (Exception) { }   //the footer's repaint must never fault the meter
         });
+    }
+
+    //raised on the pool once a request's cost and quota are both stored, so the footer repaints without waiting for the next key
+    public Action? Changed { get; set; }
+
+    private void StoreQuota(JsonElement raw, long seq)
+    {
+        if (quota is null) return;
+        QuotaReading? reading;
+        try { reading = Bounded(quota(raw)); }
+        catch (Exception) { return; }   //extension code, a failure costs the quota part only
+        if (reading is null) return;
+        lock (_gate)
+        {
+            //an older request finishing late must not overwrite a newer reading
+            if (seq < _quotaSeq) return;
+            _quotaSeq = seq;
+            _quota = reading;
+        }
     }
 
     public (decimal? Cost, QuotaReading? Quota) Read()

@@ -145,6 +145,8 @@ public sealed class Repl(
     bool cloud = false,           //the footer's mark before the model, fixed for the session since the endpoint is
     //the provider's summed cost and latest quota, read at each footer rebuild, and null shows neither
     Func<(decimal? Cost, Gatto.Core.Client.QuotaReading? Quota)>? readUsage = null,
+    //hands the rich loop's any-thread repaint to the usage feed, so a new quota shows without waiting for a key
+    Action<Action>? onUsageChanged = null,
     //the memory write half over the compact seam, banking candidates and composing the index. null marks memory off, and only a user-chosen compact reaches it
     Gatto.Core.Memory.PiggybackSeam? piggyback = null,
     //the rich loop's output surface, injectable so a test can drive the loop headlessly, and null uses the real console surface
@@ -1845,6 +1847,7 @@ public sealed class Repl(
 
         //the repaint any thread can call, take the gate, rebuild the frame, repaint, and skip it once stopped
         void RepaintChrome() { lock (s.Gate) { if (!stopped) { s.Refresh(); s.Painter.Repaint(); } } }
+        onUsageChanged?.Invoke(RepaintChrome);
         //one reusable timer re-armed on each press so a hint vanishes by itself after the window, disposed at teardown
         var hintTimer = new System.Threading.Timer(_ => RepaintChrome(), null, Timeout.Infinite, Timeout.Infinite);
         //the timer only wakes the frame, and each hint's own staleness check drops it when RefreshStatus runs
@@ -2346,6 +2349,7 @@ public sealed class Repl(
         thinkingToggle = result.ThinkingIsToggle;   //a /model switch can change the reasoning shape (binary or levels)
         thinkingUnavailable = result.ThinkingIsUnavailable;
         if (result.SystemText is not null) convo.ReplaceSystem(result.SystemText, result.Baseline);
+        else if (result.Baseline is not null && convo.Messages[0].Content is { } sameText) convo.ReplaceSystem(sameText, result.Baseline);   //same text, new baseline, so the record names the model now in use
         _usageState.Clear();   //the old reading describes a conversation and model pairing that is gone
         return true;
     }

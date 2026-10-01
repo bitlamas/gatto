@@ -1388,9 +1388,9 @@ public class GattoAppTests : IDisposable
     }
 
     [Fact]
-    public async Task Effort_NoLocalModel_StillAppliesForTheSession_ButReportsNotSaved()
+    public async Task Effort_NoLocalModel_AppliesForTheSession_InTheSessionOnlyWords()
     {
-        //a non-local endpoint has no model profile to save into, so /effort applies for the session only and says so
+        //a non-local endpoint has no model profile to save into, so a typed /effort reads exactly as the picker's session-only key does
         await using var server = new FakeOpenAiServer();
         UseHome();
         //two on-levels plus none make this a genuine multi-level map, so the capability reads Levels rather than the binary toggle
@@ -1410,8 +1410,8 @@ public class GattoAppTests : IDisposable
 
         Assert.Equal(0, exit);
         var output = stdout.ToString();
-        Assert.Contains("effort: medium", output);
-        Assert.Contains("not saved: no local model for this session", output);
+        Assert.Contains("effort: medium, only for this session", output);
+        Assert.DoesNotContain("not saved", output);
     }
 
     [Fact]

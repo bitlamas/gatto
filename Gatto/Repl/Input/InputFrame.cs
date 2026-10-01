@@ -246,6 +246,9 @@ public sealed class InputFrame(ITermSurface surface, Theme theme, string role, S
     //quota warns at or below this share of the total, and only when the provider reported a total
     private const int QuotaWarnPercent = 20;
 
+    //quota also warns at this many requests left whatever the total, since a turn with tool calls spends several
+    private const int QuotaWarnRemaining = 10;
+
     //one physical row at any width: the hint goes first, then one rung at a time until the row fits
     private static (string rendered, string visible) StatusCore(StatusInfo s, int width, Theme theme,
         GlyphSet? glyphs)
@@ -316,11 +319,12 @@ public sealed class InputFrame(ITermSurface surface, Theme theme, string role, S
             parts.Add(new Part(ctx, theme.Paint(ctx, p >= 80 ? Theme.Warn : Theme.Dim)));
         }
 
-        //the provider supplies the numbers and core writes the words, a quota turns warn only against a reported total
+        //the provider supplies the numbers and core writes the words, a quota turns warn with few requests left, or when low against a reported total
         if (s.Quota is { } q)
         {
             var quota = $"{q.Label} {q.Remaining.ToString(CultureInfo.InvariantCulture)} left";
-            var low = q.Total is long total and > 0 && q.Remaining * 100 <= total * QuotaWarnPercent;
+            var low = q.Remaining <= QuotaWarnRemaining
+                || (q.Total is long total and > 0 && q.Remaining * 100 <= total * QuotaWarnPercent);
             parts.Add(new Part(quota, theme.Paint(quota, low ? Theme.Warn : Theme.Dim)));
         }
         if (s.Cost is decimal cost)

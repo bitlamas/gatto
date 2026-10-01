@@ -136,14 +136,15 @@ public sealed class GattoApi
         _policy = trimmed;
     }
 
-    //stage an endpoint the user selects with -e, its base URL without the /v1 segment as base_url in gatto.json. headers runs before each request and quota reads the usage object of each response
+    //stage an endpoint the user selects with -e. the base URL has no /v1 segment, headers runs before each request, quota reads each usage object, models lists what /model offers
     public void Endpoint(
         string name,
         string baseUrl,
         int? context = null,
         string? thinking = null,
         Func<CancellationToken, Task<IReadOnlyDictionary<string, string>>>? headers = null,
-        Func<JsonElement, QuotaReading?>? quota = null)
+        Func<JsonElement, QuotaReading?>? quota = null,
+        IReadOnlyList<string>? models = null)
     {
         if (name is null || !NameRx.IsMatch(name))
             throw new InvalidOperationException($"endpoint name '{name}' must match [a-z0-9_]+");
@@ -157,7 +158,10 @@ public sealed class GattoApi
             throw new InvalidOperationException($"endpoint '{name}' context must be a positive token count");
         if (_endpoints.Any(e => e.Name == name))
             throw new InvalidOperationException($"endpoint '{name}' is contributed twice by this extension");
-        _endpoints.Add((name, new EndpointConfig(baseUrl, Context: context, Thinking: ParseThinkingMap(name, thinking), Headers: headers, Quota: quota)));
+        if (models is not null && (models.Count == 0 || models.Any(string.IsNullOrWhiteSpace) || models.Distinct(StringComparer.Ordinal).Count() != models.Count))
+            throw new InvalidOperationException($"endpoint '{name}' models must be a list of distinct names, the first one the default");
+        _endpoints.Add((name, new EndpointConfig(baseUrl, Context: context, Thinking: ParseThinkingMap(name, thinking), Headers: headers, Quota: quota,
+            Models: models?.ToList())));
     }
 
     //start a fresh empty stage for a new extension load, whatever was staged before is dropped

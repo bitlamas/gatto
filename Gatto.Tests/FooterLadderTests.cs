@@ -58,16 +58,29 @@ public class FooterLadderTests
     }
 
     [Fact]
-    public void Quota_turns_warn_at_20_percent_only_against_a_reported_total()
+    public void Quota_turns_warn_at_10_left_or_at_20_percent_of_a_reported_total()
     {
-        //a low quota paints warn, and with no total there is nothing to compare against
-        var withTotal = InputFrame.BuildStatusLine(Acme() with { Quota = new QuotaReading(4, "max", 20) }, 120, T, GlyphSet.Unicode);
-        var above = InputFrame.BuildStatusLine(Acme() with { Quota = new QuotaReading(5, "max", 20) }, 120, T, GlyphSet.Unicode);
-        var noTotal = InputFrame.BuildStatusLine(Acme() with { Quota = new QuotaReading(1, "max") }, 120, T, GlyphSet.Unicode);
+        //ten requests go fast in a turn with tool calls, so the count alone is enough, and a total moves the line up
+        var ten = InputFrame.BuildStatusLine(Acme() with { Quota = new QuotaReading(10, "max") }, 120, T, GlyphSet.Unicode);
+        var eleven = InputFrame.BuildStatusLine(Acme() with { Quota = new QuotaReading(11, "max") }, 120, T, GlyphSet.Unicode);
+        var fifth = InputFrame.BuildStatusLine(Acme() with { Quota = new QuotaReading(40, "max", 200) }, 120, T, GlyphSet.Unicode);
+        var above = InputFrame.BuildStatusLine(Acme() with { Quota = new QuotaReading(41, "max", 200) }, 120, T, GlyphSet.Unicode);
 
-        Assert.Contains(Ansi.Fg(Theme.Warn, true) + "max 4 left", withTotal, StringComparison.Ordinal);
-        Assert.DoesNotContain(Ansi.Fg(Theme.Warn, true) + "max 5 left", above, StringComparison.Ordinal);
-        Assert.DoesNotContain(Ansi.Fg(Theme.Warn, true) + "max 1 left", noTotal, StringComparison.Ordinal);
+        Assert.Contains(Ansi.Fg(Theme.Warn, true) + "max 10 left", ten, StringComparison.Ordinal);
+        Assert.DoesNotContain(Ansi.Fg(Theme.Warn, true) + "max 11 left", eleven, StringComparison.Ordinal);
+        Assert.Contains(Ansi.Fg(Theme.Warn, true) + "max 40 left", fifth, StringComparison.Ordinal);
+        Assert.DoesNotContain(Ansi.Fg(Theme.Warn, true) + "max 41 left", above, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void Quota_at_zero_is_warn_with_or_without_a_total()
+    {
+        //nothing left is the one reading that needs no total to be alarming
+        var noTotal = InputFrame.BuildStatusLine(Acme() with { Quota = new QuotaReading(0, "max") }, 120, T, GlyphSet.Unicode);
+        var withTotal = InputFrame.BuildStatusLine(Acme() with { Quota = new QuotaReading(0, "max", 20) }, 120, T, GlyphSet.Unicode);
+
+        Assert.Contains(Ansi.Fg(Theme.Warn, true) + "max 0 left", noTotal, StringComparison.Ordinal);
+        Assert.Contains(Ansi.Fg(Theme.Warn, true) + "max 0 left", withTotal, StringComparison.Ordinal);
     }
 
     [Fact]

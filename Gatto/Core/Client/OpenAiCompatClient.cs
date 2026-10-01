@@ -263,19 +263,32 @@ public sealed class OpenAiCompatClient : IChatClient
         try
         {
             using var doc = JsonDocument.Parse(body);
-            if (doc.RootElement.ValueKind is JsonValueKind.Object
-                && doc.RootElement.TryGetProperty("error", out var err))
+            //providers differ in case and nesting, so error.message, a bare error and a top-level message are all looked for, any case
+            if (doc.RootElement.ValueKind is JsonValueKind.Object)
             {
-                if (err.ValueKind is JsonValueKind.String
-                    && err.GetString() is { Length: > 0 } flat) return flat;
-                if (err.ValueKind is JsonValueKind.Object
-                    && err.TryGetProperty("message", out var m)
-                    && m.ValueKind is JsonValueKind.String
-                    && m.GetString() is { Length: > 0 } text) return text;
+                if (Prop(doc.RootElement, "error") is { } err)
+                {
+                    if (err.ValueKind is JsonValueKind.String
+                        && err.GetString() is { Length: > 0 } flat) return flat;
+                    if (err.ValueKind is JsonValueKind.Object
+                        && Prop(err, "message") is { ValueKind: JsonValueKind.String } m
+                        && m.GetString() is { Length: > 0 } text) return text;
+                }
+                if (Prop(doc.RootElement, "message") is { ValueKind: JsonValueKind.String } top
+                    && top.GetString() is { Length: > 0 } said) return said;
             }
         }
         catch (JsonException) { } //not JSON, the body itself is the only evidence there is
         return body;
+    }
+
+    //the first property whose name matches ignoring case, an exact match wins when both spellings are present
+    private static JsonElement? Prop(JsonElement o, string name)
+    {
+        if (o.TryGetProperty(name, out var exact)) return exact;
+        foreach (var p in o.EnumerateObject())
+            if (string.Equals(p.Name, name, StringComparison.OrdinalIgnoreCase)) return p.Value;
+        return null;
     }
 
     private static string Truncate(string s, int max) => s.Length <= max ? s : s[..max];

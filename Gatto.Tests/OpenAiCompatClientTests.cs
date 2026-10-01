@@ -723,6 +723,12 @@ public class OpenAiCompatClientTests
                 "No models loaded. Please load a model.")]
     //some servers flatten error to a bare string, which this row covers
     [InlineData("{\"error\":\"model not found\"}", "model not found")]
+    //a capitalised Error beside a code and an empty details object, as a provider's quota refusal sends it
+    [InlineData("{\"Code\":2028,\"Error\":\"You have reached your daily quota\",\"Details\":{}}", "You have reached your daily quota")]
+    //a top-level message with no error key at all
+    [InlineData("{\"message\":\"Rate limit exceeded\",\"status\":429}", "Rate limit exceeded")]
+    //an error object whose sentence sits under a capitalised Message
+    [InlineData("{\"Error\":{\"Message\":\"quota exhausted\"}}", "quota exhausted")]
     public void THE_FAILURE_LINE_CARRIES_THE_SERVERS_OWN_SENTENCE(string body, string expected) =>
         Assert.Equal(expected, Gatto.Core.Client.OpenAiCompatClient.ServerSaid(body));
 

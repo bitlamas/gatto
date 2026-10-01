@@ -265,6 +265,20 @@ public static class GattoApp
                 endpointOwner[epName] = ext.Name;
             }
 
+        //a continue with no -e goes back to the endpoint the session was recorded on, and on a cloud endpoint with no -m to its model. a record with no endpoint is from before the field and changes nothing
+        var launchEndpoint = args.Endpoint;
+        if (args.Continue && (continueById ?? sessions.LatestPathForCwd()) is { } resumePath
+            && SessionStore.LoadBaseline(resumePath) is { Endpoint: { } recordedOn } recorded)
+        {
+            if (!endpoints.ContainsKey(recordedOn))
+            {
+                Console.Error.WriteLine($"this session was recorded on endpoint '{recordedOn}', which no longer exists. Endpoints: {string.Join(", ", endpoints.Keys.OrderBy(k => k, StringComparer.Ordinal))}");
+                return 2;
+            }
+            launchEndpoint ??= recordedOn;
+            if (launchEndpoint == recordedOn && recordedOn != "local") sessionModel ??= recorded.Model;
+        }
+
         //one resolution of role, endpoint, model and composition, run at launch and by /role, which fails before any client is built
         RoleResolution ResolveRole(string roleArg)
         {
@@ -280,7 +294,7 @@ public static class GattoApp
             if (args.Effort is { } flagEffort) role = role with { ThinkingRequested = flagEffort };
 
             //the -e endpoint is read here too, so a /role with no endpoint of its own keeps the launch one
-            var endpointName = args.Endpoint ?? role.Endpoint ?? config.DefaultEndpoint;
+            var endpointName = launchEndpoint ?? role.Endpoint ?? config.DefaultEndpoint;
             if (!endpoints.TryGetValue(endpointName, out var ep))
                 throw new GattoConfigException(args.Endpoint is not null
                     ? $"-e names endpoint '{endpointName}', which is not defined in gatto.json. Endpoints: {string.Join(", ", endpoints.Keys.OrderBy(k => k, StringComparer.Ordinal))}"
@@ -326,8 +340,13 @@ public static class GattoApp
             }
             else
             {
-                //the -m flag is a verbatim model string on a cloud endpoint
-                var effectiveModel = RoleFile.EffectiveModel(role, sessionModel, config.DefaultModel);
+                //the -m flag is a verbatim model string on a cloud endpoint. an endpoint that names its models takes -m, then the model of a role written for it, then its first one, never the home default
+                var effectiveModel = ep.Models is { Count: > 0 } offered
+                    ? sessionModel ?? (role.Endpoint == endpointName ? role.Model : null) ?? offered[0]
+                    : RoleFile.EffectiveModel(role, sessionModel, config.DefaultModel);
+                if (ep.Models is { Count: > 0 } listed && !listed.Contains(effectiveModel, StringComparer.Ordinal))
+                    throw new GattoConfigException(
+                        $"endpoint '{endpointName}' has no model '{effectiveModel}'. Models: {string.Join(", ", listed)}");
                 if (effectiveModel is null)
                     throw new GattoConfigException(
                         $"role '{role.Name}' has no model for cloud endpoint '{endpointName}'. Set one via " +
@@ -359,7 +378,7 @@ public static class GattoApp
             && recordedEndpoint != launchRes.EndpointName)
         {
             Console.Error.WriteLine(endpoints.ContainsKey(recordedEndpoint)
-                ? $"this session was recorded on endpoint '{recordedEndpoint}' and the launch resolves to '{launchRes.EndpointName}'. Add -e {recordedEndpoint} to continue it"
+                ? $"this session was recorded on endpoint '{recordedEndpoint}' and -e names '{launchRes.EndpointName}'. Leave -e out, or give -e {recordedEndpoint}, to continue it"
                 : $"this session was recorded on endpoint '{recordedEndpoint}', which no longer exists. Endpoints: {string.Join(", ", endpoints.Keys.OrderBy(k => k, StringComparer.Ordinal))}");
             return 2;
         }
@@ -837,6 +856,20 @@ public static class GattoApp
         //arms a model and leaves the role's gates alone, the decision is in ModelSwitch.Decide and the side effects here only on success
         Func<string, bool, ModelSwitchResult> switchModel = (requestedModel, confirmed) =>
         {
+            //an endpoint that names its models has no server to swap, so the switch is the name the next request carries
+            if (model is null && endpoint.Models is { Count: > 0 } offered)
+            {
+                if (!offered.Contains(requestedModel, StringComparer.Ordinal))
+                    return new ModelSwitchResult(false, requestedModel, null, null,
+                        $"endpoint {endpointName} has no model '{requestedModel}'. Models: {string.Join(", ", offered)}", null, null, null);
+                modelString = requestedModel;
+                sessionModel = requestedModel;
+                loop.UpdateOverrides(modelString, comp.Sampling, comp.ThinkingBody, comp.ThinkingSuffix);
+                //the system text is the one already in force, only the baseline moves so a later continue finds the model the session ended on
+                return new ModelSwitchResult(true, requestedModel, null, contextBudget, null, null, null,
+                    ThinkingFooterName(), thinkCap == ThinkCapability.Toggle, ThinkingUnavailable(), NextBaseline(lastComposedSources));
+            }
+
             IReadOnlyList<(string Path, string Content)> contextFiles;
             //a malformed .gatto.json fails the switch and leaves the session as it was, nothing is armed yet
             try
@@ -932,6 +965,11 @@ public static class GattoApp
         //the rows come ready-made since Repl cannot enumerate models, the loaded mark from the probe and current from the armed model
         Func<IReadOnlyList<PickerItem>> listModels = () =>
         {
+            //an endpoint that names its models lists those, with nothing to probe
+            if (model is null && endpoint.Models is { Count: > 0 } offered)
+                return offered.Select((id, i) => new PickerItem(id, id, Marked: false,
+                    Current: string.Equals(id, modelString, StringComparison.Ordinal), Default: i == 0)).ToList();
+
             var loaded = launchBaseUrl is null
                 ? null
                 : ServeProbe.ProbeAsync(probeHttp, launchBaseUrl, CancellationToken.None, endpoint.ApiKey, probeDeadline)
@@ -983,10 +1021,8 @@ public static class GattoApp
                     var (on, toggleName) = EffortSwitch.OnToggle(levelArg);
                     thinkOn = on;
                     var toggleMessage = $"effort: {toggleName}";
-                    if (!persist)   //a persisted level goes into the model's own profile.json, and the picker's s key keeps it to this session
+                    if (!persist || model is null)   //a persisted level goes into the model's own profile.json, and with no local model there is none
                         toggleMessage += ", only for this session";
-                    else if (model is null)
-                        toggleMessage += ", not saved: no local model for this session";
                     else
                     {
                         try
@@ -1040,11 +1076,9 @@ public static class GattoApp
                     ? message
                     : $"effort: {landedName}, requested {name}, the nearest level this model declares";   //when the cap and the map both move it, only the map's move is reported, and the chip still matches what was sent
 
-                //persist the resolved level, a raw request the map has no entry for would lie in a future session
-                if (!persist)
+                //persist the resolved level, and with no local model there is nowhere to save, so typed and session-only read alike
+                if (!persist || model is null)
                     landedMessage += ", only for this session";
-                else if (model is null)
-                    landedMessage += ", not saved: no local model for this session";
                 else
                 {
                     try
@@ -1236,7 +1270,7 @@ public static class GattoApp
         var cloudMarker = Path.Combine(home, "cloud-notice-shown");
         if (cloud && args.Prompt is null && !File.Exists(cloudMarker))
         {
-            cloudNotice = CloudEndpoint.Notice(modelString);
+            cloudNotice = CloudEndpoint.Notice(glyphs.Cloud, modelString);
             try { File.WriteAllText(cloudMarker, ""); }
             catch (Exception ex) when (ex is IOException or UnauthorizedAccessException) { }   //a home that cannot take the marker says the notice again next launch
         }
@@ -1250,9 +1284,9 @@ public static class GattoApp
 
         //the hint reads the same two locals as the reuse line, so the two sentences cannot disagree about what is loaded
         var repl = new Gatto.Repl.Repl(loop, convo, role.Name, modelString, sessions, client, endpoint.Context, contextBudget, cwd, recomposeSystem, toggleAuto, switchRole, resetGrounding, wildState, on => permissions.SetWild(on, persist: true), hooks, themeMode, subagentProgress, resumedFrom: resumedFrom, reasoning: config.ReasoningMode, thinkingName: initialThinkingName, setEffort: setEffort, listEfforts: listEfforts, glyphs: glyphs, purrSet: Gatto.Repl.Render.PurrFrames.RandomFromPool, versionLine: CommandBanner.DottedVersion(Gatto.Core.GattoVersion.String, Gatto.Core.GattoVersion.Build ?? "", CommandBanner.IsDevBuild(), glyphs), pump: pump, chrome: chrome, switchModel: switchModel, setDefault: id => ModelSwitch.Persist(home, id),   //the role name as ResolveRole cased it from disk, which the banner and the status line key on
-                    launchServing: launchServing, probeServing: probeServing, listModels: listModels, picker: replPicker, slotsReader: slotsReader, warn: warn, altScreen: config.AltScreen, dumpOnExit: config.DumpOnExit, thinkingIsToggle: thinkCap == ThinkCapability.Toggle, thinkingIsUnavailable: ThinkingUnavailable(), mouseEnabled: config.Mouse && config.AltScreen && pump is not null, wheelLines: config.WheelLines, copyOnSelect: config.CopyOnSelect, resumedPath: continuePath, resumeLine: resumeLine, autoCompact: config.AutoCompact, permissions: permissions, listTools: listTools, listPolicy: listPolicy, memoryWarning: launchRes.MemoryTruncatedLines > 0 ? MemoryTruncationWarning(launchRes.MemoryTruncatedLines) : null, cloudNotice: cloudNotice, cloud: cloud, readUsage: usageMeter.Read, piggyback: piggyback, turnAbort: turnAbort,
+                    launchServing: launchServing, probeServing: probeServing, listModels: listModels, picker: replPicker, slotsReader: slotsReader, warn: warn, altScreen: config.AltScreen, dumpOnExit: config.DumpOnExit, thinkingIsToggle: thinkCap == ThinkCapability.Toggle, thinkingIsUnavailable: ThinkingUnavailable(), mouseEnabled: config.Mouse && config.AltScreen && pump is not null, wheelLines: config.WheelLines, copyOnSelect: config.CopyOnSelect, resumedPath: continuePath, resumeLine: resumeLine, autoCompact: config.AutoCompact, permissions: permissions, listTools: listTools, listPolicy: listPolicy, memoryWarning: launchRes.MemoryTruncatedLines > 0 ? MemoryTruncationWarning(launchRes.MemoryTruncatedLines) : null, cloudNotice: cloudNotice, cloud: cloud, readUsage: usageMeter.Read, onUsageChanged: repaint => usageMeter.Changed = repaint,piggyback: piggyback, turnAbort: turnAbort,
             //a session with no model talks to a server gatto does not manage, so the notice says that instead of offering a model fix
-            unmanagedNotice: model is null ? UnmanagedSession.ModelUnavailable(launchBaseUrl) : null,
+            unmanagedNotice: model is null && endpoint.Models is not { Count: > 0 } ? UnmanagedSession.ModelUnavailable(launchBaseUrl) : null,
             unmanagedVisionNotice: model is null ? UnmanagedSession.VisionUnavailable(launchBaseUrl) : null,
             deafWatch: deafWatch,
             //a connect session has no profile.json to point at, so the hint is null there
