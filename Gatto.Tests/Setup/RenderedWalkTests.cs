@@ -1006,7 +1006,7 @@ public class RenderedWalkTests : IDisposable
     private string HomeWithDefault(string modelId = "already-armed")
     {
         var home = NewHome();
-        Gatto.Core.Home.GattoConfigWriter.SetDefaultModel(home, modelId);
+        Gatto.Core.Home.GattoConfigWriter.SetEndpointDefaultModel(home, "local", modelId);
         return home;
     }
 

@@ -44,6 +44,7 @@ public class ConfigSchemaTests
         { "properties.search.properties.tavily.properties", nameof(GattoConfig.TavilyKeys) },
         { "properties.search.properties.searxng.properties", nameof(GattoConfig.SearxngKeys) },
         { "properties.memory.properties", nameof(GattoConfig.MemoryKeys) },
+        { "properties.defaults.additionalProperties.properties", nameof(GattoConfig.DefaultsEntryKeys) },
     };
 
     private static string[] ArrayNamed(string name) => name switch
@@ -55,6 +56,7 @@ public class ConfigSchemaTests
         nameof(GattoConfig.TavilyKeys) => GattoConfig.TavilyKeys,
         nameof(GattoConfig.SearxngKeys) => GattoConfig.SearxngKeys,
         nameof(GattoConfig.MemoryKeys) => GattoConfig.MemoryKeys,
+        nameof(GattoConfig.DefaultsEntryKeys) => GattoConfig.DefaultsEntryKeys,
         _ => throw new InvalidOperationException($"no reader array named '{name}'"),
     };
 

@@ -26,8 +26,22 @@ public class DefaultModelWriteTests : IDisposable
     private void GiveItADefault(string id)
     {
         GattoHome.EnsureInitialized(_home);
-        GattoConfigWriter.SetDefaultModel(_home, id);
+        GattoConfigWriter.SetEndpointDefaultModel(_home, "local", id);
         Assert.Equal(id, DefaultIn());   //the fixture proves the seeded default really reads back.
+    }
+
+    //a road that names no endpoint scaffolded a local model, so its id belongs to local even when another endpoint is the default
+    [Fact]
+    public void A_MODEL_FROM_A_ROAD_WITH_NO_ENDPOINT_IS_LOCALS_EVEN_UNDER_A_CLOUD_DEFAULT()
+    {
+        File.WriteAllText(Path.Combine(_home, "gatto.json"),
+            """{"endpoints":{"local":{},"cloudy":{"base_url":"https://c.test"}},"default_endpoint":"cloudy"}""");
+
+        Assert.Null(WriteSetApply.Apply(_home, new WriteSet { DefaultModel = "local-gguf" }, out _));
+
+        var config = GattoConfig.Load(_home);
+        Assert.Equal("local-gguf", config.ModelDefaultFor("local"));
+        Assert.Null(config.ModelDefaultFor("cloudy"));
     }
 
     [Fact]

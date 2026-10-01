@@ -64,7 +64,9 @@ public static class RoleComposition
         string? memoryIndex = null,
         int memoryTruncatedLines = 0,
         bool memoryNudge = false,
-        IReadOnlyList<(string Extension, string Line)>? policyLines = null)
+        IReadOnlyList<(string Extension, string Line)>? policyLines = null,
+        //the level saved for a model with no profile, a cloud model, read after the profile so a local model's order is unchanged
+        ThinkingLevel? savedEffort = null)
     {
         //the gates are the role's and the model's, merged case-insensitively
         var gates = new HashSet<string>(role.Gates, StringComparer.OrdinalIgnoreCase);
@@ -106,7 +108,7 @@ public static class RoleComposition
         var systemText = string.Join("\n\n", blocks);
 
         //the role's request wins, then the model's own default_effort, then Medium, all capped by the nudge cap
-        var requested = role.ThinkingRequested ?? model?.Profile.DefaultEffort ?? ThinkingLevel.Medium;
+        var requested = role.ThinkingRequested ?? model?.Profile.DefaultEffort ?? savedEffort ?? ThinkingLevel.Medium;
         var effective = Thinking.Min(requested, model?.Nudges?.ThinkingCap ?? ThinkingLevel.Max);
 
         //the model map wins, the endpoint map is the cloud path. a prompt_suffix goes on the user message, since the request body can't express it

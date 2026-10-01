@@ -306,6 +306,39 @@ public class DoctorTests : IDisposable
         Assert.Contains("fix the listed model(s)", line);
     }
 
+    //an extension may contribute the default endpoint, and doctor runs no extension, so a role resolving there is not a problem
+    [Fact]
+    public async Task A_default_endpoint_outside_gatto_json_is_no_role_problem()
+    {
+        File.WriteAllText(Path.Combine(_home, "gatto.json"), """
+            {"endpoints":{"local":{}},"default_endpoint":"acme","glyphs":"unicode"}
+            """);
+        var rolesDir = Path.Combine(_home, "roles");
+        Directory.CreateDirectory(rolesDir);
+        File.WriteAllText(Path.Combine(rolesDir, "generalist.json"), "{}");
+
+        var output = new StringWriter();
+        await NewDoctor(HealthyClient()).RunAsync(_home, _cwd, output, CancellationToken.None);
+
+        Assert.StartsWith("✓", Line(output, "roles:"));
+    }
+
+    //the legacy key belongs to the default endpoint, so a cloud default never reaches the local port derivation
+    [Fact]
+    public async Task The_server_check_reads_the_local_entry_not_another_endpoints_default()
+    {
+        File.WriteAllText(Path.Combine(_home, "gatto.json"), """
+            {"endpoints":{"local":{},"r":{"base_url":"https://r.test"}},"default_endpoint":"r","default_model":"remote-model","glyphs":"unicode"}
+            """);
+
+        var output = new StringWriter();
+        await NewDoctor(HealthyClient()).RunAsync(_home, _cwd, output, CancellationToken.None);
+
+        var serverLine = Line(output, "server reachable");
+        Assert.Contains("no local.base_url and no defaults.local.model", serverLine);
+        Assert.DoesNotContain("remote-model", serverLine);
+    }
+
     [Fact]
     public async Task NoModelsAtAll_Check3AndCheck5Skip_Check1HasNothingToProbe()
     {
@@ -326,7 +359,7 @@ public class DoctorTests : IDisposable
         Assert.Equal(1, exit);   //the server check fails here, since there is nothing to probe and no model to derive a port from
         var serverLine = Line(output, "server reachable");
         Assert.StartsWith("✗", serverLine);
-        Assert.Contains("no local.base_url and no default_model", serverLine);
+        Assert.Contains("no local.base_url and no defaults.local.model", serverLine);
         Assert.Contains("run:", serverLine);
 
         var modelsLine = Line(output, "models:");
@@ -1154,7 +1187,7 @@ public class DoctorTests : IDisposable
     [Fact]
     public async Task Doctor_names_the_first_run_fix_when_no_model_is_configured()
     {
-        //name the missing default_model as the first-run fix, and don't report the empty role file as a schema error
+        //name the missing saved model as the first-run fix, and don't report the empty role file as a schema error
         File.WriteAllText(Path.Combine(_home, "gatto.json"), """
             {"endpoints":{"local":{"base_url":"http://127.0.0.1:1235"}},"default_endpoint":"local"}
             """);
@@ -1167,7 +1200,7 @@ public class DoctorTests : IDisposable
         await doctor.RunAsync(_home, _cwd, output, CancellationToken.None);
 
         var text = output.ToString();
-        Assert.Contains("default_model", text);
+        Assert.Contains("defaults.local.model", text);
         Assert.DoesNotContain("\"model\" is required and \"model\" must be absent", text);
     }
 

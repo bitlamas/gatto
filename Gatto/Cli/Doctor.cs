@@ -132,22 +132,24 @@ public sealed class Doctor(
             return new CheckResult(true, "server reachable: skipped " + g.Dot + " no \"local\" endpoint configured (cloud-only setup)");
 
         string url;
-        var modelHint = config.DefaultModel ?? "<model>";
+        //the local endpoint's own entry, since the default endpoint's model may belong to a cloud endpoint
+        var localModel = config.ModelDefaultFor("local");
+        var modelHint = localModel ?? "<model>";
         if (localEp.BaseUrl is not null)
         {
             url = localEp.BaseUrl;
         }
-        else if (config.DefaultModel is null)
+        else if (localModel is null)
         {
             return new CheckResult(false,
-                "server reachable: no local.base_url and no default_model to derive a port from " + g.Dot + " " +
-                "run: set \"default_model\" in gatto.json, or set an explicit \"base_url\" on the \"local\" endpoint");
+                "server reachable: no local.base_url and no defaults.local.model to derive a port from " + g.Dot + " " +
+                "run: set defaults.local.model in gatto.json, or set an explicit \"base_url\" on the \"local\" endpoint");
         }
-        else if (!loadedModels.TryGetValue(config.DefaultModel, out var active) || active.Model is null)
+        else if (!loadedModels.TryGetValue(localModel, out var active) || active.Model is null)
         {
-            var reason = loadedModels.TryGetValue(config.DefaultModel, out var e) ? e.Error : "no such model";
+            var reason = loadedModels.TryGetValue(localModel, out var e) ? e.Error : "no such model";
             return new CheckResult(false,
-                $"server reachable: cannot derive a port {g.Dot} model '{config.DefaultModel}' failed to load ({reason}) {g.Dot} " +
+                $"server reachable: cannot derive a port {g.Dot} model '{localModel}' failed to load ({reason}) {g.Dot} " +
                 $"run: gatto serve start {modelHint} after fixing the model");
         }
         else
@@ -274,7 +276,7 @@ public sealed class Doctor(
             catch (GattoConfigException) { continue; }
             var endpointName = role.Endpoint ?? config.DefaultEndpoint;
             if (endpointName != "local") continue;
-            var model = RoleFile.EffectiveModel(role, null, config.DefaultModel);
+            var model = RoleFile.EffectiveModel(role, null, config.ModelDefaultFor("local"));
             if (model is null || !loadedModels.TryGetValue(model, out var loaded) || loaded.Model is null) continue;
             var port = loaded.Model.Profile.Port;
             if (!byPort.ContainsKey(port)) byPort[port] = name;
@@ -368,18 +370,15 @@ public sealed class Doctor(
             catch (GattoConfigException ex) { problems.Add($"'{name}': {ex.Message}"); continue; }
 
             var endpointName = role.Endpoint ?? config.DefaultEndpoint;
-            if (!config.Endpoints.ContainsKey(endpointName))
-            {
-                problems.Add($"'{name}': targets endpoint '{endpointName}', which is not defined in gatto.json");
-                continue;
-            }
+            //doctor runs no extension, so an endpoint outside gatto.json may be a contributed one and is left to the launch
+            if (!config.Endpoints.ContainsKey(endpointName)) continue;
 
             //the same EffectiveModel precedence the launch uses, and a cloud role with no model fails here too, so the condition needs no isLocal guard
-            var effectiveModel = RoleFile.EffectiveModel(role, null, config.DefaultModel);
+            var effectiveModel = RoleFile.EffectiveModel(role, null, config.ModelDefaultFor(endpointName));
             if (effectiveModel is null)
             {
                 //a role with no model is the normal unconfigured state, so the line names the first-run fix
-                problems.Add($"'{name}': no model configured yet {g.Dot} set \"default_model\" in gatto.json, " +
+                problems.Add($"'{name}': no model configured yet {g.Dot} set defaults.{endpointName}.model in gatto.json, " +
                     "add \"model\" to this role, or launch with -m <model>");
             }
         }
@@ -685,9 +684,11 @@ public static class Status
 
         if (config is not null)
         {
-            config.Endpoints.TryGetValue(config.DefaultEndpoint, out var ep);
-            var baseUrl = ep?.BaseUrl ?? "(derived from the active model's port)";
-            output.WriteLine($"endpoint: {config.DefaultEndpoint} ({baseUrl})");
+            //status runs no extension, so a default endpoint outside gatto.json is named as one an extension may contribute
+            var where = config.Endpoints.TryGetValue(config.DefaultEndpoint, out var ep)
+                ? ep.BaseUrl ?? "(derived from the active model's port)"
+                : "not in gatto.json, an extension may contribute it";
+            output.WriteLine($"endpoint: {config.DefaultEndpoint} ({where})");
             output.WriteLine($"default_model: {config.DefaultModel ?? "(none)"}");
         }
         output.WriteLine("role: generalist (default; override with gatto <role>)");

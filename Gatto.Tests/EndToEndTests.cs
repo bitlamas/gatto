@@ -84,7 +84,7 @@ public class EndToEndTests : IDisposable
             Console.SetError(err);
             var exit = await GattoApp.RunAsync(new[] { "-p", "hello" });
             Assert.Equal(2, exit);
-            Assert.Contains("default_model", err.ToString());   //the guidance must name the default_model setting as the fix
+            Assert.Contains("defaults.local.model", err.ToString());   //the guidance must name the setting that fixes it
         }
         finally
         {

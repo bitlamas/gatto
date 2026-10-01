@@ -92,11 +92,13 @@ internal static class WriteSetApply
         //the default is written with the model, so ending the flow at the check still leaves the config pointed at something
         try
         {
+            //only the connect road names an endpoint, every other road scaffolds or picks a local model
+            string Owner() => writes.DefaultEndpoint ?? "local";
             if (writes.DefaultModel is { Length: > 0 } chosen)   //an id the user confirmed always writes
-                GattoConfigWriter.SetDefaultModel(homePath, chosen);
+                GattoConfigWriter.SetEndpointDefaultModel(homePath, Owner(), chosen);
             else if ((writes.DefaultModelIfAbsent ?? modelId) is { Length: > 0 } ifAbsent
-                     && GattoConfig.Load(homePath).DefaultModel is null)   //a scaffolded id writes only into a home with no default, or adding a model would repoint a bare gatto
-                GattoConfigWriter.SetDefaultModel(homePath, ifAbsent);
+                     && GattoConfig.Load(homePath).ModelDefaultFor(Owner()) is null)   //a scaffolded id writes only into a home with no default, or adding a model would repoint a bare gatto
+                GattoConfigWriter.SetEndpointDefaultModel(homePath, Owner(), ifAbsent);
         }
         catch (Exception ex) { return $"couldn't set the default model: {ex.Message}"; }
 

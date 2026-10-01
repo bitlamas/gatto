@@ -58,7 +58,7 @@ public class ModelSwitchTests : IDisposable
         CreateModel("qwen3.6-35b");
         File.WriteAllText(Path.Combine(_home, "gatto.json"), "{not valid json");
 
-        var problem = ModelSwitch.Persist(_home, "qwen3.6-35b");
+        var problem = ModelSwitch.Persist(_home, "local", "qwen3.6-35b");
 
         Assert.NotNull(problem);
         Assert.Contains("persist", problem);
@@ -71,7 +71,7 @@ public class ModelSwitchTests : IDisposable
         CreateModel("qwen3.6-35b");
         File.Delete(Path.Combine(_home, "gatto.json"));
 
-        var problem = ModelSwitch.Persist(_home, "qwen3.6-35b");
+        var problem = ModelSwitch.Persist(_home, "local", "qwen3.6-35b");
 
         Assert.NotNull(problem);
         Assert.Contains("persist", problem);

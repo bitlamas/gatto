@@ -373,7 +373,7 @@ public class GattoAppTests : IDisposable
     {
         UseHome();
         WriteConfig("""{"endpoints":{"local":{"base_url":"http://127.0.0.1:1235"}},"default_endpoint":"local"}""");
-        WriteRole("generalist", "{}");   //no model comes from the role, from -m, or from default_model
+        WriteRole("generalist", "{}");   //no model comes from the role, from -m, or from the endpoint's saved model
 
         var stderr = new StringWriter();
         Console.SetError(stderr);
@@ -383,20 +383,20 @@ public class GattoAppTests : IDisposable
         var msg = stderr.ToString();
         Assert.Contains("-m", msg);
         Assert.Contains("model", msg);
-        Assert.Contains("default_model", msg);
+        Assert.Contains("defaults.local.model", msg);
         Assert.Contains("doctor", msg);
     }
 
     [Fact]
-    public async Task Launch_CloudBareRoleWithDefaultModel_LaunchesUsingConfigModel()
+    public async Task Launch_CloudBareRoleWithASavedModel_LaunchesUsingIt()
     {
         await using var server = new FakeOpenAiServer();
         UseHome();
         WriteConfig($$$"""
             {"endpoints":{"local":{"base_url":"http://127.0.0.1:1235"},"cloudy":{"base_url":"{{{server.BaseUrl}}}"}},
-             "default_endpoint":"local","default_model":"cloud-model-x"}
+             "default_endpoint":"local","defaults":{"cloudy":{"model":"cloud-model-x"} } }
             """);
-        WriteRole("generalist", "{\"endpoint\":\"cloudy\"}");   //the role has no model key, so the model falls back to default_model
+        WriteRole("generalist", "{\"endpoint\":\"cloudy\"}");   //the role has no model key, so the model falls back to the endpoint's saved one
         server.Enqueue(Completion("via-cloud-default"));
 
         var stdout = new StringWriter();
@@ -1388,9 +1388,9 @@ public class GattoAppTests : IDisposable
     }
 
     [Fact]
-    public async Task Effort_NoLocalModel_AppliesForTheSession_InTheSessionOnlyWords()
+    public async Task Effort_OnACloudEndpoint_TypedLevelIsSavedForThatModel()
     {
-        //a non-local endpoint has no model profile to save into, so a typed /effort reads exactly as the picker's session-only key does
+        //a non-local endpoint has no model profile, so a typed /effort is saved in the endpoint's entry under the model
         await using var server = new FakeOpenAiServer();
         UseHome();
         //two on-levels plus none make this a genuine multi-level map, so the capability reads Levels rather than the binary toggle
@@ -1410,8 +1410,10 @@ public class GattoAppTests : IDisposable
 
         Assert.Equal(0, exit);
         var output = stdout.ToString();
-        Assert.Contains("effort: medium, only for this session", output);
-        Assert.DoesNotContain("not saved", output);
+        Assert.Contains("effort: medium, saved as served-model's default", output);
+        var saved = JsonDocument.Parse(File.ReadAllText(Path.Combine(_home, "gatto.json"))).RootElement
+            .GetProperty("defaults").GetProperty("cloudy").GetProperty("effort").GetProperty("served-model").GetString();
+        Assert.Equal("medium", saved);
     }
 
     [Fact]
@@ -1956,7 +1958,7 @@ public class GattoAppTests : IDisposable
                 outcome.ContextBudget, outcome.Message, null);
 
         //the harness goes straight from the decision to persisting, since it has no server to swap. persisting is a step of its own, after the decision
-        if (ModelSwitch.Persist(home, outcome.Model.Id) is { } problem)
+        if (ModelSwitch.Persist(home, "local", outcome.Model.Id) is { } problem)
             return new SwitchHarnessResult(false, outcome.ModelId, null, null, problem, null);
 
         var loaded = probeReports is null ? null : new LoadedModel(ModelPathFor(probeReports), 8192);
@@ -2005,7 +2007,7 @@ public class GattoAppTests : IDisposable
         Assert.NotNull(result.SystemText);
 
         var cfg = JsonDocument.Parse(File.ReadAllText(Path.Combine(home, "gatto.json"))).RootElement;
-        Assert.Equal("gemma-4-26b", cfg.GetProperty("default_model").GetString());
+        Assert.Equal("gemma-4-26b", cfg.GetProperty("defaults").GetProperty("local").GetProperty("model").GetString());
     }
 
     [Fact]

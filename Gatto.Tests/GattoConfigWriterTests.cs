@@ -20,7 +20,7 @@ public class GattoConfigWriterTests : IDisposable
         return p;
     }
 
-    //these mutations share the extracted Mutate() core. the untouched tests above guard it, so their staying green proves SetDefaultModel kept its behavior
+    //these mutations share the extracted Mutate() core. the untouched tests above guard it, so their staying green proves the model writer kept its behavior
 
     [Fact]
     public void UpsertEndpoint_creates_an_endpoint_that_did_not_exist()
@@ -104,21 +104,75 @@ public class GattoConfigWriterTests : IDisposable
     }
 
     [Fact]
-    public void SetDefaultModel_ReplacesTheKey()
+    public void SetEndpointDefaultModel_ReplacesTheLegacyKeysValue()
     {
         Write("""{"endpoints":{"local":{"base_url":"http://127.0.0.1:1235"}},"default_endpoint":"local","default_model":"qwen3.6-35b"}""");
-        GattoConfigWriter.SetDefaultModel(_home, "gemma-4-26b");
-        var root = JsonDocument.Parse(File.ReadAllText(Path.Combine(_home, "gatto.json"))).RootElement;
-        Assert.Equal("gemma-4-26b", root.GetProperty("default_model").GetString());
+        GattoConfigWriter.SetEndpointDefaultModel(_home, "local", "gemma-4-26b");
+        var root = Root();
+        Assert.Equal("gemma-4-26b", root.GetProperty("defaults").GetProperty("local").GetProperty("model").GetString());
+        Assert.False(root.TryGetProperty("default_model", out _));
     }
 
     [Fact]
-    public void SetDefaultModel_AddsTheKeyWhenAbsent()
+    public void SetEndpointDefaultModel_AddsTheEntryWhenAbsent()
     {
         Write("""{"endpoints":{"local":{"base_url":"http://127.0.0.1:1235"}},"default_endpoint":"local"}""");
-        GattoConfigWriter.SetDefaultModel(_home, "gemma-4-26b");
-        var root = JsonDocument.Parse(File.ReadAllText(Path.Combine(_home, "gatto.json"))).RootElement;
-        Assert.Equal("gemma-4-26b", root.GetProperty("default_model").GetString());
+        GattoConfigWriter.SetEndpointDefaultModel(_home, "local", "gemma-4-26b");
+        Assert.Equal("gemma-4-26b", Root().GetProperty("defaults").GetProperty("local").GetProperty("model").GetString());
+    }
+
+    private JsonElement Root() => JsonDocument.Parse(File.ReadAllText(Path.Combine(_home, "gatto.json"))).RootElement;
+
+    //the regression from the cloud gate: a write for one endpoint must leave every other entry and the legacy key's meaning alone
+    [Fact]
+    public void SetEndpointDefaultModel_WritesOnlyThatEndpointsEntry()
+    {
+        Write("""{"endpoints":{"local":{}},"default_endpoint":"local","defaults":{"local":{"model":"q"},"other":{"model":"o","effort":{"o":"low"}}}}""");
+        GattoConfigWriter.SetEndpointDefaultModel(_home, "acme", "acme-max");
+
+        var d = Root().GetProperty("defaults");
+        Assert.Equal("acme-max", d.GetProperty("acme").GetProperty("model").GetString());
+        Assert.Equal("q", d.GetProperty("local").GetProperty("model").GetString());
+        var other = d.GetProperty("other");
+        Assert.Equal("o", other.GetProperty("model").GetString());
+        Assert.Equal("low", other.GetProperty("effort").GetProperty("o").GetString());
+        Assert.Equal(2, other.EnumerateObject().Count());
+    }
+
+    [Fact]
+    public void Any_write_moves_the_legacy_key_into_the_endpoint_it_belonged_to()
+    {
+        Write("""{"endpoints":{"local":{},"r":{"base_url":"https://r.test"}},"default_endpoint":"local","default_model":"q"}""");
+
+        GattoConfigWriter.SetDefaultEndpoint(_home, "r");
+
+        var root = Root();
+        Assert.False(root.TryGetProperty("default_model", out _));
+        Assert.Equal("q", root.GetProperty("defaults").GetProperty("local").GetProperty("model").GetString());
+        Assert.Equal("r", root.GetProperty("default_endpoint").GetString());
+    }
+
+    [Fact]
+    public void SetEndpointEffort_KeepsTheEntrysModelAndOtherLevels()
+    {
+        Write("""{"endpoints":{"local":{}},"default_endpoint":"local","defaults":{"acme":{"model":"acme-max","effort":{"acme-lite":"medium"}}}}""");
+
+        GattoConfigWriter.SetEndpointEffort(_home, "acme", "acme-max", "high");
+
+        var acme = Root().GetProperty("defaults").GetProperty("acme");
+        Assert.Equal("acme-max", acme.GetProperty("model").GetString());
+        Assert.Equal("high", acme.GetProperty("effort").GetProperty("acme-max").GetString());
+        Assert.Equal("medium", acme.GetProperty("effort").GetProperty("acme-lite").GetString());
+    }
+
+    [Fact]
+    public void A_write_on_a_file_whose_two_keys_disagree_refuses_and_leaves_it()
+    {
+        var text = """{"endpoints":{"local":{}},"default_endpoint":"local","default_model":"q","defaults":{"local":{"model":"r"}}}""";
+        Write(text);
+
+        Assert.Throws<GattoConfigException>(() => GattoConfigWriter.SetLlamaServer(_home, "C:\\x.exe"));
+        Assert.Equal(text, File.ReadAllText(Path.Combine(_home, "gatto.json")));
     }
 
     [Fact]
@@ -162,7 +216,7 @@ public class GattoConfigWriterTests : IDisposable
 
     //keys the writer does not own must survive, including the providers order. dropping or reordering any of it quietly kills the provider fallback
     [Fact]
-    public void SetDefaultModel_PreservesKeysItDoesNotOwn()
+    public void SetEndpointDefaultModel_PreservesKeysItDoesNotOwn()
     {
         Write("""
             {"endpoints":{"local":{"base_url":"http://127.0.0.1:1235"}},
@@ -170,10 +224,10 @@ public class GattoConfigWriterTests : IDisposable
              "regions":"on",
              "search":{"providers":["ddg","tavily"],"tavily":{"apiKey":"dev-not-a-real-key"}}}
             """);
-        GattoConfigWriter.SetDefaultModel(_home, "gemma-4-26b");
+        GattoConfigWriter.SetEndpointDefaultModel(_home, "local", "gemma-4-26b");
 
         var root = JsonDocument.Parse(File.ReadAllText(Path.Combine(_home, "gatto.json"))).RootElement;
-        Assert.Equal("gemma-4-26b", root.GetProperty("default_model").GetString());
+        Assert.Equal("gemma-4-26b", root.GetProperty("defaults").GetProperty("local").GetProperty("model").GetString());
         Assert.Equal("on", root.GetProperty("regions").GetString());
 
         var search = root.GetProperty("search");
@@ -184,31 +238,31 @@ public class GattoConfigWriterTests : IDisposable
     }
 
     [Fact]
-    public void SetDefaultModel_LeavesNoTempFileBehind()
+    public void SetEndpointDefaultModel_LeavesNoTempFileBehind()
     {
         Write("""{"endpoints":{},"default_endpoint":"local"}""");
-        GattoConfigWriter.SetDefaultModel(_home, "gemma-4-26b");
+        GattoConfigWriter.SetEndpointDefaultModel(_home, "local", "gemma-4-26b");
         Assert.Empty(Directory.GetFiles(_home, "*.tmp"));
     }
 
     [Fact]
-    public void SetDefaultModel_MissingFile_ThrowsFriendly()
+    public void SetEndpointDefaultModel_MissingFile_ThrowsFriendly()
     {
-        var ex = Assert.Throws<GattoConfigException>(() => GattoConfigWriter.SetDefaultModel(_home, "x"));
+        var ex = Assert.Throws<GattoConfigException>(() => GattoConfigWriter.SetEndpointDefaultModel(_home, "local", "x"));
         Assert.Contains("gatto.json", ex.Message);
     }
 
     [Fact]
-    public void SetDefaultModel_CorruptJson_ThrowsFriendlyAndLeavesFileIntact()
+    public void SetEndpointDefaultModel_CorruptJson_ThrowsFriendlyAndLeavesFileIntact()
     {
         var p = Write("{not json");
-        Assert.Throws<GattoConfigException>(() => GattoConfigWriter.SetDefaultModel(_home, "x"));
+        Assert.Throws<GattoConfigException>(() => GattoConfigWriter.SetEndpointDefaultModel(_home, "local", "x"));
         Assert.Equal("{not json", File.ReadAllText(p));   //the file keeps its exact original bytes
     }
 
     //non-ASCII text must be written literally, since the config is a hand-edited file the user reads directly
     [Fact]
-    public void SetDefaultModel_PreservesNonAsciiPathsLiterally()
+    public void SetEndpointDefaultModel_PreservesNonAsciiPathsLiterally()
     {
         var p = Path.Combine(_home, "gatto.json");
         //write with a UTF-8 BOM so the CJK literals survive the round-trip.
@@ -217,7 +271,7 @@ public class GattoConfigWriterTests : IDisposable
              "llama_server":"C:\\Users\\user\\terra 月球\\llama.cpp\\llama-server.exe"}
             """, new System.Text.UTF8Encoding(true));
 
-        GattoConfigWriter.SetDefaultModel(_home, "gemma-4-26b");
+        GattoConfigWriter.SetEndpointDefaultModel(_home, "local", "gemma-4-26b");
 
         var raw = File.ReadAllText(p);
         Assert.Contains("月球", raw);
@@ -229,7 +283,7 @@ public class GattoConfigWriterTests : IDisposable
 
     //replace must keep explicit ACL entries, the config can hold a hardened secret. the fixture sets ALLOW, since DENY would block the test process
     [Fact]
-    public void SetDefaultModel_PreservesExplicitAclAcrossReplace()
+    public void SetEndpointDefaultModel_PreservesExplicitAclAcrossReplace()
     {
         if (!OperatingSystem.IsWindows()) return;
 
@@ -244,9 +298,9 @@ public class GattoConfigWriterTests : IDisposable
         //assert the ACE is in place first, so a later failure means the writer dropped it
         Assert.True(HasExplicitEveryoneAllow(p), "test setup did not actually apply the explicit ACE");
 
-        GattoConfigWriter.SetDefaultModel(_home, "gemma-4-26b");
+        GattoConfigWriter.SetEndpointDefaultModel(_home, "local", "gemma-4-26b");
 
-        Assert.True(HasExplicitEveryoneAllow(p), "explicit ACE on gatto.json must survive SetDefaultModel");
+        Assert.True(HasExplicitEveryoneAllow(p), "explicit ACE on gatto.json must survive SetEndpointDefaultModel");
 
     }
 
@@ -265,14 +319,14 @@ public class GattoConfigWriterTests : IDisposable
 
     //opening with FileShare.Read lets the read succeed and denies the move. the write phase fails, leaving the original intact and no temp file
     [Fact]
-    public void SetDefaultModel_WriteFailure_LeavesNoTempFileAndOriginalIntact()
+    public void SetEndpointDefaultModel_WriteFailure_LeavesNoTempFileAndOriginalIntact()
     {
         const string original = """{"endpoints":{},"default_endpoint":"local","default_model":"orig"}""";
         var p = Write(original);
 
         using (new FileStream(p, FileMode.Open, FileAccess.Read, FileShare.Read))
         {
-            Assert.Throws<GattoConfigException>(() => GattoConfigWriter.SetDefaultModel(_home, "new-model"));
+            Assert.Throws<GattoConfigException>(() => GattoConfigWriter.SetEndpointDefaultModel(_home, "local", "new-model"));
         }
 
         Assert.Empty(Directory.GetFiles(_home, "*.tmp"));

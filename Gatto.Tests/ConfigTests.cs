@@ -339,13 +339,13 @@ public class ConfigTests : IDisposable
     }
 
     [Fact]
-    public void Load_rejects_default_endpoint_not_defined()
+    public void Load_accepts_a_default_endpoint_not_defined_since_the_launch_checks_it()
     {
+        //an extension may contribute the endpoint, and only the launch has loaded the extensions
         Directory.CreateDirectory(_home);
         File.WriteAllText(Path.Combine(_home, "gatto.json"),
             "{\"endpoints\":{\"local\":{\"base_url\":\"http://x\"}},\"default_endpoint\":\"cloud\"}");
-        var ex = Assert.Throws<GattoConfigException>(() => GattoConfig.Load(_home));
-        Assert.Contains("cloud", ex.Message);
+        Assert.Equal("cloud", GattoConfig.Load(_home).DefaultEndpoint);
     }
 
     [Fact]

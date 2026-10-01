@@ -47,7 +47,7 @@ public class FirstRunDoorTests : IDisposable
     public void A_DEFAULT_MODEL_MEANS_CONFIGURED_even_with_no_models()
     {
         GattoHome.EnsureInitialized(_home);
-        GattoConfigWriter.SetDefaultModel(_home, "some-model");
+        GattoConfigWriter.SetEndpointDefaultModel(_home, "local", "some-model");
 
         Assert.False(FirstRunDoor.NotConfigured(_home));
     }

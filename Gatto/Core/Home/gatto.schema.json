@@ -33,17 +33,36 @@
             "type": "object",
             "description": "per level request fields for a model that exposes reasoning effort. each value is an object or null.",
             "additionalProperties": { "type": ["object", "null"] }
+          },
+          "models": {
+            "type": "array",
+            "items": { "type": "string", "minLength": 1 },
+            "minItems": 1,
+            "uniqueItems": true,
+            "description": "the model names this endpoint offers. /model lists them, a launch with no -m and no saved default takes the first, and a model outside the list is refused."
           }
         }
       }
     },
     "default_endpoint": {
       "type": "string",
-      "description": "which endpoint gatto opens on. must name a key under endpoints."
+      "description": "which endpoint gatto opens on. a key under endpoints, or the name of an endpoint an extension contributes; checked at launch."
     },
     "default_model": {
       "type": ["string", "null"],
-      "description": "which model gatto arms at launch. a fresh home leaves it unset."
+      "description": "older form of defaults.<default_endpoint>.model. gatto reads it as that and moves it there on its next write."
+    },
+    "defaults": {
+      "type": "object",
+      "description": "what was chosen per endpoint. each key names an endpoint; an entry for an endpoint that no longer exists is ignored.",
+      "additionalProperties": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "model": { "type": ["string", "null"], "description": "the model a launch on this endpoint takes when -m and the role name none." },
+          "effort": { "type": "object", "description": "the effort saved per model on this endpoint, a level name per model id.", "additionalProperties": { "type": "string" } }
+        }
+      }
     },
     "default_publisher": {
       "type": "string",

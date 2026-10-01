@@ -41,7 +41,7 @@ public class WriteSetAcceptanceTests : IDisposable
         Assert.Equal(@"C:\llama\llama-server.exe", Str("llama_server"));
 
         //read the id back from the models dir, a name guessed from the file would be wrong
-        Assert.Equal(modelId, Str("default_model"));
+        Assert.Equal(modelId, DefaultModelOnDisk());
 
         TheConsentAnswerReachedDisk();
     }
@@ -64,7 +64,7 @@ public class WriteSetAcceptanceTests : IDisposable
         //the same disk assertions as the llama walk, the landing changed and the destination did not
         var modelId = Assert.Single(Gatto.Roles.Model.ListIds(Path.Combine(_home, "models")));
         Assert.Equal(@"C:\llama\llama-server.exe", Str("llama_server"));
-        Assert.Equal(modelId, Str("default_model"));
+        Assert.Equal(modelId, DefaultModelOnDisk());
         TheConsentAnswerReachedDisk();
 
         //the walk must cross the Hub before the local shelf, or the flag could be ignored and still pass
@@ -95,7 +95,7 @@ public class WriteSetAcceptanceTests : IDisposable
         Assert.False(string.IsNullOrWhiteSpace(endpoint));
         Assert.NotNull(Config()["endpoints"]?[endpoint!]);
 
-        Assert.Equal("their-model", Str("default_model"));
+        Assert.Equal("their-model", DefaultModelOnDisk());
         TheConsentAnswerReachedDisk();
     }
 
@@ -111,7 +111,7 @@ public class WriteSetAcceptanceTests : IDisposable
         SetupRunner.Run(new SetupFlow(probes), face, _home);
 
         Assert.Contains("done", face.Keys);
-        Assert.Equal("already-set-up", Str("default_model"));
+        Assert.Equal("already-set-up", DefaultModelOnDisk());
 
         //reuse means no second model for the same weights
         Assert.Empty(Gatto.Roles.Model.ListIds(Path.Combine(_home, "models")));
@@ -130,7 +130,7 @@ public class WriteSetAcceptanceTests : IDisposable
         SetupRunner.Run(new SetupFlow(probes), face, _home);
 
         Assert.Contains("done", face.Keys);
-        Assert.Equal("same-name-different-file", Str("default_model"));
+        Assert.Equal("same-name-different-file", DefaultModelOnDisk());
         Assert.Empty(Gatto.Roles.Model.ListIds(Path.Combine(_home, "models")));
         TheConsentAnswerReachedDisk();
     }
@@ -151,7 +151,7 @@ public class WriteSetAcceptanceTests : IDisposable
         SetupRunner.Run(new SetupFlow(probes), face, _home);
 
         var modelId = Assert.Single(Gatto.Roles.Model.ListIds(Path.Combine(_home, "models")));
-        Assert.Equal(modelId, Str("default_model"));      //the setup is complete even though the run left early
+        Assert.Equal(modelId, DefaultModelOnDisk());      //the setup is complete even though the run left early
         Assert.Null(Flag("update_check"));               //the unanswered question must not be written to disk
 
         //read the leaving screen by key, a filter by screen kind can quietly match nothing
@@ -183,7 +183,7 @@ public class WriteSetAcceptanceTests : IDisposable
 
         SetupRunner.Run(new SetupFlow(probes), face, _home);
 
-        Assert.Equal("already-set-up", Str("default_model"));
+        Assert.Equal("already-set-up", DefaultModelOnDisk());
         Assert.Null(Flag("update_check"));
     }
 
@@ -201,10 +201,10 @@ public class WriteSetAcceptanceTests : IDisposable
         SetupRunner.Run(new SetupFlow(probes), face, _home);
 
         Assert.NotNull(face.Snapshot);
-        var atCompletion = JsonNode.Parse(face.Snapshot!)!["default_model"]?.GetValue<string>();
+        var atCompletion = JsonNode.Parse(face.Snapshot!)!["defaults"]?["local"]?["model"]?.GetValue<string>();
         Assert.False(string.IsNullOrEmpty(atCompletion),
             "the completion screen says the configuration has been saved, it must be true when read");
-        Assert.Equal(Str("default_model"), atCompletion);
+        Assert.Equal(DefaultModelOnDisk(), atCompletion);
     }
 
     //a screen only the watch advances takes no scripted answer, poll and report Landed or fail loudly
@@ -331,6 +331,9 @@ public class WriteSetAcceptanceTests : IDisposable
         JsonNode.Parse(File.ReadAllText(Path.Combine(_home, "gatto.json")))!;
 
     private string? Str(string key) => Config()[key]?.GetValue<string>();
+
+    //the default endpoint's entry, where every writer puts the model now
+    private string? DefaultModelOnDisk() => Config()["defaults"]?[Str("default_endpoint")!]?["model"]?.GetValue<string>();
 
     private bool? Flag(string key) => Config()[key]?.GetValue<bool>();
 

@@ -54,12 +54,12 @@ public class ConfigSchemaBreadcrumbTests
         GattoHome.EnsureInitialized(home);
         var path = Path.Combine(home, "gatto.json");
 
-        GattoConfigWriter.SetDefaultModel(home, "some-model");
+        GattoConfigWriter.SetEndpointDefaultModel(home, "local", "some-model");
 
         var after = File.ReadAllText(path);
         Assert.Equal("$schema", FirstKey(after));
         using var doc = JsonDocument.Parse(after);
-        Assert.Equal("some-model", doc.RootElement.GetProperty("default_model").GetString());
+        Assert.Equal("some-model", doc.RootElement.GetProperty("defaults").GetProperty("local").GetProperty("model").GetString());
     }
 
     //every writer gets a row of its own, a passing row for one proves nothing about another
@@ -103,8 +103,8 @@ public class ConfigSchemaBreadcrumbTests
         Assert.Equal(
             new[]
             {
-                "SetConsentKey", "SetDefaultEndpoint", "SetDefaultModel", "SetLlamaServer",
-                "SetWeightsRoot", "UpsertEndpoint",
+                "SetConsentKey", "SetDefaultEndpoint", "SetEndpointDefaultModel", "SetEndpointEffort",
+                "SetLlamaServer", "SetWeightsRoot", "UpsertEndpoint",
             },
             mutators);
     }

@@ -246,7 +246,7 @@ public class WriteSetApplyTests : IDisposable
         Assert.Contains("llama-server.exe", config, StringComparison.Ordinal);
         using var doc = System.Text.Json.JsonDocument.Parse(config);
         //the default names the model this apply created, so the config never points at nothing
-        Assert.Equal(modelId, doc.RootElement.GetProperty("default_model").GetString());
+        Assert.Equal(modelId, doc.RootElement.GetProperty("defaults").GetProperty("local").GetProperty("model").GetString());
     }
 
     [Fact]

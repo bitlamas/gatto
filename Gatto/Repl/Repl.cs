@@ -168,7 +168,11 @@ public sealed class Repl(
     //null unless gatto reads the console itself, the only reader whose record count shows the tracer arriving
     Gatto.Terminal.InputDeafnessWatchdog? deafWatch = null,
     //what the resume carried or why it sent the conversation again, shown under the resume marker and never saved
-    string? resumeLine = null)
+    string? resumeLine = null,
+    //the word the /model legend gives the dot, weights loaded on local rows and current on a cloud list where nothing loads
+    string modelMarkLegend = "weights loaded",
+    //said by bare /model when the endpoint lists no models, so the picker never shows rows that endpoint cannot take
+    string? noModelList = null)
 {
     //the prompters' bridge to the chrome, armed when the painter and renderer come up, cleared at teardown, so a prompt renders inline until then
     private readonly ChromeHandle? _chrome = chrome;
@@ -922,7 +926,7 @@ public sealed class Repl(
 
             //the d key is declared only when there is somewhere to write it, a picker cannot report a key it never got
             var outcome = picker.Pick("select a model", items,
-                markLegend: "weights loaded   d set as default",
+                markLegend: setDefault is null ? modelMarkLegend : modelMarkLegend + "   d set as default",
                 controlKeys: setDefault is null ? null : DefaultKey,
                 openAt: openAt);
 
@@ -2318,6 +2322,12 @@ public sealed class Repl(
             say(name.Length == 0 ? QuantLines(modelFiles, _glyphs)
                 : switchQuant is null ? "switching files isn't available in this session"
                 : switchQuant(name));
+            return false;
+        }
+
+        if (arg.Length == 0 && listModels is null && noModelList is { } none)
+        {
+            say(none);
             return false;
         }
 

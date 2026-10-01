@@ -37,6 +37,19 @@ public class StatusTests : IDisposable
     }
 
     [Fact]
+    public async Task A_default_endpoint_outside_gatto_json_says_an_extension_may_contribute_it()
+    {
+        File.WriteAllText(Path.Combine(_home, "gatto.json"), """
+            {"endpoints":{"local":{}},"default_endpoint":"acme"}
+            """);
+        var output = new StringWriter();
+
+        await Status.RunAsync(_home, _cwd, output, new HttpClient(new FakeHandler()), CancellationToken.None);
+
+        Assert.Contains("endpoint: acme (not in gatto.json, an extension may contribute it)", output.ToString());
+    }
+
+    [Fact]
     public async Task WithConfig_ShowsEndpointModelAndNotServing()
     {
         File.WriteAllText(Path.Combine(_home, "gatto.json"), """

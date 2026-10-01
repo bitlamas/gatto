@@ -41,10 +41,13 @@ public sealed record SearchConfig(
     public static readonly SearchConfig Default = new(new[] { "ddg" }, null, null);
 }
 
+//what the user chose for one endpoint, the model a launch with no -m takes and the effort saved per model, both absent until chosen
+public sealed record EndpointDefaults(string? Model, IReadOnlyDictionary<string, string>? Effort);
+
 public sealed record GattoConfig(
     IReadOnlyDictionary<string, EndpointConfig> Endpoints,
     string DefaultEndpoint,
-    string? DefaultModel,
+    IReadOnlyDictionary<string, EndpointDefaults> Defaults,
     string? LlamaServer = null,
     bool ContextCompat = false,
     bool ContextHome = true,
@@ -86,13 +89,24 @@ public sealed record GattoConfig(
     //the cloned gatto.json root for the extension host's Gatto.Config.Section, null on hand-built instances
     public JsonElement? Raw { get; init; }
 
+    //the default endpoint's model, the meaning default_model always had, so its readers need no change
+    public string? DefaultModel => ModelDefaultFor(DefaultEndpoint);
+
+    public string? ModelDefaultFor(string endpoint) =>
+        Defaults.TryGetValue(endpoint, out var d) ? d.Model : null;
+
+    //a level name, parsed by the caller since Core must not reference the thinking levels
+    public string? EffortDefaultFor(string endpoint, string model) =>
+        Defaults.TryGetValue(endpoint, out var d) && d.Effort is { } e && e.TryGetValue(model, out var level) ? level : null;
+
     //the one statement of what gatto.json accepts, asserted against the schema in both directions, so a key added here needs a schema entry
     internal static readonly string[] TopKeys =
-        { "$schema", "endpoints", "default_endpoint", "default_model", "default_publisher", "llama_server", "context_files", "theme", "glyphs", "reasoning", "regions", "search", "weights_root", "think", "alt_screen", "dump_on_exit", "stop_server_on_exit", "mouse", "wheel_lines", "copy_on_select", "auto_compact", "deny_reason", "memory", "update_check", "extensions" };
+        { "$schema", "endpoints", "default_endpoint", "default_model", "defaults", "default_publisher", "llama_server", "context_files", "theme", "glyphs", "reasoning", "regions", "search", "weights_root", "think", "alt_screen", "dump_on_exit", "stop_server_on_exit", "mouse", "wheel_lines", "copy_on_select", "auto_compact", "deny_reason", "memory", "update_check", "extensions" };
     internal static readonly string[] ValidThemes = { "dark", "light", "auto" };
     //the same three-value shape as theme: auto asks the host, the two names answer for it
     internal static readonly string[] ValidGlyphs = { "auto", "unicode", "ascii" };
-    internal static readonly string[] EndpointKeys = { "base_url", "key_env", "context", "thinking" };
+    internal static readonly string[] EndpointKeys = { "base_url", "key_env", "context", "thinking", "models" };
+    internal static readonly string[] DefaultsEntryKeys = { "model", "effort" };
     internal static readonly string[] ContextFilesKeys = { "compat", "home" };
     internal static readonly string[] SearchKeys = { "providers", "tavily", "searxng" };
     internal static readonly string[] MemoryKeys = { "enabled", "index_budget" };
@@ -202,20 +216,49 @@ public sealed record GattoConfig(
                 }
             }
 
-            endpoints[ep.Name] = new EndpointConfig(baseUrl, keyEnv, context, thinking);
+            //the same rules a contributed list follows, so /model and the launch read both kinds alike
+            List<string>? models = null;
+            if (ep.Value.TryGetProperty("models", out var modelsEl))
+            {
+                if (modelsEl.ValueKind != JsonValueKind.Array)
+                    throw new GattoConfigException($"endpoint '{ep.Name}' has a \"models\" with the wrong type — must be an array of names");
+                models = new List<string>();
+                foreach (var m in modelsEl.EnumerateArray())
+                {
+                    if (m.ValueKind != JsonValueKind.String || string.IsNullOrWhiteSpace(m.GetString()))
+                        throw new GattoConfigException($"endpoint '{ep.Name}' \"models\" holds a blank or non-string name");
+                    if (models.Contains(m.GetString()!, StringComparer.Ordinal))
+                        throw new GattoConfigException($"endpoint '{ep.Name}' \"models\" names '{m.GetString()}' twice");
+                    models.Add(m.GetString()!);
+                }
+                if (models.Count == 0)
+                    throw new GattoConfigException($"endpoint '{ep.Name}' \"models\" is empty, leave the key out instead");
+            }
+
+            endpoints[ep.Name] = new EndpointConfig(baseUrl, keyEnv, context, thinking, Models: models);
         }
 
+        //checked at launch and not here, since an extension may contribute the endpoint it names
         var defaultEp = root.TryGetProperty("default_endpoint", out var de) && de.ValueKind == JsonValueKind.String
             ? de.GetString()! : throw new GattoConfigException("gatto.json needs default_endpoint");
-        if (!endpoints.ContainsKey(defaultEp))
-            throw new GattoConfigException($"default_endpoint '{defaultEp}' is not defined under endpoints");
 
-        string? defaultModel = null;
+        string? legacyModel = null;
         if (root.TryGetProperty("default_model", out var dm) && dm.ValueKind != JsonValueKind.Null)
         {
             if (dm.ValueKind != JsonValueKind.String)
                 throw new GattoConfigException("gatto.json has a \"default_model\" with the wrong type — must be a string");
-            defaultModel = dm.GetString();
+            legacyModel = dm.GetString();
+        }
+
+        var defaults = ReadDefaults(root);
+        //the legacy key is the default endpoint's model, folded in here so every reader sees one table
+        if (legacyModel is not null)
+        {
+            defaults.TryGetValue(defaultEp, out var entry);
+            if (entry?.Model is { } tabled && tabled != legacyModel)
+                throw new GattoConfigException(
+                    $"gatto.json has \"default_model\" '{legacyModel}' and defaults.{defaultEp}.model '{tabled}'; remove one");
+            defaults[defaultEp] = new EndpointDefaults(legacyModel, entry?.Effort);
         }
 
         //the shelf's publisher checked against the compiled allowlist, and the refusal names every slug so a user can see the whole set
@@ -501,7 +544,46 @@ public sealed record GattoConfig(
             }
         }
 
-        return new GattoConfig(endpoints, defaultEp, defaultModel, llamaServer, contextCompat, contextHome, theme, glyphs, reasoning, search, weightsDir, think, altScreen, dumpOnExit, mouse, wheelLines, copyOnSelect, autoCompact, denyReason, memoryEnabled, memoryIndexBudget, updateCheck, defaultPublisher, stopServerOnExit)
+        return new GattoConfig(endpoints, defaultEp, defaults, llamaServer, contextCompat, contextHome, theme, glyphs, reasoning, search, weightsDir, think, altScreen, dumpOnExit, mouse, wheelLines, copyOnSelect, autoCompact, denyReason, memoryEnabled, memoryIndexBudget, updateCheck, defaultPublisher, stopServerOnExit)
         { Raw = root };
+    }
+
+    //shapes only, since an entry may name an endpoint an extension contributes and the level names are parsed at launch
+    private static Dictionary<string, EndpointDefaults> ReadDefaults(JsonElement root)
+    {
+        var defaults = new Dictionary<string, EndpointDefaults>(StringComparer.Ordinal);
+        if (!root.TryGetProperty("defaults", out var ds)) return defaults;
+        if (ds.ValueKind != JsonValueKind.Object)
+            throw new GattoConfigException("gatto.json has a \"defaults\" with the wrong type — must be an object");
+
+        foreach (var ep in ds.EnumerateObject())
+        {
+            var where = $"defaults.{ep.Name}";
+            if (ep.Value.ValueKind != JsonValueKind.Object)
+                throw new GattoConfigException($"gatto.json {where} must be an object");
+            foreach (var k in ep.Value.EnumerateObject())
+                if (!DefaultsEntryKeys.Contains(k.Name))
+                    throw new GattoConfigException($"unknown key in gatto.json {where}: {k.Name} — {ConfigSection.Known(DefaultsEntryKeys)}");
+
+            string? model = null;
+            if (ep.Value.TryGetProperty("model", out var m) && m.ValueKind != JsonValueKind.Null)
+                model = m.ValueKind == JsonValueKind.String
+                    ? m.GetString()
+                    : throw new GattoConfigException($"gatto.json {where}.model has the wrong type — must be a string");
+
+            Dictionary<string, string>? effort = null;
+            if (ep.Value.TryGetProperty("effort", out var e))
+            {
+                if (e.ValueKind != JsonValueKind.Object)
+                    throw new GattoConfigException($"gatto.json {where}.effort has the wrong type — must be an object");
+                effort = new Dictionary<string, string>(StringComparer.Ordinal);
+                foreach (var lvl in e.EnumerateObject())
+                    effort[lvl.Name] = lvl.Value.ValueKind == JsonValueKind.String
+                        ? lvl.Value.GetString()!
+                        : throw new GattoConfigException($"gatto.json {where}.effort.{lvl.Name} has the wrong type — must be a level name");
+            }
+            defaults[ep.Name] = new EndpointDefaults(model, effort);
+        }
+        return defaults;
     }
 }

@@ -679,7 +679,9 @@ public class ReplModelSlashTests : IDisposable
         Func<IReadOnlyList<PickerItem>>? listModels = null, IListPicker? picker = null,
         Conversation? convo = null,
         string? unmanagedNotice = null,
-        Func<string, string?>? setDefault = null)
+        Func<string, string?>? setDefault = null,
+        string modelMarkLegend = "weights loaded",
+        string? noModelList = null)
     {
         var client = new FakeChatClient();
         var loop = new AgentLoop(client, new ToolRegistry(), new HookBus(), new TestToolContext(Path.GetTempPath()), "m");
@@ -688,7 +690,8 @@ public class ReplModelSlashTests : IDisposable
             loop, convo, "generalist", modelName, null, client, null, null, Path.GetTempPath(),
             () => Composed.Text("sys"), () => null, _ => new RoleSwitchResult(false, "", null, null, "unused"),
             switchModel: switchModel, listModels: listModels, picker: picker,
-            unmanagedNotice: unmanagedNotice, setDefault: setDefault);
+            unmanagedNotice: unmanagedNotice, setDefault: setDefault,
+            modelMarkLegend: modelMarkLegend, noModelList: noModelList);
     }
 
     //the picker fakes ignore the title, since only the shape under test matters
@@ -1024,7 +1027,8 @@ public class ReplModelSlashTests : IDisposable
         IReadOnlyList<PickerItem>? shown = null;
         var repl = ReplWith(
             listModels: () => [new PickerItem("qwen3.6-35b", "qwen", Marked: true, Current: true)],
-            picker: new LegendCapturingPicker((l, items) => { legend = l; shown = items; }));
+            picker: new LegendCapturingPicker((l, items) => { legend = l; shown = items; }),
+            setDefault: _ => null);
 
         await Feed(repl, "/model");
 
@@ -1096,6 +1100,45 @@ public class ReplModelSlashTests : IDisposable
         await Feed(repl, "/model");
 
         Assert.Null(p.Controls[0]);
+    }
+
+    //the hint names d only where d can write, and the mark word is the caller's, current on a cloud list
+    [Fact]
+    public async Task SlashModel_TheLegendNamesTheCallersMarkWord()
+    {
+        string? legend = null;
+        var repl = ReplWith(listModels: Two("a"),
+            picker: new LegendCapturingPicker((l, _) => legend = l),
+            setDefault: _ => null, modelMarkLegend: "current");
+
+        await Feed(repl, "/model");
+
+        Assert.Equal("current   d set as default", legend);
+    }
+
+    [Fact]
+    public async Task SlashModel_WithNoWriter_TheLegendHasNoHint()
+    {
+        string? legend = null;
+        var repl = ReplWith(listModels: Two("a"),
+            picker: new LegendCapturingPicker((l, _) => legend = l), setDefault: null);
+
+        await Feed(repl, "/model");
+
+        Assert.Equal("weights loaded", legend);
+    }
+
+    [Fact]
+    public async Task SlashModel_OnAnEndpointWithNoList_SaysSoAndOpensNothing()
+    {
+        var p = new ScriptedPicker(new Queue<PickOutcome>());
+        var repl = ReplWith(listModels: null, picker: p,
+            noModelList: "endpoint cloudy lists no models; type /model <name> to switch");
+
+        var output = await Feed(repl, "/model");
+
+        Assert.Contains("endpoint cloudy lists no models; type /model <name> to switch", output);
+        Assert.Empty(p.Opens);
     }
 
     private static IReadOnlyList<PickerItem> Rows(string? isDefault) =>

@@ -224,6 +224,7 @@ public static class GattoApp
 
         //stderr until the rich loop rebinds it to a ♯ system line, so a mid-session diagnostic never corrupts the alt-screen frame
         var warn = new Gatto.Core.WarningSink(m => Console.Error.WriteLine($"! {m}"));
+        var staleDefaultWarned = new HashSet<string>(StringComparer.Ordinal);   //a stale default is said once per process, since /role and the policy pass resolve again
         //null until the prompters are built below, so an extension that asks at load time gets the no-interactive-input error
         IUserPrompter? prompter = null;
         var sessions = new SessionStore(home, cwd);
@@ -279,6 +280,17 @@ public static class GattoApp
             if (launchEndpoint == recordedOn && recordedOn != "local") sessionModel ??= recorded.Model;
         }
 
+        //a non-local session's saved level, parsed here since Core holds only the name, and a bad name is a config error naming its key
+        ThinkingLevel? SavedCloudEffort(GattoConfig cfg, string onEndpoint, string modelId)
+        {
+            if (cfg.EffortDefaultFor(onEndpoint, modelId) is not { } levelName) return null;
+            try { return Thinking.Parse(levelName); }
+            catch (GattoConfigException ex)
+            {
+                throw new GattoConfigException($"gatto.json defaults.{onEndpoint}.effort.{modelId}: {ex.Message}");
+            }
+        }
+
         //one resolution of role, endpoint, model and composition, run at launch and by /role, which fails before any client is built
         RoleResolution ResolveRole(string roleArg)
         {
@@ -298,7 +310,9 @@ public static class GattoApp
             if (!endpoints.TryGetValue(endpointName, out var ep))
                 throw new GattoConfigException(args.Endpoint is not null
                     ? $"-e names endpoint '{endpointName}', which is not defined in gatto.json. Endpoints: {string.Join(", ", endpoints.Keys.OrderBy(k => k, StringComparer.Ordinal))}"
-                    : $"role '{role.Name}' targets endpoint '{endpointName}', which is not defined in gatto.json");
+                    : role.Endpoint is not null
+                        ? $"role '{role.Name}' targets endpoint '{endpointName}', which is not defined in gatto.json"
+                        : LaunchModel.MissingDefaultEndpoint(endpointName));
 
             //the endpoint's thinking-map keys are parsed here, so a bad key fails the launch with the endpoint named
             if (ep.Thinking is not null)
@@ -313,18 +327,18 @@ public static class GattoApp
 
             var endpointIsLocal = endpointName == "local";
 
-            //the model is resolved first, -m over the role file over default_model, so a shipped role with no model of its own still launches
+            //the model is resolved first, -m over the role file over the endpoint's saved model, so a shipped role with no model of its own still launches
             Model? model = null;
             EndpointConfig endpoint;
             string modelString;
             if (endpointIsLocal)
             {
                 //a local endpoint takes -m as a model id
-                var effectiveModel = RoleFile.EffectiveModel(role, sessionModel, config.DefaultModel);
+                var effectiveModel = RoleFile.EffectiveModel(role, sessionModel, config.ModelDefaultFor("local"));
                 if (effectiveModel is null)
                     throw new GattoConfigException(
                         $"role '{role.Name}' has no model for local endpoint '{endpointName}'. Set one via " +
-                        "-m <model>, \"model\" in the role file, or \"default_model\" in gatto.json (see: gatto doctor)");
+                        "-m <model>, \"model\" in the role file, or defaults.local.model in gatto.json (see: gatto doctor)");
 
                 role = role with { Model = effectiveModel };
 
@@ -340,17 +354,20 @@ public static class GattoApp
             }
             else
             {
-                //the -m flag is a verbatim model string on a cloud endpoint. an endpoint that names its models takes -m, then the model of a role written for it, then its first one, never the home default
-                var effectiveModel = ep.Models is { Count: > 0 } offered
-                    ? sessionModel ?? (role.Endpoint == endpointName ? role.Model : null) ?? offered[0]
-                    : RoleFile.EffectiveModel(role, sessionModel, config.DefaultModel);
+                //the -m flag is a verbatim model string on a cloud endpoint. a listed endpoint hears the role only when the role was written for it, an unlisted one as before
+                var explicitModel = ep.Models is { Count: > 0 }
+                    ? sessionModel ?? (role.Endpoint == endpointName ? role.Model : null)
+                    : sessionModel ?? role.Model;
+                var choice = LaunchModel.Resolve(endpointName, ep.Models, explicitModel, config.ModelDefaultFor(endpointName));
+                if (choice.Warning is { } stale && staleDefaultWarned.Add(stale)) warn.Warn(stale);
+                var effectiveModel = choice.Model;
                 if (ep.Models is { Count: > 0 } listed && !listed.Contains(effectiveModel, StringComparer.Ordinal))
                     throw new GattoConfigException(
                         $"endpoint '{endpointName}' has no model '{effectiveModel}'. Models: {string.Join(", ", listed)}");
                 if (effectiveModel is null)
                     throw new GattoConfigException(
                         $"role '{role.Name}' has no model for cloud endpoint '{endpointName}'. Set one via " +
-                        "-m <model>, \"model\" in the role file, or \"default_model\" in gatto.json (see: gatto doctor)");
+                        $"-m <model>, \"model\" in the role file, or defaults.{endpointName}.model in gatto.json (see: gatto doctor)");
 
                 role = role with { Model = effectiveModel };
 
@@ -364,7 +381,8 @@ public static class GattoApp
             var memory = LoadMemory(model);
             var comp = RoleComposition.Compose(role, model, contextFiles, endpoint.Thinking, cwd: cwd, date: DateTime.Now,
                 memoryIndex: memory.Text, memoryTruncatedLines: memory.TruncatedLines, memoryNudge: memoryOn,
-                policyLines: policyLines);
+                policyLines: policyLines,
+                savedEffort: endpointIsLocal ? null : SavedCloudEffort(config, endpointName, modelString));
 
             return new RoleResolution(role, model, endpoint, endpointName, modelString, comp, memory.TruncatedLines);
         }
@@ -853,6 +871,9 @@ public static class GattoApp
                 ThinkingFooterName(), NextBaseline(comp.Sources));
         };
 
+        //set once setEffort exists below, so a switch on a listed endpoint can apply the new model's level through the same path
+        Func<string, bool, EffortResult>? applyEffort = null;
+
         //arms a model and leaves the role's gates alone, the decision is in ModelSwitch.Decide and the side effects here only on success
         Func<string, bool, ModelSwitchResult> switchModel = (requestedModel, confirmed) =>
         {
@@ -864,6 +885,9 @@ public static class GattoApp
                         $"endpoint {endpointName} has no model '{requestedModel}'. Models: {string.Join(", ", offered)}", null, null, null);
                 modelString = requestedModel;
                 sessionModel = requestedModel;
+                //the new model takes its own level as a launch would, never the one the previous model was on
+                var switchedLevel = role.ThinkingRequested ?? SavedCloudEffortOrNull(requestedModel) ?? ThinkingLevel.Medium;
+                applyEffort?.Invoke(EffortSwitch.Name(switchedLevel), false);
                 loop.UpdateOverrides(modelString, comp.Sampling, comp.ThinkingBody, comp.ThinkingSuffix);
                 //the system text is the one already in force, only the baseline moves so a later continue finds the model the session ended on
                 return new ModelSwitchResult(true, requestedModel, null, contextBudget, null, null, null,
@@ -956,9 +980,9 @@ public static class GattoApp
         };
 
         //read from disk on each open, since the launch snapshot would miss a default written this session or keep one whose write failed
-        string? CurrentDefault()
+        string? CurrentDefaultFor(string onEndpoint)
         {
-            try { return GattoConfig.Load(home).DefaultModel; }
+            try { return GattoConfig.Load(home).ModelDefaultFor(onEndpoint); }
             catch (GattoConfigException) { return null; }   //a config that will not parse marks no default, and the rows still list
         }
 
@@ -967,8 +991,7 @@ public static class GattoApp
         {
             //an endpoint that names its models lists those, with nothing to probe
             if (model is null && endpoint.Models is { Count: > 0 } offered)
-                return offered.Select((id, i) => new PickerItem(id, id, Marked: false,
-                    Current: string.Equals(id, modelString, StringComparison.Ordinal), Default: i == 0)).ToList();
+                return ListedModelRows.Build(offered, modelString, CurrentDefaultFor(endpointName));
 
             var loaded = launchBaseUrl is null
                 ? null
@@ -976,7 +999,7 @@ public static class GattoApp
                     .GetAwaiter().GetResult();
 
             //read once per open, so no two rows can disagree about the default
-            var currentDefault = CurrentDefault();
+            var currentDefault = CurrentDefaultFor("local");
 
             var rows = new List<PickerItem>();
             foreach (var id in Model.ListIds(modelsDir))
@@ -1007,6 +1030,33 @@ public static class GattoApp
 
         //hoisted above switchRole so those closures can read them
 
+        //read fresh, since a level saved this session must show, and a file that will not load saves nothing to read
+        ThinkingLevel? SavedCloudEffortOrNull(string modelId)
+        {
+            try { return SavedCloudEffort(GattoConfig.Load(home), endpointName, modelId); }
+            catch (GattoConfigException) { return null; }
+        }
+
+        //the level a picker marks as default, the local profile's or the endpoint entry's for the model in use
+        ThinkingLevel? SavedEffortNow() => model is not null ? model.Profile.DefaultEffort : SavedCloudEffortOrNull(modelString);
+
+        //the level goes into the local model's profile.json, or with no local model into the endpoint's entry under the model in use
+        string PersistEffort(ThinkingLevel level)
+        {
+            try
+            {
+                if (model is not null)
+                {
+                    ModelDefaultEffort.Set(modelsDir, model.Id, level);
+                    model = model with { Profile = model.Profile with { DefaultEffort = level } };   //so the picker's default mark does not lag the write
+                    return $", saved as {model.Id}'s default";
+                }
+                GattoConfigWriter.SetEndpointEffort(home, endpointName, modelString, EffortSwitch.Name(level));
+                return $", saved as {modelString}'s default";
+            }
+            catch (GattoConfigException ex) { return $", not saved: {ex.Message}"; }
+        }
+
         //re-resolves the thinking entry at the clamped level and mutates comp, so the footer and recompose read it, and a /role resets it
         Func<string, bool, EffortResult> setEffort = (levelArg, persist) =>
         {
@@ -1021,24 +1071,10 @@ public static class GattoApp
                     var (on, toggleName) = EffortSwitch.OnToggle(levelArg);
                     thinkOn = on;
                     var toggleMessage = $"effort: {toggleName}";
-                    if (!persist || model is null)   //a persisted level goes into the model's own profile.json, and with no local model there is none
-                        toggleMessage += ", only for this session";
-                    else
-                    {
-                        try
-                        {
-                            //the map's own on-level when there is a map, Max when there is none, and DefaultThinkOn only asks whether the level is None
-                            var newDefault = on ? (binaryOn ?? ThinkingLevel.Max) : ThinkingLevel.None;
-                            ModelDefaultEffort.Set(modelsDir, model.Id, newDefault);
-                            //without this the picker's default mark stays on the old level until the next switch or relaunch
-                            model = model with { Profile = model.Profile with { DefaultEffort = newDefault } };
-                            toggleMessage += $", saved as {model.Id}'s default";
-                        }
-                        catch (GattoConfigException ex)
-                        {
-                            toggleMessage += $", not saved: {ex.Message}";
-                        }
-                    }
+                    //the map's own on-level when there is a map, Max when there is none, and DefaultThinkOn only asks whether the level is None
+                    toggleMessage += persist
+                        ? PersistEffort(on ? (binaryOn ?? ThinkingLevel.Max) : ThinkingLevel.None)
+                        : ", only for this session";
                     var toggled = ApplyToggle(on);
                     return new EffortResult(true, toggled, toggleMessage, ThinkingOf(comp));
                 }
@@ -1076,23 +1112,8 @@ public static class GattoApp
                     ? message
                     : $"effort: {landedName}, requested {name}, the nearest level this model declares";   //when the cap and the map both move it, only the map's move is reported, and the chip still matches what was sent
 
-                //persist the resolved level, and with no local model there is nowhere to save, so typed and session-only read alike
-                if (!persist || model is null)
-                    landedMessage += ", only for this session";
-                else
-                {
-                    try
-                    {
-                        ModelDefaultEffort.Set(modelsDir, model.Id, landed.Value);
-                        //refresh the in-memory model so listEfforts's default mark does not lag the write
-                        model = model with { Profile = model.Profile with { DefaultEffort = landed.Value } };
-                        landedMessage += $", saved as {model.Id}'s default";
-                    }
-                    catch (GattoConfigException ex)
-                    {
-                        landedMessage += $", not saved: {ex.Message}";
-                    }
-                }
+                //persist the resolved level, the s key and a switch's own apply are the session-only ways
+                landedMessage += persist ? PersistEffort(landed.Value) : ", only for this session";
 
                 return new EffortResult(true, landedName, landedMessage, ThinkingOf(comp));
             }
@@ -1106,15 +1127,16 @@ public static class GattoApp
                 return new List<PickerItem>
                 {
                     new("none", "none", Marked: !thinkOn, Current: !thinkOn,
-                        Default: model?.Profile.DefaultEffort == ThinkingLevel.None),
+                        Default: SavedEffortNow() == ThinkingLevel.None),
                     //any persisted level other than None means on was saved, a map-less model stores the Max sentinel
                     new("on", "on", Marked: thinkOn, Current: thinkOn,
-                        Default: model?.Profile.DefaultEffort is { } d && d != ThinkingLevel.None),
+                        Default: SavedEffortNow() is { } d && d != ThinkingLevel.None),
                 };
 
             //no map means no rows, and a degenerate map with a lone on-level still has rows to show
             if ((model?.Profile.Thinking ?? endpoint.Thinking) is not { } effortMap) return Array.Empty<PickerItem>();
 
+            var savedLevel = SavedEffortNow();
             return effortMap.Keys
                 .Select(Thinking.Parse)
                 .OrderBy(l => l)
@@ -1123,10 +1145,12 @@ public static class GattoApp
                     var levelName = EffortSwitch.Name(l);
                     return new PickerItem(levelName, levelName,
                         Marked: l == comp.Thinking, Current: l == comp.Thinking,
-                        Default: model?.Profile.DefaultEffort == l);
+                        Default: savedLevel == l);
                 })
                 .ToList();
         };
+
+        applyEffort = setEffort;
 
         //always applied, otherwise a binary map resolves through the role default and the footer lies about thinking on
         if (thinkCap == ThinkCapability.Toggle)
@@ -1282,9 +1306,15 @@ public static class GattoApp
             ? new Gatto.Core.Client.HttpSlotsReader(slotsHttp, launchBaseUrl, endpoint.ApiKey)
             : null;
 
+        //a non-local endpoint that names no models has no rows to offer, the local shelf is not its to switch to
+        var unlistedRemote = model is null && endpoint.Models is not { Count: > 0 };
+
         //the hint reads the same two locals as the reuse line, so the two sentences cannot disagree about what is loaded
-        var repl = new Gatto.Repl.Repl(loop, convo, role.Name, modelString, sessions, client, endpoint.Context, contextBudget, cwd, recomposeSystem, toggleAuto, switchRole, resetGrounding, wildState, on => permissions.SetWild(on, persist: true), hooks, themeMode, subagentProgress, resumedFrom: resumedFrom, reasoning: config.ReasoningMode, thinkingName: initialThinkingName, setEffort: setEffort, listEfforts: listEfforts, glyphs: glyphs, purrSet: Gatto.Repl.Render.PurrFrames.RandomFromPool, versionLine: CommandBanner.DottedVersion(Gatto.Core.GattoVersion.String, Gatto.Core.GattoVersion.Build ?? "", CommandBanner.IsDevBuild(), glyphs), pump: pump, chrome: chrome, switchModel: switchModel, setDefault: id => ModelSwitch.Persist(home, id),   //the role name as ResolveRole cased it from disk, which the banner and the status line key on
-                    launchServing: launchServing, probeServing: probeServing, listModels: listModels, picker: replPicker, slotsReader: slotsReader, warn: warn, altScreen: config.AltScreen, dumpOnExit: config.DumpOnExit, thinkingIsToggle: thinkCap == ThinkCapability.Toggle, thinkingIsUnavailable: ThinkingUnavailable(), mouseEnabled: config.Mouse && config.AltScreen && pump is not null, wheelLines: config.WheelLines, copyOnSelect: config.CopyOnSelect, resumedPath: continuePath, resumeLine: resumeLine, autoCompact: config.AutoCompact, permissions: permissions, listTools: listTools, listPolicy: listPolicy, memoryWarning: launchRes.MemoryTruncatedLines > 0 ? MemoryTruncationWarning(launchRes.MemoryTruncatedLines) : null, cloudNotice: cloudNotice, cloud: cloud, readUsage: usageMeter.Read, onUsageChanged: repaint => usageMeter.Changed = repaint,piggyback: piggyback, turnAbort: turnAbort,
+        var repl = new Gatto.Repl.Repl(loop, convo, role.Name, modelString, sessions, client, endpoint.Context, contextBudget, cwd, recomposeSystem, toggleAuto, switchRole, resetGrounding, wildState, on => permissions.SetWild(on, persist: true), hooks, themeMode, subagentProgress, resumedFrom: resumedFrom, reasoning: config.ReasoningMode, thinkingName: initialThinkingName, setEffort: setEffort, listEfforts: listEfforts, glyphs: glyphs, purrSet: Gatto.Repl.Render.PurrFrames.RandomFromPool, versionLine: CommandBanner.DottedVersion(Gatto.Core.GattoVersion.String, Gatto.Core.GattoVersion.Build ?? "", CommandBanner.IsDevBuild(), glyphs), pump: pump, chrome: chrome, switchModel: switchModel, setDefault: id => ModelSwitch.Persist(home, endpointName, id),   //the role name as ResolveRole cased it from disk, which the banner and the status line key on
+                    launchServing: launchServing, probeServing: probeServing, listModels: unlistedRemote ? null : listModels, picker: replPicker, slotsReader: slotsReader, warn: warn, altScreen: config.AltScreen, dumpOnExit: config.DumpOnExit, thinkingIsToggle: thinkCap == ThinkCapability.Toggle, thinkingIsUnavailable: ThinkingUnavailable(), mouseEnabled: config.Mouse && config.AltScreen && pump is not null, wheelLines: config.WheelLines, copyOnSelect: config.CopyOnSelect, resumedPath: continuePath, resumeLine: resumeLine,
+            modelMarkLegend: model is null ? "current" : "weights loaded",
+            noModelList: unlistedRemote ? $"endpoint {endpointName} lists no models; type /model <name> to switch" : null,
+                    autoCompact: config.AutoCompact, permissions: permissions, listTools: listTools, listPolicy: listPolicy, memoryWarning: launchRes.MemoryTruncatedLines > 0 ? MemoryTruncationWarning(launchRes.MemoryTruncatedLines) : null, cloudNotice: cloudNotice, cloud: cloud, readUsage: usageMeter.Read, onUsageChanged: repaint => usageMeter.Changed = repaint,piggyback: piggyback, turnAbort: turnAbort,
             //a session with no model talks to a server gatto does not manage, so the notice says that instead of offering a model fix
             unmanagedNotice: model is null && endpoint.Models is not { Count: > 0 } ? UnmanagedSession.ModelUnavailable(launchBaseUrl) : null,
             unmanagedVisionNotice: model is null ? UnmanagedSession.VisionUnavailable(launchBaseUrl) : null,

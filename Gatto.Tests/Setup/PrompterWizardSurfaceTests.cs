@@ -64,7 +64,7 @@ public class PrompterWizardSurfaceTests
         try
         {
             Gatto.Core.Home.GattoHome.EnsureInitialized(home);
-            Gatto.Core.Home.GattoConfigWriter.SetDefaultModel(home, "qwen-before");
+            Gatto.Core.Home.GattoConfigWriter.SetEndpointDefaultModel(home, "local", "qwen-before");
 
             var sink = new StringWriter();
             SetupRunner.Run(new SetupFlow(InSessionProbes(home, heldBy: "lfm2.5-1.2b-thinking")),

@@ -29,9 +29,46 @@ public static class GattoConfigWriter
         Mutate(homePath, r => r["weights_root"] = root,
             "cannot persist the weights root");
 
-    public static void SetDefaultModel(string homePath, string modelId) =>
-        Mutate(homePath, root => root["default_model"] = modelId,
+    //one endpoint's entry only, so a choice made on a cloud session never moves the local default
+    public static void SetEndpointDefaultModel(string homePath, string endpoint, string modelId) =>
+        Mutate(homePath, root => Entry(root, endpoint)["model"] = modelId,
             "cannot persist the model choice");
+
+    //the level is keyed by model, since two models of one endpoint can declare different levels
+    public static void SetEndpointEffort(string homePath, string endpoint, string modelId, string level) =>
+        Mutate(homePath, root =>
+        {
+            var entry = Entry(root, endpoint);
+            if (entry["effort"] is not JsonObject effort) entry["effort"] = effort = new JsonObject();
+            effort[modelId] = level;
+        }, "cannot persist the effort choice");
+
+    private static JsonObject Entry(JsonObject root, string endpoint)
+    {
+        if (string.IsNullOrWhiteSpace(endpoint))
+            throw new GattoConfigException("endpoint name cannot be empty");
+        if (root["defaults"] is not JsonObject defaults) root["defaults"] = defaults = new JsonObject();
+        if (defaults[endpoint] is not JsonObject entry) defaults[endpoint] = entry = new JsonObject();
+        return entry;
+    }
+
+    //the older top-level key belongs to the endpoint that is default before this write, so it moves before any edit can change that endpoint
+    private static void FoldLegacyDefaultModel(JsonObject root)
+    {
+        if (root["default_model"] is not JsonValue legacy || !legacy.TryGetValue<string>(out var model))
+        {
+            root.Remove("default_model");   //absent or null, both mean unset, so removing it changes no meaning
+            return;
+        }
+        var owner = root["default_endpoint"] is JsonValue de && de.TryGetValue<string>(out var name)
+            ? name : throw new GattoConfigException("gatto.json needs default_endpoint");
+        var entry = Entry(root, owner);
+        if (entry["model"] is JsonValue tabled && tabled.TryGetValue<string>(out var t) && t != model)
+            throw new GattoConfigException(
+                $"gatto.json has \"default_model\" '{model}' and defaults.{owner}.model '{t}'; remove one");
+        entry["model"] = model;
+        root.Remove("default_model");
+    }
 
     //points default_endpoint at an endpoint that exists, applied after UpsertEndpoint so the config can't name one that is missing
     public static void SetDefaultEndpoint(string homePath, string endpointName)
@@ -96,6 +133,7 @@ public static class GattoConfigWriter
             throw new GattoConfigException($"gatto.json is not valid JSON: {ex.Message}");
         }
 
+        FoldLegacyDefaultModel(root);
         edit(root);
 
         //only the target's explicit ACEs are captured, since inherited ones already come from the directory, and AddAccessRule replays them without privilege
