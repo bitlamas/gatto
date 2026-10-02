@@ -100,6 +100,7 @@ public class SetBytesTests : IDisposable
             + "over ShardSiblings and each arrival is verified by its own size"),
         ("Gatto/Core/Acquire/HubFetch.cs", "a .part's own bytes, which is what resume needs"),
         ("Gatto/Cli/Uninstall.cs", "the gatto EXE's size, which is one file by definition"),
+        ("Gatto/Core/Loop/Permissions/PermissionGate.cs", "the size of the one file a write would replace, never a model"),
     ];
 
     //a production file that reads a model path's length directly is the shard defect returning under a new name

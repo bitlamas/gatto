@@ -248,6 +248,47 @@ public sealed class EditPromptTests : IDisposable
         }
     }
 
+    private static void AssertTitleQuestionAndOptions(List<string> screen, string title, string question, string where)
+    {
+        var dump = where + "\n" + string.Join("\n", screen);
+        Assert.True(screen.Any(r => r.StartsWith("  " + title, StringComparison.Ordinal)), "no title, " + dump);
+        Assert.True(screen.Any(r => r.StartsWith("  " + question, StringComparison.Ordinal)), "no question, " + dump);
+        Assert.True(screen.Any(r => r.Contains("1. Yes", StringComparison.Ordinal)), "no first option, " + dump);
+        Assert.True(screen.Any(r => r.Contains("Esc to cancel", StringComparison.Ordinal)), "no footer, " + dump);
+    }
+
+    //every tool's prompt keeps its title, question and options on a short window, the detail gives up its rows and says how many lines it hides
+    [Fact]
+    public void Every_prompt_keeps_its_title_question_and_options_on_a_short_window()
+    {
+        var command = string.Join("\n", Enumerable.Range(1, 40).Select(i => $"Write-Output {i}"));
+        var shell = new PermissionRequest("shell", command, null);
+        var preview = Enumerable.Range(1, 5).Select(i => $"line {i}").ToList();
+        var write = new PermissionRequest("write_file", @"C:\proj\a.txt (+40 lines)", @"C:\proj",
+            PreviewLines: preview, PreviewTotalLines: 40, Existing: new ExistingFile(12, 200));
+        //from 16 rows the panel's budget holds the title, the question and three options with no detail, and below that the budget decides
+        for (var height = 16; height <= 30; height++)
+        {
+            var s = Screens(shell, 100, height).Single();
+            AssertTitleQuestionAndOptions(s, "shell command", "Do you want to proceed?", $"shell 100x{height}");
+            var shown = s.Count(r => r.StartsWith("  Write-Output ", StringComparison.Ordinal));
+            if (shown is > 0 and < 40)
+                Assert.Contains(s, r => r.StartsWith($"  {U.Ellipsis} +{40 - shown} lines", StringComparison.Ordinal));
+            AssertTitleQuestionAndOptions(Screens(write, 100, height).Single(), "Overwrite file ", "Do you want to overwrite ", $"write 100x{height}");
+            AssertTitleQuestionAndOptions(Screens(WideEdit(100), 100, height).Single(), "Edit file ", "Do you want to edit ", $"edit 100x{height}");
+        }
+    }
+
+    //a shell command past the detail's line cap says how many lines it does not show, a command is never cut silently
+    [Fact]
+    public void A_long_shell_command_counts_the_lines_it_cuts()
+    {
+        var command = string.Join("\n", Enumerable.Range(1, 25).Select(i => $"Write-Output {i}"));
+        var (_, _, detail) = PromptTitles.For(new PermissionRequest("shell", command, null), null, @"C:\proj", U);
+        Assert.Equal(21, detail.Count);
+        Assert.Equal($"{U.Ellipsis} +5 lines", detail[^1].Text);
+    }
+
     [Fact]
     public void A_tall_window_still_holds_the_prompt_to_14_detail_rows()
     {
@@ -289,16 +330,51 @@ public sealed class EditPromptTests : IDisposable
     private static HookPayload Call(string path, string oldS, string newS) =>
         new(Call: new ToolCall("c1", "edit_file", JsonSerializer.Serialize(new { path, old_string = oldS, new_string = newS })));
 
+    //a file that is there but cannot be read still gets its prompt, the tool's own read decides
     [Fact]
     public async Task A_file_the_gate_cannot_read_gives_rows_with_no_number_and_a_prompt()
     {
-        var (gate, prompter, _) = Gate();
-        await gate.CheckAsync(Call("missing.cs", "old a", "new a"));
+        await File.WriteAllTextAsync(Path.Combine(_dir, "locked.cs"), "old a\n");
+        var store = PermissionStore.Load(_dir, out _);
+        var prompter = new Capture();
+        var gate = new PermissionGate(store, prompter, autoYes: false) { ReadFile = _ => throw new IOException("locked") };
+        await gate.CheckAsync(Call("locked.cs", "old a", "new a"));
         var request = Assert.Single(prompter.Requests);
         Assert.Null(request.View);
         Assert.Equal(("old a", "new a"), (request.EditOld, request.EditNew));
         var (plain, _) = Detail(request);
         Assert.Equal(new[] { "  -  old a", "  +  new a" }, plain);
+    }
+
+    //an edit that cannot apply is refused before the prompt with the words the tool would have said, so nothing is asked that cannot happen
+    [Fact]
+    public async Task An_edit_that_cannot_apply_fails_with_no_prompt()
+    {
+        await File.WriteAllTextAsync(Path.Combine(_dir, "a.cs"), "x\ntwice\ntwice\n");
+        var full = Path.Combine(_dir, "a.cs");
+        var missing = Path.Combine(_dir, "missing.cs");
+        var (gate, prompter, _) = Gate();
+
+        var absent = await Assert.ThrowsAsync<CannotApplyException>(() => gate.CheckAsync(Call("a.cs", "nowhere", "y")));
+        var twice = await Assert.ThrowsAsync<CannotApplyException>(() => gate.CheckAsync(Call("a.cs", "twice", "y")));
+        var empty = await Assert.ThrowsAsync<CannotApplyException>(() => gate.CheckAsync(Call("a.cs", "", "y")));
+        var gone = await Assert.ThrowsAsync<CannotApplyException>(() => gate.CheckAsync(Call("missing.cs", "x", "y")));
+
+        Assert.Empty(prompter.Requests);
+        Assert.Equal($"old_string not found in {full}", absent.Message);
+        Assert.Equal(await ToolError("a.cs", "nowhere"), absent.Message);
+        Assert.Equal(await ToolError("a.cs", "twice"), twice.Message);
+        Assert.Equal(await ToolError("a.cs", ""), empty.Message);
+        Assert.Equal(await ToolError("missing.cs", "x"), gone.Message);
+        Assert.Contains(missing, gone.Message, StringComparison.Ordinal);
+    }
+
+    //what the tool itself throws for the same call, the oracle the gate's refusal must match word for word
+    private async Task<string> ToolError(string path, string oldS)
+    {
+        var args = JsonSerializer.SerializeToElement(new { path, old_string = oldS, new_string = "y" });
+        var ex = await Assert.ThrowsAnyAsync<Exception>(() => new EditFileTool().ExecuteAsync(args, new TestToolContext(_dir), default));
+        return ex.Message;
     }
 
     [Fact]
@@ -375,6 +451,16 @@ public sealed class EditPlainSurfacesTests
         var bare = new PermissionRequest("edit_file", @"C:\proj\a.cs (10 bytes)", @"C:\proj");
         var full = bare with { EditOld = "old a", EditNew = "new a", View = new EditView(3, "", "", new[] { "x" }, new[] { "y" }) };
         Assert.Equal(Capture(() => new PlainPermissionPrompter().Ask(bare), "1\n"), Capture(() => new PlainPermissionPrompter().Ask(full), "1\n"));
+    }
+
+    //the plain prompter names an overwrite with the rich prompt's words
+    [Fact]
+    public void The_plain_prompter_says_overwrite()
+    {
+        var request = new PermissionRequest("write_file", @"C:\proj\a.cs (+2 lines)", @"C:\proj", Existing: new ExistingFile(40, 900));
+        var text = Capture(() => new PlainPermissionPrompter().Ask(request), "1\n");
+        Assert.Contains("  Overwrite file, replaces 40 lines", text, StringComparison.Ordinal);
+        Assert.DoesNotContain("Overwrite", Capture(() => new PlainPermissionPrompter().Ask(request with { Existing = null }), "1\n"), StringComparison.Ordinal);
     }
 
     [Fact]

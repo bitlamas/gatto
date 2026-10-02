@@ -8,7 +8,10 @@ internal static class ToolArgs
         args.ValueKind == JsonValueKind.Object &&
         args.TryGetProperty(name, out var v) && v.ValueKind == JsonValueKind.String
             ? v.GetString()!
-            : throw new ArgumentException($"missing required parameter: {name}");
+            : throw new ArgumentException(MissingParameter(name));
+
+    //the words a tool says for an absent argument, which the permission gate says too when it refuses the call before asking
+    public static string MissingParameter(string name) => $"missing required parameter: {name}";
 
     public static int? OptionalInt(JsonElement args, string name) =>
         args.ValueKind == JsonValueKind.Object &&
@@ -88,9 +91,11 @@ public sealed class WriteFileTool : ITool
         var dir = Path.GetDirectoryName(path);
         if (!string.IsNullOrEmpty(dir)) Directory.CreateDirectory(dir);
         var bytes = System.Text.Encoding.UTF8.GetBytes(content);
+        //looked at before the write, so the block can say overwrote. the model's text keeps one word for both
+        var existed = File.Exists(path);
         await File.WriteAllBytesAsync(path, bytes, ct);
         return new ToolResult($"wrote {Plural.Of(bytes.Length, "byte")} to {path}",
-            Gloss: $"wrote {Plural.Of(bytes.Length, "byte")}");
+            Gloss: $"{(existed ? "overwrote" : "wrote")} {Plural.Of(bytes.Length, "byte")}");
     }
 }
 
@@ -107,13 +112,13 @@ public sealed class EditFileTool : ITool
         var path = ToolArgs.Resolve(ctx, ToolArgs.RequiredString(args, "path"));
         var oldS = ToolArgs.RequiredString(args, "old_string");
         var newS = ToolArgs.RequiredString(args, "new_string");
-        if (oldS.Length == 0) throw new ArgumentException("old_string must not be empty");
-        if (!File.Exists(path)) throw new FileNotFoundException($"file not found: {path}");
+        if (oldS.Length == 0) throw new ArgumentException(EditLocate.EmptyOld);
+        if (!File.Exists(path)) throw new FileNotFoundException(EditLocate.NoFile(path));
         var text = await File.ReadAllTextAsync(path, ct);
 
         var (match, count) = EditLocate.Find(text, oldS, newS, ct);
-        if (count == 0) throw new InvalidOperationException($"old_string not found in {path}");
-        if (count > 1) throw new InvalidOperationException($"old_string occurs {count} times in {path} — must be unique");
+        if (count == 0) throw new InvalidOperationException(EditLocate.NotFound(path));
+        if (count > 1) throw new InvalidOperationException(EditLocate.NotUnique(count, path));
         //the view is taken from the text before the write, where the replaced lines still are
         var view = EditLocate.View(text, match!);
         await File.WriteAllTextAsync(path, text.Replace(match!.Old, match.New), ct);

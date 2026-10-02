@@ -486,6 +486,10 @@ public static class ItemRender
             //a command is free text with paths inside it, so it takes the embedded rule. this is display only, since the raw record is what runs
             else if (prop.Name.Equals("command", StringComparison.OrdinalIgnoreCase))
                 text = AbbreviateProfileEmbedded(RelativizeEmbedded(text, cwd), profile);
+            //a space at either end of a pattern is part of it, and only quotes show that after the space that follows the name
+            else if (prop.Name.Equals("pattern", StringComparison.OrdinalIgnoreCase) && text.Length > 0
+                && (char.IsWhiteSpace(text[0]) || char.IsWhiteSpace(text[^1])))
+                text = "\"" + text + "\"";
 
             if (identifier is null && IdentifierKeys.Contains(prop.Name)) { identifier = text; continue; }
             if (firstScalarFallback is null) { firstScalarFallback = text; fallbackAt = modifiers.Count; }

@@ -57,8 +57,8 @@ public sealed class RichPermissionPrompter(
 {
     private readonly GlyphSet _glyphs = glyphs ?? GlyphSet.Unicode;
 
-    //only a turn still live when the prompt opens can end it, so an earlier esc leaves the rest of the round asking
-    private CancellationToken TokenLiveAtOpen() => abort?.Token is { IsCancellationRequested: false } live ? live : default;
+    //the turn's own token, so a prompt that opens after the turn was stopped closes at once and nothing in a stopped turn is asked
+    private CancellationToken TurnToken() => abort?.Token ?? default;
 
     //test seam for the widget call, since the fail-closed arm can't be reached through the real widget
     internal Func<SelectSpec, SelectOutcome>? ShowForTest;
@@ -108,8 +108,8 @@ public sealed class RichPermissionPrompter(
 
         //detail lines go through raw, the widget wraps them at each paint width so a resize mid-prompt re-wraps instead of clips
         var spec = new SelectSpec(titleRows, question, options, detail,
-            FreeTextLabel: null, MultiSelect: false, FooterHint: "Esc to cancel", Cancel: TokenLiveAtOpen(),
-            DetailAt: PromptTitles.DetailAt(request, _glyphs));
+            FreeTextLabel: null, MultiSelect: false, FooterHint: "Esc to cancel", Cancel: TurnToken(),
+            DetailAt: PromptTitles.DetailAt(request, detail, _glyphs));
         var outcome = ShowForTest is { } showForTest
             ? showForTest(spec)
             : new SelectPrompt(surface, theme, k, pump: null, chrome, _glyphs).Show(spec);
@@ -178,7 +178,7 @@ public sealed class RichPermissionPrompter(
                 while (true)
                 {
                     surface.Write("  " + ReasonPrefix);
-                    var raw = RichPrompter.ReadLine(k, surface, CancellationToken.None);
+                    var raw = RichPrompter.ReadLine(k, surface, TurnToken());
                     if (raw is null) throw new OperationCanceledException(DeadPumpMessage);
                     if (string.IsNullOrEmpty(raw)) return null;
 
@@ -203,7 +203,7 @@ public sealed class RichPermissionPrompter(
                 while (true)
                 {
                     var line = SelectPrompt.ReadLinePanel(
-                        k, () => new List<string>(notice), ReasonPrefix, WrapReasonLine, painter.SetPanel, TokenLiveAtOpen());
+                        k, () => new List<string>(notice), ReasonPrefix, WrapReasonLine, painter.SetPanel, TurnToken());
                     switch (line.Status)
                     {
                         case PanelLineStatus.Dead: throw new OperationCanceledException(DeadPumpMessage);
@@ -234,7 +234,7 @@ public sealed class PlainPermissionPrompter(bool denyReason = false) : IPermissi
     //no reason is read on this path, CheckpointGate is the only caller and discards it
     public PermissionAnswer Ask(PermissionRequest request) => AskCore(request, offerReasonOnDeny: false).Answer;
 
-    //same menu and parsing, a Deny reads one optional line the model sees verbatim. deny_reason is read at construction, both prompters honour the same switch
+    //same menu and parsing, a Deny reads one optional line that PrepareReason strips and caps before the model sees it. deny_reason is read at construction, both prompters honour the same switch
     public PermissionDecision AskWithReason(PermissionRequest request) => AskCore(request, offerReasonOnDeny: denyReason);
 
     private static PermissionDecision AskCore(PermissionRequest request, bool offerReasonOnDeny)
@@ -248,6 +248,9 @@ public sealed class PlainPermissionPrompter(bool denyReason = false) : IPermissi
             : "";
         //the tool name is model-controlled, it can hold ESC before the unknown-tool check runs, so sanitize it like the Summary
         Console.WriteLine($"[permission] {agentPrefix}{PermissionPromptText.Sanitize(request.Tool)}  {PermissionPromptText.Sanitize(request.Summary)}");
+        //a write over a file says so here in the rich prompt's words, since this line alone reads the same for a new file
+        if (request is { Tool: "write_file", Existing: { } existing })
+            Console.WriteLine("  Overwrite file" + (PromptTitles.Replaces(existing) is { } replaced ? ", " + replaced : ""));
         Console.WriteLine("  1. once");
         if (hasOffer) Console.WriteLine($"  2. always (this project) {offerText}");
         Console.WriteLine("  0. deny");
@@ -275,11 +278,18 @@ public sealed class PlainPermissionPrompter(bool denyReason = false) : IPermissi
         }
     }
 
-    //no reason on empty input or a closed stdin, and no retry loop keeps the fast deny path fast
+    //no reason on empty input or a closed stdin. a reason the model would receive none of is re-asked and a cut one is reported, as the rich read does, in ASCII
     private static string? ReadReason()
     {
-        Console.Write("reason (optional, Enter to skip): ");
-        var raw = Console.ReadLine();
-        return string.IsNullOrEmpty(raw) ? null : raw;
+        while (true)
+        {
+            Console.Write($"reason (optional, at most {PermissionGate.MaxReasonLength} chars, Enter to skip): ");
+            var raw = Console.ReadLine();
+            if (string.IsNullOrEmpty(raw)) return null;
+            var model = PermissionGate.PrepareReason(raw);
+            if (model.LostEntirely) { Console.WriteLine(RichPermissionPrompter.NothingReachedModel); continue; }
+            if (model.Truncated) Console.WriteLine($"(only the first {PermissionGate.MaxReasonLength} chars reach the model)");
+            return raw;
+        }
     }
 }

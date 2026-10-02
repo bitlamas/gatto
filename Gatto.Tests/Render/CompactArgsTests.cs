@@ -241,6 +241,15 @@ public class CompactArgsTests
         Assert.Equal(@"TODO (in src, glob *.cs)", row);
     }
 
+    //a pattern that starts or ends with a space is quoted, so the reader sees the space belongs to it, and any other pattern stays bare
+    [Fact]
+    public void A_pattern_with_a_space_at_either_end_is_quoted()
+    {
+        Assert.Equal("\" TODO\"", ItemRender.CompactArgs("""{"pattern":" TODO"}""", Cwd));
+        Assert.Equal("\"TODO \"", ItemRender.CompactArgs("""{"pattern":"TODO "}""", Cwd));
+        Assert.Equal("TO DO", ItemRender.CompactArgs("""{"pattern":"TO DO"}""", Cwd));
+    }
+
     [Fact]
     public void A_tool_with_no_known_identifier_still_leads_with_something()
     {

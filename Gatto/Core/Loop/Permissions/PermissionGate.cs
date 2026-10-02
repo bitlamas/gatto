@@ -13,6 +13,9 @@ public sealed class PermissionGate(
     //how the gate reads a file for an edit's view, a test counts the reads through it
     internal Func<string, string> ReadFile { get; init; } = File.ReadAllText;
 
+    //how the gate reads a file a write would replace, a test makes it throw
+    internal Func<string, byte[]> ReadBytes { get; init; } = File.ReadAllBytes;
+
     //only tools that never mutate anything, and the names must match the registry's lowercase snake_case exactly
     private static readonly HashSet<string> ReadClass =
         new(StringComparer.Ordinal) { "read_file", "glob", "grep", "task_restate", "recall_memory" };
@@ -65,7 +68,8 @@ public sealed class PermissionGate(
             throw new InvalidOperationException(
                 "no interactive terminal to grant permission (use --yes or pre-grant in .gatto\\permissions.json)");
 
-        //5. ask, stamped with the subagent label, through AskWithReason whose default forwards to Ask with no reason
+        //5. ask, stamped with the subagent label, through AskWithReason whose default forwards to Ask with no reason. a call that cannot run is refused first
+        if (Unrunnable(call) is { } why) throw new CannotApplyException(why);
         var decision = prompter.AskWithReason(WithView(c) with { Agent = AgentLabel });
         switch (decision.Answer)
         {
@@ -184,13 +188,61 @@ public sealed class PermissionGate(
     //the edit's view on the file as it is, read only here where the prompt is about to be asked. any failure gives no view and the prompt all the same
     private PermissionRequest WithView(Classified c)
     {
+        if (c.Request is { Tool: "write_file" } w && c.FullPath is { } target)
+            return File.Exists(target) ? w with { Existing = Measure(target) } : w;
         if (c.Request is not { Tool: "edit_file", EditOld: { } oldS, EditNew: { } newS } r || c.FullPath is not { } path) return c.Request;
+        //an edit that cannot apply is refused here in the tool's words, a prompt would ask the user to approve what cannot happen
+        if (oldS.Length == 0) throw new CannotApplyException(EditLocate.EmptyOld);
+        if (!File.Exists(path)) throw new CannotApplyException(EditLocate.NoFile(path));
+        string text;
+        try { text = ReadFile(path); }
+        catch (Exception) { return r; }
+        var (match, count) = EditLocate.Find(text, oldS, newS, default);
+        if (count == 0) throw new CannotApplyException(EditLocate.NotFound(path));
+        if (count > 1) throw new CannotApplyException(EditLocate.NotUnique(count, path));
+        return r with { View = EditLocate.View(text, match!) };
+    }
+
+    //the arguments each file tool cannot run without, in the order the tool reads them, so the first one missing is the one the tool would name
+    private static readonly Dictionary<string, string[]> RequiredArguments = new(StringComparer.Ordinal)
+    {
+        ["write_file"] = ["path", "content"],
+        ["edit_file"] = ["path", "old_string", "new_string"],
+    };
+
+    //why a call fails before its tool can run, in the words the loop or the tool would say, null when nothing stops it here
+    private static string? Unrunnable(ToolCall call)
+    {
+        JsonElement root;
         try
         {
-            var text = ReadFile(path);
-            return EditLocate.Find(text, oldS, newS, default).Match is { } match ? r with { View = EditLocate.View(text, match) } : r;
+            using var doc = JsonDocument.Parse(call.ArgumentsJson.Length > 0 ? call.ArgumentsJson : "{}");
+            root = doc.RootElement.Clone();
         }
-        catch (Exception) { return r; }
+        catch (JsonException ex) { return LoopErrors.MalformedArgumentsPrefix + ex.Message; }
+        if (!RequiredArguments.TryGetValue(call.Name, out var required)) return null;
+        foreach (var name in required)
+            if (root.ValueKind != JsonValueKind.Object || !root.TryGetProperty(name, out var v) || v.ValueKind != JsonValueKind.String)
+                return ToolArgs.MissingParameter(name);
+        return null;
+    }
+
+    //past this size the gate gives bytes from the file's length and never reads it, a prompt must not wait on a huge file
+    private const long MeasureCap = 16 * 1024 * 1024;
+
+    //text is a file with no NUL in its first 8000 bytes, the test git uses. a read that fails still says the file exists
+    private ExistingFile Measure(string path)
+    {
+        try
+        {
+            var length = new FileInfo(path).Length;
+            if (length > MeasureCap) return new ExistingFile(null, length);
+            var bytes = ReadBytes(path);
+            return Array.IndexOf(bytes, (byte)0, 0, Math.Min(bytes.Length, 8000)) >= 0
+                ? new ExistingFile(null, bytes.Length)
+                : new ExistingFile(CountLines(Encoding.UTF8.GetString(bytes)), bytes.Length);
+        }
+        catch (Exception) { return new ExistingFile(null, null); }
     }
 
     private static Classified Opaque(string tool, string raw, bool offerGrant) =>

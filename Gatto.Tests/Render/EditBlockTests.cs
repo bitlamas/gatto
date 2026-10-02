@@ -28,6 +28,23 @@ public sealed class EditBlockTests
 
     private static ToolResult Wrote => new("wrote 10 bytes to a.cs", Gloss: "wrote 10 bytes");
 
+    //a closed block's rows are cut to the window as they are composed, so no row leans on the frame's clip to fit
+    [Fact]
+    public void No_row_of_a_closed_block_is_wider_than_the_window()
+    {
+        var item = Item("read_file", new ToolResult(string.Join("\n", Enumerable.Range(1, 40).Select(i => $"line {i}")), Gloss: "40 lines"), open: false) with { Args = "{\"path\":\"some\\\\long\\\\folder\\\\name\\\\file.cs\"}" };
+        for (var width = 8; width <= 40; width++)
+            Assert.All(item.Render(width, T, U), row => Assert.True(UnicodeWidth.Of(Visible(row)) <= width, $"{width}: {Visible(row)}"));
+    }
+
+    //the row takes its word from the tool's gloss, so a write over a file says so on the block
+    [Fact]
+    public void A_write_over_a_file_says_overwrote()
+    {
+        var rows = Item("write_file", new ToolResult("wrote 10 bytes to a.cs", Gloss: "overwrote 10 bytes"), content: "a\nb\n").Render(100, T, U);
+        Assert.StartsWith($"  {U.Elbow} {U.Ok} overwrote {U.Dot} 2 lines", Visible(rows[1]), StringComparison.Ordinal);
+    }
+
     //the write
     [Fact]
     public void A_write_says_wrote_and_its_lines()
@@ -348,6 +365,58 @@ public sealed class EditBlockTests
         var b = model.Items.OfType<ToolBlockItem>().Single();
         Assert.True(b.Collapsed);
         Assert.Equal($"  {U.Elbow} {U.Bad} denied", Visible(b.Render(100, T, U)[1]).TrimEnd());
+    }
+
+    public static IEnumerable<object?[]> Refusals() => new[]
+    {
+        new object?[] { PermissionOutcomeKind.Denied, null, "blocked: " + Gatto.Core.Loop.Permissions.PermissionGate.DenyNudge },
+        new object?[] { PermissionOutcomeKind.Denied, "use read_file", "blocked: " + Gatto.Core.Loop.Permissions.PermissionGate.DenyWithReasonPrefix + "use read_file" },
+        new object?[] { PermissionOutcomeKind.Cancelled, null, "blocked: " + Gatto.Core.Loop.Permissions.PermissionGate.CancelMessage },
+    };
+
+    //a refusal restored from the session file draws the row it drew live, read back from the gate's own words in the record
+    [Theory]
+    [MemberData(nameof(Refusals))]
+    public void A_refused_call_restores_as_it_drew_live(PermissionOutcomeKind outcome, string? reason, string text)
+    {
+        var call = new ToolCall("c1", "edit_file", JsonSerializer.Serialize(new { path = "a.cs", old_string = "x", new_string = "y" }));
+        var result = new ToolResult(text, IsError: true);
+        var (r, model) = Live();
+        r.BeginTurn();
+        r.OnToolCallStart(call);
+        r.NotePermissionOutcome(outcome, reason);
+        r.OnToolResult(call, result);
+        r.EndTurn();
+        var live = model.Items.OfType<ToolBlockItem>().Single();
+
+        var convo = new Gatto.Core.Loop.Conversation("sys");
+        convo.AddUser("go");
+        convo.AddAssistant("", new[] { call });
+        convo.AddToolResult(call.Id, result);
+        var (_, rebuilt) = TranscriptStore.Rebuild(TranscriptStore.BuildLines(new TranscriptModel("coder"), convo), T, "coder", glyphs: U);
+        var restored = rebuilt.Items.OfType<ToolBlockItem>().Single();
+        live.LeadingBlank = restored.LeadingBlank = false;
+
+        Assert.Equal(live.Render(100, T, U), restored.Render(100, T, U));
+        Assert.True(restored.Refused);
+    }
+
+    //a result hook that appends a paragraph to a refusal, as the grounding nudge does, leaves the refusal readable on restore
+    [Fact]
+    public void A_refusal_with_an_appended_paragraph_still_reads_as_refused()
+    {
+        var gate = "blocked: " + Gatto.Core.Loop.Permissions.PermissionGate.DenyWithReasonPrefix + "use read_file";
+        Assert.Equal((PermissionOutcomeKind.Denied, "use read_file"), Refusal.Of(new ToolResult(gate + "\n\nground first", IsError: true)));
+        Assert.Equal((PermissionOutcomeKind.Cancelled, (string?)null),
+            Refusal.Of(new ToolResult("blocked: " + Gatto.Core.Loop.Permissions.PermissionGate.CancelMessage + "\n\nground first", IsError: true)));
+    }
+
+    //a call the stopped turn never reached restores as cancelled, not as a plain error
+    [Fact]
+    public void A_call_a_stop_never_reached_restores_as_cancelled()
+    {
+        Assert.Equal((PermissionOutcomeKind.Cancelled, (string?)null), Refusal.Of(new ToolResult(Gatto.Core.Loop.LoopErrors.Cancelled, IsError: true)));
+        Assert.Equal(((PermissionOutcomeKind?)null, (string?)null), Refusal.Of(new ToolResult("cancelled", IsError: false)));
     }
 
     public static IEnumerable<object?[]> Views() => new[] { new object?[] { At14 }, new object?[] { null } };

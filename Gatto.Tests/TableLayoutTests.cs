@@ -85,6 +85,36 @@ public class TableGridTests
         Assert.Equal("└───────────┴─────────┘", rows[^1]);
     }
 
+    //a column that holds a wide character keeps two cells when the others are squeezed to one, so no row runs past the grid
+    [Fact]
+    public void A_squeezed_column_with_a_wide_character_keeps_two_cells()
+    {
+        var wide = char.ConvertFromUtf32(0x65E5);
+        var rows = Render(new TableSpec(new[] { "a", "b", wide }, new[] { ColumnAlign.Left, ColumnAlign.Left, ColumnAlign.Left },
+            new[] { new[] { "ab", "cd", wide } }), 14);
+        Assert.All(rows, r => Assert.Equal(14, UnicodeWidth.Of(r)));
+    }
+
+    //a wide emoji takes two of the column's four cells, so two pad it there and the border stands where the terminal draws the others
+    [Fact]
+    public void A_row_with_a_wide_emoji_keeps_its_border()
+    {
+        var check = char.ConvertFromUtf32(0x2705);
+        var rows = Render(new TableSpec(new[] { "done", "item" }, new[] { ColumnAlign.Left, ColumnAlign.Left },
+            new[] { new[] { check, "a" }, new[] { "no", "b" } }), 40);
+        Assert.Contains(rows, r => r.StartsWith("│ " + check + "   │", StringComparison.Ordinal));
+    }
+
+    //a heart with the emoji selector draws two cells, so it pads like the check mark and its border stands with the others
+    [Fact]
+    public void A_row_with_a_selector_emoji_keeps_its_border()
+    {
+        var heart = char.ConvertFromUtf32(0x2764) + char.ConvertFromUtf32(0xFE0F);
+        var rows = Render(new TableSpec(new[] { "done", "item" }, new[] { ColumnAlign.Left, ColumnAlign.Left },
+            new[] { new[] { heart, "a" }, new[] { "no", "b" } }), 40);
+        Assert.Contains(rows, r => r.StartsWith("│ " + heart + "   │", StringComparison.Ordinal));
+    }
+
     [Fact]
     public void HeaderIsCentered_BodyIsLeftAligned()
     {

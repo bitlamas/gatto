@@ -154,7 +154,7 @@ public sealed record ToolBlockItem(string Name, string Args, string Gloss, bool 
         if (Parts is null || !HasResult) return new ToolRowLayout(Gloss, HasResult ? 1 : -1, 0, 0, Opens: true);
         var g = glyphs ?? GlyphSet.Unicode;
         var parts = Grep is { } gp ? Parts with { Words = GrepRowsRender.Words(gp, theme, g), Tok = gp.Matches.Count == 0 ? "" : Parts.Tok }
-            : Name == "write_file" && !Failed && WriteContent is not null ? Parts with { Words = WriteWords(Body.Rows.Count, theme, g) }
+            : Name == "write_file" && !Failed && WriteContent is not null ? Parts with { Words = WriteWords(Body.Rows.Count, RawGloss, theme, g) }
             : Name == "edit_file" && !Failed && Body.Diff is { } diff ? Parts with { Words = EditWords(diff, theme, g) }
             : Parts;
         return ToolResultRow.Layout(parts, Linkable, open, width, theme, g);
@@ -268,9 +268,10 @@ public sealed record ToolBlockItem(string Name, string Args, string Gloss, bool 
                 : theme.Paint(text.Substring(start, length), Theme.CodeBlockFg);
     }
 
-    //the words of a successful write's row, the count taken from the rows the window shows
-    private static string WriteWords(int lines, Theme theme, GlyphSet g) =>
-        theme.Paint(g.Ok, Theme.Ok) + " " + theme.Paint($"wrote {g.Dot} {Gatto.Core.Plural.Of(lines, "line")}", Theme.Dim);
+    //the words of a successful write's row, the count taken from the rows the window shows and the verb from the tool's gloss. a record from before the gloss said overwrote reads wrote
+    private static string WriteWords(int lines, string? gloss, Theme theme, GlyphSet g) =>
+        theme.Paint(g.Ok, Theme.Ok) + " " + theme.Paint(
+            $"{(gloss?.StartsWith("overwrote ", StringComparison.Ordinal) == true ? "overwrote" : "wrote")} {g.Dot} {Gatto.Core.Plural.Of(lines, "line")}", Theme.Dim);
 
     //null for any other tool, a failed call, or text that is not the tool's
     private GrepParse? Grep => Body.Grep;
@@ -304,8 +305,9 @@ public sealed record ToolBlockItem(string Name, string Args, string Gloss, bool 
         if (IsShell) return ShellLayout(width, theme, glyphs);
         var g = glyphs ?? GlyphSet.Unicode;
         var link = LinkLayout(width, theme, glyphs);
+        //the head rows are cut to the window here, so the layout the mouse reads is the row the frame draws
         var rows = ItemRender.ToolRows(Name, Args, link.Gloss, HasResult, theme, Role, BulletTint, FollowUp, glyphs)
-            .Select(r => new RenderedRow(r, false)).ToList();
+            .Select(r => new RenderedRow(width > 0 ? TermText.TruncateCells(r, width, glyphs: g) : r, false)).ToList();
         var body = Body;
         int outputFirst = -1, shown = 0, footerRow = -1, actionStart = 0, actionEnd = 0;
         var action = ShellAction.None;

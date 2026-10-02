@@ -37,20 +37,22 @@ internal static class PromptTitles
                 var rel = S(ItemRender.RelativePath(path, cwd));
                 var name = S(SafeFileName(path));
                 var write = r.Tool == "write_file";
-                return (
-                    //the path and the name go in Code spans in both rows, so the widget paints them in the inline-code style
-                    new TitleRow(write ? "Write new file " : "Edit file ", Code: rel),
-                    new PromptQuestion(
-                        write ? "Do you want to write new file " : "Do you want to edit ",
-                        Code: name, After: "?"),
-                    //an edit shows its change, a write with no preview falls back to the generic detail block, don't invent one
-                    !write && r.EditOld is { } oldS && r.EditNew is { } newS ? ChangeRows.At(oldS, newS, r.View, g)(ChangeRows.Cap)
+                var over = write && r.Existing is not null;
+                //an edit shows its change, a write with no preview falls back to the generic detail block, don't invent one
+                IReadOnlyList<DetailRow> detail = !write && r.EditOld is { } oldS && r.EditNew is { } newS ? ChangeRows.At(oldS, newS, r.View, g)(ChangeRows.Cap)
                     : r.PreviewLines is { Count: > 0 } preview
                         ? WithRoles(NumberedPreview(g, preview, r.PreviewTotalLines), SyntaxHighlight.LanguageOfPath(path))
-                        : Detail(r, g));
+                        : Detail(r, g);
+                return (
+                    //the path and the name go in Code spans in both rows, so the widget paints them in the inline-code style
+                    new TitleRow(over ? "Overwrite file " : write ? "Write new file " : "Edit file ", Code: rel),
+                    new PromptQuestion(
+                        over ? "Do you want to overwrite " : write ? "Do you want to write new file " : "Do you want to edit ",
+                        Code: name, After: "?"),
+                    Replaces(r.Existing) is { } replaced ? [new DetailRow(replaced, Warn: true), .. detail] : detail);
             }
 
-            //the whole shell command goes in the detail, it is never elided or truncated
+            //the shell command goes in the detail unelided, and past the line cap a row counts what it does not show
             case "shell":
                 return ("shell command", GenericQuestion, WithRoles(Detail(r, g), CodeLanguage.PowerShell));
 
@@ -74,9 +76,32 @@ internal static class PromptTitles
         return (S(r.Tool), GenericQuestion, Detail(r, g));
     }
 
-    //an edit's rows at a smaller cap for a short window, null for every other detail, which keeps its rows whatever the room
-    public static Func<int, IReadOnlyList<DetailRow>>? DetailAt(PermissionRequest r, GlyphSet? glyphs = null) =>
-        r is { Tool: "edit_file", EditOld: { } oldS, EditNew: { } newS } ? ChangeRows.At(oldS, newS, r.View, glyphs ?? GlyphSet.Unicode) : null;
+    //the detail at a smaller cap for a short window. an edit cuts its own change rows, every other tool cuts from the end and counts what it hides
+    public static Func<int, IReadOnlyList<DetailRow>> DetailAt(PermissionRequest r, IReadOnlyList<DetailRow> detail, GlyphSet? glyphs = null)
+    {
+        var g = glyphs ?? GlyphSet.Unicode;
+        return r is { Tool: "edit_file", EditOld: { } oldS, EditNew: { } newS } ? ChangeRows.At(oldS, newS, r.View, g) : cap => Cut(detail, cap, g);
+    }
+
+    //a warn row stays on top, then as many rows as the cap leaves, then one dim row counting every line the cut hides
+    private static IReadOnlyList<DetailRow> Cut(IReadOnlyList<DetailRow> detail, int cap, GlyphSet g)
+    {
+        if (detail.Count <= cap) return detail;
+        var pinned = detail.TakeWhile(d => d.Warn).ToList();
+        if (pinned.Count >= cap) return pinned.Take(cap).ToList();   //the warning outranks the count of what is hidden
+        var rest = detail.Skip(pinned.Count).ToList();
+        var keep = Math.Max(0, cap - pinned.Count - 1);
+        var hidden = rest.Skip(keep).Sum(d => d.Lines);
+        return [.. pinned, .. rest.Take(keep), new DetailRow($"{g.Ellipsis} +{Plural.Of(hidden, "line")}", Dim: true, Lines: hidden)];
+    }
+
+    //what a write over a file replaces, null when nothing was measured, and the plain prompter says the same words
+    internal static string? Replaces(ExistingFile? existing) => existing switch
+    {
+        { Lines: { } lines } => "replaces " + Plural.Of(lines, "line"),
+        { Bytes: { } bytes } => "replaces " + Plural.Of(bytes, "byte"),
+        _ => null,
+    };
 
     //numbered preview rows, then +N lines for the rest. the count is exact, Core ends a line at its trailing newline
     private static List<DetailRow> NumberedPreview(GlyphSet g, IReadOnlyList<string> preview, int total)
@@ -85,7 +110,7 @@ internal static class PromptTitles
         for (var i = 0; i < preview.Count; i++)
             rows.Add(new DetailRow(S(preview[i]), Gutter: $"{i + 1}  "));
         var hidden = total - preview.Count;
-        if (hidden > 0) rows.Add(new DetailRow($"{g.Ellipsis} +{Plural.Of(hidden, "line")}", Dim: true));
+        if (hidden > 0) rows.Add(new DetailRow($"{g.Ellipsis} +{Plural.Of(hidden, "line")}", Dim: true, Lines: hidden));
         return rows;
     }
 
@@ -96,12 +121,15 @@ internal static class PromptTitles
         var shown = Math.Min(lines.Length, SummaryLineCap);
         var rows = new List<DetailRow>(shown + 1);
         for (var i = 0; i < shown; i++) rows.Add(S(lines[i]));
-        if (lines.Length > SummaryLineCap) rows.Add(new DetailRow($"{g.Ellipsis}", Dim: true));
+        //past the cap one row counts the rest, a command is never cut silently
+        if (lines.Length > SummaryLineCap)
+            rows.Add(new DetailRow($"{g.Ellipsis} +{Plural.Of(lines.Length - SummaryLineCap, "line")}", Dim: true, Lines: lines.Length - SummaryLineCap));
         if (r.Tool == "shell" || rows.Count <= DetailLineCap) return rows;
 
         var elided = new List<DetailRow>(DetailHeadLines + 1 + DetailTailLines);
         elided.AddRange(rows.Take(DetailHeadLines));
-        elided.Add(new DetailRow($"{g.MidEllipsis} +" + (rows.Count - DetailHeadLines - DetailTailLines) + $" lines {g.MidEllipsis}", Dim: true));
+        var middle = rows.Skip(DetailHeadLines).Take(rows.Count - DetailHeadLines - DetailTailLines).Sum(d => d.Lines);
+        elided.Add(new DetailRow($"{g.MidEllipsis} +" + middle + $" lines {g.MidEllipsis}", Dim: true, Lines: middle));
         elided.AddRange(rows.Skip(rows.Count - DetailTailLines));
         return elided;
     }

@@ -287,16 +287,7 @@ public sealed class StreamRenderer : ITurnObserver
             //a refusal's result text is the gate's nudge to the model, so the row shows the fact. the red ● keeps a refusal visible in a long turn
             var bulletTint = outcome is PermissionOutcomeKind.Denied or PermissionOutcomeKind.Cancelled
                 ? Theme.Err : (RgbColor?)null;
-            var outcomeGloss = outcome switch
-            {
-                //a deny that has a reason shows it dim and quoted, capped like the error preview since it goes on one row
-                PermissionOutcomeKind.Denied => _theme.Paint(_glyphs.Bad + " denied", Theme.Err)
-                    + (outcomeScope is { Length: > 0 }
-                        ? _theme.Paint(" — \"" + TermText.TruncateCells(TermText.Sanitize(outcomeScope), 120, glyphs: _glyphs) + "\"", Theme.Dim)
-                        : ""),
-                PermissionOutcomeKind.Cancelled => _theme.Paint(_glyphs.Bad + " cancelled", Theme.Err),
-                _ => null,
-            };
+            var outcomeGloss = Refusal.Gloss(outcome, outcomeScope, _theme, _glyphs);
             var followUp = outcome == PermissionOutcomeKind.AutoApproved && outcomeScope is { Length: > 0 }
                 ? AutoApprovedPrefix + outcomeScope : null;
 

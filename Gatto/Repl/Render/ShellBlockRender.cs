@@ -126,7 +126,7 @@ public static class ShellBlockRender
         var dot = $" {g.Dot} ";
         var link = open ? CollapseWords : ExpandWords;
         var tok = resultChars > 0 ? $"{dot}~{InputFrame.KFormat(resultChars / 4)} tok" : "";
-        var lastErr = output.LastStderr;
+        var lastErr = output.ErrorLine;
         var w = new List<(string, ShellInk)>();
         if (exit == 0)
         {

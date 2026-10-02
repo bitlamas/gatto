@@ -34,6 +34,37 @@ public sealed class ShellOutputTests : IDisposable
         Assert.Equal(1, ShellOutput.ExitCodeOf(r.Gloss));
     }
 
+    //the result row shows the message of a PowerShell error record, trimmed, and not the record's indented id lines
+    [Fact]
+    public void The_error_line_skips_a_PowerShell_record_and_trims()
+    {
+        var o = new ShellOutput(Array.Empty<string>(), new[]
+        {
+            "Get-Item : Cannot find path 'C:\\x' because it does not exist.",
+            "At line:1 char:1",
+            "+ Get-Item C:\\x",
+            "+ ~~~~~~~~~~~~~",
+            "    + CategoryInfo          : ObjectNotFound: (C:\\x:String) [Get-Item], ItemNotFoundException",
+            "    + FullyQualifiedErrorId : PathNotFound,Microsoft.PowerShell.Commands.GetItemCommand",
+            "",
+        }, Array.Empty<string>());
+        Assert.Equal("Get-Item : Cannot find path 'C:\\x' because it does not exist.", o.ErrorLine);
+        Assert.Equal("boom", new ShellOutput(Array.Empty<string>(), new[] { "   boom  " }, Array.Empty<string>()).ErrorLine);
+        Assert.Equal("+ only", new ShellOutput(Array.Empty<string>(), new[] { "  + only" }, Array.Empty<string>()).ErrorLine);
+        Assert.Null(ShellOutput.Empty.ErrorLine);
+    }
+
+    //the same through the real tool, so the record lines are the ones this machine's PowerShell writes
+    [Fact]
+    public async Task A_real_PowerShell_error_gives_its_message_line()
+    {
+        var o = ShellOutput.Parse((await Run("Get-Item C:\\no_such_dir_for_gatto_tests\\x")).Text);
+        Assert.NotNull(o.ErrorLine);
+        Assert.False(o.ErrorLine!.StartsWith('+'), o.ErrorLine);
+        Assert.False(o.ErrorLine.StartsWith("At line", StringComparison.Ordinal), o.ErrorLine);
+        Assert.Equal(o.ErrorLine.Trim(), o.ErrorLine);
+    }
+
     [Fact]
     public async Task Stderr_only_leaves_a_blank_stdout()
     {

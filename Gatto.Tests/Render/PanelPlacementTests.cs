@@ -207,6 +207,27 @@ public sealed class PanelPlacementTests
         Assert.Contains("qwen", block.Rows[^1].Visible, StringComparison.Ordinal);   //assert the status is intact, a non-empty row could still be garbled
     }
 
+    //a panel over a live call may take that call's rows. the prompt gets the room it would have with no call running
+    [Fact]
+    public void A_panel_takes_the_rows_of_the_live_call_it_asks_about()
+    {
+        const int Height = 20;
+        var (p, _) = Wire(60, Height);
+        p.SetPanel(Panel(1));
+        var bare = p.PanelRowsAvailable();
+
+        p.State.Tool = ("shell", "Write-Output 1");
+        p.State.ToolInput = string.Join("\n", Enumerable.Range(1, 6).Select(i => $"Write-Output {i}"));
+        p.State.ToolWait = "waiting for your input";
+        var withCall = p.PanelRowsAvailable();
+        Assert.Equal(bare, withCall);
+
+        p.SetPanel(Panel(withCall));
+        var block = p.ComposeChromeBlock(60, Height);
+        Assert.Equal(Panel(withCall), block.Rows.Where(r => r.Region == ChromeRegion.Prompt).Select(r => r.Visible).ToList());
+        Assert.True(block.Rows.Count <= Height, $"{block.Rows.Count} rows in a {Height}-row viewport");
+    }
+
     //exactly what PanelRowsAvailable offers must fit whole, and one row more must lose exactly one. compare against the literal viewport
     [Fact]
     public void THE_PAINTER_NEVER_DROPS_A_ROW_IT_SAID_A_PANEL_COULD_HAVE()
@@ -388,19 +409,24 @@ public sealed class PanelPlacementTests
         Assert.True(block.Rows.Count <= 20 - 3);
     }
 
+    //a panel that needs the live call's rows takes them and is drawn whole, the purr survives, and one row more than offered loses exactly one
     [Fact]
-    public void OneRowOverAllowance_DropsExactlyOneFromThePanel_PurrAndToolStillSurvive()
+    public void OneRowOverAllowance_TheLiveCallGivesWay_PurrSurvives_PanelLosesOne()
     {
         var (p, s) = Wire(60, 20);
         p.State.PurrText = "purr 3s";
         p.State.Tool = ("ask_user", "");
+        p.SetPanel(Panel(1));
         var allowed = p.PanelRowsAvailable();
-        p.SetPanel(Panel(allowed + 1));
+
+        p.SetPanel(Panel(allowed));
         p.Repaint();
         var block = p.ComposeChromeBlock(60, 20);
-
         Assert.Contains(block.Rows, r => r.Region == ChromeRegion.Purr);
-        Assert.Contains(block.Rows, r => r.Region == ChromeRegion.Tool);
+        Assert.DoesNotContain(block.Rows, r => r.Region == ChromeRegion.Tool);
+        Assert.Equal(allowed, Rows(p, 60, 20, ChromeRegion.Prompt).Count);
+
+        p.SetPanel(Panel(allowed + 1));
         Assert.Equal(allowed, Rows(p, 60, 20, ChromeRegion.Prompt).Count);
     }
 

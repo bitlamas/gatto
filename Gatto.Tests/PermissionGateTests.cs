@@ -314,12 +314,35 @@ public sealed class PermissionGateTests : IDisposable
         Assert.True(spy2.Executed);
     }
 
-    [Fact]
-    public void MalformedWrite_offer_stays_null_never_a_toolname_grant()
+    //a call its tool cannot run is refused before the prompt in the tool's own words, so no prompt asks and no grant is offered for it
+    [Theory]
+    [InlineData("write_file", "{}", "path")]
+    [InlineData("write_file", "{\"path\":\"a.txt\"}", "content")]
+    [InlineData("edit_file", "{\"path\":\"a.txt\",\"old_string\":\"x\"}", "new_string")]
+    [InlineData("edit_file", "{\"path\":\"a.txt\",\"new_string\":\"x\"}", "old_string")]
+    [InlineData("edit_file", "{\"path\":7,\"old_string\":\"x\",\"new_string\":\"y\"}", "path")]
+    public async Task A_file_call_missing_an_argument_is_refused_before_the_prompt(string tool, string args, string missing)
     {
-        //a write_file without path must not offer a tool-name grant, it would skip the write directory scope
-        var req = CaptureRequest("write_file", "{}");
-        Assert.Null(req.GrantOffer);
+        var prompter = new FakePrompter(PermissionAnswer.Once);
+        var gate = new PermissionGate(PermissionStore.Load(_root, out _), prompter, autoYes: false);
+        var ex = await Assert.ThrowsAsync<CannotApplyException>(() => gate.CheckAsync(new HookPayload(Call: new ToolCall("c1", tool, args))));
+        Assert.Equal(ToolArgs.MissingParameter(missing), ex.Message);
+        Assert.Empty(prompter.Requests);
+        var toolError = await Assert.ThrowsAnyAsync<Exception>(() => (tool == "write_file" ? (ITool)new WriteFileTool() : new EditFileTool())
+            .ExecuteAsync(JsonDocument.Parse(args).RootElement.Clone(), new TestToolContext(_root), default));
+        Assert.Equal(toolError.Message, ex.Message);
+    }
+
+    //arguments that are not JSON fail in the loop before any tool runs, so the gate says the loop's words and asks nothing
+    [Fact]
+    public async Task A_call_whose_arguments_are_not_json_is_refused_before_the_prompt()
+    {
+        var prompter = new FakePrompter(PermissionAnswer.Once);
+        var gate = new PermissionGate(PermissionStore.Load(_root, out _), prompter, autoYes: false);
+        var ex = await Assert.ThrowsAsync<CannotApplyException>(() => gate.CheckAsync(new HookPayload(Call: new ToolCall("c1", "my_tool", "{oops"))));
+        var parse = Assert.ThrowsAny<JsonException>(() => JsonDocument.Parse("{oops"));
+        Assert.Equal(LoopErrors.MalformedArgumentsPrefix + parse.Message, ex.Message);
+        Assert.Empty(prompter.Requests);
     }
 
     private PermissionRequest CaptureRequest(string tool, string argsJson)
@@ -345,6 +368,7 @@ public sealed class PermissionGateTests : IDisposable
     public void EditFile_sizes_new_string_bytes()
     {
         var full = Path.GetFullPath(Path.Combine(_root, "a.txt"));
+        File.WriteAllText(full, "x\n");   //the edit must be one that can apply, or the gate refuses it before any prompt
         var req = CaptureRequest("edit_file", "{\"path\":\"a.txt\",\"old_string\":\"x\",\"new_string\":\"hello\"}");
 
         Assert.Equal($"{full} (5 bytes)", req.Summary);
@@ -360,15 +384,6 @@ public sealed class PermissionGateTests : IDisposable
         var req = CaptureRequest("write_file", $"{{\"path\":{JsonSerializer.Serialize(target)},\"content\":\"hi\"}}");
 
         Assert.Equal(outsideDir, req.GrantOffer);
-    }
-
-    [Fact]
-    public void WriteFile_missing_content_prints_path_only()
-    {
-        var full = Path.GetFullPath(Path.Combine(_root, "a.txt"));
-        var req = CaptureRequest("write_file", "{\"path\":\"a.txt\"}");   //the path is present but no content can be measured, so the summary is the path alone.
-
-        Assert.Equal(full, req.Summary);
     }
 
     [Fact]
@@ -862,6 +877,26 @@ public sealed class PermissionGateTests : IDisposable
         Assert.False(File.Exists(PermsPath));
     }
 
+    //the loop reports an edit the gate refused as unappliable with the tool's text, not as a block
+    [Fact]
+    public async Task An_edit_that_cannot_apply_reaches_the_model_as_the_tools_error()
+    {
+        File.WriteAllText(Path.Combine(_root, "a.txt"), "x\n");
+        var prompter = new FakePrompter();
+        var hooks = GateOn(PermissionStore.Load(_root, out _), prompter, autoYes: false);
+        var spy = new SpyTool("edit_file");
+        var (loop, client, convo, obs) = LoopWith(hooks, spy);
+        EnqueueOneCall(client, "edit_file", JsonSerializer.Serialize(new { path = Path.Combine(_root, "a.txt"), old_string = "nowhere", new_string = "y" }));
+
+        await loop.RunTurnAsync(convo, "go", obs, default);
+
+        var (_, result) = obs.Results.Single();
+        Assert.True(result.IsError);
+        Assert.Equal($"old_string not found in {Path.Combine(_root, "a.txt")}", result.Text);
+        Assert.Equal(0, prompter.CallCount);
+        Assert.False(spy.Executed);
+    }
+
     //core supplies the preview lines only, the renderer numbers them, adds the +N lines tail and sanitizes
 
     private async Task<PermissionRequest> RequestFor(string tool, object args)
@@ -894,6 +929,7 @@ public sealed class PermissionGateTests : IDisposable
     {
         //an edit's prompt shows its change from the two strings, the head preview is a write's
         var six = string.Join("\n", Enumerable.Range(1, 6).Select(i => $"new {i}"));
+        File.WriteAllText(Path.Combine(_root, "a.txt"), "x\n");   //an edit that can apply, the only kind the gate asks about
         var req = await RequestFor("edit_file", new { path = "a.txt", old_string = "x", new_string = six });
 
         Assert.Equal(("x", six), (req.EditOld, req.EditNew));
@@ -904,16 +940,7 @@ public sealed class PermissionGateTests : IDisposable
     [Fact]
     public async Task Preview_AbsentArg_Defaults()
     {
-        //with no sizing argument the preview fields stay null
-        var write = await RequestFor("write_file", new { path = "a.txt" });
-        Assert.Null(write.PreviewLines);
-        Assert.Equal(0, write.PreviewTotalLines);
-
-        var edit = await RequestFor("edit_file", new { path = "a.txt", old_string = "x" });
-        Assert.Null(edit.PreviewLines);
-        Assert.Equal(0, edit.PreviewTotalLines);
-
-        //empty content gets no preview, there is no first line
+        //empty content gets no preview, there is no first line. a call missing its content is refused before any request is built
         var empty = await RequestFor("write_file", new { path = "a.txt", content = "" });
         Assert.Null(empty.PreviewLines);
         Assert.Equal(0, empty.PreviewTotalLines);
@@ -928,6 +955,33 @@ public sealed class PermissionGateTests : IDisposable
         Assert.Equal(3, req.PreviewTotalLines);
         Assert.Equal(new[] { "one", "two", "three" }, req.PreviewLines);
         Assert.Contains("(+3 lines)", req.Summary);                        //the summary and the preview must report the same count.
+    }
+
+    //the gate measures the file a write would replace, lines for text, bytes for anything else, nothing for a new file
+    [Fact]
+    public async Task A_write_over_a_file_carries_what_it_replaces()
+    {
+        File.WriteAllText(Path.Combine(_root, "text.txt"), "one\ntwo\nthree\n");
+        File.WriteAllBytes(Path.Combine(_root, "blob.bin"), new byte[] { 1, 0, 2, 3 });
+
+        Assert.Null((await RequestFor("write_file", new { path = "new.txt", content = "x" })).Existing);
+        Assert.Equal(new ExistingFile(3, 14), (await RequestFor("write_file", new { path = "text.txt", content = "x" })).Existing);
+        Assert.Equal(new ExistingFile(null, 4), (await RequestFor("write_file", new { path = "blob.bin", content = "x" })).Existing);
+        Assert.Null((await RequestFor("edit_file", new { path = "text.txt", old_string = "one", new_string = "1" })).Existing);
+    }
+
+    //a file the gate cannot read still says it exists, and the prompt is asked all the same
+    [Fact]
+    public async Task A_write_over_an_unreadable_file_still_prompts_and_says_it_exists()
+    {
+        File.WriteAllText(Path.Combine(_root, "locked.txt"), "x");
+        var prompter = new FakePrompter(PermissionAnswer.Once);
+        var gate = new PermissionGate(PermissionStore.Load(_root, out _), prompter, autoYes: false)
+            { ReadBytes = _ => throw new IOException("locked") };
+
+        await gate.CheckAsync(new HookPayload(Call: new ToolCall("c1", "write_file", JsonSerializer.Serialize(new { path = "locked.txt", content = "y" }))));
+
+        Assert.Equal(new ExistingFile(null, null), prompter.Requests.Single().Existing);
     }
 
     [Fact]

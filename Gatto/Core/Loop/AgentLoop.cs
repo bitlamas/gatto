@@ -17,6 +17,9 @@ public sealed record TurnResult(TurnOutcome Outcome, string? FinishReason, Trunc
 public static class LoopErrors
 {
     public const string MalformedArgumentsPrefix = "malformed tool arguments: ";
+
+    //the answer of a call a stopped turn never ran, which a resumed session reads to draw the call cancelled
+    public const string Cancelled = "cancelled";
 }
 
 public interface ITurnObserver
@@ -275,9 +278,20 @@ public sealed class AgentLoop(
             //persist before running the calls, so a tool that hangs still leaves its call in the session file
             Persist(convo, observer);
 
+            //answer this call and every remaining call so --continue reads a balanced transcript, then end the turn
+            TurnResult CancelFrom(int first)
+            {
+                for (var j = first; j < calls.Count; j++)
+                    convo.AddToolResult(calls[j].Id, new ToolResult(LoopErrors.Cancelled, IsError: true));
+                Warn("turn cancelled — remaining tool calls marked cancelled, not executed");
+                return new TurnResult(TurnOutcome.Cancelled, finishReason, null, round, lastWarning);
+            }
+
             for (var i = 0; i < calls.Count; i++)
             {
                 var call = calls[i];
+                //a stopped turn reaches no further call, so an esc at one prompt ends the round and no later call can prompt or run
+                if (ct.IsCancellationRequested) return CancelFrom(i);
                 observer.OnToolCallStart(call);
                 ToolResult result;
                 try
@@ -287,11 +301,11 @@ public sealed class AgentLoop(
                 }
                 catch (OperationCanceledException) when (ct.IsCancellationRequested)
                 {
-                    //on Ctrl+C mid-tool, answer this call and every remaining call so --continue reads a balanced transcript, then end the turn
-                    for (var j = i; j < calls.Count; j++)
-                        convo.AddToolResult(calls[j].Id, new ToolResult("cancelled", IsError: true));
-                    Warn("turn cancelled — remaining tool calls marked cancelled, not executed");
-                    return new TurnResult(TurnOutcome.Cancelled, finishReason, null, round, lastWarning);
+                    return CancelFrom(i);   //a cancel that lands mid-tool, Ctrl+C or esc
+                }
+                catch (CannotApplyException ex)
+                {
+                    result = new ToolResult(ex.Message, IsError: true);
                 }
                 catch (Exception ex)
                 {
@@ -303,6 +317,13 @@ public sealed class AgentLoop(
                 //persist after AddToolResult, so a kill from here on still leaves the result on disk
                 Persist(convo, observer);
                 observer.OnToolResult(call, result);
+            }
+
+            //a stop at the round's last prompt ends the turn here, the next request would go out on the stopped turn and leave a truncated record
+            if (ct.IsCancellationRequested)
+            {
+                Warn("turn cancelled");
+                return new TurnResult(TurnOutcome.Cancelled, finishReason, null, round, lastWarning);
             }
         }
     }

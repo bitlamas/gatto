@@ -15,6 +15,14 @@ public sealed record ShellOutput(IReadOnlyList<string> Stdout, IReadOnlyList<str
 
     public string? LastStderr => Stderr.LastOrDefault(l => l.Trim().Length > 0);
 
+    //the stderr line a result row shows, trimmed. an error record of PowerShell ends with its position and id lines, so those give way to the message above them
+    public string? ErrorLine =>
+        (Stderr.LastOrDefault(l => l.Trim().Length > 0 && !IsRecordLine(l.Trim())) ?? LastStderr)?.Trim();
+
+    private static readonly Regex RecordPosition = new(@"^At (line:\d+|.+:\d+) char:\d+$", RegexOptions.CultureInvariant);
+
+    private static bool IsRecordLine(string trimmed) => trimmed.StartsWith("+ ", StringComparison.Ordinal) || RecordPosition.IsMatch(trimmed);
+
     //the gloss holds the exit code even when the cap cut the exit line from the text
     public static int? ExitCodeOf(string? gloss) =>
         gloss is not null && ExitGloss.Match(gloss) is { Success: true } m

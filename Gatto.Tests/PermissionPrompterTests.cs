@@ -670,6 +670,7 @@ public class RichPermissionPrompterTests
     public void Armed_HugeNonShellContext_ElidesToHeadAndTail()
     {
         var (s, p, h) = Armed();
+        s.Height = 60;   //a window tall enough that the short-window cut leaves the elided detail whole
         var summary = string.Join("\n", Enumerable.Range(1, 18).Select(i => $"line-{i}"));
         IReadOnlyList<string>? live = null;
         var prompter = new RichPermissionPrompter(s, T,
@@ -835,6 +836,30 @@ public class RichPermissionPrompterTests
         var keys = new List<ConsoleKeyInfo> { Digit('3') };
         foreach (var attempt in attempts) { keys.AddRange(Typed(attempt)); keys.Add(Enter); }
         return (surface, new RichPermissionPrompter(surface, T, new ScriptedKeys(keys), denyReason: true));
+    }
+
+    //a stop during the inline reason read ends it, the read takes the turn's token like the menu does
+    [Fact]
+    public void A_stop_during_the_inline_reason_read_ends_it()
+    {
+        using var cts = new CancellationTokenSource();
+        var keys = new StopOnSecondRead(cts, Digit('3'), K('x'), Enter);
+        var prompter = new RichPermissionPrompter(new RecordingSurface { Width = 80 }, T, keys, denyReason: true,
+            abort: new TurnAbortHandle { Current = () => cts });
+
+        Assert.Throws<OperationCanceledException>(() => prompter.AskWithReason(ShellRequest));
+    }
+
+    //the second key read stops the turn, the moment a ctrl+break lands while the reason is being typed
+    private sealed class StopOnSecondRead(CancellationTokenSource cts, params ConsoleKeyInfo[] keys) : IKeySource
+    {
+        private int _reads;
+        public bool KeyAvailable => false;
+        public ConsoleKeyInfo ReadKey()
+        {
+            if (++_reads == 2) cts.Cancel();
+            return keys[_reads - 1];
+        }
     }
 
     private static IEnumerable<ConsoleKeyInfo> Typed(string s) => s.Select(K);
@@ -1421,18 +1446,51 @@ public class RichPermissionPrompterTests
             AssertReplayable(convo);
             Assert.Equal(new[] { "t1", "t2" },
                 convo.Messages.Where(m => m.Role == "tool").Select(m => m.ToolCallId).ToArray());
-            Assert.All(convo.Messages.Where(m => m.Role == "tool"),
-                m => Assert.Equal("blocked: " + PermissionGate.CancelMessage, m.Content));
+            Assert.Equal(new[] { "blocked: " + PermissionGate.CancelMessage, "cancelled" },
+                convo.Messages.Where(m => m.Role == "tool").Select(m => m.Content).ToArray());
             Assert.False(spy.Executed);
-            //pin the current prompt count, so a change to the gap fails here either way.
-            Assert.Equal(2, keys.Prompts);
+            //esc ends the round, so the second call never opens a prompt
+            Assert.Equal(1, keys.Prompts);
         }
         finally { Directory.Delete(root, recursive: true); }
     }
 
-    //answering the second panel after an abort still runs the tool, so a fix that only stops the second prompt cannot pass alone
+    //esc at the last call of a round ends the turn there, no next request goes out on the stopped turn and no truncated record is written
     [Fact]
-    public async Task EscCancel_WithParallelCalls_ASecondApprovalStillExecutes_InsideTheAbortedTurn()
+    public async Task EscCancel_OnTheOnlyCall_EndsTheTurnWithNoFurtherRequest()
+    {
+        await using var server = new FakeOpenAiServer();
+        server.Enqueue(new FakeResponse(Frames: new[]
+        {
+            ToolCallFrame(0, "t1", "write_file", """{"path":"a.txt","content":"x"}"""),
+            FinishFrame("tool_calls"),
+            "data: [DONE]\n\n",
+        }));
+
+        using var cts = new CancellationTokenSource();
+        var abort = new TurnAbortHandle { Current = () => cts };
+        var (s, _, h) = Armed();
+        var prompter = new RichPermissionPrompter(s, T, new CountingKeys(new[] { EscKey }),
+            pump: null, chrome: h, denyReason: false, webSearchProvider: null, abort: abort);
+
+        var root = Directory.CreateTempSubdirectory("gatto-r1-").FullName;
+        try
+        {
+            var (loop, convo, obs) = LoopOver(server, root, prompter, new ExecutionSpyTool("write_file"));
+
+            var outcome = await loop.RunTurnAsync(convo, "go", obs, cts.Token);
+
+            Assert.Equal(TurnOutcome.Cancelled, outcome.Outcome);
+            Assert.Equal(1, server.RequestCount);
+            Assert.DoesNotContain(convo.Messages, m => m.Role == "assistant" && (m.Content ?? "").EndsWith("[truncated]", StringComparison.Ordinal));
+            AssertReplayable(convo);
+        }
+        finally { Directory.Delete(root, recursive: true); }
+    }
+
+    //a yes scripted for the second call finds no prompt to answer, so nothing runs inside the stopped turn
+    [Fact]
+    public async Task EscCancel_WithParallelCalls_NoLaterPromptOpens_AndNothingRuns()
     {
         await using var server = new FakeOpenAiServer();
         server.Enqueue(new FakeResponse(Frames: new[]
@@ -1460,18 +1518,32 @@ public class RichPermissionPrompterTests
             var outcome = await loop.RunTurnAsync(convo, "go", obs, cts.Token);
 
             Assert.Equal(TurnOutcome.Cancelled, outcome.Outcome);
-            Assert.Equal(2, keys.Prompts);
-            Assert.True(spy.Executed, "characterisation: the post-abort call still runs");
-            //the first call is refused with the gate's cancel message, and the second ran and holds its own record
+            Assert.Equal(1, keys.Prompts);
+            Assert.False(spy.Executed);
+            //the first call is refused with the gate's cancel message and the second is answered cancelled without running
             var toolMsgs = convo.Messages.Where(m => m.Role == "tool").ToList();
             Assert.Equal(new[] { "t1", "t2" }, toolMsgs.Select(m => m.ToolCallId).ToArray());
             Assert.Equal("blocked: " + PermissionGate.CancelMessage, toolMsgs[0].Content);
-            Assert.Equal("ran", toolMsgs[1].Content);
-            Assert.False(toolMsgs[1].IsError);
-            //the history is still well-formed, so only the semantics are wrong here.
+            Assert.Equal("cancelled", toolMsgs[1].Content);
+            Assert.True(toolMsgs[1].IsError);
             AssertReplayable(convo);
         }
         finally { Directory.Delete(root, recursive: true); }
+    }
+
+    //a prompt that opens after its turn was stopped closes at once and reads no key, the same throw a ctrl+break gives a prompt
+    [Fact]
+    public void A_prompt_asked_in_a_stopped_turn_closes_without_reading_a_key()
+    {
+        using var cts = new CancellationTokenSource();
+        cts.Cancel();
+        var (s, _, h) = Armed();
+        var keys = new CountingKeys(new[] { Digit('1') });
+        var prompter = new RichPermissionPrompter(s, T, keys,
+            pump: null, chrome: h, denyReason: false, webSearchProvider: null, abort: new TurnAbortHandle { Current = () => cts });
+
+        Assert.Throws<OperationCanceledException>(() => prompter.AskWithReason(new PermissionRequest("shell", "git status", "git")));
+        Assert.Equal(0, keys.Prompts);
     }
 
     //count the panels raised, each esc-answered panel reads exactly one key
@@ -1731,6 +1803,21 @@ public class PlainPermissionPrompterTests : IDisposable
         //the reason step is opt-in, so this helper turns it on for the tests that judge it.
         var decision = new PlainPermissionPrompter(denyReason: true).AskWithReason(request);
         return (sw.ToString(), decision);
+    }
+
+    //the plain reason read names the cap, re-asks when nothing would reach the model and says when the cap cut the reason, as the rich read does
+    [Fact]
+    public void The_plain_reason_names_its_cap_reasks_on_nothing_and_reports_a_cut()
+    {
+        var control = new string('\x07', 3);
+        var (output, decision) = RunWithReason(ShellRequest, "0\n" + control + "\nok then\n");
+        Assert.Contains($"{PermissionGate.MaxReasonLength} chars", output, StringComparison.Ordinal);
+        Assert.Contains(RichPermissionPrompter.NothingReachedModel, output, StringComparison.Ordinal);
+        Assert.Equal("ok then", decision.Reason);
+
+        var (cutOutput, cut) = RunWithReason(ShellRequest, "0\n" + new string('x', 300) + "\n");
+        Assert.Contains($"only the first {PermissionGate.MaxReasonLength} chars reach the model", cutOutput, StringComparison.Ordinal);
+        Assert.Equal(300, cut.Reason!.Length);
     }
 
     [Fact]

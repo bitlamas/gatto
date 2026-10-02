@@ -34,15 +34,30 @@ public static class TableLayout
         return w;
     }
 
+    //the fewest cells each column can take, 2 where a cell holds a wide character since one cell cannot draw it
+    internal static int[] Floors(TableSpec spec)
+    {
+        var f = new int[spec.Headers.Count];
+        for (var c = 0; c < f.Length; c++)
+        {
+            var cells = spec.Rows.Select(r => c < r.Count ? r[c] : "").Prepend(spec.Headers[c]);
+            f[c] = cells.Any(cell => CellSpans(cell).Any(s => s.Text.EnumerateRunes().Any(r => UnicodeWidth.OfRune(r) > 1))) ? 2 : 1;
+        }
+        return f;
+    }
+
     //residual cells go one at a time to the leftmost capped column and stop at its natural width, and a zero-width column stays 0
-    internal static int[] Allocate(int[] natural, int budget)
+    internal static int[] Allocate(int[] natural, int budget, int[]? floors = null)
     {
         if (natural.Sum() <= budget) return (int[])natural.Clone();
 
-        //the largest common cap whose sum of min(natural[i], cap) still fits the budget
+        //no column goes under its floor, and a floor never lifts a column past its natural width
+        int Cell(int i, int cap) => natural[i] == 0 ? 0 : Math.Max(Math.Min(natural[i], cap), Math.Min(floors?[i] ?? 1, natural[i]));
+
+        //the largest common cap whose sum of cells still fits the budget
         var cap = natural.Max();
-        while (cap > 1 && natural.Sum(n => Math.Min(n, cap)) > budget) cap--;
-        var w = natural.Select(n => Math.Min(n, cap)).ToArray();
+        while (cap > 1 && Enumerable.Range(0, natural.Length).Sum(i => Cell(i, cap)) > budget) cap--;
+        var w = Enumerable.Range(0, natural.Length).Select(i => Cell(i, cap)).ToArray();
 
         //leftmost capped column first, one cell at a time. the loop ends because a leftover cell means some column is still below its natural width
         for (var residual = budget - w.Sum(); residual > 0; )
@@ -66,7 +81,8 @@ public static class TableLayout
         var budget = width - Chrome(n);
         if (budget < n) return RecordRows(spec, theme, width, g);
 
-        var w = Allocate(Natural(spec), budget);
+        var w = Allocate(Natural(spec), budget, Floors(spec));
+        if (w.Sum() > budget) return RecordRows(spec, theme, width, g);   //the floors of the wide columns don't fit
         var blocks = new List<List<string>> { RowLines(spec.Headers, w, spec.Alignments, true, theme, g) };
         foreach (var row in spec.Rows) blocks.Add(RowLines(row, w, spec.Alignments, false, theme, g));
 
@@ -183,7 +199,7 @@ public static class TableLayout
         if (n == 0) return Array.Empty<RenderedRow>();
 
         var gaps = 2 * (n - 1);
-        var w = Allocate(Natural(spec), Math.Max(n, width - gaps));
+        var w = Allocate(Natural(spec), Math.Max(n, width - gaps), Floors(spec));
         var rows = new List<RenderedRow>();
 
         void Emit(IReadOnlyList<string> cells)

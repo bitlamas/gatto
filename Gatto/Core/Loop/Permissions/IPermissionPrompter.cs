@@ -18,7 +18,12 @@ public sealed record PermissionRequest(
     string Tool, string Summary, string? GrantOffer,
     string? Agent = null, IReadOnlyList<string>? PreviewLines = null, int PreviewTotalLines = 0,
     //an edit's two strings and where it lands in the file as it is now, so the prompt shows the change before the answer
-    string? EditOld = null, string? EditNew = null, Gatto.Core.Tools.EditView? View = null);
+    string? EditOld = null, string? EditNew = null, Gatto.Core.Tools.EditView? View = null,
+    //the file a write would replace as the gate saw it when it asked, null when there was none
+    ExistingFile? Existing = null);
+
+//lines when the file reads as text and bytes otherwise, both null when it exists and could not be read
+public sealed record ExistingFile(int? Lines, long? Bytes);
 
 //the reason on a deny goes into the gate's exception message, which the loop passes to the model so the deny can steer it
 public sealed record PermissionDecision(PermissionAnswer Answer, string? Reason = null);

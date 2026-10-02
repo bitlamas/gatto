@@ -81,8 +81,11 @@ public static class TranscriptStore
                 case "tool":
                     //the gatto role, the error flag and the gloss are the stamped fields. role is the fallback for a record written before those fields existed
                     var stored = new ToolResult(m.Content ?? "", m.IsError, m.Gloss);
-                    var gloss = ItemRender.ToolGloss(stored, theme, glyphs);
-                    var parts = ItemRender.ToolGlossParts(stored, theme, glyphs);
+                    //a refusal is read back from the gate's words, so it draws the denied or cancelled row and the red bullet it drew live
+                    var (refused, reason) = Refusal.Of(stored);
+                    var refusal = Refusal.Gloss(refused, reason, theme, glyphs ?? GlyphSet.Unicode);
+                    var gloss = refusal ?? ItemRender.ToolGloss(stored, theme, glyphs);
+                    var parts = refusal is null ? ItemRender.ToolGlossParts(stored, theme, glyphs) : new ToolGlossParts(refusal, "", null, false);
                     var toolRole = m.GattoRole ?? role;
                     if (m.ToolCallId is { } id && pendingTool.Remove(id, out var pt))
                     {
@@ -90,7 +93,8 @@ public static class TranscriptStore
                         model.Append(new ToolBlockItem(pt.Name, pt.Args, gloss, HasResult: true, toolRole)
                             { Collapsed = !(!m.IsError && pt.Name is "write_file" or "edit_file"),   //a write or an edit that happened opens on its change, as on the live path
                               FullResult = m.Content ?? "", Parts = parts,   //the full result round-trips from the tool record
-                              RawGloss = m.Gloss,   //the record's gloss carries the exit code, so a resumed shell block reads the same row as the live one
+                              RawGloss = refusal is null ? m.Gloss : null,   //the record's gloss carries the exit code, so a resumed shell block reads the same row as the live one
+                              BulletTint = refusal is null ? null : Theme.Err,
                               FullArgs = ItemRender.FullArgsOf(pt.Name, pt.RawArgs),
                               GrepPattern = GrepRows.PatternOf(pt.Name, pt.RawArgs), BodyStart = ToolBody.StartOf(pt.Name, pt.RawArgs),
                               EditOld = editOld, EditNew = editNew, WriteContent = writeContent,

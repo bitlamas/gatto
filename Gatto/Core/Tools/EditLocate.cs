@@ -12,6 +12,12 @@ public static class EditLocate
     public const int Neighbours = 3;
     public const int LineCells = 300;
 
+    //why an edit cannot apply, in the words the tool and the gate both say, so one cause reads as one error to the model
+    public const string EmptyOld = "old_string must not be empty";
+    public static string NoFile(string path) => $"file not found: {path}";
+    public static string NotFound(string path) => $"old_string not found in {path}";
+    public static string NotUnique(int count, string path) => $"old_string occurs {count} times in {path} — must be unique";
+
     //the literal match first, the CRLF alignment only when it finds nothing, and a match only when the count is 1
     public static (EditMatch? Match, int Count) Find(string fileText, string oldString, string newString, CancellationToken ct)
     {

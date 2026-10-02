@@ -221,6 +221,8 @@ public sealed class ChromePainter
     {
         var n = 0;
         if (State.PurrText is not null) n += 2;                                                  //two rows, a blank and the purr line
+        //a panel over the live call may take that call's rows, which repeat what the prompt shows, and the clamp drops them when it does
+        if (State.PanelUp) return n + NewestQueuedMessageReservation(width, height);
         if (State.Tool is not null) n += 2 + (State.ToolProgress is not null ? 1 : 0);            //two rows, a blank and the tool bullet, plus one more for the progress row
         if (State.Tool is { } live && live.Name == "shell" && State.ToolInput is { } liveCommand)   //the live shell rows past the bullet, and the wait row under them
             n += ShellBlockRender.Layout(ShellBlockInput.Live(liveCommand, RoleForTint, null), ShellBlockState.Closed, width, _theme, _glyphs).Rows.Count - 1 + (State.ToolWait is not null ? 1 : 0);

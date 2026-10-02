@@ -44,6 +44,40 @@ public class PromptTitlesTests
         Assert.Equal("… +40 lines", detail[^1].Text);
     }
 
+    //a write over a file says overwrite and puts what it replaces in warn ink above the preview
+    [Fact]
+    public void A_write_over_a_file_says_overwrite_and_what_it_replaces()
+    {
+        var request = new PermissionRequest("write_file", @"C:\proj\sub\a.txt (+2 lines)", @"C:\proj",
+            PreviewLines: new[] { "x", "y" }, PreviewTotalLines: 2, Existing: new ExistingFile(40, 900));
+        var (title, question, detail) = PromptTitles.For(request, null, Cwd);
+
+        Assert.Equal(("Overwrite file ", @"sub\a.txt"), (title.Text, title.Code));
+        Assert.Equal(("Do you want to overwrite ", "a.txt", "?"), (question.Text, question.Code, question.After));
+        Assert.Equal("replaces 40 lines", detail[0].Text);
+        Assert.True(detail[0].Warn);
+        Assert.Equal(("1  ", "x"), (detail[1].Gutter, detail[1].Text));
+
+        var binary = PromptTitles.For(request with { Existing = new ExistingFile(null, 1) }, null, Cwd).Detail;
+        Assert.Equal("replaces 1 byte", binary[0].Text);
+        var unread = PromptTitles.For(request with { Existing = new ExistingFile(null, null) }, null, Cwd);
+        Assert.Equal("Overwrite file ", unread.Title.Text);
+        Assert.Equal("1  ", unread.Detail[0].Gutter);
+    }
+
+    //with room for one detail row an overwrite keeps its warn row, the fact that the file is replaced outranks the count of hidden lines
+    [Fact]
+    public void A_one_row_cap_keeps_the_overwrite_warning()
+    {
+        var request = new PermissionRequest("write_file", @"C:\proj\a.txt (+8 lines)", @"C:\proj",
+            PreviewLines: new[] { "a", "b", "c", "d", "e" }, PreviewTotalLines: 8, Existing: new ExistingFile(40, 900));
+        var detail = PromptTitles.For(request, null, Cwd).Detail;
+        var one = PromptTitles.DetailAt(request, detail)(1);
+        Assert.Equal(new[] { "replaces 40 lines" }, one.Select(d => d.Text));
+        var three = PromptTitles.DetailAt(request, detail)(3);
+        Assert.Equal(new[] { "replaces 40 lines", "a", "… +7 lines" }, three.Select(d => d.Text));
+    }
+
     private static readonly char Esc = Convert.ToChar(0x1B);
 
     [Fact]
@@ -149,7 +183,7 @@ public class PromptTitlesTests
         Assert.Equal(21, detail.Count);
         Assert.Equal("line-1", detail[0]);
         Assert.Equal("line-20", detail[19]);
-        Assert.Equal("…", detail[20]);
+        Assert.Equal("… +30 lines", detail[20]);   //the marker counts what the cap hides, a command is never cut silently
         Assert.DoesNotContain(detail, row => row.Contains('⋯'));
     }
 

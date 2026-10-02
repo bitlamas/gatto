@@ -174,6 +174,16 @@ public class FileToolsTests : IDisposable
         Assert.Equal("wrote 5 bytes", r.Gloss);
     }
 
+    //the tool looks before it writes, the gloss says overwrote and the model's text stays as it was
+    [Fact]
+    public async Task WriteFile_over_a_file_glosses_overwrote()
+    {
+        File.WriteAllText(Path.Combine(_dir, "old.txt"), "before");
+        var r = await new WriteFileTool().ExecuteAsync(Args(new { path = "old.txt", content = "hello" }), Ctx, default);
+        Assert.Equal("overwrote 5 bytes", r.Gloss);
+        Assert.StartsWith("wrote 5 bytes to ", r.Text, StringComparison.Ordinal);
+    }
+
     //the same singular check on the write gloss, which names bytes rather than lines. each gloss builds its own text, so a case for one says nothing about the other
     [Fact]
     public async Task WriteFile_GlossSaysOneByte_notOneBytes()

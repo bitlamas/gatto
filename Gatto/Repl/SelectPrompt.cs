@@ -41,9 +41,9 @@ public sealed record TitleRow(string Text, string? Code = null, string? MarkLege
 //a row of an edit's change in the prompt, drawn with a sign after the gutter and, when it changed, on its ground
 public enum DetailKind { None, Same, Added, Removed }
 
-//one detail row, Gutter renders dim ahead of the text and Dim dims the whole row. the text wraps at the live width under the gutter
+//one detail row, Gutter renders dim ahead of the text, Dim dims the whole row and Warn paints it in the warn ink. the row stands for its Lines of source, more than one on a count row
 public sealed record DetailRow(string Text, string? Gutter = null, bool Dim = false, IReadOnlyList<SpanRole>? Roles = null,
-    CodeLanguage Language = CodeLanguage.None, DetailKind Kind = DetailKind.None)
+    CodeLanguage Language = CodeLanguage.None, DetailKind Kind = DetailKind.None, bool Warn = false, int Lines = 1)
 {
     public static implicit operator DetailRow(string text) => new(text);
 }
@@ -619,11 +619,11 @@ public sealed class SelectPrompt(   //single-select, multi-select and the free-t
             return from;
         }
 
-        //the detail takes the room the rest leaves, fewer rows until the panel fits, and the full detail when no cap fits
+        //the detail takes the room the rest leaves, fewer rows until the panel fits, and none when no cap fits, so the title, the question and the options stay
         List<string> Rows(int w, int room, int atCursor, bool[] picked, string draft, out (int Row, int Col)? inputCaret)
         {
             var rows = Compose(w, spec.DetailRows, atCursor, picked, draft, out inputCaret);
-            if (rows.Count <= room || spec.DetailAt is not { } at || spec.DetailRows is not { Count: > 1 } full) return rows;
+            if (rows.Count <= room || spec.DetailAt is not { } at || spec.DetailRows is not { Count: > 0 } full) return rows;
             for (var cap = full.Count - 1; cap >= 1; cap--)
             {
                 var fitted = Compose(w, at(cap), atCursor, picked, draft, out var caret);
@@ -631,7 +631,7 @@ public sealed class SelectPrompt(   //single-select, multi-select and the free-t
                 inputCaret = caret;
                 return fitted;
             }
-            return rows;
+            return Compose(w, null, atCursor, picked, draft, out inputCaret);
         }
 
         //pure in its arguments, it can't read the live cursor, toggles, draft or width. inputCaret is set only while the cursor sits on the free-text row
@@ -742,6 +742,7 @@ public sealed class SelectPrompt(   //single-select, multi-select and the free-t
                             ? (gutterCells > 0 ? theme.Paint(gutter, Theme.Dim) : "") + sign
                             : new string(' ', gutterCells + signCells);
                         var text = detail.Dim ? theme.Paint(segs[s].Text, Theme.Dim)
+                            : detail.Warn ? theme.Paint(segs[s].Text, Theme.Warn)
                             : detailCoded && string.CompareOrdinal(detailPlain, detailStart, segs[s].Text, 0, segs[s].Text.Length) == 0
                                 ? theme.PaintRuns(SyntaxHighlight.Runs(detailPlain, detail.Roles!, detailStart, segs[s].Text.Length), null, detail.Language)
                                 : detail.Kind == DetailKind.None ? segs[s].Text : theme.Paint(segs[s].Text, Theme.CodeBlockFg);
