@@ -74,7 +74,7 @@ public sealed class Doctor(
             CheckRoles(rolesDir, config, g),
             CheckExtensions(extensionsDir, g),
             CheckLlamaServer(config, modelIds, g),
-            CheckPermissions(cwd, g),
+            CheckPermissions(home, cwd, g),
             CheckContextFiles(home, cwd, config, g),
             CheckProjectFiles(cwd, g),
             CheckMemory(cwd, config, g),
@@ -449,18 +449,18 @@ public sealed class Doctor(
         };
     }
 
-    //6. permissions.json parses (only when present)
+    //6. this folder's grants in the home parse
 
-    private static CheckResult CheckPermissions(string cwd, Gatto.Terminal.GlyphSet g)
+    private static CheckResult CheckPermissions(string home, string cwd, Gatto.Terminal.GlyphSet g)
     {
-        var path = Path.Combine(cwd, ".gatto", "permissions.json");
+        var path = PermissionStore.PathFor(home, cwd);
         if (!File.Exists(path))
-            return new CheckResult(true, "permissions.json: not present (skipped)");
+            return new CheckResult(true, "permissions: none granted for this folder");
 
         //reuse the warning Load already produces as the failure text, rather than parsing the file again
-        PermissionStore.Load(cwd, out var warning);
+        PermissionStore.Load(home, cwd, out var warning);
         return warning is null
-            ? new CheckResult(true, $"permissions.json parses ({path})")
+            ? new CheckResult(true, $"permissions: {path}")
             : new CheckResult(false, $"{warning} {g.Dot} fix or delete {path}, then run: gatto doctor");
     }
 
@@ -494,7 +494,7 @@ public sealed class Doctor(
             //ask the set whether it holds the home file (the home folder can be an ancestor of cwd, then it's in the set too)
             var listsHome = files.Any(f => PathsEqual(f.Path, defaultPath));
             var note = listsHome ? "" : config.ContextHome ? HomeAbsentNote(defaultPath, g) : $" {g.Dot} home layer off";
-            note += CwdFileNote(g, cwd, files);
+            note += CwdFileNote(g, cwd, files, config.ContextCompat, config.ContextHome ? defaultPath : null);
             //name the shadowed file, a count of 1 loaded reads as if compat did something. the shadow check stays unconditional, effective compat is per-directory
             var shadowed = ContextFiles.ShadowedFallbacks(files.Select(f => f.Path));
             if (shadowed.Count > 0)
@@ -505,7 +505,7 @@ public sealed class Doctor(
         }
 
         //the empty arm is green and uses the same WhyMissing classification as the non-empty one, so a comment-only home file is never denied
-        var cwdNote = CwdFileNote(g, cwd, files);
+        var cwdNote = CwdFileNote(g, cwd, files, config.ContextCompat, config.ContextHome ? defaultPath : null);
         return config.ContextHome
             ? new CheckResult(true, EmptySetLine(cwd, defaultPath, g) + cwdNote)
             : new CheckResult(true,
@@ -538,17 +538,20 @@ public sealed class Doctor(
                 + "run /init in the REPL to write one",
         };
 
-    //report this folder's own GATTO.md whenever it is not in the set. ancestors' silent drops stay unreported, which would need Collect to return what it dropped
-    private static string CwdFileNote(Gatto.Terminal.GlyphSet g, string cwd, IReadOnlyList<(string Path, string Content)> files)
+    //report this folder's own GATTO.md whenever it is not in the set, and every file above it the walk picks and the strip empties. homeNamed is the home file the home note already names
+    private static string CwdFileNote(Gatto.Terminal.GlyphSet g, string cwd, IReadOnlyList<(string Path, string Content)> files, bool compat, string? homeNamed)
     {
+        var ancestors = string.Concat(ContextFiles.CommentOnlyAncestors(cwd, compat)
+            .Where(p => homeNamed is null || !PathsEqual(p, homeNamed))
+            .Select(p => $" {g.Dot} {Short(p, cwd)} is comment-only"));
         var here = Path.Combine(cwd, "GATTO.md");
-        if (files.Any(f => PathsEqual(f.Path, here))) return "";
+        if (files.Any(f => PathsEqual(f.Path, here))) return ancestors;
         return ContextFiles.WhyMissing(here) switch
         {
             ContextFiles.MissingReason.CommentOnly => $" {g.Dot} GATTO.md here is comment-only",
             ContextFiles.MissingReason.Unreadable => $" {g.Dot} GATTO.md here is not readable",
             _ => "",
-        };
+        } + ancestors;
     }
 
     //8. project memory: the effective state and what decided it

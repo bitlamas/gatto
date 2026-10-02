@@ -21,6 +21,35 @@ public class SearchToolsTests : IDisposable
         File.WriteAllText(Path.Combine(_dir, ".git", "junk.cs"), "class Junk { }");
     }
 
+    //the cap is the number of rows delivered: 200 matches come back whole and unmarked, a 201st is the one that is cut and marked
+    [Theory]
+    [InlineData(200, 200, false)]
+    [InlineData(201, 200, true)]
+    [InlineData(450, 200, true)]
+    public async Task Grep_delivers_at_most_its_cap_and_marks_only_a_real_cut(int matches, int rows, bool marked)
+    {
+        File.WriteAllText(Path.Combine(_dir, "many.txt"), string.Join("\n", Enumerable.Range(1, matches).Select(i => $"hit {i}")));
+        var r = await new GrepTool().ExecuteAsync(Args(new { pattern = "hit" }), Ctx, default);
+        var lines = r.Text.Split(Environment.NewLine);
+
+        Assert.Equal(rows, lines.Count(l => l.StartsWith("many.txt:", StringComparison.Ordinal)));
+        Assert.Equal(marked, r.Text.Contains("[capped at 200 matches]", StringComparison.Ordinal));
+        Assert.Equal($"{rows} matches", r.Gloss);
+    }
+
+    //the character budget is a ceiling too: the row that would cross it is not delivered
+    [Fact]
+    public async Task Grep_never_delivers_more_characters_than_its_budget()
+    {
+        var line = "hit " + new string('x', 290);
+        File.WriteAllText(Path.Combine(_dir, "wide.txt"), string.Join("\n", Enumerable.Repeat(line, 199)));
+        var r = await new GrepTool().ExecuteAsync(Args(new { pattern = "hit" }), Ctx, default);
+        var rows = r.Text.Split(Environment.NewLine).Where(l => l.StartsWith("wide.txt:", StringComparison.Ordinal)).ToList();
+
+        Assert.True(rows.Sum(x => x.Length) <= GrepTool.MaxTotalChars, $"{rows.Sum(x => x.Length)} chars delivered");
+        Assert.Contains("[capped at 50000 chars", r.Text, StringComparison.Ordinal);
+    }
+
     [Fact]
     public async Task Glob_double_star_crosses_directories_and_skips_git()
     {

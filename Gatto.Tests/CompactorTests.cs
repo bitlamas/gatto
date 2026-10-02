@@ -1,8 +1,10 @@
 using System.Linq;
+using System.Text.Json;
 using Gatto.Core.Client;
 using Gatto.Core.Home;
 using Gatto.Core.Loop;
 using Gatto.Core.Memory;
+using Gatto.Core.Tools;
 using Gatto.Tests.Fakes;
 
 namespace Gatto.Tests;
@@ -12,6 +14,9 @@ public class CompactorTests
     //an sse chunk in the exact shape that llama.cpp emits.
     private static string Chunk(string deltaJson, string? finish = null) =>
         $"data: {{\"choices\":[{{\"index\":0,\"delta\":{deltaJson},\"finish_reason\":{(finish is null ? "null" : $"\"{finish}\"")}}}]}}\n\n";
+
+    private const string Summary = "Task / goal: go.\n\nImmediate next step: go on.";
+    private const string TextCall = "The file was truncated. Let me get the rest before writing the summary.\n\n<tool_call>\n<function=read_file>\n<parameter=path>\na.txt\n</parameter>\n</function>\n</tool_call>";
 
     private static Conversation SmallConvo()
     {
@@ -27,19 +32,212 @@ public class CompactorTests
         await using var server = new FakeOpenAiServer();
         server.Enqueue(new FakeResponse(Frames: new[]
         {
-            Chunk("{\"content\":\"SUMMARY TEXT\"}"), Chunk("{}", "stop"), "data: [DONE]\n\n",
+            Chunk("{\"content\":\"Immediate next step: SUMMARY TEXT\"}"), Chunk("{}", "stop"), "data: [DONE]\n\n",
         }));
         var client = new OpenAiCompatClient(new HttpClient(), "local", new EndpointConfig(server.BaseUrl));
         var compactor = new Compactor(client, "m");
 
         var summary = await compactor.SummarizeAsync(SmallConvo(), new RecordingObserver(), default);
 
-        Assert.Equal("SUMMARY TEXT", summary);
+        Assert.Equal("Immediate next step: SUMMARY TEXT", summary);
         //the request must hold no tools key, a summarizer never calls tools
         Assert.False(server.LastRequestBody!.Value.TryGetProperty("tools", out _));
         //the request ends with the fixed template prompt as the final user message.
         var messages = server.LastRequestBody!.Value.GetProperty("messages").EnumerateArray().ToList();
         Assert.Equal("user", messages[^1].GetProperty("role").GetString());
+    }
+
+    //the summary request starts as the loop's last request did, the same tools, overrides and shaped messages, so the server reuses its cache and reads only the new tail
+    [Fact]
+    public async Task The_summary_request_starts_with_the_loops_request_and_forbids_tool_calls()
+    {
+        await using var server = new FakeOpenAiServer();
+        server.Enqueue(new FakeResponse(Frames: new[] { Chunk("{\"content\":\"hi there\"}"), Chunk("{}", "stop"), "data: [DONE]\n\n" }));
+        server.Enqueue(new FakeResponse(Frames: new[] { Chunk("{\"content\":\"Immediate next step: SUMMARY\"}"), Chunk("{}", "stop"), "data: [DONE]\n\n" }));
+        var client = new OpenAiCompatClient(new HttpClient(), "local", new EndpointConfig(server.BaseUrl));
+        var tools = new ToolRegistry();
+        tools.Register(new ReadFileTool());
+        var body = JsonDocument.Parse("""{"chat_template_kwargs":{"enable_thinking":true}}""").RootElement.Clone();
+        var loop = new AgentLoop(client, tools, new HookBus(), new TestToolContext(Path.GetTempPath()), "m",
+            bodyOverrides: body, reasoningHistory: ReasoningHistory.None);
+        var convo = new Conversation("sys");
+        await loop.RunTurnAsync(convo, "hello", new RecordingObserver(), default);
+
+        var summary = await new Compactor(client, "m", loop.RequestShape).SummarizeAsync(convo, new RecordingObserver(), default);
+
+        Assert.Equal("Immediate next step: SUMMARY", summary);
+        var turn = server.RequestBodies[0];
+        var summarize = server.RequestBodies[1];
+        Assert.Equal(turn.GetProperty("tools").GetRawText(), summarize.GetProperty("tools").GetRawText());
+        Assert.Equal("none", summarize.GetProperty("tool_choice").GetString());
+        Assert.Equal(turn.GetProperty("chat_template_kwargs").GetRawText(), summarize.GetProperty("chat_template_kwargs").GetRawText());
+        var turnMessages = turn.GetProperty("messages").EnumerateArray().Select(m => m.GetRawText()).ToList();
+        var summaryMessages = summarize.GetProperty("messages").EnumerateArray().Select(m => m.GetRawText()).ToList();
+        Assert.Equal(turnMessages, summaryMessages.Take(turnMessages.Count));
+    }
+
+    //the loop's request as sent carries the role's thinking suffix on the turn's user message, so the summary request does too, or it diverges there
+    [Fact]
+    public async Task The_summary_request_keeps_the_thinking_suffix_the_loop_sent()
+    {
+        await using var server = new FakeOpenAiServer();
+        server.Enqueue(new FakeResponse(Frames: new[] { Chunk("{\"content\":\"hi there\"}"), Chunk("{}", "stop"), "data: [DONE]\n\n" }));
+        server.Enqueue(new FakeResponse(Frames: new[] { Chunk("{\"content\":\"Immediate next step: SUMMARY\"}"), Chunk("{}", "stop"), "data: [DONE]\n\n" }));
+        var client = new OpenAiCompatClient(new HttpClient(), "local", new EndpointConfig(server.BaseUrl));
+        var loop = new AgentLoop(client, new ToolRegistry(), new HookBus(), new TestToolContext(Path.GetTempPath()), "m",
+            promptSuffix: "/think");
+        var convo = new Conversation("sys");
+        await loop.RunTurnAsync(convo, "hello", new RecordingObserver(), default);
+
+        var summary = await new Compactor(client, "m", loop.RequestShape).SummarizeAsync(
+            convo, new RecordingObserver(), default, windowTokens: 65_536);
+
+        Assert.Equal("Immediate next step: SUMMARY", summary);
+        var turnMessages = server.RequestBodies[0].GetProperty("messages").EnumerateArray().Select(m => m.GetRawText()).ToList();
+        var summaryMessages = server.RequestBodies[1].GetProperty("messages").EnumerateArray().Select(m => m.GetRawText()).ToList();
+        Assert.Contains("/think", turnMessages[^1]);
+        Assert.Equal(turnMessages, summaryMessages.Take(turnMessages.Count));
+        Assert.Contains("hi there", summaryMessages[turnMessages.Count]);
+    }
+
+    //an override that limits output would cut the summary, and it never touches the prompt, so the summary request drops it and keeps the rest
+    [Fact]
+    public async Task The_summary_request_drops_overrides_that_limit_output()
+    {
+        await using var server = new FakeOpenAiServer();
+        server.Enqueue(new FakeResponse(Frames: new[] { Chunk("{\"content\":\"Immediate next step: SUMMARY\"}"), Chunk("{}", "stop"), "data: [DONE]\n\n" }));
+        var client = new OpenAiCompatClient(new HttpClient(), "local", new EndpointConfig(server.BaseUrl));
+        var body = JsonDocument.Parse("""
+            {"max_tokens":50,"max_completion_tokens":50,"n_predict":50,"grammar":"root ::= \"x\"","json_schema":{},"response_format":{"type":"json_object"},"chat_template_kwargs":{"enable_thinking":true}}
+            """).RootElement.Clone();
+        var shape = new RequestShape(Array.Empty<ToolSpec>(), null, body, ReasoningHistory.All);
+
+        await new Compactor(client, "m", shape).SummarizeAsync(SmallConvo(), new RecordingObserver(), default);
+
+        var sent = server.RequestBodies[0];
+        foreach (var key in new[] { "max_tokens", "max_completion_tokens", "n_predict", "grammar", "json_schema", "response_format" })
+            Assert.False(sent.TryGetProperty(key, out _), key);
+        Assert.True(sent.TryGetProperty("chat_template_kwargs", out _));
+    }
+
+    //a summary cut at the output limit beside the whole conversation is asked again from the shortened copy
+    [Fact]
+    public async Task A_summary_cut_beside_the_whole_conversation_falls_back_to_the_shortened_copy()
+    {
+        var convo = new Conversation("s");
+        convo.AddUser("go");
+        var sent = convo.Messages.ToArray();
+        var shape = new RequestShape(Array.Empty<ToolSpec>(), null, null, ReasoningHistory.All, sent, sent);
+        var client = new ScriptedClient((_, n) => n == 1
+            ? new StreamEvent[] { new StreamEvent.TextDelta("half"), new StreamEvent.Finished("length", null) }
+            : new StreamEvent[] { new StreamEvent.TextDelta(Summary), new StreamEvent.Finished("stop", null) });
+        var observer = new RecordingObserver();
+
+        var summary = await new Compactor(client, "m", shape).SummarizeAsync(convo, observer, CancellationToken.None, windowTokens: 65_536);
+
+        Assert.Equal(Summary, summary);
+        Assert.Equal(2, client.Requests.Count);
+        Assert.Contains(observer.Warnings, w => w.Contains("shortened copy"));
+    }
+
+    //a reply with none of the headings is not a summary, so the shortened copy is asked again with no tools listed
+    [Fact]
+    public async Task A_reply_that_is_no_summary_beside_the_whole_conversation_is_asked_again_from_a_tool_free_shortened_copy()
+    {
+        var convo = new Conversation("s");
+        convo.AddUser("go");
+        var sent = convo.Messages.ToArray();
+        var tools = new[] { new ToolSpec("read_file", "reads", JsonDocument.Parse("{\"type\":\"object\"}").RootElement) };
+        var shape = new RequestShape(tools, null, null, ReasoningHistory.All, sent, sent);
+        var client = new ScriptedClient((_, n) => n == 1
+            ? new StreamEvent[] { new StreamEvent.TextDelta(TextCall), new StreamEvent.Finished("stop", null) }
+            : new StreamEvent[] { new StreamEvent.TextDelta(Summary), new StreamEvent.Finished("stop", null) });
+        var observer = new RecordingObserver();
+
+        var summary = await new Compactor(client, "m", shape).SummarizeAsync(convo, observer, CancellationToken.None, windowTokens: 65_536);
+
+        Assert.Equal(Summary, summary);
+        Assert.Equal(2, client.Requests.Count);
+        Assert.Same(tools, client.Requests[0].Tools);
+        Assert.Equal("none", client.Requests[0].ToolChoice);
+        Assert.Null(client.Requests[1].Tools);
+        Assert.Null(client.Requests[1].ToolChoice);
+        Assert.Contains(observer.Warnings, w => w.Contains("shortened copy"));
+    }
+
+    //a call written as text on the shortened copy fails the compaction with its reason, which turns auto-compaction off for the session
+    [Fact]
+    public async Task A_reply_that_is_no_summary_on_the_shortened_copy_fails_and_names_why()
+    {
+        var convo = new Conversation("s");
+        convo.AddUser("go");
+        var client = new ScriptedClient((_, _) => new StreamEvent[] { new StreamEvent.TextDelta(TextCall), new StreamEvent.Finished("stop", null) });
+        var compactor = new Compactor(client, "m");
+
+        Assert.Null(await compactor.SummarizeAsync(convo, new NullObserver(), CancellationToken.None, windowTokens: 65_536));
+        Assert.Single(client.Requests);
+        Assert.Equal("the reply holds none of the summary's headings, so it is not a summary", compactor.LastFailure);
+    }
+
+    //a heading is matched in any case and inside markdown, and the template lets a summary skip any heading, the next step included
+    [Fact]
+    public async Task A_summary_with_any_of_its_headings_in_another_case_or_in_bold_is_kept()
+    {
+        var noNextStep = "**Task / goal:** read the sessions.\n\n**Current state:** 7 read.\n\n**Memory candidates:**\n- none";
+        foreach (var text in new[] { "Task: x.\n\n**Immediate Next Step:** y.", "## immediate next step\ny.", noNextStep, "## CURRENT STATE\nidle." })
+        {
+            var client = new ScriptedClient((_, _) => new StreamEvent[] { new StreamEvent.TextDelta(text), new StreamEvent.Finished("stop", null) });
+            Assert.Equal(text, await new Compactor(client, "m").SummarizeAsync(SmallConvo(), new NullObserver(), CancellationToken.None));
+        }
+    }
+
+    //the headings the check looks for are the template's own, so a reworded template cannot leave the check behind
+    [Fact]
+    public void Every_heading_the_check_looks_for_is_in_the_template()
+    {
+        foreach (var heading in Compactor.Headings)
+            Assert.Contains(heading + ":", Compactor.TemplatePromptForTests, StringComparison.Ordinal);
+    }
+
+    //with too little room for the summary beside the conversation it goes to the shortened copy at once
+    [Fact]
+    public async Task Too_little_room_for_the_summary_goes_to_the_shortened_copy_at_once()
+    {
+        var convo = new Conversation("s");
+        convo.AddUser("go");
+        for (var i = 0; i < 10; i++) { convo.AddAssistant("", new[] { Call($"c{i}") }); convo.AddToolResult($"c{i}", new Gatto.Core.Tools.ToolResult(new string('x', 25_800))); }
+        var sent = convo.Messages.ToArray();
+        var tools = new[] { new ToolSpec("read_file", "reads", JsonDocument.Parse("{\"type\":\"object\"}").RootElement) };
+        var shape = new RequestShape(tools, null, null, ReasoningHistory.All, sent, sent);
+        var client = new ScriptedClient((_, _) => new StreamEvent[] { new StreamEvent.TextDelta(Summary), new StreamEvent.Finished("stop", null) });
+
+        var summary = await new Compactor(client, "m", shape).SummarizeAsync(convo, new NullObserver(), CancellationToken.None, windowTokens: 65_536);
+
+        var used = ContextBudget.Estimate(convo.Messages);
+        Assert.True(used + Compactor.SummaryRoomTokens > 65_536, $"fixture at {used} tokens");
+        Assert.Equal(Summary, summary);
+        Assert.Single(client.Requests);
+        Assert.Null(client.Requests[0].Tools);
+        Assert.True(ContextBudget.Estimate(client.Requests[0].Messages) <= 65_536 * Compactor.TargetFraction
+            + Compactor.TemplatePromptLengthForTests / 4);
+    }
+
+    //a conversation at 91 percent with room for the summary is sent whole, no tool result stubbed
+    [Fact]
+    public async Task A_conversation_past_85_percent_with_room_is_sent_whole()
+    {
+        var convo = new Conversation("s");
+        convo.AddUser("go");
+        for (var i = 0; i < 10; i++) { convo.AddAssistant("", new[] { Call($"c{i}") }); convo.AddToolResult($"c{i}", new Gatto.Core.Tools.ToolResult(new string('x', 23_000))); }
+        var sent = convo.Messages.ToArray();
+        var shape = new RequestShape(Array.Empty<ToolSpec>(), null, null, ReasoningHistory.All, sent, sent);
+        var client = new ScriptedClient((_, _) => new StreamEvent[] { new StreamEvent.TextDelta(Summary), new StreamEvent.Finished("stop", null) });
+
+        await new Compactor(client, "m", shape).SummarizeAsync(convo, new NullObserver(), CancellationToken.None, windowTokens: 65_536);
+
+        var used = ContextBudget.Estimate(convo.Messages);
+        Assert.True(used > 65_536 * Compactor.FitsFraction, $"fixture at {used} tokens");
+        Assert.Equal(sent, client.Requests[0].Messages.Take(sent.Length));
     }
 
     [Fact]
@@ -48,15 +246,15 @@ public class CompactorTests
         await using var server = new FakeOpenAiServer();
         server.Enqueue(new FakeResponse(Frames: new[]
         {
-            Chunk("{\"content\":\"abc\"}"), Chunk("{\"content\":\"def\"}"), Chunk("{}", "stop"), "data: [DONE]\n\n",
+            Chunk("{\"content\":\"Immediate next step: abc\"}"), Chunk("{\"content\":\"def\"}"), Chunk("{}", "stop"), "data: [DONE]\n\n",
         }));
         var client = new OpenAiCompatClient(new HttpClient(), "local", new EndpointConfig(server.BaseUrl));
         var obs = new ReasoningRecorder();
 
         var summary = await new Compactor(client, "m").SummarizeAsync(SmallConvo(), obs, default);
 
-        Assert.Equal("abcdef", summary);
-        Assert.Equal("abcdef", obs.Reasoning);   //deltas are rendered dimmed through the reasoning channel.
+        Assert.Equal("Immediate next step: abcdef", summary);
+        Assert.Equal("Immediate next step: abcdef", obs.Reasoning);   //deltas are rendered dimmed through the reasoning channel.
         Assert.Equal("", obs.Text);               //nothing reaches the plain text channel.
     }
 
@@ -139,9 +337,9 @@ public class CompactorTests
         var convo = new Conversation("s");
         convo.AddUser("go");
         for (var i = 0; i < 10; i++) { convo.AddAssistant("", new[] { Call($"c{i}") }); convo.AddToolResult($"c{i}", new Gatto.Core.Tools.ToolResult(new string('x', 30_000))); }
-        var client = new ScriptedClient((_, _) => new StreamEvent[] { new StreamEvent.TextDelta("summary"), new StreamEvent.Finished("stop", null) });
+        var client = new ScriptedClient((_, _) => new StreamEvent[] { new StreamEvent.TextDelta(Summary), new StreamEvent.Finished("stop", null) });
         var summary = await new Compactor(client, "m").SummarizeAsync(convo, new NullObserver(), CancellationToken.None, windowTokens: 65_536);
-        Assert.Equal("summary", summary);
+        Assert.Equal(Summary, summary);
         Assert.True(ContextBudget.Estimate(client.Requests[0].Messages) <= 65_536 * Compactor.TargetFraction
             + Compactor.TemplatePromptLengthForTests / 4);
     }
@@ -153,10 +351,33 @@ public class CompactorTests
         convo.AddUser("go");
         var client = new ScriptedClient((_, n) => n == 1
             ? throw new GattoContextOverflowException("over", 70_000, 65_536)
-            : new StreamEvent[] { new StreamEvent.TextDelta("summary"), new StreamEvent.Finished("stop", null) });
+            : new StreamEvent[] { new StreamEvent.TextDelta(Summary), new StreamEvent.Finished("stop", null) });
         var summary = await new Compactor(client, "m").SummarizeAsync(convo, new NullObserver(), CancellationToken.None, windowTokens: 65_536);
-        Assert.Equal("summary", summary);
+        Assert.Equal(Summary, summary);
         Assert.Equal(2, client.Requests.Count);
+    }
+
+    //a summary that comes back null says why, so the line that turns auto-compaction off can name the reason
+    [Fact]
+    public async Task A_failed_summary_names_its_reason()
+    {
+        var convo = new Conversation("s");
+        convo.AddUser("go");
+        async Task<string?> ReasonFor(Func<ChatRequest, int, IEnumerable<StreamEvent>> script)
+        {
+            var compactor = new Compactor(new ScriptedClient(script), "m");
+            Assert.Null(await compactor.SummarizeAsync(convo, new NullObserver(), CancellationToken.None, windowTokens: 65_536));
+            return compactor.LastFailure;
+        }
+
+        Assert.Equal("the summary was cut at the output limit", await ReasonFor((_, _) =>
+            new StreamEvent[] { new StreamEvent.TextDelta("half"), new StreamEvent.Finished("length", null) }));
+        Assert.Equal("the summary came back empty", await ReasonFor((_, _) =>
+            new StreamEvent[] { new StreamEvent.Finished("stop", null) }));
+        Assert.Equal("the summary request did not fit the context window", await ReasonFor((_, _) =>
+            throw new GattoContextOverflowException("over", null, null)));
+        Assert.StartsWith("the server dropped the request: ", await ReasonFor((_, _) =>
+            throw new GattoConnectionException("connection refused")));
     }
 
     [Fact]
@@ -364,7 +585,7 @@ public class CompactorTests
             var oldBytes = File.ReadAllBytes(oldPath);
 
             var client = new FakeChatClient();
-            client.EnqueueTurn(new StreamEvent.TextDelta("SESSION SUMMARY"), new StreamEvent.Finished("stop", null));
+            client.EnqueueTurn(new StreamEvent.TextDelta("SESSION SUMMARY\n\nImmediate next step: go on."), new StreamEvent.Finished("stop", null));
             var compactor = new Compactor(client, "m");
 
             var newConvo = await Gatto.Repl.Repl.CompactAsync(
@@ -428,7 +649,7 @@ public class CompactorTests
     public async Task CompactAsync_NullSessions_StillComposesNewConversation()
     {
         var client = new FakeChatClient();
-        client.EnqueueTurn(new StreamEvent.TextDelta("S"), new StreamEvent.Finished("stop", null));
+        client.EnqueueTurn(new StreamEvent.TextDelta(Summary), new StreamEvent.Finished("stop", null));
         var convo = new Conversation("sys");
         convo.AddUser("q");
         convo.AddAssistant("a");
@@ -437,7 +658,7 @@ public class CompactorTests
             new Compactor(client, "m"), convo, sessions: null, () => Composed.Text("FRESH"), new RecordingObserver(), default);
 
         Assert.NotNull(newConvo);
-        Assert.Contains("S", newConvo!.Messages[0].Content!);
+        Assert.Contains(Summary, newConvo!.Messages[0].Content!);
     }
 
     private static ChatMessage Sys(string t) => new("system", t);
@@ -499,7 +720,7 @@ public class CompactorTests
         var convo = new Conversation("s");
         convo.AddUser("go");
         var client = new ScriptedClient((_, _) =>
-            new StreamEvent[] { new StreamEvent.TextDelta("summary"), new StreamEvent.Finished("stop", null) });
+            new StreamEvent[] { new StreamEvent.TextDelta(Summary), new StreamEvent.Finished("stop", null) });
         var addendum = Compactor.SuppressionAddendum(new MemoryIndex.LoadResult("- fact one", 0))!;
 
         await new Compactor(client, "m").SummarizeAsync(
@@ -697,7 +918,7 @@ public class CompactorTests
         await using var server = new FakeOpenAiServer();
         server.Enqueue(new FakeResponse(Frames: new[]
         {
-            Chunk("{\"content\":\"<|tool_calls_section_begin|>## Summary\\nfacts\"}"),
+            Chunk("{\"content\":\"<|tool_calls_section_begin|>## Summary\\nfacts\\nImmediate next step: go.\"}"),
             Chunk("{}", "stop"), "data: [DONE]\n\n",
         }));
         var client = new OpenAiCompatClient(new HttpClient(), "local", new EndpointConfig(server.BaseUrl));
@@ -705,7 +926,7 @@ public class CompactorTests
 
         var summary = await new Compactor(client, "m").SummarizeAsync(SmallConvo(), observer, default);
 
-        Assert.Equal("## Summary\nfacts", summary);
+        Assert.Equal("## Summary\nfacts\nImmediate next step: go.", summary);
         Assert.Contains(observer.Warnings, w => w.Contains("compaction summary"));
     }
 

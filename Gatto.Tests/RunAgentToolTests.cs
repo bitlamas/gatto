@@ -58,7 +58,7 @@ public sealed class RunAgentToolTests : IDisposable
 
     private PermissionGate FreshGate(IPermissionPrompter? prompter, bool autoYes = false)
     {
-        var store = PermissionStore.Load(_dir, out _);
+        var store = PermissionStore.Load(_dir, _dir, out _);
         return new PermissionGate(store, prompter, autoYes);
     }
 

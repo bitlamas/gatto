@@ -8,7 +8,7 @@ public static class ProjectFileConfig
     public const string FileName = ".gatto.json";
 
     //narrower than GattoConfig's arrays on purpose: syncing them would let a project pin settings the home file owns
-    private static readonly string[] TopKeys = { "context_files", "memory", "auto_compact" };
+    private static readonly string[] TopKeys = { "context_files", "memory", "auto_compact", "wild" };
     private static readonly string[] ContextFilesKeys = { "compat" };
     private static readonly string[] MemoryKeys = { "enabled" };
 
@@ -87,6 +87,32 @@ public static class ProjectFileConfig
         }
 
         return effective;
+    }
+
+    //the wild ruling this directory pins, or null when there is none. a top-level bare boolean like auto_compact
+    public static bool? TryReadWild(string dir)
+    {
+        if (ReadRoot(dir) is not { } root) return null;
+        if (!root.TryGetProperty("wild", out var value)) return null;
+
+        if (value.ValueKind is not (JsonValueKind.True or JsonValueKind.False))
+            throw new GattoConfigException(
+                $"{Path.Combine(dir, FileName)} has a wild with the wrong type, it must be a boolean");
+
+        return value.GetBoolean();
+    }
+
+    //wild mode may be turned on only when no .gatto.json up the path sets wild false. a true there is read and ignored, since a project only takes capability away
+    public static bool EffectiveWildAllowed(string cwd, out string? forbiddenBy)
+    {
+        forbiddenBy = null;
+        foreach (var d in AncestorsOf(cwd))
+        {
+            if (TryReadWild(d) is not false) continue;
+            //the walk is deepest-first, so the first file found is the nearest one and the one named
+            forbiddenBy ??= Path.Combine(d, FileName);
+        }
+        return forbiddenBy is null;
     }
 
     //cwd first, then each parent up to the drive root. the order matters because the first file found is the one named as nearest

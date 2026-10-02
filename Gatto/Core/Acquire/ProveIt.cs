@@ -7,7 +7,8 @@ namespace Gatto.Core.Acquire;
 //the result of running a just-written config, with the first token measured so a slow cold load is reported as a wait
 internal sealed record ProveOutcome(bool Ok, string Detail, TimeSpan FirstToken,
     bool StartFailed = false, int? ServerAnswered = null, string? ServedByAnother = null,   //the headline reads the start flag, a null status means nothing replied, and serving another model is a decline and no failure
-    double? TokensPerSecond = null);   //the server's own decode rate, and without it the speed row is dropped rather than taken from the wall clock
+    double? TokensPerSecond = null,   //the server's own decode rate, and without it the speed row is dropped rather than taken from the wall clock
+    bool StreamedEmpty = false);   //the server streamed and closed with no content, which a screen tells apart from a server that never streamed
 
 //setup's last step proves the config with one real minimal completion, the same seam for both setup forks
 internal static class ProveIt
@@ -65,6 +66,6 @@ internal static class ProveIt
                 ? "the server closed the response without sending any content"
                 : "the server answered but did not STREAM the completion — gatto needs streaming "
                   + "chat completions (SSE), and this server does not appear to send them",
-            clock.Elapsed, ServerAnswered: 200);
+            clock.Elapsed, ServerAnswered: 200, StreamedEmpty: finished);
     }
 }

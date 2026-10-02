@@ -607,6 +607,34 @@ public class OpenAiCompatClientTests
         Assert.Equal("user", messages[0].GetProperty("role").GetString());
     }
 
+    //a model whose chat template cannot carry tools fails every turn the same way, so the message names the model and says so instead of quoting the parser
+    [Fact]
+    public async Task A_template_that_cannot_carry_tools_names_the_model()
+    {
+        await using var s = new FakeOpenAiServer();
+        const string body = """{"error":{"code":400,"message":"Unable to generate parser for this template. Automatic parser generation failed: no tool call markers","type":"invalid_request_error"}}""";
+        s.Enqueue(new FakeResponse(Status: 400, Body: body));
+        var schema = JsonDocument.Parse("""{"type":"object","properties":{"path":{"type":"string"}}}""").RootElement;
+        var withTools = Req() with { Tools = new[] { new ToolSpec("read_file", "reads", schema) } };
+
+        var ex = await Assert.ThrowsAnyAsync<GattoConnectionException>(() => Collect(Client(s), withTools));
+
+        Assert.Equal("model test-model has a chat template that cannot carry tools: llama-server could not build a tool-call parser for it, so gatto cannot use this model", ex.Message);
+    }
+
+    //a long server message is cut with a mark, so the reader can tell the sentence went on
+    [Fact]
+    public async Task A_long_error_is_cut_with_three_dots()
+    {
+        await using var s = new FakeOpenAiServer();
+        var body = $$$"""{"error":{"code":400,"message":"{{{new string('w', 300)}}}"}}""";
+        s.Enqueue(new FakeResponse(Status: 400, Body: body));
+
+        var ex = await Assert.ThrowsAnyAsync<GattoConnectionException>(() => Collect(Client(s), Req()));
+
+        Assert.EndsWith("...", ex.Message, StringComparison.Ordinal);
+    }
+
     //a context-overflow 400 needs its own type so the rescue path and the compactor can catch it, and it stays a GattoConnectionException subtype
     [Fact]
     public async Task Overflow400_BecomesTypedException_WithCounts()

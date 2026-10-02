@@ -597,9 +597,9 @@ public class DoctorTests : IDisposable
     public async Task Check6_CorruptPermissionsFile_FailsAlone_OtherChecksStayGreen()
     {
         WriteGreenHome();
-        var gattoDir = Path.Combine(_cwd, ".gatto");
-        Directory.CreateDirectory(gattoDir);
-        File.WriteAllText(Path.Combine(gattoDir, "permissions.json"), "{ not json");
+        var store = Gatto.Core.Loop.Permissions.PermissionStore.PathFor(_home, _cwd);   //this folder's grants live in the home
+        Directory.CreateDirectory(Path.GetDirectoryName(store)!);
+        File.WriteAllText(store, "{ not json");
 
         var doctor = NewDoctor(HealthyClient());
         var output = new StringWriter();
@@ -1400,6 +1400,41 @@ public class DoctorTests : IDisposable
         var line = Line(output, "context files:");
         Assert.Contains("not readable", line);
         Assert.DoesNotContain("no home GATTO.md", line);   //the absent-file sentence must not appear when the file exists but cannot be read.
+    }
+
+    [Fact]
+    public async Task Check7_CommentOnlyAncestorFile_IsNamed_RatherThanDroppedSilently()
+    {
+        //an ancestor's file the strip empties loads nothing, and doctor names it so a user is not left wondering where the notes went
+        WriteGreenHome();
+        var child = Path.Combine(_cwd, "child");
+        Directory.CreateDirectory(child);
+        File.WriteAllText(Path.Combine(_cwd, "GATTO.md"), "<!-- notes for later -->\n");
+        File.WriteAllText(Path.Combine(child, "GATTO.md"), "# child context\n");
+
+        var output = new StringWriter();
+        var exit = await NewDoctor(HealthyClient()).RunAsync(_home, child, output, CancellationToken.None);
+
+        Assert.Equal(0, exit);
+        var line = Line(output, "context files:");
+        Assert.Contains("is comment-only", line, StringComparison.Ordinal);
+    }
+
+    //a home folder above cwd is named once, by the home note, and not again as an ancestor
+    [Fact]
+    public async Task Check7_CommentOnlyHomeFileAboveCwd_IsNamedOnce()
+    {
+        WriteGreenHome();
+        var project = Path.Combine(_home, "project");
+        Directory.CreateDirectory(project);
+        File.WriteAllText(Path.Combine(_home, "GATTO.md"), "<!-- notes for later -->\n");
+        File.WriteAllText(Path.Combine(project, "GATTO.md"), "# project context\n");
+
+        var output = new StringWriter();
+        await NewDoctor(HealthyClient()).RunAsync(_home, project, output, CancellationToken.None);
+
+        var line = Line(output, "context files:");
+        Assert.Single(System.Text.RegularExpressions.Regex.Matches(line, "comment-only"));
     }
 
     [Fact]

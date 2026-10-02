@@ -112,7 +112,9 @@ public sealed class RichReplHarness
         int? contextBudget = null, double? autoCompact = null,
         Gatto.Terminal.InputDeafnessWatchdog? deafWatch = null,
         //a resumed session, passed straight through as the interactive entry passes them
-        string? resumedFrom = null, string? resumedPath = null, string? resumeLine = null)
+        string? resumedFrom = null, string? resumedPath = null, string? resumeLine = null,
+        //the grants store, absent unless a test hands one in, as a session without one has no grants
+        Gatto.Core.Loop.Permissions.PermissionStore? permissions = null)
     {
         Surface = new VtScreenSurface(width, height);
         _tap = new TappedSurface(Surface);
@@ -125,6 +127,7 @@ public sealed class RichReplHarness
         _repl = new Gatto.Repl.Repl(
             loop, Convo, roleName: "generalist", modelName: "test-model",
             sessions: null, client: Client, configContext: 8192, contextBudget: contextBudget, cwd: cwd,
+            permissions: permissions,
             //the closure is assigned after construction so it can see the harness. a test sets it to make the recompose warn or count calls.
             recomposeSystem: () => Composed.Text(Recompose?.Invoke() ?? systemPrompt),
             toggleAuto: () => null,

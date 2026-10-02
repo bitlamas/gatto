@@ -128,6 +128,24 @@ public static class ContextFiles
     //why a path the caller expected is missing from the set, and Loadable means the file would have contributed
     public enum MissingReason { Absent, Unreadable, CommentOnly, Loadable }
 
+    //the files above cwd that the walk picks and the strip empties, by the walk Collect makes, so doctor can name what loads nothing
+    public static IReadOnlyList<string> CommentOnlyAncestors(string cwd, bool compat)
+    {
+        var dirs = new List<string>();
+        for (var dir = Directory.GetParent(Path.GetFullPath(cwd))?.FullName; dir is not null; dir = Directory.GetParent(dir)?.FullName)
+            dirs.Add(dir);
+        dirs.Reverse();   //root-first, the order the rolling compat composes in
+        var found = new List<string>();
+        var effectiveCompat = compat;
+        foreach (var d in dirs)
+        {
+            effectiveCompat = ProjectFileConfig.TryReadCompat(d) ?? effectiveCompat;
+            if (ResolveCandidate(d, effectiveCompat) is { } candidate && WhyMissing(candidate) == MissingReason.CommentOnly)
+                found.Add(candidate);
+        }
+        return found;
+    }
+
     //classifies a path that is not in the collected set, running the same read and strip so the answer can't drift
     public static MissingReason WhyMissing(string path)
     {

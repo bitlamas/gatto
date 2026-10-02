@@ -1401,7 +1401,7 @@ public class RichPermissionPrompterTests
     private static (AgentLoop Loop, Conversation Convo, RecordingObserver Obs) LoopOver(
         FakeOpenAiServer server, string root, IPermissionPrompter prompter, Gatto.Core.Tools.ITool tool)
     {
-        var store = PermissionStore.Load(root, out _);
+        var store = PermissionStore.Load(root, root, out _);
         var hooks = new HookBus();
         hooks.On(HookEvent.ToolCall, new PermissionGate(store, prompter, autoYes: false).CheckAsync);
         var reg = new Gatto.Core.Tools.ToolRegistry();

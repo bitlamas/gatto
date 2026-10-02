@@ -105,7 +105,7 @@ public class ReplAutoCompactTests : IDisposable
     [Fact]
     public async Task AutoCompactAsync_Success_RotatesSession_BuildsContinuationConvo_SkipsJournal()
     {
-        var fx = NewFixture(scriptedSummary: "SUMMARY TEXT");
+        var fx = NewFixture(scriptedSummary: "SUMMARY TEXT\n\nImmediate next step: go on.");
 
         var result = await fx.Repl.AutoCompactAsync(
             CompactionReason.Proactive, "explore the codebase", new RecordingObserver(), CancellationToken.None);

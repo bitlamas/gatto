@@ -78,6 +78,11 @@ public sealed class OpenAiCompatClient : IChatClient
             var display = $"endpoint {endpointName} returned {(int)resp.StatusCode}: {Truncate(ServerSaid(errBody), 200)}";
             if ((int)resp.StatusCode == 400 && TryParseContextOverflow(errBody, out var np, out var nc))
                 throw new GattoContextOverflowException(display, np, nc, (int)resp.StatusCode, errBody);
+            //llama-server refuses every request with tools for a template it can't parse tool calls from, so the turn ends naming the model and not the parser
+            if ((int)resp.StatusCode == 400 && request.Tools is { Count: > 0 } && errBody.Contains(NoToolParser, StringComparison.Ordinal))
+                throw new GattoHttpStatusException(
+                    $"model {request.Model} has a chat template that cannot carry tools: llama-server could not build a tool-call parser for it, so gatto cannot use this model",
+                    (int)resp.StatusCode, errBody);
             //the server answered, so the status travels typed, no caller re-reads it out of the display string
             throw new GattoHttpStatusException(display, (int)resp.StatusCode, errBody);
         }
@@ -291,7 +296,11 @@ public sealed class OpenAiCompatClient : IChatClient
         return null;
     }
 
-    private static string Truncate(string s, int max) => s.Length <= max ? s : s[..max];
+    //a cut ends in three dots, so the reader knows the server's sentence went on. plain ASCII, since this text is not drawn through the glyph table
+    private static string Truncate(string s, int max) => s.Length <= max ? s : s[..max] + "...";
+
+    //llama-server's words when its jinja tool-call parser can't be built for the model's template
+    private const string NoToolParser = "Unable to generate parser for this template";
 
     private static string? NonEmptyText(JsonElement o, string key) =>
         o.TryGetProperty(key, out var v) && v.ValueKind == JsonValueKind.String && v.GetString() is { Length: > 0 } s ? s : null;
@@ -367,6 +376,7 @@ public sealed class OpenAiCompatClient : IChatClient
                 w.WriteStartArray("tools");
                 foreach (var t in request.Tools) RequestJson.WriteTool(w, t);
                 w.WriteEndArray();
+                if (request.ToolChoice is { } choice) w.WriteString("tool_choice", choice);
             }
 
             //shallow merge with body winning, harness keys (model, messages, stream, tools) never yield to an override
@@ -375,8 +385,9 @@ public sealed class OpenAiCompatClient : IChatClient
             MergeOverrideProps(overrides, request.BodyOverrides, nameof(request.BodyOverrides));
             foreach (var (key, value) in overrides)
             {
-                //an override of return_progress would write the key twice
-                if (ReservedBodyKeys.Contains(key) || (returnProgress && key == "return_progress")) continue;
+                //an override of return_progress, or of a tool_choice the request set, would write the key twice
+                if (ReservedBodyKeys.Contains(key) || (returnProgress && key == "return_progress")
+                    || (request.ToolChoice is not null && request.Tools is { Count: > 0 } && key == "tool_choice")) continue;
                 w.WritePropertyName(key);
                 value.WriteTo(w);
             }

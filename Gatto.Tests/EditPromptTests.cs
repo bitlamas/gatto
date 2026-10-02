@@ -319,7 +319,7 @@ public sealed class EditPromptTests : IDisposable
 
     private (PermissionGate Gate, Capture Prompter, List<string> Reads) Gate(bool grant = false)
     {
-        var store = PermissionStore.Load(_dir, out _);
+        var store = PermissionStore.Load(_dir, _dir, out _);
         if (grant) store.GrantWriteDir(_dir, persist: false);
         var prompter = new Capture();
         var reads = new List<string>();
@@ -335,7 +335,7 @@ public sealed class EditPromptTests : IDisposable
     public async Task A_file_the_gate_cannot_read_gives_rows_with_no_number_and_a_prompt()
     {
         await File.WriteAllTextAsync(Path.Combine(_dir, "locked.cs"), "old a\n");
-        var store = PermissionStore.Load(_dir, out _);
+        var store = PermissionStore.Load(_dir, _dir, out _);
         var prompter = new Capture();
         var gate = new PermissionGate(store, prompter, autoYes: false) { ReadFile = _ => throw new IOException("locked") };
         await gate.CheckAsync(Call("locked.cs", "old a", "new a"));

@@ -29,29 +29,53 @@ public class ImagePasteTests : IDisposable
         public IReadOnlyList<string> ReadFileDrop() { OpensPerformed++; return Files; }
     }
 
+    //a paste names the blob by its content and writes nothing, so a paste that is never sent leaves no file behind
     [Fact]
-    public void A_pasted_png_becomes_a_content_addressed_blob()
+    public void A_pasted_png_is_named_by_its_content_and_written_only_when_saved()
     {
         var cb = new FakeClipboard { Kind = ClipboardImageKind.Png, Bytes = Png(0x01) };
         var r = ImagePaste.Paste(cb, BlobDir);
 
         var img = Assert.Single(r.Candidates);
         Assert.Equal("image/png", img.MediaType);
-        Assert.True(File.Exists(img.Path), "the bytes must be given a path to be referenced by");
         Assert.StartsWith(img.Sha256, Path.GetFileNameWithoutExtension(img.Path), StringComparison.Ordinal);
         Assert.Null(r.Notice);   //acquisition stays silent, the guard pass at submit does the announcing
+        Assert.False(Directory.Exists(BlobDir));
+
+        ImagePaste.Save(img.Path, r.Unsaved![img.Path]);
+        Assert.True(File.Exists(img.Path));
     }
 
     [Fact]
-    public void Pasting_the_same_image_twice_writes_ONE_blob()
+    public void Saving_the_same_image_twice_writes_ONE_blob()
     {
         //the blob path derives from the sha of the bytes, so the same image always gets the same path
         var cb = new FakeClipboard { Kind = ClipboardImageKind.Png, Bytes = Png(0x02) };
-        var first = ImagePaste.Paste(cb, BlobDir).Candidates[0];
-        var second = ImagePaste.Paste(cb, BlobDir).Candidates[0];
+        var first = ImagePaste.Paste(cb, BlobDir);
+        var second = ImagePaste.Paste(cb, BlobDir);
+        Assert.Equal(first.Candidates[0].Path, second.Candidates[0].Path);
 
-        Assert.Equal(first.Path, second.Path);
+        ImagePaste.Save(first.Candidates[0].Path, first.Unsaved![first.Candidates[0].Path]);
+        ImagePaste.Save(second.Candidates[0].Path, second.Unsaved![second.Candidates[0].Path]);
         Assert.Single(Directory.GetFiles(BlobDir));
+    }
+
+    //a save that fails keeps the bytes, so the message handed back can be sent again with its picture
+    [Fact]
+    public void A_failed_save_keeps_the_bytes_and_the_next_send_writes_them()
+    {
+        var cb = new FakeClipboard { Kind = ClipboardImageKind.Png, Bytes = Png(0x03) };
+        var r = ImagePaste.Paste(cb, BlobDir);
+        var unsaved = new Dictionary<string, byte[]>(r.Unsaved!);
+        File.WriteAllText(BlobDir, "a file where the folder should be");
+
+        Assert.ThrowsAny<IOException>(() => ImagePaste.SaveSent(r.Candidates, unsaved));
+        Assert.Single(unsaved);
+
+        File.Delete(BlobDir);
+        ImagePaste.SaveSent(r.Candidates, unsaved);
+        Assert.Empty(unsaved);
+        Assert.True(File.Exists(r.Candidates[0].Path));
     }
 
     [Fact]

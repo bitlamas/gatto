@@ -13,8 +13,7 @@ public sealed class SessionStore(string homePath, string cwd)
     public const int SchemaVersion = 1;
 
     private string SessionsDir => Path.Combine(homePath, "sessions");
-    private string CwdKey { get; } = Convert.ToHexString(
-        SHA256.HashData(Encoding.UTF8.GetBytes(Path.GetFullPath(cwd).ToLowerInvariant())))[..12].ToLowerInvariant();
+    private string CwdKey { get; } = ProjectKey.Of(cwd);
 
     //this store's cwd, normalized once here and stamped on every session's leading system record, so both writers agree
     public string Cwd { get; } = Path.GetFullPath(cwd);

@@ -22,7 +22,9 @@ public sealed record ChatMessage(string Role, string? Content,
     Gatto.Core.Loop.SessionUpdate? Update = null);
 public sealed record ChatRequest(string Model, IReadOnlyList<ChatMessage> Messages,
     IReadOnlyList<ToolSpec>? Tools = null,
-    JsonElement? SamplingOverrides = null, JsonElement? BodyOverrides = null);
+    JsonElement? SamplingOverrides = null, JsonElement? BodyOverrides = null,
+    //none keeps the tools listed, so the prompt's prefix holds, while the model may not call one
+    string? ToolChoice = null);
 
 public abstract record StreamEvent
 {

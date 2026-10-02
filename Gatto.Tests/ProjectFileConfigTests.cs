@@ -256,6 +256,32 @@ public class ProjectFileConfigTests : IDisposable
         Assert.Contains("must be a boolean", ex.Message, StringComparison.Ordinal);
     }
 
+    //a project can forbid wild mode for its subtree, the nearest file that does is the one named, and a true can never turn it on
+    [Fact]
+    public void WildFalse_AnywhereUpThePath_ForbidsWild_AndNamesTheNearestFile()
+    {
+        var child = Path.Combine(_dir, "a", "b");
+        Directory.CreateDirectory(child);
+        Assert.True(ProjectFileConfig.EffectiveWildAllowed(child, out var none));
+        Assert.Null(none);
+
+        Write("""{"wild":false}""");
+        File.WriteAllText(Path.Combine(_dir, "a", ".gatto.json"), """{"wild":false}""");
+        File.WriteAllText(Path.Combine(child, ".gatto.json"), """{"wild":true}""");
+
+        Assert.False(ProjectFileConfig.EffectiveWildAllowed(child, out var by));
+        Assert.Equal(Path.Combine(_dir, "a", ".gatto.json"), by);
+        Assert.True(ProjectFileConfig.TryReadWild(child));   //the true parses and is ignored
+    }
+
+    [Fact]
+    public void WildWrongType_Throws()
+    {
+        Write("""{"wild":"no"}""");
+        var ex = Assert.Throws<GattoConfigException>(() => ProjectFileConfig.TryReadWild(_dir));
+        Assert.Contains("must be a boolean", ex.Message, StringComparison.Ordinal);
+    }
+
     [Fact]
     public void AllThreeKeysCoexist_AndAreReadIndependently()
     {

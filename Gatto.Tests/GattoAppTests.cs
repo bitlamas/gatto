@@ -3,6 +3,7 @@ using System.Text.Json;
 using Gatto.Cli;
 using Gatto.Core.Client;
 using Gatto.Core.Home;
+using Gatto.Core.Loop.Permissions;
 using Gatto.Repl;
 using Gatto.Repl.Input;
 using Gatto.Repl.Term;
@@ -1624,21 +1625,12 @@ public class GattoAppTests : IDisposable
         Assert.True(kwargs.GetProperty("enable_thinking").GetBoolean());
     }
 
-    [Fact]
-    public async Task Launch_ProjectWildTrue_OneShotRunsMutatingToolUnprompted_NoticeOnStderr_StdoutPure()
+    //the one-shot run that writes a file, the mutating call that a grant or wild mode decides
+    private async Task<(int Exit, string Stdout, string Stderr, string ToolText)> RunWriteOneShot(FakeOpenAiServer server)
     {
-        //a mutating tool fails closed on a one-shot run with no terminal, yet a seeded wild flag makes it run unprompted
-        await using var server = new FakeOpenAiServer();
-        UseHome();
         WriteConfig($$$"""{"endpoints":{"local":{"base_url":"{{{server.BaseUrl}}}"}},"default_endpoint":"local"}""");
         WriteModel("test-model", port: 1235);
         WriteRole("generalist", "{\"model\":\"test-model\"}");
-        var gattoDir = Path.Combine(_cwd, ".gatto");
-        Directory.CreateDirectory(gattoDir);
-        File.WriteAllText(Path.Combine(gattoDir, "permissions.json"),
-            """{"shell_prefixes":[],"write_dirs":[],"wild":true}""");
-
-        //the script picks write_file, the mutating tool that the wild seed must allow
         server.Enqueue(ToolCallThenStop("c1", "write_file", "{\"path\":\"wild-out.txt\",\"content\":\"x\"}"));
         server.Enqueue(Completion("all done"));
 
@@ -1647,17 +1639,63 @@ public class GattoAppTests : IDisposable
         Console.SetOut(stdout);
         Console.SetError(stderr);
         var exit = await GattoApp.RunAsync(new[] { "-p", "write the file" });
+        var messages = server.LastRequestBody!.Value.GetProperty("messages").EnumerateArray().ToList();
+        var toolText = messages.Single(m => m.GetProperty("role").GetString() == "tool").GetProperty("content").GetString()!;
+        return (exit, stdout.ToString(), stderr.ToString(), toolText);
+    }
+
+    //a repository that ships its own permissions file with wild on gets nothing from it: the write is refused with no terminal to ask
+    [Fact]
+    public async Task Launch_ProjectWildTrue_IsIgnored_TheWriteIsRefused()
+    {
+        await using var server = new FakeOpenAiServer();
+        UseHome();
+        Directory.CreateDirectory(Path.Combine(_cwd, ".gatto"));
+        File.WriteAllText(Path.Combine(_cwd, ".gatto", "permissions.json"),
+            """{"shell_prefixes":["git"],"write_dirs":["C:\\"],"wild":true}""");
+
+        var (exit, stdout, stderr, toolText) = await RunWriteOneShot(server);
 
         Assert.Equal(0, exit);
-        //a permission denial would reach the model as a tool error, so its absence proves the tool ran unprompted.
-        var messages = server.LastRequestBody!.Value.GetProperty("messages").EnumerateArray().ToList();
-        var toolMsg = messages.Single(m => m.GetProperty("role").GetString() == "tool");
-        Assert.DoesNotContain("permission", toolMsg.GetProperty("content").GetString(), StringComparison.OrdinalIgnoreCase);
+        Assert.StartsWith("blocked: no interactive terminal", toolText, StringComparison.Ordinal);
+        Assert.False(File.Exists(Path.Combine(_cwd, "wild-out.txt")));
+        Assert.DoesNotContain("wild mode: ON", stderr, StringComparison.Ordinal);
+        Assert.DoesNotContain("wild mode", stdout, StringComparison.Ordinal);
+    }
+
+    //a .gatto.json that forbids wild mode wins over wild set in the home: the write is refused and the launch says which file forbids it
+    [Fact]
+    public async Task Launch_HomeWildTrue_ForbiddenByTheProject_TheWriteIsRefused_AndTheNoticeNamesTheFile()
+    {
+        await using var server = new FakeOpenAiServer();
+        UseHome();
+        PermissionStore.Load(_home, _cwd, out _).SetWild(true, persist: true);
+        File.WriteAllText(Path.Combine(_cwd, ".gatto.json"), """{"wild":false}""");
+
+        var (exit, _, stderr, toolText) = await RunWriteOneShot(server);
+
+        Assert.Equal(0, exit);
+        Assert.StartsWith("blocked: no interactive terminal", toolText, StringComparison.Ordinal);
+        Assert.False(File.Exists(Path.Combine(_cwd, "wild-out.txt")));
+        Assert.Contains($"wild mode: off, {Path.Combine(_cwd, ".gatto.json")} sets \"wild\": false for this project", stderr, StringComparison.Ordinal);
+    }
+
+    //wild mode set for this folder in the home runs the write unprompted, and the notice on stderr names where it is stored
+    [Fact]
+    public async Task Launch_HomeWildTrue_OneShotRunsMutatingToolUnprompted_NoticeOnStderr_StdoutPure()
+    {
+        await using var server = new FakeOpenAiServer();
+        UseHome();
+        PermissionStore.Load(_home, _cwd, out _).SetWild(true, persist: true);
+
+        var (exit, stdout, stderr, toolText) = await RunWriteOneShot(server);
+
+        Assert.Equal(0, exit);
+        Assert.DoesNotContain("permission", toolText, StringComparison.OrdinalIgnoreCase);
         Assert.True(File.Exists(Path.Combine(_cwd, "wild-out.txt")));
-        //the notice goes to stderr only, so stdout keeps just the model's text
-        Assert.Contains("wild mode: ON for this project (.gatto\\permissions.json)", stderr.ToString());
-        Assert.Contains("all done", stdout.ToString());
-        Assert.DoesNotContain("wild mode", stdout.ToString());
+        Assert.Contains("wild mode: ON for this project, stored in your gatto home", stderr, StringComparison.Ordinal);
+        Assert.Contains("all done", stdout, StringComparison.Ordinal);
+        Assert.DoesNotContain("wild mode", stdout, StringComparison.Ordinal);
     }
 
     //a full launch covers wiring the unit tests cannot see. it checks the index read, the consent switch, and a model's own index_budget

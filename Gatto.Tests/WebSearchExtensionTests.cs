@@ -437,7 +437,7 @@ public sealed class WebSearchExtensionTests : IDisposable
         var handler = new ScriptedHandler { Responder = _ => Html(Fixture) };
         Load(handler);   //both tools register through the same real load path, with no readClass
 
-        var store = PermissionStore.Load(_home, out var warning);
+        var store = PermissionStore.Load(_home, _home, out var warning);
         Assert.Null(warning);
         var prompter = new FakePermissionPrompter(PermissionAnswer.Once);
         var gate = new PermissionGate(store, prompter, autoYes: false);

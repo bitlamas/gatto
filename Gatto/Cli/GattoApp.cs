@@ -511,11 +511,12 @@ public static class GattoApp
             }
         }
         var toolCtx = new AppToolContext(cwd, home, prompter);
-        var permissions = PermissionStore.Load(cwd, out var permWarning);   //a corrupt permissions file loads as no grants, so every mutating tool prompts, with a warning
+        var permissions = PermissionStore.Load(home, cwd, out var permWarning);   //a corrupt permissions file loads as no grants, so every mutating tool prompts, with a warning
         if (permWarning is not null) Console.Error.WriteLine($"! {permWarning}");
 
-        //one shared switch that auto-allows every permission and skips the checkpoint, seeded from the project's wild key and flipped by /wild
-        var wildState = new WildState { On = permissions.Wild };
+        //one shared switch that auto-allows every permission and skips the checkpoint, seeded from the home's wild key unless a .gatto.json up the path forbids it
+        var wildForbiddenBy = ProjectFileConfig.EffectiveWildAllowed(cwd, out var forbiddingFile) ? null : forbiddingFile;
+        var wildState = new WildState { On = permissions.Wild && wildForbiddenBy is null, ForbiddenBy = wildForbiddenBy };
 
         //always built and wired, since HookBus has no unregister, and Armed follows the current role so a /role into grounding still nudges
         var groundingGate = new GroundingGate { Armed = comp.Gates.Contains("grounding") };
@@ -1174,7 +1175,7 @@ public static class GattoApp
         void ResumeThinking(Conversation resumed, ThinkingMark stored)
         {
             var level = thinkCap == ThinkCapability.Toggle
-                ? (stored.BodyJson == ToggleEntry(true).Body?.GetRawText() ? "on" : "none")
+                ? (stored.BodyJson == ThinkingMark.CompactJson(ToggleEntry(true).Body?.GetRawText()) ? "on" : "none")
                 : stored.Level;
             if (level is null) return;
             if (setEffort(level, false).Thinking is { } applied) resumed.SetThinking(applied);
@@ -1242,8 +1243,7 @@ public static class GattoApp
         if (args.Prompt is not null)   //the -p one-shot path
         {
             //stderr only, the -p contract keeps stdout for model text
-            if (permissions.Wild)
-                Console.Error.WriteLine("wild mode: ON for this project (.gatto\\permissions.json)");
+            if (WildNotice(permissions, wildState) is { } wildLine) Console.Error.WriteLine(wildLine);
             using var oneShotCts = new CancellationTokenSource();
             ConsoleCancelEventHandler cancelHandler = (_, e) =>
             {
@@ -1274,8 +1274,8 @@ public static class GattoApp
         }
 
         //stdout is not byte-pure here, so the notice goes before the Repl banner
-        if (permissions.Wild)
-            Console.WriteLine($"wild mode: ON for this project (.gatto\\permissions.json) {glyphs.Dot} /wild to turn off");
+        if (WildNotice(permissions, wildState) is { } wildNotice)
+            Console.WriteLine(wildState.On ? $"{wildNotice} {glyphs.Dot} /wild to turn off" : wildNotice);
 
         //the one helper /role and /model also read, so a rebuild matches the launch footer
         string? initialThinkingName = ThinkingFooterName();
@@ -1391,6 +1391,12 @@ public static class GattoApp
         TurnOutcome.Truncated => r.Truncation == TruncationKind.Stream ? "truncated_stream" : "truncated_length",
         _ => r.FinishReason == "length" ? "truncated_length" : "completed",
     };
+
+    //the launch line about wild mode: on and where it is stored, or off because a project's .gatto.json forbids what the home says. null when wild is plainly off
+    internal static string? WildNotice(PermissionStore permissions, WildState wild) =>
+        wild.On ? "wild mode: ON for this project, stored in your gatto home"
+        : permissions.Wild && wild.ForbiddenBy is { } by ? $"wild mode: off, {TermText.Sanitize(by)} sets \"wild\": false for this project"
+        : null;
 
     //call it after sessions.Save, since CurrentPath is null before the first save, and a connection failure exits 1 with no line at all
     private static void WriteStopReasonJson(TurnResult r, string? sessionPath)

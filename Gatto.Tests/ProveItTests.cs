@@ -40,6 +40,21 @@ public class ProveItTests
         Assert.True(r.FirstToken > TimeSpan.Zero, "first-token time was never measured");
     }
 
+    //a stream that closes with no content did stream, so the outcome says it streamed empty and not that it never streamed
+    [Fact]
+    public async Task A_stream_that_closes_with_no_content_is_told_apart_from_no_stream()
+    {
+        var empty = await ProveIt.RunAsync(Client(_ => Sse(DeltaStop)), CancellationToken.None);
+        Assert.False(empty.Ok);
+        Assert.True(empty.StreamedEmpty);
+
+        var whole = await ProveIt.RunAsync(Client(_ => new HttpResponseMessage(HttpStatusCode.OK)
+        {
+            Content = new StringContent("""{"choices":[]}""", System.Text.Encoding.UTF8, "application/json"),
+        }), CancellationToken.None);
+        Assert.False(whole.StreamedEmpty);
+    }
+
     [Fact]
     public async Task A_server_that_answers_WITHOUT_streaming_fails_and_says_streaming()
     {

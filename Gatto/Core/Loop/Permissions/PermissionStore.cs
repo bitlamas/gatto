@@ -1,4 +1,5 @@
 using System.Text.Json;
+using Gatto.Core.Home;
 
 namespace Gatto.Core.Loop.Permissions;
 
@@ -22,33 +23,50 @@ public enum PermissionKind { ShellPrefix, WriteDir, Tool }
 //one grant as /permissions shows it, the raw text as granted with no normalization so it matches what the user saw
 public sealed record PermissionEntry(PermissionKind Kind, string Text);
 
-//the project's standing grants at .gatto/permissions.json, and anything with no grant or an unreadable file prompts
+//the standing grants of the folder gatto was launched in, held in the home so a repository can't bring its own. anything with no grant or an unreadable file prompts
 public sealed class PermissionStore
 {
     private readonly string _projectRoot;
+    private readonly string? _path;
     private readonly List<string> _shellPrefixes = new();
     private readonly List<string> _writeDirs = new();
     private readonly List<string> _tools = new();
     private bool _wild;
+    private bool _attachMany;
 
     //wild mode for this project, as set this session or persisted in the file
     public bool Wild => _wild;
 
+    //the project's standing yes to attaching a batch of pasted images, a grant like the others
+    public bool AttachMany => _attachMany;
+
     //a per-kind list property needs a caller first, the entries view is the only surface these lists need
 
-    private PermissionStore(string projectRoot) => _projectRoot = projectRoot;
+    private PermissionStore(string projectRoot, string? path)
+    {
+        _projectRoot = projectRoot;
+        _path = path;
+    }
 
     //the root the store was loaded for, what a write grant inside the project is anchored to
     public string ProjectRoot => _projectRoot;
 
-    private string PermissionsPath => Path.Combine(_projectRoot, ".gatto", "permissions.json");
+    //the file the store reads and writes, null for a store that lives in memory only
+    public string? FilePath => _path;
 
-    //a missing file is silent, a corrupt one gives an empty store and a warning, and Load never throws
-    public static PermissionStore Load(string projectRoot, out string? warning)
+    //where a project's grants live in the home, one file per launch folder under its project key
+    public static string PathFor(string home, string projectRoot) =>
+        Path.Combine(home, "permissions", ProjectKey.Of(projectRoot) + ".json");
+
+    //a store with no file, for a run whose grants must never reach the user's home
+    public static PermissionStore InMemory(string projectRoot) => new(projectRoot, null);
+
+    //a missing file is silent, a corrupt one or one that records another folder gives an empty store and a warning, and Load never throws
+    public static PermissionStore Load(string home, string projectRoot, out string? warning)
     {
         warning = null;
-        var store = new PermissionStore(projectRoot);
-        var path = store.PermissionsPath;
+        var path = PathFor(home, projectRoot);
+        var store = new PermissionStore(projectRoot, path);
         if (!File.Exists(path))
             return store;
 
@@ -62,20 +80,20 @@ public sealed class PermissionStore
             var prefixes = ReadStringArray(root, "shell_prefixes");
             var dirs = ReadStringArray(root, "write_dirs");
             var tools = ReadStringArray(root, "tools");
+            var wild = ReadBool(root, "wild");
+            var attachMany = ReadBool(root, "attach_many");
 
-            var wild = false;
-            if (root.TryGetProperty("wild", out var w))
-            {
-                if (w.ValueKind is not (JsonValueKind.True or JsonValueKind.False))
-                    throw new FormatException("\"wild\" must be a boolean");
-                wild = w.GetBoolean();
-            }
+            //the key only names the file, so the folder it records must be this one. the shape is read first, a corrupt file says what is wrong with it
+            var recorded = root.TryGetProperty("project", out var p) && p.ValueKind == JsonValueKind.String ? p.GetString() : null;
+            if (recorded != ProjectKey.PathOf(projectRoot))
+                throw new FormatException($"it records the folder {recorded ?? "(none)"}, not this one");
 
-            var loaded = new PermissionStore(projectRoot);
-            foreach (var p in prefixes) loaded.AddShellPrefix(p);
+            var loaded = new PermissionStore(projectRoot, path);
+            foreach (var x in prefixes) loaded.AddShellPrefix(x);
             foreach (var d in dirs) loaded.AddWriteDir(d);
             foreach (var t in tools) loaded.AddTool(t);
             loaded._wild = wild;
+            loaded._attachMany = attachMany;
             return loaded;
         }
         catch (Exception ex)
@@ -83,6 +101,15 @@ public sealed class PermissionStore
             warning = $"permissions file {path} is unreadable ({ex.Message}); ignoring all grants";
             return store;   //a pristine empty store, any partial application is discarded
         }
+    }
+
+    //an absent key is false, any value but a boolean makes the whole file corrupt
+    private static bool ReadBool(JsonElement root, string key)
+    {
+        if (!root.TryGetProperty(key, out var v)) return false;
+        if (v.ValueKind is not (JsonValueKind.True or JsonValueKind.False))
+            throw new FormatException($"\"{key}\" must be a boolean");
+        return v.GetBoolean();
     }
 
     //an absent key is an empty list, a wrong-shaped element throws so the whole file counts as corrupt
@@ -166,6 +193,13 @@ public sealed class PermissionStore
         if (persist) Persist();
     }
 
+    //the standing yes to a batch of pasted images, always persisted, since the question it answers is asked once per project
+    public void GrantAttachMany()
+    {
+        _attachMany = true;
+        Persist();
+    }
+
     //permissions listing and revoke
 
     //shell prefixes, then write dirs, then tools: the one order a listing and RevokeAt both number, so an index names the same entry in both
@@ -243,13 +277,15 @@ public sealed class PermissionStore
     //rewrite the whole file atomically, a temp write moved over the old one, so a failure mid-write leaves the previous file intact
     private void Persist()
     {
-        var dir = Path.GetDirectoryName(PermissionsPath)!;
+        if (_path is null) return;   //a store in memory keeps its grants for the run and writes nothing
+        var dir = Path.GetDirectoryName(_path)!;
         Directory.CreateDirectory(dir);
 
         using var ms = new MemoryStream();
         using (var w = new Utf8JsonWriter(ms, new JsonWriterOptions { Indented = true }))
         {
             w.WriteStartObject();
+            w.WriteString("project", ProjectKey.PathOf(_projectRoot));
             w.WriteStartArray("shell_prefixes");
             foreach (var p in _shellPrefixes) w.WriteStringValue(p);
             w.WriteEndArray();
@@ -264,12 +300,13 @@ public sealed class PermissionStore
                 w.WriteEndArray();
             }
             if (_wild) w.WriteBoolean("wild", true);
+            if (_attachMany) w.WriteBoolean("attach_many", true);
             w.WriteEndObject();
         }
 
-        var tmp = PermissionsPath + ".tmp";
+        var tmp = _path + ".tmp";
         File.WriteAllBytes(tmp, ms.ToArray());
-        File.Move(tmp, PermissionsPath, overwrite: true);
+        File.Move(tmp, _path, overwrite: true);
     }
 
     //the prefix to offer for a command, its first two whitespace-separated tokens, or the one token when there is only one

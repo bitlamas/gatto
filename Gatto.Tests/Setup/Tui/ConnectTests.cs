@@ -220,6 +220,19 @@ public class ConnectTests
                 false, "no frames", TimeSpan.Zero, ServerAnswered: 200)),
             100, "no-stream"));
 
+    //a stream that closed empty is not a server that cannot stream: the screen says the reply was empty and offers to ask again
+    [Fact]
+    public void THE_CHECK_THAT_STREAMED_NOTHING_SAYS_SO()
+    {
+        var text = string.Join("\n", Rendered(
+            CheckFailed(new Gatto.Core.Acquire.ProveOutcome(false, "closed", TimeSpan.Zero, ServerAnswered: 200, StreamedEmpty: true)),
+            100, "streamed-empty"));
+
+        Assert.Contains("The server answered, but its reply was empty.", text, StringComparison.Ordinal);
+        Assert.DoesNotContain("didn't stream", text, StringComparison.Ordinal);
+        Assert.Contains("try again", text, StringComparison.OrdinalIgnoreCase);
+    }
+
     //the server's own words are the actionable half, so the row shows them whole and wraps at the fact column.
     [Fact]
     public void THE_CHECK_THE_SERVER_REFUSED_RENDERS_AT_100() =>

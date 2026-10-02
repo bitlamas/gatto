@@ -78,8 +78,26 @@ public sealed class AgentLoop(
         autoCompactAt = newAutoCompactAt;
     }
 
+    //off for the rest of the session once an auto-compaction failed or was stopped, so a session past the trigger stays usable and /compact is the user's
+    private bool _autoCompactOff;
+
+    //re-arm auto-compaction after a successful /compact and on /new, the only ways a session leaves the state that failed
+    public void ResetAutoCompact() => _autoCompactOff = false;
+
     //the threshold both triggers act on, or null when no handler is armed. a line that quotes the threshold must read this, or it names a compaction that never runs.
-    public double? ArmedAutoCompactAt => compaction is null ? null : autoCompactAt;
+    public double? ArmedAutoCompactAt => compaction is null || _autoCompactOff ? null : autoCompactAt;
+
+    //the line a failed or stopped auto-compaction leaves, with the handler's reason when it has one
+    private string AutoCompactOffLine(bool stopped) =>
+        (stopped ? "auto-compact stopped" : "auto-compact failed" + (compaction?.LastFailure is { } why ? $": {why}" : ""))
+        + " — it stays off for this session, /compact runs it";
+
+    //the tools, overrides and reasoning policy every request of this loop carries, read at the moment of asking so a /role or /model swap is seen
+    public RequestShape RequestShape => new(tools.Specs(), samplingOverrides, bodyOverrides, reasoningHistory, _lastSent, _lastSentFrom);
+
+    //the last request's messages as sent and the conversation at that moment, copies, so a compaction can resend what the server has cached
+    private ChatMessage[]? _lastSent;
+    private ChatMessage[]? _lastSentFrom;
 
     //images for this user turn, since the loop adds the user message and the caller cannot attach them itself
     public async Task<TurnResult> RunTurnAsync(
@@ -102,14 +120,13 @@ public sealed class AgentLoop(
         //a rescue may fire more than once per turn, since a fresh oversized result is a new problem
         var reactiveHasRescued = false;
         var madeProgressSinceRescue = false;
-        var proactiveFailed = false;   //a failed proactive attempt latches off for the rest of the turn
         convo.AddUser(userMessage, images);
         while (true)
         {
             round++;
 
             //the proactive trigger, at the round top only, where nothing is half-streamed. lastPrompt alone misses what was appended since, so the growth is scaled in
-            if (compaction is not null && !proactiveFailed && autoCompactAt is double th
+            if (compaction is not null && !_autoCompactOff && autoCompactAt is double th
                 && budgetTokens is int win and > 0
                 && usageState is not null
                 && ContextBudget.UsedTokens(convo, usageState) is int used
@@ -131,8 +148,8 @@ public sealed class AgentLoop(
                 }
                 else
                 {
-                    proactiveFailed = true;
-                    observer.OnWarning("auto-compact failed — continuing without it");
+                    _autoCompactOff = true;
+                    observer.OnWarning(AutoCompactOffLine(stopped: ct.IsCancellationRequested));
                 }
             }
 
@@ -175,6 +192,8 @@ public sealed class AgentLoop(
             }
 
             var estimateAtRequest = ContextBudget.Estimate(requestMessages);
+            _lastSent = requestMessages.ToArray();
+            _lastSentFrom = convo.Messages.ToArray();
 
             try
             {
@@ -206,7 +225,7 @@ public sealed class AgentLoop(
             }
             catch (OperationCanceledException) { truncated = true; cancelled = ct.IsCancellationRequested; }
             //the first overflow is rescued unconditionally, since madeProgressSinceRescue starts false. later rescues need a round to have streamed since the last one
-            catch (GattoContextOverflowException ovf) when (compaction is not null && (!reactiveHasRescued || madeProgressSinceRescue))
+            catch (GattoContextOverflowException ovf) when (compaction is not null && !_autoCompactOff && (!reactiveHasRescued || madeProgressSinceRescue))
             {
                 //nothing streamed for this round, so the conversation holds no partial state and the round can be re-entered
                 reactiveHasRescued = true;
@@ -216,9 +235,14 @@ public sealed class AgentLoop(
                 //say it before the summarize, since the user just saw a request fail and silence would read as a hang
                 observer.OnWarning("context overflowed — compacting and retrying this turn");
                 var rebuilt = await compaction.CompactAsync(CompactionReason.Overflow, userMessage, observer, ct);
-                //a Ctrl+C during the summarize gives a null here, which would otherwise surface as the original overflow
-                if (rebuilt is null && ct.IsCancellationRequested) throw new OperationCanceledException(ct);
-                if (rebuilt is null) throw;                            //a failed compact throws here, with the state untouched
+                if (rebuilt is null)
+                {
+                    _autoCompactOff = true;
+                    observer.OnWarning(AutoCompactOffLine(stopped: ct.IsCancellationRequested));
+                    //a Ctrl+C during the summarize gives a null here, which would otherwise surface as the original overflow
+                    if (ct.IsCancellationRequested) throw new OperationCanceledException(ct);
+                    throw;                                             //a failed compact throws here, with the state untouched
+                }
                 convo.ReplaceAll(rebuilt.SystemText, rebuilt.Messages, rebuilt.Baseline);
                 turnUserIndex = 1;                                     //the rebuilt user message sits at index 1
                 roundStarts.Clear();                                   //ageing restarts on the rebuilt conversation
@@ -296,6 +320,8 @@ public sealed class AgentLoop(
                 ToolResult result;
                 try
                 {
+                    //an argument name the tool does not declare fails here, before the gate can ask about a call that would run wrong
+                    if (UnknownArguments(call) is { } refused) throw new CannotApplyException(refused);
                     await hooks.EmitToolCallAsync(new HookPayload(Call: call));  //a throwing handler blocks the call (fails closed)
                     result = await ExecuteAsync(call, ct);
                 }
@@ -341,6 +367,18 @@ public sealed class AgentLoop(
                 _flushWarned = true;
             }
         }
+    }
+
+    //the refusal of a call naming an argument its tool's schema does not declare, null for an unknown tool or arguments that do not parse, which ExecuteAsync reports itself
+    private string? UnknownArguments(ToolCall call)
+    {
+        if (tools.Get(call.Name) is not { } tool) return null;
+        try
+        {
+            using var doc = JsonDocument.Parse(call.ArgumentsJson.Length > 0 ? call.ArgumentsJson : "{}");
+            return ToolArgumentNames.Refusal(call.Name, tool.ParametersSchema, doc.RootElement);
+        }
+        catch (JsonException) { return null; }
     }
 
     private async Task<ToolResult> ExecuteAsync(ToolCall call, CancellationToken ct)

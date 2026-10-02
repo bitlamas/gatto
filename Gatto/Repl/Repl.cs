@@ -201,6 +201,9 @@ public sealed class Repl(
     //pasted images waiting for a send, keyed by the number in their [Image #N] placeholder (every access is under s.Gate)
     private readonly Dictionary<int, ImageRef> _pendingPaste = new();
 
+    //the pasted bytes by their blob path, written only when a message that holds them is sent, so a refused, deleted or abandoned paste leaves no file (under s.Gate)
+    private readonly Dictionary<string, byte[]> _unsavedPaste = new(StringComparer.OrdinalIgnoreCase);
+
     //hands a refused message back to the live composer, inserting it because the composer is already mid-Read when the refusal is known
     private Action<string>? _restoreComposer;
 
@@ -394,7 +397,7 @@ public sealed class Repl(
         SetReasoningPassthrough(renderer, true);   //the dimmed summary streams as reasoning, so the preview filter must pass it through
         try
         {
-            fresh = await CompactAsync(new Compactor(client, modelName), convo, sessions, recomposeSystem, renderer, ct,
+            fresh = await CompactAsync(new Compactor(client, modelName, loop.RequestShape), convo, sessions, recomposeSystem, renderer, ct,
                 contextBudget: contextBudget, onSummary: s => capturedSummary = s,
                 doNotRepeat: doNotRepeat,
                 bankCandidates: ex =>
@@ -415,6 +418,7 @@ public sealed class Repl(
                 Summary: new SummaryInfo(capturedSummary, DateTimeOffset.Now, modelName, GistOfConversation())));
         convo = fresh;
         _offered = false;   //a fresh session may cross 85% again
+        loop.ResetAutoCompact();   //the user's own compaction worked, so the automatic one may run again
         resetGrounding?.Invoke();   //a fresh session has no checked restatement, so grounding must be re-armed
         _usageState.Clear();   //the old reading describes a conversation that no longer exists
         ctx?.RecordUsedTokens(null);   //clears the context figure too, there is none on the plain path
@@ -428,12 +432,14 @@ public sealed class Repl(
         var oldPath = sessions?.CurrentPath;                 //read before StartNew, which clears the path
         SetReasoningPassthrough(observer, true);             //the dimmed summary is not reasoning
         string? summary;
+        var compactor = new Compactor(client, modelName, loop.RequestShape);
         try
         {
-            summary = await new Compactor(client, modelName).SummarizeAsync(
+            summary = await compactor.SummarizeAsync(
                 convo, observer, ct, windowTokens: contextBudget, ratio: _usageState.Ratio, midTurn: true);
         }
         finally { SetReasoningPassthrough(observer, false); }
+        _lastAutoCompactFailure = compactor.LastFailure;     //the loop's line names it when the summary is null
         if (summary is null) return null;                    //nothing is touched, the summarizer call was the only fallible work
 
         //strip the memory section here, a mid-turn compaction never banks and its scaffolding must stay out of the rebuilt prefix
@@ -473,7 +479,12 @@ public sealed class Repl(
         public Task<CompactionResult?> CompactAsync(
             CompactionReason reason, string currentUserPrompt, ITurnObserver observer, CancellationToken ct)
             => repl.AutoCompactAsync(reason, currentUserPrompt, observer, ct);
+
+        public string? LastFailure => repl._lastAutoCompactFailure;
     }
+
+    //why the last automatic summary came back null, read by the loop's line that turns auto-compaction off
+    private string? _lastAutoCompactFailure;
 
     //emits the 85% offer after a turn when the crossing was seen, the footer's percent is trusted over the estimate
     private void MaybeOfferCompact(ITurnObserver renderer, CtxState? ctx = null)
@@ -569,10 +580,12 @@ public sealed class Repl(
 
     //shared /wild dispatch, the persistence variants return two lines and the rich caller commits one row per line
 
-    //no sanitize guard here, every string it returns is a compile-time literal, add one if it ever interpolates text gatto did not author
+    //every string is a literal but the forbidding file's path, which goes through Sanitize, and the Shift+Tab toggle comes through here too
     private string HandleWild(string arg)
     {
         if (wild is null) return "wild mode is unavailable in this session";
+        if (wild.ForbiddenBy is { } by && (arg == "always" || (arg == "" && !wild.On)))
+            return $"wild mode stays off: {TermText.Sanitize(by)} sets \"wild\": false for this project";
         switch (arg)
         {
             case "":
@@ -581,11 +594,11 @@ public sealed class Repl(
             case "always":
                 wild.On = true;
                 persistWild?.Invoke(true);
-                return WildLine(true, _glyphs) + "\npersisted: \"wild\": true in .gatto\\permissions.json — /wild never removes it";
+                return WildLine(true, _glyphs) + "\npersisted for this project in your gatto home — /wild never removes it";
             case "never":
                 wild.On = false;
                 persistWild?.Invoke(false);
-                return WildLine(false, _glyphs) + "\npersistence removed from .gatto\\permissions.json";
+                return WildLine(false, _glyphs) + "\npersistence removed from your gatto home";
             default:
                 return WildUsage;
         }
@@ -708,7 +721,7 @@ public sealed class Repl(
 
     //the revoke hint, shown only when there is something to revoke, and it uses the same <n> the usage line does
     internal const string PermissionsHint =
-        @"/permissions revoke <n> removes one — stored in .gatto\permissions.json";
+        @"/permissions revoke <n> removes one — stored in your gatto home";
 
     internal const string PermissionsUnavailable = "permissions are unavailable in this session";
 
@@ -1284,11 +1297,15 @@ public sealed class Repl(
             //with no turn in flight Ctrl+C keeps its default, the process exits
         };
 
+        var firstLine = true;
         while (!appCt.IsCancellationRequested)
         {
             Console.Write("\n> ");
             var line = Console.ReadLine();
             if (line is null) break;
+            //a byte order mark that opens piped stdin is the encoder's and not the user's, so it never reaches the model or hides a command
+            if (firstLine && line.Length > 0 && line[0] == (char)0xFEFF) line = line[1..];
+            firstLine = false;
             if (line.Trim().Length == 0) continue;
 
             //both faces call this gate before the command chain and before the send, so a mistyped command is refused in one place
@@ -1316,6 +1333,7 @@ public sealed class Repl(
                 resetGrounding?.Invoke();              //a fresh session re-arms grounding, so it restates again
                 _usageState.Clear();                   //the old usage reading describes the conversation that just ended
                 loop.ResetStripWarning();              //a fresh session reports its own first leak
+                loop.ResetAutoCompact();               //a fresh session may auto-compact again
                 Console.WriteLine(NewConversationLine);
                 continue;
             }
@@ -1492,10 +1510,13 @@ public sealed class Repl(
         //the focus sink registers below, after s.Refresh is set, it must call s.Refresh() so the footer hint follows focus at once
         var history = new History(Path.Combine(GattoHome.Resolve(), "history.txt"));
         var editor = new LineEditor(keys.Composer, history, () => surface.Width);
-        //the count question is armed here where its dependencies live, and the standing answer is read once at launch
-        var projectSettings = ProjectSettings.Load(Gatto.Core.Memory.MemoryDir.FindProjectRoot(cwd));
-        _attachManyGranted = () => projectSettings.AttachManyGranted;
-        _grantAttachMany = projectSettings.GrantAttachMany;
+        //the count question is armed here, and its standing yes lives with the grants in the home, so a project folder can't bring one
+        _attachManyGranted = () => permissions?.AttachMany == true;
+        _grantAttachMany = () =>
+        {
+            try { permissions?.GrantAttachMany(); }
+            catch (Exception) { }   //a failed write keeps the yes in memory for this session, and the question comes back next time
+        };
         _confirmAttach = (count, _) =>
         {
             var spec = ConfirmAttach.Spec(count);
@@ -1573,7 +1594,7 @@ public sealed class Repl(
             }
         });
 
-        //the Shift+Tab key runs the same HandleWild("") the slash command does so the two can't drift, and a keystroke never writes permissions.json
+        //the Shift+Tab key runs the same HandleWild("") the slash command does so the two can't drift, and a keystroke never writes the grants file
         keys.SetWildSink(() =>
         {
             lock (gate)
@@ -1816,6 +1837,7 @@ public sealed class Repl(
             {
                 //nothing stashed and nothing painted once the session is stopped
                 if (stopped) return;
+                foreach (var (path, bytes) in r.Unsaved ?? new Dictionary<string, byte[]>()) _unsavedPaste[path] = bytes;
                 foreach (var c in r.Candidates)
                 {
                     var n = ++_pastedCount;
@@ -2140,7 +2162,11 @@ public sealed class Repl(
                 return false;
             }
             //clear the pending pastes only on the path that sends, so a command typed after an image keeps the image attached
-            lock (s.Gate) _pendingPaste.Clear();
+            lock (s.Gate)
+            {
+                _pendingPaste.Clear();
+                _unsavedPaste.Clear();   //a paste whose placeholder was deleted goes with its bytes, never written
+            }
         }
         return await DispatchBracketAsync(s.Gate, s.Painter, s.Ticker, () => s.Renderer,
             queue.Texts(), input.Split('\n'), Cats.Face(_glyphs),
@@ -2256,6 +2282,16 @@ public sealed class Repl(
             //a No answer commits nothing, the count question was the sentence and a row about it would only repeat it
             if (answer == ConfirmAttachAnswer.No) return AttachDecision.Refuse();
             if (answer == ConfirmAttachAnswer.YesAlways) _grantAttachMany?.Invoke();
+        }
+
+        //a pasted image reaches the home only now that it is sent, and a write that fails keeps the message unsent with the reason
+        try
+        {
+            lock (s.Gate) ImagePaste.SaveSent(collected, _unsavedPaste);
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            return AttachDecision.Refuse($"could not save the pasted image: {ex.Message}");
         }
 
         //null when there are no images, an empty list would be a second way of saying nothing
@@ -2394,6 +2430,7 @@ public sealed class Repl(
                     resetGrounding?.Invoke();              //a fresh session, so grounding is re-armed and restates again
                     _usageState.Clear();                   //the old reading describes a conversation that is gone
                     loop.ResetStripWarning();              //a fresh session reports its own first leak
+                    loop.ResetAutoCompact();               //a fresh session may auto-compact again
                     s.Ctx?.RecordUsedTokens(null);         //the same for the context figure
                     s.Refresh();                           //a fresh conversation, so the ctx estimate resets too
                 },

@@ -145,7 +145,8 @@ public class VisionAttachWiringTests : IDisposable
         //the two batches must differ, or session dedupe collapses the second to nothing and the test passes without the grant
         var first = Images("a", 11);
         var second = Images("b", 11);
-        var h = new RichReplHarness(_dir);
+        var store = Gatto.Core.Loop.Permissions.PermissionStore.Load(_dir, _dir, out _);
+        var h = new RichReplHarness(_dir, permissions: store);
         h.Client.EnqueueTurn(new StreamEvent.TextDelta("ok"), new StreamEvent.Finished("stop", null));
         h.Client.EnqueueTurn(new StreamEvent.TextDelta("ok"), new StreamEvent.Finished("stop", null));
         var askedCount = 0;
@@ -159,7 +160,7 @@ public class VisionAttachWiringTests : IDisposable
         Assert.Equal(1, askedCount);   //the grant must stop all later asking.
         Assert.Equal(2, h.Convo.Messages.Count(m => m.Role == "user"));   //both messages must actually be sent.
         Assert.All(h.Convo.Messages.Where(m => m.Role == "user"), m => Assert.Equal(11, m.Images!.Count));
-        Assert.True(File.Exists(Gatto.Core.Home.ProjectSettings.PathFor(_dir)));
+        Assert.True(Gatto.Core.Loop.Permissions.PermissionStore.Load(_dir, _dir, out _).AttachMany);   //the yes is stored with the grants in the home
     }
 
     //the four ways gatto can refuse to attach what a message is about.

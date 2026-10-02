@@ -350,8 +350,8 @@ internal static class AuditionRunner
 
                 var tools = StandardTools();
                 var hooks = new HookBus();
-                //the permission store is the scratch folder's own, the user's store is never read or written even if autoYes goes away
-                var store = PermissionStore.Load(scratch, out _);
+                //a store in memory rooted at the scratch folder, so the user's home is never read or written even if autoYes goes away
+                var store = PermissionStore.InMemory(scratch);
                 //auto-approve is safe only here, the tasks are fixed and stay in the scratch folder (headless would grade denials as model failures)
                 hooks.On(HookEvent.ToolCall,
                     new PermissionGate(store, prompter: null, autoYes: true).CheckAsync);

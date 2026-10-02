@@ -66,7 +66,7 @@ public sealed class PermissionGate(
 
         if (prompter is null)                                           //4. no prompter means no terminal to ask on, so throw
             throw new InvalidOperationException(
-                "no interactive terminal to grant permission (use --yes or pre-grant in .gatto\\permissions.json)");
+                "no interactive terminal to grant permission (use --yes, or grant it with Yes, always allow in an interactive session)");
 
         //5. ask, stamped with the subagent label, through AskWithReason whose default forwards to Ask with no reason. a call that cannot run is refused first
         if (Unrunnable(call) is { } why) throw new CannotApplyException(why);

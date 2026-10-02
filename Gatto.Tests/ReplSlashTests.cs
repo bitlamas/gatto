@@ -142,7 +142,7 @@ public class ReplWildTests : IDisposable
         try { Directory.Delete(_root, true); } catch { }
     }
 
-    private string PermissionsPath => Path.Combine(_root, ".gatto", "permissions.json");
+    private string PermissionsPath => PermissionStore.PathFor(_root, _root);
 
     //a real repl over a temp root with the app's persist closure, so writes go through the store the test hands in
     private (string output, WildState wild) RunWild(string stdin, WildState wild, PermissionStore store)
@@ -166,7 +166,7 @@ public class ReplWildTests : IDisposable
     [Fact]
     public void Wild_BareToggle_TurnsOn_PrintsKaomoji_DoesNotPersist()
     {
-        var store = PermissionStore.Load(_root, out _);
+        var store = PermissionStore.Load(_root, _root, out _);
         var wild = new WildState { On = store.Wild };
 
         var (output, w) = RunWild("/wild\n/quit\n", wild, store);
@@ -178,10 +178,27 @@ public class ReplWildTests : IDisposable
         Assert.False(File.Exists(PermissionsPath));   //a bare toggle must not write the permissions file.
     }
 
+    //a project whose .gatto.json forbids wild mode keeps it off on every way in, and the refusal names the file
+    [Theory]
+    [InlineData("/wild\n/quit\n")]
+    [InlineData("/wild always\n/quit\n")]
+    public void Wild_ForbiddenByTheProject_StaysOff_AndNamesTheFile(string stdin)
+    {
+        var store = PermissionStore.Load(_root, _root, out _);
+        var forbidding = Path.Combine(_root, ".gatto.json");
+        var wild = new WildState { On = false, ForbiddenBy = forbidding };
+
+        var (output, w) = RunWild(stdin, wild, store);
+
+        Assert.False(w.On);
+        Assert.Contains(forbidding, output, StringComparison.Ordinal);
+        Assert.False(File.Exists(PermissionsPath));
+    }
+
     [Fact]
     public void Wild_ToggleTwice_TurnsBackOff()
     {
-        var store = PermissionStore.Load(_root, out _);
+        var store = PermissionStore.Load(_root, _root, out _);
         var wild = new WildState { On = store.Wild };
 
         var (output, w) = RunWild("/wild\n/wild\n/quit\n", wild, store);
@@ -193,7 +210,7 @@ public class ReplWildTests : IDisposable
     [Fact]
     public void Wild_Always_TurnsOn_AndPersistsToProjectFile()
     {
-        var store = PermissionStore.Load(_root, out _);
+        var store = PermissionStore.Load(_root, _root, out _);
         var wild = new WildState { On = store.Wild };
 
         var (_, w) = RunWild("/wild always\n/quit\n", wild, store);
@@ -205,21 +222,21 @@ public class ReplWildTests : IDisposable
     [Fact]
     public void Wild_Never_TurnsOff_AndRemovesPersistence()
     {
-        var store = PermissionStore.Load(_root, out _);
+        var store = PermissionStore.Load(_root, _root, out _);
         store.SetWild(true, persist: true);           //seed persisted state, so /wild never has something to remove
-        Assert.Contains("wild", File.ReadAllText(PermissionsPath));
+        Assert.Contains("\"wild\"", File.ReadAllText(PermissionsPath));
         var wild = new WildState { On = store.Wild };
 
         var (_, w) = RunWild("/wild never\n/quit\n", wild, store);
 
         Assert.False(w.On);
-        Assert.DoesNotContain("wild", File.ReadAllText(PermissionsPath));   //a false value drops the key from the file
+        Assert.DoesNotContain("\"wild\"", File.ReadAllText(PermissionsPath));   //a false value drops the key from the file
     }
 
     [Fact]
     public void Wild_UnknownArg_PrintsUsage_LeavesStateUnchanged()
     {
-        var store = PermissionStore.Load(_root, out _);
+        var store = PermissionStore.Load(_root, _root, out _);
         var wild = new WildState { On = store.Wild };
 
         var (output, w) = RunWild("/wild sideways\n/quit\n", wild, store);
@@ -267,7 +284,7 @@ public class ReplPermissionsTests : IDisposable
     [Fact]
     public void Permissions_Bare_EmptyStore_FriendlyEmptyState()
     {
-        var store = PermissionStore.Load(_root, out _);
+        var store = PermissionStore.Load(_root, _root, out _);
 
         var output = RunPermissions("/permissions\n/quit\n", store);
 
@@ -278,7 +295,7 @@ public class ReplPermissionsTests : IDisposable
     [Fact]
     public void Permissions_Bare_ListsAllGrants_NumberedContinuously_WithKindLabels()
     {
-        var store = PermissionStore.Load(_root, out _);
+        var store = PermissionStore.Load(_root, _root, out _);
         store.GrantShellPrefix("git status", persist: true);
         store.GrantWriteDir(@"C:\proj", persist: true);
         store.GrantTool("web_search", persist: true);
@@ -296,7 +313,7 @@ public class ReplPermissionsTests : IDisposable
     [Fact]
     public void Permissions_Bare_ShowsWildState_AndPointsAtWildAsTheOnlyWayToChangeIt()
     {
-        var store = PermissionStore.Load(_root, out _);
+        var store = PermissionStore.Load(_root, _root, out _);
         store.SetWild(true, persist: true);
 
         var output = RunPermissions("/permissions\n/quit\n", store);
@@ -309,7 +326,7 @@ public class ReplPermissionsTests : IDisposable
     public void Permissions_WildRow_UsesTheRuledWording_NamingBothScopesAndShiftTab()
     {
         //the row must lead with the session toggle and Shift+Tab, and end with the per-project persist option
-        var store = PermissionStore.Load(_root, out _);
+        var store = PermissionStore.Load(_root, _root, out _);
 
         var output = RunPermissions("/permissions\n/quit\n", store);
 
@@ -322,13 +339,13 @@ public class ReplPermissionsTests : IDisposable
     [Fact]
     public void Permissions_ListsTheRevokeInstruction_AndWhereGrantsLive()
     {
-        var store = PermissionStore.Load(_root, out _);
+        var store = PermissionStore.Load(_root, _root, out _);
         store.GrantShellPrefix("git status", persist: true);
 
         var output = RunPermissions("/permissions\n/quit\n", store);
 
         Assert.Contains(
-            @"/permissions revoke <n> removes one — stored in .gatto\permissions.json",
+            @"/permissions revoke <n> removes one — stored in your gatto home",
             output, StringComparison.Ordinal);
     }
 
@@ -336,7 +353,7 @@ public class ReplPermissionsTests : IDisposable
     public void Permissions_EmptyStore_OmitsTheRevokeInstruction()
     {
         //with nothing to revoke the instruction is noise, so it must stay off the screen
-        var store = PermissionStore.Load(_root, out _);
+        var store = PermissionStore.Load(_root, _root, out _);
 
         var output = RunPermissions("/permissions\n/quit\n", store);
 
@@ -346,7 +363,7 @@ public class ReplPermissionsTests : IDisposable
     [Fact]
     public void Permissions_Bare_CapsAtTenEntries_AndSaysHowManyMore()
     {
-        var store = PermissionStore.Load(_root, out _);
+        var store = PermissionStore.Load(_root, _root, out _);
         for (var i = 1; i <= 25; i++) store.GrantShellPrefix("cmd" + i.ToString("00"), persist: true);
 
         var output = RunPermissions("/permissions\n/quit\n", store);
@@ -359,7 +376,7 @@ public class ReplPermissionsTests : IDisposable
     [Fact]
     public void Permissions_All_ShowsEveryEntry_AndNoMoreLine()
     {
-        var store = PermissionStore.Load(_root, out _);
+        var store = PermissionStore.Load(_root, _root, out _);
         for (var i = 1; i <= 25; i++) store.GrantShellPrefix("cmd" + i.ToString("00"), persist: true);
 
         var output = RunPermissions("/permissions all\n/quit\n", store);
@@ -372,7 +389,7 @@ public class ReplPermissionsTests : IDisposable
     public void Permissions_ExactlyAtTheCap_ShowsNoMoreLine()
     {
         //at exactly the cap nothing is hidden, so the more-line would lie.
-        var store = PermissionStore.Load(_root, out _);
+        var store = PermissionStore.Load(_root, _root, out _);
         for (var i = 1; i <= 10; i++) store.GrantShellPrefix("cmd" + i.ToString("00"), persist: true);
 
         var output = RunPermissions("/permissions\n/quit\n", store);
@@ -385,7 +402,7 @@ public class ReplPermissionsTests : IDisposable
     public void Permissions_CappedListing_StillNumbersAgainstTheFullSet()
     {
         //the numbers are revoke keys, so a capped listing must number against the full set
-        var store = PermissionStore.Load(_root, out _);
+        var store = PermissionStore.Load(_root, _root, out _);
         for (var i = 1; i <= 25; i++) store.GrantShellPrefix("cmd" + i.ToString("00"), persist: true);
 
         var capped = RunPermissions("/permissions\n/quit\n", store);
@@ -398,7 +415,7 @@ public class ReplPermissionsTests : IDisposable
     [Fact]
     public void Permissions_Revoke_RemovesTheNumberedEntry_PersistsAndConfirms()
     {
-        var store = PermissionStore.Load(_root, out _);
+        var store = PermissionStore.Load(_root, _root, out _);
         store.GrantShellPrefix("git status", persist: true);
         store.GrantWriteDir(@"C:\proj", persist: true);
 
@@ -408,7 +425,7 @@ public class ReplPermissionsTests : IDisposable
         Assert.False(store.AllowsWrite(@"C:\proj\a.txt"));
         Assert.True(store.AllowsShell("git status"));     //revoking one entry must leave the others alone.
 
-        var reloaded = PermissionStore.Load(_root, out _);
+        var reloaded = PermissionStore.Load(_root, _root, out _);
         Assert.False(reloaded.AllowsWrite(@"C:\proj\a.txt"));
         Assert.True(reloaded.AllowsShell("git status"));
     }
@@ -416,7 +433,7 @@ public class ReplPermissionsTests : IDisposable
     [Fact]
     public void Permissions_Revoke_OutOfRange_FriendlyError_NothingChanges()
     {
-        var store = PermissionStore.Load(_root, out _);
+        var store = PermissionStore.Load(_root, _root, out _);
         store.GrantShellPrefix("git status", persist: true);
 
         var output = RunPermissions("/permissions revoke 99\n/quit\n", store);
@@ -428,7 +445,7 @@ public class ReplPermissionsTests : IDisposable
     [Fact]
     public void Permissions_Revoke_NonNumeric_FriendlyError_NothingChanges()
     {
-        var store = PermissionStore.Load(_root, out _);
+        var store = PermissionStore.Load(_root, _root, out _);
         store.GrantShellPrefix("git status", persist: true);
 
         var output = RunPermissions("/permissions revoke abc\n/quit\n", store);
@@ -441,7 +458,7 @@ public class ReplPermissionsTests : IDisposable
     public void Permissions_Revoke_Overflow_IsDiagnosedAsOutOfRange_NotAsNonNumeric()
     {
         //a value past the int range parses like abc, so the out-of-range message is the honest one
-        var store = PermissionStore.Load(_root, out _);
+        var store = PermissionStore.Load(_root, _root, out _);
         store.GrantShellPrefix("git status", persist: true);
 
         var output = RunPermissions("/permissions revoke 2147483648\n/quit\n", store);
@@ -454,7 +471,7 @@ public class ReplPermissionsTests : IDisposable
     [Fact]
     public void Permissions_UnknownArg_PrintsUsage()
     {
-        var store = PermissionStore.Load(_root, out _);
+        var store = PermissionStore.Load(_root, _root, out _);
 
         var output = RunPermissions("/permissions sideways\n/quit\n", store);
 
@@ -464,14 +481,14 @@ public class ReplPermissionsTests : IDisposable
     [Fact]
     public void Permissions_Revoke_NeverTouchesWild()
     {
-        var store = PermissionStore.Load(_root, out _);
+        var store = PermissionStore.Load(_root, _root, out _);
         store.SetWild(true, persist: true);
         store.GrantShellPrefix("git status", persist: true);
 
         RunPermissions("/permissions revoke 1\n/quit\n", store);
 
         Assert.True(store.Wild);
-        var reloaded = PermissionStore.Load(_root, out _);
+        var reloaded = PermissionStore.Load(_root, _root, out _);
         Assert.True(reloaded.Wild);
     }
 
@@ -479,7 +496,7 @@ public class ReplPermissionsTests : IDisposable
     public void Permissions_Bare_StoredGrantTextIsSanitized_NoEscapeBytesReachTheTerminal()
     {
         //grant text is model-authored, so the plain loop must sanitize it, or an embedded clear erases the listing
-        var store = PermissionStore.Load(_root, out _);
+        var store = PermissionStore.Load(_root, _root, out _);
         store.GrantShellPrefix("git \u001b[2Jstatus", persist: true);
         store.GrantWriteDir("C:\\pr\u001b[31moj", persist: true);
         store.GrantTool("web\u001b]8;;http://evil\u0007_search", persist: true);

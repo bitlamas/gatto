@@ -1,5 +1,5 @@
 //passing the image cap asks instead of refusing. byte limits miss many small screenshots that add thousands of tokens to the permanent prefix.
-using Gatto.Core.Home;
+using Gatto.Core.Loop.Permissions;
 using Gatto.Repl;
 
 namespace Gatto.Tests;
@@ -46,19 +46,22 @@ public class ConfirmAttachTests : IDisposable
         Assert.Equal(ConfirmAttachAnswer.No, ConfirmAttach.Interpret(new SelectOutcome.Chosen(99)));
     }
 
+    //the standing yes lives with the grants in the home, for the folder gatto was launched in
+    private PermissionStore Store(string dir) => PermissionStore.Load(_dir, dir, out _);
+
     [Fact]
-    public void No_settings_file_means_no_grant()
+    public void No_grant_until_one_is_given()
     {
-        //the settings file must not be required. an absent file resolves to defaults and must not fail a launch.
-        Assert.False(ProjectSettings.Load(_dir).AttachManyGranted);
-        Assert.False(File.Exists(ProjectSettings.PathFor(_dir)));   //reading the settings must not create the file.
+        //reading must not create anything, an absent store resolves to no grant and must not fail a launch
+        Assert.False(Store(_dir).AttachMany);
+        Assert.False(File.Exists(PermissionStore.PathFor(_dir, _dir)));
     }
 
     [Fact]
     public void A_grant_persists_and_is_read_back_by_a_fresh_load()
     {
-        ProjectSettings.Load(_dir).GrantAttachMany();
-        Assert.True(ProjectSettings.Load(_dir).AttachManyGranted);
+        Store(_dir).GrantAttachMany();
+        Assert.True(Store(_dir).AttachMany);
     }
 
     [Fact]
@@ -68,27 +71,26 @@ public class ConfirmAttachTests : IDisposable
         var other = Directory.CreateTempSubdirectory("gatto-settings-other-").FullName;
         try
         {
-            ProjectSettings.Load(_dir).GrantAttachMany();
-            Assert.False(ProjectSettings.Load(other).AttachManyGranted);
+            Store(_dir).GrantAttachMany();
+            Assert.False(Store(other).AttachMany);
         }
         finally { try { Directory.Delete(other, recursive: true); } catch { } }
     }
 
     [Fact]
-    public void A_corrupt_settings_file_asks_again_rather_than_locking_the_user_out()
+    public void A_corrupt_store_asks_again_rather_than_locking_the_user_out()
     {
-        Directory.CreateDirectory(Path.GetDirectoryName(ProjectSettings.PathFor(_dir))!);
-        File.WriteAllText(ProjectSettings.PathFor(_dir), "{ this is not json");
-        Assert.False(ProjectSettings.Load(_dir).AttachManyGranted);
+        Directory.CreateDirectory(Path.GetDirectoryName(PermissionStore.PathFor(_dir, _dir))!);
+        File.WriteAllText(PermissionStore.PathFor(_dir, _dir), "{ this is not json");
+        Assert.False(Store(_dir).AttachMany);
     }
 
+    //a repository that ships the old settings file with the grant set gets nothing from it, the question is still asked
     [Fact]
-    public void The_settings_file_lives_beside_permissions_but_is_NOT_permissions()
+    public void A_project_settings_file_grants_nothing()
     {
-        //the grant belongs in settings.json, every entry in permissions.json is a security record and a preference mixed in would tax every audit
-        ProjectSettings.Load(_dir).GrantAttachMany();
-
-        Assert.Equal(Path.Combine(_dir, ".gatto", "settings.json"), ProjectSettings.PathFor(_dir));
-        Assert.False(File.Exists(Path.Combine(_dir, ".gatto", "permissions.json")));
+        Directory.CreateDirectory(Path.Combine(_dir, ".gatto"));
+        File.WriteAllText(Path.Combine(_dir, ".gatto", "settings.json"), """{"attach_many_granted":true}""");
+        Assert.False(Store(_dir).AttachMany);
     }
 }

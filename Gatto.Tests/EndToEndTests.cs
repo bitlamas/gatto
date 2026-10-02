@@ -644,7 +644,7 @@ public class EndToEndTests : IDisposable
         var toolMsg = body.GetProperty("messages").EnumerateArray()
             .Single(m => m.GetProperty("role").GetString() == "tool");
         Assert.Equal(
-            "blocked: no interactive terminal to grant permission (use --yes or pre-grant in .gatto\\permissions.json)",
+            "blocked: no interactive terminal to grant permission (use --yes, or grant it with Yes, always allow in an interactive session)",
             toolMsg.GetProperty("content").GetString());
     }
 }

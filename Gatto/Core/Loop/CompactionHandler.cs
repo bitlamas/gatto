@@ -11,6 +11,9 @@ public interface ICompactionHandler
     //null if compaction itself failed, the caller must surface the original error rather than continue on stale state
     Task<CompactionResult?> CompactAsync(
         CompactionReason reason, string currentUserPrompt, ITurnObserver observer, CancellationToken ct);
+
+    //why the last null came back in words the user can read, or null when the handler cannot tell
+    string? LastFailure => null;
 }
 
 //the shape ReplaceAll expects, SystemText as the only system message at index 0 and Messages as the rest

@@ -7,7 +7,24 @@ namespace Gatto.Core.Loop;
 public sealed record ToolMark(string Name, string Sha256);
 public sealed record ContextFileMark(string Path, string Sha256);
 public sealed record PolicyMark(string Extension, string Line);
-public sealed record ThinkingMark(string? Level, string? BodyJson);
+public sealed record ThinkingMark(string? Level, string? BodyJson)
+{
+    //held compact, so a session record stays on one line and a body read back equals the live one however the profile indented it
+    public string? BodyJson { get; init; } = CompactJson(BodyJson);
+
+    public static string? CompactJson(string? json)
+    {
+        if (json is null) return null;
+        try
+        {
+            using var doc = System.Text.Json.JsonDocument.Parse(json);
+            using var ms = new MemoryStream();
+            using (var w = new System.Text.Json.Utf8JsonWriter(ms)) doc.RootElement.WriteTo(w);
+            return Encoding.UTF8.GetString(ms.ToArray());
+        }
+        catch (System.Text.Json.JsonException) { return json; }   //not JSON is kept as given, the writer refuses it where it always did
+    }
+}
 
 //what the system message was composed from, the values a resume compares to say what changed
 public sealed record BaselineSources(

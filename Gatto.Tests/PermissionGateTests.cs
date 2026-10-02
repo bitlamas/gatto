@@ -58,7 +58,7 @@ public sealed class PermissionGateTests : IDisposable
     private readonly string _root = Directory.CreateTempSubdirectory("gatto-gate-").FullName;
     public void Dispose() => Directory.Delete(_root, recursive: true);
 
-    private string PermsPath => Path.Combine(_root, ".gatto", "permissions.json");
+    private string PermsPath => PermissionStore.PathFor(_root, _root);
 
     //the real AgentLoop with the tool registered, so a test exercises the gating the product runs
     private static (AgentLoop, FakeChatClient, Conversation, RecordingObserver) LoopWith(HookBus hooks, ITool tool)
@@ -92,7 +92,7 @@ public sealed class PermissionGateTests : IDisposable
     //the ask_user tool is not in the built-in read class, a vetted extension grants it and AskUserExtensionTests covers the no-prompt path
     public async Task ReadClass_never_prompts_and_runs(string tool, string args)
     {
-        var store = PermissionStore.Load(_root, out _);
+        var store = PermissionStore.Load(_root, _root, out _);
         var prompter = new FakePrompter();          //an empty queue answers Deny, so the test fails if the prompter is consulted.
         var hooks = GateOn(store, prompter, autoYes: false);
         var spy = new SpyTool(tool);
@@ -110,7 +110,7 @@ public sealed class PermissionGateTests : IDisposable
     [Fact]
     public async Task TaskRestate_is_read_class_and_runs_without_prompt_or_grant()
     {
-        var store = PermissionStore.Load(_root, out _);
+        var store = PermissionStore.Load(_root, _root, out _);
         var hooks = GateOn(store, prompter: null, autoYes: false);   //with no prompter a mutating tool would throw, lacking consent.
         var spy = new SpyTool("task_restate");
         var (loop, client, convo, obs) = LoopWith(hooks, spy);
@@ -125,7 +125,7 @@ public sealed class PermissionGateTests : IDisposable
     [Fact]
     public async Task Deny_blocks_with_exact_text_and_tool_never_runs()
     {
-        var store = PermissionStore.Load(_root, out _);
+        var store = PermissionStore.Load(_root, _root, out _);
         var prompter = new FakePrompter(PermissionAnswer.Deny);
         var hooks = GateOn(store, prompter, autoYes: false);
         var spy = new SpyTool("shell");
@@ -144,7 +144,7 @@ public sealed class PermissionGateTests : IDisposable
     [Fact]
     public async Task Once_runs_without_recording_a_grant()
     {
-        var store = PermissionStore.Load(_root, out _);
+        var store = PermissionStore.Load(_root, _root, out _);
         var prompter = new FakePrompter(PermissionAnswer.Once);
         var hooks = GateOn(store, prompter, autoYes: false);
         var spy = new SpyTool("shell");
@@ -162,7 +162,7 @@ public sealed class PermissionGateTests : IDisposable
     [Fact]
     public async Task Always_persists_and_a_second_matching_call_does_not_prompt()
     {
-        var store = PermissionStore.Load(_root, out _);
+        var store = PermissionStore.Load(_root, _root, out _);
         var prompter = new FakePrompter(PermissionAnswer.Always);   //one scripted answer only. a second prompt would dequeue nothing and answer Deny.
         var hooks = GateOn(store, prompter, autoYes: false);
         var spy = new SpyTool("shell");
@@ -176,14 +176,14 @@ public sealed class PermissionGateTests : IDisposable
 
         Assert.Equal(1, prompter.CallCount);
         Assert.True(File.Exists(PermsPath));
-        Assert.True(PermissionStore.Load(_root, out _).AllowsShell("git status --short"));
+        Assert.True(PermissionStore.Load(_root, _root, out _).AllowsShell("git status --short"));
         Assert.All(obs.Results, r => Assert.False(r.Item2.IsError));
     }
 
     [Fact]
     public async Task AutoYes_bypasses_everything()
     {
-        var store = PermissionStore.Load(_root, out _);
+        var store = PermissionStore.Load(_root, _root, out _);
         var prompter = new FakePrompter();                       //an empty queue answers Deny, so any consult fails the test.
         var hooks = GateOn(store, prompter, autoYes: true);
         var spy = new SpyTool("shell");
@@ -200,21 +200,21 @@ public sealed class PermissionGateTests : IDisposable
     [Fact]
     public async Task NullPrompter_throws_exact_no_tty_message()
     {
-        var store = PermissionStore.Load(_root, out _);
+        var store = PermissionStore.Load(_root, _root, out _);
         var gate = new PermissionGate(store, prompter: null, autoYes: false);
 
         var ex = await Assert.ThrowsAsync<InvalidOperationException>(() =>
             gate.CheckAsync(new HookPayload(Call: new ToolCall("c1", "shell", "{\"command\":\"git status\"}"))));
 
         Assert.Equal(
-            "no interactive terminal to grant permission (use --yes or pre-grant in .gatto\\permissions.json)",
+            "no interactive terminal to grant permission (use --yes, or grant it with Yes, always allow in an interactive session)",
             ex.Message);
     }
 
     [Fact]
     public async Task NullPrompter_through_loop_yields_blocked_error_and_tool_never_runs()
     {
-        var store = PermissionStore.Load(_root, out _);
+        var store = PermissionStore.Load(_root, _root, out _);
         var hooks = GateOn(store, prompter: null, autoYes: false);
         var spy = new SpyTool("shell");
         var (loop, client, convo, obs) = LoopWith(hooks, spy);
@@ -226,7 +226,7 @@ public sealed class PermissionGateTests : IDisposable
         Assert.True(result.IsError);
         //the loop adds blocked: exactly once, and a second prefix anywhere breaks this pin
         Assert.Equal(
-            "blocked: no interactive terminal to grant permission (use --yes or pre-grant in .gatto\\permissions.json)",
+            "blocked: no interactive terminal to grant permission (use --yes, or grant it with Yes, always allow in an interactive session)",
             result.Text);
         Assert.False(spy.Executed);
     }
@@ -235,7 +235,7 @@ public sealed class PermissionGateTests : IDisposable
     [Fact]
     public async Task ChainedCommand_prompts_even_with_matching_prefix_grant()
     {
-        var store = PermissionStore.Load(_root, out _);
+        var store = PermissionStore.Load(_root, _root, out _);
         store.GrantShellPrefix("git status", persist: false);
         var prompter = new FakePrompter(PermissionAnswer.Deny);
         var hooks = GateOn(store, prompter, autoYes: false);
@@ -253,7 +253,7 @@ public sealed class PermissionGateTests : IDisposable
     [Fact]
     public async Task MissingCommandArgument_prompts_with_raw_json_summary()
     {
-        var store = PermissionStore.Load(_root, out _);
+        var store = PermissionStore.Load(_root, _root, out _);
         var prompter = new FakePrompter(PermissionAnswer.Once);
         var hooks = GateOn(store, prompter, autoYes: false);
         var spy = new SpyTool("shell");
@@ -271,7 +271,7 @@ public sealed class PermissionGateTests : IDisposable
     [Fact]
     public async Task UnknownTool_is_treated_as_mutating_and_prompts()
     {
-        var store = PermissionStore.Load(_root, out _);
+        var store = PermissionStore.Load(_root, _root, out _);
         var prompter = new FakePrompter(PermissionAnswer.Deny);
         var hooks = GateOn(store, prompter, autoYes: false);
         var spy = new SpyTool("frobnicate");                     //an unknown name stands for a future extension tool.
@@ -287,7 +287,7 @@ public sealed class PermissionGateTests : IDisposable
     [Fact]
     public async Task ExtensionTool_Always_persists_a_toolname_grant_that_silences_the_next_call()
     {
-        var store = PermissionStore.Load(_root, out _);
+        var store = PermissionStore.Load(_root, _root, out _);
         var prompter = new FakePrompter(PermissionAnswer.Always);
         var hooks = GateOn(store, prompter, autoYes: false);
         var spy = new SpyTool("web_search");
@@ -301,7 +301,7 @@ public sealed class PermissionGateTests : IDisposable
         Assert.True(spy.Executed);
 
         //the store reloads from disk with an empty queue, so a prompt the grant failed to silence answers Deny.
-        var reloaded = PermissionStore.Load(_root, out _);
+        var reloaded = PermissionStore.Load(_root, _root, out _);
         var prompter2 = new FakePrompter();
         var hooks2 = GateOn(reloaded, prompter2, autoYes: false);
         var spy2 = new SpyTool("web_search");
@@ -324,7 +324,7 @@ public sealed class PermissionGateTests : IDisposable
     public async Task A_file_call_missing_an_argument_is_refused_before_the_prompt(string tool, string args, string missing)
     {
         var prompter = new FakePrompter(PermissionAnswer.Once);
-        var gate = new PermissionGate(PermissionStore.Load(_root, out _), prompter, autoYes: false);
+        var gate = new PermissionGate(PermissionStore.Load(_root, _root, out _), prompter, autoYes: false);
         var ex = await Assert.ThrowsAsync<CannotApplyException>(() => gate.CheckAsync(new HookPayload(Call: new ToolCall("c1", tool, args))));
         Assert.Equal(ToolArgs.MissingParameter(missing), ex.Message);
         Assert.Empty(prompter.Requests);
@@ -338,7 +338,7 @@ public sealed class PermissionGateTests : IDisposable
     public async Task A_call_whose_arguments_are_not_json_is_refused_before_the_prompt()
     {
         var prompter = new FakePrompter(PermissionAnswer.Once);
-        var gate = new PermissionGate(PermissionStore.Load(_root, out _), prompter, autoYes: false);
+        var gate = new PermissionGate(PermissionStore.Load(_root, _root, out _), prompter, autoYes: false);
         var ex = await Assert.ThrowsAsync<CannotApplyException>(() => gate.CheckAsync(new HookPayload(Call: new ToolCall("c1", "my_tool", "{oops"))));
         var parse = Assert.ThrowsAny<JsonException>(() => JsonDocument.Parse("{oops"));
         Assert.Equal(LoopErrors.MalformedArgumentsPrefix + parse.Message, ex.Message);
@@ -347,7 +347,7 @@ public sealed class PermissionGateTests : IDisposable
 
     private PermissionRequest CaptureRequest(string tool, string argsJson)
     {
-        var store = PermissionStore.Load(_root, out _);
+        var store = PermissionStore.Load(_root, _root, out _);
         var prompter = new FakePrompter(PermissionAnswer.Once);
         var gate = new PermissionGate(store, prompter, autoYes: false);
         gate.CheckAsync(new HookPayload(Call: new ToolCall("c1", tool, argsJson))).GetAwaiter().GetResult();
@@ -389,7 +389,7 @@ public sealed class PermissionGateTests : IDisposable
     [Fact]
     public async Task Approval_latch_is_reference_keyed_a_distinct_equal_call_does_not_ride_it()
     {
-        var store = PermissionStore.Load(_root, out _);
+        var store = PermissionStore.Load(_root, _root, out _);
         var callA = new ToolCall("c1", "shell", "{\"command\":\"git commit -m x\"}");
         var approval = new CheckpointApproval { Call = callA };      //the approval holds the exact object A
         var prompter = new FakePrompter(PermissionAnswer.Deny);
@@ -411,7 +411,7 @@ public sealed class PermissionGateTests : IDisposable
     [Fact]
     public async Task Approval_with_no_pending_call_is_inert_shell_still_prompts()
     {
-        var store = PermissionStore.Load(_root, out _);
+        var store = PermissionStore.Load(_root, _root, out _);
         var approval = new CheckpointApproval();                     //no pending call, so the approval cannot satisfy anything.
         var prompter = new FakePrompter(PermissionAnswer.Deny);
         var gate = new PermissionGate(store, prompter, autoYes: false, approval: approval);
@@ -478,7 +478,7 @@ public sealed class PermissionGateTests : IDisposable
     [Fact]
     public async Task AllowReadClass_grants_a_named_tool_read_class_and_it_never_prompts()
     {
-        var store = PermissionStore.Load(_root, out _);
+        var store = PermissionStore.Load(_root, _root, out _);
         var prompter = new FakePrompter();                       //an empty queue answers Deny, so any consult fails the test.
         var gate = new PermissionGate(store, prompter, autoYes: false);
         gate.AllowReadClass("web_probe");
@@ -498,7 +498,7 @@ public sealed class PermissionGateTests : IDisposable
     [Fact]
     public async Task Without_AllowReadClass_the_same_extension_tool_still_prompts()
     {
-        var store = PermissionStore.Load(_root, out _);
+        var store = PermissionStore.Load(_root, _root, out _);
         var prompter = new FakePrompter(PermissionAnswer.Deny);
         var gate = new PermissionGate(store, prompter, autoYes: false);
         //no AllowReadClass call on purpose, the tool counts as mutating
@@ -517,7 +517,7 @@ public sealed class PermissionGateTests : IDisposable
     [Fact]
     public async Task AllowReadClass_grants_only_the_named_tool_a_different_tool_still_prompts()
     {
-        var store = PermissionStore.Load(_root, out _);
+        var store = PermissionStore.Load(_root, _root, out _);
         var prompter = new FakePrompter(PermissionAnswer.Deny);
         var gate = new PermissionGate(store, prompter, autoYes: false);
         gate.AllowReadClass("web_probe");
@@ -536,7 +536,7 @@ public sealed class PermissionGateTests : IDisposable
     [Fact]
     public async Task Deny_with_no_reason_throws_exactly_the_bare_message()
     {
-        var store = PermissionStore.Load(_root, out _);
+        var store = PermissionStore.Load(_root, _root, out _);
         var prompter = new AskOnlyPrompter(PermissionAnswer.Deny);   //this prompter implements only Ask, so the seam's default must forward
         var gate = new PermissionGate(store, prompter, autoYes: false);
 
@@ -549,7 +549,7 @@ public sealed class PermissionGateTests : IDisposable
     [Fact]
     public async Task Deny_with_reason_throws_the_reason_appended()
     {
-        var store = PermissionStore.Load(_root, out _);
+        var store = PermissionStore.Load(_root, _root, out _);
         var prompter = new FakeReasonPrompter(new PermissionDecision(PermissionAnswer.Deny, "use read_file instead"));
         var gate = new PermissionGate(store, prompter, autoYes: false);
 
@@ -574,7 +574,7 @@ public sealed class PermissionGateTests : IDisposable
     [Fact]
     public async Task Deny_with_reason_omits_the_ask_instead_clause()
     {
-        var store = PermissionStore.Load(_root, out _);
+        var store = PermissionStore.Load(_root, _root, out _);
         var prompter = new FakeReasonPrompter(new PermissionDecision(PermissionAnswer.Deny, "use the sandbox dir"));
         var gate = new PermissionGate(store, prompter, autoYes: false);
 
@@ -588,7 +588,7 @@ public sealed class PermissionGateTests : IDisposable
     [Fact]
     public async Task Deny_reason_is_sanitized_control_bytes_and_newlines_do_not_survive()
     {
-        var store = PermissionStore.Load(_root, out _);
+        var store = PermissionStore.Load(_root, _root, out _);
         var prompter = new FakeReasonPrompter(
             new PermissionDecision(PermissionAnswer.Deny, "line one\nline two\r\x1b[31mtail\x07"));
         var gate = new PermissionGate(store, prompter, autoYes: false);
@@ -605,7 +605,7 @@ public sealed class PermissionGateTests : IDisposable
     [Fact]
     public async Task Deny_reason_over_256_chars_is_capped()
     {
-        var store = PermissionStore.Load(_root, out _);
+        var store = PermissionStore.Load(_root, _root, out _);
         var longReason = new string('x', 300);
         var prompter = new FakeReasonPrompter(new PermissionDecision(PermissionAnswer.Deny, longReason));
         var gate = new PermissionGate(store, prompter, autoYes: false);
@@ -619,7 +619,7 @@ public sealed class PermissionGateTests : IDisposable
     [Fact]
     public async Task Deny_reason_that_is_whitespace_only_degrades_to_bare_message()
     {
-        var store = PermissionStore.Load(_root, out _);
+        var store = PermissionStore.Load(_root, _root, out _);
         var prompter = new FakeReasonPrompter(new PermissionDecision(PermissionAnswer.Deny, "   \n\t  "));
         var gate = new PermissionGate(store, prompter, autoYes: false);
 
@@ -635,7 +635,7 @@ public sealed class PermissionGateTests : IDisposable
     public async Task Deny_reason_padded_with_tabs_is_delivered_in_full()
     {
         //tabs drop as control characters, so the 200 real chars stay under the cap and reach the model whole
-        var store = PermissionStore.Load(_root, out _);
+        var store = PermissionStore.Load(_root, _root, out _);
         var reason = new string('x', 200) + new string('\t', 60);
         var prompter = new FakeReasonPrompter(new PermissionDecision(PermissionAnswer.Deny, reason));
         var gate = new PermissionGate(store, prompter, autoYes: false);
@@ -716,7 +716,7 @@ public sealed class PermissionGateTests : IDisposable
     public async Task Deny_reason_that_sanitizes_away_entirely_still_yields_the_bare_message()
     {
         //a reason of only control characters sanitizes to nothing, so the message is the bare DenyNudge
-        var store = PermissionStore.Load(_root, out _);
+        var store = PermissionStore.Load(_root, _root, out _);
         var prompter = new FakeReasonPrompter(new PermissionDecision(PermissionAnswer.Deny, "\t\t\t"));
         var gate = new PermissionGate(store, prompter, autoYes: false);
 
@@ -738,11 +738,11 @@ public sealed class PermissionGateTests : IDisposable
     [Fact]
     public async Task Once_and_Always_are_untouched_by_AskWithReason_wiring()
     {
-        var store = PermissionStore.Load(_root, out _);
+        var store = PermissionStore.Load(_root, _root, out _);
         var onceGate = new PermissionGate(store, new FakeReasonPrompter(new PermissionDecision(PermissionAnswer.Once)), autoYes: false);
         await onceGate.CheckAsync(new HookPayload(Call: new ToolCall("c1", "shell", "{\"command\":\"git status\"}")));
 
-        var alwaysStore = PermissionStore.Load(_root, out _);
+        var alwaysStore = PermissionStore.Load(_root, _root, out _);
         var alwaysGate = new PermissionGate(alwaysStore, new FakeReasonPrompter(new PermissionDecision(PermissionAnswer.Always)), autoYes: false);
         await alwaysGate.CheckAsync(new HookPayload(Call: new ToolCall("c1", "shell", "{\"command\":\"git status\"}")));
         Assert.True(alwaysStore.AllowsShell("git status"));
@@ -752,7 +752,7 @@ public sealed class PermissionGateTests : IDisposable
     public async Task Wild_on_auto_allows_and_wild_off_restores_prompting_on_the_same_gate()
     {
         var wild = new WildState();
-        var store = PermissionStore.Load(_root, out _);
+        var store = PermissionStore.Load(_root, _root, out _);
         var prompter = new FakePrompter(PermissionAnswer.Deny);
         var gate = new PermissionGate(store, prompter, autoYes: false, approval: null, wild: wild);
         var call = new ToolCall("c1", "shell", "{\"command\":\"del something.txt\"}");
@@ -770,7 +770,7 @@ public sealed class PermissionGateTests : IDisposable
     [Fact]
     public async Task MemoryWrite_PassesWithoutPrompt()
     {
-        var store = PermissionStore.Load(_root, out _);
+        var store = PermissionStore.Load(_root, _root, out _);
         var prompter = new FakePrompter();                       //an empty queue answers Deny, so any consult fails the test.
         var hooks = GateOn(store, prompter, autoYes: false);
         var spy = new SpyTool("memory_write");
@@ -787,7 +787,7 @@ public sealed class PermissionGateTests : IDisposable
     [Fact]
     public async Task RecallMemory_PassesWithoutPrompt()
     {
-        var store = PermissionStore.Load(_root, out _);
+        var store = PermissionStore.Load(_root, _root, out _);
         var prompter = new FakePrompter();                       //an empty queue answers Deny, so any consult fails the test.
         var hooks = GateOn(store, prompter, autoYes: false);
         var spy = new SpyTool("recall_memory");
@@ -804,7 +804,7 @@ public sealed class PermissionGateTests : IDisposable
     [Fact]
     public async Task WriteFile_StillPrompts()
     {
-        var store = PermissionStore.Load(_root, out _);
+        var store = PermissionStore.Load(_root, _root, out _);
         var prompter = new FakePrompter(PermissionAnswer.Deny);
         var hooks = GateOn(store, prompter, autoYes: false);
         var spy = new SpyTool("write_file");
@@ -824,7 +824,7 @@ public sealed class PermissionGateTests : IDisposable
     [Fact]
     public async Task Cancel_ThrowsPinnedMessage()
     {
-        var store = PermissionStore.Load(_root, out _);
+        var store = PermissionStore.Load(_root, _root, out _);
         var prompter = new FakePrompter(PermissionAnswer.Cancel);
         var gate = new PermissionGate(store, prompter, autoYes: false);
 
@@ -848,7 +848,7 @@ public sealed class PermissionGateTests : IDisposable
     [Fact]
     public async Task Cancel_blocks_the_tool_and_carries_only_the_pinned_message()
     {
-        var store = PermissionStore.Load(_root, out _);
+        var store = PermissionStore.Load(_root, _root, out _);
         var prompter = new FakePrompter(PermissionAnswer.Cancel);
         var hooks = GateOn(store, prompter, autoYes: false);
         var spy = new SpyTool("shell");
@@ -867,7 +867,7 @@ public sealed class PermissionGateTests : IDisposable
     [Fact]
     public async Task Cancel_persists_no_grant()
     {
-        var store = PermissionStore.Load(_root, out _);
+        var store = PermissionStore.Load(_root, _root, out _);
         var gate = new PermissionGate(store, new FakePrompter(PermissionAnswer.Cancel), autoYes: false);
 
         await Assert.ThrowsAsync<InvalidOperationException>(() =>
@@ -883,7 +883,7 @@ public sealed class PermissionGateTests : IDisposable
     {
         File.WriteAllText(Path.Combine(_root, "a.txt"), "x\n");
         var prompter = new FakePrompter();
-        var hooks = GateOn(PermissionStore.Load(_root, out _), prompter, autoYes: false);
+        var hooks = GateOn(PermissionStore.Load(_root, _root, out _), prompter, autoYes: false);
         var spy = new SpyTool("edit_file");
         var (loop, client, convo, obs) = LoopWith(hooks, spy);
         EnqueueOneCall(client, "edit_file", JsonSerializer.Serialize(new { path = Path.Combine(_root, "a.txt"), old_string = "nowhere", new_string = "y" }));
@@ -901,7 +901,7 @@ public sealed class PermissionGateTests : IDisposable
 
     private async Task<PermissionRequest> RequestFor(string tool, object args)
     {
-        var store = PermissionStore.Load(_root, out _);
+        var store = PermissionStore.Load(_root, _root, out _);
         var prompter = new FakePrompter(PermissionAnswer.Once);
         var gate = new PermissionGate(store, prompter, autoYes: false);
         await gate.CheckAsync(new HookPayload(Call: new ToolCall("c1", tool, JsonSerializer.Serialize(args))));
@@ -976,7 +976,7 @@ public sealed class PermissionGateTests : IDisposable
     {
         File.WriteAllText(Path.Combine(_root, "locked.txt"), "x");
         var prompter = new FakePrompter(PermissionAnswer.Once);
-        var gate = new PermissionGate(PermissionStore.Load(_root, out _), prompter, autoYes: false)
+        var gate = new PermissionGate(PermissionStore.Load(_root, _root, out _), prompter, autoYes: false)
             { ReadBytes = _ => throw new IOException("locked") };
 
         await gate.CheckAsync(new HookPayload(Call: new ToolCall("c1", "write_file", JsonSerializer.Serialize(new { path = "locked.txt", content = "y" }))));

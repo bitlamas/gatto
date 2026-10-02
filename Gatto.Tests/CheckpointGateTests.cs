@@ -86,7 +86,7 @@ public sealed class CheckpointGateTests
         var prompter = new FakePrompter(PermissionAnswer.Once);   //the gate below is disabled, so it must never ask this prompter
         var gate = new CheckpointGate(prompter, ReadOnly("clean")) { Enabled = false };
         var permPrompter = new FakePrompter(PermissionAnswer.Deny);
-        var store = PermissionStore.Load(Directory.CreateTempSubdirectory("gatto-cg-").FullName, out _);
+        var store = PermissionStore.InMemory(Directory.CreateTempSubdirectory("gatto-cg-").FullName);
         var permGate = new PermissionGate(store, permPrompter, autoYes: false);
         var hooks = new HookBus();
         hooks.On(HookEvent.ToolCall, gate.CheckAsync);      //hooks run in the order they were added, so the checkpoint sees the call first
@@ -326,7 +326,7 @@ public sealed class CheckpointGateTests
         //the checkpoint must ask before the permission layer auto-passes. an interactive yes must not defeat it
         var prompter = new FakePrompter(PermissionAnswer.Once);
         var gate = new CheckpointGate(prompter, ReadOnly("clean"));
-        var store = PermissionStore.Load(Directory.CreateTempSubdirectory("gatto-cg-").FullName, out _);
+        var store = PermissionStore.InMemory(Directory.CreateTempSubdirectory("gatto-cg-").FullName);
         var permGate = new PermissionGate(store, prompter, autoYes: true);
         var hooks = new HookBus();
         hooks.On(HookEvent.ToolCall, gate.CheckAsync);      //hooks run in the order they were added, so the checkpoint sees the call first
@@ -433,7 +433,7 @@ public sealed class CheckpointGateTests
         var approval = new CheckpointApproval();
         var prompter = new FakePrompter(PermissionAnswer.Once);   //one answer is scripted and must go to the checkpoint pause
         var checkpoint = new CheckpointGate(prompter, ReadOnly("clean"), approval);
-        var store = PermissionStore.Load(Directory.CreateTempSubdirectory("gatto-cg-").FullName, out _);
+        var store = PermissionStore.InMemory(Directory.CreateTempSubdirectory("gatto-cg-").FullName);
         var permGate = new PermissionGate(store, prompter, autoYes: false, approval: approval);
         var hooks = new HookBus();
         hooks.On(HookEvent.ToolCall, checkpoint.CheckAsync);   //hooks run in the order they were added, so the checkpoint sees the call first
@@ -456,7 +456,7 @@ public sealed class CheckpointGateTests
         var approval = new CheckpointApproval();
         var prompter = new FakePrompter(PermissionAnswer.Once, PermissionAnswer.Deny);
         var checkpoint = new CheckpointGate(prompter, ReadOnly("clean"), approval);
-        var store = PermissionStore.Load(Directory.CreateTempSubdirectory("gatto-cg-").FullName, out _);
+        var store = PermissionStore.InMemory(Directory.CreateTempSubdirectory("gatto-cg-").FullName);
         var permGate = new PermissionGate(store, prompter, autoYes: false, approval: approval);
         var hooks = new HookBus();
         hooks.On(HookEvent.ToolCall, checkpoint.CheckAsync);

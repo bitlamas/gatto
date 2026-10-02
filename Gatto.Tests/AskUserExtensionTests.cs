@@ -410,7 +410,7 @@ public sealed class AskUserExtensionTests : IDisposable
         var (tool, vetted) = LoadAskUser(Canonical, null);
         Assert.True(vetted);   //the sanity check proves the seam about to be exercised applies.
 
-        var store = PermissionStore.Load(_home, out var warning);
+        var store = PermissionStore.Load(_home, _home, out var warning);
         Assert.Null(warning);
         var prompter = new FakePermissionPrompter();
         var gate = new PermissionGate(store, prompter, autoYes: false);
@@ -428,7 +428,7 @@ public sealed class AskUserExtensionTests : IDisposable
         var (tool, vetted) = LoadAskUser(edited, null);
         Assert.False(vetted);   //a single edited byte drops the text off the shipped allow-list.
 
-        var store = PermissionStore.Load(_home, out var warning);
+        var store = PermissionStore.Load(_home, _home, out var warning);
         Assert.Null(warning);
         var prompter = new FakePermissionPrompter(PermissionAnswer.Once);
         var gate = new PermissionGate(store, prompter, autoYes: false);

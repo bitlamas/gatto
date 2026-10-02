@@ -6,8 +6,8 @@ using System.Linq;
 
 namespace Gatto.Core.Loop;
 
-//session compaction, by /compact or automatic: a failed summary returns null, so the caller aborts and the session stays untouched
-public sealed class Compactor(IChatClient client, string model)
+//session compaction, by /compact or automatic: a failed summary returns null, so the caller aborts and the session stays untouched. the loop's shape keeps the summary request on the server's cache
+public sealed class Compactor(IChatClient client, string model, RequestShape? shape = null)
 {
     //the summarizer prompt is compiled in, so a role or user text can't steer the summarizer off task
     private const string TemplatePrompt =
@@ -26,7 +26,7 @@ public sealed class Compactor(IChatClient client, string model)
         "Environment gotchas learned: shell/tool quirks discovered this session, stated exactly " +
         "(e.g. 'PowerShell 5.1 has no &&').\n" +
         "Current state: where things stand right now.\n" +
-        "Immediate next step: the single most useful thing to do next.\n" +
+        NextStepHeading + ": the single most useful thing to do next.\n" +
         //keep this section last, the extractor takes everything after its heading. one template and one extractor, so it is emitted even with memory off
         MemoryPiggyback.Heading + ": durable project facts learned this session that the next session would " +
         "otherwise rediscover. Exactly one \"- \" bullet per fact, no commentary, or exactly the " +
@@ -55,40 +55,110 @@ public sealed class Compactor(IChatClient client, string model)
     internal static int TemplatePromptLengthForTests => TemplatePrompt.Length;
     internal static string TemplatePromptForTests => TemplatePrompt;
 
-    //one tool-free summarize request, null means the caller aborts and leaves the session untouched
+    //why the last SummarizeAsync returned null, in words a warning line can carry, and null after a summary
+    public string? LastFailure { get; private set; }
+
+    private const string OverflowFailure = "the summary request did not fit the context window";
+
+    //the continuation directive names this heading too
+    internal const string NextStepHeading = "Immediate next step";
+
+    //a reply holding none of the template's headings is not a summary, the template lets a summary skip any one of them
+    internal static readonly string[] Headings =
+    {
+        "Task / goal", "Findings & facts learned", "Decisions & actions taken", "Files / systems touched",
+        "What worked / what failed", "Environment gotchas learned", "Current state", NextStepHeading, MemoryPiggyback.Heading,
+    };
+
+    //the summary from the whole conversation or a shortened copy, null means the caller aborts and leaves the session untouched
     public async Task<string?> SummarizeAsync(
         Conversation convo, ITurnObserver observer, CancellationToken ct,
         int? windowTokens = null, double ratio = 1.0, bool midTurn = false, string? doNotRepeat = null)
     {
         //one prompt local, so the measured length covers the primary attempt and the harsh retry alike
         var prompt = (midTurn ? TemplatePrompt + MidTurnAddendum : TemplatePrompt) + (doNotRepeat ?? "");
+        LastFailure = null;
+
+        //the loop's last request as sent plus what came since is the prefix the server holds, so it goes whole while the summary has room beside it
+        if (Resent(convo.Messages) is { } whole
+            && (windowTokens is not int fit || fit <= 0 || Measure(whole, ratio, prompt.Length) + SummaryRoomTokens <= fit))
+        {
+            var (wholeSummary, wholeOverflowed, wholeTruncated, wholeRejected) = await TryStreamAsync(new List<ChatMessage>(whole) { new("user", prompt) }, observer, ct, withTools: true);
+            var retry = wholeRejected || (windowTokens is int && (wholeOverflowed || wholeTruncated));
+            if (wholeSummary is not null || !retry || ct.IsCancellationRequested)
+            {
+                if (wholeOverflowed) LastFailure = OverflowFailure;
+                return wholeSummary;
+            }
+            observer.OnWarning(wholeRejected
+                ? "the reply beside the whole conversation was not a summary — summarizing a shortened copy"
+                : "the summary did not fit beside the whole conversation — summarizing a shortened copy");
+            LastFailure = null;
+        }
+
         var shaped = windowTokens is int w and > 0
             ? ShapeForSummary(convo.Messages, w, ratio, promptChars: prompt.Length)
             : convo.Messages;
 
-        var (summary, overflowed) = await TryStreamAsync(Compose(shaped, prompt), observer, ct);
+        var (summary, overflowed, _, _) = await TryStreamAsync(Compose(shaped, prompt), observer, ct, withTools: false);
         if (!overflowed) return summary;
 
         //the summarize request itself overflowed, one harsher retry and then abort
-        if (windowTokens is not int w2 || w2 <= 0) return null;
-        var (harshSummary, harshOverflowed) = await TryStreamAsync(
-            Compose(HarshShape(convo.Messages, w2, ratio, promptChars: prompt.Length), prompt), observer, ct);
+        if (windowTokens is not int w2 || w2 <= 0) { LastFailure = OverflowFailure; return null; }
+        var (harshSummary, harshOverflowed, _, _) = await TryStreamAsync(
+            Compose(HarshShape(convo.Messages, w2, ratio, promptChars: prompt.Length), prompt), observer, ct, withTools: false);
+        if (harshOverflowed) LastFailure = OverflowFailure;
         return harshOverflowed ? null : harshSummary;
     }
 
-    //the summarizer reads what the model was told, an update included, or the summary lacks it
-    private static List<ChatMessage> Compose(IReadOnlyList<ChatMessage> shaped, string prompt) =>
-        new(ContextBudget.ShapeUpdates(shaped)) { new("user", prompt) };
+    //the room the summary needs beside the whole conversation, its reasoning included. a summary cut short there is asked again from the shortened copy
+    internal const int SummaryRoomTokens = 4096;
 
-    //only a context overflow sets Overflowed so the caller retries, every other failure returns null with no retry
-    private async Task<(string? Summary, bool Overflowed)> TryStreamAsync(
-        List<ChatMessage> messages, ITurnObserver observer, CancellationToken ct)
+    //the loop's last request as sent and the conversation appended since, shaped as the loop will shape it, or null when the conversation changed under it
+    private List<ChatMessage>? Resent(IReadOnlyList<ChatMessage> messages)
+    {
+        if (shape is not { LastSent: { } sent, SentFrom: { } from } || messages.Count < from.Count) return null;
+        for (var i = 0; i < from.Count; i++)
+            if (!ReferenceEquals(messages[i], from[i])) return null;
+        var since = messages.Skip(from.Count).ToList();
+        return new List<ChatMessage>(sent).Concat(ContextBudget.ShapeReasoning(ContextBudget.ShapeUpdates(since), shape.ReasoningHistory)).ToList();
+    }
+
+    //the summarizer reads what the model was told, an update included, shaped as the loop shapes its own, then the summary prompt as the one new tail
+    private List<ChatMessage> Compose(IReadOnlyList<ChatMessage> shaped, string prompt) =>
+        new(ContextBudget.ShapeReasoning(ContextBudget.ShapeUpdates(shaped), shape?.ReasoningHistory ?? ReasoningHistory.All)) { new("user", prompt) };
+
+    //keys that limit or force the output, which never touch the prompt, so dropping them costs no cache and lets the summary run to its end
+    private static readonly string[] OutputLimitKeys = { "max_tokens", "max_completion_tokens", "n_predict", "grammar", "json_schema", "response_format" };
+
+    private static JsonElement? WithoutOutputLimits(JsonElement? overrides)
+    {
+        if (overrides is not { ValueKind: JsonValueKind.Object } o || !o.EnumerateObject().Any(p => OutputLimitKeys.Contains(p.Name)))
+            return overrides;
+        using var ms = new MemoryStream();
+        using (var w = new Utf8JsonWriter(ms))
+        {
+            w.WriteStartObject();
+            foreach (var p in o.EnumerateObject())
+                if (!OutputLimitKeys.Contains(p.Name)) p.WriteTo(w);
+            w.WriteEndObject();
+        }
+        return JsonDocument.Parse(ms.ToArray()).RootElement.Clone();
+    }
+
+    //an overflow, a cut summary or a reply that is no summary is reported so the caller can retry on another request, every other failure returns null with no retry
+    private async Task<(string? Summary, bool Overflowed, bool Truncated, bool Rejected)> TryStreamAsync(
+        List<ChatMessage> messages, ITurnObserver observer, CancellationToken ct, bool withTools)
     {
         var text = new StringBuilder();
         var truncated = false;
         try
         {
-            await foreach (var ev in client.StreamAsync(new ChatRequest(model, messages, Tools: null), ct))
+            //only the request beside the whole conversation lists the tools, with tool_choice none, so its prefix matches the cached one
+            var request = shape is { } s
+                ? new ChatRequest(model, messages, withTools ? s.Tools : null, WithoutOutputLimits(s.SamplingOverrides), WithoutOutputLimits(s.BodyOverrides), ToolChoice: withTools && s.Tools.Count > 0 ? "none" : null)
+                : new ChatRequest(model, messages, Tools: null);
+            await foreach (var ev in client.StreamAsync(request, ct))
             {
                 switch (ev)
                 {
@@ -101,18 +171,29 @@ public sealed class Compactor(IChatClient client, string model)
             }
         }
         //must precede the generic catch, GattoContextOverflowException subtypes GattoConnectionException so the catch-all would swallow it and the harsher retry never runs
-        catch (GattoContextOverflowException) { return (null, true); }
-        catch (OperationCanceledException) { return (null, false); }  //on Ctrl+C mid-summary, abort with nothing lost
-        catch (GattoConnectionException) { return (null, false); }    //server dropped, abort with nothing lost
+        catch (GattoContextOverflowException) { return (null, true, false, false); }
+        catch (OperationCanceledException) { LastFailure = "stopped"; return (null, false, false, false); }  //on Ctrl+C mid-summary, abort with nothing lost
+        catch (GattoConnectionException ex)                                                     //server dropped, abort with nothing lost
+        {
+            LastFailure = $"the server dropped the request: {ex.Message}";
+            return (null, false, false, false);
+        }
 
-        if (truncated) return (null, false);
+        if (truncated) { LastFailure = "the summary was cut at the output limit"; return (null, false, true, false); }
         //strip control tokens here, this text becomes the system prefix, replayed in full on every later request
         var (cleaned, stripped) = ControlTokens.Strip(text.ToString());
         if (stripped > 0)
             observer.OnWarning($"control tokens stripped from the compaction summary ({stripped})");
         var summary = cleaned.Trim();
         //a summary stripped to empty is not a summary, so it takes the same null abort as any other failure
-        return (summary.Length == 0 ? null : summary, false);
+        if (summary.Length == 0) { LastFailure = "the summary came back empty"; return (null, false, false, false); }
+        //a model can answer with a tool call written as text, which holds no heading
+        if (!Headings.Any(h => summary.Contains(h, StringComparison.OrdinalIgnoreCase)))
+        {
+            LastFailure = "the reply holds none of the summary's headings, so it is not a summary";
+            return (null, false, false, true);
+        }
+        return (summary, false, false, false);
     }
 
     //the labeled block a fresh session leads with, composed into the system text rather than added as messages
@@ -124,7 +205,7 @@ public sealed class Compactor(IChatClient client, string model)
     public const string ContinuationDirective =
         "[Session was compacted mid-task. The summary in the system context is authoritative: facts, " +
         "file contents, and findings recorded there are already established — do not re-read files or " +
-        "re-explore to reconfirm them. Continue directly with the summary's \"Immediate next step\".]";
+        "re-explore to reconfirm them. Continue directly with the summary's \"" + NextStepHeading + "\".]";
 
     //keep the prompt verbatim (the summary can be wrong) and put the label before it and the directive after
     public static string BuildContinuationPrompt(string originalPrompt) =>

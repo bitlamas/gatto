@@ -6,8 +6,27 @@ namespace Gatto.Repl.Input;
 //turns clipboard images into ImageRef attachments, the shape every later stage already handles. bound to Alt+V, Windows Terminal swallows Ctrl+V
 public static class ImagePaste
 {
-    //raw candidates, no dedupe or caps (paste and typed names share one guard pass at submit). the Notice field explains why Alt+V did nothing
-    public readonly record struct Result(IReadOnlyList<ImageRef> Candidates, string? Notice);
+    //raw candidates, no dedupe or caps (paste and typed names share one guard pass at submit). the Notice field explains why Alt+V did nothing, and Unsaved holds each pasted image's bytes by its path until the message is sent
+    public readonly record struct Result(IReadOnlyList<ImageRef> Candidates, string? Notice,
+        IReadOnlyDictionary<string, byte[]>? Unsaved = null);
+
+    //writes a pasted image to its content path, once the message holding it is sent. the same content is one file however often it is pasted
+    public static void Save(string path, byte[] bytes)
+    {
+        Directory.CreateDirectory(Path.GetDirectoryName(path)!);
+        if (!File.Exists(path)) File.WriteAllBytes(path, bytes);
+    }
+
+    //writes every sent image still unsaved, and drops its bytes only after the write, so a failed save leaves the paste to send again
+    public static void SaveSent(IEnumerable<ImageRef> sent, IDictionary<string, byte[]> unsaved)
+    {
+        foreach (var image in sent)
+            if (unsaved.TryGetValue(image.Path, out var bytes))
+            {
+                Save(image.Path, bytes);
+                unsaved.Remove(image.Path);
+            }
+    }
 
     //no conversation and no limits here, dedupe and caps happen once at submit. blobDir holds the pasted bytes, addressed by content so a repeat writes one file
     public static Result Paste(IClipboardImageNative clipboard, string blobDir)
@@ -18,7 +37,11 @@ public static class ImagePaste
                 var bytes = clipboard.ReadPng();
                 if (bytes is null || bytes.Length == 0)
                     return new Result(Array.Empty<ImageRef>(), "could not read the image from the clipboard");
-                try { return new Result(new[] { Blob(bytes, blobDir) }, null); }
+                try
+                {
+                    var image = Blob(bytes, blobDir);
+                    return new Result(new[] { image }, null, new Dictionary<string, byte[]> { [image.Path] = bytes });
+                }
                 catch (Exception)
                 {
                     //a message the user can act on beats writing a blob that can't be sent
@@ -49,8 +72,6 @@ public static class ImagePaste
         }
     }
 
-    //the blob is written before the caps run, so an over-cap paste leaves one file nothing ever references (content addressing keeps repeats free)
-
     //the media type by magic number, the same decider typed filenames use. anything unrecognised throws instead of sending a blob with a label that fits nothing
     private static (string Ext, string Media) Describe(byte[] bytes) =>
         Gatto.Core.Tools.BinarySniff.Describe(bytes) switch
@@ -63,17 +84,13 @@ public static class ImagePaste
                 $"the clipboard offered PNG data that is actually {other ?? "not an image"}"),
         };
 
+    //the path the bytes will have, named by their content, and nothing written: Save writes them once the message is sent
     private static ImageRef Blob(byte[] bytes, string blobDir)
     {
-        //sniff before anything touches the filesystem, so a refusal here leaves no directory and no orphan blob behind
         var sha = ImageRef.ShaOf(bytes);
 
         //sniff the bytes instead of trusting the clipboard's label. a wrong media type reaches the server and the image never decodes, though the message still lists it
         var (ext, media) = Describe(bytes);
-        Directory.CreateDirectory(blobDir);
-        var path = Path.Combine(blobDir, sha + ext);
-        //the path comes from the content, so pasting the same screenshot twice writes one file
-        if (!File.Exists(path)) File.WriteAllBytes(path, bytes);
-        return new ImageRef(path, bytes.LongLength, sha, media);
+        return new ImageRef(Path.Combine(blobDir, sha + ext), bytes.LongLength, sha, media);
     }
 }

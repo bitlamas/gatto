@@ -61,7 +61,7 @@ public sealed class SessionBaselineTests
     public async Task A_compact_hands_the_new_conversation_the_recomposed_baseline()
     {
         var client = new FakeChatClient();
-        client.EnqueueTurn(new StreamEvent.TextDelta("the summary"), new StreamEvent.Finished("stop", null));
+        client.EnqueueTurn(new StreamEvent.TextDelta("Immediate next step: go on."), new StreamEvent.Finished("stop", null));
         var convo = new Conversation("sys", baseline: Baseline(1));
         convo.AddUser("q");
         convo.AddAssistant("a");

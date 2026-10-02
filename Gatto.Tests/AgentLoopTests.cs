@@ -690,6 +690,8 @@ public class AgentLoopTests
     private sealed class FakeCompactionHandler(CompactionResult? result) : ICompactionHandler
     {
         public int Calls; public CompactionReason LastReason; public string? LastUserPrompt;
+        public string? Failure { get; init; }
+        public string? LastFailure => Failure;
         public Task<CompactionResult?> CompactAsync(CompactionReason reason, string currentUserPrompt,
             ITurnObserver observer, CancellationToken ct)
         {
@@ -902,29 +904,94 @@ public class AgentLoopTests
         var outcome = await loop.RunTurnAsync(new Conversation("s"), "hi", observer, CancellationToken.None);
 
         Assert.Equal(TurnOutcome.Completed, outcome.Outcome);                                  //a failed proactive compaction must not abort the turn.
-        Assert.Equal(1, handler.Calls);                                                 //the per-turn latch must stop a second attempt after one failure.
+        Assert.Equal(1, handler.Calls);                                                 //the latch must stop a second attempt after one failure.
         Assert.Contains(observer.Warnings, w => w.Contains("auto-compact failed"));
     }
 
+    //after a failed auto-compaction an overflow is not rescued by another one, it surfaces and /compact is the user's
     [Fact]
-    public async Task Proactive_Failed_DoesNotConsumeReactiveAllowance()
+    public async Task Proactive_Failed_then_an_overflow_surfaces_without_a_second_compaction()
     {
         var usage = new ContextUsageState();
-        var handler = new SequencedHandler(first: null,                                  //a null result makes the proactive attempt fail.
-            second: new CompactionResult("s2", new[] { new ChatMessage("user", "u") }, null)); //the second result lets the reactive rescue succeed.
+        var handler = new SequencedHandler(first: null,
+            second: new CompactionResult("s2", new[] { new ChatMessage("user", "u") }, null));
         var client = new FakeChatClient();
         client.EnqueueTurn(
             new StreamEvent.ToolCallReady(new ToolCall("c1", "read_file", "{}")),
             new StreamEvent.Finished("tool_calls", new Usage(55_000, 200)));
         client.EnqueueThrow(new GattoContextOverflowException("over", 70_000, 65_536));
-        client.EnqueueTurn(new StreamEvent.TextDelta("done"), new StreamEvent.Finished("stop", null));
         var loop = NewLoop(client, compaction: handler, usageState: usage, autoCompactAt: 0.8, budgetTokens: 65_536);
 
-        var outcome = await loop.RunTurnAsync(new Conversation("s"), "hi", new RecordingObserver(), CancellationToken.None);
+        await Assert.ThrowsAsync<GattoContextOverflowException>(
+            () => loop.RunTurnAsync(new Conversation("s"), "hi", new RecordingObserver(), CancellationToken.None));
+        Assert.Equal(1, handler.Calls);
+    }
 
-        Assert.Equal(TurnOutcome.Completed, outcome.Outcome);
-        Assert.Equal(2, handler.Calls);                    //the proactive allowance and the reactive allowance are counted separately.
-        Assert.Equal(CompactionReason.Overflow, handler.LastReason);
+    //a failed auto-compaction stays off for the session: the next turn over the threshold sends without trying again
+    [Fact]
+    public async Task A_failed_auto_compaction_is_not_tried_again_in_the_session()
+    {
+        var usage = new ContextUsageState();
+        var handler = new FakeCompactionHandler(result: null) { Failure = "the summary was cut at the output limit" };
+        var client = new FakeChatClient();
+        client.EnqueueTurn(
+            new StreamEvent.ToolCallReady(new ToolCall("c1", "read_file", "{}")),
+            new StreamEvent.Finished("tool_calls", new Usage(55_000, 200)));
+        client.EnqueueTurn(new StreamEvent.TextDelta("one"), new StreamEvent.Finished("stop", new Usage(56_000, 10)));
+        client.EnqueueTurn(new StreamEvent.TextDelta("two"), new StreamEvent.Finished("stop", null));
+        var loop = NewLoop(client, compaction: handler, usageState: usage, autoCompactAt: 0.8, budgetTokens: 65_536);
+        var convo = new Conversation("s");
+        var observer = new RecordingObserver();
+
+        await loop.RunTurnAsync(convo, "first", observer, CancellationToken.None);
+        var second = await loop.RunTurnAsync(convo, "second", observer, CancellationToken.None);
+
+        Assert.Equal(TurnOutcome.Completed, second.Outcome);
+        Assert.Equal(1, handler.Calls);
+        Assert.Null(loop.ArmedAutoCompactAt);
+        var line = Assert.Single(observer.Warnings, w => w.Contains("auto-compact failed"));
+        Assert.Contains("the summary was cut at the output limit", line);
+        Assert.Contains("/compact", line);
+
+        loop.ResetAutoCompact();
+        Assert.Equal(0.8, loop.ArmedAutoCompactAt);
+    }
+
+    //a failed overflow rescue stays off too: the next overflow surfaces without calling the handler
+    [Fact]
+    public async Task A_failed_overflow_rescue_is_not_tried_again_in_the_session()
+    {
+        var handler = new FakeCompactionHandler(result: null);
+        var client = new FakeChatClient();
+        client.EnqueueThrow(new GattoContextOverflowException("over", null, null));
+        client.EnqueueThrow(new GattoContextOverflowException("over again", null, null));
+        var loop = NewLoop(client, compaction: handler);
+        var convo = new Conversation("s");
+
+        await Assert.ThrowsAsync<GattoContextOverflowException>(
+            () => loop.RunTurnAsync(convo, "u", new RecordingObserver(), CancellationToken.None));
+        await Assert.ThrowsAsync<GattoContextOverflowException>(
+            () => loop.RunTurnAsync(convo, "u2", new RecordingObserver(), CancellationToken.None));
+        Assert.Equal(1, handler.Calls);
+    }
+
+    //a compaction the user stopped stays off for the session like a failed one
+    [Fact]
+    public async Task A_stopped_auto_compaction_is_not_tried_again_in_the_session()
+    {
+        var cts = new CancellationTokenSource();
+        var handler = new CancellingCompactionHandler(cts);
+        var client = new FakeChatClient();
+        client.EnqueueThrow(new GattoContextOverflowException("over", null, null));
+        client.EnqueueThrow(new GattoContextOverflowException("over again", null, null));
+        var loop = NewLoop(client, compaction: handler);
+        var convo = new Conversation("s");
+
+        await Assert.ThrowsAsync<OperationCanceledException>(
+            () => loop.RunTurnAsync(convo, "u", new RecordingObserver(), cts.Token));
+        await Assert.ThrowsAsync<GattoContextOverflowException>(
+            () => loop.RunTurnAsync(convo, "u2", new RecordingObserver(), CancellationToken.None));
+        Assert.Equal(1, handler.Calls);
     }
 
     [Fact]

@@ -4642,6 +4642,11 @@ internal sealed class SetupFlow(ISetupProbes probes)
                      "It answered a moment ago, when gatto found it. Check that it is still "
                      + "running, then try again.",
                      true),
+            //it streamed and sent nothing, so the protocol is fine and asking again can get an answer
+            200 when outcome.StreamedEmpty => ("The server answered, but its reply was empty.",
+                    $"200 {Glyphs.Dot} the stream closed with no content",
+                    "Check that the server has a model loaded and that it answers a chat request, then try again.",
+                    true),
             200 => ("The server answered, but didn't stream the reply.",
                     $"200 {Glyphs.Dot} a reply arrived whole, not streamed",
                     Gatto.Core.Acquire.ServerConnect.Capabilities[0].IfAbsent,

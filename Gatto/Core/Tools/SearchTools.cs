@@ -150,10 +150,11 @@ public sealed class GrepTool : ITool
                 if (regex.IsMatch(lines[i]))
                 {
                     var row = $"{rel}:{i + 1}: {Clip(lines[i].TrimEnd())}";
+                    //both caps are ceilings on what is delivered, so the row that would pass one is the one cut and named
+                    if (outLines.Count == MaxMatches) return Done(outLines, $"[capped at {MaxMatches} matches]");
+                    if (totalChars + row.Length > MaxTotalChars) return Done(outLines, $"[capped at {MaxTotalChars} chars — narrow the pattern or the glob]");
                     outLines.Add(row);
                     totalChars += row.Length;
-                    if (outLines.Count > MaxMatches) return Done(outLines, $"[capped at {MaxMatches} matches]");
-                    if (totalChars > MaxTotalChars) return Done(outLines, $"[capped at {MaxTotalChars} chars — narrow the pattern or the glob]");
                 }
         }
         return Task.FromResult(new ToolResult(Globbing.Capped(outLines), Gloss: Plural.Of(outLines.Count, "match", "matches")));
