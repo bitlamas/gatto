@@ -91,12 +91,6 @@ public static class Footer
     public static IReadOnlyList<Run> ArmedRuns(string warning) =>
         [new Run(Indent), new Run(warning, RunInk.Accent)];
 
-    private static string Pad(string left, string right, int width)
-    {
-        var gap = Math.Max(1, width - Cells(left) - Cells(right));
-        return left + new string(' ', gap) + right;
-    }
-
     //the product's own width function, so fits-here and doesn't-wrap stay the same claim
     private static int Cells(string s) => UnicodeWidth.Of(s);
 }

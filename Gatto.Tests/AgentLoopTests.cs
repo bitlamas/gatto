@@ -528,7 +528,7 @@ public class AgentLoopTests
         //the request holds the stub in place of the full tool result
         var toolMsg = server.LastRequestBody!.Value.GetProperty("messages").EnumerateArray()
             .Single(m => m.GetProperty("role").GetString() == "tool");
-        Assert.Equal("[elided: shell result, 5000 chars — re-run if needed]", toolMsg.GetProperty("content").GetString());
+        Assert.Equal(new string('x', 300) + "\n[elided: shell result, 5000 chars, the first 300 shown above — re-run if needed]", toolMsg.GetProperty("content").GetString());
         //the stored Conversation and the JSONL keep the full result
         Assert.Equal(big, convo.Messages.Single(m => m.Role == "tool").Content);
     }
@@ -564,7 +564,7 @@ public class AgentLoopTests
         //the second request must also send the elided prior result.
         Assert.Contains(server.LastRequestBody!.Value.GetProperty("messages").EnumerateArray(), m =>
             m.GetProperty("role").GetString() == "tool" &&
-            m.GetProperty("content").GetString() == "[elided: shell result, 5000 chars — re-run if needed]");
+            m.GetProperty("content").GetString() == new string('x', 300) + "\n[elided: shell result, 5000 chars, the first 300 shown above — re-run if needed]");
         //the stored Conversation and the JSONL keep the full prior result
         Assert.Equal(big, convo.Messages.First(m => m.Role == "tool").Content);
     }
@@ -625,7 +625,7 @@ public class AgentLoopTests
 
         var secondToolMsg = server.LastRequestBody!.Value.GetProperty("messages").EnumerateArray()
             .First(m => m.GetProperty("role").GetString() == "tool");
-        Assert.Equal("[elided: shell result, 5000 chars — re-run if needed]", secondToolMsg.GetProperty("content").GetString());
+        Assert.Equal(new string('x', 300) + "\n[elided: shell result, 5000 chars, the first 300 shown above — re-run if needed]", secondToolMsg.GetProperty("content").GetString());
         //the stored conversation must keep the full result.
         Assert.Contains(convo.Messages, m => m.Role == "tool");
         Assert.Equal(big, convo.Messages.Single(m => m.Role == "tool").Content);
@@ -857,6 +857,88 @@ public class AgentLoopTests
         Assert.Equal(CompactionReason.Proactive, handler.LastReason);
         Assert.Null(usage.LastPromptTokens);        //the latch clears until fresh usage arrives, compaction cannot spin
         Assert.Single(convo.Messages, m => m.Role == "user");   //the rebuilt user message must be sent exactly once.
+    }
+
+    //a loop armed with nothing, as a subagent's is, still measures the server's count, elides on it and keeps the trim after the ratio falls
+    [Fact]
+    public async Task An_unarmed_loop_elides_on_the_server_count_and_keeps_the_trim()
+    {
+        var client = new FakeChatClient();
+        client.EnqueueTurn(
+            new StreamEvent.ToolCallReady(new ToolCall("c2", "nosuch", "{}")),
+            new StreamEvent.Finished("tool_calls", new Usage(5_000, 10)));   //far above the estimate, so the ratio is large
+        client.EnqueueTurn(
+            new StreamEvent.ToolCallReady(new ToolCall("c3", "nosuch", "{}")),
+            new StreamEvent.Finished("tool_calls", new Usage(1, 10)));       //below the estimate, so the ratio falls back to 1
+        client.EnqueueTurn(new StreamEvent.TextDelta("done"), new StreamEvent.Finished("stop", null));
+        var loop = NewLoop(client, budgetTokens: 1_000);
+        var convo = new Conversation("s");
+        convo.Load(new[]
+        {
+            new ChatMessage("user", "old"),
+            new ChatMessage("assistant", null, new[] { new ToolCall("c1", "shell", "{}") }),
+            new ChatMessage("tool", new string('a', 3_000), ToolCallId: "c1"),
+            new ChatMessage("assistant", "ok"),
+        });
+
+        await loop.RunTurnAsync(convo, "next", new RecordingObserver(), CancellationToken.None);
+
+        string? Old(int request) => client.Requests[request].Messages[3].Content;
+        Assert.Equal(new string('a', 3_000), Old(0));   //about 760 estimated against a limit of 900, the first request goes whole
+        Assert.Contains("[elided: shell result, 3000 chars", Old(1));
+        Assert.Contains("[elided: shell result, 3000 chars", Old(2));
+    }
+
+    private sealed class WideTool : ITool
+    {
+        public string Name => "wide";
+        public string Description => new('d', 8_000);
+        public JsonElement ParametersSchema => JsonDocument.Parse("{\"type\":\"object\"}").RootElement;
+        public Task<ToolResult> ExecuteAsync(JsonElement args, IToolContext ctx, CancellationToken ct) => Task.FromResult(new ToolResult("ok"));
+    }
+
+    //the tool definitions are a fixed cost on every request, counted in the estimate the ratio is not inflated by them
+    [Fact]
+    public async Task The_ratio_counts_the_tool_definitions()
+    {
+        var tools = new ToolRegistry();
+        tools.Register(new WideTool());
+        var usage = new ContextUsageState();
+        var client = new FakeChatClient();
+        var user = new string('u', 400);
+        var asked = ContextBudget.Estimate([new ChatMessage("system", "s"), new ChatMessage("user", user)]) + ContextBudget.EstimateTools(tools.Specs());
+        client.EnqueueTurn(new StreamEvent.TextDelta("done"), new StreamEvent.Finished("stop", new Usage(asked * 2, 10)));
+        var loop = new AgentLoop(client, tools, new HookBus(), new TestToolContext(Path.GetTempPath()), "m", budgetTokens: 65_536, usageState: usage);
+
+        await loop.RunTurnAsync(new Conversation("s"), user, new RecordingObserver(), CancellationToken.None);
+
+        Assert.InRange(usage.Ratio, 1.9, 2.1);   //about 21 when the 2,000 tokens of definitions count as message density
+    }
+
+    //with both armed, elision goes first and compaction waits while the trimmed request stays under the threshold
+    [Fact]
+    public async Task Elision_runs_before_compaction()
+    {
+        var handler = new FakeCompactionHandler(new CompactionResult("s2", new[] { new ChatMessage("user", "u") }, null));
+        var client = new FakeChatClient();
+        client.EnqueueTurn(
+            new StreamEvent.ToolCallReady(new ToolCall("c2", "nosuch", "{}")),
+            new StreamEvent.Finished("tool_calls", new Usage(950, 10)));   //95 percent of the window, over the 90 percent threshold
+        client.EnqueueTurn(new StreamEvent.TextDelta("done"), new StreamEvent.Finished("stop", null));
+        var loop = NewLoop(client, compaction: handler, usageState: new ContextUsageState(), autoCompactAt: 0.9, budgetTokens: 1_000);
+        var convo = new Conversation("s");
+        convo.Load(new[]
+        {
+            new ChatMessage("user", "old"),
+            new ChatMessage("assistant", null, new[] { new ToolCall("c1", "shell", "{}") }),
+            new ChatMessage("tool", new string('a', 3_000), ToolCallId: "c1"),
+            new ChatMessage("assistant", "ok"),
+        });
+
+        await loop.RunTurnAsync(convo, "next", new RecordingObserver(), CancellationToken.None);
+
+        Assert.Equal(0, handler.Calls);
+        Assert.Contains("[elided: shell result, 3000 chars", client.Requests[1].Messages[3].Content);
     }
 
     [Fact]

@@ -47,6 +47,16 @@ internal static class WriteSetApply
                 modelId = joins;
             }
             else if (writes.CreateModel is { } p)
+            {
+                //llama-server's own name for the GPU the fit counted, so the profile runs where the shelf said the model fits
+                string? device = null;
+                if (p.PinGpu is { Length: > 0 } gpu)
+                {
+                    device = DeviceFor(homePath, writes, gpu);
+                    if (device is null)
+                        moveNote = string.Join(" ", new[] { moveNote, $"llama-server did not list {gpu}, so the new model is not pinned to it "
+                            + "and may run on another GPU. Its profile takes \"-dev\" and the device name in extra_args." }.OfType<string>());
+                }
                 modelId = Gatto.Roles.ModelScaffold.Create(
                     System.IO.Path.Combine(homePath, "models"), p.GgufPath, p.Port, p.Id, p.Context,
                     //true only when the collision screen answered "replace"
@@ -54,7 +64,9 @@ internal static class WriteSetApply
                     //null unless the projector ask was answered yes. it is read from WriteSet's own member, because the ask outlives the rebuild of CreateModel
                     writes.Projector,
                     //the per-model server override, read from its own member for the same reason. null on every ordinary run
-                    writes.ModelLlamaServer);
+                    writes.ModelLlamaServer,
+                    p.Source, device);
+            }
         }
         catch (Exception ex) { return $"couldn't create the model: {ex.Message}"; }
 
@@ -161,5 +173,17 @@ internal static class WriteSetApply
         }
 
         return (model.FinalPath, movedProjector, note);
+    }
+
+    //the engine this run writes or the one configured, asked for its device names, and null when there is no engine or the listing has no such GPU
+    private static string? DeviceFor(string homePath, WriteSet writes, string gpu)
+    {
+        var exe = writes.ModelLlamaServer ?? writes.LlamaServer;
+        if (exe is null)
+            try { exe = GattoConfig.Load(homePath).LlamaServer; }
+            catch (Exception) { }   //a config that won't load leaves the model unpinned and noted, never unwritten
+        return exe is { Length: > 0 }
+            ? Gatto.Core.Tools.LlamaServerProbe.DeviceNamed(exe, gpu, TimeSpan.FromSeconds(15))
+            : null;
     }
 }

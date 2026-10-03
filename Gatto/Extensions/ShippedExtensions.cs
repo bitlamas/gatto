@@ -107,6 +107,27 @@ public static class ShippedExtensions
 
     private static readonly HashSet<string> _historicalSet = new(_historicalHashes, StringComparer.Ordinal);
 
+    //the home-relative paths of shipped files still at an unmodified older revision, by EnsureWritten's test, writing nothing
+    internal static IReadOnlyList<string> StaleShippedPaths(string homePath) =>
+        StaleShippedPaths(homePath, Files, _historicalSet);
+
+    //the overload where the historical set is injectable, mirroring the EnsureWritten seam
+    internal static IReadOnlyList<string> StaleShippedPaths(
+        string homePath, IReadOnlyDictionary<string, string> files, IReadOnlySet<string> historical)
+    {
+        var stale = new List<string>();
+        foreach (var (relPath, text) in files)
+        {
+            var full = Path.Combine(homePath, relPath.Replace('/', Path.DirectorySeparatorChar));
+            if (!File.Exists(full)) continue;
+
+            var onDiskHash = SingleFileContentHash(relPath, File.ReadAllBytes(full));
+            var currentHash = SingleFileContentHash(relPath, Encoding.UTF8.GetBytes(text));
+            if (onDiskHash != currentHash && historical.Contains(onDiskHash)) stale.Add(relPath);
+        }
+        return stale;
+    }
+
     //the allow-list IsVetted tests against, the current canonical hashes plus every historical one
     public static IReadOnlySet<string> VettedContentHashes { get; } = ComputeVettedHashes(_files, _historicalHashes);
 

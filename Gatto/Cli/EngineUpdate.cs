@@ -105,7 +105,7 @@ internal static class EngineUpdate
         if (!here.ConfigPresent) return 0;
         if (here.Server is not { } server || here.Banner is not { } banner)
         {
-            cli.Say("gatto.json names no engine. gatto setup chooses one.");
+            cli.Say("gatto.json names no llama-server for gatto to run, so there is no engine to update.");
             return 0;
         }
 

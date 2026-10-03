@@ -1,15 +1,16 @@
 namespace Gatto.Core.Hardware;
 
-//two device-local figures differ: the largest heap prices the budget, the sum is what the carve-out test compares
+//the largest heap prices the budget, the heap sum feeds the carve-out test, other cards' heaps add to a discrete one
 internal sealed record HardwareSnapshot(ulong? InstalledBytes, ulong OsVisibleBytes, GpuKind GraphicsKind,
-    ulong? GraphicsMemoryBytes, string? GraphicsVendorId = null, ulong? GraphicsLocalTotalBytes = null);
+    ulong? GraphicsMemoryBytes, string? GraphicsVendorId = null, ulong? GraphicsLocalTotalBytes = null,
+    IReadOnlyList<ulong>? MoreDiscreteHeaps = null);
 
-//the names live here rather than on the snapshot, so the classifier can't read one even by accident
-internal sealed record ProbeReading(HardwareSnapshot? Snapshot, string? CpuName, string? GpuName);
+//the names stay off the snapshot so the classifier can't read one, the last is the integrated device to pin
+internal sealed record ProbeReading(HardwareSnapshot? Snapshot, string? CpuName, string? GpuName, string? ServeOnlyGpu = null);
 
 //a null Snapshot means the probe could not read os-visible memory or ran past the deadline, and Detail says which
 internal sealed record ProbeOutcome(HardwareSnapshot? Snapshot, string Detail,
-    string? CpuName = null, string? GpuName = null);
+    string? CpuName = null, string? GpuName = null, string? ServeOnlyGpu = null);
 
 internal static class HardwareProbe
 {
@@ -60,7 +61,7 @@ internal static class HardwareProbe
         return reading.Snapshot is null
             ? new(null, "hardware probe produced no usable report"
                 + (stderr.Length > 0 ? $" — stderr: {stderr}" : ""))
-            : new(reading.Snapshot, "ok", reading.CpuName, reading.GpuName);
+            : new(reading.Snapshot, "ok", reading.CpuName, reading.GpuName, reading.ServeOnlyGpu);
     }
 
     //one device's lines: the vulkan type ordinal, the largest device-local heap and the sum of them
@@ -98,14 +99,32 @@ internal static class HardwareProbe
         }
         if (!vulkanOk) devices.Clear();
 
-        var chosen = Choose(devices);
-        var kind = chosen is null ? GpuKind.None : chosen.TypeCode == 2 ? GpuKind.Discrete : GpuKind.Integrated;
-        return new ProbeReading(
-            visible is { } vis
-                ? new HardwareSnapshot(installed, vis, kind, chosen?.LargestLocalHeap, chosen?.Vendor,
-                    chosen?.LocalHeapSum)
-                : null,
-            cpuName, chosen?.Name);
+        //index order first, so the stable sorts below keep the earlier device on a tie
+        var usable = devices.Values.Where(d => d.TypeCode is 1 or 2 && d.LargestLocalHeap > 0).OrderBy(d => d.Index).ToList();
+        var cards = usable.Where(d => d.TypeCode == 2).OrderByDescending(d => d.LargestLocalHeap).ToList();
+        var integrated = usable.Where(d => d.TypeCode == 1).OrderByDescending(d => d.LargestLocalHeap).FirstOrDefault();
+
+        HardwareSnapshot? Snap(VkDevice? d, GpuKind kind, IReadOnlyList<ulong>? more = null) => visible is { } vis
+            ? new HardwareSnapshot(installed, vis, kind, d?.LargestLocalHeap, d?.Vendor, d?.LocalHeapSum, more)
+            : null;
+
+        if (cards.Count == 0)
+            return integrated is null
+                ? new ProbeReading(Snap(null, GpuKind.None), cpuName, null)
+                : new ProbeReading(Snap(integrated, GpuKind.Integrated), cpuName, integrated.Name);
+
+        //llama-server spreads a model over every discrete card and leaves an integrated device out while one is present, so the cards add up
+        var together = Snap(cards[0], GpuKind.Discrete, cards.Count > 1 ? [.. cards.Skip(1).Select(c => c.LargestLocalHeap)] : null);
+        var names = string.Join(" + ", cards.Select(c => c.Name).OfType<string>());
+
+        //a unified pool wins only past the floor and above every card together, and then the server must be pinned to it
+        if (integrated is not null && together is not null && Snap(integrated, GpuKind.Integrated) is { } pool
+            && HardwareClassifier.Classify(pool).GpuBudgetBytes is var poolBudget
+            && poolBudget >= HardwareClassifier.PoolOverCardsFloorBytes
+            && poolBudget > HardwareClassifier.Classify(together).GpuBudgetBytes)
+            return new ProbeReading(pool, cpuName, integrated.Name, ServeOnlyGpu: integrated.Name);
+
+        return new ProbeReading(together, cpuName, names.Length > 0 ? names : null);
     }
 
     //a malformed index, an unknown field or a value that fails its parse is ignored rather than fatal
@@ -170,20 +189,6 @@ internal static class HardwareProbe
                 LargestLocalHeap = Math.Max(dev.LargestLocalHeap, bytes),
                 LocalHeapSum = dev.LocalHeapSum + bytes,
             };
-    }
-
-    //the pick order: discrete over integrated, then the largest device-local heap, and a tie keeps the earlier index
-    private static VkDevice? Choose(Dictionary<int, VkDevice> devices)
-    {
-        VkDevice? chosen = null;
-        foreach (var d in devices.Values.OrderBy(d => d.Index))
-        {
-            if ((d.TypeCode != 1 && d.TypeCode != 2) || d.LargestLocalHeap == 0) continue;
-            if (chosen is null || d.TypeCode > chosen.TypeCode
-                || (d.TypeCode == chosen.TypeCode && d.LargestLocalHeap > chosen.LargestLocalHeap))
-                chosen = d;
-        }
-        return chosen;
     }
 
     //a vendor id is exactly four hex digits, and case varies by machine so the caller normalises it

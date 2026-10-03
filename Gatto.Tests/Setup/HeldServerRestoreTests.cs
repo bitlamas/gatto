@@ -112,6 +112,26 @@ public class HeldServerRestoreTests : IDisposable
         Assert.Contains("held.gguf", spawn.Spawned[1].Arguments, StringComparison.OrdinalIgnoreCase);
     }
 
+    //a server start is a moment for the purr, a line kept in the notes would print above the closing after the wait was over
+    [Fact]
+    public void A_SERVER_START_WORKS_THE_PURR_AND_LEAVES_NO_NOTE()
+    {
+        var notes = new StringWriter();
+        var spawn = new RecordingSpawn();
+        var worked = 0;
+        var probes = ProbesOver(spawn, notes, working: () => worked++);
+
+        using (probes)
+        {
+            probes.ReleaseHeldServer();
+            probes.ProveIt("other-model");
+        }
+
+        Assert.Contains("other.gguf", spawn.Spawned[0].Arguments, StringComparison.OrdinalIgnoreCase);
+        Assert.True(worked > 0, "the start never reached the purr");
+        Assert.DoesNotContain("starting other-model", notes.ToString(), StringComparison.Ordinal);
+    }
+
     //a stop that failed must remember nothing, or the restore names a model that never needed putting back
     [Fact]
     public void A_STOP_THAT_FAILED_REMEMBERS_NOTHING()
@@ -300,7 +320,7 @@ public class HeldServerRestoreTests : IDisposable
 
     private LiveSetupProbes ProbesOver(RecordingSpawn spawn, TextWriter? notes = null,
         bool killThrows = false, int heldPort = 41888, TimeSpan? pollTimeout = null, bool rich = false,
-        TextWriter? afterWalk = null, TimeSpan? clientTimeout = null)
+        TextWriter? afterWalk = null, TimeSpan? clientTimeout = null, Action? working = null)
     {
         WriteHome(heldPort);
         //the lookup must report the recorded pid as a live server, or the record reads as stale and there is nothing to release
@@ -315,7 +335,8 @@ public class HeldServerRestoreTests : IDisposable
                 TimeSpan.FromMilliseconds(1), pollTimeout ?? TimeSpan.FromMilliseconds(5)),
             //this budget ends the polling without changing when the fake process dies.
             readyBudget: TimeSpan.FromMilliseconds(200),
-            afterWalk: afterWalk);
+            afterWalk: afterWalk,
+            working: working);
     }
 
     //builds a home whose serve.json names a different model as the live holder, the only state where the release applies

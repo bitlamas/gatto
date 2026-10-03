@@ -17,6 +17,7 @@ public sealed class ServeManager
         bool HasExited { get; }
         string ProcessName { get; }
         void Kill();
+        int? ExitCode => null;
     }
 
     private readonly string _homePath;
@@ -85,7 +86,7 @@ public sealed class ServeManager
                 : "set llama_server in gatto.json to your llama-server.exe path");
 
         //refuse only when a live server of ours is still recorded. a stale or recycled serve.json is overwritten, the pid's new owner keeps running
-        if (ReadState() is { } existing && Classify(existing.Pid).State == PidState.Ours)
+        if (ReadState() is { } existing && Classify(existing).State == PidState.Ours)
         {
             RefusedStarts++;
             listener.Refused(existing.Model, existing.Pid);
@@ -121,9 +122,9 @@ public sealed class ServeManager
             psi.ArgumentList.Add(arg);
 
         var proc = _spawn(psi);
-        //write serve.json before the health poll, stop needs the pid of a child that never got ready
+        //write serve.json before the health poll, stop needs the pid of a child that never got ready. only a detached run writes serve.log
         WriteState(new ServeState(proc.Pid, model.Id, port,
-            DateTime.UtcNow.ToString("o", CultureInfo.InvariantCulture)));
+            DateTime.UtcNow.ToString("o", CultureInfo.InvariantCulture), Logged: !foreground));
 
         try
         {
@@ -180,7 +181,7 @@ public sealed class ServeManager
             //check health first, an already-running server must return Ready even on a zero budget
             if (await HealthOkAsync(port, ct).ConfigureAwait(false)) return ServerReadiness.Ready;
 
-            if (ReadState() is { } s && Classify(s.Pid).State == PidState.Gone) return ServerReadiness.Died;
+            if (ReadState() is { } s && Classify(s).State == PidState.Gone) return ServerReadiness.Died;
 
             if (sw.Elapsed >= budget) return ServerReadiness.StillLoading;
 
@@ -214,8 +215,13 @@ public sealed class ServeManager
 
         if (proc.HasExited)
         {
-            //it died by itself, its last output is already on screen here
-            CleanupServeJson();
+            //it died by itself, its last output is already on screen here. the record stays with how it ended, for status and a session that loses it
+            if (ReadState() is { } died && died.Pid == proc.Pid)
+                WriteState(died with
+                {
+                    ExitCode = proc.ExitCode,
+                    ExitedAt = DateTime.UtcNow.ToString("o", CultureInfo.InvariantCulture),
+                });
             listener.Exited(model.Id);
             return 1;
         }
@@ -267,7 +273,7 @@ public sealed class ServeManager
             return new StopOutcome(StopResult.NotServing, null, null, null);
         }
 
-        var (which, proc) = Classify(state.Pid);
+        var (which, proc) = Classify(state);
         switch (which)
         {
             case PidState.Ours:
@@ -311,7 +317,13 @@ public sealed class ServeManager
             return 0;
         }
 
-        var (which, _) = Classify(state.Pid);
+        var (which, _) = Classify(state);
+        if (which == PidState.Gone)
+        {
+            listener.DiedOnStatus(state.Model, state.Pid, state.ExitCode, state.ExitedAt,
+                state.Logged == true ? TailLog(10) : null);
+            return 0;
+        }
         if (which != PidState.Ours)
         {
             listener.StaleOnStatus(state.Pid, state.Model);
@@ -333,7 +345,7 @@ public sealed class ServeManager
             return 0;
         }
 
-        var (which, _) = Classify(state.Pid);
+        var (which, _) = Classify(state);
         if (which != PidState.Ours)
         {
             //keep the model id in the output even when the pid is stale (all-null means never served, a stale pointer shows the id)
@@ -362,6 +374,10 @@ public sealed class ServeManager
 
     private enum PidState { Ours, NotOurs, Gone }
 
+    //a record that holds how its server ended is gone, whatever process holds that pid now, so a stop can never kill its new owner
+    private (PidState State, IServeProcess? Proc) Classify(ServeState s) =>
+        s.ExitedAt is not null ? (PidState.Gone, null) : Classify(s.Pid);
+
     //every caller that might kill goes through here. only a live process named llama-server is ours, everything else is untouchable
     private (PidState State, IServeProcess? Proc) Classify(int pid)
     {
@@ -377,7 +393,7 @@ public sealed class ServeManager
 
     //the serve.json record only while the pid is still ours (a stale or recycled record reads as null)
     internal RunningInfo? DescribeRunning() =>
-        ReadState() is { } s && Classify(s.Pid).State == PidState.Ours
+        ReadState() is { } s && Classify(s).State == PidState.Ours
             ? new RunningInfo(s.Model, s.Port, s.Started, s.Pid)
             : null;
 
@@ -389,7 +405,16 @@ public sealed class ServeManager
                 ? new ServingState.ServingThis(running)
                 : new ServingState.ServingOther(running);
 
-    private sealed record ServeState(int Pid, string Model, int Port, string Started);
+    private sealed record ServeState(int Pid, string Model, int Port, string Started,
+        bool? Logged = null, int? ExitCode = null, string? ExitedAt = null);
+
+    //the recorded server that stopped running, for the session that talks to its port. the code is null unless a foreground start saw it end
+    internal sealed record DeadServer(string Model, int Pid, int? ExitCode, string? ExitedAt);
+
+    internal DeadServer? Dead(int port) =>
+        ReadState() is { } s && s.Port == port && Classify(s).State == PidState.Gone
+            ? new DeadServer(s.Model, s.Pid, s.ExitCode, s.ExitedAt)
+            : null;
 
     //only pid and port are required. a serve.json that parses them must never hide a live server
     private ServeState? ReadState()
@@ -406,7 +431,10 @@ public sealed class ServeManager
             if (!r.TryGetProperty("port", out var portEl) || !portEl.TryGetInt32(out var port)) return null;
 
             return new ServeState(pid, OptionalString(r, "model") ?? UnknownModelId, port,
-                OptionalString(r, "started") ?? "");
+                OptionalString(r, "started") ?? "",
+                r.TryGetProperty("log", out var logEl) && logEl.ValueKind is JsonValueKind.True or JsonValueKind.False ? logEl.GetBoolean() : null,
+                r.TryGetProperty("exited", out var codeEl) && codeEl.TryGetInt32(out var code) ? code : null,
+                OptionalString(r, "exited_at"));
         }
         catch (Exception)
         {
@@ -432,6 +460,9 @@ public sealed class ServeManager
             w.WriteString("model", s.Model);
             w.WriteNumber("port", s.Port);
             w.WriteString("started", s.Started);
+            if (s.Logged is bool logged) w.WriteBoolean("log", logged);
+            if (s.ExitCode is int code) w.WriteNumber("exited", code);
+            if (s.ExitedAt is { } at) w.WriteString("exited_at", at);
             w.WriteEndObject();
         }
         //temp file then move, a reader never sees a half-written serve.json
@@ -612,6 +643,7 @@ public sealed class ServeManager
         public bool HasExited { get { try { return proc.HasExited; } catch { return true; } } }
         public string ProcessName { get { try { return proc.ProcessName; } catch { return ""; } } }
         public void Kill() => proc.Kill(entireProcessTree: true);
+        public int? ExitCode { get { try { return proc.HasExited ? proc.ExitCode : null; } catch { return null; } } }
     }
 }
 

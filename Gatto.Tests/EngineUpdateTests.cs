@@ -115,6 +115,21 @@ public sealed class EngineUpdateTests : IDisposable
     }
 
     [Fact]
+    public void A_CONNECT_HOME_WITHOUT_A_LLAMA_SERVER_SAYS_THERE_IS_NO_ENGINE_TO_UPDATE()
+    {
+        //a home set up on the connect road names no llama_server on purpose, so the sentence must not send it to gatto setup
+        File.WriteAllText(Path.Combine(_home, "gatto.json"), JsonSerializer.Serialize(new Dictionary<string, object>
+        {
+            ["endpoints"] = new Dictionary<string, object> { ["cloudy"] = new Dictionary<string, string> { ["base_url"] = "https://example.invalid" } },
+            ["default_endpoint"] = "cloudy",
+        }));
+
+        Assert.Equal(0, Run(new Fakes(this)));
+
+        Assert.Contains("gatto.json names no llama-server for gatto to run, so there is no engine to update.", Output);
+    }
+
+    [Fact]
     public void AN_OLDER_ENGINE_IS_REPLACED_AND_ONLY_THE_OLD_DIALECT_PROFILE_IS_REWRITTEN()
     {
         var newBefore = File.ReadAllBytes(ProfilePath("new-dialect"));

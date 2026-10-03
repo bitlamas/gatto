@@ -10,7 +10,7 @@ internal static class QuantToken
 
     //anchored, so a segment matches whole (af16k doesn't read as F16) and one non-member element disqualifies it
     private static readonly Regex Shape = new(
-        $@"^(?:I?Q\d+(?:_(?:{string.Join('|', Qualifiers)}))*|BF16|F16|F32)$",
+        $@"^(?:I?Q\d+(?:_(?:{string.Join('|', Qualifiers)}))*|BF16|F16|F32|MXFP4(?:_MOE)?)$",   //MXFP4 is the only quant some mixture-of-experts repositories ship
         RegexOptions.IgnoreCase | RegexOptions.Compiled);
 
     //split on - and ., the underscore belongs to the token, and a segment that doesn't match is omitted rather than guessed

@@ -71,6 +71,43 @@ public sealed class ShippedExtensionsTests : IDisposable
         Assert.Equal("// I changed this\n", File.ReadAllText(Full("extensions/foo.csx")));
     }
 
+    //the read-only reading the extensions check uses
+
+    [Fact]
+    public void Stale_paths_names_the_unmodified_old_copy_and_writes_nothing()
+    {
+        const string oldText = "// v1\n";
+        const string newText = "// v2\n";
+        Directory.CreateDirectory(Full("extensions"));
+        File.WriteAllText(Full("extensions/foo.csx"), oldText);
+        var historical = new HashSet<string> { ShippedExtensions.VettedHashFor("extensions/foo.csx", oldText) };
+
+        var stale = ShippedExtensions.StaleShippedPaths(_home, One("extensions/foo.csx", newText), historical);
+
+        Assert.Equal(new[] { "extensions/foo.csx" }, stale);
+        Assert.Equal(oldText, File.ReadAllText(Full("extensions/foo.csx")));   //the helper is read-only, the upgrade waits for the next launch
+        Assert.False(File.Exists(ManifestPath));                               //the manifest stays untouched too
+    }
+
+    [Fact]
+    public void Stale_paths_leaves_current_edited_and_unshipped_copies_unlisted()
+    {
+        //the current copy matches its own hash, an edit is outside the set, an unshipped file is nobody's to read
+        Directory.CreateDirectory(Full("extensions"));
+        File.WriteAllText(Full("extensions/a.csx"), "// current\n");
+        File.WriteAllText(Full("extensions/b.csx"), "// I changed this\n");
+        File.WriteAllText(Full("extensions/c.csx"), "// a user's own script\n");
+        var files = new Dictionary<string, string>
+        {
+            ["extensions/a.csx"] = "// current\n",
+            ["extensions/b.csx"] = "// canonical\n",
+        };
+
+        var stale = ShippedExtensions.StaleShippedPaths(_home, files, NoHistory);
+
+        Assert.Empty(stale);
+    }
+
     [Fact]
     public void Unmodified_old_shipped_copy_is_upgraded_in_place()
     {

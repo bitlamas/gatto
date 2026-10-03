@@ -689,8 +689,25 @@ public class CompactorTests
             m => Assert.Contains("[elided:", m.Content));
     }
 
+    //the summarizer sees the head of every result it cannot fit, so the first line of a file can reach the summary
     [Fact]
-    public void Shape_ResultUnderTarget_On106PercentInput()
+    public void Shape_keeps_the_head_of_each_result_it_cuts()
+    {
+        var body = (string marker) => marker + "\n" + string.Join("\n", Enumerable.Range(0, 2_000).Select(i => $"filler line {i}"));
+        var msgs = new[] { Sys("s"), User("go"),
+            Asst("", Call("a")), Tool("a", body("ALPHA")),
+            Asst("", Call("b")), Tool("b", body("BRAVO")) };
+        var shaped = Compactor.ShapeForSummary(msgs, windowTokens: 4_000, ratio: 1.0);
+        var results = shaped.Where(m => m.Role == "tool").Select(m => m.Content!).ToList();
+
+        Assert.Equal(2, results.Count);
+        Assert.StartsWith("ALPHA\nfiller line 0", results[0]);
+        Assert.StartsWith("BRAVO\nfiller line 0", results[1]);
+        Assert.All(results, r => Assert.Contains("[elided: tool result, ", r));
+    }
+
+    [Fact]
+    public void Shape_ResultUnderTarget_On114PercentInput()
     {
         var big = new string('x', 30_000);
         var msgs = Enumerable.Range(0, 10)

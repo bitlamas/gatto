@@ -20,6 +20,9 @@ internal interface ISetupProbes
     //what the machine's parts are called, kept off the snapshot so the classifier can never read them. a null name falls back to the plain word
     HardwareNames HardwareNames();
 
+    //the integrated GPU a new model's server must be pinned to, null when llama-server's own device pick matches the fit
+    string? ServeOnlyGpu() => null;
+
     //the configured or discovered llama-server.exe, or null when there's none
     string? LlamaServerPath();
 

@@ -20,9 +20,9 @@ internal static class PromptTitles
 
     internal const string GenericQuestion = "Do you want to proceed?";
 
-    //the sizing suffix a summary may end with, anchored so a path with parentheses survives, and optional, Core may emit a bare path
+    //an optional sizing suffix, anchored so a path with parentheses survives. a count of 1 is singular
     private static readonly Regex SizingSuffix =
-        new(@" \(\+?\d+ (?:lines|bytes)\)$", RegexOptions.Compiled | RegexOptions.CultureInvariant);
+        new(@" \(\+?\d+ (?:lines?|bytes?)\)$", RegexOptions.Compiled | RegexOptions.CultureInvariant);
 
     //title, question and detail for one request. a blank search provider gives the bare Web search title, and a null cwd means the process working directory
     public static (TitleRow Title, PromptQuestion Question, IReadOnlyList<DetailRow> Detail) For(

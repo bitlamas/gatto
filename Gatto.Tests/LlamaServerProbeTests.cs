@@ -31,6 +31,18 @@ public class LlamaServerProbeTests
         Assert.Contains("unified", r.Detail);        //the detail also offers the unified cli as the likely cause.
     }
 
+    [Fact]
+    public void A_banner_matching_neither_shape_names_both_shapes_in_the_detail()
+    {
+        //the classic banner has two accepted shapes, so the refusal must quote both or it promises the wrong one
+        var r = LlamaServerProbe.Interpret(0, "",
+            "version: q9 (not a commit)\nbuilt with Clang 20.1.8 for Windows x86_64\n",
+            timedOut: false, vcRuntimeAbsent: false);
+        Assert.Equal(ProbeShape.NotClassic, r.Shape);
+        Assert.Contains("'version: N (sha)'", r.Detail, StringComparison.Ordinal);
+        Assert.Contains("'version: X (build N, commit sha)'", r.Detail, StringComparison.Ordinal);
+    }
+
     //both spellings of the exit code must map to DllNotFound. the probe names only the observation, since a missing cudart dies like a missing runtime
     [Theory]
     [InlineData(-1073741515L)]   //the signed value a real Process.ExitCode reports

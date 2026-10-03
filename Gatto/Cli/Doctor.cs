@@ -16,7 +16,9 @@ public sealed class Doctor(
     Func<Gatto.Roles.RunningInfo?>? describeRunning = null,
     Theme? theme = null,
     //the update fetch is injected like every outside-world seam here, null adds no line so the test suite stays hermetic
-    Func<CancellationToken, Task<UpdateState?>>? checkUpdate = null)
+    Func<CancellationToken, Task<UpdateState?>>? checkUpdate = null,
+    //the historical set behind the extensions check, a test injects it and production passes null
+    IReadOnlySet<string>? shippedHistorical = null)
 {
     //info lines draw as i and never affect the exit code, Ok true keeps them out of the fail count
     private sealed record CheckResult(bool Ok, string Text, bool Info = false);
@@ -72,7 +74,7 @@ public sealed class Doctor(
             CheckModels(modelsDir, Gatto.Core.Acquire.ModelLocation.SuggestedDir(home, config?.WeightsRoot),
                 modelIds, loadedModels, config, g),
             CheckRoles(rolesDir, config, g),
-            CheckExtensions(extensionsDir, g),
+            CheckExtensions(home, extensionsDir, g, shippedHistorical),
             CheckLlamaServer(config, modelIds, g),
             CheckPermissions(home, cwd, g),
             CheckContextFiles(home, cwd, config, g),
@@ -385,21 +387,42 @@ public sealed class Doctor(
 
         return problems.Count == 0
             ? new CheckResult(true, $"roles: {names.Count} role(s) under {rolesDir} all valid")
-            : new CheckResult(false, $"roles: {string.Join("; ", problems)} " + g.Dot + " fix the listed role file(s) under {rolesDir}");
+            : new CheckResult(false, $"roles: {string.Join("; ", problems)} " + g.Dot + $" fix the listed role file(s) under {rolesDir}");
     }
 
     //extensions compile
 
-    private static CheckResult CheckExtensions(string extensionsDir, Gatto.Terminal.GlyphSet g)
+    private static CheckResult CheckExtensions(string home, string extensionsDir, Gatto.Terminal.GlyphSet g,
+        IReadOnlySet<string>? shippedHistorical)
     {
         var failures = ExtensionHost.CompileCheck(extensionsDir);   //compiles the script, nothing runs it
+        var count = ExtensionDiscovery.Discover(extensionsDir).Count;
         if (failures.Count == 0)
-        {
-            var count = ExtensionDiscovery.Discover(extensionsDir).Count;
             return new CheckResult(true, $"extensions: {count} script(s) compile");
+
+        //doctor stays read-only, so an older unmodified shipped copy that fails to compile reads as the next launch's repair
+        var stale = shippedHistorical is null
+            ? ShippedExtensions.StaleShippedPaths(home)
+            : ShippedExtensions.StaleShippedPaths(home, ShippedExtensions.Files, shippedHistorical);
+
+        var blocking = new List<string>();
+        var excused = new List<string>();
+        foreach (var f in failures)
+        {
+            var hit = stale.FirstOrDefault(s => f.StartsWith(
+                Path.GetFullPath(Path.Combine(home, s.Replace('/', Path.DirectorySeparatorChar))),
+                StringComparison.OrdinalIgnoreCase));
+            if (hit is null) { blocking.Add(f); continue; }
+            var name = Path.GetFileName(hit);
+            if (!excused.Contains(name, StringComparer.Ordinal)) excused.Add(name);
         }
-        return new CheckResult(false,
-            $"extensions: {string.Join("; ", failures)} " + g.Dot + " fix the listed extension script(s) under {extensionsDir}");
+
+        if (blocking.Count > 0)
+            return new CheckResult(false,
+                $"extensions: {string.Join("; ", blocking)} " + g.Dot + $" fix the listed extension script(s) under {extensionsDir}");
+
+        var named = string.Join("; ", excused.Select(e => $"{e} is an older shipped copy, the next gatto launch updates it"));
+        return new CheckResult(true, $"extensions: {count} script(s) compile " + g.Dot + $" {named}");
     }
 
     //5. llama_server is set and exists (skipped with no local model configured)

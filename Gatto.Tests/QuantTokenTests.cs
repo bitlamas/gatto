@@ -40,6 +40,10 @@ public class QuantTokenTests
     [InlineData("m-F32.gguf", "F32")]
     //the shard suffix comes off before the grammar runs
     [InlineData("m-Q5_K_M-00001-of-00003.gguf", "Q5_K_M")]
+    //the 4-bit float family, the only quant some mixture-of-experts repositories ship
+    [InlineData("gpt-oss-20b-MXFP4.gguf", "MXFP4")]
+    [InlineData("Qwen3.5-122B-A10B-MXFP4_MOE.gguf", "MXFP4_MOE")]
+    [InlineData("m-mxfp4_moe-00001-of-00003.gguf", "MXFP4_MOE")]
     public void every_real_quant_family_survives_the_allowlist(string fileName, string expected)
     {
         //every quant token found on real model disks has a row above, so nothing already stamped changes
@@ -54,6 +58,8 @@ public class QuantTokenTests
     [InlineData("model-IQ2_XXS_experimental.gguf")]
     //one member element beside a non-member still fails, the rule reads each element on its own
     [InlineData("model-Q4_K_MOE.gguf")]
+    [InlineData("model-MXFP4_XL.gguf")]
+    [InlineData("model-MXFP8.gguf")]
     public void one_non_member_element_makes_the_whole_segment_not_a_quant(string fileName)
     {
         //an unknown segment yields nothing rather than a guess

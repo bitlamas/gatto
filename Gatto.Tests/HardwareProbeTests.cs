@@ -91,6 +91,46 @@ public class HardwareProbeTests
         Assert.Equal(8_858_370_048UL, r.Snapshot.GraphicsLocalTotalBytes);
         Assert.Equal("10DE", r.Snapshot.GraphicsVendorId);
         Assert.Equal("NVIDIA GeForce RTX 4060 Laptop GPU", r.GpuName);
+        Assert.Null(r.ServeOnlyGpu);   //the integrated budget is larger but under the floor, so llama.cpp's own pick stands and nothing is pinned
+    }
+
+    //a unified pool past the floor and larger than every discrete card together is the GPU, pinned since llama-server alone takes the card
+    [Fact]
+    public void A_LARGE_UNIFIED_POOL_BEATS_A_SMALL_DISCRETE_EGPU()
+    {
+        var r = HardwareProbe.ParseReport(
+            File.ReadAllText(Path.Combine(AppContext.BaseDirectory, "Fixtures", "hwprobe",
+                "unified-128gb-dynamic-plus-vega-egpu.txt")));
+
+        Assert.Equal(GpuKind.Integrated, r.Snapshot!.GraphicsKind);
+        Assert.Equal(88_643_731_456UL, r.Snapshot.GraphicsMemoryBytes);
+        Assert.Null(r.Snapshot.MoreDiscreteHeaps);
+        Assert.Equal("AMD Radeon(TM) 8060S Graphics", r.GpuName);
+        Assert.Equal("AMD Radeon(TM) 8060S Graphics", r.ServeOnlyGpu);
+
+        var c = HardwareClassifier.Classify(r.Snapshot);
+        Assert.Equal(MachineShape.UnifiedWithShare, c.Shape);
+        Assert.True(c.GpuBudgetBytes > 64UL << 30, $"budget {c.GpuBudgetBytes}");
+    }
+
+    //two discrete cards add up, each less its own reserve, since llama-server spreads a model over every discrete device it sees
+    [Fact]
+    public void TWO_DISCRETE_CARDS_ADD_THEIR_BUDGETS()
+    {
+        const ulong card = 24UL << 30;
+        var two = "visible=68719476736\nvulkan=ok physical_devices=2\n"
+            + $"device_0_name=card a\ndevice_0_type=DISCRETE_GPU (2)\ndevice_0_vendor=0x10DE device_id=0x1\ndevice_0_heap_count=1 type_count=1\ndevice_0_heap_0={card} flags=0x01 DEVICE_LOCAL\n"
+            + $"device_1_name=card b\ndevice_1_type=DISCRETE_GPU (2)\ndevice_1_vendor=0x10DE device_id=0x1\ndevice_1_heap_count=1 type_count=1\ndevice_1_heap_0={card} flags=0x01 DEVICE_LOCAL\n";
+        var r = HardwareProbe.ParseReport(two);
+
+        Assert.Equal(GpuKind.Discrete, r.Snapshot!.GraphicsKind);
+        Assert.Equal(new[] { card }, r.Snapshot.MoreDiscreteHeaps);
+        Assert.Equal("card a + card b", r.GpuName);
+        Assert.Null(r.ServeOnlyGpu);
+
+        var c = HardwareClassifier.Classify(r.Snapshot);
+        Assert.Equal(MachineShape.Discrete, c.Shape);
+        Assert.Equal(2 * (card - 1_610_612_736UL), c.GpuBudgetBytes);
     }
 
     //the largest heap is what one allocation can reach, so it feeds the budget. the sum is what the operating system cannot see, so it feeds the carve-out check
@@ -200,7 +240,9 @@ public class HardwareProbeTests
         var two = "visible=2147483648\nvulkan=ok physical_devices=2\n"
             + "device_0_name=first\ndevice_0_type=DISCRETE_GPU (2)\ndevice_0_vendor=0x1002 device_id=0x1\ndevice_0_heap_count=1 type_count=1\ndevice_0_heap_0=8589934592 flags=0x01 DEVICE_LOCAL\n"
             + "device_1_name=second\ndevice_1_type=DISCRETE_GPU (2)\ndevice_1_vendor=0x10DE device_id=0x2\ndevice_1_heap_count=1 type_count=1\ndevice_1_heap_0=8589934592 flags=0x01 DEVICE_LOCAL\n";
-        Assert.Equal("first", HardwareProbe.ParseReport(two).GpuName);
+        var r = HardwareProbe.ParseReport(two);
+        Assert.Equal("1002", r.Snapshot!.GraphicsVendorId);   //the first card leads, so its vendor steers the engine
+        Assert.Equal("first + second", r.GpuName);
     }
 
     [Fact]

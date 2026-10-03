@@ -891,7 +891,7 @@ public class ChromeTickerTests
         await Task.Delay(100);   //give a cancellation every chance to propagate.
 
         Assert.False(reader.ObservedToken.IsCancellationRequested,
-            "turn end cancelled an in-flight /slots read — that is the `cancel task` llama-server dies on");
+            "a turn end must not cancel an in-flight /slots read, because gatto never cancels a request to the local server on an ambient trigger");
         reader.Release.SetResult();
     }
 

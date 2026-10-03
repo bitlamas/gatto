@@ -85,4 +85,17 @@ public class LlamaServerBuildTests
     private static ProbeResult Probe(string stderr) =>
         LlamaServerProbe.Interpret(exitCode: 0, stdout: "", stderr: stderr,
             timedOut: false, vcRuntimeAbsent: false);
+
+    //measured from the pinned engine's --list-devices on a machine with an 8060S and a Vega 64, CRLF and the log line included
+    private const string Listing = "0.00.000.717 I srv  llama_server: initializing ...\r\nAvailable devices:\r\n"
+        + "  Vulkan0: AMD Radeon(TM) 8060S Graphics (126805 MiB, 120465 MiB free)\r\n"
+        + "  Vulkan1: Radeon RX Vega (8176 MiB, 7351 MiB free)\r\n";
+
+    [Theory]
+    [InlineData("AMD Radeon(TM) 8060S Graphics", "Vulkan0")]
+    [InlineData("Radeon RX Vega", "Vulkan1")]
+    [InlineData("AMD Radeon(TM) 8060S", null)]
+    [InlineData("NVIDIA GeForce RTX 4060 Laptop GPU", null)]
+    public void A_DEVICE_IS_FOUND_BY_ITS_EXACT_PRODUCT_NAME(string gpu, string? expected) =>
+        Assert.Equal(expected, LlamaServerProbe.DeviceIn(Listing, gpu));
 }

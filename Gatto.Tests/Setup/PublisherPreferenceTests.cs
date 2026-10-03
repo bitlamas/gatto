@@ -102,6 +102,33 @@ public class PublisherPreferenceTests : IDisposable
             probes.Allowlist.CuratedPublisherFor(HubSearchView.Curated));
     }
 
+    //a broken gatto.json says so once while the shelf still opens, since setup is where the user picks a publisher
+    [Fact]
+    public void AN_UNREADABLE_CONFIG_NOTES_WHY_THE_PREFERENCE_IS_NOT_USED_ONCE()
+    {
+        Write(",\"default_publisher\":\"acme-weights\"");
+        var notes = new StringWriter();
+        using var probes = new LiveSetupProbes(_home, GlyphSet.Unicode, notes);
+
+        _ = probes.Allowlist;
+        _ = probes.ApprovedPublishers();
+
+        var lines = notes.ToString().Split('\n', StringSplitOptions.RemoveEmptyEntries);
+        Assert.Single(lines, l => l.Contains("acme-weights", StringComparison.Ordinal));
+        Assert.Contains("the shelf opens on its usual publisher", notes.ToString(), StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void A_HOME_WITH_NO_CONFIG_YET_NOTES_NOTHING()
+    {
+        var notes = new StringWriter();
+        using var probes = new LiveSetupProbes(_home, GlyphSet.Unicode, notes);
+
+        _ = probes.Allowlist;
+
+        Assert.Equal("", notes.ToString());
+    }
+
     //a missing config throws differently from an unparseable one, and it is normal during setup, so the shelf must still open
     [Fact]
     public void A_HOME_WITH_NO_CONFIG_YET_STILL_OPENS_THE_CURATED_SHELF()

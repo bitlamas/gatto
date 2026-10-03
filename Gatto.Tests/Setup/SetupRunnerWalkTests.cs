@@ -162,6 +162,26 @@ public class SetupRunnerWalkTests
         Assert.Contains("/resolve/main/Q4_K_M/model-Q4_K_M.gguf", body, StringComparison.Ordinal);
     }
 
+    //a fetched file's model records the repo and file it came from, which the hub row match and the audition badge read
+    [Fact]
+    public void A_FETCHED_MODEL_RECORDS_ITS_SOURCE_AND_A_FOUND_ONE_DOES_NOT()
+    {
+        var probes = new Probes { Rows = [Row("org/a")], Found = [] };
+        var flow = new SetupFlow(probes);
+        flow.StartPastEngine();
+        flow.Answer("0");
+        probes.Found = [new FoundModel(@"C:\Users\me\Downloads\model-Q4_K_M.gguf", 4_000_000_000, null)];
+        Assert.True(flow.PollForDownload());
+        flow.Answer(SetupFlow.Landed);
+
+        Assert.Equal(new Gatto.Roles.ModelSource("org/a", "model-Q4_K_M.gguf"), flow.Writes.CreateModel!.Source);
+
+        var found = new SetupFlow(new Probes { Found = [new FoundModel(@"D:\m\qwen.gguf", 4_000_000_000, null)] });
+        found.StartPastEngine();
+        found.Answer("0");
+        Assert.Null(found.Writes.CreateModel?.Source);
+    }
+
     //drive the poll through PollForDownload, the only reachable path, since pressing Landed by hand asserts on state production never fills
     [Fact]
     public void THE_WATCH_PICKS_THE_FILE_UP_WHEN_IT_LANDS()

@@ -52,6 +52,17 @@ public class FirstRunDoorTests : IDisposable
         Assert.False(FirstRunDoor.NotConfigured(_home));
     }
 
+    //a default endpoint that lists models launches on its first entry with nothing saved, so the home needs no setup
+    [Fact]
+    public void A_LISTED_MODEL_ON_THE_DEFAULT_ENDPOINT_MEANS_CONFIGURED()
+    {
+        Directory.CreateDirectory(_home);
+        File.WriteAllText(Path.Combine(_home, "gatto.json"),
+            """{"endpoints":{"cloudy":{"base_url":"https://c.test","models":["cloudy-max"]}},"default_endpoint":"cloudy"}""");
+
+        Assert.False(FirstRunDoor.NotConfigured(_home));
+    }
+
     //a model on disk means the machine has used gatto before, so setup stays closed with no default set
     [Fact]
     public void A_PACK_ON_DISK_MEANS_CONFIGURED_even_with_no_default_model()

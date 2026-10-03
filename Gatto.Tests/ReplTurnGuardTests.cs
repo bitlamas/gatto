@@ -65,6 +65,22 @@ public class ReplTurnGuardTests
         Assert.Single(obs.Warnings);
     }
 
+    //a lost connection to a server gatto served says that server is gone in place of the client's error, so the start command shows once
+    [Fact]
+    public async Task A_connection_failure_to_a_dead_server_says_so_in_one_line()
+    {
+        var (loop, client, convo, obs) = Setup();
+        client.EnqueueFailure();
+        client.EnqueueFailure();
+
+        await Gatto.Repl.Repl.RunTurnGuardedAsync(loop, convo, "hello", obs, null, default, serverGone: () => "llama-server for m is not running");
+        Assert.Equal(["llama-server for m is not running"], obs.Warnings);
+
+        var quiet = new RecordingObserver();
+        await Gatto.Repl.Repl.RunTurnGuardedAsync(loop, convo, "hello", quiet, null, default, serverGone: () => null);
+        Assert.Equal(["server down — run: gatto serve start m"], quiet.Warnings);
+    }
+
     [Fact]
     public async Task ConnectionFailureRound2_KeepsExecutedToolExchange()
     {

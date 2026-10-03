@@ -51,17 +51,19 @@ public class LoadingRowTests
     public void THE_ROW_TAKES_ITS_ELLIPSIS_FROM_THE_TABLE() =>
         Assert.Equal("loading m...", LoadingRow.Words(TimeSpan.Zero, "m", null, GlyphSet.Ascii));
 
-    //the plain half holds no escape at all, and it is the painted half with the escapes stripped
+    //the unpainted row holds no escape at all, and it is the painted row with the escapes stripped
     [Fact]
-    public void THE_PLAIN_HALF_HOLDS_NO_ESCAPES()
+    public void THE_UNPAINTED_ROW_HOLDS_NO_ESCAPES()
     {
-        var (plain, painted) = LoadingRow.Render(
+        var themed = LoadingRow.Render(
             TimeSpan.FromSeconds(31), "qwen3.6-35b-a3b", "~23.8 GB", G,
             new Theme(new TermCaps(true, true)), frame: 1);
+        var plain = LoadingRow.Render(
+            TimeSpan.FromSeconds(31), "qwen3.6-35b-a3b", "~23.8 GB", G, null, frame: 1);
 
-        Assert.DoesNotContain('', plain);
-        Assert.Contains('', painted);
-        Assert.Equal(plain, TermText.StripAnsiForWidth(painted));
+        Assert.DoesNotContain('\u001b', plain);
+        Assert.Contains('\u001b', themed);
+        Assert.Equal(plain, TermText.StripAnsiForWidth(themed));
     }
 
     //assert the id's own ink, a row painted wholly in the body colour would also strip back to the same plain text
@@ -69,7 +71,7 @@ public class LoadingRowTests
     public void THE_MODEL_ID_TAKES_CODEINLINEFG_INSIDE_THE_ROW()
     {
         var theme = new Theme(new TermCaps(true, true));
-        var (_, painted) = LoadingRow.Render(
+        var painted = LoadingRow.Render(
             TimeSpan.Zero, "qwen3.6-35b-a3b", null, G, theme, frame: 0);
 
         Assert.Contains(theme.Paint("qwen3.6-35b-a3b", Theme.CodeInlineFg), painted, StringComparison.Ordinal);
@@ -79,9 +81,8 @@ public class LoadingRowTests
     [Fact]
     public void A_NULL_THEME_PAINTS_NOTHING()
     {
-        var (plain, painted) = LoadingRow.Render(TimeSpan.Zero, "m", null, G, null, frame: 0);
+        var row = LoadingRow.Render(TimeSpan.Zero, "m", null, G, null, frame: 0);
 
-        Assert.Equal(plain, painted);
-        Assert.DoesNotContain('', painted);
+        Assert.DoesNotContain('\u001b', row);
     }
 }

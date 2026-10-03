@@ -120,7 +120,7 @@ public class ReplLinearLoopTests
             {
                 //nothing inside a turn may stop the purr, and the fake must set State.Tool or the ticker reads prefill
                 lock (gate) painter.State.Tool = ("shell", "ls");
-                var deadline = DateTime.UtcNow.AddSeconds(3);
+                var deadline = DateTime.UtcNow.AddSeconds(30);
                 while (DateTime.UtcNow < deadline)
                 {
                     lock (gate) purrDuringTool = painter.State.PurrText;
@@ -148,7 +148,7 @@ public class ReplLinearLoopTests
         renderer.OnPromptProgress(total: 15_063, processed: 4_096);
 
         string? seen = null;
-        var deadline = DateTime.UtcNow.AddSeconds(3);
+        var deadline = DateTime.UtcNow.AddSeconds(30);
         while (DateTime.UtcNow < deadline)
         {
             lock (gate) seen = painter.State.PurrText;

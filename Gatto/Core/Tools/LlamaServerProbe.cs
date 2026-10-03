@@ -48,7 +48,7 @@ internal static class LlamaServerProbe
 
         return new(ProbeShape.NotClassic,
             "did not identify as the classic llama-server.exe gatto drives (expected a " +
-            "'version: N (sha)' banner) — if this is the unified llama.exe CLI (llama.app " +
+            "'version: N (sha)' or 'version: X (build N, commit sha)' banner) — if this is the unified llama.exe CLI (llama.app " +
             "installer), download the classic llama-server release instead");
     }
 
@@ -70,8 +70,35 @@ internal static class LlamaServerProbe
         //ask Windows for its own system folder rather than assuming C:\Windows, read once beside the spawn
         var vcRuntimeAbsent = !VcRuntimePresent();
 
+        var run = Capture(exePath, "--version", deadline);
+        if (run.StartError is { } why) return new(ProbeShape.Failed, $"could not run: {why}");
+        if (run.TimedOut) return new(ProbeShape.TimedOut, $"--version did not answer within {deadline.TotalSeconds:0}s");
+        return Interpret(run.ExitCode, run.Stdout, run.Stderr, timedOut: false, vcRuntimeAbsent);
+    }
+
+    //llama-server's backend name for this device, such as Vulkan0, or null. -dev takes it, never the product name
+    public static string? DeviceNamed(string exePath, string gpuName, TimeSpan deadline)
+    {
+        var run = Capture(exePath, "--list-devices", deadline);
+        return run.StartError is null && !run.TimedOut && run.ExitCode == 0
+            ? DeviceIn(run.Stdout + "\n" + run.Stderr, gpuName)
+            : null;
+    }
+
+    //one listing line is two spaces, the backend name, a colon, the product name and its memory in brackets
+    private static readonly Regex DeviceLine = new(@"^\s*(?<dev>[A-Za-z]+\d+):\s+(?<name>.+?)\s+\(\d+ MiB, \d+ MiB free\)\s*$",
+        RegexOptions.Multiline | RegexOptions.CultureInvariant);
+
+    //an exact product-name match, so a near name never pins a model to the wrong card
+    internal static string? DeviceIn(string listing, string gpuName) =>
+        DeviceLine.Matches(listing).FirstOrDefault(m => m.Groups["name"].Value.Trim() == gpuName.Trim())?.Groups["dev"].Value;
+
+    //one bounded spawn for every question asked of the binary, the deadline the only bound and the whole tree killed on expiry
+    private static (string? StartError, bool TimedOut, int ExitCode, string Stdout, string Stderr) Capture(
+        string exePath, string arguments, TimeSpan deadline)
+    {
         using var p = new System.Diagnostics.Process();
-        p.StartInfo = new(exePath, "--version")
+        p.StartInfo = new(exePath, arguments)
         {
             RedirectStandardOutput = true,
             RedirectStandardError = true,
@@ -79,21 +106,20 @@ internal static class LlamaServerProbe
             CreateNoWindow = true,
         };
         try { p.Start(); }
-        catch (Exception ex) { return new(ProbeShape.Failed, $"could not run: {ex.Message}"); }
+        catch (Exception ex) { return (ex.Message, false, 0, "", ""); }
 
         var so = p.StandardOutput.ReadToEndAsync();
         var se = p.StandardError.ReadToEndAsync();
         if (!p.WaitForExit((int)deadline.TotalMilliseconds))
         {
             try { p.Kill(entireProcessTree: true); } catch { }   //kill the whole tree when the deadline expires
-            return new(ProbeShape.TimedOut, $"--version did not answer within {deadline.TotalSeconds:0}s");
+            return (null, true, 0, "", "");
         }
         //after exit wait a bounded grace for the streams to end, a child holding the pipes must not hang the probe
         Task.WaitAll(new Task[] { so, se }, 2000);
-        return Interpret(p.ExitCode,
+        return (null, false, p.ExitCode,
             so.IsCompletedSuccessfully ? so.Result : "",
-            se.IsCompletedSuccessfully ? se.Result : "",
-            timedOut: false, vcRuntimeAbsent);
+            se.IsCompletedSuccessfully ? se.Result : "");
     }
 
     //an unreadable System32 answers present, a failed look is no evidence that the file is missing

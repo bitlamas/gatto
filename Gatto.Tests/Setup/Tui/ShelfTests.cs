@@ -607,6 +607,33 @@ public class ShelfTests
         Assert.Equal("0", WalkRender.Answer(screen, new ConsoleKeyInfo('1', ConsoleKey.D1, false, false, false)));
     }
 
+    //the publisher outranks nothing on a one-publisher shelf, so the prefix is dropped there and kept where a second publisher appears
+    [Fact]
+    public void A_SECOND_PUBLISHER_BRINGS_BOTH_FULL_REPO_IDS_BACK()
+    {
+        var twoPub = new ShelfView(
+            [
+                new ShelfRow("bartowski/alpha-GGUF", "bartowski",
+                    new HubQuant("alpha-Q4_K_M.gguf", Gib(8), null), Fits, 4096, false,
+                    null, 10, false),
+                Row("beta", 30, 18, 4096, false, Fits),
+            ],
+            null, MachineShape.UnifiedWithShare, Families: Families, Family: "all", Total: 2);
+
+        var mixed = Shelf.Table(twoPub, row: 0, focused: true, glyphs: GlyphSet.Unicode)
+            .Select(r => r.Text).ToList();
+
+        Assert.Contains("bartowski/alpha-GGUF", mixed[1], StringComparison.Ordinal);
+        Assert.Contains("unsloth/beta", mixed[2], StringComparison.Ordinal);
+
+        //the pair, so the bare form is proven on the same code path, and a curated shelf keeps today's look
+        var onePub = twoPub with { Rows = [twoPub.Rows[1]] };
+        var bare = Shelf.Table(onePub, row: 0, focused: true, glyphs: GlyphSet.Unicode)[1].Text;
+
+        Assert.Contains("beta", bare, StringComparison.Ordinal);
+        Assert.DoesNotContain("unsloth/beta", bare, StringComparison.Ordinal);
+    }
+
     //a repo name is never truncated, since the model column widens to the longest name
     [Fact]
     public void A_REPO_NAME_IS_NEVER_TRUNCATED_HOWEVER_LONG()
@@ -881,6 +908,26 @@ public class ShelfTests
         var rows = WalkRender.Choice(WithFolderDoor(Unified96()), 100, script: ToRow(0)).Rows;
 
         Assert.DoesNotContain(rows, r => r.Contains("I already have a model", StringComparison.Ordinal));
+    }
+
+    //an MXFP4_MOE file is offered with its token, the longest one, and the columns after it stay in line with a Q4_K_M row
+    [Fact]
+    public void AN_MXFP4_ROW_SHOWS_ITS_QUANT_AND_KEEPS_THE_LATER_COLUMNS_IN_LINE()
+    {
+        var moe = Row("qwen-122B-A10B", 122, 63.4, 262144, false, Fits) with
+        {
+            PickedQuant = new HubQuant("qwen-122B-A10B-MXFP4_MOE.gguf", Gib(63.4), null),
+        };
+        ShelfRow[] rows = [moe, Row("qwen-8B", 8, 4.7, 262144, false, Fits)];
+        var view = new ShelfView(rows, "unsloth", MachineShape.UnifiedWithShare,
+            Families: Families, Family: "gemma", Total: 2);
+
+        var frame = WalkRender.SettledFrame(Screen(view), 120).Rows;
+        var moeRow = frame.Single(r => r.Contains("qwen-122B-A10B", StringComparison.Ordinal) && r.Contains(" GB ", StringComparison.Ordinal));
+        var plainRow = frame.Single(r => r.Contains("qwen-8B", StringComparison.Ordinal) && r.Contains(" GB ", StringComparison.Ordinal));
+
+        Assert.Contains("GB MXFP4_MOE", moeRow, StringComparison.Ordinal);
+        Assert.Equal(plainRow.IndexOf("✓ GPU", StringComparison.Ordinal), moeRow.IndexOf("✓ GPU", StringComparison.Ordinal));
     }
 
 }

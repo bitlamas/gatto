@@ -12,7 +12,13 @@ internal static class FirstRunDoor
 
         if (!File.Exists(Path.Combine(homePath, "gatto.json"))) return true;
 
-        try { return GattoConfig.Load(homePath).DefaultModel is null; }
+        try
+        {
+            var config = GattoConfig.Load(homePath);
+            if (config.DefaultModel is not null) return false;
+            //a bare launch takes the first listed model of the default endpoint, so a list with nothing saved is configured
+            return !(config.Endpoints.TryGetValue(config.DefaultEndpoint, out var ep) && ep.Models is { Count: > 0 });
+        }
         catch (GattoConfigException) { return false; }
     }
 }

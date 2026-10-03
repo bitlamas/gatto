@@ -337,6 +337,23 @@ public class SelectPromptTests
         Assert.Contains("2. Yes, always", TermText.StripAnsiForWidth(suffixRow));
     }
 
+    //the suffix rides outside the label, so a too-wide label gives cells of its own and the row keeps the suffix whole at its end
+    [Fact]
+    public void A_LONG_LABEL_ON_THE_RECOMMENDED_ROW_KEEPS_ITS_SUFFIX_WHOLE()
+    {
+        var spec = Spec(
+            new SelectOption("Yes"),
+            new SelectOption("Yes, always rerun this exact command without asking", Recommended: true));
+        var surface = new RecordingSurface { Width = 30 };
+        new SelectPrompt(surface, T, new ScriptedKeys([Special(ConsoleKey.Enter)])).Show(spec);
+
+        var plain = Assert.Single(RowsOf(surface.Text)
+            .Select(TermText.StripAnsiForWidth), r => r.Contains("Recommended", StringComparison.Ordinal));
+
+        Assert.EndsWith(" (Recommended)", plain);
+        Assert.True(UnicodeWidth.Of(plain) <= 30, $"the row outgrew the width: {plain}");
+    }
+
     [Fact]
     public void Description_RendersDimUnderOption()
     {

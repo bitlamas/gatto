@@ -40,6 +40,25 @@ file sealed class OneShotObserver : ITurnObserver
     public void OnUsage(Usage u) { }
 }
 
+//a -p run compacts like a session, and its summary streams as reasoning so stdout keeps model text
+file sealed class OneShotCompaction(
+    IChatClient client, string model, AgentLoop loop, Conversation convo, int? window, ContextUsageState usage,
+    SessionStore sessions, Func<ComposedSystem> recompose, string dot) : ICompactionHandler
+{
+    public string? LastFailure { get; private set; }
+
+    public async Task<CompactionResult?> CompactAsync(
+        CompactionReason reason, string currentUserPrompt, ITurnObserver observer, CancellationToken ct)
+    {
+        var compactor = new Compactor(client, model, loop.RequestShape);
+        var summary = await compactor.SummarizeAsync(convo, observer, ct, windowTokens: window, ratio: usage.Ratio, midTurn: true);
+        LastFailure = compactor.LastFailure;
+        if (summary is null) return null;
+        var (rebuilt, _) = Compactor.RebuildMidTurn(summary, convo, currentUserPrompt, observer, sessions, recompose, dot);
+        return rebuilt;
+    }
+}
+
 public static class GattoApp
 {
     //an extension's section comes from the extensions object first, so it needs no new top-level key and search keeps working
@@ -666,6 +685,18 @@ public static class GattoApp
             if (serverAlreadyUp) servedBytes = loadingBytes;
         }
 
+        //read after any start so -p and an auto-served launch both see the server, and only a server holding this model speaks for its window
+        if (model is not null && launchBaseUrl is not null && !cloud)
+        {
+            var served = await ServeProbe.ProbeAsync(probeHttp, launchBaseUrl, CancellationToken.None, endpoint.ApiKey, probeDeadline);
+            if (served is not null && ModelSwitch.DescribeProbe(model, served, modelsDir) is null)
+            {
+                var window = ModelWindow.Resolve(model.Profile.Context, served.NCtx);
+                contextBudget = window.Budget;
+                if (window.Line is string windowLine) warn.Warn(windowLine);
+            }
+        }
+
         //a closure so the Repl never references Gatto.Roles, capturing the same mutable model and base URL so a /model switch is picked up
         Func<ServingProbe> probeServing = () =>
         {
@@ -964,6 +995,15 @@ public static class GattoApp
             var loaded = ServeProbe.ProbeAsync(probeHttp, launchBaseUrl!, CancellationToken.None, endpoint.ApiKey, probeDeadline)   //only after the persist succeeded, so a doomed switch spends no round trip
                 .GetAwaiter().GetResult();
             var mismatch = ModelSwitch.DescribeProbe(outcome.Model, loaded, modelsDir)?.Name;
+            //the incoming model's server may split its context across slots too, the launch rule again
+            if (loaded is not null && mismatch is null)
+            {
+                var window = ModelWindow.Resolve(outcome.Model.Profile.Context, loaded.NCtx);
+                contextBudget = window.Budget;
+                loop.UpdateContextBudget(contextBudget);
+                runAgent.UpdateContextBudget(contextBudget);
+                if (window.Line is string windowLine) warn.Warn(windowLine);
+            }
 
             //re-derived for the new model, or a switch between shapes would re-apply the old map's toggle body over the new one
             reasoningMap = model.Profile.Thinking ?? endpoint.Thinking;
@@ -974,7 +1014,7 @@ public static class GattoApp
             if (thinkCap == ThinkCapability.Toggle) { thinkOn = DefaultThinkOn(model); ApplyToggle(thinkOn); }
 
             //adds a line on success, since outcome.Message is null there, and outgoing names the model the session was on
-            return new ModelSwitchResult(true, outcome.ModelId, outcome.SystemText, outcome.ContextBudget,
+            return new ModelSwitchResult(true, outcome.ModelId, outcome.SystemText, contextBudget,
                 SwapConfirm.SwitchNotice(confirmed, outgoing?.Id, outcome.ModelId) ?? outcome.Message,
                 mismatch, loaded?.NCtx, ThinkingFooterName(), thinkCap == ThinkCapability.Toggle,
                 ThinkingUnavailable(), NextBaseline(comp.Sources));
@@ -1253,6 +1293,13 @@ public static class GattoApp
             Console.CancelKeyPress += cancelHandler;
             //set for the whole -p run, so a kill mid-run still saves what was written
             loop.OnRoundPersisted = sessions.Save;
+            //a headless run compacts on the same threshold and project veto as a session, so a long task outlives the window instead of ending on a 400
+            var oneShotArmedAt = Gatto.Repl.Repl.ArmedAutoCompactAt(config.AutoCompact, cwd);
+            var oneShotUsage = new ContextUsageState();
+            loop.EnableAutoCompact(
+                oneShotArmedAt is null ? null
+                    : new OneShotCompaction(client, modelString, loop, convo, contextBudget, oneShotUsage, sessions, recomposeSystem, glyphs.Dot),
+                oneShotUsage, oneShotArmedAt);
             try
             {
                 var r = await loop.RunTurnAsync(convo, args.Prompt, new OneShotObserver(), oneShotCts.Token);
@@ -1314,6 +1361,10 @@ public static class GattoApp
                     launchServing: launchServing, probeServing: probeServing, listModels: unlistedRemote ? null : listModels, picker: replPicker, slotsReader: slotsReader, warn: warn, altScreen: config.AltScreen, dumpOnExit: config.DumpOnExit, thinkingIsToggle: thinkCap == ThinkCapability.Toggle, thinkingIsUnavailable: ThinkingUnavailable(), mouseEnabled: config.Mouse && config.AltScreen && pump is not null, wheelLines: config.WheelLines, copyOnSelect: config.CopyOnSelect, resumedPath: continuePath, resumeLine: resumeLine,
             modelMarkLegend: model is null ? "current" : "weights loaded",
             noModelList: unlistedRemote ? $"endpoint {endpointName} lists no models; type /model <name> to switch" : null,
+            //read at the moment a connection is lost, through the current model, so a /model switch is followed
+            serverGone: () => model is { } served
+                ? ServeLines.GoneLine(new ServeManager(home, ServerBinaryFor(served, config)).Dead(served.Profile.Port), glyphs)
+                : null,
                     autoCompact: config.AutoCompact, permissions: permissions, listTools: listTools, listPolicy: listPolicy, memoryWarning: launchRes.MemoryTruncatedLines > 0 ? MemoryTruncationWarning(launchRes.MemoryTruncatedLines) : null, cloudNotice: cloudNotice, cloud: cloud, readUsage: usageMeter.Read, onUsageChanged: repaint => usageMeter.Changed = repaint,piggyback: piggyback, turnAbort: turnAbort,
             //a session with no model talks to a server gatto does not manage, so the notice says that instead of offering a model fix
             unmanagedNotice: model is null && endpoint.Models is not { Count: > 0 } ? UnmanagedSession.ModelUnavailable(launchBaseUrl) : null,
@@ -1630,7 +1681,8 @@ public static class GattoApp
             purrSet: Gatto.Repl.Render.PurrFrames.RandomFromPool,
             rich: theme is not null,
             //these lines go to the console, Dispose runs after the record has printed
-            afterWalk: Console.Out);
+            afterWalk: Console.Out,
+            working: face.Working);
         var flow = new Setup.SetupFlow(probes);
         using (probes)
         {

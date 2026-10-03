@@ -70,7 +70,7 @@ public sealed class AgentLoop(
     //persist after each tool result, so a killed run still leaves a transcript. null unless a caller sets it, keeping a subagent out of the parent's file
     public Action<Conversation>? OnRoundPersisted { get; set; }
 
-    //arm auto-compaction after construction, since the handler wraps a Repl that is built later. the one-shot and subagent loops never call it
+    //arm auto-compaction after construction, since the handler wraps a Repl that is built later. the session and -p call it, subagent loops never do
     public void EnableAutoCompact(ICompactionHandler? newCompaction, ContextUsageState? newUsageState, double? newAutoCompactAt)
     {
         compaction = newCompaction;
@@ -104,6 +104,8 @@ public sealed class AgentLoop(
         Conversation convo, string userMessage, ITurnObserver observer, CancellationToken ct,
         IReadOnlyList<ImageRef>? images = null)
     {
+        //an unarmed loop measures the server's count too, so a subagent's elision decides on it as a session's does
+        usageState ??= new ContextUsageState();
         //the current turn's user-message index, captured before AddUser, and the prompt_suffix splice target
         var turnUserIndex = convo.Count;
         //the index at each round's start, which ElideBefore reads to protect the recent rounds. a compaction clears it with the conversation these indices describe
@@ -125,11 +127,21 @@ public sealed class AgentLoop(
         {
             round++;
 
-            //the proactive trigger, at the round top only, where nothing is half-streamed. lastPrompt alone misses what was appended since, so the growth is scaled in
+            var overhead = ContextBudget.EstimateTools(tools.Specs());   //the definitions ride every request, read per round so a /role swap is seen
+            //reasoning ages first, before elision, and both passes shape only the request copy
+            (IReadOnlyList<ChatMessage> Messages, int ElidedCount, bool StillOver, int ElidedThrough) ShapeRequest() => ContextBudget.Apply(
+                ContextBudget.ShapeReasoning(ContextBudget.ShapeUpdates(convo.Messages), reasoningHistory),
+                budgetTokens,
+                ContextBudget.ElideBefore(roundStarts, turnUserIndex),
+                usageState?.Ratio ?? 1.0, usageState?.ElidedThrough ?? 0, overhead);
+            roundStarts.Add(convo.Count);
+            var shaped = ShapeRequest();
+
+            //the proactive trigger at the round top, counted after elision, so compaction runs only when trimming can't fit
             if (compaction is not null && !_autoCompactOff && autoCompactAt is double th
                 && budgetTokens is int win and > 0
-                && usageState is not null
-                && ContextBudget.UsedTokens(convo, usageState) is int used
+                && usageState is { LastPromptTokens: not null }
+                && (int)ContextBudget.Counts(shaped.Messages, overhead, usageState.Ratio) is var used
                 && used >= th * win)
             {
                 //announce before the await, so the wait is explained while it happens. quote the same figure the trigger acted on, or the line names a different percentage
@@ -143,6 +155,8 @@ public sealed class AgentLoop(
                     turnUserIndex = 1;
                     roundStarts.Clear();
                     usageState.Clear();   //clearing the usage means a re-fire needs fresh over-threshold evidence
+                    roundStarts.Add(convo.Count);
+                    shaped = ShapeRequest();
                     //the same figure the trigger acted on, and used is captured above so the Clear cannot strand it
                     observer.OnWarning($"auto-compacted at {(int)Math.Round(100.0 * used / win)}% — continuing");
                 }
@@ -163,13 +177,8 @@ public sealed class AgentLoop(
             Usage? turnUsage = null;
             string? turnTimings = null;
 
-            roundStarts.Add(convo.Count);   //after any compaction above, so it describes the live conversation
-
-            //reasoning ages first, before elision, and both passes shape only the request copy
-            var (requestMessages, elidedCount, stillOver) = ContextBudget.Apply(
-                ContextBudget.ShapeReasoning(ContextBudget.ShapeUpdates(convo.Messages), reasoningHistory),
-                budgetTokens,
-                ContextBudget.ElideBefore(roundStarts, turnUserIndex));
+            var (requestMessages, elidedCount, stillOver, elidedThrough) = shaped;   //shaped after any compaction above, so it describes the live conversation
+            usageState?.NoteElided(elidedThrough);
 
             //the suffix goes on the request copy of the current user message, and the JSONL keeps the pure one
             if (!string.IsNullOrEmpty(promptSuffix) && turnUserIndex < requestMessages.Count)
@@ -191,7 +200,7 @@ public sealed class AgentLoop(
                 stillOverWarned = true;
             }
 
-            var estimateAtRequest = ContextBudget.Estimate(requestMessages);
+            var estimateAtRequest = ContextBudget.Estimate(requestMessages) + overhead;
             _lastSent = requestMessages.ToArray();
             _lastSentFrom = convo.Messages.ToArray();
 

@@ -42,6 +42,9 @@ internal static class HardwareClassifier
     private const ulong DiscreteDisplayReserveBytes = 1610612736; //1.5 GiB for the compositor and display
     private const ulong RamBudgetDivisor = 2;                     //keeps half of visible RAM free for Windows and the browser
 
+    //a laptop's integrated share of half its RAM stays under this, so only a machine built around its unified pool moves off the discrete card
+    internal const ulong PoolOverCardsFloorBytes = 34359738368;
+
     //the shape comes from the device's kind rather than from memory arithmetic, and the installed minus visible gap says whether memory is hidden from Windows
     public static HardwareClass Classify(HardwareSnapshot s, ClassifierBand? band = null)
     {
@@ -55,10 +58,13 @@ internal static class HardwareClassifier
         {
             case GpuKind.Discrete:
             {
-                var heap = s.GraphicsMemoryBytes ?? 0;
-                return new(MemoryTopology.Discrete, ShareKind.None,
-                    Usable(heap > DiscreteDisplayReserveBytes ? heap - DiscreteDisplayReserveBytes : 0),
-                    ram, s, DiscreteDisplayReserveBytes, BudgetBound.None);
+                //each card pays its own reserve, which stands for its compute buffer as well as a display
+                IReadOnlyList<ulong> heaps = [s.GraphicsMemoryBytes ?? 0, .. s.MoreDiscreteHeaps ?? []];
+                ulong budget = 0;
+                foreach (var heap in heaps)
+                    budget += Usable(heap > DiscreteDisplayReserveBytes ? heap - DiscreteDisplayReserveBytes : 0);
+                return new(MemoryTopology.Discrete, ShareKind.None, budget,
+                    ram, s, DiscreteDisplayReserveBytes * (ulong)heaps.Count, BudgetBound.None);
             }
 
             case GpuKind.Integrated:

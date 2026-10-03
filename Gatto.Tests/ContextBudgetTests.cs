@@ -62,7 +62,7 @@ public class ContextBudgetTests
     public void Apply_NullBudget_IsPassthrough()
     {
         var msgs = new[] { User("hello"), Tool(new string('a', 100), "c1") };
-        var (result, elided, over) = ContextBudget.Apply(msgs, null, msgs.Length);
+        var (result, elided, over, _) = ContextBudget.Apply(msgs, null, msgs.Length);
         Assert.Same(msgs, result);
         Assert.Equal(0, elided);
         Assert.False(over);
@@ -74,7 +74,7 @@ public class ContextBudgetTests
     public void Apply_ZeroOrNegativeBudget_IsPassthrough(int budget)
     {
         var msgs = new[] { User("hello"), Tool(new string('a', 100), "c1") };
-        var (result, elided, over) = ContextBudget.Apply(msgs, budget, msgs.Length);
+        var (result, elided, over, _) = ContextBudget.Apply(msgs, budget, msgs.Length);
         Assert.Same(msgs, result);
         Assert.Equal(0, elided);
         Assert.False(over);
@@ -85,7 +85,7 @@ public class ContextBudgetTests
     {
         var msgs = new[] { User("hello"), Tool(new string('a', 100), "c1") };
         //the fixture estimates about 26 tokens, far under 90 percent of the budget.
-        var (result, elided, over) = ContextBudget.Apply(msgs, 10000, msgs.Length);
+        var (result, elided, over, _) = ContextBudget.Apply(msgs, 10000, msgs.Length);
         Assert.Same(msgs, result);
         Assert.Equal(0, elided);
         Assert.False(over);
@@ -104,7 +104,7 @@ public class ContextBudgetTests
             User("u2"),
         };
         //estimate starts at 201 against a 198 limit. eliding the oldest tool drops below it, so exactly one elision happens.
-        var (result, elided, over) = ContextBudget.Apply(msgs, 220, msgs.Length);
+        var (result, elided, over, _) = ContextBudget.Apply(msgs, 220, msgs.Length);
 
         Assert.Equal(1, elided);
         Assert.Equal("[elided: shell result, 400 chars — re-run if needed]", result[2].Content);
@@ -124,9 +124,87 @@ public class ContextBudgetTests
             User("u2"),
         };
         //estimate of 100 against the 90 percent limit of budget 100, so elision triggers.
-        var (result, elided, _) = ContextBudget.Apply(msgs, 100, msgs.Length);
+        var (result, elided, _, _) = ContextBudget.Apply(msgs, 100, msgs.Length);
         Assert.Equal(1, elided);
         Assert.Equal("[elided: tool result, 400 chars — re-run if needed]", result[1].Content);
+    }
+
+    //the server counts more than chars/4, so the measured ratio scales the estimate and elision fires at the real 90 percent
+    [Fact]
+    public void Apply_elides_on_the_measured_ratio_where_the_raw_estimate_stays_under()
+    {
+        var msgs = new[]
+        {
+            User("u"),
+            Assistant(null, new ToolCall("c1", "shell", "{}")),
+            Tool(new string('a', 400), "c1"),
+            User("u2"),
+        };
+        //the estimate is 101 against a limit of 180, and twice that is over it
+        var (raw, rawElided, _, rawThrough) = ContextBudget.Apply(msgs, 200, msgs.Length);
+        Assert.Same(msgs, raw);
+        Assert.Equal((0, 0), (rawElided, rawThrough));
+
+        var (measured, elided, over, through) = ContextBudget.Apply(msgs, 200, msgs.Length, ratio: 2.0);
+        Assert.Equal(1, elided);
+        Assert.StartsWith("[elided: shell result", measured[2].Content);
+        Assert.Equal(3, through);
+        Assert.False(over);
+    }
+
+    //a large result keeps its first lines and says how much is cut, so the first line of a file survives elision
+    [Fact]
+    public void A_large_result_keeps_its_head_and_names_the_cut()
+    {
+        var body = "ALPHA\r\n" + string.Join("\r\n", Enumerable.Range(0, 200).Select(i => $"line {i} of filler text"));
+        var msgs = new[]
+        {
+            User("u"),
+            Assistant(null, new ToolCall("c1", "read_file", "{}")),
+            Tool(body, "c1"),
+            User("u2"),
+        };
+        var (result, elided, _, _) = ContextBudget.Apply(msgs, 100, msgs.Length);
+
+        Assert.Equal(1, elided);
+        var trimmed = result[2].Content!;
+        Assert.StartsWith("ALPHA\r\nline 0 of filler text\r\n", trimmed);
+        Assert.Contains($"[elided: read_file result, {body.Length} chars, the first ", trimmed);
+        Assert.EndsWith(" shown above — re-run if needed]", trimmed);
+        Assert.True(trimmed.Length < 450, $"the trimmed result is {trimmed.Length} chars");
+        Assert.DoesNotContain("line 199", trimmed);
+    }
+
+    //the tool definitions ride every request, so the estimate of a request must count them or the measured ratio absorbs them
+    [Fact]
+    public void EstimateTools_counts_names_descriptions_and_schemas()
+    {
+        var schema = System.Text.Json.JsonDocument.Parse("{\"type\":\"object\"}").RootElement;
+        var specs = new[] { new ToolSpec("abcd", new string('d', 396), schema) };
+
+        Assert.Equal((4 + 396 + schema.GetRawText().Length + ContextBudget.ToolEnvelopeChars) / 4, ContextBudget.EstimateTools(specs));
+        Assert.Equal(0, ContextBudget.EstimateTools([]));
+    }
+
+    //a ratio that falls must not bring a trimmed result back, that would change the prefix the server holds
+    [Fact]
+    public void Apply_keeps_what_it_trimmed_before_when_the_ratio_falls()
+    {
+        var msgs = new[]
+        {
+            User("u"),
+            Assistant(null, new ToolCall("c1", "shell", "{}")),
+            Tool(new string('a', 400), "c1"),
+            Assistant(null, new ToolCall("c2", "read_file", "{}")),
+            Tool(new string('b', 400), "c2"),
+            User("u2"),
+        };
+        var (result, elided, _, through) = ContextBudget.Apply(msgs, 10_000, msgs.Length, ratio: 1.0, elidedThrough: 3);
+
+        Assert.Equal(1, elided);
+        Assert.StartsWith("[elided: shell result", result[2].Content);
+        Assert.Equal(new string('b', 400), result[4].Content);
+        Assert.Equal(3, through);
     }
 
     private static ChatMessage Thought(string text, string reasoning) =>
@@ -240,11 +318,11 @@ public class ContextBudgetTests
             Tool(new string('a', 4000), "c2"),
         };
 
-        var (result, elided, _) = ContextBudget.Apply(msgs, 100, msgs.Length);
+        var (result, elided, _, _) = ContextBudget.Apply(msgs, 100, msgs.Length);
 
         Assert.Equal(1, elided);
         Assert.Equal(new string('s', 150), result[1].Content);
-        Assert.StartsWith("[elided: read_file result", result[3].Content);
+        Assert.Contains("[elided: read_file result, 4000 chars", result[3].Content);
     }
 
     [Fact]
@@ -257,7 +335,7 @@ public class ContextBudgetTests
             Tool(new string('a', 400), "c1"),
         };
         //over budget but with index 0 as the only eligible message, a user one, so nothing can be elided.
-        var (result, elided, over) = ContextBudget.Apply(msgs, 50, protectFromIndex: 1);
+        var (result, elided, over, _) = ContextBudget.Apply(msgs, 50, protectFromIndex: 1);
         Assert.Equal(0, elided);
         Assert.Same(msgs, result);
         Assert.True(over);               //the over flag reports the budget exceeded even after every possible elision.
@@ -267,7 +345,7 @@ public class ContextBudgetTests
     public void Apply_StillOver_TrueWhenNoToolMessagesButOverBudget()
     {
         var msgs = new[] { User(new string('x', 500)) };
-        var (_, elided, over) = ContextBudget.Apply(msgs, 100, msgs.Length);
+        var (_, elided, over, _) = ContextBudget.Apply(msgs, 100, msgs.Length);
         Assert.Equal(0, elided);
         Assert.True(over);
     }
@@ -281,7 +359,7 @@ public class ContextBudgetTests
             Tool(new string('a', 4000), "c1"),
         };
         //estimate 1000 against the 900 limit, so one elision brings it far under 100 percent.
-        var (_, elided, over) = ContextBudget.Apply(msgs, 1000, msgs.Length);
+        var (_, elided, over, _) = ContextBudget.Apply(msgs, 1000, msgs.Length);
         Assert.Equal(1, elided);
         Assert.False(over);
     }
@@ -297,11 +375,11 @@ public class ContextBudgetTests
             Assistant(null, new ToolCall("c2", "read_file", "{}")),
             Tool(new string('a', 4000), "c2"),
         };
-        var (result, elided, over) = ContextBudget.Apply(msgs, 100, msgs.Length);
+        var (result, elided, over, _) = ContextBudget.Apply(msgs, 100, msgs.Length);
 
         Assert.Equal(1, elided);
         Assert.Equal("x", result[1].Content);
-        Assert.Equal("[elided: read_file result, 4000 chars — re-run if needed]", result[3].Content);
+        Assert.Equal(new string('a', 300) + "\n[elided: read_file result, 4000 chars, the first 300 shown above — re-run if needed]", result[3].Content);
         Assert.False(over);
         //elision must not change the caller's records.
         Assert.Equal(new string('a', 4000), msgs[3].Content);
@@ -317,7 +395,7 @@ public class ContextBudgetTests
             Tool("x", "c1"),
             User(new string('p', 4000)),     //the bulk sits in a user message, which elision never rewrites.
         };
-        var (result, elided, over) = ContextBudget.Apply(msgs, 100, msgs.Length);
+        var (result, elided, over, _) = ContextBudget.Apply(msgs, 100, msgs.Length);
         Assert.Equal(0, elided);
         Assert.Equal("x", result[1].Content);
         Assert.True(over);
@@ -336,7 +414,7 @@ public class ContextBudgetTests
             new ChatMessage("user", "and now?"),
         };
 
-        var (result, elided, _) = ContextBudget.Apply(msgs, 200, msgs.Length);
+        var (result, elided, _, _) = ContextBudget.Apply(msgs, 200, msgs.Length);
 
         Assert.True(elided > 0, "precondition: the fat tool result must have been elided");
         Assert.Same(img, Assert.Single(result[0].Images!));

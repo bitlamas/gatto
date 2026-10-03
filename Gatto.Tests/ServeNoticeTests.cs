@@ -160,6 +160,16 @@ public class ServeNoticeTests
         Assert.Equal("could not stop llama-server, pid 6000: Access is denied. Stop it with gatto serve stop, or end it in Task Manager.", line.Text);
     }
 
+    //the session's line for a dead server names the code once, then status for more and start to bring it back
+    [Fact]
+    public void The_gone_line_names_the_code_and_both_commands()
+    {
+        var line = ServeLines.GoneLine(new("qwen3.6-35b-a3b", 4276, 1, null), GlyphSet.Unicode);
+        Assert.Equal("llama-server for qwen3.6-35b-a3b is not running (exited with code 1) · gatto serve status for more info, "
+            + "and gatto serve start qwen3.6-35b-a3b brings it back", line);
+        Assert.Null(ServeLines.GoneLine(null, GlyphSet.Unicode));
+    }
+
     //the refusal names the served model, both ways out, and says the one-server limit is temporary
     [Fact]
     public void The_refusal_names_the_served_model_and_both_ways_out()

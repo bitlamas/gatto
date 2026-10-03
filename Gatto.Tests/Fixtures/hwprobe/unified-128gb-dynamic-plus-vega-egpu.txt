@@ -1,0 +1,25 @@
+=== gatto probe-machine output ===
+capture_date: 2026-10-03 01:10
+shape: 128gb-integrated-dynamic-share with an 8gb discrete egpu
+collects: memory, vulkan  |  excludes: hostname, user, serials, system model
+note: the memory type lines are left out, the parser reads none of them
+
+installed=137438953472
+visible=136524402688
+cpu=AMD RYZEN AI MAX+ 395 w/ Radeon 8060S
+vulkan=ok physical_devices=2
+device_0_name=AMD Radeon(TM) 8060S Graphics
+device_0_type=INTEGRATED_GPU (1)
+device_0_vendor=0x1002 device_id=0x1586
+device_0_api=1.4.349 driver_raw=8389003
+device_0_heap_count=2 type_count=16
+device_0_heap_0=44321800192 flags=0x00 -
+device_0_heap_1=88643731456 flags=0x03 DEVICE_LOCAL|MULTI_INSTANCE
+device_1_name=Radeon RX Vega
+device_1_type=DISCRETE_GPU (2)
+device_1_vendor=0x1002 device_id=0x687F
+device_1_api=1.3.260 driver_raw=8388887
+device_1_heap_count=3 type_count=16
+device_1_heap_0=8304721920 flags=0x03 DEVICE_LOCAL|MULTI_INSTANCE
+device_1_heap_1=67992813568 flags=0x00 -
+device_1_heap_2=268435456 flags=0x03 DEVICE_LOCAL|MULTI_INSTANCE

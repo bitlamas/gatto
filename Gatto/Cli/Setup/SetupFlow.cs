@@ -332,6 +332,15 @@ internal sealed class SetupFlow(ISetupProbes probes)
     //record that the user left, a flow that threw reaches the same composer and must not be labelled as a leave. set it from both the leave option and Esc
     private bool _left;
 
+    //the walk reached its done screen, so a stopped or skipped check still ends on the record rather than the last frame
+    private bool _finished;
+
+    //the user stopped the check, which the add road's closing line names as the user's own act
+    private bool _checkStopped;
+
+    //the last prove that did not answer, the add road's closing line says the server failed rather than that all is well
+    private Gatto.Core.Acquire.ProveOutcome? _proveFailed;
+
     //delete the kept partial on leave only when the drop screen armed that promise. mark the leave before the leave screen is composed
     internal void MarkLeaving()
     {
@@ -3937,6 +3946,7 @@ internal sealed class SetupFlow(ISetupProbes probes)
             //wait for it to unwind, the runner's finally decides what happens to the server. returning early shows done while the check still holds the machine
             try { running.GetAwaiter().GetResult(); } catch (Exception) { } //stopping the check is not a failure
             EndAudition();
+            _checkStopped = true;
             //after a stop go to done unchecked, the runner leaves the wizard's server up (it never stops what it did not start)
             return Done();
         }
@@ -4460,7 +4470,9 @@ internal sealed class SetupFlow(ISetupProbes probes)
         Writes = Writes with
         {
             CreateModel = new WriteSet.Model(model.Path, Port: DefaultPort,
-                Context: probes.ContextFor(model.Path), Replace: replace),
+                Context: probes.ContextFor(model.Path), Replace: replace,
+                Source: Picked is { } row && Answers(model, row.PickedQuant) ? new Gatto.Roles.ModelSource(row.RepoId, row.PickedQuant.FileName) : null,
+                PinGpu: probes.ServeOnlyGpu()),
         };
         //pause for the writer before offering anything, no screen may audition a model that isn't on disk yet
         NeedsWritesApplied = true;
@@ -4578,6 +4590,7 @@ internal sealed class SetupFlow(ISetupProbes probes)
             return DoneStep();
         }
 
+        _proveFailed = outcome;
         //the capability sentence speaks only of a stranger's server, our own llama-server is never the cause. give each fact its own row
         var rows = new List<WizardRow> { outcome.Detail, "" };
         //the missing-capability sentence needs evidence, only 404 and 405 prove the chat route is absent. a reply in any other status proves the protocol is spoken
@@ -4825,6 +4838,7 @@ internal sealed class SetupFlow(ISetupProbes probes)
 
     private WizardScreen TerminalScreen()
     {
+        _finished = true;
         //in-session this screen carries nothing, the swap confirm is next. standalone keeps one deliberate blank before the closing line
         return Emit(new WizardScreen.Terminal(
             "done",
@@ -4897,7 +4911,7 @@ internal sealed class SetupFlow(ISetupProbes probes)
     //the record from the same composer as the summary, empty when no summary was reached so the printer skips it
     internal IReadOnlyList<WizardRow> RecordRows() =>
         //a crash keeps the last frame, only a real leave or a finished walk prints a record
-        _summaryOutcome is not null || _left ? RecordFacts() : [];
+        _summaryOutcome is not null || _left || _finished ? RecordFacts() : [];
 
     //a leave records with a null outcome, CheckRow says not-run. empty before the write pause, a walk with nothing on disk has no record
     private IReadOnlyList<WizardRow> RecordFacts() =>
@@ -4915,6 +4929,29 @@ internal sealed class SetupFlow(ISetupProbes probes)
         _addRoad
             ? new WizardRow($"nothing added {Glyphs.Dot} gatto model whenever you're ready", Highlight: ["gatto model"])
             : LeaveStep;
+
+    //gatto model's closing is one line under the header, like its nothing-added leave. null on setup, before the writes, and on a throw
+    internal WizardRow? AddedClosing =>
+        _addRoad && _applied && (_finished || _left) && _modelId is { } id
+            ? new WizardRow($"{id} added{AddedHow} {Glyphs.Dot} "
+                + (_proveFailed is not null && _summaryOutcome is null
+                    ? "gatto doctor checks everything and says what to fix"
+                    : $"run gatto, then /model {id} to use it"),
+                Highlight: ["gatto doctor", "gatto", $"/model {id}"])
+            : null;
+
+    //what the user did with the check, read from the deed. a server that failed after the check outranks its verdict, the tail sends the user to doctor
+    private string AddedHow =>
+        _proveFailed is { StartFailed: true } && _summaryOutcome is null ? ", but its server didn't start"
+        : _proveFailed is not null && _summaryOutcome is null ? ", but it didn't answer"
+        : _check is { Outcome: AuditionOutcome.Passed } ? " and checked"
+        : _check is { Outcome: AuditionOutcome.Failed } ? ", it struggled on the check and you kept it"
+        : _check is { Outcome: AuditionOutcome.CouldNotRun } ? ", the check couldn't run"
+        : _checkStopped ? ", you stopped the check"
+        : _summaryOutcome?.ServedByAnother is { } holding ? $", not checked while {holding} holds the server"
+        : _proved is not null ? ", it answers and the five tasks were skipped"
+        : _left ? ", you left before checking it"
+        : ", not checked";
 
     //the flow picks the closing row, null on the road whose tail is a live countdown, it writes the tail itself
     internal WizardRow? RecordClosing =>

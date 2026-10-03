@@ -12,8 +12,7 @@ internal sealed class LoadingLine(bool rich, Action<string> live, Action<string>
     {
         if (rich)
         {
-            var (_, painted) = LoadingRow.Render(elapsed, modelId, size, glyphs, theme, _frame++);
-            live(painted);
+            live(LoadingRow.Render(elapsed, modelId, size, glyphs, theme, _frame++));
             return;
         }
 

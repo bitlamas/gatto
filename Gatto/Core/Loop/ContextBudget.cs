@@ -39,6 +39,18 @@ public static class ContextBudget
         return (int)(chars / CharsPerToken);
     }
 
+    //the json each tool definition adds around its name, description and schema, an approximation of the request body
+    internal const int ToolEnvelopeChars = 60;
+
+    //the tool definitions every request carries, by the same chars/4 rule. left out, the measured ratio reads this fixed cost as message density
+    public static int EstimateTools(IReadOnlyList<ToolSpec> tools)
+    {
+        long chars = 0;
+        foreach (var t in tools)
+            chars += t.Name.Length + t.Description.Length + t.ParametersSchema.GetRawText().Length + ToolEnvelopeChars;
+        return (int)(chars / CharsPerToken);
+    }
+
     //estimated tokens added since the last server reading, scaled by the ratio, and 0 when there is no reading yet
     public static int GrowthSinceLastRequest(Conversation convo, ContextUsageState usage) =>
         usage.LastMessageCount is int from && from < convo.Messages.Count
@@ -80,39 +92,63 @@ public static class ContextBudget
         return working ?? messages;
     }
 
-    //elides the oldest tool results one at a time once the estimate passes 90%, and nothing at or after protectFromIndex is touched
-    public static (IReadOnlyList<ChatMessage> Messages, int ElidedCount, bool StillOver) Apply(
-        IReadOnlyList<ChatMessage> messages, int? budgetTokens, int protectFromIndex)
+    //elides the oldest results past 90% by the server's ratio, never from protectFromIndex, always up to elidedThrough
+    public static (IReadOnlyList<ChatMessage> Messages, int ElidedCount, bool StillOver, int ElidedThrough) Apply(
+        IReadOnlyList<ChatMessage> messages, int? budgetTokens, int protectFromIndex, double ratio = 1.0, int elidedThrough = 0,
+        int overheadTokens = 0)
     {
         if (budgetTokens is not int budget || budget <= 0)
-            return (messages, 0, false);
+            return (messages, 0, false, elidedThrough);
 
+        double Counted(IReadOnlyList<ChatMessage> m) => Counts(m, overheadTokens, ratio);
         var elideAt = budget * ElideAtFraction;
-        if (Estimate(messages) < elideAt)
-            return (messages, 0, false);   //under the threshold, so nothing is elided and StillOver is false
+        if (elidedThrough <= 0 && Counted(messages) < elideAt)
+            return (messages, 0, false, 0);   //under the threshold with nothing trimmed before, so nothing is elided and StillOver is false
 
         //a fresh array, records are immutable so the caller's list is never mutated, this stays the request copy only
         var working = messages.ToArray();
         var elided = 0;
+        var through = elidedThrough;
         var limit = Math.Min(protectFromIndex, working.Length);
 
-        for (var i = 0; i < limit && Estimate(working) >= elideAt; i++)
+        for (var i = 0; i < limit && (i < elidedThrough || Counted(working) >= elideAt); i++)
         {
             if (working[i].Role != "tool") continue;
             var originalChars = working[i].Content?.Length ?? 0;
-            var stub = Stub(ToolNameFor(working, i), originalChars);
+            var stub = Cut(working[i].Content ?? "", ToolNameFor(working, i) + " result", " — re-run if needed");
             //skip a result that isn't longer than its stub or below MinElidableChars, eliding either would grow the request or rewrite the prefix for nothing
             if (originalChars <= stub.Length || originalChars < MinElidableChars) continue;
             working[i] = working[i] with { Content = stub };
             elided++;
+            through = Math.Max(through, i + 1);
         }
 
-        var stillOver = Estimate(working) > budget;   //compared with the full budget, above the 90% elision threshold
-        return (elided == 0 ? messages : working, elided, stillOver);
+        var stillOver = Counted(working) > budget;   //compared with the full budget, above the 90% elision threshold
+        return (elided == 0 ? messages : working, elided, stillOver, through);
     }
 
-    private static string Stub(string toolName, int originalChars) =>
-        $"[elided: {toolName} result, {originalChars} chars — re-run if needed]";
+    //what a request of these messages costs the server, the fixed tool definitions included, in the server's tokens
+    public static double Counts(IReadOnlyList<ChatMessage> messages, int overheadTokens, double ratio) =>
+        (Estimate(messages) + overheadTokens) * ratio;
+
+    //a result this long keeps its head when cut, a shorter one becomes a bare stub since its head would cost about what the cut saves
+    internal const int HeadKeepChars = 300;
+    private const int HeadFromChars = 4 * HeadKeepChars;
+
+    //the stub for a cut result, with its head above the marker when the result is long, so the first line of a file is never lost
+    internal static string Cut(string content, string what, string after)
+    {
+        if (content.Length < HeadFromChars) return $"[elided: {what}, {content.Length} chars{after}]";
+        var head = Head(content);
+        return head + "\n" + $"[elided: {what}, {content.Length} chars, the first {head.Length} shown above{after}]";
+    }
+
+    //the first HeadKeepChars of a result, ending on a whole line when one fits
+    private static string Head(string content)
+    {
+        var nl = content.LastIndexOf('\n', HeadKeepChars - 1);
+        return nl > 0 ? content[..nl].TrimEnd('\r') : content[..Tools.ToolArgs.SafeCut(content, HeadKeepChars)];
+    }
 
     //looks back for the assistant call with this id, and falls back to the literal tool
     private static string ToolNameFor(IReadOnlyList<ChatMessage> messages, int toolIndex)

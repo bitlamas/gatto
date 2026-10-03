@@ -46,7 +46,7 @@ public class FooterTests
     [Fact]
     public void A_MARK_legend_drops_entirely_below_the_floor()
     {
-        //ten cells of glyphs and an ellipsis explain nothing, so it goes
+        //a mark legend that does not fit drops whole, the row stays the keys row alone
         var row = Footer.Compose(70, Shelf, new Legend(LegendKind.Marks, Marks));
         Assert.Equal(Footer.Compose(70, Shelf), row);
     }

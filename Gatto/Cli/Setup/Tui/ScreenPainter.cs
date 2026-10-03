@@ -61,9 +61,9 @@ internal static class ScreenPainter
         string command = DefaultCommand)
         => Paint(s, width, version, build, glyphs, out _, command);
 
-    //the cursor goes on the door's own caret cell, measured off that string. the row is an offset from the end, since the fit drops blanks above the door
     internal const string DefaultCommand = "gatto setup";   //the wizard's own name when no caller names the command, so there is one entry literal
 
+    //the cursor goes on the door's own caret cell, measured off that string. the row is an offset from the end, since the fit drops blanks above the door
     public static IReadOnlyList<PaintedRow> Paint(
         Screen s, int width, string version, string build, GlyphSet? glyphs, out CaretSpot? caret,
         string command = DefaultCommand)
@@ -197,6 +197,4 @@ internal static class ScreenPainter
             - Gatto.Terminal.UnicodeWidth.Of(left) - Gatto.Terminal.UnicodeWidth.Of(right));
         return left + new string(' ', gap) + right;
     }
-
-    //clamp by visible cells, run by run, so a long row can't wrap at the terminal and the ink survives the cut
 }

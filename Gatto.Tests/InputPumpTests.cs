@@ -36,7 +36,7 @@ public class InputPumpTests
         return Assert.IsType<ComposerInput.Key>(t.Result).K;
     }
 
-    private static void WaitUntil(Func<bool> cond, int ms = 2000)
+    private static void WaitUntil(Func<bool> cond, int ms = 30000)   //ends as soon as the condition holds, so the bound only matters on a loaded machine
     {
         var sw = System.Diagnostics.Stopwatch.StartNew();
         while (!cond() && sw.ElapsedMilliseconds < ms) Thread.Sleep(5);

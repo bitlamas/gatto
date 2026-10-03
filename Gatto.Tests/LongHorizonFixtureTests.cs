@@ -39,8 +39,9 @@ public sealed class LongHorizonFixtureTests
         client.EnqueueTurn(new StreamEvent.TextDelta("done"), new StreamEvent.Finished("stop", usage));
     }
 
+    //a long cut result keeps its head above the marker, so the marker can sit after the first line
     private static bool IsStub(ChatMessage m) =>
-        m.Role == "tool" && m.Content is { } c && c.StartsWith("[elided:", StringComparison.Ordinal);
+        m.Role == "tool" && m.Content is { } c && c.Contains("[elided:", StringComparison.Ordinal);
 
     private static HashSet<int> StubIndices(ChatRequest r) =>
         r.Messages.Select((m, i) => (m, i)).Where(t => IsStub(t.m)).Select(t => t.i).ToHashSet();

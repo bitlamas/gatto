@@ -29,8 +29,8 @@ public class ShelfColumnAlignmentTests
     private static IReadOnlyList<string> DataRows() =>
         [.. Shelf.Table(Widths(), 0, focused: true, glyphs: GlyphSet.Unicode).Skip(1).Select(r => r.Text)];
 
-    //the approved mocks draw this drift, so padding the size is a design change rather than a fix
-    [Fact(Skip = "the approved mocks draw this drift; padding the size repaints eight frames, filed")]
+    //the size is padded to the widest one shown, so the quant token starts in one column however wide a size grows
+    [Fact]
     public void EVERY_ROW_STARTS_ITS_QUANT_IN_THE_SAME_COLUMN()
     {
         var offsets = DataRows().Select(t => t.IndexOf("Q4_K_M", StringComparison.Ordinal)).ToList();

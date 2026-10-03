@@ -15,8 +15,8 @@
      model               params  size · quant    kind     │ gemma-4-26B-A4B-it                      
   1. gemma-4-31B-it       30.7B  18.3 GB Q4_K_M  dense    │ by unsloth                              
 ❯ 2. gemma-4-26B-A4B-it   25.2B  16.9 GB Q4_K_M  MoE A4B  │                                         
-  3. gemma-4-12b-it       11.9B  7.1 GB Q4_K_M   dense    │ context up to 262,144                   
-  4. gemma-4-E4B-it        7.5B  5.0 GB Q4_K_M   dense    │ ◈ vision · can see images               
+  3. gemma-4-12b-it       11.9B  7.1 GB  Q4_K_M  dense    │ context up to 262,144                   
+  4. gemma-4-E4B-it        7.5B  5.0 GB  Q4_K_M  dense    │ ◈ vision · can see images               
                                                           │ reads 4B params/token                   
                                                           │ arch      gemma4                        
                                                           │ ✗ not measured by gatto yet             

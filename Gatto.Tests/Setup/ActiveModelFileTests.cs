@@ -26,6 +26,23 @@ public class ActiveModelFileTests
         return modelId!;
     }
 
+    //the source the wizard recorded for a fetched file is the one the profile carries
+    [Fact]
+    public void THE_APPLY_WRITES_THE_FETCHED_MODELS_SOURCE_INTO_ITS_PROFILE()
+    {
+        GattoHome.EnsureInitialized(_home);
+        var gguf = Path.Combine(_home, "tiny.gguf");
+        File.Copy(Fixture("tiny.gguf"), gguf);
+        var source = new Gatto.Roles.ModelSource("org/tiny-GGUF", "tiny.gguf");
+
+        Assert.Null(WriteSetApply.Apply(
+            _home,
+            new WriteSet { CreateModel = new WriteSet.Model(gguf, Port: 1235, Context: 8192, Source: source) },
+            out var modelId));
+
+        Assert.Equal(source, Gatto.Roles.Model.Load(Path.Combine(_home, "models"), modelId!).Profile.Source);
+    }
+
     [Fact]
     public void IT_REPORTS_THE_ACTIVE_FILES_PATH_AND_ITS_SIZE_ON_DISK()
     {

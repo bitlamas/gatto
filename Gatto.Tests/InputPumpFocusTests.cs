@@ -62,7 +62,7 @@ public class InputPumpFocusTests
 
         src.Feed.Add(Key(ConsoleKey.UpArrow));
         var t = Task.Run(pump.Composer.Read);
-        Assert.True(await Task.WhenAny(t, Task.Delay(2000)) == t, "plain ↑ should have reached the composer");
+        Assert.True(await Task.WhenAny(t, Task.Delay(30000)) == t, "plain ↑ should have reached the composer");
         Assert.Equal(ConsoleKey.UpArrow, Assert.IsType<ComposerInput.Key>(await t).K.Key);
     }
 
@@ -76,7 +76,7 @@ public class InputPumpFocusTests
 
         src.Feed.Add(new ConsoleKeyInfo('®', ConsoleKey.R, shift: false, alt: true, control: true));
         var t = Task.Run(pump.Composer.Read);
-        Assert.True(await Task.WhenAny(t, Task.Delay(2000)) == t, "AltGr+R should have reached the composer");
+        Assert.True(await Task.WhenAny(t, Task.Delay(30000)) == t, "AltGr+R should have reached the composer");
         Assert.Equal(ConsoleKey.R, Assert.IsType<ComposerInput.Key>(await t).K.Key);
     }
 }

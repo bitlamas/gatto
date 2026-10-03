@@ -27,10 +27,12 @@ public class DoneRenderTests
     //the fixture fetches its model, since the frame says verified, and each parameter reaches one of the other frames
     internal static WizardProbes Machine(bool? consent, HardwareSnapshot? snapshot = null,
         bool fetchEngine = false, Gatto.Cli.InstallState install = Gatto.Cli.InstallState.Installed,
-        AuditionCheck? audition = null, bool block = false, string? heldBy = null)
+        AuditionCheck? audition = null, bool block = false, string? heldBy = null,
+        ProveOutcome? prove = null)
     {
         var probes = new WizardProbes
         {
+            Prove = prove ?? new WizardProbes().Prove,
             Snapshot = snapshot ?? new WizardProbes().Snapshot,
             //an engine on the machine sends the run down the found path, so the fetch path must have none
             Llama = fetchEngine ? null : @"C:\llama\llama-b11071-bin-win-vulkan-x64\llama-server.exe",
@@ -85,10 +87,11 @@ public class DoneRenderTests
         bool? consent, HardwareSnapshot? snapshot = null, bool fetchEngine = false,
         Gatto.Cli.InstallState install = Gatto.Cli.InstallState.Installed,
         AuditionCheck? audition = null, bool block = false, string[]? check = null,
-        string? heldBy = null, string? installAnswer = null, bool inSession = false)
+        string? heldBy = null, string? installAnswer = null, bool inSession = false,
+        ProveOutcome? prove = null)
     {
         var flow = new SetupFlow(
-            Machine(consent, snapshot, fetchEngine, install, audition, block, heldBy));
+            Machine(consent, snapshot, fetchEngine, install, audition, block, heldBy, prove));
         //the in-session entry skips the engine segment, so fetchEngine is not reachable from here. the model fetch that sets verified is inside the model segment.
         if (inSession)
         {

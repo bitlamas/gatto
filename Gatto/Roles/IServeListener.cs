@@ -48,6 +48,10 @@ public interface IServeListener
     //status found a record whose pid is not a running llama-server
     void StaleOnStatus(int pid, string model);
 
+    //status found the recorded server gone: the code when a foreground start saw it end, and the log tail only for a detached run, which owns serve.log
+    void DiedOnStatus(string model, int pid, int? exitCode, string? exitedAt, IReadOnlyList<string>? tail) =>
+        StaleOnStatus(pid, model);
+
     //status found the server this home owns, with the answer to the health probe
     void Status(string model, int port, int pid, bool healthy);
 

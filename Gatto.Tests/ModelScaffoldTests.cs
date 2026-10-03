@@ -38,6 +38,16 @@ public class ModelScaffoldTests : IDisposable
             Model.Load(_dir, id).Profile.ExtraArgs);
     }
 
+    //a pinned model ends its arguments on the device llama-server named, so the server runs where the fit counted
+    [Fact]
+    public void A_PINNED_MODEL_ENDS_ITS_ARGUMENTS_ON_THE_DEVICE()
+    {
+        var id = ModelScaffold.Create(_dir, Fixture("tiny.gguf"), port: 1235, device: "Vulkan0");
+
+        Assert.Equal(["-np", "1", "-fa", "on", "-lm", "none", "--jinja", "--no-context-shift", "--cache-reuse", "0", "-dev", "Vulkan0"],
+            Model.Load(_dir, id).Profile.ExtraArgs);
+    }
+
     [Fact]
     public void Create_OMITS_THE_KEY_when_no_override_is_given()
     {

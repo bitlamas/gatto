@@ -39,10 +39,12 @@ internal static class WizardSession
         }
     }
 
-    //what a wizard run leaves in scrollback. the record when it has facts, the leave block when it left with nothing, the last frame on a throw
+    //what a run leaves in scrollback: gatto model's line, setup's record, the leave block, or the last frame on a throw
     internal static IReadOnlyList<string> Scrollback(SetupFlow flow, Func<IReadOnlyList<string>> lastPainted,
         int width, GlyphSet glyphs, VersionStamp stamp, DateOnly on, string command, Theme? theme) =>
-        flow.RecordRows() is { Count: > 0 } facts
+        flow.AddedClosing is { } added
+            ? Tui.Epilogue.LeaveBlock(glyphs, stamp.Version, stamp.Build, command, added, width, stamp.Dev, theme)
+        : flow.RecordRows() is { Count: > 0 } facts
             ? Tui.Epilogue.Lines(facts, stamp.Version, stamp.Build, on, flow.RecordClosing, width, glyphs,
                 flow.LeftAt, command, stamp.Dev, theme)
             : flow.Left

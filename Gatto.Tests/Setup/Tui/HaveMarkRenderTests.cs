@@ -135,8 +135,8 @@ public class HaveMarkRenderTests
                     new ModelFacts(Structure: "dense", LocalPath: @"C:\weights\c\", FilesHere: "1 file", Have: HaveMark.None)],
             Source: ShelfSource.Local);
         var pairs = string.Join("\n", Shelf.Table(v, 0, focused: false, glyphs: GlyphSet.Unicode).Select(r => r.Text));
-        Assert.Contains("23.8 GB Q5_K_S", pairs, StringComparison.Ordinal);
-        Assert.Contains("95.4 GB Q4_K_XL", pairs, StringComparison.Ordinal);
+        Assert.Contains("23.8 GB  Q5_K_S", pairs, StringComparison.Ordinal);
+        Assert.Contains("95.4 GB  Q4_K_XL", pairs, StringComparison.Ordinal);
         Assert.Contains("558.8 GB Q4_K_XL", pairs, StringComparison.Ordinal);
         var rule = GlyphSet.Unicode.Box.Vertical;
         var left = Shelf.LeftWidth(v, g: GlyphSet.Unicode);

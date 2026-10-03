@@ -172,7 +172,9 @@ public sealed class Repl(
     //the word the /model legend gives the dot, weights loaded on local rows and current on a cloud list where nothing loads
     string modelMarkLegend = "weights loaded",
     //said by bare /model when the endpoint lists no models, so the picker never shows rows that endpoint cannot take
-    string? noModelList = null)
+    string? noModelList = null,
+    //the line naming the served llama-server that stopped running, read after a lost connection. null when gatto serves nothing for this session
+    Func<string?>? serverGone = null)
 {
     //the prompters' bridge to the chrome, armed when the painter and renderer come up, cleared at teardown, so a prompt renders inline until then
     private readonly ChromeHandle? _chrome = chrome;
@@ -429,7 +431,6 @@ public sealed class Repl(
     internal async Task<CompactionResult?> AutoCompactAsync(
         CompactionReason reason, string currentUserPrompt, ITurnObserver observer, CancellationToken ct)
     {
-        var oldPath = sessions?.CurrentPath;                 //read before StartNew, which clears the path
         SetReasoningPassthrough(observer, true);             //the dimmed summary is not reasoning
         string? summary;
         var compactor = new Compactor(client, modelName, loop.RequestShape);
@@ -442,35 +443,13 @@ public sealed class Repl(
         _lastAutoCompactFailure = compactor.LastFailure;     //the loop's line names it when the summary is null
         if (summary is null) return null;                    //nothing is touched, the summarizer call was the only fallible work
 
-        //strip the memory section here, a mid-turn compaction never banks and its scaffolding must stay out of the rebuilt prefix
-        summary = MemoryPiggyback.Extract(summary).StrippedSummary;
-
         //all fallible work done, adopt atomically from here
-        sessions?.StartNew();                                //later saves open a new file, so the old transcript is left alone
-        //the compact block must stay the final append, --continue slices from the last ContextMarker to the end when it grafts a session
-        var composed = recomposeSystem();                    //a fresh read of the context files on disk, so the prompt matches what is there now
-        var systemText = composed.Text + "\n\n" + Compactor.BuildContext(summary, oldPath ?? "(unsaved session)", lastExchange: null);
-        _lastCompactSummary = summary;                        //the rich loop shows it as the new session's lead, as after /compact
+        var (result, stripped) = Compactor.RebuildMidTurn(summary, convo, currentUserPrompt, observer, sessions, recomposeSystem, _glyphs.Dot);
+        _lastCompactSummary = stripped;                       //the rich loop shows it as the new session's lead, as after /compact
         _offered = false;                                     //a fresh session may cross 85% again
         resetGrounding?.Invoke();                             //a fresh session has no checked restatement, so grounding must be re-armed
         _usageState.Clear();                                  //cleared so a re-fire needs fresh over-threshold evidence
-        //the continuation keeps this turn's images, they are the material of the task being continued rather than history that becomes text
-        var carried = convo.Messages.LastOrDefault(m => m.Role == "user")?.Images;
-        //the dropped count is the total minus what the continuation kept, so the line reports what actually happened
-        var totalImages = convo.Messages.Sum(m => m.Images?.Count ?? 0);
-        var carriedCount = carried?.Count ?? 0;
-        var droppedImages = totalImages - carriedCount;
-        if (droppedImages > 0 || carriedCount > 0)
-            observer.OnWarning(string.Join($" {_glyphs.Dot} ", new[]
-            {
-                droppedImages > 0 ? $"{droppedImages} image{(droppedImages == 1 ? "" : "s")} dropped" : null,
-                carriedCount > 0 ? $"{carriedCount} carried forward" : null,
-            }.Where(x => x is not null)));
-        var messages = new[]
-        {
-            new ChatMessage("user", Compactor.BuildContinuationPrompt(currentUserPrompt), Images: carried),
-        };
-        return new CompactionResult(systemText, messages, composed.Baseline);    //no session_summary hook fires for a mid-turn compaction, the user did not choose this boundary
+        return result;
     }
 
     //adapts AutoCompactAsync to the ICompactionHandler seam, nested so it can reach the enclosing Repl's fields
@@ -745,8 +724,6 @@ public sealed class Repl(
     private static string FormatKindAndText(PermissionKind kind, string text) =>
         PermissionKindLabel(kind).PadRight(6) + text;
 
-    //every grant numbered off the same ordering RevokeAt consumes, plus the wild row at the end
-
     //the grants as three columns with no headers, numbered off the same ordering RevokeAt consumes and padded to the full count
     internal static TableSpec PermissionsSpec(PermissionStore store, bool all)
     {
@@ -767,6 +744,7 @@ public sealed class Repl(
             rows);
     }
 
+    //every grant numbered off the same ordering RevokeAt consumes, plus the wild row at the end
     private static string RenderPermissionsList(PermissionStore store, bool all = false,
         Gatto.Terminal.GlyphSet? glyphs = null)
     {
@@ -1082,7 +1060,7 @@ public sealed class Repl(
     public static async Task RunTurnGuardedAsync(
         AgentLoop loop, Conversation convo, string input, ITurnObserver renderer,
         SessionStore? sessions, CancellationToken ct, TranscriptModel? model = null,
-        IReadOnlyList<ImageRef>? images = null)
+        IReadOnlyList<ImageRef>? images = null, Func<string?>? serverGone = null)
     {
         var mark = convo.Count;
         //armed for this turn only. the loop writes the tool request before the tool runs, so a hung tool leaves that call in the session file
@@ -1098,7 +1076,8 @@ public sealed class Repl(
                 convo.TruncateTo(mark);   //only the user message is dangling, safe to drop
             else
                 SaveSession(sessions, model, convo);   //these tool exchanges already ran, keep them in the session file
-            renderer.OnWarning(ex.Message);
+            //a recorded server that died names the cause and both commands, so its line replaces the client's error instead of repeating the start
+            renderer.OnWarning(serverGone?.Invoke() ?? ex.Message);
         }
         catch (OperationCanceledException)
         {
@@ -1248,7 +1227,7 @@ public sealed class Repl(
 
     public async Task<int> RunAsync(CancellationToken appCt)
     {
-        //the one arming site, so -p and run_agent stay elision-only. a project file can only veto here, and whoever edits this line builds the behaviour driver
+        //a session's arming site, -p arms its own and run_agent only elides. a project file can only veto, an edit builds the behaviour driver
         var armedAt = ArmedAutoCompactAt(autoCompact, cwd);
         loop.EnableAutoCompact(armedAt is null ? null : new AutoCompactionHandler(this), _usageState, armedAt);
 
@@ -1424,7 +1403,7 @@ public sealed class Repl(
             renderer.BeginTurn();   //reset the hide-reasoning state, a Ctrl+C mid-reasoning must not leave it set
             try
             {
-                await RunTurnGuardedAsync(loop, convo, line, renderer, sessions, turnCts.Token);
+                await RunTurnGuardedAsync(loop, convo, line, renderer, sessions, turnCts.Token, serverGone: serverGone);
             }
             finally
             {
@@ -2575,7 +2554,7 @@ public sealed class Repl(
         deafWatch?.Arm();
         try
         {
-            await RunTurnGuardedAsync(loop, convo, input, s.Renderer, sessions, turnCt, s.Painter.Model, attach.Images);
+            await RunTurnGuardedAsync(loop, convo, input, s.Renderer, sessions, turnCt, s.Painter.Model, attach.Images, serverGone);
             turnCancelled = turnCt.IsCancellationRequested;
         }
         finally

@@ -832,13 +832,15 @@ public sealed class SelectPrompt(   //single-select, multi-select and the free-t
                 var styledLabel = codeText is null
                     ? label : labelText + theme.Chip(codeText) + afterText;
 
-                //budget the label against the width minus the chrome and the tail, so Fit never cuts the marks. the cut is ANSI-aware, so a painted chip span survives it
+                //budget the label against the width less chrome, suffix and tail, so Fit never cuts the marks. the cut is ANSI-aware
                 var tailRuns = opt?.Tail ?? [];
                 var tailCells = 0;
                 foreach (var run in tailRuns) tailCells += UnicodeWidth.Of(run.Text);
-                if (tailCells > 0 && w > 0)
+                //the recommended row's suffix rides after the label too, so its cells leave the label's budget before it is appended
+                var suffixCells = i == recommendedRow ? UnicodeWidth.Of(SuffixFor(options[recommended])) : 0;
+                if ((tailCells > 0 || suffixCells > 0) && w > 0)
                 {
-                    var room = Math.Max(0, w - UnicodeWidth.Of(caret + number + dot + box) - tailCells);
+                    var room = Math.Max(0, w - UnicodeWidth.Of(caret + number + dot + box) - tailCells - suffixCells);
                     label = TermText.TruncateCells(label, room, glyphs: _glyphs);
                     styledLabel = TermText.TruncateCells(styledLabel, room, glyphs: _glyphs);
                 }

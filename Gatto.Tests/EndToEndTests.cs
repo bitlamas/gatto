@@ -182,6 +182,76 @@ public class EndToEndTests : IDisposable
         Assert.Contains("the file says", stdout.ToString());
     }
 
+    private const string OverflowBody =
+        """{"error":{"code":400,"message":"request (9000 tokens) exceeds the available context size (8192 tokens), try increasing it","type":"exceed_context_size_error","n_prompt_tokens":9000,"n_ctx":8192}}""";
+
+    //a headless run with auto_compact set survives a 400 overflow: it summarizes, starts a new session file, resends, and stdout holds only the answer
+    [Fact]
+    public async Task A_one_shot_run_compacts_on_an_overflow_and_answers()
+    {
+        await using var server = new FakeOpenAiServer();
+        Environment.SetEnvironmentVariable("GATTO_HOME", _home);
+        Environment.CurrentDirectory = _cwd;
+        File.WriteAllText(Path.Combine(_cwd, "hello.txt"), "file content here");
+        File.WriteAllText(Path.Combine(_home, "gatto.json"),
+            $$$"""{"endpoints":{"local":{"base_url":"{{{server.BaseUrl}}}"}},"default_endpoint":"local","default_model":"test-m","auto_compact":0.9}""");
+        server.Enqueue(new FakeResponse(Frames: new[]
+        {
+            ToolCallChunk("c1", "read_file", new { path = "hello.txt" }),
+            Chunk("{}", finish: "tool_calls"),
+            "data: [DONE]\n\n",
+        }));
+        server.Enqueue(new FakeResponse(Status: 400, Body: OverflowBody));
+        server.Enqueue(new FakeResponse(Frames: new[]
+        {
+            Chunk("{\"content\":\"Task / goal: answer the question. Immediate next step: answer it.\"}"),
+            Chunk("{}", finish: "stop"),
+            "data: [DONE]\n\n",
+        }));
+        server.Enqueue(new FakeResponse(Frames: new[]
+        {
+            Chunk("{\"content\":\"the answer is 42\"}"),
+            Chunk("{}", finish: "stop"),
+            "data: [DONE]\n\n",
+        }));
+
+        var stdout = new StringWriter();
+        var stderr = new StringWriter();
+        Console.SetOut(stdout);
+        Console.SetError(stderr);
+        var exit = await GattoApp.RunAsync(new[] { "-p", "what is the answer?" });
+
+        Assert.Equal(0, exit);
+        Assert.Contains("the answer is 42", stdout.ToString());
+        Assert.DoesNotContain("Immediate next step", stdout.ToString());
+        Assert.Contains("compacting and retrying", stderr.ToString());
+        Assert.Equal(4, server.RequestBodies.Count);
+        var resent = server.RequestBodies[3].GetProperty("messages").EnumerateArray().First().GetProperty("content").GetString();
+        Assert.Contains(Gatto.Core.Loop.Compactor.ContextMarker, resent);
+        Assert.Equal(2, Directory.GetFiles(Path.Combine(_home, "sessions"), "*.jsonl").Count(f => !f.EndsWith(".ledger.jsonl")));
+    }
+
+    //auto_compact false still ends the run on an overflow, the setting that turns a session's compaction off turns this one off too
+    [Fact]
+    public async Task A_one_shot_run_with_auto_compact_off_ends_on_an_overflow()
+    {
+        await using var server = new FakeOpenAiServer();
+        Environment.SetEnvironmentVariable("GATTO_HOME", _home);
+        Environment.CurrentDirectory = _cwd;
+        File.WriteAllText(Path.Combine(_home, "gatto.json"),
+            $$$"""{"endpoints":{"local":{"base_url":"{{{server.BaseUrl}}}"}},"default_endpoint":"local","default_model":"test-m","auto_compact":false}""");
+        server.Enqueue(new FakeResponse(Status: 400, Body: OverflowBody));
+
+        var stderr = new StringWriter();
+        Console.SetOut(new StringWriter());
+        Console.SetError(stderr);
+        var exit = await GattoApp.RunAsync(new[] { "-p", "what is the answer?" });
+
+        Assert.Equal(1, exit);
+        Assert.Single(server.RequestBodies);
+        Assert.Contains("exceeds the available context size", stderr.ToString());
+    }
+
     [Fact]
     public async Task Continue_flag_reloads_prior_turn_into_the_next_request()
     {

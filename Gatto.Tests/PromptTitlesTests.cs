@@ -103,6 +103,18 @@ public class PromptTitlesTests
         Assert.Equal("Do you want to edit a.txt?", question);
     }
 
+    //a count of 1 gives the singular noun, so the suffix must still come off a one-line write and a 1-byte edit
+    [Theory]
+    [InlineData("write_file", @"C:\proj\sub\a.txt (+1 line)", @"Write new file sub\a.txt", "Do you want to write new file a.txt?")]
+    [InlineData("edit_file", @"C:\proj\sub\a.txt (1 byte)", @"Edit file sub\a.txt", "Do you want to edit a.txt?")]
+    public void A_singular_sizing_suffix_stays_out_of_the_title(string tool, string summary, string wantTitle, string wantQuestion)
+    {
+        var (title, question, _) = For(new PermissionRequest(tool, summary, @"C:\proj"));
+
+        Assert.Equal(wantTitle, title);
+        Assert.Equal(wantQuestion, question);
+    }
+
     //strip the sizing suffix only when the text really ends with one, so a plain path keeps its title
     [Fact]
     public void WriteFile_NoSizingSuffix_TitleIsStillJustThePath()

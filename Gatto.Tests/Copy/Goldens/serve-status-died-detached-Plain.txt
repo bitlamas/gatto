@@ -1,2 +1,5 @@
 not serving · qwen3.6-35b-a3b (pid 2844) stopped running, exit code unknown
+last lines of serve.log
+  srv  update_slots: all slots are idle
+  ggml_vulkan: Device lost
 start it again with gatto serve start qwen3.6-35b-a3b.

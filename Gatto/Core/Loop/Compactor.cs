@@ -1,6 +1,7 @@
 using System.Text;
 using System.Text.Json;
 using Gatto.Core.Client;
+using Gatto.Core.Home;
 using Gatto.Core.Memory;
 using System.Linq;
 
@@ -79,9 +80,10 @@ public sealed class Compactor(IChatClient client, string model, RequestShape? sh
         var prompt = (midTurn ? TemplatePrompt + MidTurnAddendum : TemplatePrompt) + (doNotRepeat ?? "");
         LastFailure = null;
 
+        var toolTokens = (int)(ContextBudget.EstimateTools(shape?.Tools ?? []) * ratio);   //the whole attempt carries the tool definitions, the shortened copy goes without them
         //the loop's last request as sent plus what came since is the prefix the server holds, so it goes whole while the summary has room beside it
         if (Resent(convo.Messages) is { } whole
-            && (windowTokens is not int fit || fit <= 0 || Measure(whole, ratio, prompt.Length) + SummaryRoomTokens <= fit))
+            && (windowTokens is not int fit || fit <= 0 || Measure(whole, ratio, prompt.Length) + toolTokens + SummaryRoomTokens <= fit))
         {
             var (wholeSummary, wholeOverflowed, wholeTruncated, wholeRejected) = await TryStreamAsync(new List<ChatMessage>(whole) { new("user", prompt) }, observer, ct, withTools: true);
             var retry = wholeRejected || (windowTokens is int && (wholeOverflowed || wholeTruncated));
@@ -227,6 +229,35 @@ public sealed class Compactor(IChatClient client, string model, RequestShape? sh
         return sb.ToString();
     }
 
+    //one rebuild for a session and -p, since --continue slices from its ContextMarker. the summary has succeeded
+    public static (CompactionResult Result, string Summary) RebuildMidTurn(
+        string summary, Conversation convo, string currentUserPrompt, ITurnObserver observer,
+        SessionStore? sessions, Func<ComposedSystem> recompose, string dot)
+    {
+        //strip the memory section here, a mid-turn compaction never banks and its scaffolding must stay out of the rebuilt prefix
+        summary = MemoryPiggyback.Extract(summary).StrippedSummary;
+        var oldPath = sessions?.CurrentPath;                 //read before StartNew, which clears the path
+        sessions?.StartNew();                                //later saves open a new file, so the old transcript is left alone
+        //the compact block must stay the final append, --continue slices from the last ContextMarker to the end when it grafts a session
+        var composed = recompose();                          //a fresh read of the context files on disk, so the prompt matches what is there now
+        var systemText = composed.Text + "\n\n" + BuildContext(summary, oldPath ?? "(unsaved session)", lastExchange: null);
+        //the continuation keeps this turn's images, they are the material of the task being continued rather than history that becomes text
+        var carried = convo.Messages.LastOrDefault(m => m.Role == "user")?.Images;
+        //the dropped count is the total minus what the continuation kept, so the line reports what actually happened
+        var totalImages = convo.Messages.Sum(m => m.Images?.Count ?? 0);
+        var carriedCount = carried?.Count ?? 0;
+        var droppedImages = totalImages - carriedCount;
+        if (droppedImages > 0 || carriedCount > 0)
+            observer.OnWarning(string.Join($" {dot} ", new[]
+            {
+                droppedImages > 0 ? $"{droppedImages} image{(droppedImages == 1 ? "" : "s")} dropped" : null,
+                carriedCount > 0 ? $"{carriedCount} carried forward" : null,
+            }.Where(x => x is not null)));
+        var messages = new[] { new ChatMessage("user", BuildContinuationPrompt(currentUserPrompt), Images: carried) };
+        //no session_summary hook fires for a mid-turn compaction, the user did not choose this boundary
+        return (new CompactionResult(systemText, messages, composed.Baseline), summary);
+    }
+
     internal const double FitsFraction = 0.85;   //at or below this fraction the shape is a no-op, so the prefix cache survives
     internal const double TargetFraction = 0.50; //half the window, the measure is rough with no local tokenizer
     internal const double HarshFraction = 0.25;  //the budget of the single retry after a summarize overflow
@@ -292,13 +323,13 @@ public sealed class Compactor(IChatClient client, string model, RequestShape? sh
         var target = windowTokens * TargetFraction;
         var working = new List<ChatMessage>(messages);
 
-        //pass 1: elide every tool result, oldest first
+        //pass 1: elide every tool result, oldest first, keeping its head so the summary can still name what a file began with
         for (var i = 0; i < working.Count && Measure(working, ratio, promptLen) > target; i++)
         {
             if (working[i].Role != "tool") continue;
-            var chars = working[i].Content?.Length ?? 0;
-            var stub = $"[elided: tool result, {chars} chars]";
-            if (chars > stub.Length) working[i] = working[i] with { Content = stub };
+            var content = working[i].Content ?? "";
+            var stub = ContextBudget.Cut(content, "tool result", "");
+            if (content.Length > stub.Length) working[i] = working[i] with { Content = stub };
         }
 
         //pass 1.5: shrink oversized tool-call arguments oldest first so a file body doesn't cost the whole turn

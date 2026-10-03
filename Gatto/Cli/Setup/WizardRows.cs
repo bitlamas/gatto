@@ -41,8 +41,12 @@ internal static class WizardRows
         if (lines.Count > 1 && string.IsNullOrWhiteSpace(lines[0].Text))
             lines.RemoveAt(0);
 
-        //restored last, after DeWidow, so a command still holding its placeholders stays atomic through the widow rule
-        return Spaced(margin > 0 ? DeWidow(lines, Math.Max(1, budget - UnicodeWidth.Of(hang))) : lines);
+        if (margin > 0) DeWidow(lines, Math.Max(1, budget - UnicodeWidth.Of(hang)));
+        //the widow rule can move a whole word and strand the separator on an edge, so the dot drops after it and before the placeholders return
+        DropEdgeSeparators(lines, glyphs ?? Gatto.Terminal.GlyphSet.Unicode);
+
+        //restored last, after the separator drop, so a command still holding its placeholders stays atomic through the widow rule
+        return Spaced(lines);
     }
 
     //a highlighted span goes onto a line whole, since accents are matched per line. a span with no space is atomic already, and a wider one is still hard-broken
@@ -59,6 +63,26 @@ internal static class WizardRows
     private static IReadOnlyList<(string Lead, string Text)> Spaced(
         IReadOnlyList<(string Lead, string Text)> lines) =>
         [.. lines.Select(l => (l.Lead, l.Text.Replace(Bound, ' ')))];
+
+    //a separator split by the break reads as a dot stranded on an edge, and the packed rule drops it there, so it goes with the space beside it
+    private static void DropEdgeSeparators(List<(string Lead, string Text)> lines,
+        Gatto.Terminal.GlyphSet g)
+    {
+        for (var i = 0; i < lines.Count; i++)
+        {
+            var (lead, text) = lines[i];
+            //the break can strand a space after the dot at the edge, and a highlight makes that space a placeholder, so both are trimmed
+            var open = text.TrimEnd(' ', Bound);
+            var start = text.TrimStart(' ', Bound);
+            //only a dot with its separator space beside it is one, since the ascii dot is also a full stop and opens a name like .gatto.json
+            if (open == g.Dot) text = "";
+            else if (open.EndsWith(g.Dot, StringComparison.Ordinal) && open[^(g.Dot.Length + 1)] is ' ' or Bound)
+                text = open[..^g.Dot.Length].TrimEnd(' ', Bound);
+            else if (start.StartsWith(g.Dot, StringComparison.Ordinal) && start.Length > g.Dot.Length && start[g.Dot.Length] is ' ' or Bound)
+                text = start[g.Dot.Length..].TrimStart(' ', Bound);
+            lines[i] = (lead, text);
+        }
+    }
 
     //figure space, one cell wide so the width sums hold. it survives TermText.Sanitize and never reaches the terminal, since Spaced puts it back
     private const char Bound = '\u2007';

@@ -489,6 +489,97 @@ public class DoctorTests : IDisposable
                 Assert.StartsWith("✓", l);
     }
 
+    //the roles line has the same fix hint, and it must carry the folder a user can open, not a placeholder
+    [Fact]
+    public async Task RolesCheck_BrokenRole_NamesTheRealDirectory_NoLeftBrace()
+    {
+        WriteGreenHome();
+        var rolesDir = Path.Combine(_home, "roles");
+        File.WriteAllText(Path.Combine(rolesDir, "broken.json"), "{ not json");
+
+        var output = new StringWriter();
+        var exit = await NewDoctor(HealthyClient()).RunAsync(_home, _cwd, output, CancellationToken.None);
+
+        Assert.Equal(1, exit);
+        var line = Line(output, "roles:");
+        Assert.Contains(rolesDir, line, StringComparison.Ordinal);
+        Assert.DoesNotContain("{", line, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task ExtensionsCheck_BrokenScript_NamesTheRealDirectory_NoLeftBrace()
+    {
+        //the line must carry the directory a user can open, not an uninterpolated placeholder
+        WriteGreenHome();
+        var extDir = Path.Combine(_home, "extensions");
+        Directory.CreateDirectory(extDir);
+        File.WriteAllText(Path.Combine(extDir, "broken.csx"), "this is not valid c#$$$");
+
+        var doctor = NewDoctor(HealthyClient());
+        var output = new StringWriter();
+
+        var exit = await doctor.RunAsync(_home, _cwd, output, CancellationToken.None);
+
+        Assert.Equal(1, exit);
+        var line = Line(output, "extensions:");
+        Assert.Contains(extDir, line, StringComparison.Ordinal);
+        Assert.DoesNotContain("{", line, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task ExtensionsCheck_OlderUnmodifiedShippedCopyThatFailsCompiling_PassesWithANote()
+    {
+        //an unmodified shipped copy of an earlier revision sits on disk until the next launch rewrites it, so its compile failure is not the user's to fix
+        WriteGreenHome();
+        var extDir = Path.Combine(_home, "extensions");
+        Directory.CreateDirectory(extDir);
+        var old = "this is not valid c#$$$";
+        File.WriteAllText(Path.Combine(extDir, "ask_user.csx"), old);
+        var historical = new HashSet<string>(StringComparer.Ordinal)
+        {
+            Gatto.Extensions.ShippedExtensions.VettedHashFor("extensions/ask_user.csx", old),
+        };
+
+        var doctor = new Doctor(HealthyClient(),
+            probeBinary: _ => new ProbeResult(ProbeShape.ClassicServer, "version: 10076 (fake)"),
+            shippedHistorical: historical);
+        var output = new StringWriter();
+
+        var exit = await doctor.RunAsync(_home, _cwd, output, CancellationToken.None);
+
+        Assert.Equal(0, exit);
+        var line = Line(output, "extensions:");
+        Assert.StartsWith("✓", line);
+        Assert.Contains("ask_user.csx is an older shipped copy, the next gatto launch updates it", line, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task ExtensionsCheck_FailingFileOutsideTheHistoricalSet_StillFailsTheCheck()
+    {
+        //a hash the set does not hold is a user copy, edited or not, and its compile failure fails the check as any other
+        WriteGreenHome();
+        var extDir = Path.Combine(_home, "extensions");
+        Directory.CreateDirectory(extDir);
+        File.WriteAllText(Path.Combine(extDir, "ask_user.csx"), "this is not valid c#$$$ edited by me");
+        var historical = new HashSet<string>(StringComparer.Ordinal)
+        {
+            Gatto.Extensions.ShippedExtensions.VettedHashFor("extensions/ask_user.csx", "some other old text"),
+        };
+
+        var doctor = new Doctor(HealthyClient(),
+            probeBinary: _ => new ProbeResult(ProbeShape.ClassicServer, "version: 10076 (fake)"),
+            shippedHistorical: historical);
+        var output = new StringWriter();
+
+        var exit = await doctor.RunAsync(_home, _cwd, output, CancellationToken.None);
+
+        Assert.Equal(1, exit);
+        var line = Line(output, "extensions:");
+        Assert.StartsWith("✗", line);
+        Assert.Contains("fix the listed extension script", line);
+        Assert.DoesNotContain("older shipped copy", line, StringComparison.Ordinal);
+    }
+
     [Fact]
     public async Task ExtensionsCheck_ValidScript_CountsAndStaysGreen()
     {

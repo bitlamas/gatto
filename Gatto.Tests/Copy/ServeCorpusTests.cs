@@ -144,6 +144,33 @@ public class ServeCorpusTests : IDisposable
                 .GetAwaiter().GetResult());
     }
 
+    //a foreground start saw its server end, so status names the code. the record holds no time, since a golden cannot hold a time zone
+    [Theory]
+    [InlineData(CorpusMode.Dark)]
+    [InlineData(CorpusMode.Plain)]
+    public void STATUS_WHEN_A_FOREGROUND_SERVER_DIED(CorpusMode mode)
+    {
+        File.WriteAllText(ServeJson,
+            $$"""{"pid":{{CorpusFacts.Pid}},"model":"{{CorpusFacts.ModelId}}","port":{{CorpusFacts.Port}},"started":"2026-09-15T12:00:00Z","log":false,"exited":-1073741819}""");
+        Check("serve-status-died-foreground", mode, w =>
+            Manager(_ => null).StatusAsync(w, CancellationToken.None)
+                .GetAwaiter().GetResult());
+    }
+
+    //a detached server died with nothing watching, so the code is unknown and its own log's last lines are shown
+    [Theory]
+    [InlineData(CorpusMode.Dark)]
+    [InlineData(CorpusMode.Plain)]
+    public void STATUS_WHEN_A_DETACHED_SERVER_DIED(CorpusMode mode)
+    {
+        File.WriteAllText(ServeJson,
+            $$"""{"pid":{{CorpusFacts.Pid}},"model":"{{CorpusFacts.ModelId}}","port":{{CorpusFacts.Port}},"started":"2026-09-15T12:00:00Z","log":true}""");
+        File.WriteAllText(Path.Combine(_home, "serve.log"), "srv  update_slots: all slots are idle\nggml_vulkan: Device lost\n");
+        Check("serve-status-died-detached", mode, w =>
+            Manager(_ => null).StatusAsync(w, CancellationToken.None)
+                .GetAwaiter().GetResult());
+    }
+
     [Theory]
     [InlineData(CorpusMode.Dark)]
     [InlineData(CorpusMode.Plain)]

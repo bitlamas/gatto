@@ -96,6 +96,12 @@ internal sealed class TuiWizardSurface : IWizardSurface, IDisposable
         if (_live is null) StartPulse();
     }
 
+    //a progress moment from a probe starts the purr and keeps nothing, it was true only while the wait lasted
+    internal void Working()
+    {
+        if (_live is null) StartPulse();
+    }
+
     //the wait that says nothing is still a wait, started on an answer and stopped at the top of Paint
     private void StartPulse()
     {

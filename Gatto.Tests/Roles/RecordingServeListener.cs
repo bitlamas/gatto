@@ -38,6 +38,9 @@ internal sealed class RecordingServeListener : IServeListener
     public void NotServingOnStatus() => Add(nameof(NotServingOnStatus));
     public void StaleOnStatus(int pid, string model) => Add(nameof(StaleOnStatus), pid, model);
 
+    public void DiedOnStatus(string model, int pid, int? exitCode, string? exitedAt, IReadOnlyList<string>? tail) =>
+        Add(nameof(DiedOnStatus), model, pid, exitCode, exitedAt, tail);
+
     public void Status(string model, int port, int pid, bool healthy) =>
         Add(nameof(Status), model, port, pid, healthy);
 

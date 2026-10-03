@@ -8,7 +8,9 @@ internal sealed record WriteSet
 
     //a model to scaffold, with the context computed for this machine rather than the GGUF's trained ceiling
     internal sealed record Model(string GgufPath, int Port, int Context, string? Id = null,
-        bool Replace = false, string? AddToModelId = null);   //only the collision screen's confirmation sets Replace, and AddToModelId adds the file to a model gatto already has
+        bool Replace = false, string? AddToModelId = null,   //only the collision screen's confirmation sets Replace, and AddToModelId adds the file to a model gatto already has
+        Gatto.Roles.ModelSource? Source = null,   //the hub repo and file a fetched model came from, null for a model found on disk
+        string? PinGpu = null);   //the product name of the integrated GPU the fit counted, which the write turns into a -dev pin
 
     public Endpoint? UpsertEndpoint { get; init; }
     public Model? CreateModel { get; init; }

@@ -150,6 +150,18 @@ public class LocalShelfTests
 
     //the slot's caret
 
+    //every local row leaves Params null, so the params column stays out of the local table and the hub shelf keeps its own
+    [Fact]
+    public void THE_PARAMS_COLUMN_IS_ON_THE_HUB_SHELF_AND_NOT_ON_THE_LOCAL_ONE()
+    {
+        var local = Shelf.Table(View(), row: 0, focused: true, glyphs: GlyphSet.Unicode)[0].Text;
+        var hub = Shelf.Table(View() with { Source = ShelfSource.Hub }, row: 0, focused: true,
+            glyphs: GlyphSet.Unicode)[0].Text;
+
+        Assert.DoesNotContain("params", local, StringComparison.Ordinal);
+        Assert.Contains("params", hub, StringComparison.Ordinal);
+    }
+
     //the TUI shelf binds only / and m, so nothing opens a publisher picker and the slot must draw no caret
     [Fact]
     public void THE_PUBLISHER_SLOT_DRAWS_NO_CARET_BECAUSE_NO_KEY_OPENS_A_PICKER()

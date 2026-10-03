@@ -360,11 +360,11 @@ public sealed class InputFrame(ITermSurface surface, Theme theme, string role, S
 
     //rung-specific section text
 
-    //the home-abbreviated path, then / plus the last segment, then that segment head-truncated to 12 cells
+    //the home-abbreviated path, then the ellipsis glyph, a separator and the last segment, then that head-truncated to 12 cells
     private static string FolderText(StatusInfo s, int rung, GlyphSet g)
     {
         if (rung < FolderLast) return AbbreviateHome(s.Cwd, s.UserProfile);
-        var seg = "/" + LastSegment(s.Cwd);
+        var seg = g.Ellipsis + Path.DirectorySeparatorChar + LastSegment(s.Cwd);
         return rung < FolderCapped ? seg : HeadTruncate(seg, 12, g);
     }
 

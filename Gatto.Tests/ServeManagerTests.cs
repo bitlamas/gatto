@@ -25,6 +25,7 @@ public class ServeManagerTests : IDisposable
         public int Pid { get; init; } = 4242;
         public bool HasExited { get; set; }
         public string ProcessName { get; init; } = "llama-server";
+        public int? ExitCode { get; init; }
         public int KillCount { get; private set; }
         public Exception? KillThrows { get; init; }
         public void Kill()
@@ -32,6 +33,65 @@ public class ServeManagerTests : IDisposable
             KillCount++;
             if (KillThrows is not null) throw KillThrows;
         }
+    }
+
+    //a server that dies under a foreground start keeps its record with the exit code, so status can say what happened
+    [Fact]
+    public async Task A_foreground_death_is_recorded_with_its_exit_code_and_status_reports_it()
+    {
+        File.WriteAllText(ServeLog, "an older detached server's last words\n");
+        var proc = new FakeProc { Pid = 4322, HasExited = true, ExitCode = -1073741819 };
+        var mgr = new ServeManager(_home, FakeLlama(), spawn: _ => proc,
+            lookup: pid => pid == proc.Pid ? proc : null, http: _http,
+            pollInterval: TimeSpan.FromMilliseconds(10), pollTimeout: TimeSpan.FromSeconds(3));
+        await mgr.StartAsync(ModelOn(1235), new RecordingServeListener(), CancellationToken.None, foreground: true);
+
+        var heard = new RecordingServeListener();
+        await mgr.StatusAsync(heard, CancellationToken.None);
+
+        var facts = heard.Facts("DiedOnStatus");
+        Assert.Equal("test-model", facts[0]);
+        Assert.Equal(4322, facts[1]);
+        Assert.Equal(-1073741819, facts[2]);
+        Assert.NotNull(facts[3]);
+        Assert.Null(facts[4]);   //a foreground run writes no serve.log, so the older server's tail must not be shown as this one's
+        Assert.Equal(new ServeManager.DeadServer("test-model", 4322, -1073741819, (string)facts[3]!), mgr.Dead(1235));
+    }
+
+    //a detached server dies with nobody watching, so its code is unknown and its own serve.log tail is what is left
+    [Fact]
+    public async Task A_detached_record_whose_pid_is_gone_reports_an_unknown_code_and_the_log_tail()
+    {
+        File.WriteAllText(ServeJson, """{"pid":5151,"model":"test-model","port":1235,"started":"2026-10-02T00:00:00Z","log":true}""");
+        File.WriteAllText(ServeLog, "loading\nggml_vulkan: device lost\n");
+        var mgr = new ServeManager(_home, FakeLlama(), NoSpawn, _ => null, _http,
+            TimeSpan.FromMilliseconds(10), TimeSpan.FromMilliseconds(30));
+
+        var heard = new RecordingServeListener();
+        await mgr.StatusAsync(heard, CancellationToken.None);
+
+        var facts = heard.Facts("DiedOnStatus");
+        Assert.Null(facts[2]);
+        Assert.Equal(new[] { "loading", "ggml_vulkan: device lost" }, (IReadOnlyList<string>)facts[4]!);
+    }
+
+    //the session's note is for the server it talks to: a live pid, another port or no record says nothing
+    [Fact]
+    public void A_dead_server_is_named_only_for_its_own_port_and_only_when_its_pid_is_gone()
+    {
+        var live = new FakeProc { Pid = 6161 };
+        WriteServeJson(6161, "test-model", 1235);
+        var alive = new ServeManager(_home, FakeLlama(), NoSpawn, pid => pid == 6161 ? live : null, _http,
+            TimeSpan.FromMilliseconds(10), TimeSpan.FromMilliseconds(30));
+        Assert.Null(alive.Dead(1235));
+
+        var gone = new ServeManager(_home, FakeLlama(), NoSpawn, _ => null, _http,
+            TimeSpan.FromMilliseconds(10), TimeSpan.FromMilliseconds(30));
+        Assert.Equal(new ServeManager.DeadServer("test-model", 6161, null, null), gone.Dead(1235));
+        Assert.Null(gone.Dead(1236));
+
+        File.Delete(ServeJson);
+        Assert.Null(gone.Dead(1235));
     }
 
     private string ServeJson => Path.Combine(_home, "serve.json");
@@ -364,7 +424,7 @@ public class ServeManagerTests : IDisposable
 
         Assert.Equal(1, exit);                  //a server that went down on its own gives a non-zero exit.
         Assert.Equal(0, proc.KillCount);        //there is nothing to kill, so kill must not be called.
-        Assert.False(File.Exists(ServeJson));
+        Assert.True(File.Exists(ServeJson));    //the record stays, holding how the server ended, for status and the session.
         Assert.True(heard.Heard("Exited"));
     }
 

@@ -23,6 +23,8 @@ public class AcceptanceTests
 
         //names are display-only, so report none. a fake that invents a name shows hardware no probe reported
         public HardwareNames HardwareNames() => default;
+        public string? ServeOnly { get; init; }
+        public string? ServeOnlyGpu() => ServeOnly;
         public string? LlamaServerPath() => Llama;
         public bool HasResolvableModel() => false;
         public ConnectProbe? ProbeServer(IReadOnlyList<int>? skip = null) => Server;
@@ -74,6 +76,19 @@ public class AcceptanceTests
     }
 
     private static FoundModel Local(string p) => new(p, 4_000_000_000, null);
+
+    //the GPU the fit counted rides the model intent to the writer, which pins the profile to it
+    [Theory]
+    [InlineData("AMD Radeon(TM) 8060S Graphics")]
+    [InlineData(null)]
+    public void THE_MODEL_INTENT_CARRIES_THE_GPU_THE_FIT_COUNTED(string? gpu)
+    {
+        var flow = new SetupFlow(new Probes { Rows = [], Found = [Local(@"D:\m\qwen.gguf")], ServeOnly = gpu });
+        flow.StartPastEngine();
+        flow.Answer("0");
+
+        Assert.Equal(gpu, flow.Writes.CreateModel!.PinGpu);
+    }
 
     [Fact]
     public void ACCEPTANCE_the_offline_wizard_FINISHES()

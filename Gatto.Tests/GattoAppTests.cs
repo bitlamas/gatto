@@ -2098,10 +2098,43 @@ public class GattoAppTests : IDisposable
         Assert.Null(status.Serving);   //unknown is never reported as a mismatch or shown as a chip.
     }
 
-    [Fact]
-    public async Task OneShot_DoesNotProbeServer()
+    //a server that splits its context across slots gives each request less than the profile, and -p elides and compacts against that
+    [Theory]
+    [InlineData(true, 4096, "server reports 4096. Using it (the profile says 8192)")]
+    [InlineData(true, 16384, null)]
+    [InlineData(false, 4096, null)]
+    public async Task OneShot_TakesTheSmallerWindowOfTheServerHoldingItsModel(bool ours, int nCtx, string? line)
     {
-        //the -p one-shot must not call GET /props: the result is unused and the probe adds latency to scripted runs
+        await using var server = new FakeOpenAiServer();
+        UseHome();
+        var port = new Uri(server.BaseUrl).Port;
+        WriteConfig($$$"""{"endpoints":{"local":{"base_url":"{{{server.BaseUrl}}}"}},"default_endpoint":"local"}""");
+        WriteModel("test-model", port: port);
+        WriteRole("generalist", "{\"model\":\"test-model\"}");
+        //the helper's profile names m.gguf bare, and the match reads a bare path against the process folder
+        var held = ours ? Path.GetFullPath("m.gguf") : Path.Combine(_home, "elsewhere", "other.gguf");
+        server.PropsResponse = new FakeResponse(Status: 200, Body: $$$"""
+            {"model_path": {{{System.Text.Json.JsonSerializer.Serialize(held)}}},"default_generation_settings":{"n_ctx":{{{nCtx}}}}}
+            """);
+        server.Enqueue(Completion("response"));
+
+        var stdout = new StringWriter();
+        var stderr = new StringWriter();
+        Console.SetOut(stdout);
+        Console.SetError(stderr);
+        var exit = await GattoApp.RunAsync(new[] { "-p", "hello" });
+
+        Assert.True(exit == 0, $"exit {exit}, stderr: {stderr}");
+        Assert.True(server.PropsCalled, "-p must read the server's window");
+        if (line is null) Assert.DoesNotContain("server reports", stderr.ToString(), StringComparison.Ordinal);
+        else Assert.Contains(line, stderr.ToString(), StringComparison.Ordinal);
+        Assert.DoesNotContain("server reports", stdout.ToString(), StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task OneShot_AnswersWithTheServerUnread()
+    {
+        //a server whose /props says nothing usable leaves the profile's window and the run goes on
         await using var server = new FakeOpenAiServer();
         UseHome();
         var port = new Uri(server.BaseUrl).Port;
@@ -2126,7 +2159,7 @@ public class GattoAppTests : IDisposable
         {
             Environment.SetEnvironmentVariable("GATTO_DEBUG", null);
         }
-        Assert.False(server.PropsCalled, "one-shot -p should not probe GET /props");
+        Assert.DoesNotContain("server reports", stderr.ToString(), StringComparison.Ordinal);
         Assert.Contains("response", stdout.ToString());
     }
 

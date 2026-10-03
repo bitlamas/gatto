@@ -134,15 +134,19 @@ internal static class Shelf
     private const int LocalNameCap = 24;
 
     private static string Name(ShelfView v, ShelfRow r, GlyphSet g) =>
-        v.Source == ShelfSource.Local ? TermText.TruncateCells(Name(r), LocalNameCap, g) : Name(r);
+        v.Source == ShelfSource.Local ? TermText.TruncateCells(Name(v, r), LocalNameCap, g) : Name(v, r);
 
     //the model column takes the widest name on screen, after a local name is capped
     internal static int ModelWidth(ShelfView v, GlyphSet g) =>
         v.Rows.Count == 0 ? 0 : v.Rows.Max(r => UnicodeWidth.Of(Name(v, r, g)));
 
+    //the local shelf leaves the params column out, so its column and gap come off what the model is measured against
+    private static int ChromeOf(ShelfView v) =>
+        v.Source == ShelfSource.Local ? Chrome - 2 - ParamsColumn : Chrome;
+
     //the table's share of the row, divider included. the size and quant column is counted at the width the rows are padded to rather than its constant
     internal static int LeftWidth(ShelfView v, GlyphSet g) =>
-        ModelWidth(v, g) + Chrome - SizeQuantColumn + SizeQuantWidth(v) + TailChrome(v);
+        ModelWidth(v, g) + ChromeOf(v) - SizeQuantColumn + SizeQuantWidth(v) + TailChrome(v);
 
     //the pane's column, or 0 when it would be narrower than Pane.MinWidth. the table's width decides it, so long names fold the shelf sooner
     internal static int PaneWidth(ShelfView v, int width, GlyphSet g)
@@ -159,15 +163,18 @@ internal static class Shelf
         var g = glyphs ?? GlyphSet.Unicode;
         var mw = ModelWidth(v, g);
         var runs = FitMarks.HasRunsColumn(v.Shape);
+        //the local shelf has no params to show, so its header, cell and gap stay out and the model column takes the freed cells
+        var paramsCol = v.Source != ShelfSource.Local;
         var tail = Math.Max(0, TailChrome(v) - 2);
         //the size-quant cell takes the widest pair shown, because Pane.Cells pads and never clips, so a narrow cell pushes every column after it
         var sqw = SizeQuantWidth(v);
+        var sw = SizeWidth(v);
         var rows = new List<PaintedRow>
         {
             PaintedRow.Of(
                 new string(' ', 2 + NumberWidth)
                 + Pane.Cells("model", mw) + "  "
-                + Pane.Right("params", ParamsColumn) + "  "
+                + (paramsCol ? Pane.Right("params", ParamsColumn) + "  " : "")
                 //the TUI shelf composes its own header, separate from ShelfTable's, so a fix to one header must be made in both
                 + Pane.Cells($"size {(glyphs ?? GlyphSet.Unicode).Dot} quant", sqw) + "  "
                 + Pane.Cells("kind", KindColumn)
@@ -184,8 +191,8 @@ internal static class Shelf
                 ? $"{i + 1}. "
                 : new string(' ', NumberWidth);
             var body = Pane.Cells(Name(v, r, g), mw) + "  "
-                     + Pane.Right(ShelfTable.ParamsCell(r), ParamsColumn) + "  "
-                     + Pane.Cells(SizeQuant(r), sqw) + "  "
+                     + (paramsCol ? Pane.Right(ShelfTable.ParamsCell(r), ParamsColumn) + "  " : "")
+                     + Pane.Cells(SizeQuant(r, sw), sqw) + "  "
                      + Pane.Cells(Structure(v, i), KindColumn);
 
             var cells = new List<Run>();
@@ -367,15 +374,13 @@ internal static class Shelf
         return rows;
     }
 
-    //the screen's Tab ring, rebuilt per row: the pane is two stops, and the stops follow what the pane shows in either layout
-
     //where the keys start. the door for a search that found nothing or a shelf with no ladder, the chips row for a chip
     public static Region Opening(ShelfView v) =>
         v.Rows.Count > 0 ? Region.List
             : !v.Searched && v.Families is { Count: > 0 } ? Region.Families
             : Region.Search;
 
-    //the shelf's Tab ring, with every empty region left out. the search region joins only where the screen has a door to type in
+    //the shelf's Tab ring, empty regions left out, and the search region only where the screen takes typing
     public static IReadOnlyList<Region> Regions(ShelfView v, int width, int row, bool hasDoor)
     {
         //the test is no families rather than no rows, an empty search still has a ladder and keeps all five keys
@@ -429,9 +434,10 @@ internal static class Shelf
         new("Esc", ring.EscVerb(atList)),
     ];
 
-    //drops the publisher prefix from any row whose id starts with it, curated shelf or not
-    private static string Name(ShelfRow r) =>
-        r.RepoId.StartsWith(r.Publisher + "/", StringComparison.OrdinalIgnoreCase)
+    //drops the publisher prefix while every row shares one publisher, a second one makes it what tells rows apart
+    private static string Name(ShelfView v, ShelfRow r) =>
+        v.Rows.All(x => string.Equals(x.Publisher, r.Publisher, StringComparison.OrdinalIgnoreCase))
+        && r.RepoId.StartsWith(r.Publisher + "/", StringComparison.OrdinalIgnoreCase)
             ? r.RepoId[(r.Publisher.Length + 1)..]
             : r.RepoId;
 
@@ -439,13 +445,17 @@ internal static class Shelf
     private static int SizeQuantWidth(ShelfView v) =>
         v.Rows.Count == 0
             ? SizeQuantColumn
-            : Math.Max(SizeQuantColumn, v.Rows.Max(r => UnicodeWidth.Of(SizeQuant(r))));
+            : Math.Max(SizeQuantColumn, v.Rows.Max(r => UnicodeWidth.Of(SizeQuant(r, SizeWidth(v)))));
+
+    //the widest size shown, so every quant token starts in one column
+    private static int SizeWidth(ShelfView v) =>
+        v.Rows.Count == 0 ? 0 : v.Rows.Max(r => UnicodeWidth.Of(SearchRow.Gb(r.PickedQuant.Bytes)));
 
     //an unconventional filename shows the size alone, the token rule lives in QuantToken.Of
-    private static string SizeQuant(ShelfRow r)
+    private static string SizeQuant(ShelfRow r, int sizeWidth)
     {
         var gb = SearchRow.Gb(r.PickedQuant.Bytes);
-        return QuantToken.Of(r.PickedQuant.FileName) is { Length: > 0 } q ? $"{gb} {q}" : gb;
+        return QuantToken.Of(r.PickedQuant.FileName) is { Length: > 0 } q ? $"{Pane.Cells(gb, sizeWidth)} {q}" : gb;
     }
 
     //the structure cell is view data, read from the producer's facts. an empty cell means the producer said nothing about that row

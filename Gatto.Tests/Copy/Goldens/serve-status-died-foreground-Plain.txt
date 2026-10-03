@@ -1,0 +1,2 @@
+not serving · qwen3.6-35b-a3b (pid 2844) exited with code -1073741819 (0xC0000005)
+start it again with gatto serve start qwen3.6-35b-a3b.

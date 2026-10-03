@@ -17,7 +17,9 @@ internal sealed class LiveSetupProbes(string homePath, Gatto.Terminal.GlyphSet g
     //null keeps the runner's ten-minute budget, a test shortens it rather than letting its fake server die, which stops the double-start guard firing
     TimeSpan? readyBudget = null,
     //where Dispose's own lines go, the note sink is not read again after the record is printed, so null means the notes writer
-    TextWriter? afterWalk = null)
+    TextWriter? afterWalk = null,
+    //a server start in progress, said to the face's purr and not to the notes, so it never reaches the scrollback
+    Action? working = null)
     : ISetupProbes, IDisposable
 {
     private readonly Gatto.Terminal.GlyphSet _glyphs = glyphs;
@@ -65,6 +67,8 @@ internal sealed class LiveSetupProbes(string homePath, Gatto.Terminal.GlyphSet g
         public void StaleOnStop(int pid, string model) => inner.StaleOnStop(pid, model);
         public void NotServingOnStatus() => inner.NotServingOnStatus();
         public void StaleOnStatus(int pid, string model) => inner.StaleOnStatus(pid, model);
+        public void DiedOnStatus(string model, int pid, int? exitCode, string? exitedAt, IReadOnlyList<string>? tail) =>
+            inner.DiedOnStatus(model, pid, exitCode, exitedAt, tail);
         public void Status(string model, int port, int pid, bool healthy) => inner.Status(model, port, pid, healthy);
         public void PumpFault(Gatto.Roles.ServeLogFault fault) => inner.PumpFault(fault);
     }
@@ -180,7 +184,7 @@ internal sealed class LiveSetupProbes(string homePath, Gatto.Terminal.GlyphSet g
             if (!answer.Start) return answer.Why;
 
             var model = Gatto.Roles.Model.Load(System.IO.Path.Combine(homePath, "models"), modelId);
-            Note($"starting {modelId}{_glyphs.Ellipsis}");
+            working?.Invoke();
 
             var log = new StringWriter();
             if (manager.StartAsync(model, Lines(log), CancellationToken.None).GetAwaiter().GetResult() != 0)
@@ -199,7 +203,7 @@ internal sealed class LiveSetupProbes(string homePath, Gatto.Terminal.GlyphSet g
                 {
                     if (elapsed - last < TimeSpan.FromSeconds(30)) return;
                     last = elapsed;
-                    Note($"still loading, {modelId} has been coming up for {Math.Round(elapsed.TotalSeconds)} seconds");
+                    working?.Invoke();
                     //the live screen says it in its own words, inside the interval guard so no row claims a wait that hasn't happened
                     progress?.Report(Gatto.Roles.Audition.AuditionProgress.Loading());
                 },
@@ -326,6 +330,9 @@ internal sealed class LiveSetupProbes(string homePath, Gatto.Terminal.GlyphSet g
 
     //the two names cleaned for the screen, read off the same run as Hardware so name and memory figure can't disagree
     public HardwareNames HardwareNames() => HardwareNaming.Clean(Reading().CpuName, Reading().GpuName);
+
+    //read off the same run, so the pin names the device the fit counted
+    public string? ServeOnlyGpu() => Reading().ServeOnlyGpu;
 
     public HardwareSnapshot? Hardware() => Reading().Snapshot;
 
@@ -499,10 +506,22 @@ internal sealed class LiveSetupProbes(string homePath, Gatto.Terminal.GlyphSet g
     //the allowlist with this home's publisher preferred, and an unreadable config curates nothing rather than breaking the shelf
     internal UploaderAllowlist Allowlist => UploaderAllowlist.Load().Preferring(PreferredPublisher());
 
+    private bool _publisherNoted;
+
+    //setup is where the user picks a publisher, so a broken gatto.json gets one note saying why the set one is not used
     private string? PreferredPublisher()
     {
         try { return GattoConfig.Load(homePath).DefaultPublisher; }
-        catch (GattoConfigException) { return null; }
+        catch (GattoConfigException ex)
+        {
+            //no gatto.json yet is normal during setup, so only a file that exists and fails is named
+            if (!_publisherNoted && File.Exists(Path.Combine(homePath, "gatto.json")))
+            {
+                _publisherNoted = true;
+                Note($"{ex.Message} {_glyphs.Dot} the shelf opens on its usual publisher");
+            }
+            return null;
+        }
     }
 
     public HubSearchOutcome Search(HubSearchRequest request)

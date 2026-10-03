@@ -198,6 +198,39 @@ public class CommandCorpusTests : IDisposable
             CorpusDriver.Visible(string.Join("\n", rows) + "\n"));
     }
 
+    //a wrapped fact breaks where a packed list does, so the separator never stays on the edge of a row it left
+    [Fact]
+    public void THE_WIZARD_RECORD_AT_60_ENDS_NO_ROW_WITH_THE_DOT()
+    {
+        var dot = CorpusDriver.Glyphs.Dot;
+        var facts = new List<Gatto.Cli.Setup.WizardRow>
+        {
+            Gatto.Cli.Setup.SetupFlow.SummaryFacts.Row("fetched", $"llama-b10076-bin-win-vulkan-x64.zip {dot} digest matched"),
+            Gatto.Cli.Setup.SetupFlow.SummaryFacts.Row("into", @"C:\Users\you\.gatto\llama\b10076\"),
+            Gatto.Cli.Setup.SetupFlow.SummaryFacts.Row("model", $"{CorpusFacts.ModelId} {dot} ~23.8 GB"),
+            Gatto.Cli.Setup.SetupFlow.SummaryFacts.Row("checked", "llama-server.exe ran, and it is the path gatto wrote to its config"),
+        };
+        var rows = Gatto.Cli.Setup.Tui.Epilogue.Lines(facts, CorpusFacts.Version, CorpusFacts.Build,
+            CorpusFacts.Today, closing: new Gatto.Cli.Setup.WizardRow("run gatto to start a session"),
+            60, CorpusDriver.Glyphs);
+
+        Assert.DoesNotContain(rows, r => r.TrimEnd().EndsWith(dot, StringComparison.Ordinal));
+    }
+
+    //the ascii dot is a full stop too, so only a dot with its separator space beside it is dropped and the text itself keeps every character
+    [Fact]
+    public void AN_ASCII_FULL_STOP_AT_A_ROW_EDGE_STAYS()
+    {
+        const string text = "write the folder's own .gatto.json and keep the old file where it was.";
+        var row = new Gatto.Cli.Setup.WizardRow(text);
+        for (var width = 20; width <= 80; width++)   //from 20 no word is hard-broken, so the rows rejoin with single spaces
+        {
+            var lines = Gatto.Cli.Setup.WizardRows.Wrap(row, width, glyphs: Gatto.Terminal.GlyphSet.Ascii);
+            var joined = string.Join(" ", lines.Select(l => l.Text.Trim()));
+            Assert.Equal(text, joined);
+        }
+    }
+
     //the same record from the gatto model entry, with the command passed in as a parameter
     [Fact]
     public void THE_WIZARD_RECORD_FROM_GATTO_MODEL()
@@ -339,6 +372,8 @@ public class CommandCorpusTests : IDisposable
         "serve-stop-not-ours-Dark", "serve-stop-not-ours-Plain",
         "serve-stop-stale-Dark", "serve-stop-stale-Plain",
         "serve-status-stale-Dark", "serve-status-stale-Plain",
+        "serve-status-died-foreground-Dark", "serve-status-died-foreground-Plain",
+        "serve-status-died-detached-Dark", "serve-status-died-detached-Plain",
         "serve-status-unhealthy-Dark", "serve-status-unhealthy-Plain",
         "serve-status-healthy-Dark", "serve-status-healthy-Plain",
         "serve-start-cancelled-Dark", "serve-start-cancelled-Plain",

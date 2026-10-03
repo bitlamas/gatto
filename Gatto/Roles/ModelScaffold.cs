@@ -41,7 +41,7 @@ public static class ModelScaffold
     //writes profile.json under modelsDir\<id> and returns the id. throws when the model exists, the GGUF can't be read or the id isn't a usable folder name
     public static string Create(string modelsDir, string ggufPath, int port, string? id = null,
         int? context = null, bool replace = false, string? projector = null,
-        string? llamaServer = null, ModelSource? source = null)
+        string? llamaServer = null, ModelSource? source = null, string? device = null)
     {
         var resolved = ResolveShardOne(Path.GetFullPath(ggufPath));
 
@@ -99,6 +99,8 @@ public static class ModelScaffold
             w.WriteString("cache_type_v", "q8_0");
             w.WriteStartArray("extra_args");
             foreach (var a in StandardExtraArgs(ModelDiscovery.StreamedBytesOrNull(resolved) is > 0)) w.WriteStringValue(a);
+            //the device the fit counted, since llama-server left alone takes a discrete card over a larger unified pool
+            if (!string.IsNullOrWhiteSpace(device)) { w.WriteStringValue("-dev"); w.WriteStringValue(device); }
             w.WriteEndArray();
             w.WriteEndObject();
         }

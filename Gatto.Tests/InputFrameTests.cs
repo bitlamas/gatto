@@ -224,10 +224,10 @@ public class InputFrameTests
     [Fact]
     public void StatusLine_LongCwd_DegradesToLastSegment_OneRow()
     {
-        //a cwd too long for the footer keeps just its last segment with a / in front, so the row stays one line
+        //a cwd too long for the footer keeps the ellipsis, the separator and the last segment, so the row stays one line
         var s = Status() with { Cwd = @"C:\Users\user\" + string.Join(@"\", Enumerable.Repeat("deep", 30)) };
         var visible = StripSgr(InputFrame.BuildStatusLine(s, width: 60, T, glyphs: GlyphSet.Unicode));
-        Assert.Contains("/deep", visible);
+        Assert.Contains(GlyphSet.Unicode.Ellipsis + @"\deep", visible);
         Assert.True(UnicodeWidth.Of(visible) <= 60, $"footer {UnicodeWidth.Of(visible)} > 60 — must be one row");
     }
 
@@ -311,9 +311,9 @@ public class InputFrameTests
         Assert.Contains("↑ 2.3k ↓ 222", full);
         Assert.Contains("ctx 26% (260)", full);
 
-        //at 52 the branch and the tokens are gone, the effort and the percent stay, and the row fits exactly
+        //at 52 the branch and the tokens are gone, the effort and the percent stay, the folder shows the ruled short form, and the row fits exactly
         var narrow = StripSgr(InputFrame.BuildStatusLine(s, width: 52, T, glyphs: GlyphSet.Unicode));
-        Assert.Equal("  /cc-usage-monitor · qwen3.6-35b (medium) · ctx 26%", narrow);
+        Assert.Equal("  " + GlyphSet.Unicode.Ellipsis + @"\cc-usage-… · qwen3.6-35b (medium) · ctx 26%", narrow);
     }
 
     [Theory]

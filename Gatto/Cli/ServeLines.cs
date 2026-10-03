@@ -118,6 +118,38 @@ internal sealed class ServeLines(CliSurface cli, GlyphSet glyphs, StartWatch? wa
             Happened("."));
     }
 
+    //the code is known only when a foreground start saw the server end, and serve.log belongs only to a detached run
+    public void DiedOnStatus(string model, int pid, int? exitCode, string? exitedAt, IReadOnlyList<string>? tail)
+    {
+        var ended = exitCode is int code
+            ? $" exited with code {CodeWords(code)}" + (LocalTime(exitedAt) is { } at ? $" at {at}" : "")
+            : " stopped running, exit code unknown";
+        Row(Happened("not serving"), Sep, Model(model), Machinery($" (pid {pid})"), Happened(ended));
+        if (tail is { Count: > 0 })
+        {
+            Row(Machinery("last lines of serve.log"));
+            foreach (var line in tail) Under(line);
+        }
+        else if (tail is not null) Under("serve.log was empty");
+        Row(Happened("start it again with "), CliSurface.Command($"gatto serve start {model}"), Happened("."));
+    }
+
+    //the session's line for a lost connection when the server gatto recorded for this port stopped running, null otherwise
+    internal static string? GoneLine(ServeManager.DeadServer? dead, GlyphSet glyphs) =>
+        dead is not { } d ? null
+        : $"llama-server for {d.Model} is not running"
+          + (d.ExitCode is int code ? $" (exited with code {CodeWords(code)})" : "")
+          + $" {glyphs.Dot} gatto serve status for more info, and gatto serve start {d.Model} brings it back";
+
+    //a Windows crash code reads as a large negative number, its hex form is the one a search finds
+    internal static string CodeWords(int code) =>
+        code < 0 ? $"{code} (0x{unchecked((uint)code):X8})" : code.ToString(System.Globalization.CultureInfo.InvariantCulture);
+
+    private static string? LocalTime(string? utc) =>
+        DateTimeOffset.TryParse(utc, System.Globalization.CultureInfo.InvariantCulture, System.Globalization.DateTimeStyles.AssumeUniversal, out var t)
+            ? t.ToLocalTime().ToString("HH:mm", System.Globalization.CultureInfo.InvariantCulture)
+            : null;
+
     public void Status(string model, int port, int pid, bool healthy) =>
         Row(Happened("serving "), Model(model), Sep, Machinery($"port {port} (pid {pid})"), Sep,
             Happened("health: " + (healthy ? "ok" : "not responding")));

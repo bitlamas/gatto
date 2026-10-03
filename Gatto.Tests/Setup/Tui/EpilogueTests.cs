@@ -321,6 +321,41 @@ public class EpilogueTests
             new DateOnly(2026, 8, 25), "gatto setup", theme: null));
     }
 
+    //gatto model closes on its header and one line naming what the user did with the check, never the frame with its rules
+    [Theory]
+    [InlineData("passed", "gemma-4-26B-A4B-it added and checked · run gatto, then /model gemma-4-26B-A4B-it to use it")]
+    [InlineData("struggled", "gemma-4-26B-A4B-it added, it struggled on the check and you kept it · run gatto, then /model gemma-4-26B-A4B-it to use it")]
+    [InlineData("stopped", "gemma-4-26B-A4B-it added, you stopped the check · run gatto, then /model gemma-4-26B-A4B-it to use it")]
+    [InlineData("stopped-dead", "gemma-4-26B-A4B-it added, but its server didn't start · gatto doctor checks everything and says what to fix")]
+    [InlineData("dead", "gemma-4-26B-A4B-it added, but its server didn't start · gatto doctor checks everything and says what to fix")]
+    [InlineData("left", "gemma-4-26B-A4B-it added, you left before checking it · run gatto, then /model gemma-4-26B-A4B-it to use it")]
+    public void GATTO_MODEL_CLOSES_ON_ONE_LINE_THAT_SAYS_WHAT_THE_USER_DID(string road, string sentence)
+    {
+        var dead = new Gatto.Core.Acquire.ProveOutcome(false, "no server", TimeSpan.Zero, StartFailed: true);
+        var (flow, done) = DoneRenderTests.DoneStep(consent: true, inSession: true,
+            block: road.StartsWith("stopped", StringComparison.Ordinal),
+            audition: road == "struggled" ? new AuditionCheck(AuditionOutcome.Failed, null, new DateOnly(2026, 8, 24)) : null,
+            prove: road.EndsWith("dead", StringComparison.Ordinal) ? dead : null,
+            check: road switch
+            {
+                "passed" => DoneRenderTests.Passes,
+                "struggled" => DoneRenderTests.Struggles,
+                "stopped" => DoneRenderTests.Stops,
+                "stopped-dead" => [.. DoneRenderTests.Stops, SetupFlow.Finish],
+                "left" => [],
+                _ => [.. DoneRenderTests.Passes, SetupFlow.Finish],
+            });
+        if (road == "left") flow.MarkLeaving();   //the runner's own call on Esc at the check offer
+        else Assert.Equal("done", ScreenKey.Of(done));
+        IReadOnlyList<string> painted = ["── the frame on screen when the walk finished ──"];
+
+        //wide enough that the sentence is one row, the wrap is the leave block's and has its own tests
+        var lines = WizardSession.Scrollback(flow, () => painted, 200, GlyphSet.Unicode, Stamp,
+            new DateOnly(2026, 8, 25), "gatto model", theme: null);
+
+        Assert.Equal(["(^· ·^)Ⳋ  gatto model · v0.5.0 · build 1a2b3c4", "", sentence], lines);
+    }
+
     //a server that reported its window folds to its own spelling, and a note with no comma is the whole clause
     [Fact]
     public void THE_REPORTED_ARM_FOLDS_TO_ITS_OWN_SPELLING()
