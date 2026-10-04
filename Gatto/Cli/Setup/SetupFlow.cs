@@ -3576,7 +3576,7 @@ internal sealed class SetupFlow(ISetupProbes probes)
                 .. ModelRow(),
                 //numbers map the live screen's task count onto tasks. use 1) rather than 1. so it cannot read as the screen's own options
                 CheckFacts.Row("tasks",
-                    [.. Roles.Audition.Battery.V1.Select((t, i) => $"{i + 1}) {t.Label}")]),
+                    [.. Roles.Audition.Battery.Tasks.Select((t, i) => $"{i + 1}) {t.Label}")]),
             ]),
             AuditionOfferKey);
     }

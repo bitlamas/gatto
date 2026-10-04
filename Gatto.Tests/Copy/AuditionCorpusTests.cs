@@ -129,10 +129,10 @@ public class AuditionCorpusTests
 
         console.Report(AuditionProgress.Reusing(
             $"using the server already running for {CorpusFacts.ModelId}"));
-        console.Report(AuditionProgress.Started(Battery.V1[0], 1, 5));
-        console.Report(AuditionProgress.Done(Battery.V1[0], 1, 5, pass: true));
-        console.Report(AuditionProgress.Started(Battery.V1[1], 2, 5));
-        console.Report(AuditionProgress.Done(Battery.V1[1], 2, 5, pass: false));
+        console.Report(AuditionProgress.Started(Battery.Tasks[0], 1, 5));
+        console.Report(AuditionProgress.Done(Battery.Tasks[0], 1, 5, pass: true));
+        console.Report(AuditionProgress.Started(Battery.Tasks[1], 2, 5));
+        console.Report(AuditionProgress.Done(Battery.Tasks[1], 2, 5, pass: false));
         console.Report(AuditionProgress.Note(
             "stopped early. Enough tasks had failed that the result was already clear"));
         console.Finish();

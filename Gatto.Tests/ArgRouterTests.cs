@@ -281,4 +281,17 @@ public class ArgRouterTests
     [Fact]
     public void UPDATE_CANNOT_BE_SHADOWED_BY_A_ROLE_FILE()
         => Assert.NotEqual("launch", ArgRouter.Parse(["update"]).Command);
+
+    //a help flag after a reserved command prints help, running the command instead costs minutes on audition
+    [Theory]
+    [InlineData("audition", "--help")]
+    [InlineData("audition", "-h")]
+    [InlineData("serve", "--help")]
+    [InlineData("doctor", "-h")]
+    public void A_HELP_FLAG_AFTER_A_RESERVED_COMMAND_IS_HELP(string command, string flag)
+        => Assert.Equal("help", ArgRouter.Parse([command, flag]).Command);
+
+    [Fact]
+    public void A_HELP_FLAG_AFTER_A_TARGET_IS_STILL_HELP()
+        => Assert.Equal("help", ArgRouter.Parse(["audition", "some-model", "--help"]).Command);
 }

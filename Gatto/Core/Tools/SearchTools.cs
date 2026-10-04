@@ -22,6 +22,11 @@ internal static class Globbing
                 if (i + 1 < glob.Length && (glob[i + 1] == '/' || glob[i + 1] == '\\')) i++; //the slash in **/ is optional, so it also matches zero directories
             }
             else if (c == '*') sb.Append(@"[^/\\]*");
+            else if (c == '[' && Class(glob, i) is { } set)
+            {
+                sb.Append(set.Regex);
+                i = set.End;
+            }
             else if (c == '?') sb.Append(@"[^/\\]");
             else if (c == '/' || c == '\\') sb.Append(@"[/\\]");
             else sb.Append(Regex.Escape(c.ToString()));
@@ -29,7 +34,21 @@ internal static class Globbing
         return new Regex(sb.Append('$').ToString(), RegexOptions.IgnoreCase);
     }
 
-    public static IEnumerable<string> Walk(string root)
+    //a bracket class is one character from the set, ! or ^ first inverts it, and the text itself also matches (real folders are named [id])
+    private static (string Regex, int End)? Class(string glob, int open)
+    {
+        var close = glob.IndexOf(']', open + 2);
+        if (close < 0) return null;
+        var body = glob[(open + 1)..close];
+        var negate = body[0] is '!' or '^';
+        if (negate) body = body[1..];
+        if (body.Length == 0) return null;
+        var set = body.Replace(@"\", @"\\").Replace("[", @"\[").Replace("^", @"\^");
+        return ($"(?:(?![/\\\\])[{(negate ? "^" : "")}{set}]|{Regex.Escape(glob[open..(close + 1)])})", close);
+    }
+
+    //files only by default, a folder asked for comes back ending in a separator
+    public static IEnumerable<string> Walk(string root, bool folders = false)
     {
         var stack = new Stack<string>();
         stack.Push(root);
@@ -51,6 +70,7 @@ internal static class Globbing
                 if (SkipDirs.Contains(Path.GetFileName(sub))) continue;
                 if ((new DirectoryInfo(sub).Attributes & FileAttributes.ReparsePoint) != 0) continue;   //skip junction and symlink directories so the walk cannot loop
                 stack.Push(sub);
+                if (folders) yield return sub + Path.DirectorySeparatorChar;
             }
             foreach (var file in files) yield return file;
         }
@@ -86,7 +106,7 @@ internal static class Globbing
 public sealed class GlobTool : ITool
 {
     public string Name => "glob";
-    public string Description => "Find files by glob pattern (** crosses directories). Args: pattern, optional root.";
+    public string Description => "Find files and folders by glob pattern (* stays in one folder, ** crosses folders, a folder is listed with a trailing separator). Args: pattern, optional root.";
     public JsonElement ParametersSchema => ToolArgs.Schema("""
         {"type":"object","properties":{"pattern":{"type":"string"},"root":{"type":"string"}},"required":["pattern"]}
         """);
@@ -99,15 +119,20 @@ public sealed class GlobTool : ITool
         if (!Directory.Exists(root)) throw new ArgumentException($"root not found: {root}");
         var regex = Globbing.ToRegex(pattern);
         var matches = new List<string>();
-        foreach (var f in Globbing.Walk(root))
+        foreach (var f in Globbing.Walk(root, folders: true))
         {
             ct.ThrowIfCancellationRequested();
-            var rel = Path.GetRelativePath(root, f);
+            //a folder is matched by its name without the mark, the pattern a model writes for it has none
+            var folder = f.EndsWith(Path.DirectorySeparatorChar);
+            var rel = Path.GetRelativePath(root, folder ? f[..^1] : f);
             if (regex.IsMatch(rel))
-                matches.Add(rel);
+                matches.Add(folder ? rel + Path.DirectorySeparatorChar : rel);
         }
         matches.Sort(StringComparer.OrdinalIgnoreCase);
-        return Task.FromResult(new ToolResult(Globbing.Capped(matches), Gloss: Plural.Of(matches.Count, "file")));
+        var gloss = matches.Any(m => m.EndsWith(Path.DirectorySeparatorChar))
+            ? Plural.Of(matches.Count, "entry", "entries")
+            : Plural.Of(matches.Count, "file");
+        return Task.FromResult(new ToolResult(Globbing.Capped(matches), Gloss: gloss));
     }
 }
 

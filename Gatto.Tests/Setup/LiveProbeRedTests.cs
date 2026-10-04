@@ -39,8 +39,8 @@ public class LiveProbeRedTests : IDisposable
         var moments = new[]
         {
             Gatto.Roles.Audition.AuditionProgress.Note("starting"),
-            Gatto.Roles.Audition.AuditionProgress.Started(Gatto.Roles.Audition.Battery.V1[0], 1, 5),
-            Gatto.Roles.Audition.AuditionProgress.Done(Gatto.Roles.Audition.Battery.V1[0], 1, 5, true),
+            Gatto.Roles.Audition.AuditionProgress.Started(Gatto.Roles.Audition.Battery.Tasks[0], 1, 5),
+            Gatto.Roles.Audition.AuditionProgress.Done(Gatto.Roles.Audition.Battery.Tasks[0], 1, 5, true),
         };
 
         foreach (var m in moments) LiveSetupProbes.Both(a, b).Report(m);

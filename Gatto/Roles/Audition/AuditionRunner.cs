@@ -28,7 +28,9 @@ internal sealed record AuditionStamp(string GattoBuild, string ModelFileName, st
 //wall clock and decode rate are evidence and never decide the verdict, a slow model can still pass
 internal sealed record AuditionVerdict(bool Pass, bool Disqualified,
     IReadOnlyList<AuditionTaskResult> Tasks, AuditionStamp Stamp,
-    TimeSpan WallClock, double? DecodeTokS)
+    TimeSpan WallClock, double? DecodeTokS,
+    //the folder holding each task's conversation, null when it could not be written, so a failed check can be read and not only believed
+    string? Transcripts = null)
 {
     //the tally both the report and the wizard read, M counts the tasks that ran and a skipped task is neither pass nor failure
     public (int Passed, int Ran) Tally()
@@ -72,7 +74,7 @@ internal static class AuditionRunner
 
     //the run stops as soon as the pass mark is out of reach, and a disqualified run is decided at any score
     private static bool VerdictDecided(int failures, bool disqualified) =>
-        disqualified || failures > Battery.V1.Count - PassThreshold;
+        disqualified || failures > Battery.Tasks.Count - PassThreshold;
 
     //the two ways a run is cut, a token cap and a stall, kept apart for the report to name the culprit
     private static FailureShape ShapeOf(StopReason reason) => reason switch
@@ -139,12 +141,15 @@ internal static class AuditionRunner
                           + $"Run gatto serve status, then gatto audition {modelId} again");
 
             var loaded = await ServeProbe.ProbeAsync(http, endpoint.BaseUrl!, ct).ConfigureAwait(false);
+            //the model's own thinking entry at the effort a plain launch uses, measuring the template default would measure a setup the user never runs
+            var (thinkingBody, thinkingSuffix) = Thinking.ResolveEntry(model.Profile.Thinking, EffortFor(model));
             try
             {
                 return await RunBatteryAsync(client, homePath, modelId,
                     StampFor(model, loaded), progress, ct,
                     //pass the model's own reasoning_history, the default would measure a heavier setup than the model actually runs
-                    reasoning: model.Profile.ReasoningHistory).ConfigureAwait(false);
+                    reasoning: model.Profile.ReasoningHistory,
+                    thinkingBody: thinkingBody, promptSuffix: thinkingSuffix).ConfigureAwait(false);
             }
             catch (GattoConnectionException) when (manager.DescribeRunning() is null)
             {
@@ -311,10 +316,13 @@ internal static class AuditionRunner
             model.Profile.Source?.RepoId);
     }
 
-    //the thinking state actually sent, the check does not apply the model's thinking map so the battery runs at the template default
+    //the effort a plain launch of this model asks for, its own default or medium. the model's nudges are left out, a nudged run would measure the nudge
+    private static ThinkingLevel EffortFor(Model model) => model.Profile.DefaultEffort ?? ThinkingLevel.Medium;
+
+    //the thinking state actually sent, the level the model's map landed on, or the template default when the model has no map
     private static string ThinkingNoteFor(Model model) =>
-        model.Profile.Thinking is { Count: > 0 }
-            ? "template default (the model's thinking setting is not applied by this check)"
+        Thinking.LandedLevel(model.Profile.Thinking, EffortFor(model)) is { } landed
+            ? landed.ToString().ToLowerInvariant()
             : "template default";
 
     //the sampling actually sent, "defaults" when the profile overrides nothing, a blank row would read like missing data
@@ -327,7 +335,8 @@ internal static class AuditionRunner
     //runs the battery against the client and grades it
     internal static async Task<AuditionVerdict> RunBatteryAsync(IChatClient client, string homePath,
         string model, AuditionStamp stamp, IProgress<AuditionProgress>? progress, CancellationToken ct,
-        TaskLimits? taskLimits = null, ReasoningHistory reasoning = ReasoningHistory.All)
+        TaskLimits? taskLimits = null, ReasoningHistory reasoning = ReasoningHistory.All,
+        System.Text.Json.JsonElement? thinkingBody = null, string? promptSuffix = null)
     {
         var limits = taskLimits ?? TaskLimits.Default;
         var wall = Stopwatch.StartNew();
@@ -335,14 +344,15 @@ internal static class AuditionRunner
         var everyMessage = new List<ChatMessage>();
         var root = Path.Combine(Path.GetTempPath(), "gatto-audition-" + Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(root);
+        var transcripts = OpenTranscripts(homePath, stamp.ModelFileName);
 
         try
         {
-            foreach (var task in Battery.V1)
+            foreach (var task in Battery.Tasks)
             {
                 ct.ThrowIfCancellationRequested();
                 var index = results.Count + 1;
-                progress?.Report(AuditionProgress.Started(task, index, Battery.V1.Count));
+                progress?.Report(AuditionProgress.Started(task, index, Battery.Tasks.Count));
 
                 var scratch = Path.Combine(root, task.Id);
                 Directory.CreateDirectory(scratch);
@@ -352,13 +362,16 @@ internal static class AuditionRunner
                 var hooks = new HookBus();
                 //a store in memory rooted at the scratch folder, so the user's home is never read or written even if autoYes goes away
                 var store = PermissionStore.InMemory(scratch);
-                //auto-approve is safe only here, the tasks are fixed and stay in the scratch folder (headless would grade denials as model failures)
+                //the boundary runs first, the gate passes every read without looking
+                hooks.On(HookEvent.ToolCall, new ScratchBoundary(scratch).CheckAsync);
+
+                //auto-approve is safe only behind that boundary (headless would grade denials as model failures)
                 hooks.On(HookEvent.ToolCall,
                     new PermissionGate(store, prompter: null, autoYes: true).CheckAsync);
 
                 //a fresh loop and conversation per task (passing only after a few warm-ups doesn't count)
                 var loop = new AgentLoop(client, tools, hooks, new ScratchContext(scratch, homePath), model,
-                    reasoningHistory: reasoning);
+                    bodyOverrides: thinkingBody, promptSuffix: promptSuffix, reasoningHistory: reasoning);
                 var convo = new Conversation(SystemPrompt);
 
                 var perTask = Stopwatch.StartNew();
@@ -390,19 +403,23 @@ internal static class AuditionRunner
                     graded = graded with
                     {
                         Pass = false,
-                        Shapes = [.. graded.Shapes, ShapeOf(stopped)],
+                        //the words a cut run ends on are not an answer, so judging them as an ignored error would blame the model for the cut
+                        Shapes = [.. graded.Shapes.Where(s => s != FailureShape.IgnoredError), ShapeOf(stopped)],
                         Silence = stopped == StopReason.Silence ? watchdog.Silence : null,
                     };
                 results.Add(graded with { Elapsed = perTask.Elapsed });
                 everyMessage.AddRange(convo.Messages);
+                transcripts = KeepTranscript(transcripts, task.Id, convo.Messages);
+                //graded and kept, so the folder goes now. a later task that looks around must find its own files and no other task's
+                try { Directory.Delete(scratch, true); } catch (Exception) { }
 
-                progress?.Report(AuditionProgress.Done(task, index, Battery.V1.Count, graded.Pass));
+                progress?.Report(AuditionProgress.Done(task, index, Battery.Tasks.Count, graded.Pass));
 
                 //the early exit sits after the report of the task just graded, the screen never loses a result the run produced
                 if (VerdictDecided(results.Count(r => !r.Pass),
                         results.Any(r => r.Shapes.Contains(FailureShape.FabricatedResult))))
                 {
-                    foreach (var rest in Battery.V1.Skip(results.Count))
+                    foreach (var rest in Battery.Tasks.Skip(results.Count))
                         results.Add(new AuditionTaskResult(rest.Id, Pass: false, [], TimeSpan.Zero,
                             rest.Label, Skipped: true, Act: rest.Act));
                     progress?.Report(AuditionProgress.Note(
@@ -413,7 +430,7 @@ internal static class AuditionRunner
         }
         finally
         {
-            //the scratch goes away with the run, the session JSONL is the evidence that stays
+            //the scratch goes away with the run, the transcripts under the home are the evidence that stays
             try { Directory.Delete(root, true); } catch (Exception) { }
         }
 
@@ -423,7 +440,32 @@ internal static class AuditionRunner
 
         //a fabrication disqualifies at any score, the count of passes cannot outvote it
         return new AuditionVerdict(passed >= PassThreshold && !disqualified, disqualified,
-            results, stamp, wall.Elapsed, DecodeRate(everyMessage));
+            results, stamp, wall.Elapsed, DecodeRate(everyMessage), transcripts);
+    }
+
+    //one folder per model file under the home, emptied first so it holds the last run only. null when it cannot be made, the check still runs
+    private static string? OpenTranscripts(string homePath, string modelFileName)
+    {
+        try
+        {
+            var dir = Path.Combine(homePath, "audition", "transcripts", modelFileName);
+            if (Directory.Exists(dir)) Directory.Delete(dir, true);
+            Directory.CreateDirectory(dir);
+            return dir;
+        }
+        catch (Exception) { return null; }
+    }
+
+    //one task's conversation in the session record shape, one JSON object per line. a failed write drops the folder from the verdict and never fails the run
+    private static string? KeepTranscript(string? dir, string taskId, IReadOnlyList<ChatMessage> messages)
+    {
+        if (dir is null) return null;
+        try
+        {
+            File.WriteAllLines(Path.Combine(dir, taskId + ".jsonl"), messages.Select(m => SessionStore.ChatJson(m)));
+            return dir;
+        }
+        catch (Exception) { return null; }
     }
 
     //the battery's tool set, minus the memory tools, offering one would let a task pass by remembering

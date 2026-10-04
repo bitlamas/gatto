@@ -80,7 +80,7 @@ public class BadgeServerIdentityTests : IDisposable
         File.WriteAllText(
             Path.Combine(_home, "audition", BadgeRegister.FileNameFor("org/old")),
             """
-            {"schema":1,"model_key":"org/old","verdict":"pass","measured":"2026-08-09",
+            {"schema":1,"model_key":"org/old","verdict":"pass","battery_version":4,"measured":"2026-08-09",
              "gatto_build":"v0.3.4","sampling_note":"defaults"}
             """);
 

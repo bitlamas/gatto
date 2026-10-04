@@ -5,11 +5,11 @@
 
 ✗ This model struggled to run commands and edit files · 3 of 5 tasks
 
-  ✓ read a file
-  ✓ write a file
   ✓ run a command
-  ✗ use two tools in order, got stuck repeating the same step
-  ✗ say so when a file is missing, made up the contents of a file that doesn't exist
+  ✓ use two tools in order
+  ✓ edit a file
+  ✗ recover from a wrong path, got stuck repeating the same step
+  ✗ not invent a missing file's contents, made up the contents of a file that doesn't exist
 
   quant         Q4_K_M
   sampling      defaults

@@ -21,7 +21,7 @@ public class BadgeRegisterTests : IDisposable
     public void A_hand_written_record_round_trips_into_a_badge()
     {
         WriteRecord("lmstudio-community/Qwen3.6-35B-A3B-GGUF", """
-            {"schema":1,"verdict":"pass","model_key":"lmstudio-community/Qwen3.6-35B-A3B-GGUF",
+            {"schema":1,"verdict":"pass","battery_version":4,"model_key":"lmstudio-community/Qwen3.6-35B-A3B-GGUF",
              "measured":"2026-08-09","gatto_build":"v0.4.0-12-gabc1234",
              "sampling_note":"temp 0.7, top_p 0.8"}
             """);
@@ -43,7 +43,7 @@ public class BadgeRegisterTests : IDisposable
     [Fact]
     public void An_unmeasured_model_has_no_badge()
     {
-        WriteRecord("org/measured", """{"schema":1,"verdict":"pass","measured":"2026-08-09"}""");
+        WriteRecord("org/measured", """{"schema":1,"verdict":"pass","battery_version":4,"measured":"2026-08-09"}""");
         Assert.Null(BadgeRegister.Lookup(_home, "org/never-measured"));
     }
 
@@ -52,7 +52,7 @@ public class BadgeRegisterTests : IDisposable
     {
         //a corrupt record must not stop a whole search, so the reader skips it and still reads the other records.
         WriteRecord("org/broken", "{ not json at all");
-        WriteRecord("org/good", """{"schema":1,"verdict":"pass","measured":"2026-08-09","gatto_build":"b"}""");
+        WriteRecord("org/good", """{"schema":1,"verdict":"pass","battery_version":4,"measured":"2026-08-09","gatto_build":"b"}""");
 
         Assert.Null(BadgeRegister.Lookup(_home, "org/broken"));
         Assert.NotNull(BadgeRegister.Lookup(_home, "org/good"));
@@ -61,7 +61,7 @@ public class BadgeRegisterTests : IDisposable
     [Fact]
     public void A_record_without_a_measurement_date_is_not_a_measurement()
     {
-        WriteRecord("org/dateless", """{"schema":1,"verdict":"pass","gatto_build":"b"}""");
+        WriteRecord("org/dateless", """{"schema":1,"verdict":"pass","battery_version":4,"gatto_build":"b"}""");
         Assert.Null(BadgeRegister.Lookup(_home, "org/dateless"));
     }
 
@@ -69,7 +69,7 @@ public class BadgeRegisterTests : IDisposable
     public void An_absent_sampling_note_is_a_field_that_does_not_apply_not_a_parse_failure()
     {
         //a measurement can have no sampling note, so an absent note is not a parse failure. the reader must keep accepting a record without one
-        WriteRecord("org/nonote", """{"schema":1,"verdict":"pass","measured":"2026-08-09","gatto_build":"b"}""");
+        WriteRecord("org/nonote", """{"schema":1,"verdict":"pass","battery_version":4,"measured":"2026-08-09","gatto_build":"b"}""");
         var b = BadgeRegister.Lookup(_home, "org/nonote");
         Assert.NotNull(b);
         Assert.Equal("", b!.SamplingNote);
@@ -94,5 +94,21 @@ public class BadgeRegisterTests : IDisposable
         var dir = Path.Combine(_home, BadgeRegister.DirectoryName);
         var full = Path.GetFullPath(Path.Combine(dir, BadgeRegister.FileNameFor(key)));
         Assert.Equal(Path.GetFullPath(dir), Path.GetDirectoryName(full));
+    }
+
+    [Fact]
+    public void A_pass_on_ANOTHER_battery_is_not_a_badge_and_neither_is_one_that_names_none()
+    {
+        //the tasks changed, so a pass on the old ones says nothing about these. a reader that kept it would show a measurement nobody took
+        var current = BadgeRegister.Battery;
+        WriteRecord("org/old", $$"""{"schema":3,"verdict":"pass","battery_version":{{current - 1}},"measured":"2026-08-09"}""");
+        WriteRecord("org/unnumbered", """{"schema":3,"verdict":"pass","measured":"2026-08-09"}""");
+        WriteRecord("org/worded", """{"schema":3,"verdict":"pass","battery_version":"2","measured":"2026-08-09"}""");
+        WriteRecord("org/current", $$"""{"schema":3,"verdict":"pass","battery_version":{{current}},"measured":"2026-08-09"}""");
+
+        Assert.Null(BadgeRegister.Lookup(_home, "org/old"));
+        Assert.Null(BadgeRegister.Lookup(_home, "org/unnumbered"));
+        Assert.Null(BadgeRegister.Lookup(_home, "org/worded"));
+        Assert.NotNull(BadgeRegister.Lookup(_home, "org/current"));
     }
 }

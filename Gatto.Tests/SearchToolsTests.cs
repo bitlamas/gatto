@@ -62,6 +62,57 @@ public class SearchToolsTests : IDisposable
     }
 
     [Fact]
+    public async Task Glob_star_lists_the_folders_of_one_level_too_each_marked_as_a_folder()
+    {
+        //a listing with no folders reads as an empty folder when all it holds is folders
+        Seed();
+        var r = await new GlobTool().ExecuteAsync(Args(new { pattern = "*" }), Ctx, default);
+        Assert.Equal(["readme.md", "src" + Path.DirectorySeparatorChar], r.Text.Split(Environment.NewLine));
+        Assert.Equal("2 entries", r.Gloss);
+    }
+
+    [Fact]
+    public async Task Glob_star_never_crosses_a_separator_and_double_star_reaches_folders_at_any_depth()
+    {
+        Seed();
+        var one = await new GlobTool().ExecuteAsync(Args(new { pattern = "*.cs" }), Ctx, default);
+        Assert.Equal("no matches", one.Text);
+
+        var deep = await new GlobTool().ExecuteAsync(Args(new { pattern = "**/deep" }), Ctx, default);
+        Assert.Equal(Path.Combine("src", "deep") + Path.DirectorySeparatorChar, deep.Text);
+    }
+
+    [Fact]
+    public async Task Glob_with_only_files_matched_still_counts_files()
+    {
+        Seed();
+        var r = await new GlobTool().ExecuteAsync(Args(new { pattern = "**/*.cs" }), Ctx, default);
+        Assert.Equal("2 files", r.Gloss);
+    }
+
+    [Theory]
+    [InlineData("src/[ab].cs", "a.cs", true)]
+    [InlineData("src/[!b].cs", "a.cs", true)]
+    [InlineData("src/[b-z].cs", "a.cs", false)]
+    [InlineData("src/[a-c].cs", "a.cs", true)]
+    public async Task Glob_reads_a_bracket_class_as_one_character_of_the_set(string pattern, string file, bool matches)
+    {
+        Seed();
+        var r = await new GlobTool().ExecuteAsync(Args(new { pattern }), Ctx, default);
+        Assert.Equal(matches, r.Text.Split(Environment.NewLine).Contains(Path.Combine("src", file)));
+    }
+
+    [Fact]
+    public async Task Glob_still_finds_a_folder_whose_name_is_written_in_brackets()
+    {
+        //route folders are named this way, a pattern that spells one must reach it
+        Directory.CreateDirectory(Path.Combine(_dir, "app", "[id]"));
+        File.WriteAllText(Path.Combine(_dir, "app", "[id]", "page.tsx"), "x");
+        var r = await new GlobTool().ExecuteAsync(Args(new { pattern = "app/[id]/page.tsx" }), Ctx, default);
+        Assert.Equal(Path.Combine("app", "[id]", "page.tsx"), r.Text);
+    }
+
+    [Fact]
     public async Task Glob_no_matches_says_so()
     {
         Seed();

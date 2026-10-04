@@ -48,19 +48,19 @@ public class AuditionInWordsTests : IDisposable
 
     //the NoToolCall sentence must end in the act of its own task. the test runs the real task, grader and render, so a change to any of the three fails it.
     [Theory]
-    [InlineData("B1", "answered in words, never read it")]
-    [InlineData("B2", "answered in words, never wrote it")]
-    [InlineData("B3", "answered in words, never ran it")]
-    [InlineData("B4", "answered in words, never used either")]
+    [InlineData("B1", "answered in words, never ran it")]
+    [InlineData("B2", "answered in words, never used either")]
+    [InlineData("B3", "answered in words, never edited it")]
+    [InlineData("B4", "answered in words, never read it")]
     [InlineData("B5", "answered in words, never looked")]
     public void NO_TOOL_CALL_NAMES_THE_TASKS_OWN_ACT(string id, string ruled)
     {
-        var task = Battery.V1.Single(t => t.Id == id);
+        var task = Battery.Tasks.Single(t => t.Id == id);
         var scratch = Path.Combine(_dir, Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(scratch);
         var instance = task.Arrange(scratch);
 
-        //a prose-only transcript fires NoToolCall and satisfies no predicate. the predicate of B5 needs a tool result that errored, and this transcript holds none
+        //a prose-only transcript fires NoToolCall and satisfies no predicate. the predicate of B5 needs a tool call, and this transcript holds none
         var graded = Grader.Grade(task, instance, scratch,
             [new ChatMessage("assistant", "I would read that file for you.")],
             new TurnResult(TurnOutcome.Completed, "stop", null, 2, null),
@@ -118,7 +118,7 @@ public class AuditionInWordsTests : IDisposable
     [Fact]
     public void THE_REPORTS_ROWS_ARE_THE_SHARED_COMPOSERS_OWN_WORDS()
     {
-        var battery = Battery.V1;
+        var battery = Battery.Tasks;
         var ran = new AuditionTaskResult(battery[0].Id, Pass: true, [], TimeSpan.FromSeconds(2),
             battery[0].Label, Act: battery[0].Act);
         var failed = new AuditionTaskResult(battery[1].Id, Pass: false, [FailureShape.NoToolCall],

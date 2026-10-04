@@ -29,7 +29,7 @@ public class CheckTests
 
     //the moment the live frames draw: task 3 of 5 with two finished, typed here and tied to what the flow builds
     private static readonly CheckTick Moment =
-        new(3, 5, "run a command", ["1) read a file", "2) write a file"]);
+        new(3, 5, "edit a file", ["1) run a command", "2) use two tools in order"]);
 
     //the clock reads 0 when the wait opens and 72,800 ms after, since the face measures now minus began
     private static Func<long> Purring()
@@ -136,7 +136,7 @@ public class CheckTests
     [Fact]
     public void THE_MOMENT_THE_FRAMES_DRAW_IS_THE_ONE_THE_FLOW_BUILDS()
     {
-        var battery = Gatto.Roles.Audition.Battery.V1;
+        var battery = Gatto.Roles.Audition.Battery.Tasks;
         var probes = Probes(holdTheCheck: true);
         probes.AuditionMoments.AddRange([
             Gatto.Roles.Audition.AuditionProgress.Started(battery[0], 1, battery.Count),
@@ -261,11 +261,11 @@ public class CheckTests
         Assert.IsType<WizardScreen.Terminal>(leaving.Answer(SetupFlow.AuditionPassedLeave));
     }
 
-    //build each record from Battery.V1, an invented label would test the fixture's own words
+    //build each record from Battery.Tasks, an invented label would test the fixture's own words
     private static Gatto.Roles.Audition.AuditionTaskResult Did(
         int at, bool pass, Gatto.Roles.Audition.FailureShape? shape = null, bool skipped = false)
     {
-        var task = Gatto.Roles.Audition.Battery.V1[at];
+        var task = Gatto.Roles.Audition.Battery.Tasks[at];
         return new Gatto.Roles.Audition.AuditionTaskResult(task.Id, pass,
             shape is { } s ? [s] : [], TimeSpan.FromSeconds(3), task.Label, skipped, null, task.Act);
     }
@@ -353,10 +353,10 @@ public class CheckTests
     public void WHILE_THE_FIRST_TASK_RUNS_THERE_IS_NOTHING_DONE_TO_SAY()
     {
         var rows = WalkRender.Watching(Live(new SetupFlow(Probes())), 100, tick: null,
-            nowMs: Purring(), check: new CheckTick(1, 5, "read a file", [])).Rows;
+            nowMs: Purring(), check: new CheckTick(1, 5, "run a command", [])).Rows;
 
         var joined = string.Join("\n", rows);
-        Assert.Contains("running       task 1 of 5 · read a file", joined, StringComparison.Ordinal);
+        Assert.Contains("running       task 1 of 5 · run a command", joined, StringComparison.Ordinal);
         Assert.DoesNotContain("done ", joined, StringComparison.Ordinal);
     }
 
@@ -422,15 +422,15 @@ public class CheckTests
         Assert.Equal(offer.Question, Live(flow).Question);
     }
 
-    //read the task list from Battery.V1, a copy in the test could agree with the screen's copy while both drift from the real tasks
+    //read the task list from Battery.Tasks, a copy in the test could agree with the screen's copy while both drift from the real tasks
     [Fact]
     public void THE_TASKS_ARE_THE_BATTERYS_OWN()
     {
         var rows = string.Join("\n", Offer(Probes()).BodyRows!.Select(r => r.Text));
         var items = Offer(Probes()).BodyRows!.Single(r => r.Items is not null).Items!;
 
-        Assert.Equal(Gatto.Roles.Audition.Battery.V1.Count, items.Count);
-        foreach (var (task, i) in Gatto.Roles.Audition.Battery.V1.Select((t, i) => (t, i)))
+        Assert.Equal(Gatto.Roles.Audition.Battery.Tasks.Count, items.Count);
+        foreach (var (task, i) in Gatto.Roles.Audition.Battery.Tasks.Select((t, i) => (t, i)))
             Assert.Equal($"{i + 1}) {task.Label}", items[i]);
         Assert.Contains("tasks", rows, StringComparison.Ordinal);
     }
@@ -613,7 +613,7 @@ public class CheckTests
 
         var running = string.Join("\n", WalkRender.Watching(live, 100, tick: null,
             nowMs: StillComingUp(),
-            check: new CheckTick(1, 5, "read a file", [], ServerUp: true, StillLoading: true)).Rows);
+            check: new CheckTick(1, 5, "run a command", [], ServerUp: true, StillLoading: true)).Rows);
 
         Assert.Contains("running       task 1 of 5", running, StringComparison.Ordinal);
         Assert.DoesNotContain("Still loading", running, StringComparison.Ordinal);
@@ -835,7 +835,7 @@ public class CheckTests
     [Fact]
     public void THE_STOPPED_ARM_RENDERS_AT_100()
     {
-        var battery = Gatto.Roles.Audition.Battery.V1;
+        var battery = Gatto.Roles.Audition.Battery.Tasks;
         var probes = Stumbled(new CheckStumble.Stopped([]));
         for (var i = 0; i < 3; i++)
         {
@@ -1000,7 +1000,7 @@ public class CheckTests
     [Fact]
     public void A_RUNNING_BATTERY_IS_NOT_ASKED_ABOUT()
     {
-        var battery = Gatto.Roles.Audition.Battery.V1;
+        var battery = Gatto.Roles.Audition.Battery.Tasks;
         var counting = Probes(holdTheCheck: true);
         counting.AuditionMoments.Add(
             Gatto.Roles.Audition.AuditionProgress.Started(battery[0], 1, battery.Count));

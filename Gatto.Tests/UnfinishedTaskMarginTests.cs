@@ -20,7 +20,7 @@ public class UnfinishedTaskMarginTests : IDisposable
     //writes a real badge file rather than a mock, so the verdict clause and the register's own filename both matter
     private Badge? Write(string key, string tasksJson)
     {
-        var json = "{\"model_key\":\"" + key + "\",\"verdict\":\"pass\",\"measured\":\"2026-08-13\","
+        var json = "{\"model_key\":\"" + key + "\",\"verdict\":\"pass\",\"battery_version\":4,\"measured\":\"2026-08-13\","
             + "\"gatto_build\":\"abc1234\",\"sampling_note\":\"vendor\",\"tasks\":" + tasksJson + "}";
         File.WriteAllText(Path.Combine(_home, "audition", BadgeRegister.FileNameFor(key)), json);
         return BadgeRegister.Lookup(_home, key);

@@ -134,7 +134,7 @@ public class InSessionRenderTests
     [Fact]
     public void THE_LIVE_CHECK_MATCHES_ITS_DRAWN_FRAME()
     {
-        var battery = Gatto.Roles.Audition.Battery.V1;
+        var battery = Gatto.Roles.Audition.Battery.Tasks;
         var probes = Probes();
         probes.AuditionMoments.AddRange([
             Gatto.Roles.Audition.AuditionProgress.Started(battery[0], 1, battery.Count),
@@ -155,8 +155,8 @@ public class InSessionRenderTests
         Assert.Equal(SetupFlow.AuditionRunningKey, running.Key);
 
         var rows = WalkRender.Watching(running, 100, tick: null, nowMs: Purring(),
-            check: new CheckTick(3, 5, "run a command",
-                ["1) read a file", "2) write a file"])).Rows;
+            check: new CheckTick(3, 5, "edit a file",
+                ["1) run a command", "2) use two tools in order"])).Rows;
 
         var diff = Golden.Diff(Golden.Body(Golden.Panel("s10", "check", 100)), Golden.Body(rows));
         Assert.True(diff is null, "s10-check at 100:\n" + diff);

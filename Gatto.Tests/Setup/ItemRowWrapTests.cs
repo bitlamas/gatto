@@ -7,8 +7,8 @@ public class ItemRowWrapTests
 {
     private static readonly string[] Tasks =
     [
-        "1) read a file", "2) write a file", "3) run a command",
-        "4) use two tools in order", "5) say so when a file is missing",
+        "1) run a command", "2) use two tools in order", "3) edit a file",
+        "4) recover from a wrong path", "5) not invent a missing file's contents",
     ];
 
     private static WizardRow Row(int hang = 14) =>
@@ -37,15 +37,15 @@ public class ItemRowWrapTests
         }
     }
 
-    //the whole-items rule alone would pass for a renderer that never packs, so pin the four tasks on the first line at width 100
+    //the whole-items rule alone would pass for a renderer that never packs, so pin the three tasks on the first line at width 100
     [Fact]
     public void ITEMS_ARE_PACKED_NOT_ONE_PER_LINE()
     {
         var lines = Lines(100);
 
         Assert.Equal(2, lines.Count);
-        Assert.EndsWith("4) use two tools in order", lines[0], StringComparison.Ordinal);
-        Assert.Contains("5) say so when a file is missing", lines[1], StringComparison.Ordinal);
+        Assert.EndsWith("3) edit a file", lines[0], StringComparison.Ordinal);
+        Assert.Contains("5) not invent a missing file's contents", lines[1], StringComparison.Ordinal);
     }
 
     //a separator at a break is dropped, the same rule SoftWrap applies to a space
@@ -63,7 +63,7 @@ public class ItemRowWrapTests
         var lines = Lines(100);
 
         var column = lines[0].IndexOf("1)", StringComparison.Ordinal);
-        Assert.Equal(column, lines[1].IndexOf("5)", StringComparison.Ordinal));
+        Assert.Equal(column, lines[1].IndexOf("4)", StringComparison.Ordinal));
     }
 
     //an item wider than the row overflows whole, so nobody reintroduces the break as a fix

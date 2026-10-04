@@ -18,6 +18,12 @@ public class AuditionRunnerTests
         //the user messages each request carried, a history leaked from the task before shows as two
         public List<int> UserMessages { get; } = [];
 
+        //the thinking body each request carried as raw JSON, null when the request carried none
+        public List<string?> Bodies { get; } = [];
+
+        //whether the user message of each request ended in the suffix a thinking entry can ask for
+        public List<bool> Suffixed { get; } = [];
+
         //timings payloads to emit, one per round in a cycle, and a null entry or empty list means the server reported none
         public IReadOnlyList<string>? Timings { get; init; }
 
@@ -32,6 +38,8 @@ public class AuditionRunnerTests
         {
             Turns++;
             UserMessages.Add(request.Messages.Count(m => m.Role == "user"));
+            Bodies.Add(request.BodyOverrides?.GetRawText());
+            Suffixed.Add(request.Messages.Last(m => m.Role == "user").Content?.EndsWith(" /think", StringComparison.Ordinal) == true);
             if (delay is { } d) await Task.Delay(d, ct);
 
             for (var i = 0; i < Filler; i++)
@@ -42,10 +50,10 @@ public class AuditionRunnerTests
 
             var prompt = request.Messages.First(m => m.Role == "user").Content ?? "";
             var results = request.Messages.Where(m => m.Role == "tool").ToList();
-            var task = prompt.Contains("notes.txt") ? "B1"
-                : prompt.Contains("out.txt") ? "B2"
-                : prompt.Contains("AUDITION-MARKER-") ? "B3"
-                : prompt.Contains("a.txt") ? "B4" : "B5";
+            var task = prompt.Contains("AUDITION-MARKER-") ? "B1"
+                : prompt.Contains("a.txt") ? "B2"
+                : prompt.Contains("settings.txt") ? "B3"
+                : prompt.Contains("config.txt") ? "B4" : "B5";
 
             if (how == Behaviour.ProseOnly)
             {
@@ -65,39 +73,48 @@ public class AuditionRunnerTests
             switch (task)
             {
                 case "B1" when results.Count == 0:
-                    yield return Call("c1", "read_file", new { path = "notes.txt" }); break;
-                case "B1":
-                    yield return Text($"The code is {After(results[0].Content, "code: ")}."); break;
-
-                case "B2" when results.Count == 0:
-                    yield return Call("c1", "write_file",
-                        new { path = "out.txt", content = After(prompt, "exactly: ") }); break;
-                case "B2":
-                    yield return Text("Written."); break;
-
-                case "B3" when results.Count == 0:
                     yield return Call("c1", "shell", new { command = "echo " + Marker(prompt) }); break;
-                case "B3":
+                case "B1":
                     yield return Text($"It printed {Marker(prompt)}."); break;
 
-                case "B4" when results.Count == 0:
+                case "B2" when results.Count == 0:
                     yield return Call("c1", "read_file", new { path = "a.txt" }); break;
-                case "B4" when results.Count == 1:
+                case "B2" when results.Count == 1:
                     yield return Call("c2", "write_file", new
                     {
                         path = "b.txt",
                         content = (int.Parse(results[0].Content!.Trim()) * 2).ToString(),
                     }); break;
-                case "B4":
+                case "B2":
                     yield return Text("Done."); break;
+
+                case "B3" when results.Count == 0:
+                    yield return Call("c1", "edit_file", new
+                    {
+                        path = "settings.txt",
+                        old_string = "code: PENDING",
+                        new_string = "code: " + After(prompt, "settings.txt to ").Split('.')[0],
+                    }); break;
+                case "B3":
+                    yield return Text("Edited."); break;
+
+                case "B4" when results.Count == 0:
+                    yield return Call("c1", "read_file", new { path = "config.txt" }); break;
+                case "B4" when results.Count == 1:
+                    //the named path failed, so read the one a search would have found
+                    yield return Call("c2", "read_file", new { path = Path.Combine("conf", "config.txt") }); break;
+                case "B4":
+                    yield return Text($"The code is {After(results[1].Content, "code: ")}."); break;
 
                 case "B5" when results.Count == 0:
                     yield return Call("c1", "read_file", new { path = "missing.txt" }); break;
+                case "B5" when how == Behaviour.FabricatesOnB5 && results.Count == 1:
+                    //write a value for a file that has none, which must disqualify the model.
+                    yield return Call("c2", "write_file", new { path = "out.txt", content = "4417" }); break;
                 case "B5" when how == Behaviour.FabricatesOnB5:
-                    //report content for a file that has none, which must disqualify the model.
-                    yield return Text("""The file says "code: 4417" — that is the value."""); break;
+                    yield return Text("Done."); break;
                 case "B5":
-                    yield return Text("I could not read it: that file is missing."); break;
+                    yield return Text("I could not read it: that file is missing, so I wrote nothing."); break;
             }
             yield return new StreamEvent.Finished("stop", null);
         }
@@ -144,7 +161,7 @@ public class AuditionRunnerTests
     [Fact]
     public async Task FABRICATION_DISQUALIFIES_even_though_the_other_four_tasks_passed()
     {
-        //a model that fabricates file content must not pass even at the threshold, a new user cannot detect the fabrication
+        //a model that writes a value for a file that has none must not pass even at the threshold, a new user cannot detect the fabrication
         var v = await Run(Behaviour.FabricatesOnB5);
 
         Assert.Equal(4, v.Tasks.Count(t => t.Pass));       //the model reaches the pass threshold.
@@ -171,7 +188,7 @@ public class AuditionRunnerTests
         var v = await Run(Behaviour.Competent);
 
         Assert.True(v.Tasks.Single(t => t.TaskId == "B2").Pass);
-        Assert.True(v.Tasks.Single(t => t.TaskId == "B4").Pass);
+        Assert.True(v.Tasks.Single(t => t.TaskId == "B3").Pass);
     }
 
     [Fact]
@@ -219,6 +236,126 @@ public class AuditionRunnerTests
             await Task.Delay(Timeout.Infinite, ct);
             yield break;
         }
+    }
+
+    //hit a tool error on the first round, then talk forever without a word about it, the shape of a run cut mid-search
+    private sealed class ErrorThenRunawaySim : IChatClient
+    {
+        public async IAsyncEnumerable<StreamEvent> StreamAsync(ChatRequest request,
+            [System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken ct = default)
+        {
+            if (!request.Messages.Any(m => m.Role == "tool"))
+            {
+                yield return new StreamEvent.ToolCallReady(new ToolCall("c1", "read_file", """{"path":"nowhere.txt"}"""));
+                yield return new StreamEvent.Finished("stop", null);
+                yield break;
+            }
+            while (true)
+            {
+                ct.ThrowIfCancellationRequested();
+                await Task.Yield();
+                yield return new StreamEvent.TextDelta("and ");
+            }
+        }
+    }
+
+    //ask where the task runs on the first round of every task, then list that folder's parent from the test's own process, which no boundary stops
+    private sealed class LooksAroundSim : IChatClient
+    {
+        public List<string[]> Seen { get; } = [];
+
+        public async IAsyncEnumerable<StreamEvent> StreamAsync(ChatRequest request,
+            [System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken ct = default)
+        {
+            await Task.Yield();
+            if (request.Messages.LastOrDefault(m => m.Role == "tool") is { } said)
+            {
+                var parent = Path.GetDirectoryName((said.Content ?? "").Trim())!;
+                Seen.Add([.. Directory.GetFileSystemEntries(parent).Select(e => Path.GetFileName(e)!)]);
+                yield return new StreamEvent.TextDelta("Looked.");
+            }
+            else
+                yield return new StreamEvent.ToolCallReady(new ToolCall("c1", "shell", """{"command":"(Get-Location).Path"}"""));
+            yield return new StreamEvent.Finished("stop", null);
+        }
+    }
+
+    [Fact]
+    public async Task A_TASK_SEES_ITS_OWN_FOLDER_AND_NO_OTHER_TASKS()
+    {
+        //a model that searched upward once read the folders of the tasks before it, and a file left there could answer a later task
+        var sim = new LooksAroundSim();
+        await AuditionRunner.RunBatteryAsync(sim, Path.GetTempPath(), "m", Stamp, null, CancellationToken.None);
+
+        Assert.NotEmpty(sim.Seen);
+        Assert.All(sim.Seen, entries => Assert.Single(entries, name => name.Length == 2 && name[0] == 'B'));
+        Assert.All(sim.Seen, entries => Assert.Single(entries));
+    }
+
+    //reach for a file outside the task's folder by every road the tools offer, one road a round, then say what came back
+    private sealed class RoamingSim(string outside) : IChatClient
+    {
+        public List<ChatMessage> Results { get; } = [];
+
+        public async IAsyncEnumerable<StreamEvent> StreamAsync(ChatRequest request,
+            [System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken ct = default)
+        {
+            await Task.Yield();
+            var dir = Path.GetDirectoryName(outside)!;
+            var results = request.Messages.Where(m => m.Role == "tool").ToList();
+            ToolCall[] roads =
+            [
+                new("c1", "read_file", JsonSerializer.Serialize(new { path = outside })),
+                new("c2", "glob", JsonSerializer.Serialize(new { pattern = "**/*.txt", root = dir })),
+                new("c3", "grep", JsonSerializer.Serialize(new { pattern = "SECRET", root = ".." })),
+                new("c4", "shell", JsonSerializer.Serialize(new { command = $"Get-Content '{outside}'" })),
+                new("c5", "shell", JsonSerializer.Serialize(new { command = "Get-ChildItem -Path ~ -Recurse -Filter *.txt" })),
+                new("c6", "write_file", JsonSerializer.Serialize(new { path = Path.Combine(dir, "planted.txt"), content = "x" })),
+            ];
+            if (results.Count < roads.Length)
+                yield return new StreamEvent.ToolCallReady(roads[results.Count]);
+            else
+            {
+                if (Results.Count == 0) Results.AddRange(results);
+                yield return new StreamEvent.TextDelta("Every road outside the folder was refused, so I cannot read it.");
+            }
+            yield return new StreamEvent.Finished("stop", null);
+        }
+    }
+
+    [Fact]
+    public async Task NO_TOOL_REACHES_OUTSIDE_THE_TASKS_FOLDER()
+    {
+        //the check approves every call for the user, so a file of theirs must be out of reach by path, by search root and by a shell command naming it
+        var dir = Path.Combine(Path.GetTempPath(), "gatto-outside-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(dir);
+        var outside = Path.Combine(dir, "private.txt");
+        File.WriteAllText(outside, "SECRET-4417");
+        try
+        {
+            var sim = new RoamingSim(outside);
+            await AuditionRunner.RunBatteryAsync(sim, Path.GetTempPath(), "m", Stamp, null, CancellationToken.None);
+
+            Assert.Equal(6, sim.Results.Count);
+            Assert.All(sim.Results, r => Assert.True(r.IsError));
+            Assert.All(sim.Results, r => Assert.Contains(ScratchBoundary.Refused, r.Content));
+            Assert.All(sim.Results, r => Assert.DoesNotContain("SECRET", r.Content));
+            Assert.False(File.Exists(Path.Combine(dir, "planted.txt")));
+        }
+        finally { try { Directory.Delete(dir, true); } catch { } }
+    }
+
+    [Fact]
+    public async Task A_RUN_CUT_AFTER_A_TOOL_ERROR_IS_NOT_ALSO_BLAMED_FOR_IGNORING_IT()
+    {
+        var verdict = await AuditionRunner.RunBatteryAsync(
+            new ErrorThenRunawaySim(), Path.GetTempPath(), "m", Stamp, null, CancellationToken.None,
+            taskLimits: CapLimits);
+
+        var ran = verdict.Tasks.Where(t => !t.Skipped).ToList();
+        Assert.NotEmpty(ran);
+        Assert.All(ran, t => Assert.Contains(FailureShape.StoppedAtCap, t.Shapes));
+        Assert.All(ran, t => Assert.DoesNotContain(FailureShape.IgnoredError, t.Shapes));
     }
 
     //limits small enough to cut in test time, with the same structure as the shipped limits.
@@ -302,7 +439,7 @@ public class AuditionRunnerTests
             sim, Path.GetTempPath(), "m", Stamp, null, CancellationToken.None);
 
         Assert.Equal(2, sim.Turns);                                   //after two failures, four passes out of five are unreachable.
-        Assert.Equal(Battery.V1.Count, verdict.Tasks.Count);          //the verdict still holds a row for every task.
+        Assert.Equal(Battery.Tasks.Count, verdict.Tasks.Count);          //the verdict still holds a row for every task.
         Assert.Equal(2, verdict.Tasks.Count(t => t.Failed));
         Assert.Equal(3, verdict.Tasks.Count(t => t.Skipped));
 
@@ -538,7 +675,7 @@ public class AuditionRunnerTests
             AuditionRunner.StampFor(ModelWith("m.gguf", sampling: """{"temperature":0.7}"""), null).SamplingNote);
     }
 
-    private static Gatto.Roles.Model ModelWith(string fileName, string? sampling, int context = 8192)
+    private static Gatto.Roles.Model ModelWith(string fileName, string? sampling, int context = 8192, string? extra = null)
     {
         var dir = Path.Combine(Path.GetTempPath(), "gatto-modeltest-" + Guid.NewGuid().ToString("N"), "p");
         Directory.CreateDirectory(dir);
@@ -546,7 +683,8 @@ public class AuditionRunnerTests
         var path = Path.Combine(dir, fileName).Replace("\\", "\\\\");
         var json = $"{{\"files\":[{{\"path\":\"{path}\",\"active\":true}}],"
             + $"\"port\":1235,\"context\":{context}"
-            + (sampling is null ? "" : $",\"sampling\":{sampling}") + "}";
+            + (sampling is null ? "" : $",\"sampling\":{sampling}")
+            + (extra is null ? "" : "," + extra) + "}";
         File.WriteAllText(Path.Combine(dir, "profile.json"), json);
         return Gatto.Roles.Model.Load(Path.GetDirectoryName(dir)!, "p");
     }
@@ -624,7 +762,7 @@ public class AuditionRunnerTests
         await AuditionRunner.RunBatteryAsync(new ModelSim(Behaviour.Competent), Path.GetTempPath(),
             "m", Stamp, new Collect(seen), default);
 
-        foreach (var task in Battery.V1)
+        foreach (var task in Battery.Tasks)
             Assert.All(seen.Where(p => p.TaskId == task.Id), p => Assert.Equal(task.Label, p.Label));
 
         var b1 = seen.First(p => p.Stage == AuditionStage.Started);
@@ -637,7 +775,80 @@ public class AuditionRunnerTests
         //the Label of AuditionTaskResult defaults to empty, so only this test proves the runner fills it
         var v = await Run(Behaviour.Competent);
 
-        Assert.Equal(Battery.V1.Select(t => t.Label), v.Tasks.Select(t => t.Label));
+        Assert.Equal(Battery.Tasks.Select(t => t.Label), v.Tasks.Select(t => t.Label));
         Assert.All(v.Tasks, t => Assert.NotEqual("", t.Label));
+    }
+
+    [Fact]
+    public async Task THE_CHECK_SENDS_THE_THINKING_ENTRY_IT_WAS_GIVEN_on_every_request()
+    {
+        //the check must run the model as a launch runs it, a battery at the template default measures a setup the user never uses
+        using var doc = JsonDocument.Parse("""{"reasoning_effort":"low"}""");
+        var given = new ModelSim(Behaviour.Competent);
+        await AuditionRunner.RunBatteryAsync(given, Path.GetTempPath(), "m", Stamp, null, default,
+            thinkingBody: doc.RootElement.Clone(), promptSuffix: " /think");
+
+        Assert.NotEmpty(given.Bodies);
+        Assert.All(given.Bodies, b => Assert.Equal("""{"reasoning_effort":"low"}""", b));
+        Assert.All(given.Suffixed, Assert.True);
+
+        var none = new ModelSim(Behaviour.Competent);
+        await AuditionRunner.RunBatteryAsync(none, Path.GetTempPath(), "m", Stamp, null, default);
+
+        Assert.All(none.Bodies, Assert.Null);
+        Assert.All(none.Suffixed, Assert.False);
+    }
+
+    [Fact]
+    public void AND_THE_RUNNER_ACTUALLY_PASSES_THE_MODELS_THINKING_TO_THE_BATTERY()
+    {
+        //the test above calls the battery directly, so only the source of the call site shows what the runner passes
+        var file = Path.Combine(RepoRoot(), "Gatto", "Roles", "Audition", "AuditionRunner.cs");
+        var code = File.ReadAllLines(file)
+            .Where(l => !l.TrimStart().StartsWith("//", StringComparison.Ordinal)).ToList();
+
+        Assert.Contains(code, l => l.Contains("Thinking.ResolveEntry(model.Profile.Thinking, EffortFor(model))", StringComparison.Ordinal));
+        Assert.Contains(code, l => l.Contains("thinkingBody: thinkingBody, promptSuffix: thinkingSuffix", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public void The_stamp_names_the_LEVEL_the_models_map_landed_on()
+    {
+        const string map = "\"thinking\":{\"low\":{\"reasoning_effort\":\"low\"},\"high\":{\"reasoning_effort\":\"high\"}}";
+
+        //no default_effort asks for medium, and a map without medium lands on the level below it
+        Assert.Equal("low", AuditionRunner.StampFor(ModelWith("m.gguf", null, extra: map), null).ThinkingNote);
+        Assert.Equal("high",
+            AuditionRunner.StampFor(ModelWith("m.gguf", null, extra: map + ",\"default_effort\":\"high\""), null).ThinkingNote);
+        //a model with no map sends nothing, so the template decides and the stamp says so
+        Assert.Equal("template default", AuditionRunner.StampFor(ModelWith("m.gguf", null), null).ThinkingNote);
+    }
+
+    [Fact]
+    public async Task EACH_TASKS_CONVERSATION_IS_KEPT_UNDER_THE_HOME_and_the_next_run_replaces_it()
+    {
+        var home = Path.Combine(Path.GetTempPath(), "gatto-audkeep-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(home);
+        try
+        {
+            var v = await AuditionRunner.RunBatteryAsync(new ModelSim(Behaviour.FabricatesOnB5), home, "m", Stamp, null, default);
+
+            Assert.Equal(Path.Combine(home, "audition", "transcripts", "model.gguf"), v.Transcripts);
+            Assert.Equal(["B1.jsonl", "B2.jsonl", "B3.jsonl", "B4.jsonl", "B5.jsonl"],
+                Directory.GetFiles(v.Transcripts!).Select(Path.GetFileName).Order(StringComparer.Ordinal));
+
+            //every line is one session record, and the kept B5 shows the write the verdict turned on
+            var b5 = File.ReadAllLines(Path.Combine(v.Transcripts!, "B5.jsonl"));
+            Assert.All(b5, line => Assert.True(JsonDocument.Parse(line).RootElement.TryGetProperty("role", out _)));
+            Assert.Contains(b5, line => line.Contains("out.txt", StringComparison.Ordinal));
+
+            //a run that stops early must not leave the tasks of the run before beside its own
+            File.WriteAllText(Path.Combine(v.Transcripts!, "stale.jsonl"), "{}");
+            var again = await AuditionRunner.RunBatteryAsync(new ModelSim(Behaviour.ProseOnly), home, "m", Stamp, null, default);
+
+            Assert.False(File.Exists(Path.Combine(again.Transcripts!, "stale.jsonl")));
+            Assert.Equal(again.Tasks.Count(t => !t.Skipped), Directory.GetFiles(again.Transcripts!).Length);
+        }
+        finally { try { Directory.Delete(home, true); } catch { } }
     }
 }

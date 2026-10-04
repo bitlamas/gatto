@@ -316,7 +316,7 @@ public class InkTests
         var (s, f) = Face();
         var polls = 0;
         f.Choose(live, watch: () => ++polls > 1,
-            check: () => new CheckTick(3, 5, "run a command", ["1) read a file", "2) write a file"]));
+            check: () => new CheckTick(3, 5, "edit a file", ["1) run a command", "2) use two tools in order"]));
         var screen = s.Text;
 
         Assert.True(Wears(screen, "  running       ", Theme.Dim),
@@ -325,7 +325,7 @@ public class InkTests
             "the running label is bright, so the row is flat");
 
         //the whole row is one dim run, nothing in the finished list steps forward
-        Assert.True(Wears(screen, "  done          1) read a file · 2) write a file", Theme.Dim),
+        Assert.True(Wears(screen, "  done          1) run a command · 2) use two tools in order", Theme.Dim),
             "the done row is not one dim run, so a finished task is being emphasised");
     }
 

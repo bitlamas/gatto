@@ -42,8 +42,9 @@ internal static class BadgeWriter
                 if (verdict.Stamp.Server is { Length: > 0 } server) w.WriteString("server", server);
             }
 
-            //evidence the reader ignores, the rate is absent when the run reported no timings rather than left out for compatibility
+            //the reader refuses a record whose battery is not the current one, so this number is what keeps the badge alive
             w.WriteNumber("battery_version", Battery.Version);
+            //evidence the reader ignores, the rate is absent when the run reported no timings rather than left out for compatibility
             w.WriteNumber("wall_clock_s", Math.Round(verdict.WallClock.TotalSeconds, 1));
             if (verdict.DecodeTokS is { } rate) w.WriteNumber("decode_tok_s", Math.Round(rate, 1));
             //do not write model_file, it repeated model_key and no reader ever read it, old records with it are inert

@@ -5,11 +5,11 @@
 
 ✗ This model struggled to run commands and edit files · 2 of 4 tasks
 
-  ✓ read a file
-  ✓ write a file
-  ✗ run a command, answered in words, never ran it
-  ✗ use two tools in order, a step failed and it carried on as if it had worked
-  – say so when a file is missing, not run: the result was already clear
+  ✓ run a command
+  ✓ use two tools in order
+  ✗ edit a file, answered in words, never edited it
+  ✗ recover from a wrong path, a step failed and it carried on as if it had worked
+  – not invent a missing file's contents, not run: the result was already clear
 
   quant         Q4_K_M
   sampling      defaults

@@ -15,6 +15,9 @@ internal static class BadgeRegister
     //the record shape this reader accepts. an absent optional field means it does not apply rather than a fallback to an older format
     public const int Schema = 3;
 
+    //the battery whose measurements count. a record from another battery measured other tasks, so it is not a badge for this one
+    public const int Battery = 4;
+
     //the badge for a model key, or null when nothing was measured. a malformed record is skipped, since one bad file must not take down a search
     public static Badge? Lookup(string homePath, string modelKey)
     {
@@ -54,6 +57,11 @@ internal static class BadgeRegister
 
             //a record that does not assert a pass is not a badge. the clause lives on the reader, so it holds whatever the writer omits
             if (Str(root, "verdict") != "pass") return null;
+
+            //a pass on an older battery says nothing about these tasks, and a record with no battery number cannot say which it took
+            if (!root.TryGetProperty("battery_version", out var battery) || battery.ValueKind != JsonValueKind.Number
+                || !battery.TryGetInt32(out var took) || took != Battery)
+                return null;
 
             if (Str(root, "measured") is not { } measuredText
                 || !DateOnly.TryParse(measuredText, System.Globalization.CultureInfo.InvariantCulture,

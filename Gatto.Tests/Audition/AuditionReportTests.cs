@@ -497,4 +497,23 @@ public class AuditionReportTests : IDisposable
 
         Assert.DoesNotContain("thinking", text, StringComparison.Ordinal);
     }
+
+    [Fact]
+    public void A_FAILED_CHECK_SAYS_WHERE_ITS_TRANSCRIPTS_ARE_and_a_pass_does_not()
+    {
+        //a fail nobody can read is a fail nobody can check, and a pass has nothing to look up
+        var kept = Path.Combine("home", "audition", "transcripts", "m.gguf");
+        var failed = Verdict(pass: false) with { Transcripts = kept };
+        var passed = Verdict(pass: true) with { Transcripts = kept };
+
+        Assert.Contains("transcripts", Render(failed), StringComparison.Ordinal);
+        Assert.Contains(kept, Render(failed), StringComparison.Ordinal);
+        Assert.DoesNotContain("transcripts", Render(passed), StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void A_FAILED_CHECK_WITH_NO_TRANSCRIPTS_PRINTS_NO_EMPTY_ROW()
+    {
+        Assert.DoesNotContain("transcripts", Render(Verdict(pass: false)), StringComparison.Ordinal);
+    }
 }

@@ -142,6 +142,9 @@ internal static class AuditionReport
         //the served-by row appears only when another server served the run, a row that always shows goes unread
         if (ServerNote(stamp.Server) is { } server) rows.Add(("served by", sanitize(server)));
 
+        //where each task's conversation was kept, shown on a failed check only, since a pass leaves nothing to look up
+        if (!verdict.Pass && verdict.Transcripts is { Length: > 0 } kept) rows.Add(("transcripts", sanitize(kept)));
+
         var keyWidth = rows.Max(r => r.Key.Length);   //as wide as the widest key present, so no value is pushed out of line
         foreach (var (key, value) in rows)
             s.AppendLine($"  {Ink(key.PadRight(keyWidth), ReportInk.Dim)}  {value}");

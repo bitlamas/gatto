@@ -39,8 +39,8 @@ internal static class Grader
 
         if (SailedPastAnError(transcript)) shapes.Add(FailureShape.IgnoredError);
         if (RepeatedItself(calls)) shapes.Add(FailureShape.RepeatLoop);
-        //gated on task.AbsentFile, the fabrication check is only decidable where the fixture guarantees a file cannot exist
-        if (task.AbsentFile is not null && Transcript.FabricatedContent(instance.Prompt, transcript))
+        //decided on the disk by the task itself, only a task whose fixture guarantees no value exists at the named path carries the rule
+        if (task.Invented?.Invoke(instance, scratchDir) == true)
             shapes.Add(FailureShape.FabricatedResult);
 
         //keyed on turn.FinishReason length, TruncationKind.Length really means the round cap and would report a runaway when a subagent just used its rounds

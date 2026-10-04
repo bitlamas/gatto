@@ -84,6 +84,9 @@ public static class ArgRouter
     //a reserved command takes a bare subcommand and one bare target. only serve checks its subcommand, and a bare gatto serve means status
     private static ParsedArgs ParseReserved(string[] argv, string role)
     {
+        //asking for help must never run the command, a dropped flag once started a full audition
+        if (argv.Any(a => a is "-h" or "--help")) return new ParsedArgs("help", role, null, null, false, false, false);
+
         var command = argv[0];
         string? sub = argv.Length > 1 && !argv[1].StartsWith('-') ? argv[1] : null;
         string? target = argv.Length > 2 && !argv[2].StartsWith('-') ? argv[2] : null;

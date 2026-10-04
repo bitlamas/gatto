@@ -6,7 +6,7 @@
 ✗ The server stopped while the check was running, nothing was measured.
 
   model         gemma-4-26B-A4B-it-UD-Q4_K_M.gguf
-  done          1) read a file · 2) write a file · 3) run a command
+  done          1) run a command · 2) use two tools in order · 3) edit a file
   last lines    none, the server exited without writing anything
 
   The check couldn't finish, so gatto can't judge this model yet. Type

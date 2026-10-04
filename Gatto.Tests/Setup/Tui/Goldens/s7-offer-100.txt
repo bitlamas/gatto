@@ -7,8 +7,8 @@
   model that barely fits.
 
   model         gemma-4-26B-A4B-it-UD-Q4_K_M.gguf
-  tasks         1) read a file · 2) write a file · 3) run a command · 4) use two tools in order
-                5) say so when a file is missing
+  tasks         1) run a command · 2) use two tools in order · 3) edit a file
+                4) recover from a wrong path · 5) not invent a missing file's contents
 
 ❯ 1. Yes, check it  recommended
   2. Skip the tasks, just make sure it answers

@@ -15,7 +15,7 @@ public class BadgeMarginTests
     private static void WriteRecord(string home, string key, string tasksJson) =>
         File.WriteAllText(
             Path.Combine(home, BadgeRegister.DirectoryName, BadgeRegister.FileNameFor(key)),
-            "{ \"schema\": 1, \"model_key\": \"" + key + "\", \"verdict\": \"pass\", "
+            "{ \"schema\": 1, \"model_key\": \"" + key + "\", \"verdict\": \"pass\", \"battery_version\": 4, "
             + "\"measured\": \"2026-08-12\", \"tasks\": " + tasksJson + " }");
 
     [Fact]
@@ -55,7 +55,7 @@ public class BadgeMarginTests
         var home = Home();
         File.WriteAllText(
             Path.Combine(home, BadgeRegister.DirectoryName, BadgeRegister.FileNameFor("org/m")),
-            "{ \"schema\": 1, \"model_key\": \"org/m\", \"verdict\": \"pass\", \"measured\": \"2026-08-12\" }");
+            "{ \"schema\": 1, \"model_key\": \"org/m\", \"verdict\": \"pass\", \"battery_version\": 4, \"measured\": \"2026-08-12\" }");
 
         var badge = BadgeRegister.Lookup(home, "org/m");
 

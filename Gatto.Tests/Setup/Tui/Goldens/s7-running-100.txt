@@ -7,8 +7,8 @@
   watches what happens.
 
   model         gemma-4-26B-A4B-it-UD-Q4_K_M.gguf
-  running       task 3 of 5 · run a command
-  done          1) read a file · 2) write a file
+  running       task 3 of 5 · edit a file
+  done          1) run a command · 2) use two tools in order
 
 ────────────────────────────────────────────────────────────────────────────────────────────────────
   Esc stop the check                                         | stopping keeps it set up, unchecked
