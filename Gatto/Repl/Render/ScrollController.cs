@@ -19,11 +19,17 @@ public sealed class ScrollController
 
     public bool Following => _following;
 
+    //the chrome block's rows as the document's last rows, set by the painter at each compose, 0 when the chrome stays pinned outside the document
+    public int ChromeRows { get; set; }
+
+    //the transcript's rows and the chrome's, the document every offset and page counts in
+    private int Total(int width) => _index.TotalRows(width) + ChromeRows;
+
     //rows scrolled up from the bottom, 0 while following, so the anchored row stays put as the tail grows
     public int BottomOffset(int width, int height)
     {
         if (_following) return 0;
-        var total = _index.TotalRows(width);
+        var total = Total(width);
         var top = System.Math.Clamp(AbsTop(width), 0, System.Math.Max(0, total));
         return System.Math.Clamp(total - top - height, 0, System.Math.Max(0, total));
     }
@@ -36,7 +42,7 @@ public sealed class ScrollController
     public void PageDown(int width, int height)
     {
         if (!Scrollable(width, height)) return;
-        var total = _index.TotalRows(width);
+        var total = Total(width);
         var target = CurrentTop(width, height) + HalfPage(height);
         if (target >= System.Math.Max(0, total - height)) End();   //reached the bottom, re-attach and follow
         else DetachTo(width, target);
@@ -57,13 +63,13 @@ public sealed class ScrollController
         var target = CurrentTop(width, height) - linesTowardOlder;
         if (linesTowardOlder < 0)                              //toward the bottom
         {
-            var total = _index.TotalRows(width);
+            var total = Total(width);
             if (target >= System.Math.Max(0, total - height)) { End(); return; }   //reached the bottom, re-attach follow
         }
         DetachTo(width, target);
     }
 
-    private bool Scrollable(int width, int height) => _index.TotalRows(width) > height;
+    private bool Scrollable(int width, int height) => Total(width) > height;
 
     //the painter calls this after an append, empty by design (the anchor is an item index, the tail only grows)
     public void OnModelGrew(int width) { }
@@ -75,7 +81,7 @@ public sealed class ScrollController
     private int CurrentTop(int width, int height)
     {
         if (!_following) return AbsTop(width);
-        var total = _index.TotalRows(width);
+        var total = Total(width);
         return System.Math.Max(0, total - height);   //following, so the top is the top of the bottom-aligned frame
     }
 
@@ -89,7 +95,7 @@ public sealed class ScrollController
     private void DetachTo(int width, int absRow)
     {
         _following = false;
-        var total = _index.TotalRows(width);
+        var total = Total(width);
         absRow = System.Math.Clamp(absRow, 0, System.Math.Max(0, total - 1));
         var cursor = 0;
         for (var i = 0; i < _model.Items.Count; i++)

@@ -29,6 +29,8 @@ public sealed class VtScreenSurface : ITermSurface
     public int Height { get; private set; }
     public int CursorRow => _row;
     public int CursorCol => _col;
+    //whether the last frame showed the cursor, from the ?25 private mode
+    public bool CursorVisible { get; private set; } = true;
 
     //false like the interface default, a test that resizes while code waits for a key sets it
     public bool ReportsResize { get; set; }
@@ -196,8 +198,8 @@ public sealed class VtScreenSurface : ITermSurface
                 _pendingWrap = false;
                 break;
             }
-            case 'h': if (body == "?1049") EnterAlt(); break;   //only the alt-screen mode acts here. every other private mode is ignored.
-            case 'l': if (body == "?1049") ExitAlt(); break;    //the matching escape leaves the alt screen.
+            case 'h': if (body == "?1049") EnterAlt(); else if (body == "?25") CursorVisible = true; break;   //the alt screen and the cursor act here, every other private mode is ignored
+            case 'l': if (body == "?1049") ExitAlt(); else if (body == "?25") CursorVisible = false; break;
             case 'J':                                                                            //only the erase-from-cursor variant is modeled, gatto never emits the others
                 for (var x = _col; x < Width; x++) _rows[_row][x] = " ";
                 for (var r = _row + 1; r < Height; r++) _rows[r] = NewRow();

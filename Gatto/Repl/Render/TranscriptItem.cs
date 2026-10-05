@@ -406,14 +406,14 @@ public sealed record CommandEchoItem(IReadOnlyList<string> LogicalRows, ChatMess
     //a dim line wrapped at the width it is drawn at, so a narrow window keeps every word and a resize wraps it again
     public string? DimText { get; init; }
 
-    //rows drawn again from their figures at the width the transcript repaints at, so a resize never cuts rows laid out for the old width
-    public Func<int, Theme, GlyphSet?, IReadOnlyList<string>>? RowsAt { get; init; }
+    //the figures of a committed /context report, so the item draws again at any width and the session file can carry them
+    public Gatto.Core.Loop.ContextFigures? Context { get; init; }
 
     protected override IReadOnlyList<string> RenderBody(int width, Theme theme, GlyphSet? glyphs) =>
         DimText is { } text
             ? SoftWrap.Wrap(TermText.Sanitize(text), width, width).Select(s => theme.Paint(s.Text, Theme.Dim)).ToList()
-            : RowsAt is { } rowsAt
-                ? [.. rowsAt(width, theme, glyphs).Select(r => GutterWrap.Hang + r)]
+            : Context is { } figures
+                ? [.. Gatto.Repl.ContextReport.Unhung(figures, width, theme, glyphs ?? GlyphSet.Unicode).Select(r => GutterWrap.Hang + r)]
                 : ItemRender.Verbatim(LogicalRows, width);
 
     protected override IReadOnlyList<RowWrap> RowWrapsBody(int width, Theme theme, GlyphSet? glyphs) =>

@@ -171,8 +171,8 @@ public sealed class Repl(
     string? resumeLine = null,
     //the word the /model legend gives the dot, weights loaded on local rows and current on a cloud list where nothing loads
     string modelMarkLegend = "weights loaded",
-    //said by bare /model when the endpoint lists no models, so the picker never shows rows that endpoint cannot take
-    string? noModelList = null,
+    //said by bare /model on a cloud endpoint that lists no models, where a typed name is the whole switch
+    string? cloudSwitchHint = null,
     //the line naming the served llama-server that stopped running, read after a lost connection. null when gatto serves nothing for this session
     Func<string?>? serverGone = null,
     //what /context counts, built by the caller from the composition and the tools since Repl cannot see the role. null leaves /context unavailable
@@ -255,9 +255,6 @@ public sealed class Repl(
         var grants = HandlePermissions(arg).Split('\n');
         return _ => [.. grants.Select(r => "  " + TermText.Sanitize(r))];
     }
-
-    //the screen's two-cell margin taken off a row, for a place that draws its own margin
-    internal static string Unindent(string row) => row.StartsWith("  ", StringComparison.Ordinal) ? row[2..] : row;
 
     //the prompters' bridge to the chrome, armed when the painter and renderer come up, cleared at teardown, so a prompt renders inline until then
     private readonly ChromeHandle? _chrome = chrome;
@@ -1553,7 +1550,7 @@ public sealed class Repl(
             terminalTitle: _terminalTitle,
             //a mouse composer gesture goes down the same channel as keys, this is the only caller of EnqueueComposerGesture and it runs under the gate
             onComposerSelect: (line, col, kind) => keys.EnqueueComposerGesture(new ComposerInput.Select(line, col, kind)))
-            { RoleForTint = roleName };
+            { RoleForTint = roleName, ChromeScrolls = mouseEnabled };   //the wheel takes the chrome away only where a wheel reaches gatto
         var scroll = painter.Scroll;
         var altScreen = painter.AltScreen;
         //the mouse-capture console mode, entered with the alt screen and restored on every path it goes away, null means no capture
@@ -1729,6 +1726,19 @@ public sealed class Repl(
             () => s.ComposerEmpty?.Invoke() ?? true));
         //an open info panel looks at every key first, the panel's own keys never reach the transcript's scroll or the composer
         keys.SetOverlaySink(BuildInfoPanelSink(painter, gate));
+        //off the bottom a key returns the view first, and a key meant for a prompt nobody can see is swallowed
+        if (mouseEnabled)
+            keys.SetAwaySink(k =>
+            {
+                lock (gate)
+                {
+                    var copy = k.Key == ConsoleKey.C && k.Modifiers.HasFlag(ConsoleModifiers.Control) && !k.Modifiers.HasFlag(ConsoleModifiers.Alt);
+                    if (DecideAway(painter.Away, painter.PromptHidden(), copy && painter.Selection.HasSelection) is not { } d) return KeyDisposition.PassThrough;
+                    painter.Scroll.End();
+                    painter.Repaint();
+                    return d;
+                }
+            });
 
         //use the live read () => s.TurnCts here and in the cancel sink, the field is replaced at every turn boundary
         if (turnAbort is not null) turnAbort.Current = () => s.TurnCts;
@@ -1741,6 +1751,7 @@ public sealed class Repl(
         inputMode?.RegisterExitHooks();
         inputMode?.Enter();
         altScreen.RegisterExitHooks();
+        altScreen.QuietWheel = !mouseEnabled;   //no mouse capture, so the wheel must not arrive as the composer's arrow keys
         //the tab title is composed from the same roleName the banner prints, so the two cannot drift
         altScreen.Enter(TerminalTitle.For(roleName));
 
@@ -1818,6 +1829,10 @@ public sealed class Repl(
         : !composerEmpty ? CtrlCAction.None
         : lastAtRestMs > 0 && nowMs - lastAtRestMs <= CtrlCDoubleTapMs ? CtrlCAction.Quit
         : CtrlCAction.HintExit;
+
+    //off the bottom a key returns the view and goes on, a key a hidden prompt would take is swallowed, and a copy leaves the view alone
+    internal static KeyDisposition? DecideAway(bool away, bool promptHidden, bool copyWithSelection) =>
+        !away || copyWithSelection ? null : promptHidden ? KeyDisposition.Consumed : KeyDisposition.PassThrough;
 
     //the Esc rung clears a live selection, a non-empty composer passes through ahead of a turn abort. the Ctrl+C rung copies the selection and keeps it
     internal enum CancelAction { PassThrough, ClearSelection, AbortTurn, Copy, CloseInfo }
@@ -2462,9 +2477,9 @@ public sealed class Repl(
             return false;
         }
 
-        if (arg.Length == 0 && listModels is null && noModelList is { } none)
+        if (arg.Length == 0 && listModels is null && cloudSwitchHint is { } hint)
         {
-            say(none);
+            say(hint);
             return false;
         }
 
@@ -2565,7 +2580,7 @@ public sealed class Repl(
             var figures = await ContextFiguresAsync(appCt);
             if (figures is null) { s.Renderer.CommitSystem(ContextUnavailable); return false; }
             //the transcript hangs gatto's rows under its gutter, which stands in for the screen's own two-cell margin
-            s.Renderer.CommitRedrawn((w, theme, glyphs) => [.. ContextReport.Rows(figures, w, theme, glyphs ?? _glyphs).Select(r => Unindent(r.Rendered))]);
+            s.Renderer.CommitContext(figures);
             return false;
         }
         if (trimmed == "/tools")

@@ -10,9 +10,16 @@ internal sealed record ModelSwitchOutcome(
     bool Success, string ModelId, string? SystemText, int? ContextBudget,
     string? Message, Model? Model, Composition? Composition, int MemoryTruncatedLines = 0);
 
+//where a /model switch goes: the name the next request carries, a refusal, or the serving machinery of the server gatto starts
+internal enum SwitchRoute { ByName, Refuse, Serve }
+
 //the decision core for /model, which persists the choice and returns the composition. it mutates no session state, so the caller applies the side effects
 internal static class ModelSwitch
 {
+    //only gatto's own server has serving machinery. a listed or cloud endpoint switches by name, and any other is refused
+    internal static SwitchRoute RouteOf(bool servedHere, bool listed, bool cloud) =>
+        servedHere ? SwitchRoute.Serve : listed || cloud ? SwitchRoute.ByName : SwitchRoute.Refuse;
+
     //load, port guard, recompose and persist, without the probe, which the caller runs only after these succeed and nothing changed on a failure
     internal static ModelSwitchOutcome Decide(
         string modelsDir,

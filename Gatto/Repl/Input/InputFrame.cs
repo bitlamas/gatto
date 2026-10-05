@@ -25,7 +25,8 @@ public sealed record FrameLayout(
     ComposerLayout? Composer = null,
     int PanelRowCount = 0,
     int EditorWindowTop = 0,       //the first composer region row emitted, 0 when every row is
-    int CursorRegionRow = 0);      //the caret's composer region row, counted over every row, emitted or not
+    int CursorRegionRow = 0,       //the caret's composer region row, counted over every row, emitted or not
+    IReadOnlyList<int>? MarkRows = null);   //the editor rows drawn as a hidden-rows mark, which stand for no line a press could land on
 
 //the framed typing area: top rule with its role label, editor rows, bottom rule, status line. composes layout only, ChromePainter writes every byte
 public sealed class InputFrame(ITermSurface surface, Theme theme, string role, StatusInfo status,
@@ -123,6 +124,7 @@ public sealed class InputFrame(ITermSurface surface, Theme theme, string role, S
 
         //tag each editor row as a continuation or a logical head right in the loop that already knows it. a continuation row's 2-space hang counts as chrome
         var editorRowTags = new List<(bool Continuation, int PrefixCells)>();
+        var markRows = new List<int>();
         var regionRow = 0;   //a flat row counter in ComposerLayout's RegionRow space
         var windowTop = editorWindow is { } ew ? Math.Clamp(ew.Top, 0, Math.Max(0, layout.RowCount - 1)) : 0;
         var windowEnd = editorWindow is null ? int.MaxValue : windowTop + Math.Max(1, editorWindow.Value.Count);
@@ -143,6 +145,7 @@ public sealed class InputFrame(ITermSurface surface, Theme theme, string role, S
                     rendered.Add(theme.Paint(markText, Theme.Dim));
                     visibleRows.Add(markText);
                     screenRows.Add(UnicodeWidth.Rows(markText, width));
+                    markRows.Add(editorRowTags.Count);
                     editorRowTags.Add((false, 0));
                     regionRow++;
                     continue;
@@ -196,7 +199,7 @@ public sealed class InputFrame(ITermSurface surface, Theme theme, string role, S
         for (var i = 0; i < flatCursorEntry; i++) targetRow += screenRows[i];
 
         return new FrameLayout(rendered, visibleRows, screenRows, total, targetRow, col, editorRowTags,
-            framed ? layout : null, EditorWindowTop: windowTop, CursorRegionRow: cursorRegionRow);
+            framed ? layout : null, EditorWindowTop: windowTop, CursorRegionRow: cursorRegionRow, MarkRows: markRows);
     }
 
     public static string BuildTopRule(string role, int width, Theme theme, bool wild = false, string? hint = null,

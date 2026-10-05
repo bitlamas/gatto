@@ -22,6 +22,9 @@ public static class Ansi
     //the alternate screen buffer: gatto owns the viewport, its scroll, and draws with absolute Cup. entering clears and switches, exiting restores the main screen
     public const string AltScreenEnter = "\x1b[?1049h";
     public const string AltScreenExit  = "\x1b[?1049l";
+    //a terminal's alternate scroll mode turns the wheel into arrow keys on the alt buffer. off for a session that reads no mouse, back on as it leaves
+    public const string AlternateScrollOff = "\x1b[?1007l";
+    public const string AlternateScrollOn  = "\x1b[?1007h";
     public const string HideCursor = "\x1b[?25l";
     public const string ShowCursor = "\x1b[?25h";
 

@@ -1,16 +1,19 @@
 using System.Text.Json;
-using System.Text.RegularExpressions;
 using Gatto.Core.Loop;
+using Gatto.Core.Loop.Permissions;
 
 namespace Gatto.Roles.Audition;
 
 //holds one task's tools inside its folder, a file tool by its resolved path and a shell command only by its text
-internal sealed partial class ScratchBoundary(string scratch)
+internal sealed class ScratchBoundary(string scratch)
 {
     //what the model reads when a call is refused, worded as a fact about the folder
     public const string Refused = "that is outside the current directory, and this task has nothing outside it";
 
     private readonly string _root = Terminate(Path.GetFullPath(scratch));
+
+    //the gate's own reading of a command's text, one copy of the patterns, with the folder as the only place inside and no grants
+    private readonly WorkspaceBoundary _shell = new(scratch, _ => false, home: null);
 
     //the argument that names where each file tool works, an absent one means the folder itself
     private static readonly Dictionary<string, string> PathArgument = new(StringComparer.Ordinal)
@@ -51,16 +54,7 @@ internal sealed partial class ScratchBoundary(string scratch)
     }
 
     //true when the command's text reaches for something outside the folder. a path built at run time from parts is not seen here
-    internal bool Leaves(string command)
-    {
-        var text = command.Replace('/', '\\');
-        if (Upward().IsMatch(text) || Elsewhere().IsMatch(command)) return true;
-
-        foreach (Match m in Rooted().Matches(text))
-            if (!text.AsSpan(m.Index).StartsWith(_root.AsSpan(0, _root.Length - 1), StringComparison.OrdinalIgnoreCase))
-                return true;
-        return false;
-    }
+    internal bool Leaves(string command) => _shell.Leaves(command);
 
     private static string Terminate(string path) =>
         path.EndsWith(Path.DirectorySeparatorChar) ? path : path + Path.DirectorySeparatorChar;
@@ -73,16 +67,4 @@ internal sealed partial class ScratchBoundary(string scratch)
         value = v.GetString()!;
         return true;
     }
-
-    //a drive letter and a separator, or a share, each hit is then compared with the folder
-    [GeneratedRegex(@"(?<![A-Za-z0-9])[A-Za-z]:\\|(?<![\\\w])\\\\\w")]
-    private static partial Regex Rooted();
-
-    //two dots as a whole segment, or a path from the drive's root (one or two letters after a slash are a native flag)
-    [GeneratedRegex(@"(^|[\s""'=(\\])\.\.($|[\s""'\\;)|])|(^|[\s""'=(])\\($|[\s""';)|]|\w{3,})")]
-    private static partial Regex Upward();
-
-    //the home folder and the environment by any of their names, a tilde counts only where a path can start
-    [GeneratedRegex(@"(^|[\s""'=(])~($|[\s""'\\/])|\$home\b|\$env:|%\w+%|\[environment\]|\$psscriptroot|\$pshome", RegexOptions.IgnoreCase)]
-    private static partial Regex Elsewhere();
 }

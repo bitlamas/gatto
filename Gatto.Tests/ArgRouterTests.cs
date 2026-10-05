@@ -86,6 +86,30 @@ public class ArgRouterTests
         Assert.Contains(expect, ex.Message);
     }
 
+    //the prompt flag takes the prompt right after it, so an option there is a usage error rather than a prompt, and the real prompt never reads as an option
+    [Theory]
+    [InlineData("-p")]
+    [InlineData("--prompt")]
+    public void A_prompt_flag_followed_by_an_option_is_a_usage_error(string flag)
+    {
+        var ex = Assert.Throws<ArgumentException>(() => ArgRouter.Parse([flag, "--yes", "list the files"]));
+        Assert.Contains($"{flag} needs the prompt right after it", ex.Message);
+        Assert.Contains($"{flag}=", ex.Message);
+    }
+
+    //the joined form carries a prompt that starts with two dashes, and the rest of the line still parses
+    [Theory]
+    [InlineData("-p=--dry-run explained", "--dry-run explained")]
+    [InlineData("--prompt=--dry-run explained", "--dry-run explained")]
+    [InlineData("-p=plain words", "plain words")]
+    public void The_joined_form_passes_any_prompt(string arg, string expected)
+    {
+        var p = ArgRouter.Parse([arg, "--yes"]);
+
+        Assert.Equal(expected, p.Prompt);
+        Assert.True(p.Yes);
+    }
+
     [Fact]
     public void Serve_start_with_model_target_parses_subcommand_and_target()
     {

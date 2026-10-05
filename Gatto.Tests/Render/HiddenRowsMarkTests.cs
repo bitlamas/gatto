@@ -116,6 +116,32 @@ public class HiddenRowsMarkTests
         Assert.Equal("p185", block.Rows[block.CaretRow].Visible.Trim());
     }
 
+    //a mark row stands for rows it hides, so a press on it moves no caret, while a press on a line row still does
+    [Fact]
+    public void A_press_on_a_composer_mark_row_leaves_the_caret_where_it_was()
+    {
+        var s = new VtScreenSurface(80, 30);
+        var gestures = new List<(int Line, int Col, ComposerGesture Kind)>();
+        var p = new ChromePainter(s, T, new object(), onComposerSelect: (l, c, k) => gestures.Add((l, c, k)), glyphs: GlyphSet.Unicode)
+        {
+            Frame = new InputFrame(s, T, "coder", new StatusInfo(@"C:\proj", "qwen", "coder", new CtxState(), @"C:\Users\x"), glyphs: GlyphSet.Unicode),
+            RoleForTint = "coder",
+        };
+        var lines = Lines(200);
+        p.State.Composer = new EditorView(lines, 199, 0);
+        p.AltScreen.Enter();
+        p.Repaint();
+        var screen = s.Viewport.ToList();
+        var mark = screen.FindIndex(r => r.Contains("↑ 191 more", StringComparison.Ordinal));
+        Assert.True(mark >= 0, string.Join("\n", screen));
+
+        p.Mouse.Handle(new MouseEvent(5, mark, MouseKind.Press, MouseButton.Left, 0, 0), 80, p.ViewportRows());
+        Assert.Empty(gestures);
+
+        p.Mouse.Handle(new MouseEvent(5, mark + 1, MouseKind.Press, MouseButton.Left, 0, 0), 80, p.ViewportRows());
+        Assert.NotEmpty(gestures);
+    }
+
     [Fact]
     public void Under_the_ascii_set_the_marks_use_the_ascii_arrows()
     {

@@ -231,12 +231,42 @@ public sealed class ChromePainter
         }
     }
 
+    //true makes the chrome the last rows of one document that scrolls with the transcript, armed only with mouse capture on
+    public bool ChromeScrolls { get => _compositor.ChromeScrolls; init => _compositor.ChromeScrolls = value; }
+
+    //true while the chrome scrolls with the transcript and the view is off the bottom, so part of the chrome is off the window
+    public bool Away { get { lock (_gate) return ChromeScrolls && !_scroll.Following; } }
+
+    //true while a prompt waits with a row of it off the window, an info panel is an answer and never counts
+    public bool PromptHidden()
+    {
+        lock (_gate)
+        {
+            if (!Away || !State.PanelUp || State.PanelInfo) return false;
+            var h = _surface.Height <= 0 ? ViewportCompositor.HeightFloor : _surface.Height;
+            var rows = ComposeChromeBlock(_surface.Width, h).Rows;
+            var c = System.Math.Min(rows.Count, h);
+            var shown = c - System.Math.Min(_scroll.BottomOffset(_surface.Width, ViewportRowsLocked()), c);
+            var lastPromptRow = -1;
+            for (var i = 0; i < rows.Count; i++) if (rows[i].Region == ChromeRegion.Prompt) lastPromptRow = i - (rows.Count - c);
+            return lastPromptRow >= shown;
+        }
+    }
+
     //one full-frame paint, the transcript window bottom-anchored at the scroll offset plus the chrome block pinned to the bottom
     private void DriveCompositor() =>
-        _compositor.Paint(_scroll.BottomOffset(_surface.Width, TranscriptRows()), _scroll.Following);
+        _compositor.Paint(_scroll.BottomOffset(_surface.Width, ViewportRowsLocked()), _scroll.Following);
 
-    //the rows left for the transcript above the chrome block, the height the scroll controller must page against or the top rows stay unreachable
-    public int ViewportRows() { lock (_gate) return TranscriptRows(); }
+    //the height the scroll controller pages against: the transcript above the chrome, or the whole window when the chrome scrolls with it
+    public int ViewportRows() { lock (_gate) return ViewportRowsLocked(); }
+
+    private int ViewportRowsLocked()
+    {
+        if (!ChromeScrolls) return TranscriptRows();
+        var h = _surface.Height <= 0 ? ViewportCompositor.HeightFloor : _surface.Height;
+        _scroll.ChromeRows = System.Math.Min(ComposeChromeBlock(_surface.Width, h).Rows.Count, h);
+        return h;
+    }
 
     private int TranscriptRows()
     {
@@ -359,7 +389,7 @@ public sealed class ChromePainter
         var caretRow = System.Math.Max(0, composed.Rows.Count - 1 - composed.CaretUpFromEnd);
         //the cursor stays visible unless the frame shows an input-less panel, or a scroll left its caret row outside the window
         var caretVisible = !State.PanelUp || (State.PanelCaretVisible && composed.CaretInWindow);
-        return new ChromeBlock(composed.Rows, caretRow, composed.CaretCol, caretVisible);
+        return new ChromeBlock(composed.Rows, caretRow, composed.CaretCol, caretVisible) { PromptWaits = State.PanelUp && !State.PanelInfo };
     }
 
     //test-only, exposes Compose so the alignment test asserts against what the painter really paints
@@ -623,7 +653,7 @@ public sealed class ChromePainter
                 var (cont, prefix) = frame.EditorRowTags[editorIdx];
                 //the region row counts over the whole layout, so a mouse gesture on a windowed row maps to its own text
                 built.Add(new ChromeRow(frame.Rows[i], frame.VisibleRows[i], cont, prefix, ChromeRegion.Composer,
-                    frame.EditorWindowTop + editorIdx));
+                    frame.EditorWindowTop + editorIdx) { Mark = frame.MarkRows?.Contains(editorIdx) == true });
             }
             else
             {

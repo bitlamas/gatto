@@ -14,10 +14,10 @@ internal sealed record ProveOutcome(bool Ok, string Detail, TimeSpan FirstToken,
 internal static class ProveIt
 {
     //no deadline of its own, the caller owns the CTS (a cold 30 GB load takes minutes)
-    public static async Task<ProveOutcome> RunAsync(OpenAiCompatClient client, CancellationToken ct)
+    public static async Task<ProveOutcome> RunAsync(OpenAiCompatClient client, string model, CancellationToken ct)
     {
         var request = new ChatRequest(
-            Model: "",                       //the client fills this in with the endpoint's model
+            Model: model,                    //the client writes it as given, so a server that validates the field must be handed the real name
             Messages: [new ChatMessage("user", "Say OK.")],
             BodyOverrides: JsonDocument.Parse("""{"max_tokens":16}""").RootElement);
 

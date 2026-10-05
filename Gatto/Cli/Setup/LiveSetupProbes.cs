@@ -1192,8 +1192,8 @@ internal sealed class LiveSetupProbes(string homePath, Gatto.Terminal.GlyphSet g
                 downHint: $"nothing answered at {baseUrl}, the server may still be loading, or may "
                           + "have stopped; gatto doctor says which");
 
-            //keep the namespace here, this class has a ProveIt of its own
-            return Gatto.Core.Acquire.ProveIt.RunAsync(client, cts.Token).GetAwaiter().GetResult();
+            //the namespace stays, this class has a ProveIt of its own. the model is this run's, or the config's, the served id the connect road found
+            return Gatto.Core.Acquire.ProveIt.RunAsync(client, modelId ?? config.DefaultModel ?? "", cts.Token).GetAwaiter().GetResult();
         }
         catch (Exception ex) { return new ProveOutcome(false, ex.Message, TimeSpan.Zero); }
     }

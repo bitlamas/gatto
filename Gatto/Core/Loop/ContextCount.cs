@@ -31,7 +31,8 @@ public interface ITokenCounter
 public sealed record ContextInputs(
     string Model, string SystemText, IReadOnlyList<ContextPartText> SystemParts,
     IReadOnlyList<ToolSpec> BuiltinTools, IReadOnlyList<ToolSpec> ExtensionTools,
-    RequestShape Shape, int? Window, double? AutoCompactAt, double Ratio, int? LastPromptTokens, string? LastTimings);
+    RequestShape Shape, int? Window, double? AutoCompactAt, double Ratio, int? LastPromptTokens, string? LastTimings,
+    Usage? LastUsage = null);
 
 public static class ContextCount
 {
@@ -43,7 +44,7 @@ public static class ContextCount
     {
         var parts = Parts(inputs);
         var before = inputs.Shape.LastSent is null;
-        var cache = Cache(inputs.LastTimings);
+        var cache = Cache(inputs.LastTimings) ?? Cache(inputs.LastUsage);
 
         if (counter is not null)
         {
@@ -106,6 +107,10 @@ public static class ContextCount
 
     private static string SpecsJson(IReadOnlyList<ToolSpec> specs) =>
         specs.Count == 0 ? "" : JsonSerializer.Serialize(specs.Select(s => new { s.Name, s.Description, Parameters = s.ParametersSchema }));
+
+    //a cloud server's usage names the cached part of the prompt, and the rest of the prompt was read fresh
+    private static ContextCache? Cache(Usage? usage) =>
+        usage is { CachedTokens: int cached } ? new ContextCache(cached, Math.Max(0, usage.PromptTokens - cached)) : null;
 
     //llama-server's timings carry cache_n and prompt_n, a server that reports neither gets no cache line
     private static ContextCache? Cache(string? timings)

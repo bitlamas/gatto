@@ -13,6 +13,34 @@ public sealed class AltScreenTests
         return n;
     }
 
+    //a session with no mouse capture turns the wheel's arrow keys off with the alt buffer and back on as it leaves, on every Restore path
+    [Fact]
+    public void A_quiet_wheel_turns_alternate_scroll_off_on_enter_and_on_at_restore()
+    {
+        var rec = new RecordingSurface();
+        var alt = new AltScreen(rec) { QuietWheel = true };
+
+        alt.Enter();
+        Assert.Contains(Ansi.AltScreenEnter + Ansi.AlternateScrollOff, rec.Text);
+        rec.Clear();
+
+        alt.Restore();
+        Assert.Contains(Ansi.AltScreenExit, rec.Text);
+        Assert.EndsWith(Ansi.AlternateScrollOn, rec.Text);
+    }
+
+    [Fact]
+    public void Without_a_quiet_wheel_the_alt_screen_writes_no_alternate_scroll_mode()
+    {
+        var rec = new RecordingSurface();
+        var alt = new AltScreen(rec);
+
+        alt.Enter();
+        alt.Restore();
+
+        Assert.DoesNotContain("?1007", rec.Text);
+    }
+
     [Fact]
     public void Enter_writes_the_alt_sequence_once_and_is_idempotent()
     {

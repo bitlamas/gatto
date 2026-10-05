@@ -1177,6 +1177,85 @@ public class GattoAppTests : IDisposable
         Assert.Equal("model-x", server.LastRequestBody!.Value.GetProperty("model").GetString());   //the turn after the switch reached the named endpoint.
     }
 
+    //a cloud endpoint that lists no models: the fake server stands in for it through the seam, cleared after
+    private async Task<(string Output, FakeOpenAiServer Server)> OnCloud(string script, Action? arrange = null)
+    {
+        var server = new FakeOpenAiServer();
+        UseHome();
+        WriteConfig($$$"""
+            {"endpoints":{"cloudy":{"base_url":"{{{server.BaseUrl}}}"}},
+             "default_endpoint":"cloudy","default_model":"served-model"}
+            """);
+        WriteRole("generalist", "{}");
+        arrange?.Invoke();
+        server.Enqueue(Completion("ok"));
+        Console.SetIn(new StringReader(script + "/quit\n"));
+        var stdout = new StringWriter();
+        Console.SetOut(stdout);
+        CloudEndpoint.IsForTest = ep => ep.BaseUrl == server.BaseUrl;
+        try { Assert.Equal(0, await GattoApp.RunAsync(Array.Empty<string>())); }
+        finally { CloudEndpoint.IsForTest = null; }
+        return (stdout.ToString(), server);
+    }
+
+    [Fact]
+    public async Task Model_switch_on_a_cloud_endpoint_with_no_list_names_the_typed_model()
+    {
+        var (output, server) = await OnCloud("/model foo\nhi\n");
+        await using var _ = server;
+
+        Assert.Equal("foo", server.LastRequestBody!.Value.GetProperty("model").GetString());
+        Assert.DoesNotContain("own model settings only apply", output, StringComparison.Ordinal);
+        Assert.DoesNotContain("serve", output.Replace("served-model", ""), StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public async Task Model_switch_on_a_cloud_endpoint_takes_the_parts_of_a_folder_of_that_name()
+    {
+        var (_, server) = await OnCloud("/model foo\nhi\n", () =>
+        {
+            WriteModel("foo", port: 1);
+            File.WriteAllText(Path.Combine(_home, "models", "foo", "system-append.md"), "FOO-APPEND");
+        });
+        await using var _ = server;
+
+        var body = server.LastRequestBody!.Value;
+        Assert.Equal("foo", body.GetProperty("model").GetString());
+        Assert.Contains("FOO-APPEND", body.GetProperty("messages")[0].GetProperty("content").GetString());
+    }
+
+    [Fact]
+    public async Task Bare_model_on_a_cloud_endpoint_with_no_list_says_how_to_switch()
+    {
+        var (output, server) = await OnCloud("/model\n");
+        await using var _ = server;
+
+        Assert.Contains(Gatto.Cli.GattoApp.CloudSwitchHint("cloudy"), output);
+    }
+
+    //an endpoint gatto does not serve and that lists no models refuses /model with the unmanaged sentence, and the next request names the model it had
+    [Fact]
+    public async Task Model_switch_on_an_unlisted_unserved_endpoint_is_refused_and_the_model_stays()
+    {
+        await using var server = new FakeOpenAiServer();
+        UseHome();
+        WriteConfig($$$"""
+            {"endpoints":{"cloudy":{"base_url":"{{{server.BaseUrl}}}"}},
+             "default_endpoint":"cloudy","default_model":"served-model"}
+            """);
+        WriteRole("generalist", "{}");
+        server.Enqueue(Completion("ok"));
+
+        Console.SetIn(new StringReader("/model other-model\nhi\n/quit\n"));
+        var stdout = new StringWriter();
+        Console.SetOut(stdout);
+        var exit = await GattoApp.RunAsync(Array.Empty<string>());
+
+        Assert.Equal(0, exit);
+        Assert.Contains("gatto's own model settings only apply to servers it starts", stdout.ToString());
+        Assert.Equal("served-model", server.LastRequestBody!.Value.GetProperty("model").GetString());
+    }
+
     //the command /model must update the value ResolveRole consults. a stale launch value makes the local-model guard refuse every role, including the active one
 
     [Fact]
@@ -1319,6 +1398,51 @@ public class GattoAppTests : IDisposable
         Assert.Contains("model: thinky-model", output);
         Assert.Contains("effort: medium", output);
         Assert.DoesNotContain("not configured", output);
+    }
+
+    //an option where the prompt belongs ends the run as a usage error, with the line that says how to pass such a prompt
+    [Fact]
+    public async Task A_prompt_flag_followed_by_an_option_exits_2()
+    {
+        UseHome();
+        var stderr = new StringWriter();
+        Console.SetError(stderr);
+        Console.SetOut(new StringWriter());
+
+        var exit = await GattoApp.RunAsync(["-p", "--yes", "list the files"]);
+
+        Assert.Equal(2, exit);
+        Assert.Contains("-p needs the prompt right after it", stderr.ToString());
+    }
+
+    //an endpoint that lists its models switches by name, and the new model's folder brings its own map, so /effort offers what a launch on that model offers
+    [Fact]
+    public async Task ModelSwitch_on_a_listed_endpoint_recomputes_the_thinking_capability_from_the_new_map()
+    {
+        async Task<string> EffortAfter(string launchModel, string script)
+        {
+            await using var server = new FakeOpenAiServer();
+            UseHome();
+            WriteConfig($$$"""
+                {"endpoints":{"listed":{"base_url":"{{{server.BaseUrl}}}","models":["plain-model","thinky-model"]}},
+                 "default_endpoint":"listed","default_model":"{{{launchModel}}}"}
+                """);
+            WriteModel("plain-model", port: 65533);
+            WriteModel("thinky-model", port: 65533,
+                profileExtra: "\"thinking\":{\"none\":{\"chat_template_kwargs\":{\"reasoning_effort\":\"none\"}},\"high\":{\"chat_template_kwargs\":{\"reasoning_effort\":\"high\"}}}");
+            WriteRole("generalist", "{}");
+            Console.SetIn(new StringReader(script + "/effort\n/quit\n"));
+            var stdout = new StringWriter();
+            Console.SetOut(stdout);
+            Assert.Equal(0, await GattoApp.RunAsync(Array.Empty<string>()));
+            var lines = stdout.ToString().Split('\n');
+            return lines.Last(l => l.Contains("effort", StringComparison.Ordinal) || l.Contains("reasoning", StringComparison.Ordinal)).Trim();
+        }
+
+        var launched = await EffortAfter("thinky-model", "");
+        var switched = await EffortAfter("plain-model", "/model thinky-model\n");
+
+        Assert.Equal(launched, switched);
     }
 
     [Fact]

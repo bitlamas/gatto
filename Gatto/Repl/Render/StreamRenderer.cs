@@ -406,12 +406,12 @@ public sealed class StreamRenderer : ITurnObserver
     //gatto's own painted rows committed as they are, hang-indented, with no ♯ marker and no sanitize that would strip the paint. never send model or tool text here
     public void CommitPlain(string text) => CommitHung(text.TrimEnd('\n').Split('\n'), null, () => _surface.Write(text.TrimEnd('\n') + "\n"));
 
-    //gatto's own painted rows from a width function, drawn now at this width and again at every width a repaint uses
-    public void CommitRedrawn(Func<int, Theme, GlyphSet?, IReadOnlyList<string>> rowsAt) =>
-        CommitHung(rowsAt(_surface.Width, _theme, _glyphs), rowsAt,
-            () => _surface.Write(string.Join("\n", rowsAt(_surface.Width, _theme, _glyphs)) + "\n"));
+    //a /context report drawn now at this width, its figures kept on the item so a repaint or a resumed session draws it at its own width
+    public void CommitContext(ContextFigures figures) =>
+        CommitHung(Gatto.Repl.ContextReport.Unhung(figures, _surface.Width, _theme, _glyphs), figures,
+            () => _surface.Write(string.Join("\n", Gatto.Repl.ContextReport.Unhung(figures, _surface.Width, _theme, _glyphs)) + "\n"));
 
-    private void CommitHung(IReadOnlyList<string> lines, Func<int, Theme, GlyphSet?, IReadOnlyList<string>>? rowsAt, Action degraded) => Guarded(
+    private void CommitHung(IReadOnlyList<string> lines, ContextFigures? context, Action degraded) => Guarded(
         () =>
         {
             if (_inReasoning) CloseReasoningBlock();
@@ -419,7 +419,7 @@ public sealed class StreamRenderer : ITurnObserver
             if (_last != LastWrite.None) _blankPending = true;
             var rows = lines.Select(line => GutterWrap.Hang + line).ToList();
             var modelRows = rows.ToList();   //copy first, CommitRows may add a leading blank row to the list
-            _model?.Append(new CommandEchoItem(modelRows, After()) { RowsAt = rowsAt });   //append before the paint
+            _model?.Append(new CommandEchoItem(modelRows, After()) { Context = context });   //append before the paint
             CommitRows(rows);
             _last = LastWrite.Text;
             _blockOpen = false;

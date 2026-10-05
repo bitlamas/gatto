@@ -20,11 +20,11 @@ public class ContextCountTests
     private static readonly ToolSpec Read = new("read_file", "reads", JsonDocument.Parse("{\"type\":\"object\"}").RootElement);
     private static readonly ToolSpec Ext = new("ask_user", "asks", JsonDocument.Parse("{\"type\":\"object\"}").RootElement);
 
-    private static ContextInputs Inputs(IReadOnlyList<ChatMessage>? sent, int? lastPrompt = null, double ratio = 1.0, string? timings = null) => new(
+    private static ContextInputs Inputs(IReadOnlyList<ChatMessage>? sent, int? lastPrompt = null, double ratio = 1.0, string? timings = null, Usage? usage = null) => new(
         "m", "sys text", [new ContextPartText("system prompt", ContextGroup.Prefix, new string('s', 400))],
         [Read], [Ext],
         new RequestShape([Read, Ext], null, null, ReasoningHistory.All, sent),
-        65_536, 0.8, ratio, lastPrompt, timings);
+        65_536, 0.8, ratio, lastPrompt, timings, usage);
 
     private static readonly ChatMessage[] Sent =
     [
@@ -91,6 +91,20 @@ public class ContextCountTests
         var only = Assert.Single(counter.Counted!.Messages);
         Assert.Equal("system", only.Role);
         Assert.Equal("sys text", only.Content);
+    }
+
+    //a cloud server reports the cached part of the prompt in its usage, and llama-server's timings win where both are present
+    [Fact]
+    public async Task The_cache_line_reads_a_cloud_servers_cached_tokens()
+    {
+        var f = await ContextCount.BuildAsync(Inputs(Sent, usage: new Usage(1_000, 5, 800)), null, CancellationToken.None);
+        Assert.Equal(new ContextCache(800, 200), f.Cache);
+
+        var both = await ContextCount.BuildAsync(Inputs(Sent, timings: "{\"cache_n\":40,\"prompt_n\":2}", usage: new Usage(1_000, 5, 800)), null, CancellationToken.None);
+        Assert.Equal(new ContextCache(40, 2), both.Cache);
+
+        var silent = await ContextCount.BuildAsync(Inputs(Sent, usage: new Usage(1_000, 5)), null, CancellationToken.None);
+        Assert.Null(silent.Cache);
     }
 
     [Fact]

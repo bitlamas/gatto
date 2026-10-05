@@ -174,7 +174,12 @@ public static class TranscriptStore
                         w.WriteEndObject();
                     }
                     break;
-                case CommandEchoItem cmd: w.WriteString("event", "command"); WriteRows(w, cmd.LogicalRows); break;
+                case CommandEchoItem cmd:
+                    w.WriteString("event", "command");
+                    WriteRows(w, cmd.LogicalRows);
+                    //written only for a /context report, so every other command record keeps its shape
+                    if (cmd.Context is { } figures) WriteContext(w, figures);
+                    break;
                 default: w.WriteString("event", "unknown"); break;
             }
             w.WriteEndObject();
@@ -233,9 +238,78 @@ public static class TranscriptStore
             "completion" => new CompletionItem(Text(), after),
             //the memory object is written for telemetry only and read back as absent, which the schema tolerates
             "lead" => new SessionLeadItem(Text(), after),
-            //a prompt record falls to the null arm and is skipped, its item kind no longer exists
-            "command" => new CommandEchoItem(Rows(), after),
+            //a command keeps its figures when it carries them, a damaged field drops to the saved rows. a prompt record falls to the null arm
+            "command" => new CommandEchoItem(Rows(), after) { Context = el.TryGetProperty("context", out var cx) ? ParseContext(cx) : null },
             _ => null,
         };
+    }
+
+    //the figures in snake_case, each field that does not apply left out
+    private static void WriteContext(Utf8JsonWriter w, ContextFigures f)
+    {
+        w.WriteStartObject("context");
+        if (f.Window is int window) w.WriteNumber("window", window);
+        w.WriteNumber("total", f.Total);
+        w.WriteBoolean("exact", f.Exact);
+        w.WriteBoolean("fell_back", f.FellBack);
+        w.WriteBoolean("before_first_request", f.BeforeFirstRequest);
+        if (f.AutoCompactAt is double at) w.WriteNumber("auto_compact_at", at);
+        w.WriteStartArray("parts");
+        foreach (var part in f.Parts)
+        {
+            w.WriteStartObject();
+            w.WriteString("label", part.Label);
+            w.WriteString("group", GroupName(part.Group));
+            w.WriteNumber("tokens", part.Tokens);
+            if (part.Detail is { } detail) w.WriteString("detail", detail);
+            w.WriteEndObject();
+        }
+        w.WriteEndArray();
+        if (f.Cache is { } cache)
+        {
+            w.WriteStartObject("cache");
+            w.WriteNumber("from_cache", cache.FromCache);
+            w.WriteNumber("fresh", cache.Fresh);
+            w.WriteEndObject();
+        }
+        w.WriteEndObject();
+    }
+
+    private static string GroupName(ContextGroup g) => g switch
+    {
+        ContextGroup.Prefix => "prefix",
+        ContextGroup.Messages => "messages",
+        ContextGroup.Reasoning => "reasoning",
+        _ => "tool_results",
+    };
+
+    //null for any field of the wrong shape, so a damaged record draws its saved rows rather than a report built from guesses
+    private static ContextFigures? ParseContext(JsonElement el)
+    {
+        try
+        {
+            if (el.ValueKind != JsonValueKind.Object) return null;
+            int? window = el.TryGetProperty("window", out var wv) ? wv.GetInt32() : null;
+            double? at = el.TryGetProperty("auto_compact_at", out var av) ? av.GetDouble() : null;
+            var parts = new List<ContextPart>();
+            foreach (var p in el.GetProperty("parts").EnumerateArray())
+            {
+                var group = p.GetProperty("group").GetString() switch
+                {
+                    "prefix" => ContextGroup.Prefix,
+                    "messages" => ContextGroup.Messages,
+                    "reasoning" => ContextGroup.Reasoning,
+                    "tool_results" => ContextGroup.ToolResults,
+                    _ => throw new FormatException(),
+                };
+                parts.Add(new ContextPart(p.GetProperty("label").GetString()!, group, p.GetProperty("tokens").GetInt32(),
+                    p.TryGetProperty("detail", out var d) ? d.GetString() : null));
+            }
+            ContextCache? cache = el.TryGetProperty("cache", out var c)
+                ? new ContextCache(c.GetProperty("from_cache").GetInt32(), c.GetProperty("fresh").GetInt32()) : null;
+            return new ContextFigures(window, el.GetProperty("total").GetInt32(), el.GetProperty("exact").GetBoolean(),
+                el.GetProperty("fell_back").GetBoolean(), el.GetProperty("before_first_request").GetBoolean(), at, parts, cache);
+        }
+        catch (Exception ex) when (ex is InvalidOperationException or KeyNotFoundException or FormatException or NullReferenceException) { return null; }
     }
 }

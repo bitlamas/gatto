@@ -39,13 +39,25 @@ public static class ArgRouter
 
         for (; i < argv.Length; i++)
         {
+            //the joined form carries any prompt, one that starts with two dashes included
+            if (JoinedPrompt(argv[i]) is { } joined)
+            {
+                prompt = joined;
+                continue;
+            }
             switch (argv[i])
             {
                 case "-m" or "--model":
                     model = i + 1 < argv.Length ? argv[++i] : throw new ArgumentException($"missing value for {argv[i]}");
                     break;
                 case "-p" or "--prompt":
-                    prompt = i + 1 < argv.Length ? argv[++i] : throw new ArgumentException($"missing value for {argv[i]}");
+                    if (i + 1 >= argv.Length) throw new ArgumentException($"missing value for {argv[i]}");
+                    //an option in the prompt's place would be sent as the prompt and the real prompt refused as an option
+                    if (argv[i + 1].StartsWith("--", StringComparison.Ordinal))
+                        throw new ArgumentException(
+                            $"{argv[i]} needs the prompt right after it, and {argv[i + 1]} is an option. "
+                            + $"to send a prompt that starts with --, write {argv[i]}=\"...\"");
+                    prompt = argv[++i];
                     break;
                 case "--continue":
                     cont = true;
@@ -80,6 +92,12 @@ public static class ArgRouter
             throw new ArgumentException("--effort works only with -p. in the REPL, /effort sets the level");
         return new ParsedArgs(command, role, model, prompt, cont, yes, auto, ContinueId: continueId, Endpoint: endpoint, Effort: effort);
     }
+
+    //the prompt of -p=... or --prompt=..., null for any other argument
+    private static string? JoinedPrompt(string arg) =>
+        arg.StartsWith("-p=", StringComparison.Ordinal) ? arg[3..]
+        : arg.StartsWith("--prompt=", StringComparison.Ordinal) ? arg[9..]
+        : null;
 
     //a reserved command takes a bare subcommand and one bare target. only serve checks its subcommand, and a bare gatto serve means status
     private static ParsedArgs ParseReserved(string[] argv, string role)

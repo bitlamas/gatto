@@ -10,8 +10,12 @@ public static class CloudEndpoint
     public static string Notice(string mark, string model) =>
         $"{mark} {model} is a cloud model: what you type and the files gatto reads are sent to its provider.";
 
+    //test seam, a fake server on loopback stands in for a cloud endpoint when this names it. null in every real run
+    internal static Func<EndpointConfig, bool>? IsForTest;
+
     public static bool Is(EndpointConfig endpoint)
     {
+        if (IsForTest is { } forTest) return forTest(endpoint);
         if (endpoint.BaseUrl is null) return false;
         if (!Uri.TryCreate(endpoint.BaseUrl, UriKind.Absolute, out var uri)) return false;
         if (uri.IsLoopback) return false;

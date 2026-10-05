@@ -38,6 +38,28 @@ public class OpenAiCompatUsageTests
         Assert.Equal(0.01m, u.GetProperty("cost").GetDecimal());
     }
 
+    //the cached part of the prompt rides in prompt_tokens_details, and a usage without it reads as nothing said
+    [Theory]
+    [InlineData(",\"prompt_tokens_details\":{\"cached_tokens\":300}", 300)]
+    [InlineData("", null)]
+    public async Task The_usage_carries_the_cached_prompt_tokens(string details, int? expected)
+    {
+        await using var s = new FakeOpenAiServer();
+        s.Enqueue(new FakeResponse(Frames: new[]
+        {
+            Chunk("{\"content\":\"ok\"}", finish: "stop"),
+            "data: {\"choices\":[],\"usage\":{\"prompt_tokens\":418,\"completion_tokens\":2" + details + "}}\n\n",
+            "data: [DONE]\n\n",
+        }));
+        var client = new OpenAiCompatClient(new HttpClient(), "acme", new EndpointConfig(s.BaseUrl));
+        Usage? usage = null;
+
+        await foreach (var ev in client.StreamAsync(Req())) if (ev is StreamEvent.Finished f) usage = f.Usage;
+
+        Assert.Equal(418, usage!.PromptTokens);
+        Assert.Equal(expected, usage.CachedTokens);
+    }
+
     [Fact]
     public async Task OnUsage_takes_the_last_usage_when_a_server_repeats_it()
     {

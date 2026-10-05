@@ -100,6 +100,10 @@ public sealed class AgentLoop(
     public string? LastTimings => Volatile.Read(ref _lastTimings);
     private string? _lastTimings;
 
+    //the last request's usage, the cached part of its prompt with it when the server reports one
+    public Usage? LastUsage => Volatile.Read(ref _lastUsage);
+    private Usage? _lastUsage;
+
     //the last request's messages as sent and the conversation at that moment, copies, so a compaction can resend what the server has cached
     private ChatMessage[]? _lastSent;
     private ChatMessage[]? _lastSentFrom;
@@ -228,6 +232,7 @@ public sealed class AgentLoop(
                             turnUsage = f.Usage;
                             turnTimings = f.Timings;
                             if (f.Timings is not null) Volatile.Write(ref _lastTimings, f.Timings);
+                            if (f.Usage is not null) Volatile.Write(ref _lastUsage, f.Usage);
                             finishReason = f.FinishReason;
                             if (f.Usage is not null)
                             {

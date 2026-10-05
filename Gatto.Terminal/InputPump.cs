@@ -25,6 +25,7 @@ public sealed class InputPump
     private Action? _wildSink;                //wild-mode toggle on shift+tab, same tier as the others
     private Action<MouseEvent>? _mouseSink;   //the mouse sink, it bypasses the focus stack entirely
     private Func<ConsoleKeyInfo, KeyDisposition>? _overlaySink;   //every key while something drawn over the composer wants first look, only when no modal is up
+    private Func<ConsoleKeyInfo, KeyDisposition>? _awaySink;   //every key but the scroll and focus keys, first, modal or not, so a view scrolled off the bottom returns before the key lands
     private Func<ConsoleKeyInfo, KeyDisposition>? _cancelSink;   //cancel and copy for esc and ctrl+c, runs before the stack only when no modal is up
     private bool _dragging;                   //a left drag without shift is in flight, loop-thread-only, so no lock
     private Action<string>? _inputFault;        //notice that a key or mouse dispatch threw, fired once
@@ -120,6 +121,9 @@ public sealed class InputPump
 
     //consulted after the cancel sink and before the scroll, focus and wild sinks, so an overlay's own keys never move the transcript
     public void SetOverlaySink(Func<ConsoleKeyInfo, KeyDisposition>? sink) { lock (_lock) _overlaySink = sink; }
+
+    //consulted before the cancel sink and any modal, never for a key that scrolls or moves the focus
+    public void SetAwaySink(Func<ConsoleKeyInfo, KeyDisposition>? sink) { lock (_lock) _awaySink = sink; }
 
     //fired for every key, first, and the key goes on routing as before. it lets a consumer learn the user moved on
     public void SetKeySink(Action<ConsoleKeyInfo>? sink) { lock (_lock) _keySink = sink; }
@@ -220,6 +224,12 @@ public sealed class InputPump
         Action<ConsoleKeyInfo>? keySink;
         lock (_lock) keySink = _keySink;
         keySink?.Invoke(k);
+
+        Func<ConsoleKeyInfo, KeyDisposition>? awaySink = null;
+        lock (_lock)
+            if (_awaySink is { } aw && ScrollKeyOf(k) is null && FocusKeys.Of(k) is null)
+                awaySink = aw;
+        if (awaySink is not null && awaySink(k) == KeyDisposition.Consumed) return;
 
         //ctrl+c always consults, esc only with no modal up. the accepted race mis-routes one Esc and self-corrects on the next press
         Func<ConsoleKeyInfo, KeyDisposition>? cancelSink = null;

@@ -3,7 +3,7 @@ using System.Text.Json;
 namespace Gatto.Core.Client;
 
 public sealed record ToolCall(string Id, string Name, string ArgumentsJson);
-public sealed record Usage(int PromptTokens, int CompletionTokens);
+public sealed record Usage(int PromptTokens, int CompletionTokens, int? CachedTokens = null);   //cached is the part of the prompt a cloud server read from its cache, null when it says nothing
 public sealed record ToolSpec(string Name, string Description, JsonElement ParametersSchema);
 public sealed record ChatMessage(string Role, string? Content,
     IReadOnlyList<ToolCall>? ToolCalls = null, string? ToolCallId = null,

@@ -61,6 +61,10 @@ file sealed class OneShotCompaction(
 
 public static class GattoApp
 {
+    //what bare /model says on a cloud endpoint that lists no models, where a typed name is the whole switch
+    internal static string CloudSwitchHint(string endpointName) =>
+        $"endpoint {endpointName} lists no models: type /model <name> to switch to any model it serves";
+
     //an extension's section comes from the extensions object first, so it needs no new top-level key and search keeps working
     internal static Func<string, JsonElement?> SectionReader(JsonElement? raw) => name =>
         raw is not { } r ? null
@@ -914,9 +918,10 @@ public static class GattoApp
         Func<string, bool, ModelSwitchResult> switchModel = (requestedModel, confirmed) =>
         {
             //an endpoint that names its models has no server to swap, so the switch is the name the next request carries
-            if (!ServedHere() && endpoint.Models is { Count: > 0 } offered)
+            var route = ModelSwitch.RouteOf(ServedHere(), endpoint.Models is { Count: > 0 }, cloud);
+            if (route == SwitchRoute.ByName)
             {
-                if (!offered.Contains(requestedModel, StringComparer.Ordinal))
+                if (endpoint.Models is { Count: > 0 } offered && !offered.Contains(requestedModel, StringComparer.Ordinal))
                     return new ModelSwitchResult(false, requestedModel, null, null,
                         $"endpoint {endpointName} has no model '{requestedModel}'. Models: {string.Join(", ", offered)}", null, null, null);
                 //re-resolved for the new name, so its folder's parts replace the old one's and a model with no folder drops them
@@ -933,10 +938,18 @@ public static class GattoApp
                 role = switched.Role; model = switched.Model; modelString = switched.ModelString; comp = switched.Comp;
                 lastComposedSystem = comp.SystemText;
                 lastComposedSources = comp.Sources;
-                //the new model takes its own level as a launch would, never the one the previous model was on
-                var switchedLevel = role.ThinkingRequested ?? SavedCloudEffortOrNull(requestedModel)
-                    ?? model?.Profile.DefaultEffort ?? ThinkingLevel.Medium;
-                applyEffort?.Invoke(EffortSwitch.Name(switchedLevel), false);
+                //re-derived for the new model by the launch's own expression, or a switch between shapes keeps the old map's toggle or levels
+                reasoningMap = model?.Profile.Thinking ?? endpoint.Thinking;
+                binaryOn = Gatto.Roles.Thinking.BinaryOnLevel(reasoningMap);
+                thinkCap = Gatto.Roles.Thinking.CapabilityOf(reasoningMap, launchServing?.Capability ?? ThinkCapability.None);
+                if (thinkCap == ThinkCapability.Toggle) { thinkOn = DefaultThinkOn(model); ApplyToggle(thinkOn); }
+                else
+                {
+                    //the new model takes its own level as a launch would, never the one the previous model was on
+                    var switchedLevel = role.ThinkingRequested ?? SavedCloudEffortOrNull(requestedModel)
+                        ?? model?.Profile.DefaultEffort ?? ThinkingLevel.Medium;
+                    applyEffort?.Invoke(EffortSwitch.Name(switchedLevel), false);
+                }
                 loop.UpdateOverrides(modelString, comp.Sampling, comp.ThinkingBody, comp.ThinkingSuffix);
                 //the system text changes only when a folder's parts came or went, else only the baseline moves so a later continue finds the model the session ended on
                 return new ModelSwitchResult(true, requestedModel,
@@ -944,6 +957,10 @@ public static class GattoApp
                     contextBudget, null, null, null,
                     ThinkingFooterName(), thinkCap == ThinkCapability.Toggle, ThinkingUnavailable(), NextBaseline(lastComposedSources));
             }
+
+            //refused here as well as at the Repl's gate, so a remote endpoint never reaches the serving machinery below
+            if (route == SwitchRoute.Refuse)
+                return new ModelSwitchResult(false, requestedModel, null, null, UnmanagedSession.ModelUnavailable(launchBaseUrl), null, null, null);
 
             IReadOnlyList<(string Path, string Content)> contextFiles;
             //a malformed .gatto.json fails the switch and leaves the session as it was, nothing is armed yet
@@ -1380,14 +1397,14 @@ public static class GattoApp
         var repl = new Gatto.Repl.Repl(loop, convo, role.Name, modelString, sessions, client, endpoint.Context, contextBudget, cwd, recomposeSystem, toggleAuto, switchRole, resetGrounding, wildState, on => permissions.SetWild(on, persist: true), hooks, themeMode, subagentProgress, resumedFrom: resumedFrom, reasoning: config.ReasoningMode, thinkingName: initialThinkingName, setEffort: setEffort, listEfforts: listEfforts, glyphs: glyphs, purrSet: Gatto.Repl.Render.PurrFrames.RandomFromPool, versionLine: CommandBanner.DottedVersion(Gatto.Core.GattoVersion.String, Gatto.Core.GattoVersion.Build ?? "", CommandBanner.IsDevBuild(), glyphs), pump: pump, chrome: chrome, switchModel: switchModel, setDefault: id => ModelSwitch.Persist(home, endpointName, id),   //the role name as ResolveRole cased it from disk, which the banner and the status line key on
                     launchServing: launchServing, probeServing: probeServing, listModels: unlistedRemote ? null : listModels, picker: replPicker, slotsReader: slotsReader, warn: warn, altScreen: config.AltScreen, dumpOnExit: config.DumpOnExit, thinkingIsToggle: thinkCap == ThinkCapability.Toggle, thinkingIsUnavailable: ThinkingUnavailable(), mouseEnabled: config.Mouse && config.AltScreen && pump is not null, wheelLines: config.WheelLines, copyOnSelect: config.CopyOnSelect, resumedPath: continuePath, resumeLine: resumeLine,
             modelMarkLegend: !ServedHere() ? "current" : "weights loaded",
-            noModelList: unlistedRemote ? $"endpoint {endpointName} lists no models; type /model <name> to switch" : null,
             //read at the moment a connection is lost, through the current model, so a /model switch is followed
             serverGone: () => model is { } served
                 ? ServeLines.GoneLine(new ServeManager(home, ServerBinaryFor(served, config)).Dead(served.Profile.Port), glyphs)
                 : null,
                     autoCompact: config.AutoCompact, permissions: permissions, listTools: listTools, listPolicy: listPolicy, memoryWarning: launchRes.MemoryTruncatedLines > 0 ? MemoryTruncationWarning(launchRes.MemoryTruncatedLines) : null, cloudNotice: cloudNotice, cloud: cloud, readUsage: usageMeter.Read, onUsageChanged: repaint => usageMeter.Changed = repaint,piggyback: piggyback, turnAbort: turnAbort,
             //a session with no model talks to a server gatto does not manage, so the notice says that instead of offering a model fix
-            unmanagedNotice: !ServedHere() && endpoint.Models is not { Count: > 0 } ? UnmanagedSession.ModelUnavailable(launchBaseUrl) : null,
+            unmanagedNotice: !ServedHere() && endpoint.Models is not { Count: > 0 } && !cloud ? UnmanagedSession.ModelUnavailable(launchBaseUrl) : null,
+            cloudSwitchHint: unlistedRemote && cloud ? CloudSwitchHint(endpointName) : null,
             unmanagedVisionNotice: !ServedHere() ? UnmanagedSession.VisionUnavailable(launchBaseUrl) : null,
             deafWatch: deafWatch,
             //read when /context asks, so a /role or /model since is followed. the shape is the loop's last request, its tools split by origin
@@ -1396,7 +1413,7 @@ public static class GattoApp
                 var shape = loop.RequestShape;
                 return new ContextInputs(modelString, comp.SystemText, comp.SystemParts ?? [],
                     [.. shape.Tools.Where(t => !tools.IsExtension(t.Name))], [.. shape.Tools.Where(t => tools.IsExtension(t.Name))],
-                    shape, contextBudget, loop.ArmedAutoCompactAt, usage.Ratio, usage.LastPromptTokens, loop.LastTimings);
+                    shape, contextBudget, loop.ArmedAutoCompactAt, usage.Ratio, usage.LastPromptTokens, loop.LastTimings, loop.LastUsage);
             },
             //a cloud endpoint has no llama-server routes, any other may and falls back to the estimate when it does not
             tokenCounter: cloud ? null : client,

@@ -697,8 +697,7 @@ public class ReplModelSlashTests : IDisposable
         Conversation? convo = null,
         string? unmanagedNotice = null,
         Func<string, string?>? setDefault = null,
-        string modelMarkLegend = "weights loaded",
-        string? noModelList = null)
+        string modelMarkLegend = "weights loaded")
     {
         var client = new FakeChatClient();
         var loop = new AgentLoop(client, new ToolRegistry(), new HookBus(), new TestToolContext(Path.GetTempPath()), "m");
@@ -708,7 +707,7 @@ public class ReplModelSlashTests : IDisposable
             () => Composed.Text("sys"), () => null, _ => new RoleSwitchResult(false, "", null, null, "unused"),
             switchModel: switchModel, listModels: listModels, picker: picker,
             unmanagedNotice: unmanagedNotice, setDefault: setDefault,
-            modelMarkLegend: modelMarkLegend, noModelList: noModelList);
+            modelMarkLegend: modelMarkLegend);
     }
 
     //the picker fakes ignore the title, since only the shape under test matters
@@ -1143,19 +1142,6 @@ public class ReplModelSlashTests : IDisposable
         await Feed(repl, "/model");
 
         Assert.Equal("weights loaded", legend);
-    }
-
-    [Fact]
-    public async Task SlashModel_OnAnEndpointWithNoList_SaysSoAndOpensNothing()
-    {
-        var p = new ScriptedPicker(new Queue<PickOutcome>());
-        var repl = ReplWith(listModels: null, picker: p,
-            noModelList: "endpoint cloudy lists no models; type /model <name> to switch");
-
-        var output = await Feed(repl, "/model");
-
-        Assert.Contains("endpoint cloudy lists no models; type /model <name> to switch", output);
-        Assert.Empty(p.Opens);
     }
 
     private static IReadOnlyList<PickerItem> Rows(string? isDefault) =>

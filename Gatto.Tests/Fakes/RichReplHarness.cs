@@ -84,6 +84,9 @@ internal sealed class TappedSurface(VtScreenSurface inner) : ITermSurface
     }
 
     public string Text() => TermText.StripAnsiForWidth(string.Concat(_writes));
+
+    //every byte as written, escapes included, for a test that asks which modes the session set
+    public string Raw() => string.Concat(_writes);
 }
 
 //end a run with /quit only when the session sends, since a refused message returns to the composer. use a wait-until run, which stops at a condition.
@@ -126,14 +129,16 @@ public sealed class RichReplHarness
         //the grants store, absent unless a test hands one in, as a session without one has no grants
         Gatto.Core.Loop.Permissions.PermissionStore? permissions = null,
         //what /context counts, absent unless a test hands it in, as a session without it reports the figures unavailable
-        Func<ContextUsageState, ContextInputs>? contextInputs = null)
+        Func<ContextUsageState, ContextInputs>? contextInputs = null,
+        //the hooks the loop runs and the handle a prompt draws through, absent unless a test wires a real prompter, as the interactive entry does
+        HookBus? hooks = null, Gatto.Repl.Render.ChromeHandle? chrome = null)
     {
         Surface = new VtScreenSurface(width, height);
         _tap = new TappedSurface(Surface);
         Warn = new WarningSink(m => _warnings.Add(m));
         Convo = new Conversation(systemPrompt);
 
-        var loop = Loop = new AgentLoop(Client, tools ?? new ToolRegistry(), new HookBus(),
+        var loop = Loop = new AgentLoop(Client, tools ?? new ToolRegistry(), hooks ?? new HookBus(),
             new TestToolContext(cwd), "test-model");
 
         _repl = new Gatto.Repl.Repl(
@@ -163,7 +168,8 @@ public sealed class RichReplHarness
             resumedFrom: resumedFrom,
             resumedPath: resumedPath,
             resumeLine: resumeLine,
-            contextInputs: contextInputs);
+            contextInputs: contextInputs,
+            chrome: chrome);
     }
 
     //answers the attach-count question without a terminal. set it to a function of the SelectSpec, and null keeps the real widget.
@@ -196,6 +202,9 @@ public sealed class RichReplHarness
 
     //everything the session wrote, in order and without ansi, for a test that asks what came after what
     public string Written() => _tap.Text();
+
+    //everything the session wrote with its escapes, for a test of the terminal modes it set
+    public string RawWritten() => _tap.Raw();
 
     //ending by cancellation runs the teardown, so TranscriptDump holds the committed transcript. a scripted /quit behind a refusal would race the composer restore.
     public async Task RunUntilAsync(Func<bool> until, int timeoutMs = 15000)

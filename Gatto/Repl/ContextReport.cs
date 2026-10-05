@@ -24,6 +24,10 @@ public static class ContextReport
     //one row as painted and as seen, for a transcript item or a panel
     public readonly record struct Row(string Rendered, string Visible);
 
+    //the rows as the transcript takes them, the screen's two-cell margin off each so the transcript's own hang stands in for it
+    public static IReadOnlyList<string> Unhung(ContextFigures f, int width, Theme theme, GlyphSet g) =>
+        [.. Rows(f, width, theme, g).Select(r => r.Rendered.StartsWith("  ", StringComparison.Ordinal) ? r.Rendered[2..] : r.Rendered)];
+
     public static IReadOnlyList<Row> Rows(ContextFigures f, int width, Theme theme, GlyphSet g)
     {
         var rows = new List<Row>();

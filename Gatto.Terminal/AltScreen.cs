@@ -10,6 +10,9 @@ public sealed class AltScreen(ITermSurface surface, ITerminalTitle? title = null
     //null when this session has no tab worth titling (a redirected stream, or a console that refuses). the alt screen defaults the title, it knows every leave path
     private readonly ITerminalTitle? _title = title ?? TerminalTitle.Deed(Console.IsOutputRedirected);
 
+    //true keeps the wheel from arriving as arrow keys while the alt buffer is up, for a session with no mouse capture. set before Enter
+    public bool QuietWheel { get; set; }
+
     //true between a successful Enter and the first Restore
     public bool Active => _entered && !_restored;
 
@@ -18,7 +21,7 @@ public sealed class AltScreen(ITermSurface surface, ITerminalTitle? title = null
     {
         if (_entered) return;
         _entered = true;
-        surface.Write(Ansi.AltScreenEnter + (hideCursor ? Ansi.HideCursor : ""));
+        surface.Write(Ansi.AltScreenEnter + (QuietWheel ? Ansi.AlternateScrollOff : "") + (hideCursor ? Ansi.HideCursor : ""));
         if (windowTitle is not null) _title?.Apply(windowTitle);
     }
 
@@ -41,7 +44,7 @@ public sealed class AltScreen(ITermSurface surface, ITerminalTitle? title = null
     {
         if (!_entered || _restored) return;
         _restored = true;
-        surface.Write(Ansi.AltScreenExit + Ansi.ShowCursor);
+        surface.Write(Ansi.AltScreenExit + Ansi.ShowCursor + (QuietWheel ? Ansi.AlternateScrollOn : ""));
         //the tab goes back with the buffer, in the same guarded breath, so no abnormal exit leaves a stranded title behind
         _title?.Restore();
     }

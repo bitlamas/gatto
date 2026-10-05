@@ -212,6 +212,7 @@ public sealed class MouseController(
         //a composer press is an editor-select gesture resolved from the captured layout, and a null layout bails with no drag armed
         if (cell.Row >= 0 && cell.Row < rows.Count && rows[cell.Row].Region == ChromeRegion.Composer)
         {
+            if (rows[cell.Row].Mark) return;   //a mark stands for hidden rows, not a line, so the caret stays where it was
             if (composerLayout?.Invoke() is not { } layout) return;
             StartComposerSelect(kind, cell, rows, layout);
             _dragLive = true;
@@ -289,8 +290,9 @@ public sealed class MouseController(
 
         //scroll at the edge and anchor the head to the edge row, the next move picks up the freshly-revealed row
         var y = e.Y;
+        var edge = compositor.ChromeTop - 1;   //the transcript's last row on screen, above whatever chrome the scroll left
         if (y <= 0) { scroll.ScrollBy(1, width, height); y = 0; }
-        else if (y >= height - 1) { scroll.ScrollBy(-1, width, height); y = height - 1; }
+        else if (y >= edge) { scroll.ScrollBy(-1, width, height); y = edge; }
 
         SelCell head;
         if (compositor.CellAt(e.X, y) is { } cell)
@@ -333,7 +335,7 @@ public sealed class MouseController(
         }
 
         var rows = compositor.ChromeRowInfo;
-        var cy = System.Math.Max(e.Y, height);   //floor toward the chrome block's first physical row
+        var cy = System.Math.Max(e.Y, compositor.ChromeTop);   //floor toward the chrome block's first row on screen
         ChromeCell? found = null;
         for (var i = 0; i < rows.Count && found is null; i++, cy++) found = compositor.ChromeCellAt(e.X, cy);
         if (found is not { } clamped) return;    //no chrome cell resolved, so nothing was painted or the frame is stale

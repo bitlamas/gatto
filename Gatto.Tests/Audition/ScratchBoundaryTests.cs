@@ -77,4 +77,12 @@ public class ScratchBoundaryTests
         Assert.False(Boundary.Leaves($"Get-ChildItem {Root.Replace('\\', '/')} -Recurse"));
         Assert.True(Boundary.Leaves($"Get-ChildItem '{Path.GetDirectoryName(Root)}'"));
     }
+
+    //the folder is compared by whole segments, so a sibling whose name only begins with the folder's is outside
+    [Fact]
+    public void A_sibling_folder_with_a_longer_name_LEAVES()
+    {
+        Assert.True(Boundary.Leaves($"Get-ChildItem '{Root}5'"));
+        Assert.True(Boundary.Leaves($"Get-Content {Root}-old\\config.txt"));
+    }
 }

@@ -149,7 +149,9 @@ public sealed class OpenAiCompatClient : IChatClient, Gatto.Core.Loop.ITokenCoun
                     usageRaw = u.Clone();
                     usage = new Usage(
                         u.TryGetProperty("prompt_tokens", out var p) && p.ValueKind == JsonValueKind.Number ? p.GetInt32() : 0,
-                        u.TryGetProperty("completion_tokens", out var c) && c.ValueKind == JsonValueKind.Number ? c.GetInt32() : 0);
+                        u.TryGetProperty("completion_tokens", out var c) && c.ValueKind == JsonValueKind.Number ? c.GetInt32() : 0,
+                        u.TryGetProperty("prompt_tokens_details", out var d) && d.ValueKind == JsonValueKind.Object
+                            && d.TryGetProperty("cached_tokens", out var cachedN) && cachedN.ValueKind == JsonValueKind.Number ? cachedN.GetInt32() : null);
                 }
 
                 //the server's timings arrive in the same final chunk and stay raw JSON, gatto has no opinion on their shape

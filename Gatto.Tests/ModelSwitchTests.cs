@@ -7,6 +7,17 @@ namespace Gatto.Tests;
 
 public class ModelSwitchTests : IDisposable
 {
+    //a loopback endpoint gatto does not serve and that lists no models is refused here, so no change to a gate above reaches the serve machinery. a cloud one switches by name
+    [Theory]
+    [InlineData(true, false, false, SwitchRoute.Serve)]
+    [InlineData(true, true, false, SwitchRoute.Serve)]
+    [InlineData(false, true, false, SwitchRoute.ByName)]
+    [InlineData(false, false, false, SwitchRoute.Refuse)]
+    [InlineData(false, false, true, SwitchRoute.ByName)]
+    [InlineData(false, true, true, SwitchRoute.ByName)]
+    internal void The_switch_route(bool servedHere, bool listed, bool cloud, SwitchRoute expected) =>
+        Assert.Equal(expected, ModelSwitch.RouteOf(servedHere, listed, cloud));
+
     private readonly string _home = Directory.CreateTempSubdirectory("gatto-ms-home-").FullName;
     private readonly string _modelsDir = Directory.CreateTempSubdirectory("gatto-ms-models-").FullName;
 
