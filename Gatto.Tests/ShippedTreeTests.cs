@@ -30,8 +30,8 @@ public class ShippedTreeTests
                 ("4c9acb8c8681dc592a8451d92fb6988736f43c0fcca8b98859fca03792ab500f",
                  11835, "6a80e1c43e24a6d660dde9fbe040bf5cbd07a805dbbae50943f27a16d6d7a516"),
             ["roles/coder.json"] =
-                ("bf8418827f2d76f7a536db2dc4f5203d2ea321c02d77751c6c2ea975845a46a4",
-                 1096, "378d92315c439c875128e307dd72fb111be2c6fb7f95b2c28b9570543deafe70"),
+                ("64b94c93cca7ab9581c7ab6b73bfc6d9168a9f8b7e54cc6999961629177fffee",
+                 848, "84571b1538f535289b5c216ebc7236264f9208bab950b3ecf6649b28a43d4607"),
             ["roles/generalist.json"] =
                 ("35b5efcf8469f21bcafcdafd6412e52606f56ec02036d2f9b65d60dbcfc5bf84",
                  3, "ca3d163bab055381827226140568f3bef7eaac187cebd76878e0b63e9e442356"),

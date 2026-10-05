@@ -88,6 +88,8 @@ public static class ShippedExtensions
         "4ec9937c9729b15fddea77b390baa9b40c49a6a1294823356ef42bd54c9561fd",
         //coder.json rev B
         "f17c804ca2366a477389c8492655354f350f105d1c0065a6e066fc88ecfff709",
+        //coder.json rev C, the last one that set a temperature
+        "bf8418827f2d76f7a536db2dc4f5203d2ea321c02d77751c6c2ea975845a46a4",
         //oracle.json rev O1
         "41f74b3baf05beb65aa1bc2638668eb1410b27e22f5584785c525372fdb6384a",
         //oracle.json rev O2
