@@ -124,7 +124,9 @@ public sealed record SelectSpec(
     //the turn token a key read waits on, so ctrl+break ends a prompt that is waiting for a key
     CancellationToken Cancel = default,
     //the detail at a row cap, asked when the panel is taller than its room, DetailRows holds it at the full cap
-    Func<int, IReadOnlyList<DetailRow>>? DetailAt = null);
+    Func<int, IReadOnlyList<DetailRow>>? DetailAt = null,
+    //the panel takes the whole room rather than half the window, set by a prompt whose detail is the thing being approved
+    bool KeepsRoom = false);
 
 //how a SelectPrompt resolved, the widget gives no meaning to any outcome, the callers do
 public abstract record SelectOutcome
@@ -189,6 +191,9 @@ public sealed class SelectPrompt(   //single-select, multi-select and the free-t
 
     //how often a watching screen asks its clock, the rate the live row may change at. the repaint is gated on the row changing, a ceiling on writes
     private static readonly TimeSpan FrameInterval = TimeSpan.FromMilliseconds(140);
+
+    //how often the inline picker, waiting for a key, checks whether the window changed width
+    private static readonly TimeSpan ResizePoll = TimeSpan.FromMilliseconds(100);
 
     //two spaces between chips, one space reads as a single header on a no-color terminal
     private const string TabGap = "  ";
@@ -276,6 +281,7 @@ public sealed class SelectPrompt(   //single-select, multi-select and the free-t
         const int NoCursor = -1;
         var cursor = spec.NoInitialCursor ? NoCursor : Nearest(Math.Clamp(spec.InitialCursor, 0, lastRow), 1);
         var painted = 0;   //inline path: rows the last render occupied, which is the cursor-up distance
+        var paintedWidth = 0;   //inline path: the width the last render composed at, so a resize is seen without a key
         //how this prompt resolved, for the echo. null while the loop runs and after an aborted read, which must not echo as an answer
         SelectOutcome? resolved = null;
 
@@ -312,6 +318,7 @@ public sealed class SelectPrompt(   //single-select, multi-select and the free-t
                             pollRow = fresh;
                             Repaint();
                         }
+                        else if (painter is null && surface.Width != paintedWidth) Repaint();
 
                         if (now - lastCheckMs < poll.Interval.TotalMilliseconds) continue;
                         lastCheckMs = now;
@@ -321,6 +328,7 @@ public sealed class SelectPrompt(   //single-select, multi-select and the free-t
                     if (arrived) return Done(new SelectOutcome.Arrived());
                 }
 
+                if (painter is null) WaitForKeyOrResize();
                 var key = k.ReadKey(spec.Cancel);
                 switch (key.Key)
                 {
@@ -546,7 +554,7 @@ public sealed class SelectPrompt(   //single-select, multi-select and the free-t
             var picked = (bool[])selected.Clone();
             var draft = freeBuf.ToString();
             painter!.SetPanelFactory((w, room) =>
-                new PanelContent(Rows(w, room, atCursor, picked, draft, out var inputCaret), inputCaret));
+                new PanelContent(Rows(w, room, atCursor, picked, draft, out var inputCaret), inputCaret, spec.KeepsRoom));
         }
 
         void RenderInline(List<string> rows)
@@ -556,6 +564,25 @@ public sealed class SelectPrompt(   //single-select, multi-select and the free-t
             for (var i = 0; i < lines; i++)
                 surface.Write(ClearThenRow(i < rows.Count ? rows[i] : ""));
             painted = lines;
+            paintedWidth = surface.Width;
+        }
+
+        //no painter hears a resize for this path, so it waits for a key in slices and recomposes when the width moved. a cancel falls through to the read, which throws
+        void WaitForKeyOrResize()
+        {
+            if (!surface.ReportsResize) return;
+            while (!KeyWaiting())
+            {
+                if (surface.Width != paintedWidth) Repaint();
+                if (spec.Cancel.WaitHandle.WaitOne(ResizePoll)) return;
+            }
+        }
+
+        //a source whose KeyAvailable throws goes straight to the read, as it did before the wait existed
+        bool KeyWaiting()
+        {
+            try { return k.KeyAvailable; }
+            catch (Exception) { return true; }
         }
 
         //compose at the live width and live state, the inline path's render on every keystroke

@@ -199,6 +199,32 @@ public class StreamRendererTests
         Assert.Equal("● no trailing newline", Rows(p)[0]);   //the tail line became a transcript row
     }
 
+    //the arriving line of a code block takes the code band at once, and its colours wait for the newline that commits it
+    [Fact]
+    public void A_FENCE_LINE_STILL_ARRIVING_TAKES_THE_CODE_BAND_WITHOUT_COLOURS()
+    {
+        var (r, _, p, _) = Make(width: 60, height: 30);
+        r.BeginTurn();
+        r.OnTextDelta("```csharp\nvar x = 1;\nint y");
+
+        var tail = Assert.Single(p.ComposeChromeBlock(60, 30).Rows,
+            row => row.Region == ChromeRegion.Tail && row.Visible.Contains("int y", StringComparison.Ordinal));
+        Assert.Equal(GutterWrap.Hang + T.PaintBgLine("int y", Theme.CodeBlockFg, Theme.CodeBlockBg), tail.Rendered);
+    }
+
+    //a prose line still arriving keeps its plain paint, only a line inside a fence changes
+    [Fact]
+    public void A_PROSE_LINE_STILL_ARRIVING_AFTER_A_CLOSED_FENCE_HAS_NO_BAND()
+    {
+        var (r, _, p, _) = Make(width: 60, height: 30);
+        r.BeginTurn();
+        r.OnTextDelta("```\ncode\n```\nafter");
+
+        var tail = Assert.Single(p.ComposeChromeBlock(60, 30).Rows,
+            row => row.Region == ChromeRegion.Tail && row.Visible.Contains("after", StringComparison.Ordinal));
+        Assert.DoesNotContain(Ansi.Bg(T.Map(Theme.CodeBlockBg), T.TrueColor), tail.Rendered, StringComparison.Ordinal);
+    }
+
     [Fact]
     public void SecondLineOfBlock_HangsUnderTheMarker()
     {

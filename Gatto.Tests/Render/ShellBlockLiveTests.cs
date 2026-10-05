@@ -144,13 +144,13 @@ public sealed class ShellBlockLiveTests
         {
             var (r, p, _) = Wire(width, height);
             r.BeginTurn();
-            var bare = p.PanelRowsAvailable();
+            var bare = p.RoomRowsAvailable();
             r.OnToolCallDelta("shell", JsonSerializer.Serialize(new { command }));
             var painted = p.ComposeChromeBlock(width, height).Rows.Count(rr => rr.Region == ChromeRegion.Tool);
             Assert.Equal(5, painted);   //the blank, the header and the three command rows resting on the tail
-            Assert.Equal(bare - painted, p.PanelRowsAvailable());
+            Assert.Equal(bare - painted, p.RoomRowsAvailable());
             p.State.ToolWait = "waiting for your input";
-            Assert.Equal(bare - painted - 1, p.PanelRowsAvailable());
+            Assert.Equal(bare - painted - 1, p.RoomRowsAvailable());
         }
     }
 }

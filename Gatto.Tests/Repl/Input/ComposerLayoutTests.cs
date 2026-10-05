@@ -19,6 +19,12 @@ public class ComposerLayoutTests
                 "third",
                 "and a fourth line here too",
             }),
+            ("tab-separated cells", new[]
+            {
+                "name\tvalue\tanother column\ta long cell that has to wrap\tend",
+                "\tleading tab",
+                "x\t\ty",
+            }),
             ("CJK mixed with ASCII", new[]
             {
                 "日本語テキスト mixed with ascii words to force wrapping",

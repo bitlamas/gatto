@@ -121,7 +121,7 @@ public sealed class SessionBaselineTests
     [Fact]
     public void Compose_records_the_values_it_composed_from()
     {
-        var role = new Gatto.Roles.RoleFile("r", "p", null, Array.Empty<string>(), false, null, Gatto.Roles.ThinkingLevel.Medium, null);
+        var role = new Gatto.Roles.RoleFile("r", "p", null, Array.Empty<string>(), false, null, Gatto.Roles.ThinkingLevel.Medium);
         var c = Gatto.Roles.RoleComposition.Compose(role, null,
             new[] { (@"C:\proj\GATTO.md", "context text") }, null, cwd: @"C:\proj",
             date: new DateTime(2026, 9, 29), memoryIndex: "- a fact\n- another", memoryTruncatedLines: 2,

@@ -23,7 +23,9 @@ public sealed record FrameLayout(
     int TotalRows, int CursorRowOffset, int CursorCol,
     IReadOnlyList<(bool Continuation, int PrefixCells)> EditorRowTags,
     ComposerLayout? Composer = null,
-    int PanelRowCount = 0);
+    int PanelRowCount = 0,
+    int EditorWindowTop = 0,       //the first composer region row emitted, 0 when every row is
+    int CursorRegionRow = 0);      //the caret's composer region row, counted over every row, emitted or not
 
 //the framed typing area: top rule with its role label, editor rows, bottom rule, status line. composes layout only, ChromePainter writes every byte
 public sealed class InputFrame(ITermSurface surface, Theme theme, string role, StatusInfo status,
@@ -36,7 +38,7 @@ public sealed class InputFrame(ITermSurface surface, Theme theme, string role, S
 
     //pure layout, no pixels (ChromePainter owns the chrome stack). panelRows swaps in a modal prompt's rows: no composer layout, and view goes unread
     public FrameLayout Compose(EditorView view, IReadOnlyList<string>? panelRows = null,
-        (int Row, int Col)? panelCaret = null)
+        (int Row, int Col)? panelCaret = null, (int Top, int Count)? editorWindow = null, bool markHidden = false)
     {
         var width = surface.Width;
         var framed = width >= MinFramedWidth;
@@ -119,16 +121,32 @@ public sealed class InputFrame(ITermSurface surface, Theme theme, string role, S
         var completion = CommandHint.For(lines, view.CursorLine, view.CursorCol);
         var ghost = completion.Any ? completion.Hint(0) : "";
 
-        var segsPerLine = new List<IReadOnlyList<WrapSeg>>(lines.Count);
         //tag each editor row as a continuation or a logical head right in the loop that already knows it. a continuation row's 2-space hang counts as chrome
         var editorRowTags = new List<(bool Continuation, int PrefixCells)>();
         var regionRow = 0;   //a flat row counter in ComposerLayout's RegionRow space
+        var windowTop = editorWindow is { } ew ? Math.Clamp(ew.Top, 0, Math.Max(0, layout.RowCount - 1)) : 0;
+        var windowEnd = editorWindow is null ? int.MaxValue : windowTop + Math.Max(1, editorWindow.Value.Count);
+        //the window's edge rows say how many rows it hides, the painter keeps the caret off them
+        var markAbove = markHidden && editorWindow is not null && windowTop > 0;
+        var markBelow = markHidden && editorWindow is not null && windowEnd < layout.RowCount;
         for (var li = 0; li < lines.Count; li++)
         {
-            var segs = SoftWrap.Wrap(lines[li], budget, budget);
-            segsPerLine.Add(segs);
+            var segs = layout.SegsPerLine[li];   //the drawn text, tabs already widened, so no raw tab reaches the terminal
             for (var si = 0; si < segs.Count; si++)
             {
+                //a row outside the window is skipped whole, the highlight below is decided per region row so the rows kept need no remapping
+                if (regionRow < windowTop || regionRow >= windowEnd) { regionRow++; continue; }
+                if ((markAbove && regionRow == windowTop) || (markBelow && regionRow == windowEnd - 1))
+                {
+                    var markText = "  " + (regionRow == windowTop && markAbove
+                        ? $"{_glyphs.Up} {windowTop + 1} more" : $"{_glyphs.Down} {layout.RowCount - windowEnd + 1} more");
+                    rendered.Add(theme.Paint(markText, Theme.Dim));
+                    visibleRows.Add(markText);
+                    screenRows.Add(UnicodeWidth.Rows(markText, width));
+                    editorRowTags.Add((false, 0));
+                    regionRow++;
+                    continue;
+                }
                 var isPrompt = li == 0 && si == 0;
                 var join = li < lines.Count - 1 && si == segs.Count - 1;
                 var textStyle = Theme.Bright;
@@ -169,21 +187,16 @@ public sealed class InputFrame(ITermSurface surface, Theme theme, string role, S
         var total = 0;
         foreach (var r in screenRows) total += r;
 
-        //map the cursor through the shared wrap policy, a second wrap derived here would drift from it
-        var cl = Math.Clamp(view.CursorLine, 0, lines.Count - 1);
-        var cc = Math.Clamp(view.CursorCol, 0, lines[cl].Length);
-        var (segRow, cells) = SoftWrap.MapCursor(segsPerLine[cl], lines[cl], cc);
+        //map the cursor through the layout the highlight and the mouse use, a second mapping derived here would drift from it
+        var (cursorRegionRow, col) = layout.PositionToCell(view.CursorLine, view.CursorCol);
 
-        //add up the screen rows to reach the cursor's row, a segment is one screen row only until a wide glyph overflows the width
-        var flatCursorEntry = editorStart;
-        for (var li = 0; li < cl; li++) flatCursorEntry += segsPerLine[li].Count;
-        flatCursorEntry += segRow;
+        //add up the screen rows to reach the cursor's row, a segment is one screen row only until a wide glyph overflows the width. a caret outside the window parks on its nearest edge
+        var flatCursorEntry = editorStart + Math.Clamp(cursorRegionRow - windowTop, 0, Math.Max(0, editorRowTags.Count - 1));
         var targetRow = 0;
         for (var i = 0; i < flatCursorEntry; i++) targetRow += screenRows[i];
-        var col = 2 + cells;   //2 cells of prompt or hang prefix
 
         return new FrameLayout(rendered, visibleRows, screenRows, total, targetRow, col, editorRowTags,
-            framed ? layout : null);
+            framed ? layout : null, EditorWindowTop: windowTop, CursorRegionRow: cursorRegionRow);
     }
 
     public static string BuildTopRule(string role, int width, Theme theme, bool wild = false, string? hint = null,
@@ -299,7 +312,7 @@ public sealed class InputFrame(ITermSurface surface, Theme theme, string role, S
 
         //the serving chip rides on the model part and is never shed, so a long session still sees which model it runs
         var effort = EffortWord(s.Thinking, s.ThinkingToggle);
-        var model = (s.Cloud ? g.Cloud + " " : "") + ModelText(s.Model, rung, g)
+        var model = (s.Cloud ? g.Cloud + " " : "") + ModelText(Gatto.Core.Models.ServedModelName.Display(s.Model), rung, g)
             + (effort is null ? "" : $" ({effort})");
         var chip = s.Serving is null ? "" : $" {g.Warn} serving {s.Serving}";
         parts.Add(new Part(model + chip,

@@ -8,8 +8,17 @@ namespace Gatto.Core.Loop.Permissions;
 //fail closed on the tool_call hook, a blocked call throws and the tool's ExecuteAsync never runs
 public sealed class PermissionGate(
     PermissionStore store, IPermissionPrompter? prompter, bool autoYes, CheckpointApproval? approval = null,
-    WildState? wild = null)
+    WildState? wild = null, string? home = null)
 {
+    //the working folder and the project's write grants, and gatto's own folder when the caller names it
+    private readonly WorkspaceBoundary _boundary = new(store.ProjectRoot, store.AllowsWrite, home);
+
+    //what the model reads when step 0 refuses, each a fact about the folder so an honest model reports it rather than trying another road
+    internal const string HomeWrite = "that path is in gatto's own folder, which no tool writes";
+    internal const string ShellNamesHome = "that command names gatto's own folder, which no shell command may touch; read_file can read a file there";
+    internal const string OutsideFolder = "that path is outside the working folder, and with --yes a tool works only inside it";
+    internal const string CommandLeaves = "that command reaches outside the working folder, and with --yes a command works only inside it";
+
     //how the gate reads a file for an edit's view, a test counts the reads through it
     internal Func<string, string> ReadFile { get; init; } = File.ReadAllText;
 
@@ -41,6 +50,8 @@ public sealed class PermissionGate(
     {
         var call = payload.Call;
         if (call is null) return Task.CompletedTask;
+
+        CheckBoundary(call);                                             //0. ahead of every pass below, so no grant, --yes or wild mode skips it
 
         if (ReadClass.Contains(call.Name) || BoundedWriteClass.Contains(call.Name) || _instanceReadClass.Contains(call.Name))
             return Task.CompletedTask;                                   //1. read-class or bounded-write, both pass without asking
@@ -139,6 +150,38 @@ public sealed class PermissionGate(
         if (c.Kind == Kind.Shell) store.GrantShellPrefix(c.Request.GrantOffer, persist: true);
         else if (c.Kind == Kind.Write) store.GrantWriteDir(c.Request.GrantOffer, persist: true);
         else if (c.Kind == Kind.Opaque) store.GrantTool(c.Request.GrantOffer, persist: true);
+    }
+
+    //no tool writes gatto's own folder in any mode, and with --yes the file tools and the shell stay in the working folder or a grant. a call that does not parse is left to the steps below
+    private void CheckBoundary(ToolCall call)
+    {
+        JsonElement args;
+        try
+        {
+            using var doc = JsonDocument.Parse(call.ArgumentsJson.Length > 0 ? call.ArgumentsJson : "{}");
+            args = doc.RootElement.Clone();
+        }
+        catch (JsonException) { return; }
+
+        switch (call.Name)
+        {
+            case "write_file" or "edit_file" when TryGetString(args, "path", out var path):
+                var full = ResolvePath(path);
+                if (_boundary.InHome(full)) throw new InvalidOperationException(HomeWrite);
+                if (autoYes && !_boundary.Inside(full)) throw new InvalidOperationException(OutsideFolder);
+                return;
+            case "read_file" when autoYes && TryGetString(args, "path", out var read):
+                if (!_boundary.Inside(ResolvePath(read))) throw new InvalidOperationException(OutsideFolder);
+                return;
+            case "glob" or "grep" when autoYes:
+                if (!_boundary.Inside(ResolvePath(TryGetString(args, "root", out var root) ? root : ".")))
+                    throw new InvalidOperationException(OutsideFolder);
+                return;
+            case "shell" when TryGetString(args, "command", out var command):
+                if (_boundary.NamesHome(command)) throw new InvalidOperationException(ShellNamesHome);
+                if (autoYes && _boundary.Leaves(command)) throw new InvalidOperationException(CommandLeaves);
+                return;
+        }
     }
 
     private Classified Classify(ToolCall call)

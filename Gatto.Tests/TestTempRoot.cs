@@ -34,6 +34,7 @@ internal static class TestTempRoot
         try { using var p = Process.GetProcessById(pid); return !p.HasExited; }
         catch (ArgumentException) { return false; }
         catch (InvalidOperationException) { return false; }
+        catch (System.ComponentModel.Win32Exception) { return true; }   //a reused pid this user cannot open keeps its folder, a later sweep finds it gone
     }
 
     //git writes its objects read-only, which Directory.Delete refuses, so a failed delete clears the flag and tries once more

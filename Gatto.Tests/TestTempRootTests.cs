@@ -40,4 +40,30 @@ public sealed class TestTempRootTests
         }
         finally { Directory.Delete(parent, true); }
     }
+
+    //pid 4 is the system process, which this user cannot open, so its folder counts as live and the sweep goes on instead of failing the run
+    [Fact]
+    public void A_folder_whose_pid_cannot_be_opened_is_kept_and_the_sweep_does_not_throw()
+    {
+        var parent = Directory.CreateTempSubdirectory("gatto-sweep-").FullName;
+        try
+        {
+            var locked = Directory.CreateDirectory(Path.Combine(parent, TestTempRoot.Prefix + 4)).FullName;
+            var gone = Directory.CreateDirectory(Path.Combine(parent, TestTempRoot.Prefix + int.MaxValue)).FullName;
+
+            TestTempRoot.SweepFinishedRuns(parent);
+
+            //an elevated runner may open pid 4 and never reach the catch, so the kept folder is asserted only where this user cannot open it
+            if (Pid4IsUnopenable()) Assert.True(Directory.Exists(locked));
+            Assert.False(Directory.Exists(gone));
+        }
+        finally { Directory.Delete(parent, true); }
+    }
+
+    private static bool Pid4IsUnopenable()
+    {
+        try { using var p = System.Diagnostics.Process.GetProcessById(4); _ = p.HasExited; return false; }
+        catch (System.ComponentModel.Win32Exception) { return true; }
+        catch (Exception) { return false; }
+    }
 }

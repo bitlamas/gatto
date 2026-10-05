@@ -127,6 +127,22 @@ public class SessionStoreTests : IDisposable
         Assert.Equal("{\"role\":\"tool\",\"content\":\"3 files\",\"tool_call_id\":\"call_1\"}", json);
     }
 
+    //the elision frontier and the ratio ride the assistant record only when something was cut, an uncut record stays as it was
+    [Fact]
+    public void ChatJson_writes_the_elision_shape_only_when_set_and_reads_it_back()
+    {
+        var plain = new ChatMessage("assistant", "hi");
+        Assert.Equal("{\"role\":\"assistant\",\"content\":\"hi\"}", SessionStore.ChatJson(plain));
+
+        var json = SessionStore.ChatJson(plain with { Shape = new Gatto.Core.Loop.ShapeMark(37, 1.25) });
+        Assert.Contains("\"elided_through\":37", json);
+        Assert.Contains("\"token_ratio\":1.25", json);
+        using var doc = System.Text.Json.JsonDocument.Parse(json);
+        Assert.Equal(new Gatto.Core.Loop.ShapeMark(37, 1.25), SessionStore.ParseChatElement(doc.RootElement).Shape);
+        using var none = System.Text.Json.JsonDocument.Parse(SessionStore.ChatJson(plain));
+        Assert.Null(SessionStore.ParseChatElement(none.RootElement).Shape);
+    }
+
     [Fact]
     public void ChatJson_writes_new_fields_only_when_set()
     {

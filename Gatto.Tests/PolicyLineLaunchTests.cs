@@ -297,7 +297,7 @@ public class PolicyLineLaunchTests : IDisposable
     [Fact]
     public void A_policy_line_changes_the_system_text_and_nothing_else_the_launch_already_read()
     {
-        var role = new RoleFile("r", "p", null, new[] { "grounding" }, true, null, ThinkingLevel.Medium, null);
+        var role = new RoleFile("r", "p", null, new[] { "grounding" }, true, null, ThinkingLevel.Medium);
 
         var without = RoleComposition.Compose(role, null, Array.Empty<(string, string)>(), null, cwd: @"C:\p");
         var with = RoleComposition.Compose(role, null, Array.Empty<(string, string)>(), null, cwd: @"C:\p",

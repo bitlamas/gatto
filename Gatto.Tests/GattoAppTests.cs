@@ -123,8 +123,9 @@ public class GattoAppTests : IDisposable
     //the real template names both switches, so a sniff that stops at enable_thinking answers Toggle for a genuine multi-level map
     private const string BothSwitchesTemplate = "enable_thinking ... reasoning_effort";
 
+    //a role carries no sampling: the one it still holds is dropped on the path that used to send it, and the thinking body still arrives
     [Fact]
-    public async Task Launch_ModelThinkingPlusRoleSampling_RequestCarriesBoth()
+    public async Task Launch_RoleSamplingIsNotSent_TheThinkingBodyStillIs()
     {
         await using var server = new FakeOpenAiServer();
         UseHome();
@@ -140,10 +141,82 @@ public class GattoAppTests : IDisposable
 
         Assert.Equal(0, exit);
         var body = server.LastRequestBody!.Value;
-        //the role's sampling override reaches the request body.
-        Assert.Equal(0.3, body.GetProperty("temperature").GetDouble(), 3);
-        //the thinking map's body override for the effective level reaches the same body.
+        Assert.False(body.TryGetProperty("temperature", out _));
         Assert.True(body.GetProperty("chat_template_kwargs").GetProperty("enable_thinking").GetBoolean());
+    }
+
+    //sampling belongs to the model, so the profile's values go into the request, not only into a spawned server's argv
+    [Fact]
+    public async Task Launch_ProfileSampling_ReachesTheRequestBody()
+    {
+        await using var server = new FakeOpenAiServer();
+        UseHome();
+        WriteConfig($$$"""{"endpoints":{"local":{"base_url":"{{{server.BaseUrl}}}"}},"default_endpoint":"local"}""");
+        WriteModel("test-model", port: 1235, profileExtra: "\"sampling\":{\"temperature\":0.6}");
+        WriteRole("generalist", "{\"model\":\"test-model\"}");
+        server.Enqueue(Completion("ok"));
+
+        Console.SetOut(new StringWriter());
+        var exit = await GattoApp.RunAsync(new[] { "-p", "hi" });
+
+        Assert.Equal(0, exit);
+        Assert.Equal(0.6, server.LastRequestBody!.Value.GetProperty("temperature").GetDouble(), 3);
+    }
+
+    //a model folder applies on any endpoint: its append and sampling reach the request, while its port never replaces the endpoint's base url
+    [Fact]
+    public async Task Launch_ModelFolderOnANonLocalEndpoint_SuppliesItsModelParts_AndTheEndpointStillServes()
+    {
+        await using var server = new FakeOpenAiServer();
+        UseHome();
+        WriteConfig($$$"""{"endpoints":{"local":{"base_url":"http://127.0.0.1:1"},"vega":{"base_url":"{{{server.BaseUrl}}}"}},"default_endpoint":"local"}""");
+        WriteModel("test-model", port: 1, profileExtra: "\"auto_serve\":true,\"sampling\":{\"temperature\":0.6}");
+        File.WriteAllText(Path.Combine(_home, "models", "test-model", "system-append.md"), "VEGA-APPEND");
+        WriteRole("generalist", "{}");
+        server.Enqueue(Completion("ok"));
+
+        Console.SetOut(new StringWriter());
+        var exit = await GattoApp.RunAsync(new[] { "-e", "vega", "-m", "test-model", "-p", "hi" });
+
+        Assert.Equal(0, exit);
+        var body = server.LastRequestBody!.Value;
+        Assert.Equal("test-model", body.GetProperty("model").GetString());
+        Assert.Equal(0.6, body.GetProperty("temperature").GetDouble(), 3);
+        Assert.Contains("VEGA-APPEND", body.GetProperty("messages")[0].GetProperty("content").GetString());
+    }
+
+    //a cloud id is no folder name, so it finds no folder even when one could be read at that path, and goes out verbatim
+    [Fact]
+    public async Task Launch_ACloudIdOnANonLocalEndpoint_FindsNoFolder_AndIsSentAsTyped()
+    {
+        await using var server = new FakeOpenAiServer();
+        UseHome();
+        WriteConfig($$$"""{"endpoints":{"vega":{"base_url":"{{{server.BaseUrl}}}"}},"default_endpoint":"vega"}""");
+        WriteModel(Path.Combine("openai", "gpt-4.1"), port: 1, profileExtra: "\"sampling\":{\"temperature\":0.6}");
+        WriteRole("generalist", "{}");
+        server.Enqueue(Completion("ok"));
+
+        Console.SetOut(new StringWriter());
+        var exit = await GattoApp.RunAsync(new[] { "-m", "openai/gpt-4.1", "-p", "hi" });
+
+        Assert.Equal(0, exit);
+        var body = server.LastRequestBody!.Value;
+        Assert.Equal("openai/gpt-4.1", body.GetProperty("model").GetString());
+        Assert.False(body.TryGetProperty("temperature", out _));
+    }
+
+    //only the endpoint named local is gatto's to start, probe and size from a folder, which is what keeps auto_serve and the port away from a remote server
+    [Fact]
+    public void ServingFor_LeavesAFolderOnANonLocalEndpoint_ToTheEndpoint()
+    {
+        UseHome();
+        WriteModel("test-model", port: 1, profileExtra: "\"auto_serve\":true");
+        var model = Gatto.Roles.Model.Load(Path.Combine(_home, "models"), "test-model");
+        var endpoint = new Gatto.Core.Client.EndpointConfig("http://127.0.0.1:9", Context: 32768);
+
+        Assert.Equal((false, (int?)32768), GattoApp.ServingFor(servedHere: false, model, endpoint, "http://127.0.0.1:9"));
+        Assert.Equal((true, (int?)8192), GattoApp.ServingFor(servedHere: true, model, endpoint, "http://127.0.0.1:9"));
+        Assert.Equal((false, (int?)32768), GattoApp.ServingFor(servedHere: false, null, endpoint, "http://127.0.0.1:9"));
     }
 
     //the child must dispatch before GattoConfig.Load, which exits 2 on a bad config. a silent child reads as no vulkan loader, so the machine is priced CPU-only
@@ -661,6 +734,57 @@ public class GattoAppTests : IDisposable
         FinishFrame("tool_calls"),
         "data: [DONE]\n\n",
     });
+
+    //on a server with llama-server's counting routes /context is exact: the total is the server's and the template takes what the parts leave
+    [Fact]
+    public async Task Context_on_a_server_that_counts_is_exact_and_names_the_template_markup()
+    {
+        await using var server = new FakeOpenAiServer { InputTokens = 9_000, TokenizeCount = s => s.Length / 4 };
+        UseHome();
+        //the assertions read the unicode dot, so the set is pinned rather than left to the host's terminal
+        WriteConfig($$$"""{"endpoints":{"local":{"base_url":"{{{server.BaseUrl}}}"}},"default_endpoint":"local","glyphs":"unicode"}""");
+        WriteModel("test-model", port: 1235);
+        WriteRole("generalist", "{\"model\":\"test-model\"}");
+
+        Console.SetIn(new StringReader("/context\n/quit\n"));
+        var stdout = new StringWriter();
+        Console.SetOut(stdout);
+        var exit = await GattoApp.RunAsync(Array.Empty<string>());
+
+        Assert.Equal(0, exit);
+        var output = stdout.ToString();
+        Assert.Contains("context · 9,000 of 8,192 tokens", output);
+        Assert.Contains("counted by the server's tokenizer · before the first request", output);
+        Assert.Contains("template markup", output);
+        //the count is of the request the first turn will send: the composed system message and every tool
+        using var counted = JsonDocument.Parse(server.InputTokensRaw!);
+        Assert.Equal("system", counted.RootElement.GetProperty("messages")[0].GetProperty("role").GetString());
+        Assert.True(counted.RootElement.GetProperty("tools").GetArrayLength() > 0);
+    }
+
+    //under -p --yes a model once rewrote gatto.json and gatto would not start, now the write is refused and the file stays
+    [Fact]
+    public async Task Under_p_yes_a_write_to_gattos_own_config_is_refused_and_the_file_is_unchanged()
+    {
+        await using var server = new FakeOpenAiServer();
+        UseHome();
+        WriteConfig($$$"""{"endpoints":{"local":{"base_url":"{{{server.BaseUrl}}}"}},"default_endpoint":"local"}""");
+        WriteModel("test-model", port: 1235);
+        WriteRole("generalist", "{\"model\":\"test-model\"}");
+        var config = Path.Combine(_home, "gatto.json");
+        var before = File.ReadAllText(config);
+        server.Enqueue(ToolCallThenStop("c1", "write_file",
+            JsonSerializer.Serialize(new { path = config, content = "{\"compact_model\":\"x\"}" })));
+        server.Enqueue(Completion("done"));
+
+        Console.SetOut(new StringWriter());
+        await GattoApp.RunAsync(new[] { "--yes", "-p", "set compact_model" });
+
+        Assert.Equal(before, File.ReadAllText(config));
+        var toolMsg = server.LastRequestBody!.Value.GetProperty("messages").EnumerateArray()
+            .Single(m => m.GetProperty("role").GetString() == "tool");
+        Assert.Contains(Gatto.Core.Loop.Permissions.PermissionGate.HomeWrite, toolMsg.GetProperty("content").GetString());
+    }
 
     [Fact]
     public async Task RoleSwitch_ToGroundingRole_ArmsTheNudge_ForTheVeryNextDeliverable()

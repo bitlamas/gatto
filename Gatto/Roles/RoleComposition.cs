@@ -15,7 +15,9 @@ public sealed record Composition(
     bool RepairArmed,
     bool Checkpoints,
     //the values the text was composed from, so a resume can say what changed without composing again
-    Gatto.Core.Loop.BaselineSources Sources);
+    Gatto.Core.Loop.BaselineSources Sources,
+    //the same text split by source, so /context can count each part
+    IReadOnlyList<Gatto.Core.Loop.ContextPartText>? SystemParts = null);
 
 //role x model x nudges x context files, pure and total so /role and /compact can recompose through it
 public static class RoleComposition
@@ -99,16 +101,26 @@ public static class RoleComposition
         var policyOrdered = (policyLines ?? Array.Empty<(string Extension, string Line)>()).OrderBy(p => p.Extension, StringComparer.Ordinal).ToList();
         var policyBlock = policyOrdered.Count == 0 ? null : string.Join("\n", policyOrdered.Select(p => p.Line));
 
-        //fixed order, empty parts skipped. the date sits before any model/role text so model and role keep the last word
-        var blocks = new[] { BasePrompt, memoryNudge ? MemoryNudge : null, envLine, model?.SystemAppend, role.Append, model?.Nudges?.Append, policyBlock }
-            .Where(p => !string.IsNullOrWhiteSpace(p))
-            .Select(p => p!)
-            .Concat(contextFiles.Select(f => $"## Context: {f.Path}\n{f.Content}"));
-        if (memoryBlock is not null) blocks = blocks.Append(memoryBlock);
-        var systemText = string.Join("\n\n", blocks);
+        //fixed order, empty parts skipped. the date sits before any model/role text so model and role keep the last word. each block keeps the source /context names it by
+        var labelled = new (string Label, string? Detail, string? Text)[]
+            {
+                ("system prompt", null, BasePrompt), ("system prompt", null, memoryNudge ? MemoryNudge : null), ("system prompt", null, envLine),
+                ("model folder", null, model?.SystemAppend), ("role", role.Name, role.Append), ("model folder", null, model?.Nudges?.Append),
+                ("extension policy", null, policyBlock),
+            }
+            .Where(p => !string.IsNullOrWhiteSpace(p.Text))
+            .Select(p => (Label: p.Label, Detail: p.Detail, Text: p.Text!))
+            .Concat(contextFiles.Select(f => (Label: "context files", Detail: (string?)$"{contextFiles.Count}", Text: $"## Context: {f.Path}\n{f.Content}")))
+            .ToList();
+        if (memoryBlock is not null) labelled.Add(("memory index", null, memoryBlock));
+        var systemText = string.Join("\n\n", labelled.Select(p => p.Text));
+        //one part per source in first-seen order, the blocks of a source joined as the prompt joins them
+        var systemParts = labelled.GroupBy(p => p.Label)
+            .Select(g => new Gatto.Core.Loop.ContextPartText(g.Key, Gatto.Core.Loop.ContextGroup.Prefix, string.Join("\n\n", g.Select(p => p.Text)), g.First().Detail))
+            .ToList();
 
-        //the role's request wins, then the model's own default_effort, then Medium, all capped by the nudge cap
-        var requested = role.ThinkingRequested ?? model?.Profile.DefaultEffort ?? savedEffort ?? ThinkingLevel.Medium;
+        //the role's request wins, then an effort saved for a non-local endpoint, then the model's own default_effort, then Medium, all capped by the nudge cap
+        var requested = role.ThinkingRequested ?? savedEffort ?? model?.Profile.DefaultEffort ?? ThinkingLevel.Medium;
         var effective = Thinking.Min(requested, model?.Nudges?.ThinkingCap ?? ThinkingLevel.Max);
 
         //the model map wins, the endpoint map is the cloud path. a prompt_suffix goes on the user message, since the request body can't express it
@@ -118,12 +130,12 @@ public static class RoleComposition
         //the level reported is the one ResolveEntry resolved to, since a map with a gap would otherwise show a level the wire never sends
         var thinking = Thinking.LandedLevel(map, effective) ?? effective;
 
-        //the role's sampling goes into the request body, since the model profile's own sampling belongs to the server argv
+        //sampling is a property of the model, so the profile's goes into every request to it, and a role carries none
         return new Composition(
             gates,
             systemText,
             thinking,
-            role.Sampling,
+            model?.Profile.Sampling,
             thinkingBody,
             thinkingSuffix,
             model?.Repair is not null,
@@ -134,6 +146,7 @@ public static class RoleComposition
                 contextFiles.Select(f => new Gatto.Core.Loop.ContextFileMark(f.Path, Gatto.Core.Loop.BaselineMarks.Sha256Hex(f.Content))).ToList(),
                 policyOrdered.Select(p => new Gatto.Core.Loop.PolicyMark(p.Extension, p.Line)).ToList(),
                 Gatto.Core.Loop.BaselineMarks.Sha256Hex(role.Append ?? ""),
-                Gatto.Core.Loop.BaselineMarks.Sha256Hex((model?.SystemAppend ?? "") + "\n" + (model?.Nudges?.Append ?? ""))));
+                Gatto.Core.Loop.BaselineMarks.Sha256Hex((model?.SystemAppend ?? "") + "\n" + (model?.Nudges?.Append ?? ""))),
+            systemParts);
     }
 }

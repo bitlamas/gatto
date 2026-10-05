@@ -17,7 +17,7 @@ public class SlashCommandsTests
     //the name-set test pins SlashCommands.All to this list and can't see the Repl dispatch, so a branch with no row here goes unnoticed
     private static readonly string[] CanonicalNames =
         ["/help", "/new", "/role", "/model", "/effort", "/compact", "/auto", "/remember",
-         "/wild", "/permissions", "/tools", "/init", "/quit"];
+         "/wild", "/permissions", "/tools", "/context", "/init", "/quit"];
 
     [Fact]
     public void All_NameSet_MatchesCanonicalPinnedSet()

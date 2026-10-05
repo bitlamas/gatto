@@ -206,6 +206,54 @@ public sealed class EditPromptTests : IDisposable
             string.Join("\n", Enumerable.Range(1, 60).Select(i => $"added {i:00} {tail}")), null);
     }
 
+    //an ask_user question has no detail to give up, so a long one holds half the window and scrolls inside it rather than taking the rest
+    [Theory]
+    [InlineData(30)]
+    [InlineData(50)]
+    public async Task A_TALL_ASK_USER_PANEL_HOLDS_HALF_THE_WINDOW(int height)
+    {
+        var s = new VtScreenSurface(100, height);
+        var gate = new object();
+        var painter = new ChromePainter(s, T, gate)
+        {
+            Frame = new InputFrame(s, T, "coder", new StatusInfo(@"C:\proj", "qwen", "coder", new CtxState(), @"C:\Users\x"), glyphs: U),
+            RoleForTint = "coder",
+        };
+        painter.State.Composer = new EditorView(new List<string> { "" }, 0, 0);
+        painter.AltScreen.Enter();
+        painter.Repaint();
+        var renderer = new StreamRenderer(painter, s, T, "coder", new ChromeTicker(painter, gate), gate, model: painter.Model, convoTail: () => null);
+        var room = -1;
+        var shown = -1;
+        var keys = new Probe(n =>
+        {
+            if (n != 0) return;
+            painter.Repaint();
+            room = painter.PanelRowsAvailable();
+            shown = painter.ComposeChromeBlock(100, height).Rows.Count(r => r.Region == ChromeRegion.Prompt);
+        }, [new ConsoleKeyInfo('1', ConsoleKey.D1, false, false, false), new ConsoleKeyInfo('\r', ConsoleKey.Enter, false, false, false)]);
+        var question = string.Join("\n", Enumerable.Range(1, 60).Select(i => $"context line {i}"));
+
+        await new RichPrompter(s, T, keys, pump: null, chrome: new ChromeHandle { Painter = painter, Renderer = renderer })
+            .AskAsync([new AskQuestion(question, "q", [.. Enumerable.Range(1, 40).Select(i => $"option {i}")], false)], CancellationToken.None);
+
+        Assert.Equal(height / 2, room);
+        Assert.Equal(height / 2, shown);
+    }
+
+    //the diff is what the user approves, so a permission prompt keeps the whole room the furniture leaves and is not held to half the window
+    [Theory]
+    [InlineData(30)]
+    [InlineData(50)]
+    public void A_TALL_PERMISSION_PROMPT_KEEPS_THE_ROOM_PAST_HALF_THE_WINDOW(int height)
+    {
+        var (screen, room, panel) = Paints(WideEdit(100), 100, height).Single();
+
+        Assert.True(room > height / 2, $"a room of {room} at {height}");
+        Assert.InRange(panel, height / 2 + 1, room);
+        AssertThePromptIsWhole(screen, $"height {height}");
+    }
+
     private static void AssertThePromptIsWhole(List<string> screen, string where)
     {
         var dump = where + "\n" + string.Join("\n", screen);

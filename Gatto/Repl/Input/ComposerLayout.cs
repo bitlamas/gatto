@@ -9,6 +9,8 @@ public sealed class ComposerLayout
     private const int PrefixCells = 2;
 
     private readonly IReadOnlyList<string> _lines;
+    private readonly string[] _drawn;          //each line with its tabs widened, the text every seg is cut from
+    private readonly int[][] _toDrawn;         //per line, the drawn index each source char starts at
     private readonly IReadOnlyList<IReadOnlyList<WrapSeg>> _segsPerLine;
     private readonly int[] _rowsBeforeLine;   //composer rows before each logical line
 
@@ -21,7 +23,7 @@ public sealed class ComposerLayout
     //the wrap budget from the width, 2 cells for the prompt and hang and 1 for the continuation mark
     public int Budget { get; }
 
-    //each line's wrap segments, built once from the snapshot and reused by every mapping call, don't re-wrap
+    //each line's wrap segments of the drawn text, so a seg's chars are drawn chars and only this class maps them back to source columns
     public IReadOnlyList<IReadOnlyList<WrapSeg>> SegsPerLine => _segsPerLine;
 
     //total composer rows over every logical line, the flat row space both maps index
@@ -35,11 +37,14 @@ public sealed class ComposerLayout
 
         var segsPerLine = new List<IReadOnlyList<WrapSeg>>(_lines.Count);
         var rowsBeforeLine = new int[_lines.Count];
+        _drawn = new string[_lines.Count];
+        _toDrawn = new int[_lines.Count][];
         var rows = 0;
         for (var li = 0; li < _lines.Count; li++)
         {
             rowsBeforeLine[li] = rows;
-            var segs = SoftWrap.Wrap(_lines[li], Budget, Budget);
+            _drawn[li] = TermText.ExpandTabs(_lines[li], out _toDrawn[li]);
+            var segs = SoftWrap.Wrap(_drawn[li], Budget, Budget);
             segsPerLine.Add(segs);
             rows += segs.Count;
         }
@@ -65,8 +70,8 @@ public sealed class ComposerLayout
         var contentCell = Math.Max(cellCol - PrefixCells, 0);
 
         //the two remaining clamps (mid-glyph snap and the past-end cap) are already in ColAtSegCell, so it is reused here
-        var col = LineEditor.ColAtSegCell(segs, segIndex, contentCell);
-        return (li, col);
+        var drawnCol = LineEditor.ColAtSegCell(segs, segIndex, contentCell);
+        return (li, SourceCol(li, drawnCol));
     }
 
     //a text position to the cell it renders at, the same call and snapshot as InputFrame.Compose so the two directions can't drift
@@ -75,8 +80,17 @@ public sealed class ComposerLayout
         var li = Math.Clamp(line, 0, _lines.Count - 1);
         var lc = Math.Clamp(col, 0, _lines[li].Length);
         var segs = _segsPerLine[li];
-        var (segRow, cells) = SoftWrap.MapCursor(segs, _lines[li], lc);
+        var (segRow, cells) = SoftWrap.MapCursor(segs, _drawn[li], _toDrawn[li][lc]);
         return (_rowsBeforeLine[li] + segRow, PrefixCells + cells);
+    }
+
+    //the source column a drawn index belongs to, so a cell inside a tab's spaces lands on the tab itself
+    private int SourceCol(int li, int drawnCol)
+    {
+        var map = _toDrawn[li];
+        var col = 0;
+        while (col < _lines[li].Length && map[col + 1] <= drawnCol) col++;
+        return col;
     }
 
     //which logical line and which wrap segment owns a flat composer row, a linear scan is fine at this size

@@ -150,6 +150,18 @@ public class ShellToolTests : IDisposable
         Assert.DoesNotContain("EF-BB-BF", r.Text, StringComparison.Ordinal);
     }
 
+    //the prelude sits on its own line, so the error quotes the command alone and its position reads one line down
+    [Fact]
+    public async Task A_failed_command_error_quotes_the_command_line_without_the_prelude()
+    {
+        var r = await new ShellTool().ExecuteAsync(Args(new { command = "Get-Item .\\nope" }), Ctx, default);
+        Assert.True(r.IsError, r.Text);
+        Assert.Contains("At line:2 char:1", r.Text, StringComparison.Ordinal);
+        Assert.Contains("+ Get-Item .\\nope", r.Text, StringComparison.Ordinal);
+        Assert.DoesNotContain("$__e", r.Text, StringComparison.Ordinal);
+        Assert.DoesNotContain("OutputEncoding", r.Text, StringComparison.Ordinal);
+    }
+
     //both spawn sites read the one prelude, so a fix at one reaches the other
     [Fact]
     public void The_read_only_shell_carries_the_same_prelude_as_the_shell_tool()

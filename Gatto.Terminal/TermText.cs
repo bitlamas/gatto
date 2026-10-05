@@ -152,6 +152,34 @@ public static class TermText
 
     private const int TabStop = 4;
 
+    //one line as the composer draws it, each tab widened to the next stop of TabStop cells, and toDrawn[i] the drawn index source char i starts at
+    public static string ExpandTabs(string s, out int[] toDrawn)
+    {
+        toDrawn = new int[s.Length + 1];
+        var sb = new StringBuilder(s.Length);
+        var cells = 0;
+        var i = 0;
+        while (i < s.Length)
+        {
+            toDrawn[i] = sb.Length;
+            if (s[i] == '\t')
+            {
+                var spaces = TabStop - (cells % TabStop);
+                sb.Append(' ', spaces);
+                cells += spaces;
+                i++;
+                continue;
+            }
+            Rune.DecodeFromUtf16(s.AsSpan(i), out var r, out var used);
+            if (used == 2) toDrawn[i + 1] = sb.Length + 1;   //the low surrogate keeps its own index, a caret never rests there
+            sb.Append(s, i, used);
+            cells += UnicodeWidth.OfRune(r);
+            i += used;
+        }
+        toDrawn[s.Length] = sb.Length;
+        return sb.ToString();
+    }
+
     //the filter behind Sanitize and SanitizeProse, tracking the output column, and keepNewline lets '\n' through and resets that column
     private static string ExpandTabsAndFilter(string s, bool keepNewline)
     {

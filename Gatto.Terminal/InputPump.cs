@@ -24,6 +24,7 @@ public sealed class InputPump
     private Action<FocusKey>? _focusSink;     //global focus sink, also consulted before the stack
     private Action? _wildSink;                //wild-mode toggle on shift+tab, same tier as the others
     private Action<MouseEvent>? _mouseSink;   //the mouse sink, it bypasses the focus stack entirely
+    private Func<ConsoleKeyInfo, KeyDisposition>? _overlaySink;   //every key while something drawn over the composer wants first look, only when no modal is up
     private Func<ConsoleKeyInfo, KeyDisposition>? _cancelSink;   //cancel and copy for esc and ctrl+c, runs before the stack only when no modal is up
     private bool _dragging;                   //a left drag without shift is in flight, loop-thread-only, so no lock
     private Action<string>? _inputFault;        //notice that a key or mouse dispatch threw, fired once
@@ -116,6 +117,9 @@ public sealed class InputPump
 
     //ctrl+c is consulted even under a modal, copying text doesn't answer a prompt. esc is consulted only when no modal holds focus, prompts keep their own cancel
     public void SetCancelSink(Func<ConsoleKeyInfo, KeyDisposition>? sink) { lock (_lock) _cancelSink = sink; }
+
+    //consulted after the cancel sink and before the scroll, focus and wild sinks, so an overlay's own keys never move the transcript
+    public void SetOverlaySink(Func<ConsoleKeyInfo, KeyDisposition>? sink) { lock (_lock) _overlaySink = sink; }
 
     //fired for every key, first, and the key goes on routing as before. it lets a consumer learn the user moved on
     public void SetKeySink(Action<ConsoleKeyInfo>? sink) { lock (_lock) _keySink = sink; }
@@ -223,6 +227,12 @@ public sealed class InputPump
             if (_cancelSink is { } cs && (IsCopyChord(k) || (k.Key == ConsoleKey.Escape && _stack.Count == 0)))
                 cancelSink = cs;
         if (cancelSink is not null && cancelSink(k) == KeyDisposition.Consumed) return;
+
+        Func<ConsoleKeyInfo, KeyDisposition>? overlaySink = null;
+        lock (_lock)
+            if (_overlaySink is { } os && _stack.Count == 0)
+                overlaySink = os;
+        if (overlaySink is not null && overlaySink(k) == KeyDisposition.Consumed) return;
 
         Action<ScrollKey>? scrollSink = null;
         var scrollKey = default(ScrollKey);

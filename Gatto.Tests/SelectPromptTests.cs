@@ -83,6 +83,40 @@ public class SelectPromptTests
 
     private static int Chosen(SelectOutcome outcome) => Assert.IsType<SelectOutcome.Chosen>(outcome).Index;
 
+    //the first look for a key finds the window resized and nothing typed, the next finds a key, and the read keeps the frame it saw
+    private sealed class ResizeThenKey(VtScreenSurface surface, int newWidth, ConsoleKeyInfo key) : IKeySource
+    {
+        private int _looks;
+        public IReadOnlyList<string> FrameAtRead { get; private set; } = [];
+        public bool KeyAvailable
+        {
+            get
+            {
+                if (++_looks > 1) return true;
+                surface.Resize(newWidth, surface.Height);
+                return false;
+            }
+        }
+        public ConsoleKeyInfo ReadKey() { FrameAtRead = surface.Viewport; return key; }
+    }
+
+    //a resize with no key pressed must recompose the inline picker at the new width before the next key arrives
+    [Fact]
+    public void THE_INLINE_PICKER_REPAINTS_AT_THE_NEW_WIDTH_WHEN_THE_WINDOW_IS_RESIZED()
+    {
+        var surface = new VtScreenSurface(60, 20) { ReportsResize = true };
+        var keys = new ResizeThenKey(surface, 40, Special(ConsoleKey.Escape));
+        var spec = new SelectSpec([], "pick", [new SelectOption("a"), new SelectOption("b")],
+            LabelsAt: w => [$"first at {w}", $"second at {w}"]);
+
+        Assert.IsType<SelectOutcome.Cancelled>(new SelectPrompt(surface, T, keys).Show(spec));
+
+        var frame = string.Join("\n", keys.FrameAtRead);
+        Assert.Contains("first at 40", frame, StringComparison.Ordinal);
+        Assert.Contains("second at 40", frame, StringComparison.Ordinal);
+        Assert.DoesNotContain("at 60", frame, StringComparison.Ordinal);
+    }
+
     //a watching screen resolves with no key typed, so nothing is scripted and a widget that blocks on ReadKey throws here
     [Fact]
     public void A_WATCHING_SCREEN_RESOLVES_ITSELF_when_the_thing_it_waits_for_arrives()

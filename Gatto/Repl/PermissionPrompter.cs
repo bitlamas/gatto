@@ -109,7 +109,7 @@ public sealed class RichPermissionPrompter(
         //detail lines go through raw, the widget wraps them at each paint width so a resize mid-prompt re-wraps instead of clips
         var spec = new SelectSpec(titleRows, question, options, detail,
             FreeTextLabel: null, MultiSelect: false, FooterHint: "Esc to cancel", Cancel: TurnToken(),
-            DetailAt: PromptTitles.DetailAt(request, detail, _glyphs));
+            DetailAt: PromptTitles.DetailAt(request, detail, _glyphs), KeepsRoom: true);
         var outcome = ShowForTest is { } showForTest
             ? showForTest(spec)
             : new SelectPrompt(surface, theme, k, pump: null, chrome, _glyphs).Show(spec);

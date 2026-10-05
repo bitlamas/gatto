@@ -7,7 +7,7 @@
   it didn't start.
 
   server    http://127.0.0.1:8080
-  serving   Qwen3-30B-A3B-Instruct-2507-Q4_K_M.gguf
+  serving   Qwen3-30B-A3B-Instruct-2507-Q4_K_M
   context   131,072 tokens · reported by the server
 
 ❯ 1. Use this server

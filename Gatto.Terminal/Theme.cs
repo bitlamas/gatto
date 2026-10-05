@@ -45,6 +45,9 @@ public sealed class Theme(TermCaps caps, ThemeMode mode = ThemeMode.Dark)
     public static readonly RgbColor SelectionBg  = new(0x2D, 0x3B, 0x55, 60);    //drag-select ground, muted slate blue
     public static readonly RgbColor DiffAddedBg   = new(0x1B, 0x2E, 0x1D, 22);   //the ground under an added row of an edit
     public static readonly RgbColor DiffRemovedBg = new(0x38, 0x1D, 0x21, 52);   //the ground under a removed row of an edit
+    public static readonly RgbColor ContextPrefix    = new(0x5E, 0x73, 0x89, 60);    //the prefix of the /context bar, slate
+    public static readonly RgbColor ContextReasoning = new(0x9A, 0x84, 0xE0, 104);   //reasoning in the /context bar, violet
+    public static readonly RgbColor ContextPastLine  = new(0x8A, 0x5A, 0x2A, 94);    //the free cells past the auto-compaction line, rust
 
     //light palette, dark-on-light re-picks. body tints aim for 4.5:1 or better on white. tokens ending in Bg are bands, the contrast is on the paired fg
     public static readonly RgbColor AccentLight       = new(0xB2, 0x5E, 0x00, 130);   //burnt orange, about 4.7:1 on white
@@ -79,6 +82,9 @@ public sealed class Theme(TermCaps caps, ThemeMode mode = ThemeMode.Dark)
     public static readonly RgbColor SelectionBgLight  = new(0xCE, 0xDD, 0xF2, 189);   //pale blue drag-select ground
     public static readonly RgbColor DiffAddedBgLight   = new(0xDD, 0xF2, 0xDD, 194);   //pale green under an added row, the nearest slot of the cube
     public static readonly RgbColor DiffRemovedBgLight = new(0xF9, 0xDE, 0xDE, 224);   //pale red under a removed row, the nearest slot of the cube
+    public static readonly RgbColor ContextPrefixLight    = new(0x3E, 0x52, 0x68, 60);
+    public static readonly RgbColor ContextReasoningLight = new(0x8A, 0x70, 0xD0, 98);
+    public static readonly RgbColor ContextPastLineLight  = new(0xC4, 0x92, 0x5E, 173);
 
     private static readonly IReadOnlyDictionary<RgbColor, RgbColor> LightMap = new Dictionary<RgbColor, RgbColor>
     {
@@ -114,6 +120,9 @@ public sealed class Theme(TermCaps caps, ThemeMode mode = ThemeMode.Dark)
         [SelectionBg]  = SelectionBgLight,
         [DiffAddedBg]   = DiffAddedBgLight,
         [DiffRemovedBg] = DiffRemovedBgLight,
+        [ContextPrefix]    = ContextPrefixLight,
+        [ContextReasoning] = ContextReasoningLight,
+        [ContextPastLine]  = ContextPastLineLight,
     };
 
     //maps a dark palette key to the active mode, identity in dark. every paint path goes through here so callers keep passing the dark keys

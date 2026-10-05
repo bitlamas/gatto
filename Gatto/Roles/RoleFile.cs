@@ -12,10 +12,9 @@ public sealed record RoleFile(
     bool Checkpoints,
     string? Append,
     //null when the role file has no thinking key, since the default depends on the model, which the loader never sees
-    ThinkingLevel? ThinkingRequested,
-    JsonElement? Sampling)
+    ThinkingLevel? ThinkingRequested)
 {
-    //one key for the model, and the endpoint kind decides what it means, so don't add a special case for the retired pack word
+    //one key for the model, and the endpoint kind decides what it means. sampling belongs to the model now, so a role's sampling key is accepted and never read
     private static readonly string[] Keys =
         { "model", "endpoint", "gates", "checkpoints", "append", "thinking", "sampling" };
 
@@ -75,17 +74,7 @@ public sealed record RoleFile(
             thinking = Thinking.Parse(th.GetString());
         }
 
-        JsonElement? sampling = null;
-        if (root.TryGetProperty("sampling", out var sm))
-        {
-            if (sm.ValueKind != JsonValueKind.Object)
-                throw new GattoConfigException($"role '{name}' has a \"sampling\" with the wrong type — must be an object");
-            HarnessManagedKeys.Check(sm, key =>
-                $"role '{name}' \"sampling\" must not set \"{key}\" — it is managed by gatto");
-            sampling = sm.Clone();   //clone, since the source document is disposed when the read returns
-        }
-
-        return new RoleFile(name, model, endpoint, gates, checkpoints, append, thinking, sampling);
+        return new RoleFile(name, model, endpoint, gates, checkpoints, append, thinking);
     }
 
     //the override wins, then the role's own model, then gatto.json's default_model, shared so the launch and doctor agree

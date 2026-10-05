@@ -889,6 +889,112 @@ public class AgentLoopTests
         Assert.Contains("[elided: shell result, 3000 chars", Old(2));
     }
 
+    //a loaded conversation of shell rounds with 300-char results, about 75 tokens a round, ending on a plain answer
+    private static Conversation Grown(int rounds)
+    {
+        var list = new List<ChatMessage> { new("user", "old") };
+        for (var i = 0; i < rounds; i++)
+        {
+            list.Add(new ChatMessage("assistant", null, new[] { new ToolCall($"c{i}", "shell", "{}") }));
+            list.Add(new ChatMessage("tool", new string('a', 300), ToolCallId: $"c{i}"));
+        }
+        list.Add(new ChatMessage("assistant", "ok"));
+        var convo = new Conversation("s");
+        convo.Load(list);
+        return convo;
+    }
+
+    private static ContextUsageState ReadAt(Conversation convo, double ratio)
+    {
+        var usage = new ContextUsageState();
+        var estimate = ContextBudget.Estimate(convo.Messages);
+        usage.Record((int)(estimate * ratio), estimate, convo.Count);
+        return usage;
+    }
+
+    //while auto-compaction is armed nothing is cut, a session over the elision line sends its results whole
+    [Fact]
+    public async Task An_armed_loop_sends_the_conversation_uncut_past_the_elision_line()
+    {
+        var convo = Grown(12);   //about 91% of 1000
+        var client = new FakeChatClient();
+        client.EnqueueTurn(new StreamEvent.TextDelta("done"), new StreamEvent.Finished("stop", null));
+        var loop = NewLoop(client, compaction: new FakeCompactionHandler(null), usageState: ReadAt(convo, 1.0),
+            autoCompactAt: 0.99, budgetTokens: 1_000);
+
+        await loop.RunTurnAsync(convo, "next", new RecordingObserver(), CancellationToken.None);
+
+        Assert.DoesNotContain(client.Requests[0].Messages, m => m.Content?.StartsWith("[elided:") == true);
+    }
+
+    //the trigger reads the uncut conversation, so a threshold above the elision line still compacts
+    [Fact]
+    public async Task An_armed_loop_compacts_on_the_uncut_count()
+    {
+        var convo = Grown(13);   //about 98% of 1000, a cut copy would read under 90%
+        var handler = new FakeCompactionHandler(new CompactionResult("s2", new[] { new ChatMessage("user", "u") }, null));
+        var client = new FakeChatClient();
+        client.EnqueueTurn(new StreamEvent.TextDelta("done"), new StreamEvent.Finished("stop", null));
+        var loop = NewLoop(client, compaction: handler, usageState: ReadAt(convo, 1.0), autoCompactAt: 0.95, budgetTokens: 1_000);
+
+        await loop.RunTurnAsync(convo, "next", new RecordingObserver(), CancellationToken.None);
+
+        Assert.Equal(1, handler.Calls);
+    }
+
+    //an armed loop keeps what an earlier request cut, so the prefix the server holds survives, and cuts nothing new
+    [Fact]
+    public async Task An_armed_loop_recuts_below_a_stored_frontier_and_nothing_beyond()
+    {
+        var convo = Grown(12);   //0 system, 1 old, then an assistant and a tool per round: tools at 3, 5, 7 and on
+        var usage = ReadAt(convo, 1.0);
+        usage.Seed(6, 1.0);
+        var client = new FakeChatClient();
+        client.EnqueueTurn(new StreamEvent.TextDelta("done"), new StreamEvent.Finished("stop", null));
+        var loop = NewLoop(client, compaction: new FakeCompactionHandler(null), usageState: usage, autoCompactAt: 0.99, budgetTokens: 1_000);
+
+        await loop.RunTurnAsync(convo, "next", new RecordingObserver(), CancellationToken.None);
+
+        var sent = client.Requests[0].Messages;
+        Assert.StartsWith("[elided:", sent[3].Content);
+        Assert.StartsWith("[elided:", sent[5].Content);
+        Assert.Equal(new string('a', 300), sent[7].Content);
+    }
+
+    //the elision state rides the session file, so the first request after a resume repeats the cut prefix of the last one before it
+    [Fact]
+    public async Task A_resumed_session_shapes_its_first_request_as_the_last_one_was_shaped()
+    {
+        var convo = Grown(13);
+        var before = new FakeChatClient();
+        before.EnqueueTurn(new StreamEvent.TextDelta("done"), new StreamEvent.Finished("stop", null));
+        //the server counts 1.3 tokens for each estimated one, so this session cuts more than a ratio of 1 would
+        await NewLoop(before, usageState: ReadAt(convo, 1.3), budgetTokens: 1_000)
+            .RunTurnAsync(convo, "next", new RecordingObserver(), CancellationToken.None);
+        var last = before.Requests[^1].Messages;
+
+        var lines = convo.Messages.Select(m => Gatto.Core.Home.SessionStore.ChatJson(m)).ToList();
+        var restored = lines.Select(l => Gatto.Core.Home.SessionStore.ParseChatElement(JsonDocument.Parse(l).RootElement)).ToList();
+        var resumed = new Conversation("s");
+        resumed.Load(restored.Where(m => m.Role != "system"));
+        var usage = new ContextUsageState();
+        usage.SeedFrom(resumed.Messages);
+        var frontier = usage.ElidedThrough;
+        Assert.True(frontier > 0, "the session before the resume cut nothing, so the test proves nothing");
+
+        var after = new FakeChatClient();
+        after.EnqueueTurn(new StreamEvent.TextDelta("again"), new StreamEvent.Finished("stop", null));
+        await NewLoop(after, usageState: usage, budgetTokens: 1_000)
+            .RunTurnAsync(resumed, "more", new RecordingObserver(), CancellationToken.None);
+        var first = after.Requests[0].Messages;
+
+        //what the server receives of each message, the record's own timestamp never goes out
+        static string Wire(ChatMessage m) =>
+            $"{m.Role}|{m.Content}|{m.ToolCallId}|{string.Join(";", m.ToolCalls?.Select(c => c.Id + c.Name + c.ArgumentsJson) ?? [])}";
+        for (var i = 0; i < frontier; i++)
+            Assert.Equal(Wire(last[i]), Wire(first[i]));
+    }
+
     private sealed class WideTool : ITool
     {
         public string Name => "wide";
@@ -915,9 +1021,9 @@ public class AgentLoopTests
         Assert.InRange(usage.Ratio, 1.9, 2.1);   //about 21 when the 2,000 tokens of definitions count as message density
     }
 
-    //with both armed, elision goes first and compaction waits while the trimmed request stays under the threshold
+    //with compaction armed it decides on the uncut conversation and nothing is cut, where elision used to go first and keep compaction waiting
     [Fact]
-    public async Task Elision_runs_before_compaction()
+    public async Task An_armed_compaction_runs_where_elision_used_to_go_first()
     {
         var handler = new FakeCompactionHandler(new CompactionResult("s2", new[] { new ChatMessage("user", "u") }, null));
         var client = new FakeChatClient();
@@ -937,8 +1043,8 @@ public class AgentLoopTests
 
         await loop.RunTurnAsync(convo, "next", new RecordingObserver(), CancellationToken.None);
 
-        Assert.Equal(0, handler.Calls);
-        Assert.Contains("[elided: shell result, 3000 chars", client.Requests[1].Messages[3].Content);
+        Assert.Equal(1, handler.Calls);
+        Assert.DoesNotContain(client.Requests.SelectMany(r => r.Messages), m => m.Content?.StartsWith("[elided:") == true);
     }
 
     [Fact]

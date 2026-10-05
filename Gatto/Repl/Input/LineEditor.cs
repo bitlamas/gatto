@@ -304,6 +304,13 @@ public sealed class LineEditor(IComposerSource input, History history, Func<int>
                 OnPasteImage.Invoke();
                 return null;
 
+            //a tab inside a burst is pasted text, kept as the tab it was so the model receives the text as copied
+            case ConsoleKey.Tab when k.Modifiers == 0 && (_thisBursty || _prevBursty):
+                _completionToken = null;   //a tab typed next must start a fresh cycle, not complete a token the paste moved away from
+                _lines[_line] = _lines[_line].Insert(_col, "\t");
+                _col++;
+                return null;
+
             //bare Tab only, since Shift+Tab is wild mode and never reaches this switch
             case ConsoleKey.Tab when k.Modifiers == 0:
                 if (_completionToken is null)
@@ -473,33 +480,22 @@ public sealed class LineEditor(IComposerSource input, History history, Func<int>
             return;
         }
 
-        var segs = SoftWrap.Wrap(_lines[_line], budget, budget);
-        var (segRow, cell) = SoftWrap.MapCursor(segs, _lines[_line], _col);
+        //the composer's own layout, so a tab moves the caret by the cells it draws and a row above or below may belong to the next line
+        var layout = new ComposerLayout(_lines, w);
+        var (row, cell) = layout.PositionToCell(_line, _col);
         if (up)
         {
-            if (segRow > 0) _col = ColAtSegCell(segs, segRow - 1, cell);
-            else if (_line > 0)
-            {
-                _line--;
-                var above = SoftWrap.Wrap(_lines[_line], budget, budget);
-                _col = ColAtSegCell(above, above.Count - 1, cell);   //the caret goes to the last display row of the line above
-            }
+            if (row > 0) (_line, _col) = layout.ComposerCellToPosition(row - 1, cell);
             else if (!TryPullQueue()) PullHistory(older: true);       //at the top display row, pull the queue first and recall history only if nothing was queued
         }
         else
         {
-            if (segRow < segs.Count - 1) _col = ColAtSegCell(segs, segRow + 1, cell);
-            else if (_line < _lines.Count - 1)
-            {
-                _line++;
-                var below = SoftWrap.Wrap(_lines[_line], budget, budget);
-                _col = ColAtSegCell(below, 0, cell);                 //the caret goes to the first display row of the line below
-            }
+            if (row < layout.RowCount - 1) (_line, _col) = layout.ComposerCellToPosition(row + 1, cell);
             else PullHistory(older: false);                          //the bottom display row recalls newer history, or the draft
         }
     }
 
-    //the logical column nearest the desired cell without overshooting, shared with ComposerLayout's mouse mapping
+    //the drawn column nearest the desired cell without overshooting, called by ComposerLayout, which maps it back to a source column
     internal static int ColAtSegCell(IReadOnlyList<WrapSeg> segs, int segIndex, int targetCell)
     {
         var start = 0;

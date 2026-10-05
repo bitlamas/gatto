@@ -128,6 +128,12 @@ public sealed class SessionStore(string homePath, string cwd)
                 w.WritePropertyName("timings");
                 w.WriteRawValue(m.Timings);
             }
+            //written only when the request was cut, so an uncut record stays byte-identical, and the ratio in full so a resume cuts the same results
+            if (m.Shape is { } shape)
+            {
+                w.WriteNumber("elided_through", shape.ElidedThrough);
+                w.WriteNumber("token_ratio", shape.Ratio);
+            }
             //every write stamps this build's version and nothing reads it back, kept for a future version gate. resaving a future-schema file rewrites it to this version
             if (m.Role == "system")
             {
@@ -200,8 +206,16 @@ public sealed class SessionStore(string homePath, string cwd)
             strippedTotal,
             ReadImages(el),
             ReadView(el),
-            ReadUpdate(el));
+            ReadUpdate(el),
+            ReadShape(el));
     }
+
+    //both fields or neither, an absent pair is a reply whose request went out uncut
+    private static Gatto.Core.Loop.ShapeMark? ReadShape(JsonElement el) =>
+        el.TryGetProperty("elided_through", out var et) && et.ValueKind == JsonValueKind.Number
+        && el.TryGetProperty("token_ratio", out var tr) && tr.ValueKind == JsonValueKind.Number
+            ? new Gatto.Core.Loop.ShapeMark(et.GetInt32(), tr.GetDouble())
+            : null;
 
     //what a system record was composed from, written only when the conversation holds one
     private static void WriteBaseline(Utf8JsonWriter w, SessionBaseline b)

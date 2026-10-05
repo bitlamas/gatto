@@ -26,9 +26,8 @@ public class RoleCompositionTests
         IReadOnlyList<string>? gates = null,
         bool checkpoints = false,
         string? append = null,
-        ThinkingLevel? thinking = ThinkingLevel.Medium,
-        JsonElement? sampling = null)
-        => new("r", "p", null, gates ?? Array.Empty<string>(), checkpoints, append, thinking, sampling);
+        ThinkingLevel? thinking = ThinkingLevel.Medium)
+        => new("r", "p", null, gates ?? Array.Empty<string>(), checkpoints, append, thinking);
 
     private static ModelProfile Profile(
         JsonElement? sampling = null,
@@ -481,26 +480,23 @@ public class RoleCompositionTests
         Assert.Null(c.ThinkingSuffix);
     }
 
+    //sampling is a property of the model, so the profile's goes into every request to it
     [Fact]
-    public void Sampling_is_role_sampling_verbatim()
+    public void Sampling_is_the_model_profile_sampling()
     {
-        var role = Role(sampling: Json("""{ "temperature": 0.3 }"""));
-        var c = RoleComposition.Compose(role, Pk(), NoContext, null, cwd: null);
+        var model = Pk(profileSampling: Json("""{ "temperature": 0.9 }"""));
+
+        var c = RoleComposition.Compose(Role(), model, NoContext, null, cwd: null);
 
         Assert.NotNull(c.Sampling);
-        Assert.Equal(0.3, c.Sampling!.Value.GetProperty("temperature").GetDouble());
+        Assert.Equal(0.9, c.Sampling!.Value.GetProperty("temperature").GetDouble());
     }
 
     [Fact]
-    public void Sampling_model_profile_sampling_is_not_merged()
+    public void Sampling_is_null_with_no_model_or_a_profile_without_it()
     {
-        //the model profile's sampling is serving-side and must not leak into the request's sampling.
-        var role = Role(sampling: null);
-        var model = Pk(profileSampling: Json("""{ "temperature": 0.9 }"""));
-
-        var c = RoleComposition.Compose(role, model, NoContext, null, cwd: null);
-
-        Assert.Null(c.Sampling);
+        Assert.Null(RoleComposition.Compose(Role(), null, NoContext, null, cwd: null).Sampling);
+        Assert.Null(RoleComposition.Compose(Role(), Pk(), NoContext, null, cwd: null).Sampling);
     }
 
     [Fact]

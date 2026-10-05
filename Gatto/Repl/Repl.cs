@@ -174,8 +174,91 @@ public sealed class Repl(
     //said by bare /model when the endpoint lists no models, so the picker never shows rows that endpoint cannot take
     string? noModelList = null,
     //the line naming the served llama-server that stopped running, read after a lost connection. null when gatto serves nothing for this session
-    Func<string?>? serverGone = null)
+    Func<string?>? serverGone = null,
+    //what /context counts, built by the caller from the composition and the tools since Repl cannot see the role. null leaves /context unavailable
+    Func<ContextUsageState, ContextInputs>? contextInputs = null,
+    //llama-server's counting routes for the exact path, null for an endpoint that has none
+    ITokenCounter? tokenCounter = null)
 {
+    //the /context rows at a width, built from what the last request sent, so the composer thread may build them mid-turn
+    internal async Task<IReadOnlyList<ContextReport.Row>?> ContextRowsAsync(int width, Theme theme, CancellationToken ct) =>
+        await ContextFiguresAsync(ct) is { } figures ? ContextReport.Rows(figures, width, theme, _glyphs) : null;
+
+    //the figures alone, width-free, for a screen that is drawn again at each width
+    private async Task<ContextFigures?> ContextFiguresAsync(CancellationToken ct) =>
+        contextInputs is null ? null : await ContextCount.BuildAsync(contextInputs(_usageState), tokenCounter, ct);
+
+    internal const string ContextUnavailable = "context figures are unavailable in this session";
+
+    //the keys of an open info panel: the page keys scroll it, Enter closes it, any other key closes it and goes on to the composer
+    internal static Func<ConsoleKeyInfo, KeyDisposition> BuildInfoPanelSink(ChromePainter painter, object gate) => k =>
+    {
+        lock (gate) { if (!painter.State.PanelInfo) return KeyDisposition.PassThrough; }
+        switch (k.Key)
+        {
+            case ConsoleKey.PageUp: painter.ScrollPanel(InfoPanelPage); return KeyDisposition.Consumed;
+            case ConsoleKey.PageDown: painter.ScrollPanel(-InfoPanelPage); return KeyDisposition.Consumed;
+            case ConsoleKey.Enter: painter.CloseInfoPanel(); return KeyDisposition.Consumed;   //consumed, so an empty composer is never submitted
+        }
+        //a copy chord is the cancel sink's, it already looked and passed it on
+        if (k.Key == ConsoleKey.C && k.Modifiers.HasFlag(ConsoleModifiers.Control)) return KeyDisposition.PassThrough;
+        painter.CloseInfoPanel();
+        return KeyDisposition.PassThrough;
+    };
+
+    //rows a PgUp or PgDn moves an info panel by
+    private const int InfoPanelPage = 10;
+
+    //opens the answer once its rows are ready, and never after teardown. a fault leaves the composer as it was, the command was read-only
+    private static async Task OpenInfoPanelAsync(Task<Func<int, IReadOnlyList<string>>> answer, RichState s, Func<bool> stopped)
+    {
+        try
+        {
+            var rows = await answer;
+            lock (s.Gate) { if (!stopped()) s.Painter.SetInfoPanel((w, _) => rows(w)); }
+        }
+        catch (Exception) { }
+    }
+
+    //a bypassing command's answer while a turn is in flight, null at rest or for any other text, which then goes to the queue
+    private Task<Func<int, IReadOnlyList<string>>>? BypassNow(string text, RichState s)
+    {
+        bool inFlight;
+        lock (_ctsLock) inFlight = s.TurnCts is not null;
+        if (!inFlight || !SlashCommands.BypassesQueue(text)) return null;
+        var trimmed = text.Trim();
+        if (trimmed == "/context") return ContextAnswerAsync(s);
+        return Task.FromResult(ReadOnlyAnswer(trimmed, s));
+    }
+
+    //counted once from the last request, each call bounded by the probes' deadline, then drawn again at every width
+    private async Task<Func<int, IReadOnlyList<string>>> ContextAnswerAsync(RichState s)
+    {
+        if (contextInputs is null) return _ => ["  " + ContextUnavailable];
+        var figures = await ContextCount.BuildAsync(contextInputs(_usageState), tokenCounter, CancellationToken.None);
+        return w => [.. ContextReport.Rows(figures, w, s.Theme, _glyphs).Select(r => r.Rendered)];
+    }
+
+    //the answers that are text already, /help, /tools and the list view of /permissions
+    private Func<int, IReadOnlyList<string>> ReadOnlyAnswer(string trimmed, RichState s)
+    {
+        if (trimmed == "/help")
+        {
+            var help = (SlashCommands.RenderRich(s.Theme) + "\n\n" + Shortcuts.RenderRich(s.Theme, glyphs: _glyphs)).Split('\n');
+            return _ => [.. help.Select(r => "  " + r)];
+        }
+        if (trimmed == "/tools")
+            return w => [.. (listTools is null ? ToolsUnavailable
+                : RenderToolsListFor(listTools(), PolicyRows(), new Theme(TermCaps.Plain), Math.Max(20, w - 4), _glyphs))
+                .Split('\n').Select(r => "  " + TermText.Sanitize(r))];
+        TryMatchCommand(trimmed, "/permissions", out var arg);
+        var grants = HandlePermissions(arg).Split('\n');
+        return _ => [.. grants.Select(r => "  " + TermText.Sanitize(r))];
+    }
+
+    //the screen's two-cell margin taken off a row, for a place that draws its own margin
+    internal static string Unindent(string row) => row.StartsWith("  ", StringComparison.Ordinal) ? row[2..] : row;
+
     //the prompters' bridge to the chrome, armed when the painter and renderer come up, cleared at teardown, so a prompt renders inline until then
     private readonly ChromeHandle? _chrome = chrome;
 
@@ -320,7 +403,7 @@ public sealed class Repl(
         if (string.Equals(running, _servingSaid, StringComparison.Ordinal)) return;
 
         //the /model remedy appears only when the running id names a shelf model, a file stem that no shelf row claims is dropped
-        renderer.OnWarning($"the server is running {running} now, this session is on {modelName}"
+        renderer.OnWarning($"the server is running {running} now, this session is on {Gatto.Core.Models.ServedModelName.Display(modelName)}"
             + (servingOnTheShelf ? $" — /model {running} to use it" : ""));
         _servingSaid = running;
     }
@@ -495,7 +578,7 @@ public sealed class Repl(
             //name the server's window when it is the smaller one, the model's declared size would be a lie here
             var holds = probedNCtx is int p && (contextBudget is not int d || p < d)
                 ? $"the server's actual window is {effective}"
-                : $"{modelName} holds {effective}";
+                : $"{Gatto.Core.Models.ServedModelName.Display(modelName)} holds {effective}";
             renderer.OnWarning(
                 $"history is ~{estimate / 1000}k tokens; {holds} — run /compact before your next message");
             _contextFitWarned = true;
@@ -857,12 +940,15 @@ public sealed class Repl(
     internal static string RoleLine(string role) => "role: " + role;
 
     //the line /model prints after a successful switch
-    internal static string ModelLine(string model) => "model: " + model;
+    internal static string ModelLine(string model) => "model: " + Gatto.Core.Models.ServedModelName.Display(model);
 
     internal const string NewConversationLine = "new conversation";
 
     internal const string RoleSwitchFailed = "role switch failed";
     internal const string EffortUnavailable = "effort switching is unavailable in this session";
+
+    //the effort is written above the tools, so a change moves the prompt's first bytes and the server cannot reuse what it read. no timing number, the cost is the server's
+    internal const string EffortRereadsLine = "the next request reads the whole conversation again";
     internal const string ModelSwitchFailed = "model switch failed";
     internal const string ModelSwitchUnavailable = "model switching is unavailable in this session";
     //the word a user types to add a model, one const so the dispatch and the help row agree
@@ -992,10 +1078,14 @@ public sealed class Repl(
     private string ApplyEffort(string levelArg, bool persist)
     {
         if (setEffort is null) return EffortUnavailable;
+        var before = thinkingName;
         var result = setEffort(levelArg, persist);
         if (result.Success) thinkingName = result.LevelName;
         if (result.Success && result.Thinking is { } thinking) convo.SetThinking(thinking);
-        return result.Message;
+        //only a level that moved, in a session that has talked, costs a full read, the first request reads everything anyway
+        var rereads = result.Success && !string.Equals(before, result.LevelName, StringComparison.Ordinal)
+            && convo.Messages.Any(m => m.Role != "system");
+        return rereads ? result.Message + ", " + EffortRereadsLine : result.Message;
     }
 
 
@@ -1112,7 +1202,8 @@ public sealed class Repl(
             + (Gatto.Core.GattoVersion.Build is { Length: > 0 } b ? " " + g.Dot + " build " + b : ""));
         var sep = " " + g.Dot + " ";
         rows.Add(theme.Paint("gatto", Theme.Accent, bold: true) + theme.Paint(sep, Theme.Dim)
-            + theme.Paint(roleName, theme.RoleTint(roleName)) + theme.Paint(sep, Theme.Dim) + modelName
+            + theme.Paint(roleName, theme.RoleTint(roleName)) + theme.Paint(sep, Theme.Dim)
+            + Gatto.Core.Models.ServedModelName.Display(modelName)
             + theme.Paint(sep, Theme.Dim) + theme.Paint(ver, Theme.Dim));
         //the up arrow is not in the glyph table yet, so it comes from g.UpKey. the hint names the key a keyboard has rather than a caret
         rows.Add(theme.Paint($"/quit exits{sep}/new resets{sep}Ctrl+C twice exits{sep}{g.UpKey} history",
@@ -1244,7 +1335,7 @@ public sealed class Repl(
         Console.WriteLine(Cats.For(roleName, glyphs: _glyphs));
         //the plain banner joins with Dot, the same separator as every other row
         var sep = $" {_glyphs.Dot} ";
-        Console.WriteLine($"gatto{sep}{roleName}{sep}{modelName}{sep}v{Gatto.Core.GattoVersion.String}");
+        Console.WriteLine($"gatto{sep}{roleName}{sep}{Gatto.Core.Models.ServedModelName.Display(modelName)}{sep}v{Gatto.Core.GattoVersion.String}");
         Console.WriteLine("(/quit to exit, /new to reset, Ctrl+C aborts a turn)");
         //the same system line the rich path commits, printed literally here, plain has no renderer to hang the marker on
         if (memoryWarning is not null) Console.WriteLine($"{_glyphs.Sharp} " + memoryWarning);
@@ -1256,6 +1347,7 @@ public sealed class Repl(
         {
             Console.WriteLine($"(resumed from {resumedFrom})");
             if (resumeLine is not null) Console.WriteLine(resumeLine);
+            _usageState.SeedFrom(convo.Messages);   //the last reply's cut, so the first request keeps the prefix the server last read
             ReplayTranscript(convo.Messages, renderer, u => Console.WriteLine("\n> " + u));
             Console.WriteLine();
         }
@@ -1324,6 +1416,15 @@ public sealed class Repl(
             if (TryMatchCommand(trimmedLine, "/wild", out var wildArg))
             {
                 Console.WriteLine(HandleWild(wildArg));
+                continue;
+            }
+            if (trimmedLine == "/context")
+            {
+                var width = 80;
+                try { if (Console.WindowWidth > 20) width = Console.WindowWidth; } catch { } //no console, so the 80 default stands
+                var rows = await ContextRowsAsync(width, new Theme(TermCaps.Plain), appCt);
+                if (rows is null) Console.WriteLine(ContextUnavailable);
+                else foreach (var row in rows) Console.WriteLine(row.Visible);
                 continue;
             }
             if (trimmedLine == "/tools")
@@ -1626,6 +1727,8 @@ public sealed class Repl(
         //registered unconditionally, Esc needs this path in a mouse: false session, and the copy arms are no-ops without a mouse
         keys.SetCancelSink(BuildCancelSink(painter, gate, () => s.TurnCts, Copy,
             () => s.ComposerEmpty?.Invoke() ?? true));
+        //an open info panel looks at every key first, the panel's own keys never reach the transcript's scroll or the composer
+        keys.SetOverlaySink(BuildInfoPanelSink(painter, gate));
 
         //use the live read () => s.TurnCts here and in the cancel sink, the field is replaced at every turn boundary
         if (turnAbort is not null) turnAbort.Current = () => s.TurnCts;
@@ -1667,6 +1770,7 @@ public sealed class Repl(
                 ReplayTranscript(convo.Messages, renderer, u => renderer.CommitUser(u.Split('\n')));
                 renderer.EndTurn();
             }
+            _usageState.SeedFrom(convo.Messages);   //the last reply's cut, so the first request keeps the prefix the server last read
             //the divider goes after the restored transcript so it sits just above the composer, and being transient it never serializes
             model.Append(new CommandEchoItem(new[] { theme.Paint($"— resumed from {resumedFrom} —", Theme.Dim) }, null) { Transient = true });
             if (resumeLine is not null)
@@ -1678,17 +1782,21 @@ public sealed class Repl(
         var lastAtRestCtrlC = 0L;
         Console.CancelKeyPress += (_, e) =>
         {
+            e.Cancel = true;
+            bool composerEmpty;
+            lock (s.Gate) { composerEmpty = s.ComposerEmpty?.Invoke() ?? true; }   //read before _ctsLock so the two locks never nest
             lock (_ctsLock)
             {
-                e.Cancel = true;
                 var now = Environment.TickCount64;
-                switch (DecideCtrlC(s.TurnCts is not null, now, lastAtRestCtrlC))
+                switch (DecideCtrlC(s.TurnCts is not null, composerEmpty, now, lastAtRestCtrlC))
                 {
                     case CtrlCAction.AbortTurn:
                         try { s.TurnCts!.Cancel(); } catch (ObjectDisposedException) { }
                         break;
                     case CtrlCAction.Quit:
                         s.CancelLoop?.Invoke();
+                        break;
+                    case CtrlCAction.None:
                         break;
                     default:   //the HintExit rung, arm the 2s window and show the transient rule hint
                         lastAtRestCtrlC = now;                    //keep this, the next press reads it to decide a quit
@@ -1702,20 +1810,23 @@ public sealed class Repl(
         return await RunLinearLoopAsync(s, editor, queue, chords, clip, appCt);
     }
 
-    //a turn in flight aborts, at rest a single Ctrl+C only hints and a second within CtrlCDoubleTapMs quits
+    //a turn in flight aborts, composer text makes it a no-op, at rest a single Ctrl+C only hints and a second within CtrlCDoubleTapMs quits
     internal const long CtrlCDoubleTapMs = 2000;
-    internal enum CtrlCAction { AbortTurn, HintExit, Quit }
-    internal static CtrlCAction DecideCtrlC(bool turnInFlight, long nowMs, long lastAtRestMs) =>
+    internal enum CtrlCAction { None, AbortTurn, HintExit, Quit }
+    internal static CtrlCAction DecideCtrlC(bool turnInFlight, bool composerEmpty, long nowMs, long lastAtRestMs) =>
         turnInFlight ? CtrlCAction.AbortTurn
+        : !composerEmpty ? CtrlCAction.None
         : lastAtRestMs > 0 && nowMs - lastAtRestMs <= CtrlCDoubleTapMs ? CtrlCAction.Quit
         : CtrlCAction.HintExit;
 
     //the Esc rung clears a live selection, a non-empty composer passes through ahead of a turn abort. the Ctrl+C rung copies the selection and keeps it
-    internal enum CancelAction { PassThrough, ClearSelection, AbortTurn, Copy }
+    internal enum CancelAction { PassThrough, ClearSelection, AbortTurn, Copy, CloseInfo }
     internal static CancelAction DecideCancel(ConsoleKey key, bool hasSelection, bool turnInFlight,
-        bool composerEmpty) =>
+        bool composerEmpty, bool infoUp = false) =>
         key == ConsoleKey.Escape
-            ? (hasSelection ? CancelAction.ClearSelection
+            //an open info panel takes the first Esc, so a second one is needed to stop the turn
+            ? (infoUp ? CancelAction.CloseInfo
+               : hasSelection ? CancelAction.ClearSelection
                : !composerEmpty ? CancelAction.PassThrough   //a composer with text passes through so the editor's Esc Esc can clear it, ahead of a turn abort
                : turnInFlight ? CancelAction.AbortTurn
                : CancelAction.PassThrough)                    //the ladder ends here, an empty composer's Esc drops nothing
@@ -1729,10 +1840,13 @@ public sealed class Repl(
         ChromePainter painter,
         object gate, Func<CancellationTokenSource?> turnCts, Action copy, Func<bool> composerEmpty) => k =>
     {
-        bool hasSel, composerBlank;
-        lock (gate) { hasSel = painter.Selection.HasSelection; composerBlank = composerEmpty(); }
-        switch (DecideCancel(k.Key, hasSel, turnCts() is not null, composerBlank))
+        bool hasSel, composerBlank, infoUp;
+        lock (gate) { hasSel = painter.Selection.HasSelection; composerBlank = composerEmpty(); infoUp = painter.State.PanelInfo; }
+        switch (DecideCancel(k.Key, hasSel, turnCts() is not null, composerBlank, infoUp))
         {
+            case CancelAction.CloseInfo:
+                painter.CloseInfoPanel();
+                return KeyDisposition.Consumed;
             case CancelAction.ClearSelection:
                 lock (gate) { painter.Selection.Clear(); painter.Repaint(); }
                 return KeyDisposition.Consumed;
@@ -1933,6 +2047,14 @@ public sealed class Repl(
                     }
                     rejected = null;
                     if (text.Trim().Length == 0) continue;
+                    //a command that only reads answers at once while a turn runs, drawn where the composer was, and never waits in the queue
+                    if (BypassNow(text, s) is { } answer)
+                    {
+                        lock (s.Gate) { if (!stopped) RedrawLocked(idleView); }
+                        //the counts are awaited off this thread, so the composer keeps reading keys while a server answers
+                        _ = OpenInfoPanelAsync(answer, s, () => stopped);
+                        continue;
+                    }
                     if (queue.TryEnqueue(text))
                     {
                         //one repaint clears the composer and shows the new queued row
@@ -2436,6 +2558,14 @@ public sealed class Repl(
             //one ♯ row per line again, the listing has a row per grant plus the wild row
             foreach (var line in HandlePermissions(permArg).Split('\n'))
                 s.Renderer.CommitSystem(line);
+            return false;
+        }
+        if (trimmed == "/context")
+        {
+            var figures = await ContextFiguresAsync(appCt);
+            if (figures is null) { s.Renderer.CommitSystem(ContextUnavailable); return false; }
+            //the transcript hangs gatto's rows under its gutter, which stands in for the screen's own two-cell margin
+            s.Renderer.CommitRedrawn((w, theme, glyphs) => [.. ContextReport.Rows(figures, w, theme, glyphs ?? _glyphs).Select(r => Unindent(r.Rendered))]);
             return false;
         }
         if (trimmed == "/tools")

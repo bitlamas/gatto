@@ -6,7 +6,7 @@ namespace Gatto.Tests.Census;
 public class GlyphCensusTests
 {
     //this declaration is the only place to change the count, every copy change must claim it
-    private const int EmDashes = 170;
+    private const int EmDashes = 168;
 
     //a ceiling the same census measured, so it may only fall. the other figure is not comparable, a different counting method made it
     private const int PreWave = 658;

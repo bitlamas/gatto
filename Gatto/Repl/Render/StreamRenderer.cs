@@ -404,22 +404,28 @@ public sealed class StreamRenderer : ITurnObserver
         () => _surface.Write(line + "\n"));
 
     //gatto's own painted rows committed as they are, hang-indented, with no ♯ marker and no sanitize that would strip the paint. never send model or tool text here
-    public void CommitPlain(string text) => Guarded(
+    public void CommitPlain(string text) => CommitHung(text.TrimEnd('\n').Split('\n'), null, () => _surface.Write(text.TrimEnd('\n') + "\n"));
+
+    //gatto's own painted rows from a width function, drawn now at this width and again at every width a repaint uses
+    public void CommitRedrawn(Func<int, Theme, GlyphSet?, IReadOnlyList<string>> rowsAt) =>
+        CommitHung(rowsAt(_surface.Width, _theme, _glyphs), rowsAt,
+            () => _surface.Write(string.Join("\n", rowsAt(_surface.Width, _theme, _glyphs)) + "\n"));
+
+    private void CommitHung(IReadOnlyList<string> lines, Func<int, Theme, GlyphSet?, IReadOnlyList<string>>? rowsAt, Action degraded) => Guarded(
         () =>
         {
             if (_inReasoning) CloseReasoningBlock();
             else FlushOpenLine();
             if (_last != LastWrite.None) _blankPending = true;
-            var rows = text.TrimEnd('\n').Split('\n')
-                .Select(line => GutterWrap.Hang + line).ToList();
+            var rows = lines.Select(line => GutterWrap.Hang + line).ToList();
             var modelRows = rows.ToList();   //copy first, CommitRows may add a leading blank row to the list
-            _model?.Append(new CommandEchoItem(modelRows, After()));   //append before the paint
+            _model?.Append(new CommandEchoItem(modelRows, After()) { RowsAt = rowsAt });   //append before the paint
             CommitRows(rows);
             _last = LastWrite.Text;
             _blockOpen = false;
             _blankPending = true;   //the block has closed, so the next commit leads with a blank row
         },
-        () => _surface.Write(text.TrimEnd('\n') + "\n"));
+        degraded);
 
     //the user echo: banded ❯ rows with a two-space hang on every continuation, committed like any other block
     public void CommitUser(IReadOnlyList<string> lines)
@@ -720,6 +726,7 @@ public sealed class StreamRenderer : ITurnObserver
             : _reasoning == ReasoningMode.Collapsed && !PassthroughReasoning);
         st.TailRaw = (_tail.Length > 0 && !reasoningCapped) ? _tail.ToString() : null;
         st.TailReasoning = _inReasoning;
+        st.TailFence = !_inReasoning && _block == BlockState.Fence;
         st.TailMarker = _inReasoning || _blockOpen
             ? null
             : _theme.Paint(ItemRender.ProseMarkerOf(_glyphs), _theme.RoleTint(_role)) + " ";
@@ -732,6 +739,7 @@ public sealed class StreamRenderer : ITurnObserver
         var st = _painter.State;
         st.TailRaw = null;
         st.TailReasoning = false;
+        st.TailFence = false;
         st.TailMarker = null;
         st.TailBlank = false;
     }

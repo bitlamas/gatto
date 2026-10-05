@@ -180,15 +180,16 @@ public sealed class PermissionGateTests : IDisposable
         Assert.All(obs.Results, r => Assert.False(r.Item2.IsError));
     }
 
+    //the flag skips every prompt for a call inside the working folder, one that reaches outside is the boundary's, not the prompt's
     [Fact]
-    public async Task AutoYes_bypasses_everything()
+    public async Task AutoYes_bypasses_every_prompt()
     {
         var store = PermissionStore.Load(_root, _root, out _);
         var prompter = new FakePrompter();                       //an empty queue answers Deny, so any consult fails the test.
         var hooks = GateOn(store, prompter, autoYes: true);
         var spy = new SpyTool("shell");
         var (loop, client, convo, obs) = LoopWith(hooks, spy);
-        EnqueueOneCall(client, "shell", "{\"command\":\"rm -rf /\"}");
+        EnqueueOneCall(client, "shell", "{\"command\":\"Remove-Item .\\\\build -Recurse\"}");
 
         await loop.RunTurnAsync(convo, "go", obs, default);
 

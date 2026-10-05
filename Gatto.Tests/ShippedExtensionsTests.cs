@@ -170,7 +170,6 @@ public sealed class ShippedExtensionsTests : IDisposable
 
         var coder = RoleFile.Load(RolesDir, "coder");
         Assert.False(coder.Checkpoints);   //no shipped role arms the commit pause, a user turns it on in their own role file
-        Assert.Null(coder.Sampling);   //sampling belongs to the model, a role that sets it would override every model's own card
         //the coder append comes back as a real multi-line string
         Assert.Contains("report what changed", coder.Append!);
         Assert.DoesNotContain("commit", coder.Append!);   //a commit is the project's choice, the shipped role asks for none

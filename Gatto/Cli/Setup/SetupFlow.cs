@@ -1313,7 +1313,7 @@ internal sealed class SetupFlow(ISetupProbes probes)
                 .. (IReadOnlyList<WizardRow>)(_found.Models switch
                 {
                     { Count: 0 } => [ServerFacts.Row(ServerFacts.Serving, "it did not say")],
-                    { Count: 1 } m => [ServerFacts.Row(ServerFacts.Serving, m[0])],
+                    { Count: 1 } m => [ServerFacts.Row(ServerFacts.Serving, Gatto.Core.Models.ServedModelName.Display(m[0]))],
                     var many =>
                         [ServerFacts.Row(ServerFacts.Lists, $"{many.Count} models it can load")],
                 }),
@@ -4573,7 +4573,7 @@ internal sealed class SetupFlow(ISetupProbes probes)
                         "",
                         ProveFacts.Row("server", _connectBaseUrl ?? ""),
                         .. _connectModel is { Length: > 0 } named
-                            ? (IReadOnlyList<WizardRow>)[ProveFacts.Row("model", named)]
+                            ? (IReadOnlyList<WizardRow>)[ProveFacts.Row("model", Gatto.Core.Models.ServedModelName.Display(named))]
                             : [],
                         ProveFacts.Row("context",
                             $"{_connectContext:N0} {Glyphs.Dot} " + ContextNote()),
@@ -4634,7 +4634,7 @@ internal sealed class SetupFlow(ISetupProbes probes)
             "",
             ProveFacts.Row("server", _connectBaseUrl ?? ""),
             .. _connectModel is { Length: > 0 } named
-                ? (IReadOnlyList<WizardRow>)[ProveFacts.Row("model", named)]
+                ? (IReadOnlyList<WizardRow>)[ProveFacts.Row("model", Gatto.Core.Models.ServedModelName.Display(named))]
                 : [],
             ProveFacts.Row("asking", "\"Say OK.\", waiting for the first reply"),
             "",
@@ -5005,7 +5005,8 @@ internal sealed class SetupFlow(ISetupProbes probes)
     //hand on the server facts as data, the composer picks the rows. the context note comes from ContextNote, same wording everywhere
     private Tui.Epilogue.ServerFact? ServerFact() =>
         Path == SetupPath.Connect && _connectBaseUrl is { Length: > 0 } url
-            ? new Tui.Epilogue.ServerFact(url, _connectModel, $"{_connectContext:N0}",
+            ? new Tui.Epilogue.ServerFact(url,
+                _connectModel is { } served ? Gatto.Core.Models.ServedModelName.Display(served) : null, $"{_connectContext:N0}",
                 ContextNote(),
                 //endpoint names stay in the config, the row's job is which server it talks to and that the earlier setup is kept
                 _besideLocal ? "used from now on, the earlier setup is kept" : null)

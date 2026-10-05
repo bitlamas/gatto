@@ -263,18 +263,28 @@ public class ReplLinearLoopTests
     public void CtrlC_MidTurn_AbortsTheTurn_NeverTheLoop()
     {
         //an in-flight turn wins over the double-tap window.
-        Assert.Equal(Gatto.Repl.Repl.CtrlCAction.AbortTurn, Gatto.Repl.Repl.DecideCtrlC(turnInFlight: true, nowMs: 5000, lastAtRestMs: 4999));
+        Assert.Equal(Gatto.Repl.Repl.CtrlCAction.AbortTurn, Gatto.Repl.Repl.DecideCtrlC(turnInFlight: true, composerEmpty: true, nowMs: 5000, lastAtRestMs: 4999));
     }
 
     [Fact]
     public void CtrlC_AtRest_FirstPressHints_SecondWithinWindowQuits()
     {
         //a zero last press leaves no window open, so the first press can only hint
-        Assert.Equal(Gatto.Repl.Repl.CtrlCAction.HintExit, Gatto.Repl.Repl.DecideCtrlC(false, nowMs: 1000, lastAtRestMs: 0));
+        Assert.Equal(Gatto.Repl.Repl.CtrlCAction.HintExit, Gatto.Repl.Repl.DecideCtrlC(false, composerEmpty: true, nowMs: 1000, lastAtRestMs: 0));
         //500ms after the first press is still inside the window
-        Assert.Equal(Gatto.Repl.Repl.CtrlCAction.Quit, Gatto.Repl.Repl.DecideCtrlC(false, nowMs: 1500, lastAtRestMs: 1000));
+        Assert.Equal(Gatto.Repl.Repl.CtrlCAction.Quit, Gatto.Repl.Repl.DecideCtrlC(false, composerEmpty: true, nowMs: 1500, lastAtRestMs: 1000));
         //3000ms after the last press the window has closed, so this one only hints
-        Assert.Equal(Gatto.Repl.Repl.CtrlCAction.HintExit, Gatto.Repl.Repl.DecideCtrlC(false, nowMs: 4000, lastAtRestMs: 1000));
+        Assert.Equal(Gatto.Repl.Repl.CtrlCAction.HintExit, Gatto.Repl.Repl.DecideCtrlC(false, composerEmpty: true, nowMs: 4000, lastAtRestMs: 1000));
+    }
+
+    [Fact]
+    public void CtrlC_AtRest_WithComposerText_DoesNothing_EvenInsideTheWindow()
+    {
+        //the mouse-on editor ignores Ctrl+C while the composer holds text, so the mouse-off path must neither hint nor quit
+        Assert.Equal(Gatto.Repl.Repl.CtrlCAction.None, Gatto.Repl.Repl.DecideCtrlC(false, composerEmpty: false, nowMs: 1000, lastAtRestMs: 0));
+        Assert.Equal(Gatto.Repl.Repl.CtrlCAction.None, Gatto.Repl.Repl.DecideCtrlC(false, composerEmpty: false, nowMs: 1500, lastAtRestMs: 1000));
+        //a turn in flight still aborts with text in the composer, as the mouse-on ladder does
+        Assert.Equal(Gatto.Repl.Repl.CtrlCAction.AbortTurn, Gatto.Repl.Repl.DecideCtrlC(true, composerEmpty: false, nowMs: 1500, lastAtRestMs: 1000));
     }
 
     //the cancel ladder has its own tests in CancelLadderTests
@@ -291,7 +301,7 @@ public class ReplLinearLoopTests
         painter.Repaint();           //a real session has painted before a quit, so the fixture paints once too
 
         //a quit cancels the loop token, so this cancel stands in for one
-        Assert.Equal(Gatto.Repl.Repl.CtrlCAction.Quit, Gatto.Repl.Repl.DecideCtrlC(false, nowMs: 1200, lastAtRestMs: 1000));
+        Assert.Equal(Gatto.Repl.Repl.CtrlCAction.Quit, Gatto.Repl.Repl.DecideCtrlC(false, composerEmpty: true, nowMs: 1200, lastAtRestMs: 1000));
         loopCts.Cancel();
 
         var exit = 1;

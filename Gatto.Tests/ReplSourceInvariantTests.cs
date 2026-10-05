@@ -94,8 +94,8 @@ public class ReplSourceInvariantTests
     {
         var src = ReplSource();
 
-        //the count is three, one declaration and two calls, and the needle matches the signature too (a narrower pattern can be silently wrong)
-        Assert.Equal(3, Occurrences(src, "PolicyRows()"));
+        //four: the declaration and three calls, the transcript, the plain line and the mid-turn panel. the needle matches the signature too, a narrower one can be wrong
+        Assert.Equal(4, Occurrences(src, "PolicyRows()"));
         //neither site may pass its own empty list instead of the session's rows.
         Assert.DoesNotContain("ToolsSpec(tools, Array.Empty", src, StringComparison.Ordinal);
     }
@@ -105,7 +105,7 @@ public class ReplSourceInvariantTests
     {
         var planted = ReplSource() + "\nclass PlantedThirdToolsRender { void M() { var x = PolicyRows(); } }\n";
 
-        Assert.Equal(4, Occurrences(planted, "PolicyRows()"));
+        Assert.Equal(5, Occurrences(planted, "PolicyRows()"));
     }
 
     private static int Occurrences(string haystack, string needle)

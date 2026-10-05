@@ -391,6 +391,8 @@ public static class GattoApp
                 role = role with { Model = effectiveModel };
 
                 modelString = effectiveModel;
+                //a folder of this name supplies its model parts here too, the serving, the port and the api key stay the endpoint's
+                model = Model.TryLoad(modelsDir, effectiveModel);
                 endpoint = ep;   //config requires an explicit base_url on a cloud endpoint
             }
 
@@ -446,6 +448,8 @@ public static class GattoApp
         var launchBaseUrl = endpoint.BaseUrl;
         //a cloud endpoint is no llama-server, so nothing below sends it a /props probe
         var cloud = CloudEndpoint.Is(endpoint);
+        //gatto starts, probes, sizes and stops only the server of the endpoint named local, a model folder found on another endpoint supplies its model parts alone
+        bool ServedHere() => endpointName == "local";
 
         var tools = new ToolRegistry();
         tools.Register(new ReadFileTool());
@@ -552,7 +556,7 @@ public static class GattoApp
         };
         hooks.On(HookEvent.ToolCall, checkpointGate.CheckAsync);   //registered before the permission gate, since tool_call handlers run in order and the checkpoint pauses first
 
-        var gate = new PermissionGate(permissions, permPrompter, autoYes: args.Yes, approval: checkpointApproval, wild: wildState);
+        var gate = new PermissionGate(permissions, permPrompter, autoYes: args.Yes, approval: checkpointApproval, wild: wildState, home: home);
         hooks.On(HookEvent.ToolCall, gate.CheckAsync);
         //the wire log is read once here from GATTO_DEBUG_WIRE and never in the request path, so off costs a null field
         var wireLog = WireLog.FromFlag(
@@ -574,9 +578,9 @@ public static class GattoApp
             { Timeout = Timeout.InfiniteTimeSpan };
         var probeDeadline = TimeSpan.FromSeconds(2);
         //the model's window on a local endpoint, the endpoint's on a cloud one, and no enforcement when neither is configured
-        var contextBudget = model is not null ? model.Profile.Context : endpoint.Context;
-        //cross-check /props at every launch and let the live answer win in both directions (it does not run when a model is present)
-        if (model is null && launchBaseUrl is not null && !cloud)
+        var contextBudget = ServingFor(ServedHere(), model, endpoint, launchBaseUrl).Window;
+        //cross-check /props at every launch and let the live answer win in both directions (it does not run on the endpoint gatto serves)
+        if (!ServedHere() && launchBaseUrl is not null && !cloud)
         {
             var probedCtx = await ServeProbe.ProbeAsync(probeHttp, launchBaseUrl, CancellationToken.None, endpoint.ApiKey, probeDeadline);
             var resolved = ConnectContext.Resolve(contextBudget, probedCtx?.NCtx);
@@ -618,7 +622,7 @@ public static class GattoApp
         //one source for the exit hint and the reuse line, so both agree about what is loaded
         var serverAlreadyUp = false;
         long? servedBytes = null;
-        if (args.Prompt is null && model is not null && launchBaseUrl is not null)   //interactive only, since -p never reads the result, and with no local model or base URL the chip is absent
+        if (args.Prompt is null && ServedHere() && model is not null && launchBaseUrl is not null)   //interactive only, since -p never reads the result, and with no local model or base URL the chip is absent
         {
             //a loading server of ours answers nothing, so wait for it on a live line first, or the launch asks for a second start
             if (Uri.TryCreate(launchBaseUrl, UriKind.Absolute, out var waitUri))
@@ -663,8 +667,8 @@ public static class GattoApp
         //non-interactive has no prompter to ask with and the table refuses on its own, so a scripted run cannot spawn a server
         var autoServe = AutoServe.Decide(
             interactive: args.Prompt is null,
-            //a non-null model is the local-endpoint test at this scope (a second variable would be a second copy of the rule)
-            gattoServesThisEndpoint: model is not null && launchBaseUrl is not null,
+            //the one rule for whether gatto serves this endpoint, a folder on another endpoint never starts a server
+            gattoServesThisEndpoint: ServingFor(ServedHere(), model, endpoint, launchBaseUrl).GattoServes,
             serverAnswered: serverAlreadyUp,
             consent: model?.Profile.AutoServe,
             //the launch asker is pump-less, the /model add site keeps prompter where the pump is live
@@ -686,7 +690,7 @@ public static class GattoApp
         }
 
         //read after any start so -p and an auto-served launch both see the server, and only a server holding this model speaks for its window
-        if (model is not null && launchBaseUrl is not null && !cloud)
+        if (ServedHere() && model is not null && launchBaseUrl is not null && !cloud)
         {
             var served = await ServeProbe.ProbeAsync(probeHttp, launchBaseUrl, CancellationToken.None, endpoint.ApiKey, probeDeadline);
             if (served is not null && ModelSwitch.DescribeProbe(model, served, modelsDir) is null)
@@ -701,8 +705,8 @@ public static class GattoApp
         Func<ServingProbe> probeServing = () =>
         {
             if (launchBaseUrl is null || cloud) return new ServingProbe(null, null);
-            //a connect session reads only the server's vision bit, since with no model there is nothing to compare
-            if (model is null)
+            //a session gatto does not serve reads only the server's vision bit, since there is no served model to compare
+            if (!ServedHere() || model is null)
             {
                 var connectLoaded = ServeProbe.ProbeAsync(probeHttp, launchBaseUrl, CancellationToken.None, endpoint.ApiKey, probeDeadline)
                     .GetAwaiter().GetResult();
@@ -910,19 +914,34 @@ public static class GattoApp
         Func<string, bool, ModelSwitchResult> switchModel = (requestedModel, confirmed) =>
         {
             //an endpoint that names its models has no server to swap, so the switch is the name the next request carries
-            if (model is null && endpoint.Models is { Count: > 0 } offered)
+            if (!ServedHere() && endpoint.Models is { Count: > 0 } offered)
             {
                 if (!offered.Contains(requestedModel, StringComparer.Ordinal))
                     return new ModelSwitchResult(false, requestedModel, null, null,
                         $"endpoint {endpointName} has no model '{requestedModel}'. Models: {string.Join(", ", offered)}", null, null, null);
-                modelString = requestedModel;
+                //re-resolved for the new name, so its folder's parts replace the old one's and a model with no folder drops them
+                var previousSession = sessionModel;
                 sessionModel = requestedModel;
+                RoleResolution switched;
+                try { switched = ResolveRole(role.Name); }
+                catch (GattoConfigException ex)
+                {
+                    sessionModel = previousSession;
+                    return new ModelSwitchResult(false, requestedModel, null, null, ex.Message, null, null, null);
+                }
+                var systemBefore = lastComposedSystem;
+                role = switched.Role; model = switched.Model; modelString = switched.ModelString; comp = switched.Comp;
+                lastComposedSystem = comp.SystemText;
+                lastComposedSources = comp.Sources;
                 //the new model takes its own level as a launch would, never the one the previous model was on
-                var switchedLevel = role.ThinkingRequested ?? SavedCloudEffortOrNull(requestedModel) ?? ThinkingLevel.Medium;
+                var switchedLevel = role.ThinkingRequested ?? SavedCloudEffortOrNull(requestedModel)
+                    ?? model?.Profile.DefaultEffort ?? ThinkingLevel.Medium;
                 applyEffort?.Invoke(EffortSwitch.Name(switchedLevel), false);
                 loop.UpdateOverrides(modelString, comp.Sampling, comp.ThinkingBody, comp.ThinkingSuffix);
-                //the system text is the one already in force, only the baseline moves so a later continue finds the model the session ended on
-                return new ModelSwitchResult(true, requestedModel, null, contextBudget, null, null, null,
+                //the system text changes only when a folder's parts came or went, else only the baseline moves so a later continue finds the model the session ended on
+                return new ModelSwitchResult(true, requestedModel,
+                    string.Equals(systemBefore, comp.SystemText, StringComparison.Ordinal) ? null : comp.SystemText,
+                    contextBudget, null, null, null,
                     ThinkingFooterName(), thinkCap == ThinkCapability.Toggle, ThinkingUnavailable(), NextBaseline(lastComposedSources));
             }
 
@@ -1031,7 +1050,7 @@ public static class GattoApp
         Func<IReadOnlyList<PickerItem>> listModels = () =>
         {
             //an endpoint that names its models lists those, with nothing to probe
-            if (model is null && endpoint.Models is { Count: > 0 } offered)
+            if (!ServedHere() && endpoint.Models is { Count: > 0 } offered)
                 return ListedModelRows.Build(offered, modelString, CurrentDefaultFor(endpointName));
 
             var loaded = launchBaseUrl is null
@@ -1079,14 +1098,14 @@ public static class GattoApp
         }
 
         //the level a picker marks as default, the local profile's or the endpoint entry's for the model in use
-        ThinkingLevel? SavedEffortNow() => model is not null ? model.Profile.DefaultEffort : SavedCloudEffortOrNull(modelString);
+        ThinkingLevel? SavedEffortNow() => ServedHere() && model is not null ? model.Profile.DefaultEffort : SavedCloudEffortOrNull(modelString);
 
         //the level goes into the local model's profile.json, or with no local model into the endpoint's entry under the model in use
         string PersistEffort(ThinkingLevel level)
         {
             try
             {
-                if (model is not null)
+                if (ServedHere() && model is not null)   //a folder used on another endpoint is never edited from there, its effort is saved per endpoint
                 {
                     ModelDefaultEffort.Set(modelsDir, model.Id, level);
                     model = model with { Profile = model.Profile with { DefaultEffort = level } };   //so the picker's default mark does not lag the write
@@ -1296,6 +1315,7 @@ public static class GattoApp
             //a headless run compacts on the same threshold and project veto as a session, so a long task outlives the window instead of ending on a 400
             var oneShotArmedAt = Gatto.Repl.Repl.ArmedAutoCompactAt(config.AutoCompact, cwd);
             var oneShotUsage = new ContextUsageState();
+            oneShotUsage.SeedFrom(convo.Messages);   //a --continue keeps the last reply's cut, a fresh conversation has no reply and seeds nothing
             loop.EnableAutoCompact(
                 oneShotArmedAt is null ? null
                     : new OneShotCompaction(client, modelString, loop, convo, contextBudget, oneShotUsage, sessions, recomposeSystem, glyphs.Dot),
@@ -1354,12 +1374,12 @@ public static class GattoApp
             : null;
 
         //a non-local endpoint that names no models has no rows to offer, the local shelf is not its to switch to
-        var unlistedRemote = model is null && endpoint.Models is not { Count: > 0 };
+        var unlistedRemote = !ServedHere() && endpoint.Models is not { Count: > 0 };
 
         //the hint reads the same two locals as the reuse line, so the two sentences cannot disagree about what is loaded
         var repl = new Gatto.Repl.Repl(loop, convo, role.Name, modelString, sessions, client, endpoint.Context, contextBudget, cwd, recomposeSystem, toggleAuto, switchRole, resetGrounding, wildState, on => permissions.SetWild(on, persist: true), hooks, themeMode, subagentProgress, resumedFrom: resumedFrom, reasoning: config.ReasoningMode, thinkingName: initialThinkingName, setEffort: setEffort, listEfforts: listEfforts, glyphs: glyphs, purrSet: Gatto.Repl.Render.PurrFrames.RandomFromPool, versionLine: CommandBanner.DottedVersion(Gatto.Core.GattoVersion.String, Gatto.Core.GattoVersion.Build ?? "", CommandBanner.IsDevBuild(), glyphs), pump: pump, chrome: chrome, switchModel: switchModel, setDefault: id => ModelSwitch.Persist(home, endpointName, id),   //the role name as ResolveRole cased it from disk, which the banner and the status line key on
                     launchServing: launchServing, probeServing: probeServing, listModels: unlistedRemote ? null : listModels, picker: replPicker, slotsReader: slotsReader, warn: warn, altScreen: config.AltScreen, dumpOnExit: config.DumpOnExit, thinkingIsToggle: thinkCap == ThinkCapability.Toggle, thinkingIsUnavailable: ThinkingUnavailable(), mouseEnabled: config.Mouse && config.AltScreen && pump is not null, wheelLines: config.WheelLines, copyOnSelect: config.CopyOnSelect, resumedPath: continuePath, resumeLine: resumeLine,
-            modelMarkLegend: model is null ? "current" : "weights loaded",
+            modelMarkLegend: !ServedHere() ? "current" : "weights loaded",
             noModelList: unlistedRemote ? $"endpoint {endpointName} lists no models; type /model <name> to switch" : null,
             //read at the moment a connection is lost, through the current model, so a /model switch is followed
             serverGone: () => model is { } served
@@ -1367,15 +1387,25 @@ public static class GattoApp
                 : null,
                     autoCompact: config.AutoCompact, permissions: permissions, listTools: listTools, listPolicy: listPolicy, memoryWarning: launchRes.MemoryTruncatedLines > 0 ? MemoryTruncationWarning(launchRes.MemoryTruncatedLines) : null, cloudNotice: cloudNotice, cloud: cloud, readUsage: usageMeter.Read, onUsageChanged: repaint => usageMeter.Changed = repaint,piggyback: piggyback, turnAbort: turnAbort,
             //a session with no model talks to a server gatto does not manage, so the notice says that instead of offering a model fix
-            unmanagedNotice: model is null && endpoint.Models is not { Count: > 0 } ? UnmanagedSession.ModelUnavailable(launchBaseUrl) : null,
-            unmanagedVisionNotice: model is null ? UnmanagedSession.VisionUnavailable(launchBaseUrl) : null,
+            unmanagedNotice: !ServedHere() && endpoint.Models is not { Count: > 0 } ? UnmanagedSession.ModelUnavailable(launchBaseUrl) : null,
+            unmanagedVisionNotice: !ServedHere() ? UnmanagedSession.VisionUnavailable(launchBaseUrl) : null,
             deafWatch: deafWatch,
+            //read when /context asks, so a /role or /model since is followed. the shape is the loop's last request, its tools split by origin
+            contextInputs: usage =>
+            {
+                var shape = loop.RequestShape;
+                return new ContextInputs(modelString, comp.SystemText, comp.SystemParts ?? [],
+                    [.. shape.Tools.Where(t => !tools.IsExtension(t.Name))], [.. shape.Tools.Where(t => tools.IsExtension(t.Name))],
+                    shape, contextBudget, loop.ArmedAutoCompactAt, usage.Ratio, usage.LastPromptTokens, loop.LastTimings);
+            },
+            //a cloud endpoint has no llama-server routes, any other may and falls back to the estimate when it does not
+            tokenCounter: cloud ? null : client,
             //a connect session has no profile.json to point at, so the hint is null there
-            visionFixHint: model is not null
+            visionFixHint: ServedHere() && model is not null
                 ? UnmanagedSession.VisionFixBesideTheModel(model.Profile.ActivePath)
                 : null,
             //re-read on every call, a launch snapshot would keep showing the file the session started on
-            modelFiles: model is null ? null : () =>
+            modelFiles: !ServedHere() || model is null ? null : () =>
             {
                 try
                 {
@@ -1386,7 +1416,7 @@ public static class GattoApp
                 catch (GattoConfigException) { return []; }
             },
             //the bodies live in QuantEdit, which refuses before it asks (the confirm needs the wizard prompter and the serving state here)
-            switchQuant: model is null ? null : (Func<string, string>)(name =>
+            switchQuant: !ServedHere() || model is null ? null : (Func<string, string>)(name =>
                 QuantEdit.Switch(modelsDir, model, name,
                     () => QuantServing(home, model, config) is Gatto.Roles.ServingState.ServingThis,
                     Confirming(prompter),
@@ -1396,7 +1426,7 @@ public static class GattoApp
                         previous, reloaded, warn.Warn,
                         glyphs).GetAwaiter().GetResult())),
             //forgetting a file is its own command, the switch only changes which one is active
-            removeQuant: model is null ? null : (Func<string, string>)(name =>
+            removeQuant: !ServedHere() || model is null ? null : (Func<string, string>)(name =>
                 QuantEdit.Remove(modelsDir, model, name,
                     () => QuantServing(home, model, config) is Gatto.Roles.ServingState.ServingThis,
                     Confirming(prompter))))
@@ -1405,7 +1435,7 @@ public static class GattoApp
 
         //the key stops only the server of a session on the local endpoint. a connect session never used the server this home records.
         InkedLine? serverLine = null;
-        if (config.StopServerOnExit && model is not null && launchBaseUrl is not null)
+        if (config.StopServerOnExit && ServedHere() && model is not null && launchBaseUrl is not null)
         {
             var stopped = ServeLines.AtExit.AfterStop(
                 new ServeManager(home, config.LlamaServer ?? "").Stop(Gatto.Roles.NullServeListener.Instance),
@@ -2103,6 +2133,13 @@ public static class GattoApp
         return psi;
     }
 
+
+    //whether gatto serves this endpoint and whose window sizes the session: a folder's port, auto_serve and context count only on the endpoint gatto serves
+    internal static (bool GattoServes, int? Window) ServingFor(bool servedHere, Gatto.Roles.Model? model,
+        EndpointConfig endpoint, string? baseUrl) =>
+        servedHere && model is not null
+            ? (baseUrl is not null, model.Profile.Context)
+            : (false, endpoint.Context);
 
     //the binary a server starts with, the model's override or else the config's. a manager built only to read takes the config's own
     private static string ServerBinaryFor(Gatto.Roles.Model? model, GattoConfig config) =>

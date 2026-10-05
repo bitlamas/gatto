@@ -35,6 +35,9 @@ public sealed class PanelPlacementTests
     private static string[] Panel(int n) =>
         Enumerable.Range(0, n).Select(i => $"  p{i:00}").ToArray();
 
+    //a panel that keeps the whole room, as a permission prompt does, so a test of the room's arithmetic reads the room and not the half
+    private static void RoomPanel(ChromePainter p, int n) => p.SetPanelFactory((_, _) => new PanelContent(Panel(n), KeepsRoom: true));
+
     private static List<ChromeRow> Rows(ChromePainter p, int w, int h, ChromeRegion region) =>
         p.ComposeChromeBlock(w, h).Rows.Where(r => r.Region == region).ToList();
 
@@ -199,8 +202,9 @@ public sealed class PanelPlacementTests
         Assert.Contains("  p19", panel);                 //the actionable tail of the panel survives.
         Assert.DoesNotContain("  p00", panel);           //the head rows are what drop.
         Assert.DoesNotContain("  p01", panel);
-        //with a top-drop clamp, what survives must be a contiguous suffix of the panel.
-        Assert.Equal(Panel(20)[^panel.Count..], panel);
+        //with a top-drop clamp, what survives under the hidden-rows mark must be a contiguous suffix of the panel
+        Assert.Equal($"  ↑ {20 - panel.Count + 1} more", panel[0]);
+        Assert.Equal(Panel(20)[^(panel.Count - 1)..], panel.Skip(1));
         //the frame rules and status must always survive the clamp.
         Assert.Contains(block.Rows, r => r.Visible.Contains("gatto · coder", StringComparison.Ordinal));
         Assert.Equal(new string('─', 60), block.Rows[^2].Visible);
@@ -253,7 +257,9 @@ public sealed class PanelPlacementTests
             .Where(r => r.Region == ChromeRegion.Prompt).Select(r => r.Visible).ToList();
 
         Assert.Equal(allowed, over.Count);
-        Assert.Equal(Panel(allowed + 1)[1..], over);   //the first panel row is the row that dropped.
+        //the first panel row dropped and the next one carries the mark that counts both
+        Assert.Equal("  ↑ 2 more", over[0]);
+        Assert.Equal(Panel(allowed + 1)[2..], over.Skip(1));
         Assert.True(overBlock.Rows.Count <= Height, $"an over-tall panel still overflowed: {overBlock.Rows.Count}");
     }
 
@@ -269,7 +275,8 @@ public sealed class PanelPlacementTests
         p.ComposerScroll.ScrollBy(5);
         var scrolled = Rows(p, 60, 20, ChromeRegion.Prompt).Select(r => r.Visible).ToList();
         Assert.NotEqual(tailOnly, scrolled);
-        var shift = int.Parse(tailOnly[0].Trim()[1..]) - int.Parse(scrolled[0].Trim()[1..]);
+        //row 0 is the hidden-rows mark in both, so the first panel row each shows is row 1
+        var shift = int.Parse(tailOnly[1].Trim()[1..]) - int.Parse(scrolled[1].Trim()[1..]);
         Assert.Equal(5, shift);
     }
 
@@ -295,7 +302,8 @@ public sealed class PanelPlacementTests
         p.ComposerScroll.ScrollBy(9999);
         var atTop = Rows(p, 60, 20, ChromeRegion.Prompt).Select(r => r.Visible).ToList();
         Assert.Equal(allowed, atTop.Count);                 //the panel is windowed here, a raw count would mean the clamp never ran
-        Assert.Equal(full.Take(allowed).ToList(), atTop);   //at the top the first allowed rows are the visible ones.
+        Assert.Equal(full.Take(allowed - 1).ToList(), atTop.Take(allowed - 1));   //at the top the first rows are the visible ones
+        Assert.Equal($"  ↓ {full.Length - allowed + 1} more", atTop[^1]);
     }
 
     [Fact]
@@ -367,7 +375,7 @@ public sealed class PanelPlacementTests
     {
         //assert the exact three rows, a reservation one row too big would pass a lower bound and steal a row from the panel
         var (p, s) = Wire(60, h);
-        p.SetPanel(Panel(80));
+        RoomPanel(p, 80);
         p.Repaint();
         var block = p.ComposeChromeBlock(60, h);
         Assert.Equal(3, h - block.Rows.Count);
@@ -416,17 +424,17 @@ public sealed class PanelPlacementTests
         var (p, s) = Wire(60, 20);
         p.State.PurrText = "purr 3s";
         p.State.Tool = ("ask_user", "");
-        p.SetPanel(Panel(1));
+        RoomPanel(p, 1);
         var allowed = p.PanelRowsAvailable();
 
-        p.SetPanel(Panel(allowed));
+        RoomPanel(p, allowed);
         p.Repaint();
         var block = p.ComposeChromeBlock(60, 20);
         Assert.Contains(block.Rows, r => r.Region == ChromeRegion.Purr);
         Assert.DoesNotContain(block.Rows, r => r.Region == ChromeRegion.Tool);
         Assert.Equal(allowed, Rows(p, 60, 20, ChromeRegion.Prompt).Count);
 
-        p.SetPanel(Panel(allowed + 1));
+        RoomPanel(p, allowed + 1);
         Assert.Equal(allowed, Rows(p, 60, 20, ChromeRegion.Prompt).Count);
     }
 
@@ -530,14 +538,30 @@ public sealed class PanelPlacementTests
         Assert.NotEqual(int.MaxValue, p.PanelRowsAvailable());
     }
 
-    //the offer tracks height, so the tall-minus-small difference proves the scaling rather than a tuned constant
+    //the room and the half both track height, so the tall-minus-small differences prove the scaling rather than a tuned constant
     [Fact]
     public void A_TALLER_TERMINAL_OFFERS_A_PANEL_MORE_ROWS()
     {
         var (tall, _) = Wire(60, 40);
         var (small, _) = Wire(60, 20);
 
-        Assert.Equal(20, tall.PanelRowsAvailable() - small.PanelRowsAvailable());
+        Assert.Equal(20, tall.RoomRowsAvailable() - small.RoomRowsAvailable());
+        Assert.Equal(10, tall.PanelRowsAvailable() - small.PanelRowsAvailable());
+    }
+
+    //a panel of any length holds half the window's rows, so the transcript above it keeps the rest
+    [Theory]
+    [InlineData(30)]
+    [InlineData(50)]
+    public void A_TALL_PANEL_HOLDS_HALF_THE_WINDOW(int h)
+    {
+        var (p, _) = Wire(60, h);
+        p.SetPanel(Panel(200));
+        p.Repaint();
+
+        Assert.Equal(h / 2, p.PanelRowsAvailable());
+        Assert.Equal(h / 2, Rows(p, 60, h, ChromeRegion.Prompt).Count);
+        Assert.Equal("  p199", Rows(p, 60, h, ChromeRegion.Prompt)[^1].Visible.TrimEnd());
     }
 
     [Fact]

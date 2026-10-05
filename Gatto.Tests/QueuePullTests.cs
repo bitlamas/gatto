@@ -166,6 +166,18 @@ public class QueuePullTests : IDisposable
         Assert.True(QueueRows(p, width, 40).Count > 1, $"one row at {width}: nothing wrapped");
     }
 
+    //a queued message keeps its pasted tab, and the panel draws it as the composer did, spaces to the next stop of 4 cells
+    [Fact]
+    public void A_QUEUED_TAB_DRAWS_AS_SPACES_TO_THE_NEXT_STOP()
+    {
+        var p = Painter(80, 40);
+        p.State.QueueTexts = ["a\tb"];
+
+        var row = Assert.Single(QueueRows(p, 80, 40));
+        Assert.Equal(GlyphSet.Unicode.Prompt + " a   b", row.Visible);
+        Assert.DoesNotContain('\t', row.Rendered);
+    }
+
     //exactly one blank row separates the queue from the purr above, so assert where the queue sits rather than how many rows there are
     [Fact]
     public void A_BLANK_ROW_SEPARATES_THE_QUEUE_FROM_THE_PURR_ABOVE_IT()

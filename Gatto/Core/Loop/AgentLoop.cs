@@ -93,7 +93,12 @@ public sealed class AgentLoop(
         + " — it stays off for this session, /compact runs it";
 
     //the tools, overrides and reasoning policy every request of this loop carries, read at the moment of asking so a /role or /model swap is seen
-    public RequestShape RequestShape => new(tools.Specs(), samplingOverrides, bodyOverrides, reasoningHistory, _lastSent, _lastSentFrom);
+    public RequestShape RequestShape => new(tools.Specs(), samplingOverrides, bodyOverrides, reasoningHistory,
+        Volatile.Read(ref _lastSent), Volatile.Read(ref _lastSentFrom));   //read whole, since /context reads it from the composer thread mid-turn
+
+    //the timings of the last request that finished, llama-server's cache_n and prompt_n among them, for the cache line of /context
+    public string? LastTimings => Volatile.Read(ref _lastTimings);
+    private string? _lastTimings;
 
     //the last request's messages as sent and the conversation at that moment, copies, so a compaction can resend what the server has cached
     private ChatMessage[]? _lastSent;
@@ -128,20 +133,23 @@ public sealed class AgentLoop(
             round++;
 
             var overhead = ContextBudget.EstimateTools(tools.Specs());   //the definitions ride every request, read per round so a /role swap is seen
+            //an armed compaction decides on the uncut conversation and nothing new is cut, so elision runs only where no compaction is armed
+            var armed = compaction is not null && !_autoCompactOff && autoCompactAt is not null;
             //reasoning ages first, before elision, and both passes shape only the request copy
+            IReadOnlyList<ChatMessage> Uncut() => ContextBudget.ShapeReasoning(ContextBudget.ShapeUpdates(convo.Messages), reasoningHistory);
             (IReadOnlyList<ChatMessage> Messages, int ElidedCount, bool StillOver, int ElidedThrough) ShapeRequest() => ContextBudget.Apply(
-                ContextBudget.ShapeReasoning(ContextBudget.ShapeUpdates(convo.Messages), reasoningHistory),
+                Uncut(),
                 budgetTokens,
                 ContextBudget.ElideBefore(roundStarts, turnUserIndex),
-                usageState?.Ratio ?? 1.0, usageState?.ElidedThrough ?? 0, overhead);
+                usageState?.Ratio ?? 1.0, usageState?.ElidedThrough ?? 0, overhead, extend: !armed);
             roundStarts.Add(convo.Count);
             var shaped = ShapeRequest();
 
-            //the proactive trigger at the round top, counted after elision, so compaction runs only when trimming can't fit
-            if (compaction is not null && !_autoCompactOff && autoCompactAt is double th
+            //the proactive trigger at the round top, counted on the uncut conversation, so a threshold at or above the elision line still fires
+            if (armed && autoCompactAt is double th
                 && budgetTokens is int win and > 0
                 && usageState is { LastPromptTokens: not null }
-                && (int)ContextBudget.Counts(shaped.Messages, overhead, usageState.Ratio) is var used
+                && (int)ContextBudget.Counts(Uncut(), overhead, usageState.Ratio) is var used
                 && used >= th * win)
             {
                 //announce before the await, so the wait is explained while it happens. quote the same figure the trigger acted on, or the line names a different percentage
@@ -219,6 +227,7 @@ public sealed class AgentLoop(
                         case StreamEvent.Finished f:
                             turnUsage = f.Usage;
                             turnTimings = f.Timings;
+                            if (f.Timings is not null) Volatile.Write(ref _lastTimings, f.Timings);
                             finishReason = f.FinishReason;
                             if (f.Usage is not null)
                             {
@@ -296,7 +305,9 @@ public sealed class AgentLoop(
                 return new TurnResult(TurnOutcome.Completed, finishReason, null, round, lastWarning);
             }
 
-            convo.AddAssistant(cleanText, calls.Count > 0 ? calls : null, turnUsage, turnTimings, cleanReasoning, strippedCount);
+            //the reply records how its request was cut, and the ratio the next one will use, only when something was cut
+            var shape = usageState is { ElidedThrough: > 0 } us ? new ShapeMark(us.ElidedThrough, us.Ratio) : null;
+            convo.AddAssistant(cleanText, calls.Count > 0 ? calls : null, turnUsage, turnTimings, cleanReasoning, strippedCount, shape);
 
             if (calls.Count == 0)
             {

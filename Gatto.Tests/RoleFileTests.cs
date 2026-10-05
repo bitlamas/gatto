@@ -68,8 +68,6 @@ public class RoleFileTests : IDisposable
         Assert.True(role.Checkpoints);
         Assert.Equal("discipline text", role.Append);
         Assert.Equal(ThinkingLevel.High, role.ThinkingRequested);
-        Assert.NotNull(role.Sampling);
-        Assert.Equal(0.3, role.Sampling!.Value.GetProperty("temperature").GetDouble());
     }
 
     [Fact]
@@ -95,7 +93,6 @@ public class RoleFileTests : IDisposable
         Assert.Null(role.Endpoint);
         Assert.False(role.Checkpoints);
         Assert.Null(role.Append);
-        Assert.Null(role.Sampling);
     }
 
     [Fact]
@@ -108,18 +105,19 @@ public class RoleFileTests : IDisposable
         Assert.Empty(role.Gates);
     }
 
-    [Fact]
-    public void Sampling_JsonElement_survives_after_source_document_is_disposed()
+    //sampling belongs to the model, so a role that still holds the key, well formed or not, loads without it and says nothing
+    [Theory]
+    [InlineData("""{ "sampling": { "temperature": 0.3, "top_p": 0.9 } }""")]
+    [InlineData("""{ "sampling": "hot" }""")]
+    [InlineData("""{ "sampling": { "model": "x" } }""")]
+    public void Load_reads_a_role_that_still_holds_sampling_without_it(string json)
     {
-        Write("coder", """{ "sampling": { "temperature": 0.3, "top_p": 0.9 } }""");
+        Write("coder", json);
 
         var role = RoleFile.Load(_rolesDir, "coder");
-        //the document is gone by this point, so an uncloned value would throw here.
-        GC.Collect();
-        GC.WaitForPendingFinalizers();
 
-        Assert.Equal(0.3, role.Sampling!.Value.GetProperty("temperature").GetDouble());
-        Assert.Equal(0.9, role.Sampling!.Value.GetProperty("top_p").GetDouble());
+        Assert.Equal("coder", role.Name);
+        Assert.DoesNotContain(typeof(RoleFile).GetProperties(), p => p.Name == "Sampling");
     }
 
     [Fact]
@@ -194,14 +192,6 @@ public class RoleFileTests : IDisposable
     }
 
     [Fact]
-    public void Load_rejects_wrong_typed_sampling()
-    {
-        Write("bad", """{ "sampling": "hot" }""");
-        var ex = Assert.Throws<GattoConfigException>(() => RoleFile.Load(_rolesDir, "bad"));
-        Assert.Contains("sampling", ex.Message);
-    }
-
-    [Fact]
     public void Load_rejects_wrong_typed_model()
     {
         Write("bad", """{ "model": 5 }""");
@@ -209,14 +199,6 @@ public class RoleFileTests : IDisposable
         Assert.Contains("model", ex.Message);
     }
 
-    [Fact]
-    public void Load_rejects_reserved_key_in_sampling()
-    {
-        Write("coder", """{ "sampling": { "model": "x" } }""");
-        var ex = Assert.Throws<GattoConfigException>(() => RoleFile.Load(_rolesDir, "coder"));
-        Assert.Contains("coder", ex.Message);
-        Assert.Contains("model", ex.Message);
-    }
 
 
     [Fact]

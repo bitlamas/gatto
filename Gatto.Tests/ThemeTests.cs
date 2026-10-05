@@ -90,7 +90,7 @@ public class ThemeTests
         foreach (var c in new[] { Theme.Accent, Theme.Bright, Theme.Dim, Theme.Ok, Theme.Err, Theme.Warn,
                                   Theme.RoleCoder, Theme.RoleOracle, Theme.CodeInlineFg,
                                   Theme.CodeBlockFg, Theme.CodeBlockBg, Theme.Rule, Theme.UserInputBg,
-                                  Theme.DiffAddedBg, Theme.DiffRemovedBg })
+                                  Theme.DiffAddedBg, Theme.DiffRemovedBg, Theme.ContextPrefix, Theme.ContextReasoning, Theme.ContextPastLine })
             Assert.Equal(c, dark.Map(c));
     }
 
@@ -101,7 +101,7 @@ public class ThemeTests
         foreach (var c in new[] { Theme.Accent, Theme.Bright, Theme.Dim, Theme.Ok, Theme.Err, Theme.Warn,
                                   Theme.RoleCoder, Theme.RoleOracle, Theme.CodeInlineFg,
                                   Theme.CodeBlockFg, Theme.CodeBlockBg, Theme.Rule, Theme.UserInputBg,
-                                  Theme.DiffAddedBg, Theme.DiffRemovedBg })
+                                  Theme.DiffAddedBg, Theme.DiffRemovedBg, Theme.ContextPrefix, Theme.ContextReasoning, Theme.ContextPastLine })
             Assert.NotEqual(c, light.Map(c));
     }
 

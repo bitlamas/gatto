@@ -87,6 +87,14 @@ public sealed record Model(string Id, ModelProfile Profile, string? SystemAppend
     //a model's memory section holds only index_budget, since the enabled switch is global and can't be set per model
     private static readonly string[] MemoryKeys = { "index_budget" };
 
+    //the folder of a valid id that holds a profile, else null, so a cloud id with a slash never reaches a nested path. a broken profile still throws
+    public static Model? TryLoad(string modelsDir, string id)
+    {
+        try { Gatto.Core.Models.ModelId.Validate(id); }
+        catch (GattoConfigException) { return null; }
+        return File.Exists(Path.Combine(modelsDir, id, "profile.json")) ? Load(modelsDir, id) : null;
+    }
+
     public static Model Load(string modelsDir, string id)
     {
         var dir = Path.Combine(modelsDir, id);

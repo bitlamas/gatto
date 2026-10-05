@@ -6,13 +6,14 @@ using Gatto.Terminal;
 namespace Gatto.Repl.Render;
 
 //the rows a panel factory composes for one width, plus where the caret goes in them. a null caret means the panel takes no input and the cursor stays hidden
-public readonly record struct PanelContent(IReadOnlyList<string> Rows, (int Row, int Col)? Caret = null);
+public readonly record struct PanelContent(IReadOnlyList<string> Rows, (int Row, int Col)? Caret = null, bool KeepsRoom = false);   //true takes the whole room rather than half the window
 
 //everything the chrome block shows, mutated only under the painter's _gate, so the paint reads it in the same lock without a snapshot
 public sealed class ChromeState
 {
     public string? TailRaw;            //the in-progress logical line, held until it commits
     public bool TailReasoning;         //paint the streaming line dim and italic
+    public bool TailFence;             //the streaming line sits inside a code fence, so it takes the code band, its colours wait for the commit
     public string? TailMarker;         //the marker drawn when this tail opens a block, null to hang under the row above
     public bool TailBlank;             //the visible tail opens a block that will get a leading blank when it commits
                                        //the live tail shows the same blank the committed rows will, so the separator doesn't pop in at commit
@@ -35,6 +36,10 @@ public sealed class ChromeState
     public bool PanelCaretVisible = true;
     //where a factory panel's input caret sits, as a row within PanelRows and a column. null parks it on the last row, or hides it for an input-less panel
     public (int Row, int Col)? PanelCaret;
+    //the panel is an answer to read, not a prompt: Esc or a key closes it, and any prompt that sets its own panel replaces it
+    public bool PanelInfo;
+    //the panel takes the whole room the furniture leaves rather than half the window, a permission prompt whose detail is what the user approves
+    public bool PanelKeepsRoom;
     public EditorView Composer = new(new List<string> { "" }, 0, 0);
     //the predicate every panel read site uses, true only when the panel has rows (an empty panel would park the caret on nothing)
     public bool PanelUp => PanelRows is { Count: > 0 };
@@ -60,6 +65,7 @@ public sealed class ChromePainter
     private bool _tornDown;
     //the layout the last Compose built, so the mouse reads the snapshot the displayed frame used
     private ComposerLayout? _lastComposerLayout;
+    private int _composerTop;   //the composer window's first region row, kept across paints and moved only by the caret
     //the prompt panel's own scroll window, driven by MouseController through the onComposerScroll callback wired in the constructor. public for tests
     private readonly ComposerScroll _composerScroll = new();
     public ComposerScroll ComposerScroll => _composerScroll;
@@ -128,9 +134,11 @@ public sealed class ChromePainter
         {
             if (_tornDown) return;
             State.PanelFactory = null;   //a static publish or a clear retires the recompose factory
+            State.PanelInfo = false;
             //a static panel takes input, and so does the composer a clear brings back, so the caret comes back either way
             State.PanelCaretVisible = true;
             State.PanelCaret = null;
+            State.PanelKeepsRoom = false;
             State.PanelRows = rows;
             _composerScroll.Reset();   //a fresh publish is always a new panel or a clear, so reset the scroll
             DriveCompositor();
@@ -156,8 +164,46 @@ public sealed class ChromePainter
         {
             if (_tornDown) return;
             State.PanelFactory = factory;
+            State.PanelInfo = false;
+            State.PanelKeepsRoom = false;   //a new panel is first asked at the half, its own content then says whether it keeps the room
             _composerScroll.Reset();   //a new factory is always a new panel, so reset the scroll
             RefreshPanel(factory(_surface.Width, PanelRowsAvailable()));
+            DriveCompositor();
+        }
+    }
+
+    //an answer drawn where the composer was, with no caret, opened at its top row so the header reads first
+    public void SetInfoPanel(Func<int, int, IReadOnlyList<string>> factory)
+    {
+        lock (_gate)
+        {
+            //a prompt replaces an answer, never the other way, so an answer that arrives over a prompt is dropped
+            if (_tornDown || (State.PanelUp && !State.PanelInfo)) return;
+            SetPanelFactory(factory);
+            State.PanelInfo = true;
+            _composerScroll.ScrollBy(int.MaxValue / 2);
+            DriveCompositor();
+        }
+    }
+
+    //closes an info panel and leaves any other panel alone, true when one was open
+    public bool CloseInfoPanel()
+    {
+        lock (_gate)
+        {
+            if (!State.PanelInfo) return false;
+            SetPanel(null);
+            return true;
+        }
+    }
+
+    //moves an open panel's window, a positive count toward its top
+    public void ScrollPanel(int linesTowardTop)
+    {
+        lock (_gate)
+        {
+            if (_tornDown || !State.PanelUp) return;
+            _composerScroll.ScrollBy(linesTowardTop);
             DriveCompositor();
         }
     }
@@ -169,6 +215,7 @@ public sealed class ChromePainter
             _composerScroll.Reset();
         State.PanelRows = content.Rows;
         State.PanelCaret = content.Caret;
+        State.PanelKeepsRoom = content.KeepsRoom;
         State.PanelCaretVisible = content.Caret is not null;
     }
 
@@ -204,8 +251,30 @@ public sealed class ChromePainter
         lock (_gate) return _surface.Height <= 0 ? 0 : PanelRowsAvailable(_surface.Width, _surface.Height);
     }
 
-    //takes the width and height it was handed rather than the surface, and keeps int.MaxValue for an unknown height
+    //a panel holds at most half the window's rows and the composer at most a third, so the transcript keeps the rest whatever the content
+    private const int PanelShare = 2;
+    private const int ComposerShare = 3;
+
+    //the room a panel that keeps it is given, the same expression the clamp uses for a permission prompt
+    internal int RoomRowsAvailable()
+    {
+        lock (_gate) return _surface.Height <= 0 ? 0 : RoomRows(_surface.Width, _surface.Height);
+    }
+
     private int PanelRowsAvailable(int width, int height)
+    {
+        var room = RoomRows(width, height);
+        return State.PanelKeepsRoom ? room : Share(room, height, PanelShare);
+    }
+
+    private int ComposerRowsAvailable(int width, int height) => Share(RoomRows(width, height), height, ComposerShare);
+
+    //the share counts the whole window, the rows the user sees, and never exceeds the room the frame's furniture leaves
+    private static int Share(int room, int height, int parts) =>
+        room == int.MaxValue ? room : Math.Min(room, Math.Max(1, height / parts));
+
+    //takes the width and height it was handed rather than the surface, and keeps int.MaxValue for an unknown height
+    private int RoomRows(int width, int height)
     {
         var budgetRows = BudgetRows(height);
         if (budgetRows == int.MaxValue) return int.MaxValue;
@@ -247,7 +316,7 @@ public sealed class ChromePainter
         var band = Ansi.Bg(_theme.Map(Theme.UserInputBg), _theme.TrueColor);
         var rows = new List<(string, string)>();
         foreach (var line in message.Split('\n'))
-            foreach (var seg in SoftWrap.Wrap(line, wrapAt, wrapAt))
+            foreach (var seg in SoftWrap.Wrap(TermText.ExpandTabs(line, out _), wrapAt, wrapAt))   //tabs widen as the composer drew them
             {
                 var lead = rows.Count == 0 ? _glyphs.Prompt + " " : GutterWrap.Hang;
                 var v = lead + seg.Text;
@@ -258,6 +327,21 @@ public sealed class ChromePainter
     }
 
     private static readonly string[] ProbePanel = [""];
+
+    //a window marks its hidden rows only when a row is left between the two marks for the caret
+    internal const int MarkedWindowRows = 3;
+
+    //the dim edge row of a window that hides rows, counting the row it covers
+    private string HiddenMark(string arrow, int hidden) => _theme.Paint($"{GutterWrap.Hang}{arrow} {hidden} more", Theme.Dim);
+
+    //a mark never covers the caret's row, the window moves one more row instead, and a caret outside the window leaves it where it is
+    private static int ClearOfMarks(int top, int caret, int total, int rows)
+    {
+        if (rows < MarkedWindowRows || caret < top || caret >= top + rows) return top;
+        if (top > 0 && caret == top) top--;
+        else if (top + rows < total && caret == top + rows - 1) top++;
+        return Math.Clamp(top, 0, total - rows);
+    }
 
     //the height clamp in one place, the viewport less one row of headroom
 
@@ -306,7 +390,17 @@ public sealed class ChromePainter
 
         var tailRows = new List<(string R, string V, bool Continuation, int PrefixCells)>();
         //show the streaming tail only while following the bottom, a scrolled-up view already has the jump-to-bottom hint
-        if (_scroll.Following && State.TailRaw is { Length: > 0 } tail)
+        if (_scroll.Following && State.TailRaw is { Length: > 0 } fenced && State.TailFence)
+        {
+            //the committed fence row's own layout with no code roles, so the row keeps its shape at the commit and only its colours arrive
+            var block = BlockState.Fence;
+            var open = true;
+            var blank = false;
+            foreach (var row in ItemRender.ProseLineTagged(fenced, _theme, RoleForTint, width, ref block, ref open, ref blank, _glyphs))
+                tailRows.Add((row.Text, TermText.StripAnsiForWidth(row.Text), row.Continuation, row.PrefixCells));
+            if (State.TailBlank && tailRows.Count > 0) tailRows.Insert(0, ("", "", false, 0));
+        }
+        else if (_scroll.Following && State.TailRaw is { Length: > 0 } tail)
         {
             var marker = State.TailMarker ?? GutterWrap.Hang;
             Func<string, string>? paint = State.TailReasoning
@@ -407,7 +501,14 @@ public sealed class ChromePainter
         {
             //the window is the ComposerScroll offset, following shows the tail while a detached scroll shows earlier rows. it runs even at offset 0
             var drop = _composerScroll.Offset(tall.Count, panelAllowed);
-            panel = tall.Skip(drop).Take(panelAllowed).ToList();
+            if (panelCaret is { } at) drop = ClearOfMarks(drop, at.Row, tall.Count, panelAllowed);
+            var window = tall.Skip(drop).Take(panelAllowed).ToList();
+            if (window.Count >= MarkedWindowRows)
+            {
+                if (drop > 0) window[0] = HiddenMark(_glyphs.Up, drop + 1);
+                if (drop + window.Count < tall.Count) window[^1] = HiddenMark(_glyphs.Down, tall.Count - drop - window.Count + 1);
+            }
+            panel = window;
             if (panelCaret is { } pc)
             {
                 //a scrolled-up view can leave the caret row past the visible slice. caretInWindow hides the cursor rather than parking it on an option row
@@ -416,6 +517,16 @@ public sealed class ChromePainter
                 panelCaret = (Math.Max(0, shifted), pc.Col);
             }
             frame = Frame.Compose(State.Composer, panelRows: panel, panelCaret: panelCaret);
+        }
+        else if (panel is null && frame.EditorRowTags.Count is var total && total > ComposerRowsAvailable(width, height))
+        {
+            //the window moves only as far as keeps the caret inside, so typing within it never scrolls
+            var composerAllowed = ComposerRowsAvailable(width, height);
+            var caret = frame.CursorRegionRow;
+            var top = Math.Min(_composerTop, caret);
+            top = Math.Max(top, caret - composerAllowed + 1);
+            _composerTop = ClearOfMarks(Math.Clamp(top, 0, total - composerAllowed), caret, total, composerAllowed);
+            frame = Frame.Compose(State.Composer, editorWindow: (_composerTop, composerAllowed), markHidden: composerAllowed >= MarkedWindowRows);
         }
         //caches the layout this frame was built from, and a panel frame reports null, which the mouse's layout bail expects
         _lastComposerLayout = frame.Composer;
@@ -510,7 +621,9 @@ public sealed class ChromePainter
             else if (editorIdx >= 0 && editorIdx < frame.EditorRowTags.Count)
             {
                 var (cont, prefix) = frame.EditorRowTags[editorIdx];
-                built.Add(new ChromeRow(frame.Rows[i], frame.VisibleRows[i], cont, prefix, ChromeRegion.Composer, editorIdx));
+                //the region row counts over the whole layout, so a mouse gesture on a windowed row maps to its own text
+                built.Add(new ChromeRow(frame.Rows[i], frame.VisibleRows[i], cont, prefix, ChromeRegion.Composer,
+                    frame.EditorWindowTop + editorIdx));
             }
             else
             {

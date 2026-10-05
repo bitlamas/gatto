@@ -180,7 +180,7 @@ public static class ExtensionHost
 
             foreach (var (tool, readClass) in staged.Tools)
             {
-                tools.Register(tool);              //the name was checked for a duplicate already, and validated when it was staged
+                tools.Register(tool, extension: true);   //the name was checked for a duplicate already, and validated when it was staged
                 committed.Add((ext, tool.Name, readClass));
             }
             foreach (var (evt, handler) in staged.Hooks)

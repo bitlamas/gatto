@@ -1330,11 +1330,11 @@ public class ReplEffortSlashTests : IDisposable
 
     private static Gatto.Repl.Repl ReplWith(
         string? thinkingName = null, Func<string, bool, EffortResult>? setEffort = null,
-        Func<IReadOnlyList<PickerItem>>? listEfforts = null, IListPicker? picker = null)
+        Func<IReadOnlyList<PickerItem>>? listEfforts = null, IListPicker? picker = null, Conversation? convo = null)
     {
         var client = new FakeChatClient();
         var loop = new AgentLoop(client, new ToolRegistry(), new HookBus(), new TestToolContext(Path.GetTempPath()), "m");
-        var convo = new Conversation("sys");
+        convo ??= new Conversation("sys");
         return new Gatto.Repl.Repl(
             loop, convo, "generalist", "qwen3.6-35b", null, client, null, null, Path.GetTempPath(),
             () => Composed.Text("sys"), () => null, _ => new RoleSwitchResult(false, "", null, null, "unused"),
@@ -1364,6 +1364,50 @@ public class ReplEffortSlashTests : IDisposable
 
         Assert.Equal(("xhigh", true), seen);
         Assert.Contains("effort: xhigh", output);
+    }
+
+    private static Conversation Talked()
+    {
+        var convo = new Conversation("sys");
+        convo.AddUser("hello");
+        convo.AddAssistant("hi");
+        return convo;
+    }
+
+    //the effort sits above the conversation in the prompt, so a change mid-session says the next request reads all of it again
+    [Fact]
+    public async Task An_effort_change_in_a_session_with_a_conversation_says_the_next_request_rereads_it()
+    {
+        var repl = ReplWith(thinkingName: "medium", convo: Talked(),
+            setEffort: (level, _) => new EffortResult(true, level, $"effort: {level}"));
+
+        var output = await Feed(repl, "/effort xhigh");
+
+        Assert.Contains("effort: xhigh, " + Gatto.Repl.Repl.EffortRereadsLine, output);
+        Assert.DoesNotMatch(@"\d+\s*(s|ms|sec|seconds|min)\b", Gatto.Repl.Repl.EffortRereadsLine);
+    }
+
+    [Fact]
+    public async Task An_effort_change_before_any_conversation_says_nothing_more()
+    {
+        var repl = ReplWith(thinkingName: "medium",
+            setEffort: (level, _) => new EffortResult(true, level, $"effort: {level}"));
+
+        var output = await Feed(repl, "/effort xhigh");
+
+        Assert.Contains("effort: xhigh", output);
+        Assert.DoesNotContain(Gatto.Repl.Repl.EffortRereadsLine, output);
+    }
+
+    [Fact]
+    public async Task Setting_the_level_already_in_force_says_nothing_more()
+    {
+        var repl = ReplWith(thinkingName: "medium", convo: Talked(),
+            setEffort: (level, _) => new EffortResult(true, level, $"effort: {level}"));
+
+        var output = await Feed(repl, "/effort medium");
+
+        Assert.DoesNotContain(Gatto.Repl.Repl.EffortRereadsLine, output);
     }
 
     [Fact]

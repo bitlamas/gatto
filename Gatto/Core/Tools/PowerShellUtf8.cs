@@ -6,9 +6,9 @@ namespace Gatto.Core.Tools;
 //PS 5.1 writes redirected stdout in the OEM codepage and mangles non-ASCII, so both spawn sites pin UTF-8 and prepend a prelude
 internal static class PowerShellUtf8
 {
-    //no-BOM UTF-8 in every direction, since PS 5.1 encodes a string piped to a native program with the console input encoding
+    //no-BOM UTF-8 in every direction (PS 5.1 encodes a native pipe with the input encoding), on its own line so an error quotes the command alone, one line down
     private const string Prelude =
-        "$__e = New-Object System.Text.UTF8Encoding $false; [Console]::InputEncoding = $__e; [Console]::OutputEncoding = $__e; $OutputEncoding = $__e; ";
+        "$__e = New-Object System.Text.UTF8Encoding $false; [Console]::InputEncoding = $__e; [Console]::OutputEncoding = $__e; $OutputEncoding = $__e;\n";
 
     //pin the read side to no-BOM UTF-8, the StreamReader strips a BOM on its own, so this is belt-and-braces
     internal static void PinReadEncoding(ProcessStartInfo psi)

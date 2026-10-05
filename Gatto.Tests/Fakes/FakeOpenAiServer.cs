@@ -43,6 +43,12 @@ public sealed class FakeOpenAiServer : IAsyncDisposable
     //probe responses route before the queue, so a probe never consumes a queued chat response, and the default 404 keeps the probe unknown
     public FakeResponse? PropsResponse { get; set; }
 
+    //llama-server's counting routes, answered before the queue and kept apart from the chat bodies: null leaves a route at 404
+    public int? InputTokens { get; set; }
+    public Func<string, int>? TokenizeCount { get; set; }
+    public string? InputTokensRaw { get; private set; }
+    public List<string> Tokenized { get; } = new();
+
     public FakeOpenAiServer()
     {
         HttpListener? started = null;
@@ -83,6 +89,34 @@ public sealed class FakeOpenAiServer : IAsyncDisposable
                     ctx.Response.ContentType = "application/json";
                     var bytes = Encoding.UTF8.GetBytes(props.Body ?? "{}");
                     await ctx.Response.OutputStream.WriteAsync(bytes);
+                    ctx.Response.Close();
+                }
+                catch { ctx.Response.Abort(); }
+                continue;
+            }
+
+            var path = ctx.Request.Url?.AbsolutePath;
+            if (ctx.Request.HttpMethod == "POST" && path is "/v1/chat/completions/input_tokens" or "/tokenize")
+            {
+                string counted;
+                using (var sr = new StreamReader(ctx.Request.InputStream, Encoding.UTF8)) counted = await sr.ReadToEndAsync();
+                string? answer = null;
+                if (path == "/tokenize" && TokenizeCount is { } count)
+                {
+                    var content = JsonDocument.Parse(counted).RootElement.GetProperty("content").GetString() ?? "";
+                    lock (Tokenized) Tokenized.Add(content);
+                    answer = "{\"tokens\":[" + string.Join(",", Enumerable.Repeat("1", count(content))) + "]}";
+                }
+                else if (path != "/tokenize" && InputTokens is int n)
+                {
+                    InputTokensRaw = counted;
+                    answer = $"{{\"input_tokens\":{n},\"object\":\"response.input_tokens\"}}";
+                }
+                try
+                {
+                    ctx.Response.StatusCode = answer is null ? 404 : 200;
+                    ctx.Response.ContentType = "application/json";
+                    await ctx.Response.OutputStream.WriteAsync(Encoding.UTF8.GetBytes(answer ?? "{\"error\":\"fake server: route off\"}"));
                     ctx.Response.Close();
                 }
                 catch { ctx.Response.Abort(); }

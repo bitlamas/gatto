@@ -65,7 +65,7 @@ public sealed class GlyphSet
         Bar = "\u258f", Sharp = "\u266f", Angle = "\u203a", Approx = "\u2248", Elbow = "\u23bf",
         HeavyRule = "\u2501", Caret = "\u25be", Triangle = "\u25b8", Bullet = "\u2022",
         AtMost = "\u2264", Sum = "\u03a3", Ring = "\u25cb", Times = "\u00d7", Range = "\u2013",
-        Cloud = "\U0001F6C8",
+        Cloud = "\U0001F6C8", Block = "\u2588", Shade = "\u2591", Swatch = "\u25a0",
         Box = new("\u250c", "\u252c", "\u2510", "\u251c", "\u253c", "\u2524",
                   "\u2514", "\u2534", "\u2518", "\u2502"),
         Wild = "\u2265^\u2022-\u2022^\u2264",
@@ -84,7 +84,7 @@ public sealed class GlyphSet
         Bar = "|", Sharp = "#", Angle = ">", Approx = "~", Elbow = "`-",
         HeavyRule = "=", Caret = "v", Triangle = ">", Bullet = "*",
         AtMost = "<=", Sum = "sum", Ring = "o", Times = "x", Range = "-",
-        Cloud = "@",
+        Cloud = "@", Block = "#", Shade = ".", Swatch = "#",
         Box = new("+", "+", "+", "+", "+", "+", "+", "+", "+", "|"),
         Wild = AsciiWild,
     };
@@ -213,6 +213,15 @@ public sealed class GlyphSet
 
     //before the model name when the endpoint is in the cloud, the one sign of it on the footer
     public required string Cloud { get; init; }
+
+    //a used cell of the /context bar
+    public required string Block { get; init; }
+
+    //a free cell of the /context bar
+    public required string Shade { get; init; }
+
+    //the colour key before a row of the /context table, drawn with space around it so stacked keys stay apart
+    public required string Swatch { get; init; }
 
     //the table frame, see BoxSet
     public required BoxSet Box { get; init; }

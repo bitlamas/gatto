@@ -46,6 +46,16 @@ public sealed class ScriptedKeySource : IKeySource
         }
     }
 
+    //one keystroke with no Enter behind it, for a key that is not a line
+    public ScriptedKeySource Key(ConsoleKeyInfo key)
+    {
+        lock (_lock) { _keys.Enqueue(key); Monitor.PulseAll(_lock); }
+        return this;
+    }
+
+    //keys not read yet, so a test can wait until the script has reached the editor
+    public int Pending { get { lock (_lock) return _keys.Count; } }
+
     //the typed text plus an Enter keystroke, so the result is one submitted line
     public ScriptedKeySource Line(string text)
     {
@@ -114,7 +124,9 @@ public sealed class RichReplHarness
         //a resumed session, passed straight through as the interactive entry passes them
         string? resumedFrom = null, string? resumedPath = null, string? resumeLine = null,
         //the grants store, absent unless a test hands one in, as a session without one has no grants
-        Gatto.Core.Loop.Permissions.PermissionStore? permissions = null)
+        Gatto.Core.Loop.Permissions.PermissionStore? permissions = null,
+        //what /context counts, absent unless a test hands it in, as a session without it reports the figures unavailable
+        Func<ContextUsageState, ContextInputs>? contextInputs = null)
     {
         Surface = new VtScreenSurface(width, height);
         _tap = new TappedSurface(Surface);
@@ -150,7 +162,8 @@ public sealed class RichReplHarness
             deafWatch: deafWatch,
             resumedFrom: resumedFrom,
             resumedPath: resumedPath,
-            resumeLine: resumeLine);
+            resumeLine: resumeLine,
+            contextInputs: contextInputs);
     }
 
     //answers the attach-count question without a terminal. set it to a function of the SelectSpec, and null keeps the real widget.
@@ -180,6 +193,9 @@ public sealed class RichReplHarness
 
     //asks whether the session has written this text to the terminal. stripping ansi lets a phrase spanning a colour change still match.
     public bool Saw(string text) => _tap.Text().Contains(text, StringComparison.OrdinalIgnoreCase);
+
+    //everything the session wrote, in order and without ansi, for a test that asks what came after what
+    public string Written() => _tap.Text();
 
     //ending by cancellation runs the teardown, so TranscriptDump holds the committed transcript. a scripted /quit behind a refusal would race the composer restore.
     public async Task RunUntilAsync(Func<bool> until, int timeoutMs = 15000)

@@ -299,6 +299,28 @@ public class LineEditorTests : IDisposable
         Assert.Equal("a\nb!", Run(keys, H(), out _));
     }
 
+    private static readonly ConsoleKeyInfo Tab = new('\t', ConsoleKey.Tab, false, false, false);
+
+    [Fact]
+    public void PastedTab_IsKeptInTheMessage()
+    {
+        //a tab inside a burst is pasted text, so it goes into the buffer instead of asking for a completion
+        var keys = new BurstKeys(new[]
+        {
+            (K('a'), true), (Tab, true), (K('b'), true), (Tab, true), (K('c'), false),
+            (Enter(), false),
+        });
+        Assert.Equal("a\tb\tc", Run(keys, H(), out _));
+    }
+
+    [Fact]
+    public void TypedTab_WithNoCompletion_StaysANoOp()
+    {
+        //nothing is buffered around this tab, so it is the completion key and types nothing
+        var keys = new BurstKeys(new[] { (K('a'), false), (Tab, false), (K('b'), false), (Enter(), false) });
+        Assert.Equal("ab", Run(keys, H(), out _));
+    }
+
     [Fact]
     public void SubmittedText_IsRecordedInHistory()
     {

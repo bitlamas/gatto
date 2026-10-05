@@ -989,6 +989,33 @@ public class SetupFlowTests
         Assert.Equal(4096, config.Endpoints["local"].Context);
     }
 
+    //a llama-server with no alias answers to its gguf path: the screens name the file, and the saved default stays the id requests must carry
+    [Fact]
+    public void THE_CONNECT_SUMMARY_NAMES_A_GGUF_PATH_BY_ITS_FILE_AND_SAVES_THE_PATH()
+    {
+        const string id = @"C:\models\Qwen-9B-Q4.gguf";
+        var flow = new SetupFlow(new FakeProbes
+        {
+            Server = new Gatto.Core.Acquire.ConnectProbe("http://127.0.0.1:9999", [id], 65536),
+            Proof = new Gatto.Core.Acquire.ProveOutcome(true, "hi", TimeSpan.FromMilliseconds(5)),
+        });
+        flow.StartPastOpening();
+        flow.Answer(SetupFlow.ForkConnect);
+        flow.Answer(SetupFlow.Yes);
+        Assert.Equal(id, flow.Writes.DefaultModel);
+        Resumed(flow);
+
+        var rows = flow.Emitted.SelectMany(s => s switch
+        {
+            WizardScreen.Choice c => c.BodyRows ?? [],
+            WizardScreen.Terminal t => t.Rows,
+            _ => [],
+        }).Select(r => r.Text).ToList();
+        Assert.Contains(rows, r => r.StartsWith("model", StringComparison.Ordinal) && r.EndsWith("Qwen-9B-Q4", StringComparison.Ordinal));
+        Assert.Contains(rows, r => r.StartsWith("serving", StringComparison.Ordinal) && r.EndsWith("Qwen-9B-Q4", StringComparison.Ordinal));
+        Assert.DoesNotContain(rows, r => r.Contains(".gguf", StringComparison.Ordinal));
+    }
+
     [Theory]
     [InlineData("http://127.0.0.1:1235/")]   //the user may type a trailing slash.
     [InlineData("HTTP://127.0.0.1:1235")]    //and the scheme may be typed in upper case.

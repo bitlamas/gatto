@@ -11,6 +11,65 @@ public class ContextBudgetTests
         new("assistant", text, calls.Length > 0 ? calls : null);
     private static ChatMessage Tool(string content, string id) => new("tool", content, ToolCallId: id);
 
+    //one round is a call and its 1000-char result, about 250 tokens
+    private static void AddRound(List<ChatMessage> list, int i)
+    {
+        list.Add(Assistant(null, new ToolCall($"c{i}", "shell", "{}")));
+        list.Add(Tool(new string('x', 1000), $"c{i}"));
+    }
+
+    private static List<ChatMessage> Rounds(int n)
+    {
+        var list = new List<ChatMessage> { User("u") };
+        for (var i = 0; i < n; i++) AddRound(list, i);
+        return list;
+    }
+
+    //once the count crosses the elision line, the cut goes down to the lower line in the same request
+    [Fact]
+    public void Apply_cuts_down_to_the_lower_line_in_one_step()
+    {
+        var msgs = Rounds(40);   //about 10000 tokens against 10500, past the 90% line
+
+        var (result, elided, _, _) = ContextBudget.Apply(msgs, 10_500, msgs.Count);
+
+        Assert.True(elided > 0);
+        Assert.True(ContextBudget.Estimate(result) < 0.60 * 10_500, $"{ContextBudget.Estimate(result)} tokens after the cut");
+    }
+
+    //cutting to just under 90% moved the frontier 26 times in these 30 rounds, each move a new prefix for the server to read again
+    [Fact]
+    public void The_frontier_moves_rarely_as_the_conversation_grows()
+    {
+        const int window = 17_000;
+        var list = Rounds(57);   //about 84% of the window
+        var through = 0;
+        var moves = 0;
+        for (var r = 0; r < 30; r++)   //30 rounds of about 250 tokens, about 44% of the window
+        {
+            AddRound(list, 57 + r);
+            var (_, _, _, now) = ContextBudget.Apply(list, window, list.Count - 2, elidedThrough: through);
+            if (now != through) moves++;
+            through = now;
+        }
+        Assert.True(moves <= 2, $"the frontier moved {moves} times in 30 rounds");
+    }
+
+    //while auto-compaction is armed nothing new is cut, and what an earlier request cut stays cut so its prefix holds
+    [Fact]
+    public void Apply_in_frontier_only_mode_recuts_below_the_frontier_and_nothing_beyond()
+    {
+        var msgs = Rounds(40);   //over the 90% line of 10500, so the normal mode would cut further
+        //index 0 is the user message, rounds are an assistant and a tool, so the tools sit at 2, 4, 6 and on
+        var (result, elided, _, through) = ContextBudget.Apply(msgs, 10_500, msgs.Count, elidedThrough: 5, extend: false);
+
+        Assert.Equal(2, elided);
+        Assert.StartsWith("[elided:", result[2].Content);
+        Assert.StartsWith("[elided:", result[4].Content);
+        Assert.Equal(new string('x', 1000), result[6].Content);
+        Assert.Equal(5, through);
+    }
+
     [Fact]
     public void Estimate_SumsContentCharsDividedByFour()
     {

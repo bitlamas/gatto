@@ -11,6 +11,9 @@ public static class ContextBudget
     //the one place the window fractions live, elide at or above 90% and still over is past 100%
     private const double ElideAtFraction = 0.90;
 
+    //a cut goes down to 60% of the window, so 30% of growth passes before the prefix moves again, where cutting to just under 90% moved it on most rounds
+    private const double ElideDownToFraction = 0.60;
+
     //same chars/4 heuristic as MemoryIndex.CharsPerToken but a separate constant, the two must be retuned together
     private const int CharsPerToken = 4;
 
@@ -92,18 +95,18 @@ public static class ContextBudget
         return working ?? messages;
     }
 
-    //elides the oldest results past 90% by the server's ratio, never from protectFromIndex, always up to elidedThrough
+    //elides the oldest results past 90% by the server's ratio down to 60%, never from protectFromIndex, always up to elidedThrough, and only that when extend is false
     public static (IReadOnlyList<ChatMessage> Messages, int ElidedCount, bool StillOver, int ElidedThrough) Apply(
         IReadOnlyList<ChatMessage> messages, int? budgetTokens, int protectFromIndex, double ratio = 1.0, int elidedThrough = 0,
-        int overheadTokens = 0)
+        int overheadTokens = 0, bool extend = true)
     {
         if (budgetTokens is not int budget || budget <= 0)
             return (messages, 0, false, elidedThrough);
 
         double Counted(IReadOnlyList<ChatMessage> m) => Counts(m, overheadTokens, ratio);
         var elideAt = budget * ElideAtFraction;
-        if (elidedThrough <= 0 && Counted(messages) < elideAt)
-            return (messages, 0, false, 0);   //under the threshold with nothing trimmed before, so nothing is elided and StillOver is false
+        if (elidedThrough <= 0 && (!extend || Counted(messages) < elideAt))
+            return (messages, 0, Counted(messages) > budget, 0);   //nothing trimmed before and nothing to start, so the request goes whole
 
         //a fresh array, records are immutable so the caller's list is never mutated, this stays the request copy only
         var working = messages.ToArray();
@@ -111,16 +114,26 @@ public static class ContextBudget
         var through = elidedThrough;
         var limit = Math.Min(protectFromIndex, working.Length);
 
-        for (var i = 0; i < limit && (i < elidedThrough || Counted(working) >= elideAt); i++)
+        void CutAt(int i)
         {
-            if (working[i].Role != "tool") continue;
+            if (working[i].Role != "tool") return;
             var originalChars = working[i].Content?.Length ?? 0;
             var stub = Cut(working[i].Content ?? "", ToolNameFor(working, i) + " result", " — re-run if needed");
             //skip a result that isn't longer than its stub or below MinElidableChars, eliding either would grow the request or rewrite the prefix for nothing
-            if (originalChars <= stub.Length || originalChars < MinElidableChars) continue;
+            if (originalChars <= stub.Length || originalChars < MinElidableChars) return;
             working[i] = working[i] with { Content = stub };
             elided++;
             through = Math.Max(through, i + 1);
+        }
+
+        //what an earlier request cut is cut again, so the prefix the server holds stays the same
+        for (var i = 0; i < limit && i < elidedThrough; i++) CutAt(i);
+
+        //a cut that starts goes down to the lower line in one step, so the frontier and the prefix move rarely
+        if (extend && Counted(working) >= elideAt)
+        {
+            var target = budget * ElideDownToFraction;
+            for (var i = elidedThrough; i < limit && Counted(working) >= target; i++) CutAt(i);
         }
 
         var stillOver = Counted(working) > budget;   //compared with the full budget, above the 90% elision threshold

@@ -7,7 +7,7 @@ using Gatto.Core.Home;
 
 namespace Gatto.Core.Client;
 
-public sealed class OpenAiCompatClient : IChatClient
+public sealed class OpenAiCompatClient : IChatClient, Gatto.Core.Loop.ITokenCounter
 {
     private readonly HttpClient http;
     private readonly string endpointName;
@@ -238,6 +238,37 @@ public sealed class OpenAiCompatClient : IChatClient
 
     //add the endpoint's credential to the request, its header callback first, then ApiKey, then KeyEnv, and no header at all when none is set
     private Task AuthorizeAsync(HttpRequestMessage msg, CancellationToken ct) => EndpointAuth.ApplyAsync(msg, endpoint, endpointName, ct);
+
+    //the prompt this request renders to, counted by llama-server's template and tokenizer from the chat call's own body, null when the server answers no count
+    public Task<int?> CountInputTokensAsync(ChatRequest request, CancellationToken ct) =>
+        CountAsync("/v1/chat/completions/input_tokens", BuildBody(request, imageCache, null, returnProgress),
+            root => root.TryGetProperty("input_tokens", out var n) && n.TryGetInt32(out var v) ? v : null, ct);
+
+    //one part's text counted by the server's tokenizer, with no special tokens added and none parsed, null when the server answers no count
+    public Task<int?> TokenizeCountAsync(string text, CancellationToken ct) =>
+        CountAsync("/tokenize",
+            JsonSerializer.Serialize(new { content = text, add_special = false, parse_special = false }),
+            root => root.TryGetProperty("tokens", out var t) && t.ValueKind == JsonValueKind.Array ? t.GetArrayLength() : null, ct);
+
+    //one counting call under the probes' 2 second deadline, so a /context can never hang on a server that does not answer
+    private async Task<int?> CountAsync(string path, string body, Func<JsonElement, int?> read, CancellationToken ct)
+    {
+        try
+        {
+            using var cts = CancellationTokenSource.CreateLinkedTokenSource(ct);
+            cts.CancelAfter(TimeSpan.FromSeconds(2));
+            using var msg = new HttpRequestMessage(HttpMethod.Post, $"{baseUrl.TrimEnd('/')}{path}")
+            {
+                Content = new StringContent(body, Encoding.UTF8, "application/json"),
+            };
+            await AuthorizeAsync(msg, cts.Token);
+            using var resp = await http.SendAsync(msg, cts.Token);
+            if (!resp.IsSuccessStatusCode) return null;
+            using var doc = JsonDocument.Parse(await resp.Content.ReadAsStringAsync(cts.Token));
+            return read(doc.RootElement);
+        }
+        catch (Exception) { return null; }
+    }
 
     public async Task<int?> TryGetContextLengthAsync(CancellationToken ct = default)
     {

@@ -30,6 +30,9 @@ public sealed class VtScreenSurface : ITermSurface
     public int CursorRow => _row;
     public int CursorCol => _col;
 
+    //false like the interface default, a test that resizes while code waits for a key sets it
+    public bool ReportsResize { get; set; }
+
     //a resize never reflows text like conpty does. width pads or truncates each row, and a smaller height drops top rows without counting them in Scrolled
     public void Resize(int width, int height)
     {

@@ -422,6 +422,40 @@ public class InputFrameTests
     }
 
     [Fact]
+    public void A_tab_draws_as_spaces_to_the_next_stop_and_the_caret_after_it_sits_at_that_stop()
+    {
+        var layout = FramedFixture(width: 40).Compose(new EditorView(new List<string> { "a\tb" }, 0, 2));
+
+        //the tab after a fills cells 1 to 3, so b starts at cell 4 and the caret before b sits there, 2 cells of prompt in front
+        Assert.Equal("❯ a   b", layout.VisibleRows[1]);
+        Assert.DoesNotContain('\t', layout.Rows[1]);
+        Assert.Equal(2 + 4, layout.CursorCol);
+    }
+
+    [Fact]
+    public void A_selection_across_a_tab_highlights_every_cell_the_tab_draws()
+    {
+        var selected = FramedFixture(width: 40).Compose(
+            new EditorView(new List<string> { "a\tb" }, 0, 2, SelStart: (0, 0), SelEnd: (0, 2)));
+
+        //a and the tab are selected, so cells 0 to 4 light up and b stays plain
+        var prompt = T.Paint("❯", Theme.Accent, bold: true) + " ";
+        var expected = prompt + TermText.HighlightCells(T.Paint("a   b", Theme.Bright), 0, 4, T.SelectionBgOn);
+        Assert.Equal(expected, selected.Rows[1]);
+    }
+
+    [Fact]
+    public void A_click_inside_a_tab_lands_on_the_tab_and_a_click_on_the_next_char_lands_after_it()
+    {
+        var layout = new ComposerLayout(new[] { "a\tb" }, 40);
+
+        //cells 1 to 3 are the tab's, cell 4 is b, each with the 2-cell prompt in front
+        Assert.Equal((0, 1), layout.ComposerCellToPosition(0, 2 + 2));
+        Assert.Equal((0, 2), layout.ComposerCellToPosition(0, 2 + 4));
+        Assert.Equal((0, 2 + 4), layout.PositionToCell(0, 2));
+    }
+
+    [Fact]
     public void Multirow_selection_highlights_each_wrapped_rows_own_subrange()
     {
         //the range spans two wrapped rows, so row 0 highlights to its own end and row 1 to the caret.

@@ -62,6 +62,14 @@ public class LineEditorWrapNavTests : IDisposable
     }
 
     [Fact]
+    public void Up_holds_the_cell_column_across_a_tab()
+    {
+        //the tab draws as 4 cells, so cell 4 of the line above is the x after it, not the end of the line
+        var editor = new LineEditor(new ScriptedKeys(new[] { Key(ConsoleKey.UpArrow), K('z'), Enter }), H(), () => 40);
+        Assert.Equal("\tzx\nabcd", editor.Read(_ => { }, initial: "\tx\nabcd"));
+    }
+
+    [Fact]
     public void Up_from_the_top_display_row_recalls_history()
     {
         var h = H();
