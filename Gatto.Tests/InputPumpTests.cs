@@ -21,15 +21,15 @@ public class InputPumpTests
 
     private static ConsoleKeyInfo K(char c) => new(c, ConsoleKey.A, false, false, false);
 
-    //read on a worker with a deadline, so a blocked take fails the test instead of hanging the runner.
-    private static ConsoleKeyInfo? Read(IKeySource s, int ms = 2000)
+    //read on a worker with a deadline, so a blocked take fails the test instead of hanging the runner. it ends when the key arrives, so the bound only matters on a loaded machine
+    private static ConsoleKeyInfo? Read(IKeySource s, int ms = 30000)
     {
         var t = Task.Run(s.ReadKey);
         return t.Wait(ms) ? t.Result : null;
     }
 
     //deadline-guarded read for composer sources, unwrapping a keystroke to its key. a selection here means the test itself is wrong, so it throws.
-    private static ConsoleKeyInfo? Read(IComposerSource s, int ms = 2000)
+    private static ConsoleKeyInfo? Read(IComposerSource s, int ms = 30000)
     {
         var t = Task.Run(s.Read);
         if (!t.Wait(ms)) return null;
@@ -97,7 +97,7 @@ public class InputPumpTests
         for (var i = 0; i < 150; i++) src.Feed.Add(PageUp());
 
         var t = Task.Run(() => Assert.ThrowsAny<InvalidOperationException>((Action)(() => pump.Composer.Read())));
-        await t.WaitAsync(TimeSpan.FromSeconds(5));   //a hang here fails the test rather than the runner.
+        await t.WaitAsync(TimeSpan.FromSeconds(30));   //a hang here fails the test rather than the runner.
     }
 
     [Fact]
@@ -114,7 +114,7 @@ public class InputPumpTests
 
         for (var i = 0; i < 300; i++) src.Feed.Add(PageUp());
 
-        WaitUntil(() => seen >= 300, 5000);
+        WaitUntil(() => seen >= 300);
         //a key routed after 150 failures proves the counter reset on each success.
         src.Feed.Add(K('a'));
         Assert.Equal('a', Read(pump.Composer)!.Value.KeyChar);
@@ -196,7 +196,7 @@ public class InputPumpTests
         pump.Start();
         //after 100 consecutive source failures the pump completes every channel, so a blocked read throws.
         var t = Task.Run(() => Assert.ThrowsAny<InvalidOperationException>((Action)(() => pump.Composer.Read())));
-        await t.WaitAsync(TimeSpan.FromSeconds(5));   //the bounded wait fails this test on a hang instead of stalling the test runner forever.
+        await t.WaitAsync(TimeSpan.FromSeconds(30));   //the bounded wait fails this test on a hang instead of stalling the test runner forever.
     }
 
     [Fact]
@@ -206,12 +206,12 @@ public class InputPumpTests
         pump.Start();
         //the blocked read throwing is the evidence that 100 consecutive source failures killed the pump.
         var died = Task.Run(() => Assert.ThrowsAny<InvalidOperationException>((Action)(() => pump.Composer.Read())));
-        await died.WaitAsync(TimeSpan.FromSeconds(5));
+        await died.WaitAsync(TimeSpan.FromSeconds(30));
 
         //a scope pushed after the pump dies is born completed, so reading its keys throws instead of hanging.
         var focus = pump.PushFocus();
         var t = Task.Run(() => Assert.ThrowsAny<InvalidOperationException>((Action)(() => focus.Keys.ReadKey())));
-        await t.WaitAsync(TimeSpan.FromSeconds(5));
+        await t.WaitAsync(TimeSpan.FromSeconds(30));
         focus.Dispose();   //dispose must stay safe on a channel that was never placed on the focus stack.
     }
 

@@ -77,6 +77,8 @@ internal sealed class SetupFlow(ISetupProbes probes)
     public const string ScanPathKey = "model.scanpath";
     //the download watch's own folder key, don't route on the question text (the copy changes)
     public const string SearchKey = "model.search";
+    //the shelf drawn while its scan and its search run, a watching screen that the load's own end resolves
+    public const string ShelfLoadingKey = "model.loading";
     public const string TypedIdKey = "model.typedid";
     //the download step, which shows the link and waits for the file.
     public const string DownloadKey = "model.download";
@@ -302,6 +304,15 @@ internal sealed class SetupFlow(ISetupProbes probes)
     //set FaceShowsChoiceBodyRows from the face like the source switch, and default it false so the narration draws unless the face says otherwise
     internal bool FaceShowsChoiceBodyRows { get; set; }
 
+    //set from the runner when the face draws a loading shelf, so the scan and the search run behind a frame. a flow a test drives directly stays synchronous
+    internal bool LoadsShelfInBackground { get; set; }
+
+    //set from the runner, so the first arrival at the model step waits on a screen of its own rather than on the empty shelf
+    internal bool OpensOnLoadingScreen { get; set; }
+
+    //latched at the first arrival, since a later load keeps the shelf on screen
+    private bool _opened;
+
     //use this port as the fallback for a fresh machine (no local endpoint exists to derive one from)
     public const int DefaultPort = 1235;
 
@@ -345,6 +356,8 @@ internal sealed class SetupFlow(ISetupProbes probes)
     internal void MarkLeaving()
     {
         _left = true;
+        //a shelf still loading stops asking the Hub, since nobody will read what it brings
+        CancelLoad();
         if (_droppedPartial is not { } advertised) return;
         _droppedPartial = null;
         probes.DeletePartial(advertised);
@@ -1085,7 +1098,18 @@ internal sealed class SetupFlow(ISetupProbes probes)
     public WizardScreen Answer(string answer)
     {
         //handle the back key before the dispatch, a handler could read it as an option. route on the key alone, deferring to AllowBack let a handler end the wizard on it
-        if (answer == BackKey && _awaiting is not null) return Back();
+        if (answer == BackKey && _awaiting is not null)
+        {
+            //going back from a loading shelf drops the load, or it would land on top of the screen that was restored
+            if (_awaiting == ShelfLoadingKey)
+            {
+                CancelLoad();
+                //a control's step waits on its landing, and a control that lands a list keeps no step, so b goes where it goes after that landing
+                if (_stepAwaitsLoad) _back.Pop();
+                _stepAwaitsLoad = false;
+            }
+            return Back();
+        }
 
         //unwrap the pane's pick before the dispatch, the row's own key continues as if no pane existed and consumers read PickedQuant
         if (ShelfControls.Unpick(answer) is { } picked)
@@ -1118,6 +1142,13 @@ internal sealed class SetupFlow(ISetupProbes probes)
     //keep a control's step only when its screen holds no list, otherwise drop it and stamp the screen again
     private WizardScreen KeepStepIfNoList(WizardScreen landed)
     {
+        //a loading shelf does not know yet whether a list will come, so the step is kept and the landing decides
+        if (landed is WizardScreen.Choice { Key: ShelfLoadingKey } loading)
+        {
+            _stepAwaitsLoad = true;
+            return HonestBack(loading);
+        }
+
         if (landed is WizardScreen.Choice { Key: SearchKey or DiscoveredKey } c
             && (c.Shelf is null || c.Shelf.NothingFetched))
         {
@@ -1129,6 +1160,14 @@ internal sealed class SetupFlow(ISetupProbes probes)
         if (_emitted.Count > 0 && ReferenceEquals(_emitted[^1], landed))
             _emitted[^1] = landed = WithBack(landed);
         return landed;
+    }
+
+    //a control's step waiting on its load is not one b returns to, so the loading shelf offers back only when a step lies behind it
+    private WizardScreen HonestBack(WizardScreen.Choice loading)
+    {
+        var honest = loading with { AllowBack = _back.Count > 1 && !_applied };
+        if (_emitted.Count > 0 && ReferenceEquals(_emitted[^1], loading)) _emitted[^1] = honest;
+        return honest;
     }
 
     private WizardScreen Dispatch(string answer)
@@ -1167,6 +1206,7 @@ internal sealed class SetupFlow(ISetupProbes probes)
             DiscoveredKey => AnswerDiscovered(answer),
             ScanPathKey => DiscoverTyped(Gatto.Roles.LlamaAssetSteering.NormalizePath(answer)),
             SearchKey => AnswerSearch(answer),
+            ShelfLoadingKey => AnswerShelfLoading(answer),
             //the picker's rows are shelf answers and get their own arm. the census asks whether Answer can dispatch each screen, a shared key would answer that by accident
             PublisherKey => AnswerSearch(answer),
             //route the typed-id ask through the same classifier, it gets the path handling too
@@ -2423,52 +2463,69 @@ internal sealed class SetupFlow(ISetupProbes probes)
     //offer what is already on this machine before proposing a download, an empty scan is normal rather than a failure
     private WizardScreen Discover(string? extraRoot)
     {
-        Sweep(extraRoot);
-
         //keep the discovered list first on the plain face, it cannot bind m, hiding the list behind the key would delete it
-        if (!CanSwitchSource) return DiscoveredScreen(heading: null);
+        if (!CanSwitchSource)
+        {
+            Sweep(extraRoot);
+            return DiscoveredScreen(heading: null);
+        }
 
+        //the scan and the search start together behind the loading shelf, and the landing is chosen when both have answered
+        if (LoadsShelfInBackground)
+        {
+            var opening = OpensOnLoadingScreen && !_opened;
+            _opened = true;
+            return StartLoad(scan: true, extraRoot, search: true, keepIfEmpty: null, then: AfterDiscover,
+                opening: opening);
+        }
+
+        Sweep(extraRoot);
         //run the search before choosing a landing, the arm below depends on its outcome and a landing chosen first would guess at it
         RunSearch(keepIfEmpty: null);
-
-        //open the local shelf on an outage only when this machine has models, an empty machine gets the Hub's failure screen. scope it to the arrival only
-        if (_searchCause is HubSearchCause.HubFailed && _discovered.Count > 0)
-            return DiscoveredScreen(heading: null, notice: OutOfReach);
-
-        return SearchScreen();
+        return AfterDiscover();
     }
+
+    //open the local shelf on an outage only when this machine has models, an empty machine gets the Hub's failure screen. scope it to the arrival only
+    private WizardScreen AfterDiscover() =>
+        _searchCause is HubSearchCause.HubFailed && _discovered.Count > 0
+            ? DiscoveredScreen(heading: null, notice: OutOfReach)
+            : SearchScreen();
 
     //treat a typed .gguf as the model itself, sweep its folder and adopt the scan's row (a second FoundModel here could disagree)
     private WizardScreen DiscoverTyped(string root)
     {
-        if (root.EndsWith(".gguf", StringComparison.OrdinalIgnoreCase))
-        {
-            if (System.IO.Path.GetDirectoryName(root) is { Length: > 0 } folder)
-            {
-                Sweep(folder);
-                if (_discovered.FirstOrDefault(m =>
-                        string.Equals(m.Path, root, StringComparison.OrdinalIgnoreCase)) is { } named)
-                    return Adopt(named);
-            }
-            else
-            {
-                //for a bare .gguf name don't sweep a folder, the name is not a folder either, and leave _scanTyped unset
-                _scanTyped = null;
-                Sweep(null);
-            }
-        }
-        else
-            //sweep a non-.gguf path as itself, and a .gguf's folder, a file path as a folder hides every model
-            Sweep(root);
+        //sweep a non-.gguf path as itself, and a .gguf's folder, a file path as a folder hides every model
+        var scanRoot = root.EndsWith(".gguf", StringComparison.OrdinalIgnoreCase)
+            ? System.IO.Path.GetDirectoryName(root) is { Length: > 0 } folder ? folder : null
+            : root;
+        //for a bare .gguf name don't sweep a folder, the name is not a folder either, and leave _scanTyped unset
+        if (scanRoot is null) _scanTyped = null;
 
-        //answer a typed folder with the local shelf and its invitation, so an empty folder says so.
-        return DiscoveredScreen(heading: null, invitation: true);
+        if (LoadsShelfInBackground)
+        {
+            //latched now rather than at the landing, so the loading frame's folder slot names the folder being swept
+            if (scanRoot is not null) _scanTyped = scanRoot;
+            return StartLoad(scan: true, scanRoot, search: false, keepIfEmpty: null,
+                then: () => AfterTyped(root), source: ShelfSource.Local);
+        }
+
+        Sweep(scanRoot);
+        return AfterTyped(root);
     }
 
+    //a typed .gguf the sweep found is adopted, and anything else answers with the local shelf and its invitation, so an empty folder says so
+    private WizardScreen AfterTyped(string root) =>
+        root.EndsWith(".gguf", StringComparison.OrdinalIgnoreCase)
+        && _discovered.FirstOrDefault(m => string.Equals(m.Path, root, StringComparison.OrdinalIgnoreCase)) is { } named
+            ? Adopt(named)
+            : DiscoveredScreen(heading: null, invitation: true);
+
     //keep the sweep and the rows it leaves together, so two screens cannot scan the same folder differently.
-    private void Sweep(string? extraRoot)
+    private void Sweep(string? extraRoot) => ApplyScan(probes.Scan(extraRoot), extraRoot);
+
+    //the sweep's fields set from a scan's answer, on the flow's thread whether the scan ran here or behind the loading shelf
+    private void ApplyScan(ScanResult scan, string? extraRoot)
     {
-        var scan = probes.Scan(extraRoot);
         _discovered = scan.Found;
         _scanRoots = scan.Roots;
         //keep _scanTyped latched through later ambient sweeps, the user typed it and these rows still come from that folder
@@ -2499,12 +2556,14 @@ internal sealed class SetupFlow(ISetupProbes probes)
         if (_discovered.Count == 0)
         {
             //add the scan line only when rows follow it, the next screen already reports nothing and two messages read as a fault
-            var searched = Search();
-            if (_rows.Count > 0)
-                //put this on the narration channel rather than _emitted, a row queued behind the returned screen is never read
-                _narrate.Add(new WizardScreen.Info("model.none",
-                    [new WizardRow("No models found on this machine yet"), .. LookedInRows()]));
-            return searched;
+            return Search(then: () =>
+            {
+                if (_rows.Count > 0)
+                    //put this on the narration channel rather than _emitted, a row queued behind the returned screen is never read
+                    _narrate.Add(new WizardScreen.Info("model.none",
+                        [new WizardRow("No models found on this machine yet"), .. LookedInRows()]));
+                return SearchScreen();
+            });
         }
 
         //adopted models stay (with their have-mark), this is also the reuse picker
@@ -2539,19 +2598,28 @@ internal sealed class SetupFlow(ISetupProbes probes)
     }
 
     //the fit check decides the shelf's rows. an empty result offers the ways that still work
-    private WizardScreen Search(IReadOnlyList<ShelfRow>? keepIfEmpty = null)
+    private WizardScreen Search(IReadOnlyList<ShelfRow>? keepIfEmpty = null, Func<WizardScreen>? then = null)
     {
         //drop _scanTyped here, every path from the local shelf to the Hub passes through this method. a latch outliving its shelf would filter the next
         _scanTyped = null;
+        //every Hub search runs behind the loading shelf where the face draws one, so a chip or a typed word never freezes the frame
+        if (LoadsShelfInBackground)
+            return StartLoad(scan: false, null, search: true, keepIfEmpty, then ?? SearchScreen);
         RunSearch(keepIfEmpty);
-        return SearchScreen();
+        return (then ?? SearchScreen)();
     }
 
+    //the query as the controls set it now, read on the flow's thread so a load carries the question that was asked
+    private HubSearchRequest CurrentRequest() =>
+        new(_view, _axis, _lift, RowBudget, _search, _family, _publisher);
+
     //run the search without emitting a screen, the caller reads the outcome first and a screen no face painted would still sit in _emitted
-    private void RunSearch(IReadOnlyList<ShelfRow>? keepIfEmpty)
+    private void RunSearch(IReadOnlyList<ShelfRow>? keepIfEmpty) =>
+        ApplySearch(probes.Search(CurrentRequest()), keepIfEmpty);
+
+    //the search's fields set from its outcome, on the flow's thread whether the search ran here or behind the loading shelf
+    private void ApplySearch(HubSearchOutcome outcome, IReadOnlyList<ShelfRow>? keepIfEmpty)
     {
-        var outcome = probes.Search(
-            new HubSearchRequest(_view, _axis, _lift, RowBudget, _search, _family, _publisher));
 
         //keep the rows when a sort returns nothing, the sort control must never empty the list it arranges. re-sort them through the shared Arrange
         if (outcome.Rows.Count == 0 && keepIfEmpty is { Count: > 0 } kept)
@@ -2579,6 +2647,246 @@ internal sealed class SetupFlow(ISetupProbes probes)
         _curatedPublisher = outcome.CuratedPublisher;
     }
 
+    //one load of the shelf: the scan and the search it waits for, both returning facts and writing no field, and the screen it lands on
+    private sealed record ShelfLoad(
+        ShelfSource Source, Task<ScanResult>? Scan, string? ScanRoot,
+        Task<HubSearchOutcome>? Search, CancellationTokenSource? Stop,
+        IReadOnlyList<ShelfRow>? KeepIfEmpty, Func<WizardScreen> Then,
+        Task? Other = null, string? Step = null,   //another wait the landing reads through Then, a typed repo id's lookup, with the step line that names it
+        bool Opening = false,   //drawn on the start-up screen rather than the loading shelf
+        Serving? Serving = null);   //the serving probe the landed shelf marks its loaded model from
+
+    private ShelfLoad? _load;
+
+    //the two reads of the model the local server holds, which a server that does not answer makes cost their whole deadline
+    private sealed record Serving(Task<string?> Id, Task<string?> Path)
+    {
+        public bool IsCompleted => Id.IsCompleted && Path.IsCompleted;
+    }
+
+    //the serving probe in flight or last answered. a request to the local server is never cancelled, so a restarted load takes over one still running
+    private Serving? _serving;
+
+    //the serving probe's answers while a landed load composes its screen, null otherwise so every other screen reads the server itself
+    private (string? Id, string? Path)? _servingNow;
+
+    private string? LoadedId() => _servingNow is { } now ? now.Id : probes.LoadedModelId();
+
+    private string? LoadedPath() => _servingNow is { } now ? now.Path : probes.LoadedModelPath();
+
+    //the search reports from the pool, so its latest moment and the generation that may write it sit under one lock
+    private readonly object _loadGate = new();
+    private int _loadGeneration;
+    private SearchProgress? _loadProgress;
+
+    //the line about this machine once the scan answered, composed once since it reads the models folder per file
+    private string? _loadLocal;
+
+    //whether a control's back step waits for the load to say if its shelf holds a list
+    private bool _stepAwaitsLoad;
+
+    //start the scan, the search or both on the pool and draw the loading shelf at once. a scan already running can be carried over
+    private WizardScreen StartLoad(bool scan, string? scanRoot, bool search,
+        IReadOnlyList<ShelfRow>? keepIfEmpty, Func<WizardScreen> then,
+        ShelfSource source = ShelfSource.Hub, Task<ScanResult>? scanning = null,
+        Task? other = null, string? step = null, bool opening = false, bool serving = true)
+    {
+        CancelLoad();
+        int generation;
+        lock (_loadGate)
+        {
+            generation = ++_loadGeneration;
+            _loadProgress = null;
+        }
+        _loadLocal = null;
+
+        var stop = search ? new CancellationTokenSource() : null;
+        var token = stop?.Token ?? CancellationToken.None;
+        var request = CurrentRequest();
+        //a moment from an earlier load is dropped by its generation, so a restarted count never shows the old one
+        var sink = new SearchSink(p => { lock (_loadGate) if (generation == _loadGeneration) _loadProgress = p; });
+
+        if (serving && _serving is not { IsCompleted: false })
+            _serving = new Serving(Task.Run(probes.LoadedModelId), Task.Run(probes.LoadedModelPath));
+
+        _load = new ShelfLoad(source,
+            scanning ?? (scan ? Task.Run(() => probes.Scan(scanRoot)) : null), scanRoot,
+            search ? Task.Run(() => probes.Search(request, sink, token)) : null, stop,
+            keepIfEmpty, then, other, step, opening, serving ? _serving : null);
+        return LoadingScreen();
+    }
+
+    //stop the Hub requests a load no longer wants and forget it. the scan reads only the disk and finishes into nothing
+    private void CancelLoad()
+    {
+        if (_load is not { } old) return;
+        _load = null;
+        //cancel without disposing, since the search may still register on the token while it unwinds
+        old.Stop?.Cancel();
+    }
+
+    //the same load asked again with the controls as they are now, keeping the scan it already started
+    private WizardScreen RestartSearch(ShelfLoad load) =>
+        StartLoad(scan: false, load.ScanRoot, search: true, load.KeepIfEmpty, load.Then, load.Source,
+            scanning: load.Scan);
+
+    //the shelf with every control in place and no rows yet. the face draws the purr and the step line from PollShelfLoad
+    private WizardScreen LoadingScreen()
+    {
+        if (_load is { Opening: true }) return StartingScreen();
+        var hub = _load?.Source != ShelfSource.Local;
+        var screen = (WizardScreen.Choice)Emit(new WizardScreen.Choice(
+            ShelfLoadingKey,
+            ModelTitle,
+            [],
+            //the face reads no shape from a loading view, so the machine is not read before the first frame
+            Shelf: new ShelfView([], hub ? _curatedPublisher : null, Gatto.Core.Hardware.MachineShape.CpuOnly,
+                Families: Families.Load().Ladder, Family: (hub ? _family : _localFamily) ?? "all",
+                Source: hub ? ShelfSource.Hub : ShelfSource.Local,
+                Folder: hub ? null : _scanTyped,
+                Searched: hub && _search is { Length: > 0 },
+                Loading: true),
+            Watching: true,
+            Door: hub ? ShelfDoorPlaceholderOf(Glyphs) : LocalShelfDoorPlaceholderOf(Glyphs)),
+            ShelfLoadingKey);
+        return _stepAwaitsLoad ? HonestBack(screen) : screen;
+    }
+
+    //the start-up screen: the cat, one sentence, and the purr and the step line the face draws beside them from PollShelfLoad
+    private WizardScreen StartingScreen() => Emit(new WizardScreen.Choice(
+            ShelfLoadingKey, null, [], BodyRows: [new WizardRow(StartingWait)], Watching: true)
+        { Hero = CatOf(Glyphs), Starting = true }, ShelfLoadingKey);
+
+    //the start-up screen's sentence, whole in one place so a change of wording is one line
+    private string StartingWait => $"please wait while gatto fetches the models from Hugging Face{Glyphs.Ellipsis}";
+
+    //the loading shelf's two lines, read by the face once per frame on the flow's thread. only the search's moment crosses threads
+    public ShelfLoadTick? PollShelfLoad()
+    {
+        if (_load is not { } load) return null;
+        SearchProgress? moment;
+        lock (_loadGate) moment = _loadProgress;
+        var looking = $"looking for models on this machine{Glyphs.Ellipsis}";
+        var scanning = load.Scan is { IsCompleted: false };
+
+        //the server's answer is the last wait once the rest are in, so the line names it
+        if (load.Serving is { IsCompleted: false } && !scanning && load.Search is not { IsCompleted: false }
+            && load.Other is not { IsCompleted: false })
+            return new ShelfLoadTick(ServingStep, load.Source == ShelfSource.Local ? null : LocalLine(load));
+
+        //a typed folder is named, since it is the one place this scan looks that the user chose. the line stays until the shelf is drawn
+        if (load.Source == ShelfSource.Local)
+            return new ShelfLoadTick(
+                load.ScanRoot is { Length: > 0 } root ? $"looking for models in {root}{Glyphs.Ellipsis}" : looking,
+                null);
+
+        return new ShelfLoadTick(
+            load.Step ?? (load.Search is null ? "" : SearchStep(moment)),
+            scanning ? looking : LocalLine(load));
+    }
+
+    //the line about this machine once the scan answered, null while it runs or when it failed
+    private string? LocalLine(ShelfLoad load) =>
+        load.Scan is { IsCompletedSuccessfully: true } done ? _loadLocal ??= LocalLineOf(done.Result) : null;
+
+    //the step line while only the serving probe is out
+    private const string ServingStep = "checking the model gatto is serving";
+
+    //the step line from the search's latest moment, the publishers named from the list it was given so no copy names one
+    private string SearchStep(SearchProgress? moment) => moment switch
+    {
+        null => "asking Hugging Face for models",
+        { Stage: SearchStage.Listing, Publishers: [var one] } => $"asking Hugging Face for {one}'s models",
+        { Stage: SearchStage.Listing } listing =>
+            $"asking Hugging Face for {listing.Total} publishers' models {Glyphs.Dot} {listing.Done} of {listing.Total}",
+        { } reading => $"reading the files of {reading.Total} {(reading.Total == 1 ? "model" : "models")} "
+            + $"{Glyphs.Dot} {reading.Done} of {reading.Total}",
+    };
+
+    //the discovery line the landed shelf will show, from the scan in hand, or null when it would say nothing
+    private string? LocalLineOf(ScanResult scan)
+    {
+        var found = scan.Found.Count(NotOnTheList);
+        return found > 0 ? DiscoveryRow(found, _addRoad).Text : null;
+    }
+
+    //every answer the loading shelf can give: its own landing, a chip or a term that restarts it, m, and the rest after a stop
+    private WizardScreen AnswerShelfLoading(string key)
+    {
+        if (_load is not { } load) return Search();
+
+        if (key == Landed) return Land(load);
+
+        //a local chip only filters what the scan finds, so the scan goes on and the frame lights the chip
+        if (load.Source == ShelfSource.Local && key.StartsWith(CtlFamily, StringComparison.Ordinal))
+        {
+            var local = key[CtlFamily.Length..];
+            _localFamily = local is "all" or "" ? null : local;
+            return LoadingScreen();
+        }
+
+        if (load.Search is not null && key.StartsWith(CtlFamily, StringComparison.Ordinal))
+        {
+            var chip = key[CtlFamily.Length..];
+            _family = chip is "all" or "" ? null : chip;
+            _search = null;
+            return RestartSearch(load);
+        }
+
+        //a term typed in the door restarts the load with that term, the chip rule applied to the door. a path or a repo id goes its own way
+        if (load.Search is not null && ShelfControls.Untyped(key) is { } typed
+            && Gatto.Cli.Setup.Tui.TypedDoor.Classify(typed) != Gatto.Cli.Setup.Tui.DoorInput.Path
+            && !HubUrl.TryParse(typed, out _))
+        {
+            _search = typed.Trim().Length == 0 ? null : typed.Trim();
+            if (_search is not null) _family = null;
+            return RestartSearch(load);
+        }
+
+        //m drops the Hub search and waits for the scan alone, which is already running
+        if (load.Source == ShelfSource.Hub && key == CtlSource && load.Scan is not null)
+        {
+            load.Stop?.Cancel();
+            _load = load with
+            {
+                Source = ShelfSource.Local, Search = null, Stop = null,
+                Then = () => DiscoveredScreen(heading: null, invitation: true),
+            };
+            return LoadingScreen();
+        }
+
+        CancelLoad();
+        return load.Source == ShelfSource.Hub ? AnswerSearch(key) : AnswerDiscovered(key);
+    }
+
+    //apply what the load found on the flow's thread, then draw the screen it was started for
+    private WizardScreen Land(ShelfLoad load)
+    {
+        _load = null;
+        if (load.Scan is { } scan) ApplyScan(Joined(scan, new ScanResult([], [])), load.ScanRoot);
+        if (load.Search is { } search) ApplySearch(Joined(search, new HubSearchOutcome([], null)), load.KeepIfEmpty);
+        WizardScreen shown;
+        _servingNow = load.Serving is { } serving ? (Joined(serving.Id, null), Joined(serving.Path, null)) : null;
+        try { shown = load.Then(); }
+        finally { _servingNow = null; }
+        if (!_stepAwaitsLoad) return shown;
+        _stepAwaitsLoad = false;
+        return KeepStepIfNoList(shown);
+    }
+
+    //a probe that threw is an answer with nothing in it, so the loading shelf still lands
+    private static T Joined<T>(Task<T> task, T empty)
+    {
+        try { return task.GetAwaiter().GetResult(); }
+        catch (Exception) { return empty; }
+    }
+
+    //report moments synchronously, Progress<T> posts to a captured context and would deliver a moment late
+    private sealed class SearchSink(Action<SearchProgress> onReport) : IProgress<SearchProgress>
+    {
+        public void Report(SearchProgress value) => onReport(value);
+    }
+
     //draw the Hub shelf over whatever RunSearch last found
     private WizardScreen SearchScreen()
     {
@@ -2586,7 +2894,7 @@ internal sealed class SetupFlow(ISetupProbes probes)
         var shown = Math.Min(_rows.Count, RowBudget);
 
         //read the loaded model once for the whole shelf, probing the running server per row costs a round trip per row
-        var loadedId = probes.LoadedModelId();
+        var loadedId = LoadedId();
 
         //read the machine once, pricing six rows against six reads gives six chances to disagree about the card
         var hardware = probes.Hardware() is { } probe
@@ -2668,6 +2976,10 @@ internal sealed class SetupFlow(ISetupProbes probes)
     //rescan on arrival, a download may have finished elsewhere since the first sweep. an old scan would deny the user their own file
     private WizardScreen ToLocalShelf()
     {
+        //the sweep runs behind the local loading shelf where the face draws one, since a disk scan takes seconds
+        if (LoadsShelfInBackground)
+            return StartLoad(scan: true, null, search: false, keepIfEmpty: null,
+                then: () => DiscoveredScreen(heading: null, invitation: true), source: ShelfSource.Local);
         //no source field here, the shelf view has it and a second field could disagree with the screen
         Sweep(null); //the Hub has no typed folder
         //pass invitation because pressing m asks about this machine, an empty answer gets its own screen
@@ -2681,9 +2993,9 @@ internal sealed class SetupFlow(ISetupProbes probes)
             ? Gatto.Core.Hardware.HardwareClassifier.Classify(probe) : null;
 
         //read once here, the answer comes from probing the running server
-        var loadedId = probes.LoadedModelId();
+        var loadedId = LoadedId();
         //read the loaded path too, a profile can name several files and a scan finds them all
-        var loadedPath = probes.LoadedModelPath();
+        var loadedPath = LoadedPath();
 
         return new ShelfView(
             //the badge register is keyed by file name, so a local row asks by the name on disk
@@ -3089,7 +3401,22 @@ internal sealed class SetupFlow(ISetupProbes probes)
         //use the parsed id, a pasted link resolves the repo it names
         var typedId = ((HubRef.Model)reference).RepoId;
 
-        switch (probes.EvaluateTypedId(typedId))
+        //the lookup reads the repo, its tree and its tables, so it runs behind the loading shelf with a line that names the id
+        if (LoadsShelfInBackground)
+        {
+            var lookup = Task.Run(() => probes.EvaluateTypedId(typedId));
+            return StartLoad(scan: false, null, search: false, keepIfEmpty: null,
+                then: () => AnswerLookup(Joined(lookup, (TypedIdOutcome)new TypedIdOutcome.Unreachable(false))),
+                other: lookup, step: $"looking up {typedId} on Hugging Face", serving: false);
+        }
+
+        return AnswerLookup(probes.EvaluateTypedId(typedId));
+    }
+
+    //three outcomes of a typed repo id, three sentences, a typo is not an outage
+    private WizardScreen AnswerLookup(TypedIdOutcome outcome)
+    {
+        switch (outcome)
         {
             case TypedIdOutcome.Ok ok:
                 return PickedFromHub(ok.Row);
@@ -3308,8 +3635,11 @@ internal sealed class SetupFlow(ISetupProbes probes)
 
     //the one entry point for the watch, the flow knows the walk and the runner must not branch on a screen key
     public bool PollWatch() =>
-        //a paused fetch resolves nothing, this arm must lead the ladder. without it the flow falls to asking the disk about a browser download
-        _modelPaused ? false
+        //a loading shelf resolves when its scan and its search have both answered, and no disk question is asked while it runs
+        _load is { } load ? (load.Scan?.IsCompleted ?? true) && (load.Search?.IsCompleted ?? true)
+            && (load.Other?.IsCompleted ?? true) && (load.Serving?.IsCompleted ?? true)
+        //a paused fetch resolves nothing, so this arm leads the rest. without it the flow falls to asking the disk about a browser download
+        : _modelPaused ? false
         : _fetching is { } fetch ? fetch.IsCompleted
         //task fields answer before disk questions, a task is running or it is not, the fields below are told apart by which are set
         : _modelFetch is { } model ? model.IsCompleted

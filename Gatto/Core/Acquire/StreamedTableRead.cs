@@ -63,7 +63,8 @@ internal static class StreamedTableRead
 
     //every candidate of a listed architecture gets its streamed bytes, and a failed read leaves that quant as it was
     public static async Task<HubTree> WithStreamedAsync(
-        HubTree tree, string? architecture, long? repoParams, Func<string, RangeFetch> fetchFor, CancellationToken ct)
+        HubTree tree, string? architecture, long? repoParams, Func<string, RangeFetch> fetchFor, CancellationToken ct,
+        HubReadStore? disk = null, string? repoId = null)
     {
         var list = StreamedTensors.Load();
         if (!list.Streams(architecture)) return tree;
@@ -74,9 +75,14 @@ internal static class StreamedTableRead
         var quants = await Task.WhenAll(tree.Quants.Select(async q =>
         {
             if (!candidates.Contains(q)) return q;
+            //a table read in an earlier run is not read again while the file's hash is unchanged
+            if (disk is not null && repoId is not null && disk.TryGetStreamed(repoId, q, list, out var kept))
+                return q with { StreamedBytes = kept };
             long? streamed;
             try { streamed = await BytesAsync(q, fetchFor, list, ct, gate).ConfigureAwait(false); }
             catch (Exception ex) when (ex is HttpRequestException or IOException or UriFormatException) { streamed = null; }
+            //only a whole read goes to disk, a failure is asked again next run
+            if (streamed is { } read && disk is not null && repoId is not null) disk.PutStreamed(repoId, q, list, read);
             return q with { StreamedBytes = streamed };
         })).ConfigureAwait(false);
         return tree with { Quants = quants };

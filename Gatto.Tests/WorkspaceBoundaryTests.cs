@@ -66,6 +66,81 @@ public class WorkspaceBoundaryTests
     [InlineData("[Environment]::GetFolderPath('UserProfile')")]
     public void A_command_whose_text_reaches_outside_LEAVES(string command) => Assert.True(Boundary.Leaves(command));
 
+    //the environment by every spelling PowerShell reads it with, the provider drive and the braced variable as much as $env:
+    [Theory]
+    [InlineData("$env:USERPROFILE")]
+    [InlineData("$Env:USERPROFILE")]
+    [InlineData("$ENV:Path")]
+    [InlineData("${env:USERPROFILE}")]
+    [InlineData("Get-Item Env:USERPROFILE")]
+    [InlineData("Get-Item -Path Env:USERPROFILE")]
+    [InlineData("gci env:")]
+    [InlineData("Get-ChildItem Env:\\")]
+    [InlineData("Get-Content env:Path")]
+    [InlineData("cd env:; ls")]
+    [InlineData("(Get-Item 'Env:USERPROFILE').Value")]
+    [InlineData("[System.Environment]::GetEnvironmentVariable('USERPROFILE')")]
+    [InlineData("[System.Environment]::GetEnvironmentVariables()")]
+    public void A_command_reading_the_environment_LEAVES(string command) => Assert.True(Boundary.Leaves(command));
+
+    //a name that only contains env reads no variable
+    [Theory]
+    [InlineData("Get-Content .env")]
+    [InlineData("Get-Content .\\conf\\dev.env")]
+    [InlineData("npm run build:env")]
+    [InlineData("python -m venv .venv")]
+    [InlineData("echo environment")]
+    public void A_command_that_only_names_env_STAYS(string command) => Assert.False(Boundary.Leaves(command));
+
+    //gatto's own variables are readable in every spelling the environment is screened in, each by its whole name
+    [Theory]
+    [InlineData("Write-Output $env:GATTO_SESSION_ID")]
+    [InlineData("Write-Output $Env:gatto_session_id")]
+    [InlineData("Write-Output ${env:GATTO_SESSION_ID}")]
+    [InlineData("Write-Output \"$env:GATTO_SESSION_ID $env:GATTO_SESSION_START\"")]
+    [InlineData("Get-Item Env:GATTO_SESSION_ID")]
+    [InlineData("Get-Item Env:\\GATTO_SESSION_ID")]
+    [InlineData("Get-Content Env:GATTO_SESSION_ID")]
+    [InlineData("cmd /c echo %GATTO_SESSION_ID%")]
+    [InlineData("[System.Environment]::GetEnvironmentVariable('GATTO_SESSION_ID')")]
+    [InlineData("[Environment]::GetEnvironmentVariable(\"GATTO_SESSION_ID\")")]
+    public void A_command_reading_only_gattos_own_variables_STAYS(string command) => Assert.False(Boundary.Leaves(command));
+
+    //a GATTO_ read beside any other, the whole drive, every variable at once, or a name that only contains GATTO_ still leaves
+    [Theory]
+    [InlineData("Write-Output $env:GATTO_SESSION_ID $env:USERPROFILE")]
+    [InlineData("Write-Output $env:GATTO_SESSION_ID$env:PATH")]
+    [InlineData("Get-Item Env:GATTO_SESSION_ID, Env:PATH")]
+    [InlineData("cmd /c echo %GATTO_SESSION_ID% %USERPROFILE%")]
+    [InlineData("cmd /c echo %A%GATTO_X%")]
+    [InlineData("gci env:")]
+    [InlineData("cd env:; ls")]
+    [InlineData("[System.Environment]::GetEnvironmentVariables()")]
+    [InlineData("[Environment]::GetEnvironmentVariable('GATTO_X'.Replace('GATTO_X', 'PATH'))")]
+    [InlineData("Write-Output $env:MY_GATTO_X")]
+    [InlineData("Get-Item Env:MY_GATTO_X")]
+    [InlineData("cmd /c echo %MY_GATTO_X%")]
+    [InlineData("[Environment]::GetEnvironmentVariable('MY_GATTO_X')")]
+    public void A_command_reading_more_than_gattos_own_variables_LEAVES(string command) => Assert.True(Boundary.Leaves(command));
+
+    //GATTO_HOME holds a path, so it leaves in every spelling, a wildcard that could list it included
+    [Theory]
+    [InlineData("Write-Output $env:GATTO_HOME")]
+    [InlineData("Write-Output $Env:gatto_home")]
+    [InlineData("Write-Output ${env:GATTO_HOME}")]
+    [InlineData("Get-Item Env:GATTO_HOME")]
+    [InlineData("Get-Item Env:\\gatto_home")]
+    [InlineData("Get-Content Env:GATTO_HOME")]
+    [InlineData("cmd /c echo %GATTO_HOME%")]
+    [InlineData("[System.Environment]::GetEnvironmentVariable('GATTO_HOME')")]
+    [InlineData("[Environment]::GetEnvironmentVariable(\"gatto_home\")")]
+    [InlineData("Get-ChildItem Env:GATTO_*")]
+    [InlineData("Get-ChildItem Env:GATTO_H*")]
+    [InlineData("Get-Item Env:GATTO_?OME")]
+    [InlineData("Get-ChildItem Env:GATTO_[H]OME")]
+    [InlineData("Write-Output $env:GATTO_SESSION_ID $env:GATTO_HOME")]
+    public void GATTO_HOME_LEAVES_IN_EVERY_SPELLING(string command) => Assert.True(Boundary.Leaves(command));
+
     [Fact]
     public void A_command_spelling_the_folder_or_a_grant_in_full_stays_and_one_naming_a_sibling_leaves()
     {

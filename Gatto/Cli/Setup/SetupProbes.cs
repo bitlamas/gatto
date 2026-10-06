@@ -54,6 +54,10 @@ internal interface ISetupProbes
     //the allowlisted search, or an empty outcome that names its cause. the wizard renders the rows as they come, with fit and badge already computed
     Gatto.Core.Acquire.HubSearchOutcome Search(Gatto.Core.Acquire.HubSearchRequest request);
 
+    //the same search reporting its progress and taking a token, so a screen can draw the wait and a chip can stop it. a probe that cannot answers the plain search
+    Gatto.Core.Acquire.HubSearchOutcome Search(Gatto.Core.Acquire.HubSearchRequest request,
+        IProgress<Gatto.Core.Acquire.SearchProgress>? progress, CancellationToken ct) => Search(request);
+
     //evaluate a repo id the user typed, the escape hatch that takes any id. a malformed id is refused as a typo, before it reaches the wire
     TypedIdOutcome EvaluateTypedId(string repoId);
 

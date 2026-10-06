@@ -28,4 +28,7 @@ public interface IToolContext
     string Cwd { get; }
     string HomePath { get; }
     IUserPrompter? Prompter { get; }
+
+    //the live session a shell child is told about, read at each call since /new and a resume change it. null where no session exists
+    Gatto.Core.Home.SessionIdentity? Session => null;
 }

@@ -54,9 +54,10 @@ public sealed class SessionBaselineRecordTests : IDisposable
         convo.AddUser("u");
         store.Save(convo);
         var saved = File.ReadAllLines(store.CurrentPath!)[0];
-        var built = TranscriptStore.BuildLines(new TranscriptModel("generalist"), convo, @"C:\proj")[0];
+        var built = TranscriptStore.BuildLines(new TranscriptModel("generalist"), convo, @"C:\proj", store.Identity)[0];
         Assert.Equal(saved, built);
         Assert.Contains("\"baseline\":", saved, StringComparison.Ordinal);
+        Assert.Contains($"\"session_id\":\"{store.Identity.IdText}\"", saved, StringComparison.Ordinal);
     }
 
     [Fact]

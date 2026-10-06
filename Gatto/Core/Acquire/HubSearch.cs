@@ -79,8 +79,11 @@ internal sealed record HubSearchRequest(
 //repos refused for what they are, counted so the shelf can say what it hid. keep it apart from hidden-by-fit: there is no control beside this count
 
 //trees fetched this session, keyed by repo id, so a chip switch is free. session-scoped and safe for six threads reading and writing it at once
-internal sealed class HubTreeMemo
+internal sealed class HubTreeMemo(HubReadStore? disk = null)
 {
+    //the reads kept between runs, asked after this memo and before the network. null keeps every read in memory only
+    public HubReadStore? Disk { get; } = disk;
+
     private readonly System.Collections.Concurrent.ConcurrentDictionary<string, HubTree> _trees =
         new(StringComparer.OrdinalIgnoreCase);
 
@@ -125,6 +128,12 @@ internal sealed class HubTreeMemo
 
 //what a typed repo id found and, when nothing, why: a repo with no weights gets its own sentence, checked before the tree call
 internal readonly record struct HubLookup(ShelfRow? Row, bool NoWeights);
+
+//which half of a search is running, the listing of the publishers or the reading of the models' files
+internal enum SearchStage { Listing, Reading }
+
+//one moment of a search for the screen that waits on it. both counts are measured while it runs, and the total can grow
+internal sealed record SearchProgress(SearchStage Stage, int Done, int Total, IReadOnlyList<string> Publishers);
 
 internal sealed record HubSearchOutcome(
     IReadOnlyList<ShelfRow> Rows, HubSearchCause? Cause, string? CuratedPublisher = null,
@@ -172,9 +181,23 @@ internal static class HubSearch
         HubSearchView view = HubSearchView.Broadened,
         SearchOrder? axis = null, bool includeUnfittable = false,
         int concurrency = HubConcurrency, HubTreeMemo? memo = null,
-        string? family = null, Families? families = null, string? search = null)
+        string? family = null, Families? families = null, string? search = null,
+        IProgress<SearchProgress>? progress = null)
     {
         var orgs = allowlist.OrgsFor(view);
+
+        //the counts move on six threads, so each report is made under one lock and a later report never shows a smaller count
+        var reportGate = new object();
+        int listed = 0, read = 0, reading = 0;
+        void Report(SearchStage stage)
+        {
+            if (progress is null) return;
+            lock (reportGate)
+                progress.Report(stage == SearchStage.Listing
+                    ? new SearchProgress(stage, listed, orgs.Count, orgs)
+                    : new SearchProgress(stage, read, reading, orgs));
+        }
+        Report(SearchStage.Listing);
 
         //a typed search clears the family, and with it the tier, since the query is the filter and tiers are family-scoped
         if (!string.IsNullOrWhiteSpace(search)) family = null;
@@ -189,7 +212,7 @@ internal static class HubSearch
         var orgFailures = 0;
 
         //the orgs are listed concurrently and merged in org order, and the token is a budget, so expiry keeps the listings already in hand
-        var listed = await Task.WhenAll(orgs.Select(async org =>
+        var answered = await Task.WhenAll(orgs.Select(async org =>
         {
             //cancelled while queueing is not a Hub failure, since the org was never asked and counting it would read as an outage
             try { await gate.WaitAsync(ct).ConfigureAwait(false); }
@@ -209,10 +232,15 @@ internal static class HubSearch
             {
                 return (Rows: null, Failed: true);
             }
-            finally { gate.Release(); }
+            finally
+            {
+                gate.Release();
+                lock (reportGate) listed++;
+                Report(SearchStage.Listing);
+            }
         })).ConfigureAwait(false);
 
-        foreach (var (orgRows, failed) in listed)
+        foreach (var (orgRows, failed) in answered)
         {
             if (failed) orgFailures++;
             if (orgRows is not null) listings.AddRange(orgRows);
@@ -273,6 +301,8 @@ internal static class HubSearch
             at += chunk.Count;
 
             reached += chunk.Count;
+            lock (reportGate) reading += chunk.Count;
+            Report(SearchStage.Reading);
 
             var trees = await Task.WhenAll(chunk.Select(async listing =>
             {
@@ -287,7 +317,7 @@ internal static class HubSearch
                 {
                     var got = await client.TreeAsync(listing.RepoId, ct).ConfigureAwait(false);
                     //a stop during the table reads leaves the tree unremembered, so the next search reads the tables itself
-                    try { got = await client.WithStreamedAsync(got, listing, ct).ConfigureAwait(false); }
+                    try { got = await client.WithStreamedAsync(got, listing, ct, memo?.Disk).ConfigureAwait(false); }
                     catch (OperationCanceledException) when (ct.IsCancellationRequested)
                     { return (Tree: (HubTree?)got, Failed: false, Spent: true); }
                     memo?.Put(listing.RepoId, got);
@@ -300,7 +330,7 @@ internal static class HubSearch
                     return (Tree: null, Failed: true, Spent: true);
                 }
                 finally { gate.Release(); }
-            })).ConfigureAwait(false);
+            }).Select(t => Counted(t))).ConfigureAwait(false);
 
             //count the calls the window actually spent, since a memoised row spends nothing and the window was already sized against the ceiling's room
             treeCalls += trees.Count(t => t.Spent);
@@ -341,6 +371,17 @@ internal static class HubSearch
             allowlist.CuratedPublisherFor(view), hiddenByFit,
             Math.Max(0, candidates.Count - reached), hiddenByKind,
             filled.HiddenOlder, filled.HiddenNewer, hiddenByFamily);
+
+        //a model counts as read when its tree and tables are in, whichever way its work ended
+        async Task<T> Counted<T>(Task<T> work)
+        {
+            try { return await work.ConfigureAwait(false); }
+            finally
+            {
+                lock (reportGate) read++;
+                Report(SearchStage.Reading);
+            }
+        }
 
         //whether the current generation still has no row, asked of the rows since the ceiling already stops the looking
         bool NeedsCurrentTier() =>
@@ -416,14 +457,18 @@ internal static class HubSearch
         var reads = await Task.WhenAll(rows.Select(async (row, i) =>
         {
             if (i >= room || ct.IsCancellationRequested)
-                return (Index: i, Header: (GgufHeader?)null);
+                return (Index: i, Facts: (StructureFacts?)null);
 
             //the memo first, on the same terms as a tree, and an absence is remembered so an unanswerable file is asked once
             if (memo is not null && memo.TryGetHeader(row.RepoId, row.PickedQuant.FileName, out var known))
-                return (Index: i, Header: known);
+                return (Index: i, Facts: FactsOf(known));
+
+            //the disk second, which costs no request and none of the gate
+            if (memo?.Disk is { } disk && disk.TryGetStructure(row.RepoId, row.PickedQuant, out var kept))
+                return (Index: i, Facts: kept);
 
             try { await gate.WaitAsync(ct).ConfigureAwait(false); }
-            catch (OperationCanceledException) { return (Index: i, Header: (GgufHeader?)null); }
+            catch (OperationCanceledException) { return (Index: i, Facts: (StructureFacts?)null); }
 
             try
             {
@@ -431,24 +476,26 @@ internal static class HubSearch
                     .StructureHeaderAsync(row.RepoId, row.PickedQuant.RepoPath, ct)
                     .ConfigureAwait(false);
                 memo?.PutHeader(row.RepoId, row.PickedQuant.FileName, got);
-                return (Index: i, Header: got);
+                //only an answer goes to disk, since a failed read kept there would blank this file's cell until it changes
+                if (FactsOf(got) is { } read) memo?.Disk?.PutStructure(row.RepoId, row.PickedQuant, read);
+                return (Index: i, Facts: FactsOf(got));
             }
             catch (OperationCanceledException) when (ct.IsCancellationRequested)
-            { return (Index: i, Header: (GgufHeader?)null); }
+            { return (Index: i, Facts: (StructureFacts?)null); }
             finally { gate.Release(); }
         })).ConfigureAwait(false);
 
         var built = new ShelfRow[rows.Count];
-        foreach (var (index, header) in reads)
-            built[index] = header is null
+        foreach (var (index, facts) in reads)
+            built[index] = facts is null
                 ? rows[index]
-                : rows[index] with
-                {
-                    Structure = ModelStructure.Cell(header),
-                    Experts = ModelStructure.Experts(header),
-                };
+                : rows[index] with { Structure = facts.Cell, Experts = facts.Experts };
         return built;
     }
+
+    //the two row values a header decides, or null when there was no header to read
+    private static StructureFacts? FactsOf(GgufHeader? header) =>
+        header is null ? null : new StructureFacts(ModelStructure.Cell(header), ModelStructure.Experts(header));
 
     //the one place a view is paired with its axis, and now only the default, since the sort control lets a user choose another
     public static SearchOrder OrderFor(HubSearchView view) => view switch

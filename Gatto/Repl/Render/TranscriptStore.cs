@@ -11,10 +11,11 @@ namespace Gatto.Repl.Render;
 public static class TranscriptStore
 {
     public static void Save(TranscriptModel model, Conversation convo, SessionStore store) =>
-        store.WriteLines(BuildLines(model, convo, store.Cwd));
+        store.WriteLines(BuildLines(model, convo, store.Cwd, store.Identity));
 
-    //the cwd defaults to null so a caller building lines alone writes the same bytes. save, the only production caller, passes SessionStore.Cwd through
-    public static IReadOnlyList<string> BuildLines(TranscriptModel model, Conversation convo, string? cwd = null)
+    //the cwd and the identity default to null so a caller building lines alone writes the same bytes. save, the only production caller, passes the store's through
+    public static IReadOnlyList<string> BuildLines(TranscriptModel model, Conversation convo, string? cwd = null,
+        SessionIdentity? identity = null)
     {
         var byAnchor = new Dictionary<ChatMessage, List<EventItem>>(ReferenceEqualityComparer.Instance);
         var leading = new List<EventItem>();
@@ -33,7 +34,7 @@ public static class TranscriptStore
         foreach (var ev in leading) lines.Add(EventJson(ev));
         foreach (var m in convo.Messages)
         {
-            lines.Add(SessionStore.ChatJson(m, cwd, convo.Baseline));
+            lines.Add(SessionStore.ChatJson(m, cwd, convo.Baseline, identity));
             if (byAnchor.TryGetValue(m, out var evs)) foreach (var ev in evs) lines.Add(EventJson(ev));
         }
         return lines;   //an event whose After is no longer in the convo is dropped

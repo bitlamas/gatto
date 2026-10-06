@@ -13,7 +13,8 @@ internal readonly record struct Screen(
     string? Armed = null,
     IReadOnlyList<PaintedRow>? Hero = null,
     string? Working = null,
-    int? StripAt = null);
+    int? StripAt = null,
+    string? Command = null);   //the title row's name when the screen's differs from the face's command
 
 //what the door says on its right, kept beside the keys it names. a hint for a key that does nothing is as wrong as a key nobody is told about
 internal static class DoorHints

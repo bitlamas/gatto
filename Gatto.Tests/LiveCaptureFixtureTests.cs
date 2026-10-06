@@ -30,9 +30,10 @@ public class LiveCaptureFixtureTests
     {
         await using var server = new FakeOpenAiServer();
         server.PropsResponse = new FakeResponse(Body: ReadFixture(PropsFixture));
-        using var http = new HttpClient();
+        using var http = new HttpClient { Timeout = Timeout.InfiniteTimeSpan };
 
-        var loaded = await ServeProbe.ProbeAsync(http, server.BaseUrl, CancellationToken.None);
+        //the assertions read the probe's answer, so its deadline is long, or the suite's load turns them into a race
+        var loaded = await ServeProbe.ProbeAsync(http, server.BaseUrl, CancellationToken.None, deadline: TimeSpan.FromSeconds(30));
 
         Assert.NotNull(loaded);
         Assert.EndsWith("laguna-s-2.1-Q4_K_M.gguf", loaded!.ModelPath, StringComparison.Ordinal);

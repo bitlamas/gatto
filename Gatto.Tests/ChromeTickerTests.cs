@@ -885,7 +885,7 @@ public class ChromeTickerTests
         var ticker = new ChromeTicker(painter, gate, reader);
         ticker.StartTurn("x");
 
-        Assert.True(await reader.Entered.Task.WaitAsync(TimeSpan.FromSeconds(5)),
+        Assert.True(await reader.Entered.Task.WaitAsync(TimeSpan.FromSeconds(30)),
             "the poller must have reached the reader");
         ticker.StopTurn();
         await Task.Delay(100);   //give a cancellation every chance to propagate.

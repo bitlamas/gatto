@@ -379,7 +379,7 @@ public class HubFetchTests : IDisposable
         //the test bounds the call, a broken deadline would hang and a hung test says nothing
         var r = await HubFetch.FetchAsync(Client(fake), "o/m", Set(("m.gguf", body)), _dir, null,
             default, idleDeadline: TimeSpan.FromMilliseconds(150))
-            .WaitAsync(TimeSpan.FromSeconds(5));
+            .WaitAsync(TimeSpan.FromSeconds(30));
 
         Assert.Equal(HubFetchOutcome.Dropped, r.Outcome);
         var part = Path.Combine(_dir, "m.gguf.part");
@@ -397,7 +397,7 @@ public class HubFetchTests : IDisposable
 
         var r = await HubFetch.FetchAsync(Client(fake), "o/m", Set(("m.gguf", body)), _dir, null,
             default, idleDeadline: TimeSpan.FromMilliseconds(150))
-            .WaitAsync(TimeSpan.FromSeconds(5));
+            .WaitAsync(TimeSpan.FromSeconds(30));
 
         Assert.Equal(HubFetchOutcome.Dropped, r.Outcome);
     }

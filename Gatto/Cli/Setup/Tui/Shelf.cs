@@ -162,7 +162,8 @@ internal static class Shelf
     {
         var g = glyphs ?? GlyphSet.Unicode;
         var mw = ModelWidth(v, g);
-        var runs = FitMarks.HasRunsColumn(v.Shape);
+        //a loading view does not know the machine yet, so its header has no runs column until the rows land
+        var runs = !v.Loading && FitMarks.HasRunsColumn(v.Shape);
         //the local shelf has no params to show, so its header, cell and gap stay out and the model column takes the freed cells
         var paramsCol = v.Source != ShelfSource.Local;
         var tail = Math.Max(0, TailChrome(v) - 2);
@@ -294,7 +295,7 @@ internal static class Shelf
     //the whole middle of the screen: chips, the table beside its pane, the count line. file is -1 for wherever the knee is
     public static IReadOnlyList<PaintedRow> Body(
         ShelfView v, int row, int chip, int file, Region focus, int width, int build = -1,
-        GlyphSet? glyphs = null)
+        GlyphSet? glyphs = null, PaintedRow? working = null)
     {
         var g = glyphs ?? GlyphSet.Unicode;
         //the facts list must line up with the rows. a copy that sets only Rows keeps the old facts, and the readers below guard the index so a short list goes unnoticed
@@ -311,6 +312,16 @@ internal static class Shelf
                 Chips(v, chip, focus, width, glyphs),
                 PaintedRow.Of(""),
             };
+
+        //a loading shelf draws the table's header with the purr and the step line where the rows will be
+        if (v.Loading)
+        {
+            rows.AddRange(Table(v, row, focused: false, glyphs));
+            rows.Add(PaintedRow.Of(""));
+            rows.Add(PaintedRow.Of(""));
+            if (working is { } purr) rows.Add(purr);
+            return rows;
+        }
 
         //an empty shelf keeps the chips row above, because a search that found nothing still has a family default to report
         if (v.Rows.Count == 0)
@@ -353,6 +364,18 @@ internal static class Shelf
         return rows;
     }
 
+    //the purr and the step line, indented to where a row's text starts. the elapsed is the face's own measurement, so the line quotes no fixed number
+    public static PaintedRow LoadingRow(string step, long elapsedMs, GlyphSet? glyphs)
+    {
+        var g = glyphs ?? GlyphSet.Unicode;
+        var ms = Math.Max(0, elapsedMs);
+        return new PaintedRow([
+            new Run(new string(' ', 2 + NumberWidth) + Gatto.Repl.Cats.Face(g) + " "
+                + Gatto.Repl.Render.PurrFrames.Short.At(ms), RunInk.Accent),
+            new Run("   " + (step.Length > 0 ? $"{step} {g.Dot} " : "")
+                + Gatto.Repl.Render.ChromeTicker.FormatElapsed(ms), RunInk.Dim)]);
+    }
+
     //two columns with a divider between them, as many rows as the taller side has. the divider accents when the keys are in the pane
     private static IReadOnlyList<PaintedRow> Beside(
         IReadOnlyList<PaintedRow> left, IReadOnlyList<PaintedRow> right, int leftWidth, bool paneFocused,
@@ -376,7 +399,8 @@ internal static class Shelf
 
     //where the keys start. the door for a search that found nothing or a shelf with no ladder, the chips row for a chip
     public static Region Opening(ShelfView v) =>
-        v.Rows.Count > 0 ? Region.List
+        //a loading shelf opens on the list, so Esc arms at once as it does on a shelf with rows
+        v.Rows.Count > 0 || v.Loading ? Region.List
             : !v.Searched && v.Families is { Count: > 0 } ? Region.Families
             : Region.Search;
 

@@ -72,6 +72,10 @@ internal sealed class TuiWizardSurface : IWizardSurface, IDisposable
     //the last painted screen's composer, kept so a pulse can republish it with a working row
     private Func<int, int, Screen>? _lastComposer;
 
+    //the last loading frame's composer by elapsed time and the moment its wait began, null after any other paint
+    private Func<long, Func<int, int, Screen>>? _lastLoading;
+    private long _lastLoadingBegan;
+
     //when the last question was answered, so the drain can judge the wait. 0 would read as answered, since every fake clock starts at 0
     private long? _answeredAtMs;
 
@@ -145,6 +149,13 @@ internal sealed class TuiWizardSurface : IWizardSurface, IDisposable
             if (_live is null) return;
 
             var elapsed = _nowMs() - _pulseBeganMs;
+
+            //a loading frame already purrs, so the tick moves that purr on and adds none to the title row
+            if (_lastLoading is { } moving)
+            {
+                PaintCore(moving(Math.Max(0, _nowMs() - _lastLoadingBegan)));
+                return;
+            }
 
             //the setup face republishes the frame with the purr in the title row, through Widget.Purr so the spelling stays one
             if (_lastComposer is not { } setupComposer) return;
@@ -275,6 +286,9 @@ internal sealed class TuiWizardSurface : IWizardSurface, IDisposable
     //this face paints a Choice's body rows, so the flow has no reason to narrate the next screen
     public bool ShowsChoiceBodyRows => true;
 
+    //this face draws the purr and the step line inside a loading shelf
+    public bool DrawsLoadingShelf => true;
+
     //the rows on screen, plain, kept so a repaint can be a diff in place
     private IReadOnlyList<PaintedRow> _painted = [];
 
@@ -289,6 +303,7 @@ internal sealed class TuiWizardSurface : IWizardSurface, IDisposable
     {
         //the flow has something to show, so stop the purr before anything is written
         StopPulse();
+        lock (_writeGate) _lastLoading = null;
         PaintCore(compose);
     }
 
@@ -297,7 +312,8 @@ internal sealed class TuiWizardSurface : IWizardSurface, IDisposable
     {
         var screen = compose(Width, RowsAvailable);
         //a new screen is a new wait, so a probe that answers at once draws no purr from an earlier slow one
-        var whole = ScreenPainter.Paint(screen, Width, _version, _build, _glyphs, out var spot, _command);
+        var whole = ScreenPainter.Paint(screen, Width, _version, _build, _glyphs, out var spot,
+            screen.Command ?? _command);
         var next = Fit(whole, RowsAvailable);
 
         lock (_writeGate)
@@ -370,15 +386,18 @@ internal sealed class TuiWizardSurface : IWizardSurface, IDisposable
     //the IWizardSurface members below
 
     public string? Choose(WizardScreen.Choice c, Func<bool>? watch = null, Func<FetchTick?>? tick = null,
-        Func<CheckTick?>? check = null)
+        Func<CheckTick?>? check = null) => Choose(c, watch, tick, check, null);
+
+    public string? Choose(WizardScreen.Choice c, Func<bool>? watch, Func<FetchTick?>? tick,
+        Func<CheckTick?>? check, Func<ShelfLoadTick?>? load)
     {
         DrainIfTheWaitWasLong();
-        try { return ChooseCore(c, watch, tick, check); }
+        try { return ChooseCore(c, watch, tick, check, load); }
         finally { Answered(); }
     }
 
     private string? ChooseCore(WizardScreen.Choice c, Func<bool>? watch, Func<FetchTick?>? tick,
-        Func<CheckTick?>? check)
+        Func<CheckTick?>? check, Func<ShelfLoadTick?>? load)
     {
         var regions = RegionsFor(c);
         //the ring opens on the shelf's region when there is one, in both builders. name Region.List, regions[0] is the strip on every screen that draws one
@@ -401,8 +420,13 @@ internal sealed class TuiWizardSurface : IWizardSurface, IDisposable
             var elapsedMs = c.Watching ? Math.Max(0, _nowMs() - began) : (long?)null;
             var tickNow = tick?.Invoke();
             var checkNow = check?.Invoke();
-            Paint((w, h) => ScreenFor(shown, frozen, cursor, tickNow, at, w, h,
-                elapsedMs, checkNow, stripAt));
+            var loadNow = load?.Invoke();
+            Func<int, int, Screen> At(long? ms) => (w, h) => c.Starting
+                ? StartFor(shown, ms ?? 0, loadNow)
+                : ScreenFor(shown, frozen, cursor, tickNow, at, w, h, ms, checkNow, stripAt, loadNow);
+            Paint(At(elapsedMs));
+            //kept after the paint, so the pulse between this screen and the next moves this frame's purr
+            if (Loads(c)) lock (_writeGate) { _lastLoading = ms => At(ms); _lastLoadingBegan = began; }
 
             //on a watching screen the thing can turn up with no key pressed, so look for it between key checks
             var next = NextKey(c, watch);
@@ -451,6 +475,9 @@ internal sealed class TuiWizardSurface : IWizardSurface, IDisposable
 
             //any other key disarms, or a warning would outlive the state it describes
             _chord.Disarm();
+
+            //the start-up screen's footer names Esc alone, so no other key does anything
+            if (c.Starting) continue;
 
             //a watching screen's own keys are read from the same field as the footer and taken above the switch
             if (c.Watching && c.KeysOnly)
@@ -764,10 +791,12 @@ internal sealed class TuiWizardSurface : IWizardSurface, IDisposable
         {
             if (watch!()) return (true, null);
 
+            //a loading shelf repaints at the purr's own pace, since its count moves and its load can land in a fraction of the download watch's interval
+            var interval = Loads(c) ? PurrEvery : Watch.Interval;
             //wait for the shorter of the watch interval and the armed chord, so a press after the window stops instead of re-arming
             budget = _chord.RemainingMs(_nowMs()) is { } armed
-                ? ArmWait(Math.Min(Watch.Interval.TotalMilliseconds, armed))
-                : Watch.Interval;
+                ? ArmWait(Math.Min(interval.TotalMilliseconds, armed))
+                : interval;
         }
         else
         {
@@ -1131,20 +1160,63 @@ internal sealed class TuiWizardSurface : IWizardSurface, IDisposable
     //how long the most recently resolved watch ran, kept on the face since only the loop can time it
     private long _watchedMs;
 
+    //a loading view purrs inside its own frame, the shelf in its list and the start-up screen beside its cat
+    private static bool Loads(WizardScreen.Choice c) => c.Starting || c.Shelf is { Loading: true };
+
+    //the start-up screen's title row names the program, since the command the user typed is not chosen on it
+    private const string StartingCommand = "gatto";
+
+    //four cells between the cat and the lines beside it
+    private const string CatGap = "    ";
+
+    //the start-up screen: the cat, and beside its last rows the purr, the screen's words and the step line, the strip blank and Esc the one key
+    private Screen StartFor(WizardScreen.Choice c, long elapsedMs, ShelfLoadTick? load)
+    {
+        var cat = c.Hero ?? [];
+        var step = load?.Step is { Length: > 0 } s ? $"> {s} {_glyphs.Dot} " : "> ";
+        List<Run> purr = [new(Cats.Face(_glyphs) + " " + PurrFrames.Short.At(elapsedMs), RunInk.Accent)];
+        List<IReadOnlyList<Run>> beside =
+        [
+            purr,
+            .. (c.BodyRows ?? []).Select(r => (IReadOnlyList<Run>)[new Run(r.Text)]),
+            [new Run(step + ChromeTicker.FormatElapsed(elapsedMs), RunInk.Dim)],
+        ];
+
+        //the lines sit beside the cat's last rows, so the purr is level with the face
+        var column = cat.Count == 0 ? 0 : cat.Max(l => Gatto.Terminal.UnicodeWidth.Of(l));
+        var rows = Math.Max(cat.Count, beside.Count);
+        var skip = rows - beside.Count;
+        var hero = new List<PaintedRow> { PaintedRow.Of("", fit: RowFit.Structural) };
+        for (var i = 0; i < rows; i++)
+        {
+            var left = i < cat.Count ? cat[i] : "";
+            if (i < skip) { hero.Add(PaintedRow.Of(left, RunInk.Accent)); continue; }
+            var pad = new string(' ', column - Gatto.Terminal.UnicodeWidth.Of(left));
+            hero.Add(new PaintedRow([new Run(left, RunInk.Accent), new Run(pad + CatGap), .. beside[i - skip]]));
+        }
+
+        return new Screen([], Region.List, null, [], null, [new FooterKey("Esc", "leave")],
+            Armed: _chord.ArmedAt(_nowMs()) == Chord.Quit ? "Esc again to leave" : null,
+            Hero: hero, Command: StartingCommand);
+    }
+
     private Screen ScreenFor(WizardScreen.Choice c, FocusRing ring, int cursor, FetchTick? t,
         ShelfCursors at, int width, int allowance, long? watching = null, CheckTick? k = null,
-        int? stripAt = null) => new(
+        int? stripAt = null, ShelfLoadTick? load = null) => new(
         StripAt: stripAt,
         Sections: c.Strip,
         Focused: ring.Current,
         Title: c.Question,
         //the prose rows come first, since the options alone leave a screen with its questions and none of its words
         Body: [
-            .. BodyAbove(c, t, k, width),
+            .. BodyAbove(c, t, k, width, load),
             //the shelf replaces the option rows, since the models are the options, and its escape rows follow as ordinary options
             .. c.Shelf is { } sv
-                ? [.. Shelf.Body(Windowed(sv, cursor, allowance, Outside(c, t, k, width, sv, cursor)), cursor, at.Chip, at.File,
-                       ring.Current, width, at.Build, _glyphs),
+                ? [.. Shelf.Body(Windowed(sv, cursor, allowance, Outside(c, t, k, width, sv, cursor, load)), cursor, at.Chip, at.File,
+                       ring.Current, width, at.Build, _glyphs,
+                       //a loading shelf's purr sits in the list, timed on the face's clock like every watch
+                       working: sv.Loading && watching is { } loadingMs
+                           ? Shelf.LoadingRow(load?.Step ?? "", loadingMs, _glyphs) : (PaintedRow?)null),
                    //the escape rows index the full shelf, so the window must not move their option index. a cursor is drawn only while the ring holds a list
                    .. Escapes(_glyphs, c, sv, ring.Has(Region.List) ? cursor : -1)]
                 : c.KeysOnly ? [] : c.Options.Select((o, i) => Option(_glyphs, o, i, cursor, c.Unnumbered)),
@@ -1168,7 +1240,7 @@ internal sealed class TuiWizardSurface : IWizardSurface, IDisposable
         //what sits right of the keys: a screen's own sentence, which is drawn whole or not at all, or the shelf's marks
         Legend: c.Legend is { Length: > 0 } said ? new Legend(LegendKind.Sentence, said)
             //a shelf that fetched nothing draws no legend either, since there are no marks to explain, while an empty search keeps one
-            : c.Shelf is { NothingFetched: false } lv ? FitMarks.LegendFor(lv.Shape, _glyphs) : null,
+            : c.Shelf is { NothingFetched: false, Loading: false } lv ? FitMarks.LegendFor(lv.Shape, _glyphs) : null,
         //the armed sentence belongs to the screen: leaving setup costs nothing, and a stopped fetch prices what has landed
         Armed: _chord.ArmedAt(_nowMs()) != Chord.Quit ? null
             //a screen's own declared price comes first in the ladder, so a screen that sets one is never silently overruled
@@ -1182,17 +1254,22 @@ internal sealed class TuiWizardSurface : IWizardSurface, IDisposable
         Hero: c.Hero is { Count: > 0 } cat ? [.. cat.Select(l => PaintedRow.Of(l, RunInk.Accent))] : null,
         //the purr in its four states: a live tick wins, a bare watch times on the face's clock, then the two settled forms
         Working: t is { } working ? Widget.Purr(working, _glyphs)
-            //the frame set is the screen's, since it says how long the wait can run
-            : watching is { } waiting
+            //the frame set is the screen's, since it says how long the wait can run. a loading shelf purrs in its list instead
+            : watching is { } waiting && !Loads(c)
                 ? Widget.Purr(waiting, c.FullPurr ? _fullPurr : PurrFrames.Short, _glyphs)
             : c.PurredMs is { } purred ? Widget.Settled(purred, _glyphs)
             : c.PurredSinceWatch ? Widget.Settled(_watchedMs, _glyphs)
             : null);
 
     //the body rows above the shelf or the options, composed in one place so the row window can count them
-    private IReadOnlyList<PaintedRow> BodyAbove(WizardScreen.Choice c, FetchTick? t, CheckTick? k, int width) =>
+    private IReadOnlyList<PaintedRow> BodyAbove(WizardScreen.Choice c, FetchTick? t, CheckTick? k, int width,
+        ShelfLoadTick? load = null) =>
     [
         .. Rows(c.BodyRows, width),
+        //the loading shelf's line about this machine, in the place the discovery line takes once the shelf lands
+        .. c.Shelf is { Loading: true } && load?.Local is { Length: > 0 } local
+            ? Rows([new WizardRow(local, RowTone.Aside), ""], width)
+            : (IReadOnlyList<PaintedRow>)[],
         //the machine's fact rows are composed here, since they fold at the live width and the flow has none
         .. c.Machine is { } m
             //the fact rows take no right margin, since they fold at the width and wrapping one would break the label column
@@ -1226,6 +1303,7 @@ internal sealed class TuiWizardSurface : IWizardSurface, IDisposable
     ];
 
     //the shelf frame's non-model rows, the body above and the escapes below, which the row window pays for with model rows
-    private int Outside(WizardScreen.Choice c, FetchTick? t, CheckTick? k, int width, ShelfView sv, int cursor) =>
-        BodyAbove(c, t, k, width).Count + Escapes(_glyphs, c, sv, cursor).Count();
+    private int Outside(WizardScreen.Choice c, FetchTick? t, CheckTick? k, int width, ShelfView sv, int cursor,
+        ShelfLoadTick? load = null) =>
+        BodyAbove(c, t, k, width, load).Count + Escapes(_glyphs, c, sv, cursor).Count();
 }

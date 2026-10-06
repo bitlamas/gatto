@@ -430,7 +430,7 @@ public sealed class Repl(
         int? contextBudget = null, Action<string>? onSummary = null,
         Action<MemoryPiggyback.Extraction>? bankCandidates = null, string? doNotRepeat = null)
     {
-        var oldPath = sessions?.CurrentPath;          //read before StartNew, which clears the path
+        var oldPath = sessions?.CurrentPath;          //read before StartSuccessor, which clears the path
         var lastExchange = LastTextExchange(convo);
         var rawSummary = await compactor.SummarizeAsync(
             convo, observer, ct, windowTokens: contextBudget, doNotRepeat: doNotRepeat);
@@ -449,7 +449,7 @@ public sealed class Repl(
         //the compact block stays final, a later block would be swallowed into the resume graft --continue builds
         var composed = recomposeSystem();             //a fresh read of the context files on disk, so the prompt matches what is there now
         var systemText = composed.Text + "\n\n" + Compactor.BuildContext(summary, oldPath ?? "(unsaved session)", lastExchange);
-        sessions?.StartNew();                         //later saves open a new file, so the old transcript is left alone
+        sessions?.StartSuccessor();                   //later saves open a new file of the same session, so the old transcript is left alone
         var fresh = new Conversation(systemText, baseline: composed.Baseline);
         sessions?.Save(fresh);
         return fresh;

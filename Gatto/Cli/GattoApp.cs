@@ -18,11 +18,12 @@ using Gatto.Terminal;
 
 namespace Gatto.Cli;
 
-file sealed class AppToolContext(string cwd, string home, IUserPrompter? prompter) : IToolContext
+file sealed class AppToolContext(string cwd, string home, IUserPrompter? prompter, SessionStore sessions) : IToolContext
 {
     public string Cwd => cwd;
     public string HomePath => home;
     public IUserPrompter? Prompter => prompter;
+    public SessionIdentity? Session => sessions.Identity;
 }
 
 //the role, endpoint, model and composition resolved for a launch or a /role switch, plus the memory index lines its budget dropped
@@ -537,7 +538,7 @@ public static class GattoApp
                 replPicker = new PlainListPicker(Console.Out, glyphs);
             }
         }
-        var toolCtx = new AppToolContext(cwd, home, prompter);
+        var toolCtx = new AppToolContext(cwd, home, prompter, sessions);
         var permissions = PermissionStore.Load(home, cwd, out var permWarning);   //a corrupt permissions file loads as no grants, so every mutating tool prompts, with a warning
         if (permWarning is not null) Console.Error.WriteLine($"! {permWarning}");
 
@@ -1273,6 +1274,8 @@ public static class GattoApp
         string? resumedFrom = null;
         if (continuePath is { } contPath && sessions.LoadPath(contPath) is { } prior)
         {
+            //a resume is the same session, so its next file and its shell children carry the resumed one's identity
+            if (SessionStore.IdentityOf(contPath) is { } resumed) sessions.Adopt(resumed);
             //reload the prior transcript without its stored system message, the decision below picks the one that leads
             convo.Load(prior.Where(m => m.Role != "system"));
 

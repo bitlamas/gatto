@@ -23,6 +23,9 @@ internal static class SetupRunner
         //the same seam for the source switch and the choice rows, facts about the face's keyboard. a literal here once passed the whole suite, so tie it to the face
         flow.CanSwitchSource = face.CanSwitchSource;
         flow.FaceShowsChoiceBodyRows = face.ShowsChoiceBodyRows;
+        flow.LoadsShelfInBackground = face.DrawsLoadingShelf;
+        //both roads, gatto model and gatto setup, open the model step on the start-up screen
+        flow.OpensOnLoadingScreen = face.DrawsLoadingShelf;
 
         var screen = modelSegmentOnly ? flow.StartAtModelSegment() : flow.Start();
 
@@ -63,7 +66,8 @@ internal static class SetupRunner
                     //the watch predicate, its tick and the check's moments are wired here, from one hand and one clock. null on a watch that is not a download
                     if (face.Choose(c, c.Watching ? flow.PollWatch : null,
                             c.Watching ? flow.PollTick : null,
-                            c.Watching ? flow.PollCheck : null) is not { } key)
+                            c.Watching ? flow.PollCheck : null,
+                            c.Watching ? flow.PollShelfLoad : null) is not { } key)
                         return Left(face, flow);
                     screen = flow.Answer(key);
                     break;

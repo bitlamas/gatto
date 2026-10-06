@@ -64,6 +64,21 @@ public sealed class WorkspaceGateTests : IDisposable
         await Call(gate, "shell", new { command = "Get-ChildItem . -Recurse" });
     }
 
+    //with --yes the environment is outside by every spelling, the provider drive and the braced variable as much as $env:
+    [Theory]
+    [InlineData("Write-Output $env:USERPROFILE")]
+    [InlineData("Get-Item Env:USERPROFILE")]
+    [InlineData("gci env:")]
+    [InlineData("Write-Output $Env:USERPROFILE")]
+    [InlineData("Write-Output ${env:USERPROFILE}")]
+    [InlineData("[System.Environment]::GetEnvironmentVariable('USERPROFILE')")]
+    public async Task With_yes_a_command_reading_the_environment_is_refused(string command)
+    {
+        var ex = await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            Call(Gate(autoYes: true), "shell", new { command }));
+        Assert.Equal(LeavesWords, ex.Message);
+    }
+
     [Fact]
     public async Task Without_yes_a_read_outside_the_working_folder_passes()
     {

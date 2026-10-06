@@ -236,8 +236,8 @@ public sealed class Compactor(IChatClient client, string model, RequestShape? sh
     {
         //strip the memory section here, a mid-turn compaction never banks and its scaffolding must stay out of the rebuilt prefix
         summary = MemoryPiggyback.Extract(summary).StrippedSummary;
-        var oldPath = sessions?.CurrentPath;                 //read before StartNew, which clears the path
-        sessions?.StartNew();                                //later saves open a new file, so the old transcript is left alone
+        var oldPath = sessions?.CurrentPath;                 //read before StartSuccessor, which clears the path
+        sessions?.StartSuccessor();                          //later saves open a new file of the same session, so the old transcript is left alone
         //the compact block must stay the final append, --continue slices from the last ContextMarker to the end when it grafts a session
         var composed = recompose();                          //a fresh read of the context files on disk, so the prompt matches what is there now
         var systemText = composed.Text + "\n\n" + BuildContext(summary, oldPath ?? "(unsaved session)", lastExchange: null);

@@ -44,8 +44,20 @@ internal sealed class WizardRig(int width = 80, Gatto.Terminal.GlyphSet? glyphs 
         _keys.AddRange(keys);
         return _tui = new Gatto.Cli.Setup.Tui.TuiWizardSurface(
             Surface, new Keys(this, [.. _keys]), T, "0.5.0", "1a2b3c4",
-            clock: isWatchPoll => new RigClock(this, isWatchPoll), glyphs: glyphs);
+            clock: isWatchPoll => new RigClock(this, isWatchPoll), glyphs: glyphs,
+            pulse: Pulse is { } beat ? () => beat : null,
+            nowMs: PollTime ? () => Interlocked.Read(ref _pollNow) : null);
     }
+
+    //the pulse the next TuiFace purrs with between screens, none by default so no frame changes off the clock
+    public FakePulse? Pulse { get; set; }
+
+    //the next face's clock moves only by the polls that took no key. a chord's window is then counted in polls, and load cannot stretch it
+    public bool PollTime { get; set; }
+    private long _pollNow;
+
+    //a poll that took no key spent its whole budget
+    private void Spent(TimeSpan budget) => Interlocked.Add(ref _pollNow, (long)budget.TotalMilliseconds);
 
     //the clock never reports a key and never sleeps, so the run stays deterministic, and only its snapshots capture a watch screen's frames
     private sealed class RigClock(WizardRig rig, bool isWatchPoll) : IPollClock
@@ -80,11 +92,16 @@ internal sealed class WizardRig(int width = 80, Gatto.Terminal.GlyphSet? glyphs 
             //a pending key resolves a chord wait at once, since no background predicate races for it.
             else if (rig.KeysPending > 0) return true;
 
-            if (++_ticks <= Budget) return false;
+            if (++_ticks <= Budget)
+            {
+                rig.Spent(budget);
+                return false;
+            }
             _late ??= System.Diagnostics.Stopwatch.StartNew();
             if (_late.Elapsed < LateCeiling)
             {
                 Thread.Sleep(10);
+                rig.Spent(budget);
                 return false;
             }
             throw new InvalidOperationException(

@@ -249,9 +249,11 @@ internal sealed class HubClient(HttpClient http)
     }
 
     //each candidate of a listed architecture comes back with its streamed bytes, and a repo of any other architecture costs no request here
-    public Task<HubTree> WithStreamedAsync(HubTree tree, HubListing listing, CancellationToken ct) =>
+    public Task<HubTree> WithStreamedAsync(HubTree tree, HubListing listing, CancellationToken ct,
+        HubReadStore? disk = null) =>
         StreamedTableRead.WithStreamedAsync(tree, listing.Arch, listing.Params,
-            file => HttpRangeFetch.Create(http, new Uri(HubUrl.Resolve(listing.RepoId, file))), ct);
+            file => HttpRangeFetch.Create(http, new Uri(HubUrl.Resolve(listing.RepoId, file))), ct,
+            disk, listing.RepoId);
 
     public async Task<HubTree> TreeAsync(string repoId, CancellationToken ct)
     {

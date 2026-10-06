@@ -45,7 +45,7 @@ public class TypedDoorCensusTests
 
         WizardProbes probes = key switch
         {
-            SetupFlow.FoundKey or SetupFlow.SearchKey or SetupFlow.RetryKey =>
+            SetupFlow.FoundKey or SetupFlow.SearchKey or SetupFlow.RetryKey or SetupFlow.ShelfLoadingKey =>
                 new() { Verify = recording },
 
             SetupFlow.ConsentKey => new()
@@ -87,7 +87,8 @@ public class TypedDoorCensusTests
             _ => throw new InvalidOperationException($"no reach recipe for the door screen '{key}'"),
         };
 
-        var flow = new SetupFlow(probes);
+        //the loading shelf is drawn only by a face that says it draws one, so its route sets what the runner sets
+        var flow = new SetupFlow(probes) { LoadsShelfInBackground = key == SetupFlow.ShelfLoadingKey };
         var screen = flow.StartPastOpening();
 
         foreach (var answer in Route(key))
@@ -108,7 +109,7 @@ public class TypedDoorCensusTests
         //this route imitates a typed folder path, so the answer goes through the same ShelfControls.TypedAnswer wrap the face uses
         SetupFlow.FailedKey => [ShelfControls.TypedAnswer(RoutedExe)],
         SetupFlow.RetryKey or SetupFlow.ConfirmServerKey => [SetupFlow.ForkConnect],
-        SetupFlow.SearchKey => [SetupFlow.FoundUse],
+        SetupFlow.SearchKey or SetupFlow.ShelfLoadingKey => [SetupFlow.FoundUse],
         SetupFlow.DiscoveredKey => [SetupFlow.FoundUse, SetupFlow.CtlSource],
         SetupFlow.DownloadKey or SetupFlow.ModelConsentKey => [SetupFlow.FoundUse, "0"],
         _ => throw new InvalidOperationException($"no route to '{key}'"),
@@ -120,7 +121,7 @@ public class TypedDoorCensusTests
         SetupFlow.FoundKey, SetupFlow.ConsentKey, SetupFlow.FallbackKey, SetupFlow.SteerKey,
         SetupFlow.FailedKey, SetupFlow.RetryKey, SetupFlow.ConfirmServerKey,
         SetupFlow.DiscoveredKey, SetupFlow.DownloadKey, SetupFlow.ModelConsentKey,
-        SetupFlow.SearchKey,
+        SetupFlow.SearchKey, SetupFlow.ShelfLoadingKey,
     ];
 
     //the flow must answer typed text on every screen. a thrown exception quits the wizard mid-setup
@@ -229,7 +230,7 @@ public class TypedDoorCensusTests
                 nameof(SetupFlow.SteerKey), nameof(SetupFlow.FailedKey), nameof(SetupFlow.RetryKey),
                 nameof(SetupFlow.ConfirmServerKey), nameof(SetupFlow.DiscoveredKey),
                 nameof(SetupFlow.DownloadKey), nameof(SetupFlow.ModelConsentKey),
-                nameof(SetupFlow.SearchKey),
+                nameof(SetupFlow.SearchKey), nameof(SetupFlow.ShelfLoadingKey),
             }, StringComparer.Ordinal);
 
         var inSource = DoorScreensInSource();
@@ -244,7 +245,7 @@ public class TypedDoorCensusTests
     [Fact]
     public void AND_THE_READER_CAN_SEE_THE_DOORS()
     {
-        Assert.Equal(11, DoorScreensInSource().Count);
+        Assert.Equal(12, DoorScreensInSource().Count);
     }
 
     //the fixture adds a new screen with a Door: argument, a reader matching nothing would agree with the census forever

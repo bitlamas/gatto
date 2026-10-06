@@ -185,7 +185,8 @@ internal static class ModelDiscovery
     //four levels, since typing a path is consent to look inside, but four is a ceiling rather than an invitation
     public const int TypedDepth = 4;
 
-    public static IReadOnlyList<FoundModel> Scan(IEnumerable<string> roots, int depth = AmbientDepth)
+    public static IReadOnlyList<FoundModel> Scan(IEnumerable<string> roots, int depth = AmbientDepth,
+        LocalReadStore? disk = null)
     {
         var files = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);   //keyed on the full path, case-insensitively, so two spellings of one file count once
         foreach (var root in roots)
@@ -222,18 +223,39 @@ internal static class ModelDiscovery
         var result = new List<FoundModel>(groups.Count);
         foreach (var (path, bytes, count, _) in groups.Values.OrderBy(g => g.Path, StringComparer.OrdinalIgnoreCase))
         {
-            var header = ReadHeader(path);
-            //a projector is a companion file, so filter it here: what counts as a model on disk is discovery's question
-            if (IsProjector(path, header)) continue;
             //keep sidecars out here too, since the predicate was only ever called from the Hub tree. no count line for what discovery drops, like the three filters around it
             if (IsCompanionArtifact(path)) continue;
-            //ask it of the set, since shard one of a set can be a metadata-only file with no tensors
-            if (IsWeightlessSet(path, header)) continue;
             //skip a file a browser is still writing, or the wizard can adopt it and fail later with the wrong sentence
             if (DownloadInProgress(path)) continue;
-            result.Add(new FoundModel(path, bytes, header, count, StreamedBytesOrNull(path, header)));
+            var (header, streamed, weightless) = Facts(path, disk);
+            //a projector is a companion file, so filter it here: what counts as a model on disk is discovery's question
+            if (IsProjector(path, header)) continue;
+            //ask it of the set, since shard one of a set can be a metadata-only file with no tensors
+            if (weightless) continue;
+            result.Add(new FoundModel(path, bytes, header, count, streamed));
         }
         return result;
+    }
+
+    //the header and the set's two facts, from the disk store while every file of the set is unchanged, otherwise read
+    private static (GgufHeader? Header, long? Streamed, bool Weightless) Facts(string path, LocalReadStore? disk)
+    {
+        if (disk is null)
+        {
+            var read = ReadHeader(path);
+            return (read, StreamedBytesOrNull(path, read), IsWeightlessSet(path, read));
+        }
+
+        var members = ShardSiblings(path);
+        if (disk.TryGet(members, out var kept) && kept is not null) return (kept.Header, kept.StreamedBytes, false);
+
+        var header = ReadHeader(path);
+        var streamed = StreamedBytesOrNull(path, header);
+        var weightless = IsWeightlessSet(path, header);
+        //only a read that answered is kept: a missing header, a set with no tensors or a streamed table that did not read is asked again next time
+        if (header is not null && !IsWeightless(header) && (streamed is not null || !header.DeclaresPerLayerInput))
+            disk.Put(members, new LocalScanFacts(LocalReadStore.Slim(header), streamed));
+        return (header is null ? null : LocalReadStore.Slim(header), streamed, weightless);
     }
 
     //the set's streamed tensor bytes, summed over every shard's table. null when there is no per-layer input or a table cannot be read

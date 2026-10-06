@@ -30,7 +30,8 @@ public sealed class ShellTool : ITool
     });
 
     //the PowerShell start settings, in one place a test can read. stdin is redirected and closed right away, so a command that reads it gets an EOF at once
-    internal static ProcessStartInfo StartInfo(string command, string cwd)
+    internal static ProcessStartInfo StartInfo(string command, string cwd,
+        Gatto.Core.Home.SessionIdentity? session = null)
     {
         var psi = new ProcessStartInfo
         {
@@ -43,6 +44,17 @@ public sealed class ShellTool : ITool
             CreateNoWindow = true,
         };
         PowerShellUtf8.PinReadEncoding(psi);   //read side: decode both pipes as UTF-8
+        //the session is set per call, since /new and a resume change it inside one process. with none, an inherited value is removed rather than passed on
+        if (session is { } live)
+        {
+            psi.Environment[Gatto.Core.Home.SessionIdentity.IdVariable] = live.IdText;
+            psi.Environment[Gatto.Core.Home.SessionIdentity.StartVariable] = live.StartText;
+        }
+        else
+        {
+            psi.Environment.Remove(Gatto.Core.Home.SessionIdentity.IdVariable);
+            psi.Environment.Remove(Gatto.Core.Home.SessionIdentity.StartVariable);
+        }
         psi.ArgumentList.Add("-NoProfile");
         psi.ArgumentList.Add("-NonInteractive");
         psi.ArgumentList.Add("-Command");
@@ -56,7 +68,7 @@ public sealed class ShellTool : ITool
         var command = ToolArgs.RequiredString(args, "command");
         var timeoutMs = ToolArgs.OptionalInt(args, "timeout_ms") ?? 120_000;
 
-        using var proc = Process.Start(StartInfo(command, ctx.Cwd))!;
+        using var proc = Process.Start(StartInfo(command, ctx.Cwd, ctx.Session))!;
         //stdin is closed at once, so a command that waits for input gets an EOF
         proc.StandardInput.Close();
         //chunked drains rather than ReadToEndAsync, a grandchild keeps the pipe open so EOF can never come. no await here may be bounded only by the session token

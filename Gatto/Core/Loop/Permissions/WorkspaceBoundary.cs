@@ -21,7 +21,8 @@ internal sealed partial class WorkspaceBoundary(string workingFolder, Func<strin
     public bool Leaves(string command)
     {
         var text = command.Replace('/', '\\');
-        if (Upward().IsMatch(text) || Elsewhere().IsMatch(command)) return true;
+        //gatto's own variables are read out of the text first, so the pattern judges whatever the command reads besides them
+        if (Upward().IsMatch(text) || Elsewhere().IsMatch(GattoReads().Replace(command, " "))) return true;
 
         foreach (Match m in Rooted().Matches(text))
         {
@@ -63,9 +64,13 @@ internal sealed partial class WorkspaceBoundary(string workingFolder, Func<strin
     [GeneratedRegex(@"(^|[\s""'=(\\])\.\.($|[\s""'\\;)|])|(^|[\s""'=(])\\($|[\s""';)|]|\w{3,})")]
     private static partial Regex Upward();
 
-    //the home folder and the environment by any of their names, a tilde counts only where a path can start
-    [GeneratedRegex(@"(^|[\s""'=(])~($|[\s""'\\/])|\$home\b|\$env:|%\w+%|\[environment\]|\$psscriptroot|\$pshome", RegexOptions.IgnoreCase)]
+    //the home folder and the environment by any of their names, the Env: drive and ${env:} included. a tilde counts only where a path can start
+    [GeneratedRegex(@"(^|[\s""'=(])~($|[\s""'\\/])|\$home\b|(?<![\w.\-])env:|%\w+%|\[(system\.)?environment\]|\$psscriptroot|\$pshome", RegexOptions.IgnoreCase)]
     private static partial Regex Elsewhere();
+
+    //a read of one GATTO_ variable in each spelling Elsewhere screens, named whole after the prefix so MY_GATTO_X is not one. GATTO_HOME holds a path, so neither it nor a wildcard that could match it is one
+    [GeneratedRegex(@"(?<![\w.\-])(\$\{env:gatto_(?!home(?![\w*?\[]))\w+(?![\w*?\[])\}|\$?env:\\?gatto_(?!home(?![\w*?\[]))\w+(?![\w*?\[]))|(?<![%\w])%gatto_(?!home%)\w+%|\[(system\.)?environment\]::getenvironmentvariable\(\s*(?<q>['""])gatto_(?!home\k<q>)\w+\k<q>\s*\)", RegexOptions.IgnoreCase)]
+    private static partial Regex GattoReads();
 
     //the shell names for gatto's folder: the user's home then .gatto, or the variable that points the home elsewhere
     [GeneratedRegex(@"(~|\$home|\$env:userprofile|%userprofile%)\\\.gatto(\\|$|[\s""';)|])|\$env:gatto_home\b|%gatto_home%", RegexOptions.IgnoreCase)]

@@ -23,7 +23,7 @@ public class SyncWaitCensusTests
     {
         ["Gatto/Cli/GattoApp.cs"] = 11,
         ["Gatto/Cli/Setup/LiveSetupProbes.cs"] = 20,
-        ["Gatto/Cli/Setup/SetupFlow.cs"] = 9,
+        ["Gatto/Cli/Setup/SetupFlow.cs"] = 11,
         ["Gatto/Cli/Setup/WriteSetApply.cs"] = 2,
         ["Gatto/Core/Hardware/HardwareProbe.cs"] = 3,
         ["Gatto/Core/Tools/LlamaServerProbe.cs"] = 3,

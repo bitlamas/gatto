@@ -605,6 +605,11 @@ public class CompactorTests
             //two session files exist now
             Assert.Equal(2, Directory.GetFiles(Path.Combine(home, "sessions"), "*.jsonl").Length);
             Assert.NotEqual(oldPath, sessions.CurrentPath);
+            //the new file is the same session, so it names the origin's id and the origin's file still projects to it
+            var origin = SessionStore.IdentityOf(oldPath)!;
+            Assert.Equal(SessionIdentity.Project(Path.GetFileName(oldPath)), origin.Id);
+            Assert.Equal(origin, sessions.Identity);
+            Assert.Equal(origin, SessionStore.IdentityOf(sessions.CurrentPath!));
         }
         finally { Directory.Delete(home, true); Directory.Delete(cwd, true); }
     }

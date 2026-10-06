@@ -1389,6 +1389,39 @@ public class HubSearchTests
         return hub;
     }
 
+    //reported on the caller's thread as it happens, since Progress<T> posts to a context and would deliver a moment late
+    private sealed class Moments : IProgress<SearchProgress>
+    {
+        public readonly List<SearchProgress> Seen = [];
+        public void Report(SearchProgress p) { lock (Seen) Seen.Add(p); }
+    }
+
+    //the waiting screen draws these counts, so they name every publisher, only grow, and end with every model read
+    [Fact]
+    public async Task THE_SEARCH_REPORTS_THE_PUBLISHERS_THEN_THE_MODELS_IT_READS()
+    {
+        var hub = ManyRepos(12);
+        hub.ByOrg["p"] = () => Ok("[]");
+        var moments = new Moments();
+
+        var outcome = await HubSearch.AssembleAsync(Client(hub), List("o", "p"),
+            Machine(6_000_000_000, 8_000_000_000), 8192, NoBadges, CancellationToken.None,
+            rowBudget: 6, progress: moments);
+
+        var listing = moments.Seen.TakeWhile(m => m.Stage == SearchStage.Listing).ToList();
+        var reading = moments.Seen.SkipWhile(m => m.Stage == SearchStage.Listing).ToList();
+        Assert.Equal((0, 2), (listing[0].Done, listing[0].Total));
+        Assert.Equal(["o", "p"], listing[0].Publishers);
+        Assert.Equal(2, listing[^1].Done);
+        Assert.All(reading, m => Assert.Equal(SearchStage.Reading, m.Stage));
+        //no later moment shows a smaller count than an earlier one, or the line would count backwards
+        Assert.All(reading.Zip(reading.Skip(1)), p => Assert.True(
+            p.Second.Done >= p.First.Done && p.Second.Total >= p.First.Total, $"{p.First} then {p.Second}"));
+        Assert.Equal(hub.TreeCalls, reading[^1].Total);
+        Assert.Equal(reading[^1].Total, reading[^1].Done);
+        Assert.Equal(6, outcome.Rows.Count);
+    }
+
     //an expired budget keeps the rows it priced and names no outage, and the fixture cancels only after rows are priced
     [Fact]
     public async Task A_BUDGET_THAT_EXPIRES_MID_ASSEMBLY_KEEPS_WHAT_IT_PRICED()

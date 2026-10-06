@@ -112,13 +112,13 @@ public class SingularSelectionTests
             //a mouse gesture and ctrl+a both reach the same BeginComposerSelect call, so driving the gesture covers the same path
             pump.EnqueueComposerGesture(new ComposerInput.Select(0, 0, ComposerGesture.Begin));
 
-            Assert.True(SpinWait.SpinUntil(() => !painter.Selection.HasSelection, 5000),
+            Assert.True(SpinWait.SpinUntil(() => !painter.Selection.HasSelection, Bound),
                 "Direction A: the transcript selection was not cleared by the composer selection-set hook");
-            Assert.True(SpinWait.SpinUntil(() => editor.HasComposerSelectionForTest, 5000));
+            Assert.True(SpinWait.SpinUntil(() => editor.HasComposerSelectionForTest, Bound));
             //exactly one domain stays live, and here that is the composer side
 
             pump.InjectToComposer(Enter);   //the enter key lets editor.Read return, so the background task ends cleanly
-            Assert.True(await Task.WhenAny(readTask, Task.Delay(5000)) == readTask, "editor.Read did not return");
+            Assert.True(await Task.WhenAny(readTask, Task.Delay(Bound)) == readTask, "editor.Read did not return");
         }
         finally { try { dir.Delete(true); } catch { } }
     }
@@ -151,7 +151,7 @@ public class SingularSelectionTests
 
             //first a composer selection goes live, mirroring the mouse begin or ctrl+a.
             pump.EnqueueComposerGesture(new ComposerInput.Select(0, 0, ComposerGesture.Begin));
-            Assert.True(SpinWait.SpinUntil(() => editor.HasComposerSelectionForTest, 5000));
+            Assert.True(SpinWait.SpinUntil(() => editor.HasComposerSelectionForTest, Bound));
             Assert.False(selection.HasSelection);   //precondition: the transcript has no selection yet.
 
             comp.Paint(0, true);
@@ -159,13 +159,16 @@ public class SingularSelectionTests
                 .First(yy => comp.CellAt(0, yy) is { } c && c.ItemIndex == 0 && c.Rel == 0);
             mc.Handle(new MouseEvent(2, y, MouseKind.Press, MouseButton.Left, 0, 0), 40, 5);   //the mouse press starts a real transcript drag.
 
-            Assert.True(SpinWait.SpinUntil(() => !editor.HasComposerSelectionForTest, 5000),
+            Assert.True(SpinWait.SpinUntil(() => !editor.HasComposerSelectionForTest, Bound),
                 "Direction B: the composer selection was not cleared by the transcript-drag Clear gesture");
             Assert.True(selection.HasSelection);   //the transcript domain must now genuinely hold a span.
 
             pump.InjectToComposer(Enter);
-            Assert.True(await Task.WhenAny(readTask, Task.Delay(5000)) == readTask, "editor.Read did not return");
+            Assert.True(await Task.WhenAny(readTask, Task.Delay(Bound)) == readTask, "editor.Read did not return");
         }
         finally { try { dir.Delete(true); } catch { } }
     }
+
+    //the read runs on a pool task the suite's load can start late, and each wait ends on its event, so the bound only matters then
+    private const int Bound = 30_000;
 }

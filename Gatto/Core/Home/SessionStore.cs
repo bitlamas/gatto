@@ -21,16 +21,56 @@ public sealed class SessionStore(string homePath, string cwd)
     private string? _currentFile;
     private readonly object _saveLock = new();
 
+    //the file the session will write and the session it belongs to, chosen when the session begins, so a shell call before the first save knows both
+    private (string File, SessionIdentity Identity) _begun = Begin(homePath, cwd, null);
+
+    //a fresh file name, and with no identity carried over a new session named after that file
+    private static (string File, SessionIdentity Identity) Begin(string home, string cwd, SessionIdentity? carried)
+    {
+        var file = Path.Combine(home, "sessions", $"{ProjectKey.Of(cwd)}-{DateTime.UtcNow.Ticks:d19}.jsonl");
+        //on a whole second, the transcript's resolution, so the live identity and one read back from a file are the same value
+        var now = DateTimeOffset.Now;
+        var start = now.AddTicks(-(now.Ticks % TimeSpan.TicksPerSecond));
+        return (file, carried ?? new SessionIdentity(SessionIdentity.Project(Path.GetFileName(file)), start));
+    }
+
     //the file the next Save writes to, or null before the first Save and after StartNew. read this before StartNew, which nulls it
     public string? CurrentPath { get { lock (_saveLock) return _currentFile; } }
 
+    //the live session, which every transcript of it names and every shell child reads
+    public SessionIdentity Identity { get { lock (_saveLock) return _begun.Identity; } }
+
+    //a new session in a new file, which is what /new asks for
     public void StartNew()
     {
         lock (_saveLock)
-            _currentFile = null;     //the next Save opens a fresh file, which is what /new asks for
+        {
+            _currentFile = null;
+            _begun = Begin(homePath, cwd, null);
+        }
     }
 
-    public void Save(Conversation convo) => WriteLines(convo.Messages.Select(m => ChatJson(m, Cwd, convo.Baseline)));
+    //a new file for the same session, which is what a compaction asks for, so the session keeps its id across the chain
+    public void StartSuccessor()
+    {
+        lock (_saveLock)
+        {
+            _currentFile = null;
+            _begun = Begin(homePath, cwd, _begun.Identity);
+        }
+    }
+
+    //a resumed session keeps its own identity, though its next save opens a new file
+    public void Adopt(SessionIdentity identity)
+    {
+        lock (_saveLock) _begun = (_begun.File, identity);
+    }
+
+    public void Save(Conversation convo)
+    {
+        var identity = Identity;
+        WriteLines(convo.Messages.Select(m => ChatJson(m, Cwd, convo.Baseline, identity)));
+    }
 
     //rewrite the session file atomically from the given JSONL lines, ordered by the caller. core knows nothing about the display records, it writes lines
     public void WriteLines(IEnumerable<string> lines)
@@ -38,7 +78,7 @@ public sealed class SessionStore(string homePath, string cwd)
         lock (_saveLock)
         {
             Directory.CreateDirectory(SessionsDir);
-            _currentFile ??= Path.Combine(SessionsDir, $"{CwdKey}-{DateTime.UtcNow.Ticks:d19}.jsonl");
+            _currentFile ??= _begun.File;
             var sb = new StringBuilder();
             foreach (var line in lines) sb.AppendLine(line);
             var tmp = _currentFile + ".tmp";
@@ -48,7 +88,8 @@ public sealed class SessionStore(string homePath, string cwd)
     }
 
     //the one chat-record shape, so both writers produce byte-identical JSON. cwd goes only on the system record, and a null cwd writes nothing
-    public static string ChatJson(ChatMessage m, string? cwd = null, SessionBaseline? baseline = null)
+    public static string ChatJson(ChatMessage m, string? cwd = null, SessionBaseline? baseline = null,
+        SessionIdentity? identity = null)
     {
         using var ms = new MemoryStream();
         using (var w = new Utf8JsonWriter(ms))
@@ -140,6 +181,11 @@ public sealed class SessionStore(string homePath, string cwd)
                 w.WriteNumber("schema_version", SchemaVersion);
                 if (cwd is not null) w.WriteString("cwd", cwd);
                 if (baseline is not null) WriteBaseline(w, baseline);
+                if (identity is not null)
+                {
+                    w.WriteString("session_id", identity.IdText);
+                    w.WriteString("session_start", identity.StartText);
+                }
             }
             if (m.Ts is not null) w.WriteString("ts", m.Ts.Value.ToUniversalTime().ToString("o"));
             w.WriteEndObject();
@@ -427,6 +473,32 @@ public sealed class SessionStore(string homePath, string cwd)
                 $"--continue {id}: matches {prefixMatches.Count} saved sessions — use a longer id to disambiguate");
 
         throw new GattoConfigException($"--continue {id}: no saved session matches this id");
+    }
+
+    //the session a file belongs to, from its system record. a file written before the record named its session is its own origin: its name and its first time
+    public static SessionIdentity? IdentityOf(string path)
+    {
+        DateTimeOffset? first = null;
+        foreach (var line in File.ReadLines(path))
+        {
+            if (line.Length == 0) continue;
+            try
+            {
+                using var doc = JsonDocument.Parse(line);
+                var el = doc.RootElement;
+                if (el.TryGetProperty("role", out var r) && r.GetString() == "system"
+                    && SessionIdentity.Parse(Text(el, "session_id"), Text(el, "session_start")) is { } named)
+                    return named;
+                if (first is null && Text(el, "ts") is { } ts
+                    && DateTimeOffset.TryParse(ts, CultureInfo.InvariantCulture, DateTimeStyles.None, out var at))
+                    first = at;
+            }
+            catch (JsonException) { }
+        }
+        return first is { } start ? new SessionIdentity(SessionIdentity.Project(Path.GetFileName(path)), start) : null;
+
+        static string? Text(JsonElement el, string name) =>
+            el.TryGetProperty(name, out var v) && v.ValueKind == JsonValueKind.String ? v.GetString() : null;
     }
 
     //the folder a session was saved in, the cwd of its first system record, or null when the record holds none

@@ -64,6 +64,9 @@ public class ScreenReachabilityCensusTests
         ["llama.path"] = new(Reach.Rendered, "Ask → face.Ask"),
         ["model.found"] = new(Reach.Rendered, "Choice → face.Choose"),
         ["model.search"] = new(Reach.Rendered, "Choice → face.Choose"),
+        //the shelf while its scan and search run, a watching Choice the load's end resolves
+        ["model.loading"] = new(Reach.Rendered, "Choice → face.Choose (watching)",
+            BackedBy: "THE_FIRST_FRAME_IS_PAINTED_BEFORE_ANY_HUB_REQUEST_RETURNS"),
         ["model.publisher"] = new(Reach.Rendered, "Choice → face.Choose",
             BackedBy: "THE_PICKER_LISTS_THE_APPROVED_PUBLISHERS_AND_ANSWERS_A_PICK"),
         ["model.typedid"] = new(Reach.Rendered, "Ask → face.Ask"),

@@ -28,6 +28,9 @@ public sealed class ServeManager
     private readonly TimeSpan _pollInterval;
     private readonly TimeSpan _pollTimeout;
 
+    //the /props probe's own deadline, null for the probe's default, so a test can give a fake server room that the suite's load takes
+    private readonly TimeSpan? _probeDeadline;
+
     //each health read holds its own deadline, since a timeout on the client would bound every caller's read beneath its token
     private static readonly TimeSpan HealthReadDeadline = TimeSpan.FromSeconds(5);
 
@@ -57,7 +60,8 @@ public sealed class ServeManager
         Func<int, IServeProcess?>? lookup,
         HttpClient http,
         TimeSpan pollInterval,
-        TimeSpan pollTimeout)
+        TimeSpan pollTimeout,
+        TimeSpan? probeDeadline = null)
     {
         _homePath = homePath;
         _llamaServerPath = llamaServerPath;
@@ -66,6 +70,7 @@ public sealed class ServeManager
         _http = http;
         _pollInterval = pollInterval;
         _pollTimeout = pollTimeout;
+        _probeDeadline = probeDeadline;
     }
 
     //counts the refused starts, since the refusal fires before any spawn and a spawn count cannot tell an ask from no ask
@@ -364,7 +369,7 @@ public sealed class ServeManager
         }
 
         var loaded = await ServeProbe.ProbeAsync(
-            _http, $"http://127.0.0.1:{state.Port}", ct, model?.Profile.ApiKey).ConfigureAwait(false);
+            _http, $"http://127.0.0.1:{state.Port}", ct, model?.Profile.ApiKey, _probeDeadline).ConfigureAwait(false);
         var matches = model is null ? null : Model.MatchesLoaded(model, loaded);
 
         output.WriteLine(ServeStatusJson.Build(loaded, state.Model, matches));

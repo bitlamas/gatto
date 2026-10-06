@@ -66,6 +66,9 @@ internal abstract record WizardScreen
         //nothing moves this screen on except the watch, computed from the screen itself. the back flag is left out, since a back row is another escape
         public bool OnlyTheWatchAdvances =>
             Watching && Door is null && !Options.Any(o => o.Advances && !o.Disabled);
+
+        //the screen the model step opens on while its first shelf loads, drawn as the cat with the purr and the step line beside it, with Esc the one key
+        public bool Starting { get; init; }
     }
 
     //rows the user reads and acknowledges, each a WizardRow so a span can be accented like a body row

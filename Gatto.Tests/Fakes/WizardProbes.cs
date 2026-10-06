@@ -20,8 +20,12 @@ internal sealed class WizardProbes : ISetupProbes
     public HardwareSnapshot? Hardware()
     {
         HardwareReads++;
+        OnHardware?.Invoke();
         return Snapshot;
     }
+
+    //called inside every hardware read, so a test can hold the read the way a slow probe does
+    public Action? OnHardware { get; init; }
 
     //settable so a test can name the machine parts in its copy. both null is the honest live state, and it exercises the fallback words.
     public HardwareNames Names { get; init; }
@@ -94,6 +98,17 @@ internal sealed class WizardProbes : ISetupProbes
         return Answer?.Invoke(request) ?? new(Rows, null,
             request.View == HubSearchView.Curated ? request.Publisher ?? Curated : null,
             HiddenByFit: Hidden);
+    }
+
+    //a search that reports and waits like the Hub, for the loading shelf. null answers through Search(request), so no other fixture changes meaning
+    public Func<HubSearchRequest, IProgress<SearchProgress>?, CancellationToken, HubSearchOutcome>? Slow { get; init; }
+
+    public HubSearchOutcome Search(HubSearchRequest request, IProgress<SearchProgress>? progress,
+        CancellationToken ct)
+    {
+        if (Slow is not { } slow) return Search(request);
+        LastRequest = request;
+        return slow(request, progress, ct);
     }
 
     //how many rows the fit filter hid, shown on the count line. zero unless a test raises it.
@@ -395,8 +410,12 @@ internal sealed class WizardProbes : ISetupProbes
     public string? LoadedModelId()
     {
         LoadedAsked++;
+        OnLoaded?.Invoke();
         return Loaded;
     }
+
+    //runs inside the loaded-model probe, so a test can hold a server that answers late
+    public Action? OnLoaded { get; init; }
 
     //the active file of the loaded model. null is the path-unknown branch, where a matching id still reads as loaded
     public string? LoadedPath { get; init; }

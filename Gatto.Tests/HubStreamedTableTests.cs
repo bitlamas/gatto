@@ -46,11 +46,14 @@ public class HubStreamedTableTests
     //the set sits in a folder like unsloth's real ones, so a URL built from the bare name answers 404
     private const string Folder = "UD-Q4_K_XL/";
 
-    private static string TreeJson() => "[" + string.Join(",", Dn4.Select(f =>
-        $"{{\"type\":\"file\",\"path\":\"{Folder}{f.Name}\",\"size\":{f.Bytes},\"lfs\":{{\"oid\":\"abc\"}}}}")) + "]";
+    private static string TreeJson(string oid) => "[" + string.Join(",", Dn4.Select(f =>
+        $"{{\"type\":\"file\",\"path\":\"{Folder}{f.Name}\",\"size\":{f.Bytes},\"lfs\":{{\"oid\":\"{oid}{f.Name}\"}}}}")) + "]";
 
     private sealed class Hub(string arch, string? failing = null) : HttpMessageHandler
     {
+        //the hash prefix every member's oid carries, so a test can change the files between two runs
+        public string Oid { get; set; } = "abc";
+
         public readonly List<(string File, long From, long To)> Ranges = [];
         public readonly List<string> NotFound = [];
 
@@ -94,7 +97,7 @@ public class HubStreamedTableTests
                 return Task.FromResult(new HttpResponseMessage(HttpStatusCode.PartialContent)
                 { Content = new ByteArrayContent(bytes[from..to]) });
             }
-            var body = url.Contains("/tree/main") ? TreeJson()
+            var body = url.Contains("/tree/main") ? TreeJson(Oid)
                 : url.Contains("filter=gguf") ? "[" + ModelJson(arch) + "]"
                 : ModelJson(arch);
             return Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK)
@@ -195,6 +198,132 @@ public class HubStreamedTableTests
         //the structure column's read reached the picked file through its folder too
         Assert.Contains(hub.Ranges, r => r.File == Shard(1) && r.To == 16383);
         Assert.Empty(hub.NotFound);
+    }
+
+    //one browse walk over a fresh memo and the store, which is what a new gatto model is
+    private static Task<HubSearchOutcome> Browse(Hub hub, HubReadStore store) =>
+        HubSearch.AssembleAsync(Client(hub), new UploaderAllowlist("2026-09-21", ["unsloth"]),
+            Machine(), 4096, _ => null, CancellationToken.None, memo: new HubTreeMemo(store));
+
+    //a home that exists, since the store writes nothing into a home the wizard has not created
+    private static string NewHome()
+    {
+        var home = Path.Combine(Path.GetTempPath(), "gatto-hubreads-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(home);
+        return home;
+    }
+
+    //the sharded set has no hash of its own, so this also proves the key built from the members' hashes finds it
+    [Fact]
+    public async Task A_SECOND_RUN_READS_NO_HEADER_OVER_THE_NETWORK_and_the_sharded_set_hits()
+    {
+        var home = NewHome();
+        try
+        {
+            var first = new Hub("qwen4exp");
+            var before = Assert.Single((await Browse(first, new HubReadStore(home))).Rows);
+            Assert.NotEmpty(first.Ranges);
+
+            var second = new Hub("qwen4exp");
+            var after = Assert.Single((await Browse(second, new HubReadStore(home))).Rows);
+
+            Assert.Empty(second.Ranges);
+            Assert.Equal(TableBytes, after.PickedQuant.StreamedBytes);
+            Assert.Equal(before.Fit, after.Fit);
+            Assert.Equal(before.Structure, after.Structure);
+            Assert.Equal(before.Experts, after.Experts);
+        }
+        finally { Directory.Delete(home, recursive: true); }
+    }
+
+    //the hash from the tree is the file's identity, so a changed file is read again rather than priced from the old one
+    [Fact]
+    public async Task A_CHANGED_FILE_IS_READ_AGAIN()
+    {
+        var home = NewHome();
+        try
+        {
+            await Browse(new Hub("qwen4exp"), new HubReadStore(home));
+            var changed = new Hub("qwen4exp") { Oid = "def" };
+
+            await Browse(changed, new HubReadStore(home));
+
+            Assert.NotEmpty(changed.Ranges);
+        }
+        finally { Directory.Delete(home, recursive: true); }
+    }
+
+    //a failed read kept on disk would price this file whole until it changes, so only a whole read is stored
+    [Fact]
+    public async Task A_FAILED_READ_IS_NOT_KEPT_and_a_missing_home_gets_nothing_written()
+    {
+        var home = NewHome();
+        try
+        {
+            await Browse(new Hub("qwen4exp", failing: Shard(3)), new HubReadStore(home));
+            var retry = new Hub("qwen4exp");
+
+            await Browse(retry, new HubReadStore(home));
+
+            Assert.Contains(retry.Ranges, r => r.File == Shard(3));
+        }
+        finally { Directory.Delete(home, recursive: true); }
+
+        var absent = Path.Combine(Path.GetTempPath(), "gatto-hubreads-" + Guid.NewGuid().ToString("N"));
+        await Browse(new Hub("qwen4exp"), new HubReadStore(absent));
+        Assert.False(Directory.Exists(absent));
+    }
+
+    //an entry another writer broke is a miss, never a throw, since a throw from the store would empty the whole shelf
+    [Theory]
+    [InlineData("key")]
+    [InlineData("values")]
+    public async Task A_MALFORMED_ENTRY_READS_AS_A_MISS_and_the_row_is_priced_from_the_network(string broken)
+    {
+        var home = NewHome();
+        try
+        {
+            var store = new HubReadStore(home);
+            await Browse(new Hub("qwen4exp"), store);
+            foreach (var entry in Directory.GetFiles(store.Dir, "*.json"))
+            {
+                using var doc = System.Text.Json.JsonDocument.Parse(File.ReadAllText(entry));
+                var key = doc.RootElement.GetProperty("key").GetString();
+                File.WriteAllText(entry, broken == "key"
+                    ? "{\"key\":5,\"streamed\":1}"
+                    : "{\"key\":" + System.Text.Json.JsonSerializer.Serialize(key)
+                      + ",\"streamed\":\"x\",\"experts_total\":\"x\",\"experts_active\":[]}");
+            }
+            var again = new Hub("qwen4exp");
+
+            var row = Assert.Single((await Browse(again, new HubReadStore(home))).Rows);
+
+            Assert.NotEmpty(again.Ranges);
+            Assert.Equal(TableBytes, row.PickedQuant.StreamedBytes);
+        }
+        finally { Directory.Delete(home, recursive: true); }
+    }
+
+    //a move refused while another gatto holds the entry open keeps the old entry and leaves no temp file behind
+    [Fact]
+    public void A_REFUSED_WRITE_LEAVES_NO_TEMP_FILE()
+    {
+        var home = NewHome();
+        try
+        {
+            var store = new HubReadStore(home);
+            var quant = new HubQuant("m-Q4_K_M.gguf", 1_000, "f00d");
+            store.PutStructure("o/m", quant, new StructureFacts("dense", null));
+            var entry = Assert.Single(Directory.GetFiles(store.Dir, "*.json"));
+
+            using (File.Open(entry, FileMode.Open, FileAccess.Read, FileShare.None))
+                store.PutStructure("o/m", quant, new StructureFacts("MoE", (128, 8)));
+
+            Assert.Empty(Directory.GetFiles(store.Dir, "*.tmp"));
+            Assert.True(store.TryGetStructure("o/m", quant, out var kept));
+            Assert.Equal("dense", kept!.Cell);
+        }
+        finally { Directory.Delete(home, recursive: true); }
     }
 
     //the pane's quants zone prices each file from the value the pick used, so a zone row and the shelf row cannot disagree

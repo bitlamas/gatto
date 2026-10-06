@@ -337,7 +337,13 @@ internal sealed class LiveSetupProbes(string homePath, Gatto.Terminal.GlyphSet g
     public HardwareSnapshot? Hardware() => Reading().Snapshot;
 
     //one probe run per wizard, latched so the memory figure and the chip name can't come from two runs, a failed read included
-    private ProbeOutcome Reading() => _reading ??= (readHardware ?? Read)();
+    private ProbeOutcome Reading()
+    {
+        //the search runs beside the flow, so two threads can ask at once and the lock keeps it to one probe
+        lock (_readingGate) return _reading ??= (readHardware ?? Read)();
+    }
+
+    private readonly object _readingGate = new();
 
     //15 seconds max, about fifty times the 300 ms the vulkan loader measured on this machine, so a cold driver has room
     private static ProbeOutcome Read()
@@ -474,18 +480,21 @@ internal sealed class LiveSetupProbes(string homePath, Gatto.Terminal.GlyphSet g
             : roots;
         try
         {
-            var found = ModelDiscovery.Scan(ambient, ModelDiscovery.AmbientDepth).ToList();
+            var found = ModelDiscovery.Scan(ambient, ModelDiscovery.AmbientDepth, _localReads).ToList();
             if (extraRoot is { Length: > 0 })
             {
                 var seen = found.Select(f => f.Path).ToHashSet(StringComparer.OrdinalIgnoreCase);
                 found.AddRange(ModelDiscovery
-                    .Scan([extraRoot], ModelDiscovery.TypedDepth)
+                    .Scan([extraRoot], ModelDiscovery.TypedDepth, _localReads)
                     .Where(f => seen.Add(f.Path)));
             }
             return new ScanResult(found, roots);
         }
         catch (Exception) { return new ScanResult([], roots); }
     }
+
+    //the scan's header reads go to disk under the home, so a second run reads only the files that changed
+    private readonly LocalReadStore _localReads = new(homePath);
 
     //the root policy in one place, so a test can point Downloads elsewhere and no second copy of the rule can drift
     internal static IReadOnlyList<string> ScanRootsFor(
@@ -500,8 +509,8 @@ internal sealed class LiveSetupProbes(string homePath, Gatto.Terminal.GlyphSet g
 
     //empty is a legitimate answer, and an unreadable hardware probe returns nothing rather than pricing an invented machine
 
-    //the tree memo lives on the session object, a memo inside one HubClient would forget on every chip switch
-    private readonly HubTreeMemo _trees = new();
+    //the tree memo lives on the session object, a memo inside one HubClient would forget on every chip switch. its header reads also go to disk under the home
+    private readonly HubTreeMemo _trees = new(new HubReadStore(homePath));
 
     //the allowlist with this home's publisher preferred, and an unreadable config curates nothing rather than breaking the shelf
     internal UploaderAllowlist Allowlist => UploaderAllowlist.Load().Preferring(PreferredPublisher());
@@ -524,14 +533,19 @@ internal sealed class LiveSetupProbes(string homePath, Gatto.Terminal.GlyphSet g
         }
     }
 
-    public HubSearchOutcome Search(HubSearchRequest request)
+    public HubSearchOutcome Search(HubSearchRequest request) => Search(request, null, CancellationToken.None);
+
+    //the caller's token is linked into the search's own deadline, so a chip click stops the Hub requests it no longer wants
+    public HubSearchOutcome Search(HubSearchRequest request, IProgress<SearchProgress>? progress,
+        CancellationToken ct)
     {
         //no hardware means nothing was priced, so return an empty result with a null cause
         if (Hardware() is not { } snapshot) return new HubSearchOutcome([], null);
         var hw = Gatto.Core.Hardware.HardwareClassifier.Classify(snapshot);
 
         using var http = new HttpClient { Timeout = Timeout.InfiniteTimeSpan };
-        using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(30));
+        using var cts = CancellationTokenSource.CreateLinkedTokenSource(ct);
+        cts.CancelAfter(TimeSpan.FromSeconds(30));
         try
         {
             return HubSearch.AssembleAsync(
@@ -555,7 +569,8 @@ internal sealed class LiveSetupProbes(string homePath, Gatto.Terminal.GlyphSet g
                 //the face's row budget goes straight through, this probe doesn't decide how much of the search to use
                 rowBudget: request.RowBudget ?? HubSearch.DefaultRowBudget,
                 //the memo lives on the session, so a chip switch doesn't buy the same trees twice
-                memo: _trees).GetAwaiter().GetResult();
+                memo: _trees,
+                progress: progress).GetAwaiter().GetResult();
         }
         //one catch for everything, a narrower one for an expired deadline would name a case that can't arrive
         catch (Exception)

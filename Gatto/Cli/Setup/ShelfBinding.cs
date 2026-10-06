@@ -25,7 +25,8 @@ internal sealed record ShelfView(
     string? Folder = null,
     int HiddenByFamily = 0,
     string? Resume = null,
-    bool Searched = false)
+    bool Searched = false,
+    bool Loading = false)
 {
     //nothing was fetched at all, no rows and no family ladder. an empty search keeps its chips and keys, so the two states must stay apart
     public bool NothingFetched => Rows.Count == 0 && Families is not { Count: > 0 };

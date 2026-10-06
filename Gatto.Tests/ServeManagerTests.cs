@@ -12,7 +12,8 @@ namespace Gatto.Tests;
 public class ServeManagerTests : IDisposable
 {
     private readonly string _home = Directory.CreateTempSubdirectory("gatto-serve-").FullName;
-    private readonly HttpClient _http = new() { Timeout = TimeSpan.FromSeconds(2) };
+    //untimed like every client, so each read is bounded by its own deadline and a test's client never undercuts the deadline it asserts through
+    private readonly HttpClient _http = new() { Timeout = Timeout.InfiniteTimeSpan };
 
     public void Dispose()
     {
@@ -840,9 +841,11 @@ public class ServeManagerTests : IDisposable
         File.WriteAllText(Path.Combine(modelDir, "profile.json"),
             "{\"files\":[{\"path\":" + modelPathJson + ",\"active\":true}],\"port\":" + port + ",\"context\":8192}");
 
+        //the assertions read the probe's answer, so its deadline is long, or the suite's load turns them into a race
         var mgr = new ServeManager(_home, FakeLlama(),
             spawn: NoSpawn, lookup: pid => pid == 6100 ? ours : null,
-            http: _http, pollInterval: TimeSpan.FromMilliseconds(10), pollTimeout: TimeSpan.FromSeconds(1));
+            http: _http, pollInterval: TimeSpan.FromMilliseconds(10), pollTimeout: TimeSpan.FromSeconds(1),
+            probeDeadline: TimeSpan.FromSeconds(30));
 
         var output = new StringWriter();
         var exit = await mgr.StatusJsonAsync(output, CancellationToken.None);
@@ -877,9 +880,11 @@ public class ServeManagerTests : IDisposable
             "{\"files\":[{\"path\":" + modelPathJson + ",\"active\":true}],\"port\":" + port
             + ",\"context\":8192,\"api_key\":\"s3cr3t-value\"}");
 
+        //the assertions read the probe's answer, so its deadline is long, or the suite's load turns them into a race
         var mgr = new ServeManager(_home, FakeLlama(),
             spawn: NoSpawn, lookup: pid => pid == 6400 ? ours : null,
-            http: _http, pollInterval: TimeSpan.FromMilliseconds(10), pollTimeout: TimeSpan.FromSeconds(1));
+            http: _http, pollInterval: TimeSpan.FromMilliseconds(10), pollTimeout: TimeSpan.FromSeconds(1),
+            probeDeadline: TimeSpan.FromSeconds(30));
 
         var output = new StringWriter();
         var exit = await mgr.StatusJsonAsync(output, CancellationToken.None);

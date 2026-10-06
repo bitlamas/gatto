@@ -717,4 +717,153 @@ public class EndToEndTests : IDisposable
             "blocked: no interactive terminal to grant permission (use --yes, or grant it with Yes, always allow in an interactive session)",
             toolMsg.GetProperty("content").GetString());
     }
+
+    //the command a shell child runs to report what it was told about its session
+    private const string EchoSession = "Write-Output \"$env:GATTO_SESSION_ID $env:GATTO_SESSION_START\"";
+
+    private string[] SessionFiles() =>
+        [.. Directory.GetFiles(Path.Combine(_home, "sessions"), "*.jsonl")
+            .Where(f => !f.EndsWith(".ledger.jsonl", StringComparison.OrdinalIgnoreCase))
+            .OrderBy(f => f, StringComparer.Ordinal)];
+
+    //the session_id and session_start of a file's system record, found by role
+    private static string Named(string path)
+    {
+        var system = File.ReadLines(path).Select(l => JsonDocument.Parse(l).RootElement)
+            .First(e => e.TryGetProperty("role", out var r) && r.GetString() == "system");
+        return system.GetProperty("session_id").GetString() + " " + system.GetProperty("session_start").GetString();
+    }
+
+    private static string ToolResultIn(JsonElement body) =>
+        body.GetProperty("messages").EnumerateArray()
+            .Single(m => m.GetProperty("role").GetString() == "tool").GetProperty("content").GetString()!.Trim();
+
+    private static FakeResponse Says(string text) => new(Frames: new[]
+    {
+        Chunk(JsonSerializer.Serialize(new { content = text })),
+        Chunk("{}", finish: "stop"),
+        "data: [DONE]\n\n",
+    });
+
+    private static FakeResponse Calls(string name, object args) => new(Frames: new[]
+    {
+        ToolCallChunk("c1", name, args),
+        Chunk("{}", finish: "tool_calls"),
+        "data: [DONE]\n\n",
+    });
+
+    private void Configure(FakeOpenAiServer server, string extra = "", bool grant = true)
+    {
+        Environment.SetEnvironmentVariable("GATTO_HOME", _home);
+        Environment.CurrentDirectory = _cwd;
+        File.WriteAllText(Path.Combine(_home, "gatto.json"),
+            $$$"""{"endpoints":{"local":{"base_url":"{{{server.BaseUrl}}}"}},"default_endpoint":"local","default_model":"test-m"{{{extra}}}}""");
+        Console.SetOut(new StringWriter());
+        Console.SetError(new StringWriter());
+        if (!grant) return;
+        //a standing grant for the echo, so the gate passes it as it passes a command the user allowed, with no --yes boundary in the way
+        var grants = Gatto.Core.Loop.Permissions.PermissionStore.PathFor(_home, _cwd);
+        Directory.CreateDirectory(Path.GetDirectoryName(grants)!);
+        File.WriteAllText(grants, JsonSerializer.Serialize(new Dictionary<string, object>
+        {
+            ["project"] = Gatto.Core.Home.ProjectKey.PathOf(_cwd),
+            ["shell_prefixes"] = new[] { "Write-Output" },
+            ["tools"] = new[] { "run_agent" },
+        }));
+    }
+
+    //a -p run's shell child reads the session its transcript names, and the id is the projection of that transcript's name
+    [Fact]
+    public async Task A_ONE_SHOTS_SHELL_CHILD_READS_THE_SESSION_ITS_TRANSCRIPT_NAMES()
+    {
+        await using var server = new FakeOpenAiServer();
+        Configure(server);
+        server.Enqueue(Calls("shell", new { command = EchoSession }));
+        server.Enqueue(Says("done"));
+
+        Assert.Equal(0, await GattoApp.RunAsync(new[] { "-p", "which session is this?" }));
+
+        var file = Assert.Single(SessionFiles());
+        var seen = ToolResultIn(server.LastRequestBody!.Value);
+        Assert.Equal(Named(file), seen);
+        Assert.Equal(Gatto.Core.Home.SessionIdentity.Project(Path.GetFileName(file)).ToString("D"), seen.Split(' ')[0]);
+        Assert.Matches(@"^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d[+-]\d\d:\d\d$", seen.Split(' ')[1]);
+    }
+
+    //under --yes with no standing grant, the working-folder boundary lets a read of gatto's own variables through
+    [Fact]
+    public async Task WITH_YES_AND_NO_GRANT_THE_SHELL_CHILD_STILL_READS_ITS_SESSION()
+    {
+        await using var server = new FakeOpenAiServer();
+        Configure(server, grant: false);
+        server.Enqueue(Calls("shell", new { command = EchoSession }));
+        server.Enqueue(Says("done"));
+
+        Assert.Equal(0, await GattoApp.RunAsync(new[] { "-p", "which session is this?", "--yes" }));
+
+        Assert.False(File.Exists(Gatto.Core.Loop.Permissions.PermissionStore.PathFor(_home, _cwd)));
+        Assert.Equal(Named(Assert.Single(SessionFiles())), ToolResultIn(server.LastRequestBody!.Value));
+    }
+
+    //a compaction's successor names the origin's session, so the id holds across the chain
+    [Fact]
+    public async Task A_COMPACTIONS_SUCCESSOR_NAMES_THE_ORIGINS_SESSION()
+    {
+        await using var server = new FakeOpenAiServer();
+        Configure(server, extra: ",\"auto_compact\":0.9");
+        server.Enqueue(Calls("shell", new { command = EchoSession }));
+        server.Enqueue(new FakeResponse(Status: 400, Body: OverflowBody));
+        server.Enqueue(Says("Task / goal: answer the question. Immediate next step: answer it."));
+        server.Enqueue(Says("the answer is 42"));
+
+        Assert.Equal(0, await GattoApp.RunAsync(new[] { "-p", "what is the answer?" }));
+
+        var files = SessionFiles();
+        Assert.Equal(2, files.Length);
+        var seen = ToolResultIn(server.RequestBodies[1]);
+        Assert.Equal(seen, Named(files[0]));
+        Assert.Equal(seen, Named(files[1]));
+        Assert.Equal(Gatto.Core.Home.SessionIdentity.Project(Path.GetFileName(files[0])).ToString("D"), seen.Split(' ')[0]);
+    }
+
+    //a resume is the same session: its shell child and its new transcript carry the resumed one's id
+    [Fact]
+    public async Task A_CONTINUE_KEEPS_THE_RESUMED_SESSIONS_ID()
+    {
+        await using var server = new FakeOpenAiServer();
+        Configure(server);
+        server.Enqueue(Says("first answer"));
+        Assert.Equal(0, await GattoApp.RunAsync(new[] { "-p", "first question" }));
+        var first = Assert.Single(SessionFiles());
+
+        server.Enqueue(Calls("shell", new { command = EchoSession }));
+        server.Enqueue(Says("second answer"));
+        Assert.Equal(0, await GattoApp.RunAsync(new[] { "-p", "second question", "--continue" }));
+
+        var files = SessionFiles();
+        Assert.Equal(2, files.Length);
+        var seen = ToolResultIn(server.LastRequestBody!.Value);
+        Assert.Equal(Named(first), seen);
+        Assert.Equal(seen, Named(files.Single(f => f != first)));
+    }
+
+    //a run_agent subagent is an instrument of its seat, so its shell child reads the parent's session
+    [Fact]
+    public async Task A_SUBAGENTS_SHELL_CHILD_READS_THE_PARENTS_SESSION()
+    {
+        await using var server = new FakeOpenAiServer();
+        Configure(server);
+        var agents = Path.Combine(_home, "agents");
+        Directory.CreateDirectory(agents);
+        File.WriteAllText(Path.Combine(agents, "helper.md"), "---\ndescription: runs one command\ntools: shell\nmax_turns: 3\n---\nYou are helper.\n");
+        server.Enqueue(Calls("run_agent", new { agent = "helper", task = "report the session" }));
+        server.Enqueue(Calls("shell", new { command = EchoSession }));
+        server.Enqueue(Says("the helper is done"));
+        server.Enqueue(Says("done"));
+
+        Assert.Equal(0, await GattoApp.RunAsync(new[] { "-p", "ask the helper" }));
+
+        var seen = ToolResultIn(server.RequestBodies[2]);
+        Assert.Equal(Named(Assert.Single(SessionFiles())), seen);
+    }
 }
