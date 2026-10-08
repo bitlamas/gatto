@@ -506,6 +506,17 @@ public class ConfigTests : IDisposable
         Assert.False(cfg.ContextHome);
     }
 
+    //the shelf no longer opens on a chosen publisher, so default_publisher is an unknown key like any other
+    [Fact]
+    public void A_DEFAULT_PUBLISHER_IS_AN_UNKNOWN_KEY()
+    {
+        Directory.CreateDirectory(_home);
+        File.WriteAllText(Path.Combine(_home, "gatto.json"),
+            """{"endpoints":{"local":{"base_url":"http://x"}},"default_endpoint":"local","default_publisher":"unsloth"}""");
+        var ex = Assert.Throws<GattoConfigException>(() => GattoConfig.Load(_home));
+        Assert.Contains("default_publisher", ex.Message);
+    }
+
     //the old key use_default must fail as an unknown key, with no alias. the rejection proves nothing unless the renamed key home is accepted in the same file
     [Fact]
     public void Load_rejects_the_old_use_default_key_with_no_alias()

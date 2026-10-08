@@ -14,4 +14,4 @@
 
 ❯ type another server's address… e.g. http://127.0.0.1:8080   Tab or ↓ to type
 ────────────────────────────────────────────────────────────────────────────────
-  Tab area   Enter next   b back   Esc leave
+  Tab area   Enter next   Esc back

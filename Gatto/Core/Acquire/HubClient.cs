@@ -9,7 +9,12 @@ namespace Gatto.Core.Acquire;
 internal sealed record HubListing(
     string RepoId, string? Arch, long? NativeCtx, bool Gated, long Downloads,
     DateTimeOffset? LastModified = null, long? Params = null,
-    string? PipelineTag = null, bool? Causal = null);
+    string? PipelineTag = null, bool? Causal = null,
+    string? QuantizedFrom = null)   //the base_model:quantized:<id> tag's id, null when the repo has none
+{
+    //the segment before the slash, the whole id when there is none
+    public string Owner => RepoId.IndexOf('/') is > 0 and var slash ? RepoId[..slash] : RepoId;
+}
 
 //one quant candidate: a single file or a whole shard set. the set is grouped here, so its bytes and shard count are the whole set rather than one file
 internal sealed record HubQuant(string FileName, long Bytes, string? Sha256, int ShardCount = 1,
@@ -134,7 +139,7 @@ internal static class HubUrl
 }
 
 //a hub call did not produce usable data. typed, so a caller can isolate one org's failure and route the gated case
-internal sealed class HubUnavailableException(string subject, int? status, string message, bool gated)
+internal class HubUnavailableException(string subject, int? status, string message, bool gated)
     : Exception($"Hub request for {subject} failed{(status is { } s ? $" ({s})" : "")}: {message}")
 {
     public string Subject { get; } = subject;
@@ -142,8 +147,16 @@ internal sealed class HubUnavailableException(string subject, int? status, strin
     public bool Gated { get; } = gated;
 }
 
-//the measured hub surface. it never retries and never pages past the first, the display cap belongs to the caller
-internal sealed class HubClient(HttpClient http)
+//a 429, carrying the server's seconds to the window's reset. it is still a failed request to a caller that only knows that much
+internal sealed class HubRateLimitedException(string subject, int? resetSeconds)
+    : HubUnavailableException(subject, 429, "rate limited", gated: false)
+{
+    //null when the server named no reset
+    public int? ResetSeconds { get; } = resetSeconds;
+}
+
+//the measured hub surface. it never retries, pages only the source and releaser listings, and the display cap belongs to the caller
+internal sealed class HubClient(HttpClient http, TimeProvider? clock = null)
 {
     //a repo id is two segments of URL-safe characters, so it goes into the request path unescaped. escaping it would encode the separating slash
 
@@ -169,18 +182,106 @@ internal sealed class HubClient(HttpClient http)
             + $"&expand{Uri.EscapeDataString("[]")}=lastModified"
             //the tag comes back as data for ModelKinds to read, since a server-side filter on it hid 1549 repos and cannot take two values
             + $"&expand{Uri.EscapeDataString("[]")}=pipeline_tag"
+            + $"&expand{Uri.EscapeDataString("[]")}=tags"
             //the search term sits alongside author= rather than replacing it, so a typed search narrows within the active org
             + (string.IsNullOrWhiteSpace(search)
                 ? ""
                 : $"&search={Uri.EscapeDataString(search.Trim())}");
 
-        using var doc = await GetJsonAsync(url, org, ct).ConfigureAwait(false);
+        using var doc = await GetJsonAsync(url, org, "list", ct).ConfigureAwait(false);
 
         var rows = new List<HubListing>();
-        if (doc.RootElement.ValueKind != JsonValueKind.Array) return rows;
+        AddListings(doc, rows);
+        return rows;
+    }
+
+    //every expand a conversion's row needs: its facts, gating, 30-day downloads, kind and the quantized tag
+    private static readonly string AllExpands = string.Concat(
+        new[] { "gguf", "gated", "downloads", "lastModified", "pipeline_tag", "tags" }
+            .Select(e => $"&expand{Uri.EscapeDataString("[]")}={e}"));
+
+    //a server that always answers with a next page is a bound, not a loop
+    internal const int MaxPages = 20;
+
+    //the releaser's own repos whose name holds the term: its sources, or with gguf its own GGUF repos
+    public Task<IReadOnlyList<HubListing>> ReleaserAsync(string releaser, string term, bool gguf, CancellationToken ct) =>
+        PagedAsync("https://huggingface.co/api/models"
+            + $"?author={Uri.EscapeDataString(releaser)}"
+            + $"&search={Uri.EscapeDataString(term)}"
+            + "&limit=1000"
+            + (gguf
+                ? "&filter=gguf" + AllExpands
+                : $"&expand{Uri.EscapeDataString("[]")}=pipeline_tag&expand{Uri.EscapeDataString("[]")}=gated"),
+            releaser + ":" + term, gguf ? "releaser-gguf" : "releaser", ct);
+
+    //every GGUF repo tagged as a quantization of one source, every page of it
+    public Task<IReadOnlyList<HubListing>> ConversionsAsync(string sourceId, CancellationToken ct) =>
+        PagedAsync("https://huggingface.co/api/models"
+            + "?filter=gguf"
+            + $"&filter={Uri.EscapeDataString("base_model:quantized:" + sourceId)}"
+            + "&limit=1000"
+            + AllExpands,
+            sourceId, "conversions", ct);
+
+    private async Task<IReadOnlyList<HubListing>> PagedAsync(string url, string subject, string kind, CancellationToken ct)
+    {
+        var rows = new List<HubListing>();
+        Uri? next = new(url);
+        for (var page = 0; page < MaxPages && next is not null; page++)
+        {
+            var (doc, link) = await GetPageAsync(next.AbsoluteUri, subject, kind, ct).ConfigureAwait(false);
+            using (doc) AddListings(doc, rows);
+            next = link;
+        }
+        return rows;
+    }
+
+    private static void AddListings(JsonDocument doc, List<HubListing> rows)
+    {
+        if (doc.RootElement.ValueKind != JsonValueKind.Array) return;
         foreach (var el in doc.RootElement.EnumerateArray())
             if (ListingOf(el) is { } listing) rows.Add(listing);
-        return rows;
+    }
+
+    //the Link header's rel="next", or null on the last page
+    internal static Uri? NextPage(HttpResponseMessage response)
+    {
+        if (!response.Headers.TryGetValues("Link", out var values)) return null;
+        foreach (var value in values)
+            foreach (Match m in NextLink.Matches(value))
+                if (Uri.TryCreate(m.Groups[1].Value, UriKind.Absolute, out var uri)) return uri;
+        return null;
+    }
+
+    private static readonly Regex NextLink = new(@"<([^>]+)>\s*;\s*rel=\W?next\b", RegexOptions.CultureInvariant);
+
+    //the api window as the server last reported it, from the RateLimit header's r= and t=, null until a response carried it and again once its reset has passed
+    public (int Remaining, int ResetSeconds)? Window
+    {
+        get
+        {
+            if (_window is not { } w) return null;
+            var left = w.ResetSeconds - (int)(_clock.GetUtcNow() - w.At).TotalSeconds;
+            return left > 0 ? (w.Remaining, left) : null;
+        }
+    }
+
+    private readonly TimeProvider _clock = clock ?? TimeProvider.System;
+
+    private sealed record WindowReading(int Remaining, int ResetSeconds, DateTimeOffset At);
+    private volatile WindowReading? _window;
+
+    //the resolve reads carry a window of their own, so only the api policy is read here
+    private static readonly Regex ApiWindow = new(@"\Wapi\W\s*;\s*r=(\d+)\s*;\s*t=(\d+)", RegexOptions.CultureInvariant);
+
+    private WindowReading? WindowOf(HttpResponseMessage res)
+    {
+        if (!res.Headers.TryGetValues("RateLimit", out var values)) return null;
+        foreach (var value in values)
+            if (ApiWindow.Match(value) is { Success: true } m
+                && int.TryParse(m.Groups[1].Value, out var r) && int.TryParse(m.Groups[2].Value, out var t))
+                return new WindowReading(r, t, _clock.GetUtcNow());
+        return null;
     }
 
     //one element to a listing, or null when it has no id. the same parse serves the browse listing and the single-model read
@@ -214,7 +315,20 @@ internal sealed class HubClient(HttpClient http)
         var tag = el.TryGetProperty("pipeline_tag", out var pt) && pt.ValueKind == JsonValueKind.String
             ? pt.GetString() : null;
         return new HubListing(
-            id.GetString()!, arch, ctx, IsGated(el), downloads, modified, total, tag, causal);
+            id.GetString()!, arch, ctx, IsGated(el), downloads, modified, total, tag, causal, QuantizedFromOf(el));
+    }
+
+    private const string QuantizedTag = "base_model:quantized:";
+
+    //the source a conversion was made from, read off its tags. an adapter or a finetune tag names no source
+    private static string? QuantizedFromOf(JsonElement el)
+    {
+        if (!el.TryGetProperty("tags", out var tags) || tags.ValueKind != JsonValueKind.Array) return null;
+        foreach (var t in tags.EnumerateArray())
+            if (t.ValueKind == JsonValueKind.String && t.GetString() is { } s
+                && s.StartsWith(QuantizedTag, StringComparison.Ordinal) && s.Length > QuantizedTag.Length)
+                return s[QuantizedTag.Length..];
+        return null;
     }
 
     //one model by id, so a typed name skips the browse search. a missing repo answers 401 like a gated one, so the caller's copy covers both
@@ -224,7 +338,7 @@ internal sealed class HubClient(HttpClient http)
             throw new HubUnavailableException(repoId, null, "not a valid repo id (expected org/name)", gated: false);
 
         using var doc = await GetJsonAsync(
-            $"https://huggingface.co/api/models/{repoId}", repoId, ct).ConfigureAwait(false);
+            $"https://huggingface.co/api/models/{repoId}", repoId, "model", ct).ConfigureAwait(false);
         return doc.RootElement.ValueKind == JsonValueKind.Object ? ListingOf(doc.RootElement) : null;
     }
 
@@ -239,7 +353,7 @@ internal sealed class HubClient(HttpClient http)
         try
         {
             return await RemoteGgufHeader.ReadAsync(
-                HttpRangeFetch.Create(http, new Uri(HubUrl.Resolve(repoId, fileName))),
+                HubTrace.Ranged(HttpRangeFetch.Create(http, new Uri(HubUrl.Resolve(repoId, fileName))), "header", repoId, fileName),
                 HeaderWindow.Structure, ModelStructure.Answered, ct).ConfigureAwait(false);
         }
         catch (Exception ex) when (ex is HttpRequestException or IOException or UriFormatException)
@@ -250,10 +364,10 @@ internal sealed class HubClient(HttpClient http)
 
     //each candidate of a listed architecture comes back with its streamed bytes, and a repo of any other architecture costs no request here
     public Task<HubTree> WithStreamedAsync(HubTree tree, HubListing listing, CancellationToken ct,
-        HubReadStore? disk = null) =>
+        HubReadStore? disk = null, Func<HubQuant, bool>? couldMove = null, TokenizerMemory? tokenizers = null) =>
         StreamedTableRead.WithStreamedAsync(tree, listing.Arch, listing.Params,
-            file => HttpRangeFetch.Create(http, new Uri(HubUrl.Resolve(listing.RepoId, file))), ct,
-            disk, listing.RepoId);
+            file => HubTrace.Ranged(HttpRangeFetch.Create(http, new Uri(HubUrl.Resolve(listing.RepoId, file))), "table", listing.RepoId, file), ct,
+            disk, listing.RepoId, couldMove, tokenizers);
 
     public async Task<HubTree> TreeAsync(string repoId, CancellationToken ct)
     {
@@ -261,7 +375,7 @@ internal sealed class HubClient(HttpClient http)
             throw new HubUnavailableException(repoId, null, "not a valid repo id (expected org/name)", gated: false);
 
         var url = $"https://huggingface.co/api/models/{repoId}/tree/main?recursive=true";
-        using var doc = await GetJsonAsync(url, repoId, ct).ConfigureAwait(false);
+        using var doc = await GetJsonAsync(url, repoId, "tree", ct).ConfigureAwait(false);
 
         if (doc.RootElement.ValueKind != JsonValueKind.Array) return new HubTree([], []);
 
@@ -360,8 +474,13 @@ internal sealed class HubClient(HttpClient http)
             _ => false,
         };
 
-    private async Task<JsonDocument> GetJsonAsync(string url, string subject, CancellationToken ct)
+    private async Task<JsonDocument> GetJsonAsync(string url, string subject, string kind, CancellationToken ct) =>
+        (await GetPageAsync(url, subject, kind, ct).ConfigureAwait(false)).Doc;
+
+    //kind names the request in the trace and nowhere else
+    private async Task<(JsonDocument Doc, Uri? Next)> GetPageAsync(string url, string subject, string kind, CancellationToken ct)
     {
+        var clock = System.Diagnostics.Stopwatch.StartNew();
         HttpResponseMessage res;
         try
         {
@@ -374,6 +493,13 @@ internal sealed class HubClient(HttpClient http)
 
         using (res)
         {
+            var window = WindowOf(res);
+            if (window is not null) _window = window;
+
+            //only this answer's own header names the reset, since an older reading belongs to a window that may be gone
+            if (res.StatusCode == HttpStatusCode.TooManyRequests)
+                throw new HubRateLimitedException(subject, window?.ResetSeconds);
+
             if (!res.IsSuccessStatusCode)
                 throw new HubUnavailableException(subject, (int)res.StatusCode, res.ReasonPhrase ?? "request failed",
                     gated: res.StatusCode is HttpStatusCode.Unauthorized or HttpStatusCode.Forbidden);
@@ -381,7 +507,8 @@ internal sealed class HubClient(HttpClient http)
             try
             {
                 var body = await res.Content.ReadAsStringAsync(ct).ConfigureAwait(false);
-                return JsonDocument.Parse(body);
+                HubTrace.Write(kind, "net", subject, null, body.Length, clock.ElapsedMilliseconds);
+                return (JsonDocument.Parse(body), NextPage(res));
             }
             catch (JsonException ex)
             {

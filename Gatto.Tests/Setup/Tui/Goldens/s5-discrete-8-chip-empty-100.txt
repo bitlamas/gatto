@@ -7,10 +7,10 @@
 
        (^·_·^)ﾉ
 
-       No gemma model fits this machine's memory · 27 too big, a shows all
+       No gemma model fits this machine's memory · a shows all
 
   Type a model's name from Hugging Face
 
-❯ search models…                                                                       / to search
+❯ search models…                                                                       ? to search
 ────────────────────────────────────────────────────────────────────────────────────────────────────
-  Enter next   m local   d search   a all sizes   b back   Esc back    | ✓ GPU · ⚠ RAM · ✗ too big
+  Tab area   ↑↓ move   Enter next   m local   ? search   a show all   Esc back     | ✓ GPU · ⚠ RAM

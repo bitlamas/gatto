@@ -27,10 +27,10 @@ public class RenderedWalkTests : IDisposable
     public static TheoryData<int> Widths => [52, 72, 80, 120];
 
     //fill every optional cell, a fixture poorer than reality misses a defect that needs a populated one
-    private static ShelfRow Row(
+    private static ModelRow Row(
         string repoId, string file = "model-Q4_K_M.gguf", long? paramCount = 8_000_000_000,
         Badge? badge = null) =>
-        new(repoId, repoId.Split('/')[0], new HubQuant(file, 4_000_000_000, null),
+        ShelfRows.Of(repoId, repoId.Split('/')[0], new HubQuant(file, 4_000_000_000, null),
             Gatto.Core.Models.FitRegime.FitsGpu, 32768, false, badge, 100, false,
             LastModified: new DateTimeOffset(2026, 7, 2, 0, 0, 0, TimeSpan.Zero),
             Params: paramCount);
@@ -74,14 +74,14 @@ public class RenderedWalkTests : IDisposable
         AuditionCheck? audition = null,
         Gatto.Cli.InstallState? install = null,
         ConnectProbe? server = null,
-        Func<HubSearchRequest, HubSearchOutcome>? answer = null,
+        Func<ModelSearchRequest, ShelfOutcome>? answer = null,
         Func<string, TypedIdOutcome>? typed = null,
         string? heldBy = null,
         ModelFetchOffer? hubOffer = null,
         IReadOnlyList<FetchTick>? modelTicks = null,
         Gatto.Core.Hardware.HardwareSnapshot? snapshot = null,
         bool holdTheFetch = false,
-        IReadOnlyList<ShelfRow>? rows = null)
+        IReadOnlyList<ModelRow>? rows = null)
     {
         var downloads = Path.Combine(home, "Downloads");
         Directory.CreateDirectory(downloads);
@@ -386,14 +386,14 @@ public class RenderedWalkTests : IDisposable
         AuditionCheck? audition = null,
         Gatto.Cli.InstallState? install = null,
         ConnectProbe? server = null,
-        Func<HubSearchRequest, HubSearchOutcome>? answer = null,
+        Func<ModelSearchRequest, ShelfOutcome>? answer = null,
         Func<string, TypedIdOutcome>? typed = null,
         string? heldBy = null,
         ModelFetchOffer? hubOffer = null,
         IReadOnlyList<FetchTick>? modelTicks = null,
         Gatto.Core.Hardware.HardwareSnapshot? snapshot = null,
         bool holdTheFetch = false,
-        IReadOnlyList<ShelfRow>? rows = null) =>
+        IReadOnlyList<ModelRow>? rows = null) =>
         SteeredProbes(home, audition, install, server, answer, typed, heldBy, hubOffer, modelTicks,
             snapshot, holdTheFetch, rows);
 
@@ -418,7 +418,7 @@ public class RenderedWalkTests : IDisposable
     private const ulong Gib = 1024UL * 1024 * 1024;
 
     //use rows where the two tiers disagree, a rule about which wins proves nothing when every row fits every card
-    internal static IReadOnlyList<ShelfRow> TooBigForACard =>
+    internal static IReadOnlyList<ModelRow> TooBigForACard =>
     [
         Row("bartowski/Qwen3-8B-GGUF", badge: Measured("model-Q4_K_M.gguf")),
         Big("unsloth/Qwen3.6-70B-GGUF", "qwen3.6-70b-Q4_K_M.gguf", 70_000_000_000,
@@ -428,9 +428,9 @@ public class RenderedWalkTests : IDisposable
     ];
 
     //give the row its own size and fit regime, the shelf reads both and a row that sets one draws a contradiction
-    private static ShelfRow Big(string repoId, string file, long paramCount, long bytes,
+    private static ModelRow Big(string repoId, string file, long paramCount, long bytes,
         Gatto.Core.Models.FitRegime fit) =>
-        new(repoId, repoId.Split('/')[0], new HubQuant(file, bytes, null), fit, 32768, false, null,
+        ShelfRows.Of(repoId, repoId.Split('/')[0], new HubQuant(file, bytes, null), fit, 32768, false, null,
             100, false, LastModified: new DateTimeOffset(2026, 7, 2, 0, 0, 0, TimeSpan.Zero),
             Params: paramCount);
 
@@ -712,7 +712,7 @@ public class RenderedWalkTests : IDisposable
     }
 
     //a shelf run, opening, fork, then the state's own keys, and width is a parameter since the shelf's layout depends on it
-    private WizardRig Shelf(int width, Func<HubSearchRequest, HubSearchOutcome> answer,
+    private WizardRig Shelf(int width, Func<ModelSearchRequest, ShelfOutcome> answer,
         params ConsoleKeyInfo[] after)
     {
         var home = NewHome();
@@ -728,7 +728,7 @@ public class RenderedWalkTests : IDisposable
     [MemberData(nameof(Widths))]
     public void A_SHELF_WHERE_NOTHING_FITS_SAYS_SO_AND_IS_NOT_A_DEAD_END(int width)
     {
-        var rig = Shelf(width, _ => new HubSearchOutcome([], HubSearchCause.NothingFits), Esc);
+        var rig = Shelf(width, _ => WizardProbes.Outcome([], HubSearchCause.NothingFits), Esc);
 
         var seen = Squash(string.Join("\n", rig.Frames));
         Assert.Contains("Noneofthesemodelsfitthismachine", seen, StringComparison.Ordinal);
@@ -740,27 +740,12 @@ public class RenderedWalkTests : IDisposable
     [MemberData(nameof(Widths))]
     public void A_SHELF_THE_HUB_COULD_NOT_ANSWER_BLAMES_THE_NETWORK_not_the_machine(int width)
     {
-        var rig = Shelf(width, _ => new HubSearchOutcome([], HubSearchCause.HubFailed), Esc);
+        var rig = Shelf(width, _ => WizardProbes.Outcome([], HubSearchCause.HubFailed), Esc);
 
         var seen = Squash(string.Join("\n", rig.Frames));
         Assert.Contains("Couldntreachthemodellist", seen.Replace("'", ""), StringComparison.Ordinal);
         //assert the other cause's sentence is absent, a check for any empty screen would pass while both causes share one
         Assert.DoesNotContain("fitthismachine", seen, StringComparison.Ordinal);
-    }
-
-    //curation may narrow a default but must leave the user's options, and the curated shelf keeps the way to the wider list
-    [Theory]
-    [MemberData(nameof(Widths))]
-    public void THE_CURATED_SHELF_NAMES_ITS_PUBLISHER_AND_OFFERS_THE_WIDER_ONE(int width)
-    {
-        var rig = Shelf(width,
-            r => new HubSearchOutcome(
-                [Row("bartowski/Qwen3-8B-GGUF", badge: Measured("model-Q4_K_M.gguf"))],
-                null, r.View == HubSearchView.Curated ? "bartowski" : null),
-            Esc);
-
-        var seen = Squash(string.Join("\n", rig.Frames));
-        Assert.Contains("bartowski", seen, StringComparison.Ordinal);
     }
 
     //a fresh machine has measured nothing, so no row shows a tick, and the glyph's words appear wherever the glyph does
@@ -769,10 +754,8 @@ public class RenderedWalkTests : IDisposable
     public void AN_EMPTY_REGISTER_PUTS_NO_TICK_ON_ANY_ROW(int width)
     {
         var rig = Shelf(width,
-            _ => new HubSearchOutcome(
-                [Row("bartowski/Qwen3-8B-GGUF", badge: null),
-                 Row("unsloth/Llama-3.3-8B-GGUF", "llama-Q4_K_M.gguf", 3_800_000_000, badge: null)],
-                null, "bartowski"),
+            _ => WizardProbes.Outcome([Row("bartowski/Qwen3-8B-GGUF", badge: null),
+                 Row("unsloth/Llama-3.3-8B-GGUF", "llama-Q4_K_M.gguf", 3_800_000_000, badge: null)], null),
             Esc);
 
         //scope the check to the lines naming a repo, a frame is cumulative and the welcome map above the table uses the same tick
@@ -790,41 +773,6 @@ public class RenderedWalkTests : IDisposable
         //assert the shelf also says nothing has been verified, which makes the absent tick a fact about the register
         var seen = Squash(string.Join(" ", rig.Frames));
         Assert.Contains(Squash(Gatto.Cli.Setup.ShelfBinding.UnmeasuredShelf), seen, StringComparison.Ordinal);
-    }
-
-    //the count line states what the filter hid, since a line leading with failures lists only what the user cannot run
-    [Theory]
-    [MemberData(nameof(Widths))]
-    public void THE_FIT_FILTER_SAYS_WHAT_IT_HID(int width)
-    {
-        var rig = Shelf(width,
-            _ => new HubSearchOutcome(
-                [Row("bartowski/Qwen3-8B-GGUF", badge: Measured("model-Q4_K_M.gguf"))],
-                null, "bartowski", HiddenByFit: 15),
-            Esc);
-
-        var seen = Squash(string.Join("\n", rig.Frames));
-        //assert the whole sentence, a bare 15 also arrives from a size or a context length
-        Assert.Contains("15morehidden", seen, StringComparison.Ordinal);
-        Assert.Contains("pressatoincludethem", seen, StringComparison.Ordinal);
-    }
-
-    //curation only narrows a default, so the shelf of every approved publisher must stay reachable through the f picker
-    [Theory]
-    [MemberData(nameof(Widths))]
-    public void PRESSING_F_BROADENS_TO_EVERY_PUBLISHER(int width)
-    {
-        var rig = Shelf(width,
-            r => r.View == HubSearchView.Curated
-                ? new HubSearchOutcome([Row("bartowski/Qwen3-8B-GGUF")], null, "bartowski")
-                : new HubSearchOutcome(
-                    [Row("bartowski/Qwen3-8B-GGUF"), Row("unsloth/Llama-3.3-8B-GGUF", "llama-Q4_K_M.gguf")],
-                    null, null),
-            WizardRig.Ch('f'), WizardRig.Digit('4'), Esc);
-
-        //assert what the flow asked for, the engine's wider view is covered in HubSearchTests so rendered rows here would retest it through a fake
-        var seen = Squash(string.Join(" ", rig.Frames));
-        Assert.Contains("Llama-3.3-8B", seen, StringComparison.Ordinal);
     }
 
     private WizardRig ShelfTyped(int width, Func<string, TypedIdOutcome> typed,
@@ -847,7 +795,7 @@ public class RenderedWalkTests : IDisposable
         const string id = "someone/Custom-8B-GGUF";
         //write the keys as a collection expression, a spread in the argument list parses as an index
         ConsoleKeyInfo[] keys =
-            [WizardRig.Ch('/'), .. id.Select(WizardRig.Ch), WizardRig.Enter, Esc];
+            [WizardRig.Ch('?'), .. id.Select(WizardRig.Ch), WizardRig.Enter, Esc];
         var rig = ShelfTyped(width,
             typedId => { asked.Add(typedId); return new TypedIdOutcome.Ok(Row(id)); },
             keys);

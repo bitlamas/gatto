@@ -11,7 +11,7 @@ public class ArchNoteTests
     private static SupportedArchitectures Set(params string[] archs) =>
         new("b10076", "2026-08-13", new HashSet<string>(archs, StringComparer.Ordinal));
 
-    private static ShelfRow Row(string? arch) => new(
+    private static ModelRow Row(string? arch) => ShelfRows.Of(
         "o/m", "o", new HubQuant("m-Q4_K_M.gguf", 4_000_000_000, null),
         FitRegime.FitsGpu, 32768, false, null, 10, false, Arch: arch);
 
@@ -96,7 +96,7 @@ public class ArchNoteTests
             Badge = new Badge("o/m", new DateOnly(2026, 8, 13), "abc", "vendor", Passed: 5, Ran: 5),
         };
 
-        var spec = ShelfTable.Spec([loaded], ShelfStage.Full, curatedPublisher: null, Gatto.Core.Hardware.MachineShape.Discrete, glyphs: GlyphSet.Unicode);
+        var spec = ShelfTable.Spec([loaded], ShelfStage.Full, Gatto.Core.Hardware.MachineShape.Discrete, glyphs: GlyphSet.Unicode);
 
         //the grid holds models only, so body row 0 is the model and the marks cell is last.
         Assert.Equal($"{Gatto.Terminal.GlyphSet.Unicode.Vision} {Gatto.Terminal.GlyphSet.Unicode.Ok} {Gatto.Terminal.GlyphSet.Unicode.OtherBuild}", spec.Rows[0][^1]);

@@ -14,12 +14,16 @@ public class PickReachesTheWriteTests
     private const string Knee = "Q4_K_M";
     private const string Picked = "Q6_K";
 
+    //the reference a pick names: the row's publisher, its repo and the file holding this token
+    private static FileRef Ref(string token) =>
+        new("unsloth", "unsloth/gemma-4-26B-A4B-it", $"gemma-4-26B-A4B-it-{token}.gguf");
+
     private static HubQuant Quant(string token, double gb) =>
         new($"gemma-4-26B-A4B-it-{token}.gguf", (long)(gb * 1024 * 1024 * 1024), null);
 
     //the repo lists its quants heaviest-first and the pane lists them lightest-first, so a pick matched by index takes the wrong file here
-    private static ShelfRow Row() =>
-        new("unsloth/gemma-4-26B-A4B-it", "unsloth", Quant(Knee, 16.9),
+    private static ModelRow Row() =>
+        ShelfRows.Of("unsloth/gemma-4-26B-A4B-it", "unsloth", Quant(Knee, 16.9),
             FitRegime.FitsGpu, 262144, false, Badge: null, Downloads: 5, Gated: false,
             Params: 25_200_000_000,
             AllQuants: [Quant(Picked, 21.1), Quant(Knee, 16.9)]);
@@ -39,7 +43,7 @@ public class PickReachesTheWriteTests
         var flow = FlowAtTheShelf(out var shelf);
         var rowKey = shelf.Options[0].Key;
 
-        var next = flow.Answer(ShelfControls.PickAnswer(rowKey, Picked));
+        var next = flow.Answer(ShelfControls.PickAnswer(rowKey, Ref(Picked)));
 
         var text = Text(next);
         Assert.Contains(Picked, text, StringComparison.Ordinal);
@@ -66,7 +70,7 @@ public class PickReachesTheWriteTests
     {
         var flow = FlowAtTheShelf(out var shelf);
 
-        var next = flow.Answer(ShelfControls.PickAnswer(shelf.Options[0].Key, Knee));
+        var next = flow.Answer(ShelfControls.PickAnswer(shelf.Options[0].Key, Ref(Knee)));
 
         //picking the knee by name must yield the knee even though it sits last in the repo's list.
         Assert.Contains(Knee, Text(next), StringComparison.Ordinal);
@@ -78,7 +82,7 @@ public class PickReachesTheWriteTests
     {
         var flow = FlowAtTheShelf(out var shelf);
 
-        var next = flow.Answer(ShelfControls.PickAnswer(shelf.Options[0].Key, "IQ1_S"));
+        var next = flow.Answer(ShelfControls.PickAnswer(shelf.Options[0].Key, Ref("IQ1_S")));
 
         Assert.Contains(Knee, Text(next), StringComparison.Ordinal);
     }
@@ -87,14 +91,14 @@ public class PickReachesTheWriteTests
     [Fact]
     public void THE_FACE_SENDS_THE_PICK_OUT_AT_THE_LISTS_ENTER()
     {
-        ShelfRow[] rows = [Row()];
-        var shelf = new ShelfView(rows, "unsloth", Gatto.Core.Hardware.MachineShape.UnifiedWithShare,
+        ModelRow[] rows = [Row()];
+        var shelf = new ShelfView(rows, Gatto.Core.Hardware.MachineShape.UnifiedWithShare,
             Total: 1,
             Facts: [new ModelFacts(Files: [
-                new PaneFile(Knee, (long)(16.9 * 1024 * 1024 * 1024), FitRegime.FitsGpu),
-                new PaneFile(Picked, (long)(21.1 * 1024 * 1024 * 1024), FitRegime.FitsGpu)])]);
+                new PaneFile(Knee, (long)(16.9 * 1024 * 1024 * 1024), FitRegime.FitsGpu, Ref(Knee)),
+                new PaneFile(Picked, (long)(21.1 * 1024 * 1024 * 1024), FitRegime.FitsGpu, Ref(Picked))])]);
         var c = new WizardScreen.Choice(SetupFlow.SearchKey, "Which model should gatto start with?",
-            [new ChoiceOption("0", rows[0].RepoId)], Shelf: shelf, Door: SetupFlow.ShelfDoorPlaceholderOf(Gatto.Terminal.GlyphSet.Unicode));
+            [new ChoiceOption("0", rows[0].RowFile!.RepoId)], Shelf: shelf, Door: SetupFlow.ShelfDoorPlaceholderOf(Gatto.Terminal.GlyphSet.Unicode));
 
         var ring = Shelf.Regions(shelf, 100, 0, hasDoor: true).ToList();
         var toFiles = (ring.IndexOf(Region.Files) - ring.IndexOf(Region.List) + ring.Count) % ring.Count;
@@ -109,7 +113,7 @@ public class PickReachesTheWriteTests
             Key(ConsoleKey.Enter),
         ]);
 
-        Assert.Equal(ShelfControls.PickAnswer("0", Picked), answer);
+        Assert.Equal(ShelfControls.PickAnswer("0", Ref(Picked)), answer);
     }
 
     private static ConsoleKeyInfo Key(ConsoleKey k) => new('\0', k, false, false, false);

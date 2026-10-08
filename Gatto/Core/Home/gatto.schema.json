@@ -64,11 +64,6 @@
         }
       }
     },
-    "default_publisher": {
-      "type": "string",
-      "enum": ["lmstudio-community", "bartowski", "unsloth", "ggml-org", "mradermacher", "Qwen", "google", "microsoft", "mistralai", "nvidia", "CohereLabs"],
-      "description": "which publisher the model shelf opens on. the list is compiled in, so adding one needs a new gatto release. leave it out to use the shipped default."
-    },
     "llama_server": {
       "type": "string",
       "description": "path to the llama-server executable that gatto serve starts."

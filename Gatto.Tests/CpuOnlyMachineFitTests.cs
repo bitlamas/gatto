@@ -41,24 +41,6 @@ public class CpuOnlyMachineFitTests
         Assert.Equal(FitRegime.FitsRamOnly, regime);
     }
 
-    [Fact]
-    public async Task A_CPU_ONLY_MACHINE_STILL_GETS_A_SHELF_PRICED_AGAINST_SYSTEM_MEMORY()
-    {
-        var client = new HubClient(new HttpClient(new OneModelHandler())
-        { Timeout = Timeout.InfiniteTimeSpan });
-
-        var outcome = await HubSearch.AssembleAsync(
-            client, new UploaderAllowlist("2026-08-26", ["unsloth"]),
-            CpuOnly(32_000_000_000UL), 4096, _ => null, CancellationToken.None);
-
-        var row = Assert.Single(outcome.Rows);
-        Assert.Equal("qwen3.5-9B-Q4_K_M.gguf", row.PickedQuant.FileName);
-        Assert.Equal(FitRegime.FitsRamOnly, row.Fit);
-        //nothing was hidden, so the hidden count must read zero and name no cause.
-        Assert.Equal(0, outcome.HiddenByFit);
-        Assert.Null(outcome.Cause);
-    }
-
     private sealed class OneModelHandler : HttpMessageHandler
     {
         private const string Model =

@@ -20,7 +20,7 @@ public class TypedFolderShelfTests
     private static readonly FoundModel Sibling = At(@"C:\models-old\old-Q4_K_M.gguf");
     private static readonly FoundModel Inside = At(@"C:\models\sub\three-Q4_K_M.gguf");
 
-    private static ShelfRow HubRow() => new(
+    private static ModelRow HubRow() => ShelfRows.Of(
         "unsloth/gemma-4-26B-A4B-it", "unsloth",
         new HubQuant("gemma-4-26B-A4B-it-Q4_K_M.gguf", 4_000_000_000, null),
         FitRegime.FitsGpu, 262144, false, Badge: null, Downloads: 5, Gated: false,

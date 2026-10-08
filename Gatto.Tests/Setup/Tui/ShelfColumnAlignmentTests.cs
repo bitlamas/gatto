@@ -10,8 +10,8 @@ namespace Gatto.Tests.Setup.Tui;
 //assert column offsets, since a whole-row literal pins the fixture's spelling and an unpadded size cell shifts every later column
 public class ShelfColumnAlignmentTests
 {
-    private static ShelfRow R(string id, string file, long bytes, long paramCount, FitRegime fit) =>
-        new(id, id.Split('/')[0], new HubQuant(file, bytes, null), fit, 32768, false, null, 10, false,
+    private static ModelRow R(string id, string file, long bytes, long paramCount, FitRegime fit) =>
+        ShelfRows.Of(id, id.Split('/')[0], new HubQuant(file, bytes, null), fit, 32768, false, null, 10, false,
             Params: paramCount);
 
     //sizes of one, two and three digits, since a fixture whose sizes share one width can't fail an alignment check
@@ -24,10 +24,11 @@ public class ShelfColumnAlignmentTests
             R("unsloth/Kimi-K2-GGUF", "kimi-k2-Q4_K_M.gguf", 600_000_000_000,
                 1_000_000_000_000, FitRegime.DoesNotFit),
         ],
-        null, MachineShape.Discrete, Total: 3);
+        MachineShape.Discrete, Total: 3);
 
     private static IReadOnlyList<string> DataRows() =>
-        [.. Shelf.Table(Widths(), 0, focused: true, glyphs: GlyphSet.Unicode).Skip(1).Select(r => r.Text)];
+        [.. Shelf.Table(Widths(), 0, focused: true, glyphs: GlyphSet.Unicode).Skip(1).Select(r => r.Text)
+            .Where(t => t.Contains(" GB", StringComparison.Ordinal))];
 
     //the size is padded to the widest one shown, so the quant token starts in one column however wide a size grows
     [Fact]
@@ -56,10 +57,10 @@ public class ShelfColumnAlignmentTests
 
     //trillion-parameter models exist, so the cell rolls at 1T as another unit of the billions format
     [Theory]
-    [InlineData(8_000_000_000L, "8B")]
-    [InlineData(70_000_000_000L, "70B")]
-    [InlineData(999_000_000_000L, "999B")]
-    [InlineData(1_000_000_000_000L, "1T")]
+    [InlineData(8_000_000_000L, "8.0B")]
+    [InlineData(70_000_000_000L, "70.0B")]
+    [InlineData(999_000_000_000L, "999.0B")]
+    [InlineData(1_000_000_000_000L, "1.0T")]
     [InlineData(1_250_000_000_000L, "1.3T")]
     public void A_COUNT_AT_A_TRILLION_ROLLS_TO_T(long paramCount, string expected) =>
         Assert.Equal(expected, ShelfTable.ParamsCell(

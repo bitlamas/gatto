@@ -12,4 +12,4 @@
   2. Type a model's name from Hugging Face
 
 ────────────────────────────────────────────────────────────────────────────────────────────────────
-  Enter choose   m local   b back   Esc leave
+  Enter choose   m local   Esc back

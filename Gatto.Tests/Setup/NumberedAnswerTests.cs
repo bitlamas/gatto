@@ -8,7 +8,7 @@ namespace Gatto.Tests.Setup;
 //each shelf arm must check its own bounds, an out-of-range number gets a named refusal with the screen and its row count
 public class NumberedAnswerTests
 {
-    private static ShelfRow HubRow(string id) => new(
+    private static ModelRow HubRow(string id) => ShelfRows.Of(
         id, "unsloth", new HubQuant(id + "-Q4_K_M.gguf", 4_000_000_000, null),
         FitRegime.FitsGpu, 262144, false, Badge: null, Downloads: 5, Gated: false,
         Params: 25_200_000_000);

@@ -217,4 +217,172 @@ public class HubClientTests
         await Assert.ThrowsAsync<HubUnavailableException>(
             () => new HubClient(Client(handler)).TreeAsync("org/repo", CancellationToken.None));
     }
+
+    private static string Row(string id, params string[] tags) =>
+        "{\"id\":\"" + id + "\",\"tags\":[" + string.Join(",", tags.Select(t => "\"" + t + "\"")) + "]}";
+
+    private static HttpResponseMessage WithNext(HttpResponseMessage res, string next)
+    {
+        res.Headers.TryAddWithoutValidation("Link", $"<{next}>; rel=\"next\"");
+        return res;
+    }
+
+    //the source query pages past 1000 rows, so the caller sees every conversion and never the first page alone
+    [Fact]
+    public async Task CONVERSIONS_FOLLOW_EVERY_PAGE()
+    {
+        var handler = new StubHandler(r => r.RequestUri!.Query.Contains("cursor=x")
+            ? Json($"[{Row("c/three")}]")
+            : WithNext(Json($"[{Row("a/one")},{Row("b/two")}]"), "https://huggingface.co/api/models?cursor=x"));
+        var rows = await new HubClient(Client(handler)).ConversionsAsync("Qwen/Qwen3.8-27B", CancellationToken.None);
+        Assert.Equal(["a/one", "b/two", "c/three"], rows.Select(r => r.RepoId));
+    }
+
+    //the quantized tag names the source a conversion was made from, and an adapter tag names none
+    [Fact]
+    public async Task THE_QUANTIZED_TAG_IS_READ()
+    {
+        var handler = new StubHandler(_ => Json(
+            $"[{Row("u/m-GGUF", "gguf", "base_model:Qwen/Qwen3.8-27B", "base_model:quantized:Qwen/Qwen3.8-27B")}," +
+            $"{Row("u/adapter", "base_model:adapter:x/y")}]"));
+        var rows = await new HubClient(Client(handler)).ConversionsAsync("Qwen/Qwen3.8-27B", CancellationToken.None);
+        Assert.Equal("Qwen/Qwen3.8-27B", rows[0].QuantizedFrom);
+        Assert.Null(rows[1].QuantizedFrom);
+        Assert.Equal("u", rows[0].Owner);
+    }
+
+    [Fact]
+    public async Task THE_SOURCE_QUERY_ASKS_THE_TAG_FILTER_AND_THE_EXPANDS()
+    {
+        var handler = new StubHandler(_ => Json("[]"));
+        await new HubClient(Client(handler)).ConversionsAsync("Qwen/Qwen3.8-27B", CancellationToken.None);
+        var url = Uri.UnescapeDataString(handler.Urls.Single());
+        Assert.Contains("filter=gguf", url);
+        Assert.Contains("filter=base_model:quantized:Qwen/Qwen3.8-27B", url);
+        foreach (var e in new[] { "gguf", "gated", "downloads", "lastModified", "pipeline_tag", "tags" })
+            Assert.Contains($"expand[]={e}", url);
+    }
+
+    [Fact]
+    public async Task THE_RELEASER_LISTING_ASKS_ITS_TERM()
+    {
+        var handler = new StubHandler(_ => Json("[]"));
+        var client = new HubClient(Client(handler));
+        await client.ReleaserAsync("google", "gemma-4", gguf: false, CancellationToken.None);
+        await client.ReleaserAsync("google", "gemma-4", gguf: true, CancellationToken.None);
+        var sources = Uri.UnescapeDataString(handler.Urls[0]);
+        var ggufs = Uri.UnescapeDataString(handler.Urls[1]);
+        Assert.Contains("author=google", sources);
+        Assert.Contains("search=gemma-4", sources);
+        Assert.DoesNotContain("filter=gguf", sources);
+        Assert.Contains("expand[]=pipeline_tag", sources);
+        Assert.Contains("filter=gguf", ggufs);
+        Assert.Contains("expand[]=tags", ggufs);
+    }
+
+    //a server that always answers with a next link is a bound, not a loop
+    [Fact]
+    public async Task A_RUNAWAY_LINK_STOPS()
+    {
+        var n = 0;
+        var handler = new StubHandler(_ => WithNext(Json($"[{Row("a/r" + n++)}]"), $"https://huggingface.co/api/models?cursor={n}"));
+        var rows = await new HubClient(Client(handler)).ConversionsAsync("Qwen/Qwen3.8-27B", CancellationToken.None);
+        Assert.Equal(20, handler.Urls.Count);
+        Assert.Equal(20, rows.Count);
+    }
+
+    //the api window as the server last reported it, and a response without the header keeps the last reading
+    [Fact]
+    public async Task THE_WINDOW_IS_READ()
+    {
+        var calls = 0;
+        var handler = new StubHandler(_ =>
+        {
+            var res = Json("[]");
+            if (calls++ == 0) res.Headers.TryAddWithoutValidation("RateLimit", "\"api\";r=37;t=120");
+            return res;
+        });
+        var client = new HubClient(Client(handler));
+        Assert.Null(client.Window);
+        await client.ReleaserAsync("google", "gemma-4", false, CancellationToken.None);
+        Assert.Equal((37, 120), client.Window);
+        await client.ReleaserAsync("google", "gemma-4", false, CancellationToken.None);
+        Assert.Equal((37, 120), client.Window);
+    }
+
+    private sealed class Clock : TimeProvider
+    {
+        public DateTimeOffset Now = new(2026, 10, 7, 9, 0, 0, TimeSpan.Zero);
+        public override DateTimeOffset GetUtcNow() => Now;
+    }
+
+    //a reading says nothing once the server's reset has passed, so a low count read long ago never blocks a later search
+    [Fact]
+    public async Task THE_WINDOW_EXPIRES_AT_ITS_RESET()
+    {
+        var handler = new StubHandler(_ =>
+        {
+            var res = Json("[]");
+            res.Headers.TryAddWithoutValidation("RateLimit", "\"api\";r=3;t=120");
+            return res;
+        });
+        var clock = new Clock();
+        var client = new HubClient(Client(handler), clock);
+        await client.ReleaserAsync("google", "gemma-4", false, CancellationToken.None);
+        clock.Now = clock.Now.AddSeconds(119);
+        Assert.Equal((3, 1), client.Window);
+        clock.Now = clock.Now.AddSeconds(2);
+        Assert.Null(client.Window);
+    }
+
+    //the resolve window is a different budget, so it never moves the api reading
+    [Fact]
+    public async Task ANOTHER_WINDOWS_HEADER_IS_NOT_THE_API_WINDOW()
+    {
+        var handler = new StubHandler(_ =>
+        {
+            var res = Json("[]");
+            res.Headers.TryAddWithoutValidation("RateLimit", "\"resolvers\";r=2999;t=10");
+            return res;
+        });
+        var client = new HubClient(Client(handler));
+        await client.ReleaserAsync("google", "gemma-4", false, CancellationToken.None);
+        Assert.Null(client.Window);
+    }
+
+    [Fact]
+    public async Task A_429_IS_ITS_OWN_FAILURE()
+    {
+        var handler = new StubHandler(_ =>
+        {
+            var res = new HttpResponseMessage((HttpStatusCode)429);
+            res.Headers.TryAddWithoutValidation("RateLimit", "\"api\";r=0;t=230");
+            return res;
+        });
+        var ex = await Assert.ThrowsAsync<HubRateLimitedException>(
+            () => new HubClient(Client(handler)).TreeAsync("org/repo", CancellationToken.None));
+        Assert.Equal(230, ex.ResetSeconds);
+    }
+
+    //a 429 that names no reset carries none, so nothing counts down from a number the server never sent
+    [Fact]
+    public async Task A_429_WITHOUT_A_WINDOW_CARRIES_NO_RESET()
+    {
+        var calls = 0;
+        var handler = new StubHandler(_ =>
+        {
+            if (calls++ == 0)
+            {
+                var ok = Json("[]");
+                ok.Headers.TryAddWithoutValidation("RateLimit", "\"api\";r=40;t=200");
+                return ok;
+            }
+            return new HttpResponseMessage((HttpStatusCode)429);
+        });
+        var client = new HubClient(Client(handler));
+        await client.ReleaserAsync("google", "gemma-4", false, CancellationToken.None);
+        var ex = await Assert.ThrowsAsync<HubRateLimitedException>(
+            () => client.TreeAsync("org/repo", CancellationToken.None));
+        Assert.Null(ex.ResetSeconds);
+    }
 }

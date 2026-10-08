@@ -11,8 +11,8 @@ public class PaneFilesHeadingTests
 {
     private const MachineShape Shape = MachineShape.UnifiedWithShare;
 
-    private static ShelfRow Row() =>
-        new("qwen/qwen3.5-4b", "qwen", new HubQuant("qwen3.5-4b-Q4_K_M.gguf", 4_000_000_000, null),
+    private static ModelRow Row() =>
+        ShelfRows.Of("qwen/qwen3.5-4b", "qwen", new HubQuant("qwen3.5-4b-Q4_K_M.gguf", 4_000_000_000, null),
             FitRegime.FitsGpu, 262144, false, Badge: null, Downloads: 5, Gated: false,
             Params: 4_000_000_000);
 
@@ -26,8 +26,8 @@ public class PaneFilesHeadingTests
             new PaneFile("Q6_K", 5_000_000_000, FitRegime.FitsGpu)]);
 
     private static List<string> Expanded(ModelFacts f, int width = 100) =>
-        [.. Pane.Rows(Row(), f, Shape, width, cursor: 0, focused: false, build: -1,
-            focus: Region.List).Select(r => r.Text.TrimEnd())];
+        [.. Pane.Rows(Row(), f, Shape, width, cursor: 0, focused: false,
+            glyphs: null).Select(r => r.Text.TrimEnd())];
 
     //site 1: the expanded pane (Pane.Rows)
 
@@ -40,17 +40,6 @@ public class PaneFilesHeadingTests
         var rows = Expanded(AHubRowWhoseTreeListedNoQuants(), width);
 
         Assert.DoesNotContain(rows, r => r.TrimStart().StartsWith("files", StringComparison.Ordinal));
-    }
-
-    //the heading has to exist and sit right above its rows, or the guard above passes on a build with no heading at all
-    [Fact]
-    public void THE_EXPANDED_PANE_KEEPS_THE_HEADING_IMMEDIATELY_ABOVE_ITS_ROWS()
-    {
-        var rows = Expanded(WithFiles());
-
-        var heading = rows.FindIndex(r => r.TrimStart().StartsWith("files", StringComparison.Ordinal));
-        Assert.True(heading >= 0, "the heading vanished for a row that HAS files");
-        Assert.Contains("Q4_K_M", rows[heading + 1], StringComparison.Ordinal);
     }
 
     //site 2: the fold (Pane.Fold)

@@ -12,9 +12,9 @@ internal static class ArchNote
     internal const string MarkerText = "needs a different llama.cpp build";
 
     //the dim factual row marker, or null when there is nothing to say
-    public static string? Marker(ShelfRow r) => Marker(r, Shared.Value);
+    public static string? Marker(ModelRow r) => Marker(r, Shared.Value);
 
-    public static string? Marker(ShelfRow r, SupportedArchitectures set) =>
+    public static string? Marker(ModelRow r, SupportedArchitectures set) =>
         set.WillNotLoad(r.Arch) ? MarkerText : null;
 
     //whether the pinned build can load this architecture, for a caller with a header rather than a row

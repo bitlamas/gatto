@@ -13,7 +13,9 @@ public class PaneEnterAdvancesTests
     private const string Knee = "Q4_K_M";
     private const string Heavier = "Q6_K";
 
-    private static ShelfRow Row() => new(
+    private static FileRef Ref(string token) => new("unsloth", "unsloth/gemma-4-26B", token + ".gguf");
+
+    private static ModelRow Row() => ShelfRows.Of(
         RepoId: "unsloth/gemma-4-26B", Publisher: "unsloth",
         PickedQuant: new HubQuant(Knee + ".gguf", 16_900_000_000, null),
         Fit: FitRegime.FitsGpu, NativeCtx: 262144, Vision: false, Badge: null,
@@ -22,10 +24,10 @@ public class PaneEnterAdvancesTests
     //two files, so the pane cursor's file and the row's own default are different answers. with one file, or without the Down, both would come out the same
     private static WizardScreen.Choice OnTheShelf()
     {
-        var shelf = new ShelfView([Row()], "unsloth", MachineShape.UnifiedWithShare, Total: 1,
+        var shelf = new ShelfView([Row()], MachineShape.UnifiedWithShare, Total: 1,
             Facts: [new ModelFacts(Files: [
-                new PaneFile(Knee, 16_900_000_000, FitRegime.FitsGpu),
-                new PaneFile(Heavier, 21_100_000_000, FitRegime.FitsGpu)])]);
+                new PaneFile(Knee, 16_900_000_000, FitRegime.FitsGpu, Ref(Knee)),
+                new PaneFile(Heavier, 21_100_000_000, FitRegime.FitsGpu, Ref(Heavier))])]);
         return new WizardScreen.Choice(SetupFlow.SearchKey, "Which model should gatto start with?",
             [new ChoiceOption("0", "unsloth/gemma-4-26B")],
             Shelf: shelf, Door: SetupFlow.ShelfDoorPlaceholderOf(Gatto.Terminal.GlyphSet.Unicode));
@@ -57,7 +59,7 @@ public class PaneEnterAdvancesTests
             Key(ConsoleKey.Enter),
         ]);
 
-        Assert.Equal(ShelfControls.PickAnswer("0", Heavier), answer);
+        Assert.Equal(ShelfControls.PickAnswer("0", Ref(Heavier)), answer);
     }
 
     //the Down moves the pane cursor off the row's picked quant, so a build that ignores the pane answers Q4_K_M and fails here
@@ -85,7 +87,7 @@ public class PaneEnterAdvancesTests
         var answer = WalkRender.AnswerAfter(c, 100,
             [.. TabTo(c, Region.Files), Key(ConsoleKey.Enter)]);
 
-        Assert.Equal(ShelfControls.PickAnswer("0", Knee), answer);
+        Assert.Equal(ShelfControls.PickAnswer("0", Ref(Knee)), answer);
     }
 
     //the list's Enter still answers on its own, the half a pane fix could break while the rows above pass
@@ -107,7 +109,6 @@ public class PaneEnterAdvancesTests
         var ring = Ring(c);
 
         Assert.Equal("choose", EnterWord(ring, Region.Files));
-        Assert.Equal("pick", EnterWord(ring, Region.Publisher));
         Assert.Equal("next", EnterWord(ring, Region.List));
     }
 

@@ -601,6 +601,7 @@ public class AuditionRunnerTests
     [InlineData("thing-f16.gguf", "F16")]
     [InlineData("plain-model.gguf", null)]         //a name with no quant convention gives null
     [InlineData("Qwen3.6-35B-A3B.gguf", null)]     //the A3B segment is a model size
+    [InlineData("model_Q4_K_M.gguf", "Q4_K_M")]     //a token after an underscore is read, as on the shelf
     public void The_quant_is_read_from_the_filename_or_left_ABSENT(string fileName, string? expected)
     {
         //the stamp must be null when the name declares no quant, a wrong quant on a badge is a false claim
@@ -611,8 +612,6 @@ public class AuditionRunnerTests
     [Theory]
     //anchor the match, an unanchored search reads this name as Q4_K_M_PRUNED, which no quant family defines
     [InlineData("mistral-x_Q4_K_M_pruned.gguf")]
-    //the rule splits only on a hyphen and a dot, so a name with underscores gives null
-    [InlineData("model_Q4_K_M.gguf")]
     public void A_TOKEN_NO_QUANT_FAMILY_DEFINES_IS_NOT_A_QUANT(string fileName)
     {
         //the stamp uses the same anchored rule as the shelf and serve status --json

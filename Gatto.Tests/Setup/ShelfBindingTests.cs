@@ -12,8 +12,8 @@ public class ShelfBindingTests
 {
     private static readonly Theme T = new(TermCaps.Plain);
 
-    private static ShelfRow Row(string id, long bytes, FitRegime fit, long? prm) =>
-        new(id, id.Split('/')[0], new HubQuant(id.Split('/')[1] + "-Q4_K_M.gguf", bytes, null),
+    private static ModelRow Row(string id, long bytes, FitRegime fit, long? prm) =>
+        ShelfRows.Of(id, id.Split('/')[0], new HubQuant(id.Split('/')[1] + "-Q4_K_M.gguf", bytes, null),
             fit, 32768, false, null, 1000, false, new DateTimeOffset(2026, 7, 1, 0, 0, 0, TimeSpan.Zero),
             prm);
 
@@ -24,11 +24,11 @@ public class ShelfBindingTests
             Row("unsloth/Llama-4-Scout-GGUF", 9_000_000_000, FitRegime.FitsGpu, 17_000_000_000),
             Row("ggml-org/Gemma-3-27B-GGUF", 20_000_000_000, FitRegime.FitsRamOnly, 27_000_000_000),
         ],
-        CuratedPublisher: null, Shape: MachineShape.Discrete);
+        Shape: MachineShape.Discrete);
 
     private static IReadOnlyList<SelectOption> Options(ShelfView v) =>
     [
-        .. v.Rows.Select(r => new SelectOption(r.RepoId)),
+        .. v.Rows.Select(r => new SelectOption(r.RowFile!.RepoId)),
         new SelectOption("I already have a model, let me point at the folder"),
         new SelectOption("Type a model's name from Hugging Face"),
     ];
@@ -48,7 +48,7 @@ public class ShelfBindingTests
         for (var w = 20; w <= 110; w++)
         {
             var content = Math.Max(1, w - chrome);
-            var expected = ShelfTable.Render(view.Rows, T, content, null, view.Shape, glyphs: GlyphSet.Unicode);
+            var expected = ShelfTable.Render(view.Rows, T, content, view.Shape, glyphs: GlyphSet.Unicode);
             wrapped += expected.Count(r => r.Continuation);
 
             var produced = headingsAt(w).Select(h => h.Text)
@@ -94,49 +94,11 @@ public class ShelfBindingTests
     }
 
 
-    private static ShelfView Populated(bool lift = false, int hidden = 0,
-        SearchOrder axis = SearchOrder.MostDownloaded, string? publisher = null,
-        int skipped = 0) =>
-        View() with { Axis = axis, Lift = lift, HiddenByFit = hidden, CuratedPublisher = publisher,
-                      HiddenByKind = skipped };
+    private static ShelfView Populated(bool lift = false, int hidden = 0, int skipped = 0) =>
+        View() with { Lift = lift, HiddenByFit = hidden, HiddenByKind = skipped };
 
     private static IReadOnlyList<string> Texts(ShelfView v, int w = 100) =>
         [.. ShelfBinding.For(v, Options(v), T, glyphs: GlyphSet.Unicode).HeadingsAt(w).Select(h => h.Text)];
-
-    [Fact]
-    public void THE_HEADER_SAYS_WHAT_THIS_SHELF_IS_and_HOW_IT_IS_ORDERED()
-    {
-        //the four order clauses share one grammar, so the pinned strings read as a family. the scope half names which shelf the order covers
-        Assert.Equal("by unsloth · sorted by newest",
-            ShelfBinding.StateSentence(Populated(axis: SearchOrder.RecentlyUpdated, publisher: "unsloth"), Gatto.Terminal.GlyphSet.Unicode));
-        Assert.Equal("every approved publisher · sorted by most downloaded",
-            ShelfBinding.StateSentence(Populated(), Gatto.Terminal.GlyphSet.Unicode));
-    }
-
-    [Fact]
-    public void THE_SCOPE_QUALIFIER_RIDES_THE_DOWNLOADS_AXIS_and_only_that_one()
-    {
-        //a header must never read as a Hub-wide ranking, so each axis names its scope. the guard checks the property, so a wording change cannot hide a lost scope
-        foreach (var axis in new[]
-                 {
-                     SearchOrder.MostDownloaded, SearchOrder.RecentlyUpdated,
-                     SearchOrder.MostParams, SearchOrder.VerifiedFirst,
-                 })
-        {
-            Assert.StartsWith("by unsloth · ",
-                ShelfBinding.StateSentence(Populated(axis: axis, publisher: "unsloth"), Gatto.Terminal.GlyphSet.Unicode),
-                StringComparison.Ordinal);
-            Assert.StartsWith("every approved publisher · ",
-                ShelfBinding.StateSentence(Populated(axis: axis), Gatto.Terminal.GlyphSet.Unicode), StringComparison.Ordinal);
-        }
-    }
-
-    [Fact]
-    public void VERIFIED_FIRST_SAYS_SO_so_the_reorder_is_not_silent()
-    {
-        //an axis that orders badged rows first in silence reads as a verdict on the models, so the header names it
-        Assert.Contains("verified", ShelfBinding.AxisWords(SearchOrder.VerifiedFirst), StringComparison.Ordinal);
-    }
 
     [Fact]
     public void THE_COUNT_LINE_SAYS_WHAT_THE_FILTER_HID_and_never_what_the_machine_cannot_do()
@@ -238,10 +200,6 @@ public class ShelfBindingTests
         var normal = Populated();
         foreach (var k in ShelfControls.Keys(normal))
             Assert.Contains(k.ToString(), ShelfControls.Strip(normal, Gatto.Terminal.GlyphSet.Unicode), StringComparison.Ordinal);
-
-        //the f key opens a publisher picker, so it is offered on every shelf
-        Assert.Contains('f', ShelfControls.Keys(normal));
-        Assert.Contains("f publisher", ShelfControls.Strip(normal, Gatto.Terminal.GlyphSet.Unicode), StringComparison.Ordinal);
     }
 
     [Theory]
@@ -252,7 +210,7 @@ public class ShelfBindingTests
     public void THE_CHROME_NEVER_LOSES_A_WORD_AT_ANY_WIDTH(int width)
     {
         //narrow widths wrap the chrome and never drop or truncate a word, so several widths are swept. a key that is not drawn is not a control the user can see
-        var shelf = Populated(hidden: 15, publisher: "unsloth");
+        var shelf = Populated(hidden: 15);
         var joined = string.Concat(Texts(shelf, width).Select(s => s.Replace(" ", "")));
 
         //the words come from ShelfControls.For, the same list that builds the strip. a hand-written copy agrees with the code only until the code moves
@@ -325,7 +283,7 @@ public class ShelfBindingTests
 
         Assert.Equal(options.Count, labels.Count);
         for (var i = 0; i < view.Rows.Count; i++)
-            Assert.Contains(view.Rows[i].RepoId, labels[i], StringComparison.Ordinal);
+            Assert.Contains(view.Rows[i].Model, labels[i], StringComparison.Ordinal);
         for (var i = view.Rows.Count; i < options.Count; i++)
             Assert.Equal(options[i].Label, labels[i]);
     }

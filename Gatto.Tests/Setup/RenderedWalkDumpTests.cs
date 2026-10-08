@@ -229,13 +229,13 @@ public class RenderedWalkDumpTests : IDisposable
             new("shelf-none-fit-this-machine",
                 "repos were listed and priced and none of their quants fit this machine",
                 () => InSession(h => RenderedWalkTests.ProbesForDump(h,
-                        answer: _ => new HubSearchOutcome([], HubSearchCause.NothingFits)),
+                        answer: _ => WizardProbes.Outcome([], HubSearchCause.NothingFits)),
                     [WizardRig.Esc])),
 
             new("shelf-cannot-reach-the-list",
                 "every request gatto made came back a failure",
                 () => InSession(h => RenderedWalkTests.ProbesForDump(h,
-                        answer: _ => new HubSearchOutcome([], HubSearchCause.HubFailed)),
+                        answer: _ => WizardProbes.Outcome([], HubSearchCause.HubFailed)),
                     [WizardRig.Esc])),
 
             //only the setup walk reaches HeldScreen, since the in-session walk goes to the check ask instead, so the entry decides the screen
@@ -312,11 +312,25 @@ public class RenderedWalkDumpTests : IDisposable
             [WizardRig.Enter, WizardRig.Digit('1'), WizardRig.Digit('1'), WizardRig.Digit('1'),
              WizardRig.Digit('1'), WizardRig.Digit('1'), WizardRig.Digit('1'), WizardRig.Digit('1')]);
 
-        foreach (var rig in new[] { shelf, pick, done })
+        //a search that answers only after the first paint, so the start-up screen is captured on every run rather than only on a slow one
+        WizardRig? held = null;
+        var waited = InSession(h =>
+        {
+            Probes? made = null;
+            made = RenderedWalkTests.ProbesForDump(h, answer: _ =>
+            {
+                SpinWait.SpinUntil(() => held!.Frames.Count > 0, TimeSpan.FromSeconds(10));
+                return Probes.Outcome(made!.Rows, null);
+            });
+            return made;
+        }, [WizardRig.Esc, WizardRig.Esc], made: rig => held = rig);
+        Assert.Contains(waited.Frames, IsStartUp);
+
+        foreach (var rig in new[] { shelf, pick, done, waited })
         {
             Assert.NotEmpty(rig.Frames);
             foreach (var frame in rig.Frames)
-                Assert.Contains(banner, frame, StringComparison.Ordinal);
+                Assert.Contains(IsStartUp(frame) ? StartUpHeader : banner, frame, StringComparison.Ordinal);
         }
 
         //the setup flow must draw the same banner, so a change that keys the row to one entry only still fails here.
@@ -324,6 +338,16 @@ public class RenderedWalkDumpTests : IDisposable
             [.. WalkOpening.Keys, WizardRig.Esc, WizardRig.Esc]);
         Assert.Contains(banner, string.Join("\n", setup.Frames), StringComparison.Ordinal);
     }
+
+    //the start-up screen is the one in-session frame that draws the cat, so a frame is told apart by the drawing and never by the header under test
+    private static readonly string CatLine = Gatto.Repl.Cats.For("", Gatto.Terminal.GlyphSet.Unicode).Split('\n')
+        .Select(l => l.TrimEnd('\r').Trim()).OrderByDescending(l => l.Length).First();
+
+    private static bool IsStartUp(string frame) => frame.Contains(CatLine, StringComparison.Ordinal);
+
+    //the start-up screen names the program, since no command has been chosen there yet
+    private static readonly string StartUpHeader =
+        Gatto.Cli.Setup.Tui.ScreenPainter.Header(80, "0.5.0", "1a2b3c4", Gatto.Terminal.GlyphSet.Unicode, command: "gatto");
 
     //the in-session close shows the done rows and nothing from the retired prose or the install row
     [Fact]
@@ -378,10 +402,11 @@ public class RenderedWalkDumpTests : IDisposable
 
     //run with modelSegmentOnly, so the flow enters at StartAtModelSegment the way GattoApp does, which is why the strip shows three steps
     private WizardRig InSession(Func<string, Probes> build, ConsoleKeyInfo[] keys,
-        int watchKeys = 0)
+        int watchKeys = 0, Action<WizardRig>? made = null)
     {
         var home = NewHomeForDump();
         var rig = new WizardRig(80) { WatchKeyBudget = watchKeys };
+        made?.Invoke(rig);
         SetupRunner.Run(new SetupFlow(build(home)), rig.TuiFace(keys), home, modelSegmentOnly: true);
         return rig;
     }

@@ -25,7 +25,7 @@ public class TypedDoorCensusTests
         new(Zip, "https://example.invalid/" + Zip, new string('a', 64), 214L * 1024 * 1024);
     private static readonly HubQuant Quant = new("m-Q4_K_M.gguf", 1_000_000_000, null);
 
-    private static ShelfRow Row() => new("unsloth/m", "unsloth", Quant,
+    private static ModelRow Row() => ShelfRows.Of("unsloth/m", "unsloth", Quant,
         FitRegime.FitsGpu, 32768, false, null, 10, false, Params: 4_000_000_000);
 
     //reaches every screen with a typed option the way a user reaches it. the screen key is asserted before anything is typed, so a drifted recipe fails

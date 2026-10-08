@@ -139,6 +139,9 @@ internal sealed class WizardRig(int width = 80, Gatto.Terminal.GlyphSet? glyphs 
     //spell Esc with a NUL KeyChar, since every path that reads Escape reads key.Key. one spelling keeps a reader from checking whether two unused fields match
     public static ConsoleKeyInfo Esc => new('\0', ConsoleKey.Escape, false, false, false);
 
+    //the console reports Ctrl+C as C with the control modifier and the ETX character
+    public static ConsoleKeyInfo CtrlC => new('\u0003', ConsoleKey.C, false, false, true);
+
     //keep the real tab character, a focused text field reads KeyChar and a NUL would move the ring yet type nothing
     public static ConsoleKeyInfo Tab => new('\t', ConsoleKey.Tab, false, false, false);
 

@@ -63,7 +63,7 @@ public sealed class GlyphSet
         Down = "\u2193", Up = "\u2191", Right = "\u2192", Left = "\u2190", Continue = "\u21b3",
         DownKey = "\u2193", UpKey = "\u2191", ArrowsKey = "\u2191\u2193",
         Bar = "\u258f", Sharp = "\u266f", Angle = "\u203a", Approx = "\u2248", Elbow = "\u23bf",
-        HeavyRule = "\u2501", Caret = "\u25be", Triangle = "\u25b8", Bullet = "\u2022",
+        HeavyRule = "\u2501", Caret = "\u25be", CaretUp = "\u25b4", Triangle = "\u25b8", Bullet = "\u2022",
         AtMost = "\u2264", Sum = "\u03a3", Ring = "\u25cb", Times = "\u00d7", Range = "\u2013",
         Cloud = "\U0001F6C8", Block = "\u2588", Shade = "\u2591", Swatch = "\u25a0",
         Box = new("\u250c", "\u252c", "\u2510", "\u251c", "\u253c", "\u2524",
@@ -82,7 +82,7 @@ public sealed class GlyphSet
         Down = "v", Up = "^", Right = "->", Left = "<-", Continue = "->",
         DownKey = "Down", UpKey = "Up", ArrowsKey = "arrows",
         Bar = "|", Sharp = "#", Angle = ">", Approx = "~", Elbow = "`-",
-        HeavyRule = "=", Caret = "v", Triangle = ">", Bullet = "*",
+        HeavyRule = "=", Caret = "v", CaretUp = "^", Triangle = ">", Bullet = "*",
         AtMost = "<=", Sum = "sum", Ring = "o", Times = "x", Range = "-",
         Cloud = "@", Block = "#", Shade = ".", Swatch = "#",
         Box = new("+", "+", "+", "+", "+", "+", "+", "+", "+", "|"),
@@ -189,6 +189,9 @@ public sealed class GlyphSet
 
     //an open block that a key would collapse
     public required string Caret { get; init; }
+
+    //the caret turned up, a list ordered the other way
+    public required string CaretUp { get; init; }
 
     //a closed block that a key would open
     public required string Triangle { get; init; }

@@ -27,19 +27,18 @@ public class LiveShelfDoorTests
     private static ConsoleKeyInfo Ch(char c) => new(c, ConsoleKey.A, false, false, false);
     private static ConsoleKeyInfo Key(ConsoleKey k) => new('\0', k, false, false, false);
 
-    private static ShelfRow Row(string id) => new(
+    private static ModelRow Row(string id) => ShelfRows.Of(
         id, id.Split('/')[0], new HubQuant("m-Q4_K_M.gguf", 4_000_000_000, null),
         FitRegime.FitsGpu, 262144, false, null, 900, false, Params: 3_000_000_000, Arch: "qwen3");
 
     //the shelf the flow arrives at, with the probe that records the request
     private static (WizardProbes Probes, SetupFlow Flow, WizardScreen.Choice Screen) LiveShelf()
     {
-        IReadOnlyList<ShelfRow> rows = [Row("unsloth/a"), Row("unsloth/b")];
+        IReadOnlyList<ModelRow> rows = [Row("unsloth/a"), Row("unsloth/b")];
         var probes = new WizardProbes
         {
             Rows = rows,
-            Curated = "unsloth",
-            Answer = _ => new HubSearchOutcome(rows, null, "unsloth", HiddenByFit: 0),
+            Answer = _ => WizardProbes.Outcome(rows, null),
         };
         var flow = new SetupFlow(probes);
         return (probes, flow, Assert.IsType<WizardScreen.Choice>(flow.StartPastEngine()));
@@ -93,7 +92,7 @@ public class LiveShelfDoorTests
         var probes = new WizardProbes
         {
             Rows = [],
-            Answer = _ => new HubSearchOutcome([], HubSearchCause.NothingFits, null, HiddenByFit: 3),
+            Answer = _ => WizardProbes.Outcome([], HubSearchCause.NothingFits),
         };
 
         Assert.Null(Assert.IsType<WizardScreen.Choice>(new SetupFlow(probes).StartPastEngine()).Door);
@@ -103,8 +102,7 @@ public class LiveShelfDoorTests
 
     //the typed words must reach the request the flow made, which no screen read can show
     [Theory]
-    [InlineData('/')]
-    [InlineData('d')]
+    [InlineData('?')]
     public void TYPING_INTO_THE_DOOR_AND_PRESSING_ENTER_SEARCHES_FOR_IT(char opener)
     {
         var (probes, flow, screen) = LiveShelf();
@@ -125,7 +123,7 @@ public class LiveShelfDoorTests
         var (probes, _, screen) = LiveShelf();
         var before = probes.LastRequest?.Search;
 
-        Press(screen, 100, Ch('/'), Ch('q'), Ch('w'), Key(ConsoleKey.Escape), Key(ConsoleKey.Escape));
+        Press(screen, 100, Ch('?'), Ch('q'), Ch('w'), Key(ConsoleKey.Escape), Key(ConsoleKey.Escape));
 
         Assert.Equal(before, probes.LastRequest?.Search);
     }

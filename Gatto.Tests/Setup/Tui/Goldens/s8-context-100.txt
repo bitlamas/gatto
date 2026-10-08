@@ -10,4 +10,4 @@
 
 ❯ or type a number of tokens…                                                     Tab or ↓ to type
 ────────────────────────────────────────────────────────────────────────────────────────────────────
-  Tab area   Enter next   Esc leave
+  Tab area   Enter next   Esc back

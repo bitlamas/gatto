@@ -18,19 +18,19 @@ public class ChipAnswerTests
 
     private static ConsoleKeyInfo Key(ConsoleKey k) => new('\0', k, false, false, false);
 
-    private static ShelfRow Row(string name) =>
-        new($"unsloth/{name}", "unsloth", new HubQuant($"{name}-Q4_K_M.gguf", Gib(8), null),
+    private static ModelRow Row(string name) =>
+        ShelfRows.Of($"unsloth/{name}", "unsloth", new HubQuant($"{name}-Q4_K_M.gguf", Gib(8), null),
             FitRegime.FitsGpu, 262144, false, Badge: null, Downloads: 0, Gated: false,
             Params: 8_000_000_000);
 
     private static WizardScreen.Choice Screen()
     {
-        ShelfRow[] rows = [Row("gemma-4-31B-it"), Row("gemma-4-26B-A4B-it")];
-        var shelf = new ShelfView(rows, "unsloth",
+        ModelRow[] rows = [Row("gemma-4-31B-it"), Row("gemma-4-26B-A4B-it")];
+        var shelf = new ShelfView(rows,
             MachineShape.UnifiedWithShare,
             Families: Ladder, Family: "gemma", Total: 2);
         return new WizardScreen.Choice(SetupFlow.SearchKey, "Which model should gatto start with?",
-            [.. rows.Select((r, i) => new ChoiceOption(i.ToString(), r.RepoId))],
+            [.. rows.Select((r, i) => new ChoiceOption(i.ToString(), r.RowFile!.RepoId))],
             Shelf: shelf, Door: SetupFlow.ShelfDoorPlaceholderOf(Gatto.Terminal.GlyphSet.Unicode));
     }
 
@@ -80,19 +80,20 @@ public class ChipAnswerTests
     [Fact]
     public void ENTER_IN_THE_FILES_ZONE_ADVANCES_AND_SO_DOES_THE_LISTS()
     {
-        ShelfRow[] rows = [Row("gemma-4-31B-it")];
-        var shelf = new ShelfView(rows, "unsloth",
+        ModelRow[] rows = [Row("gemma-4-31B-it")];
+        var shelf = new ShelfView(rows,
             MachineShape.UnifiedWithShare,
             Families: Ladder, Family: "gemma", Total: 1,
-            Facts: [new ModelFacts(Files: [new PaneFile("Q4_K_M", Gib(8), FitRegime.FitsGpu)])]);
+            Facts: [new ModelFacts(Files: [new PaneFile("Q4_K_M", Gib(8), FitRegime.FitsGpu,
+                new FileRef("unsloth", "unsloth/gemma-4-31B-it", "gemma-4-31B-it-Q4_K_M.gguf"))])]);
         var c = new WizardScreen.Choice(SetupFlow.SearchKey, "Which model should gatto start with?",
-            [new ChoiceOption("0", rows[0].RepoId)], Shelf: shelf, Door: SetupFlow.ShelfDoorPlaceholderOf(Gatto.Terminal.GlyphSet.Unicode));
+            [new ChoiceOption("0", rows[0].RowFile!.RepoId)], Shelf: shelf, Door: SetupFlow.ShelfDoorPlaceholderOf(Gatto.Terminal.GlyphSet.Unicode));
 
         var ring = Shelf.Regions(shelf, 100, 0, hasDoor: true).ToList();
         var tabs = (ring.IndexOf(Region.Files) - ring.IndexOf(Region.List) + ring.Count) % ring.Count;
 
         //the pane's Enter must return an answer, running dry here is the defect. a flow that comes back for another key is what tells stayed from advanced
-        Assert.Equal(ShelfControls.PickAnswer("0", "Q4_K_M"), WalkRender.AnswerAfter(c, 100,
+        Assert.Equal(ShelfControls.PickAnswer("0", new FileRef("unsloth", "unsloth/gemma-4-31B-it", "gemma-4-31B-it-Q4_K_M.gguf")), WalkRender.AnswerAfter(c, 100,
             [.. Enumerable.Repeat(Key(ConsoleKey.Tab), tabs), Key(ConsoleKey.Enter)]));
 
         //without this half the guard passes against an Enter that advances from every zone, including the ones that must pick and stay
@@ -104,9 +105,10 @@ public class ChipAnswerTests
     public void AND_THE_FOOTER_SAYS_CHOOSE_WHERE_ENTER_CHOOSES()
     {
         //the fixture must supply Files, otherwise the zone is missing from the ring and the assertions test a screen that cannot exist
-        var shelf = new ShelfView([Row("gemma-4-31B-it")], "unsloth", MachineShape.UnifiedWithShare,
+        var shelf = new ShelfView([Row("gemma-4-31B-it")], MachineShape.UnifiedWithShare,
             Families: Ladder, Family: "gemma", Total: 1,
-            Facts: [new ModelFacts(Files: [new PaneFile("Q4_K_M", Gib(8), FitRegime.FitsGpu)])]);
+            Facts: [new ModelFacts(Files: [new PaneFile("Q4_K_M", Gib(8), FitRegime.FitsGpu,
+                new FileRef("unsloth", "unsloth/gemma-4-31B-it", "gemma-4-31B-it-Q4_K_M.gguf"))])]);
         var regions = Shelf.Regions(shelf, 100, 0, hasDoor: true);
 
         Assert.Equal("next", EnterVerb(regions, Region.List));
@@ -122,7 +124,7 @@ public class ChipAnswerTests
         return Shelf.Keys(ring, ShelfSource.Hub).Single(k => k.Key == "Enter").Verb;
     }
 
-    private static ShelfRow LiveRow() => new(
+    private static ModelRow LiveRow() => ShelfRows.Of(
         "unsloth/gemma-4-26B-A4B-it", "unsloth",
         new HubQuant("gemma-4-26B-A4B-it-Q4_K_M.gguf", Gib(16.9), null),
         FitRegime.FitsGpu, 262144, true, Badge: null, Downloads: 10, Gated: false,
@@ -136,10 +138,10 @@ public class ChipAnswerTests
         var shelf = Assert.IsType<WizardScreen.Choice>(flow.StartPastEngine());
 
         Assert.Equal(Families.Load().Ladder, shelf.Shelf!.Families);
-        Assert.Equal("all", shelf.Shelf!.Family);
+        Assert.Equal(Families.Load().Landing, shelf.Shelf!.Lit!.Order());
     }
 
-    //the chip's answer must reach the search request, a face-only test passes even when the family never enters HubSearchRequest
+    //the chip's answer must reach the search request, a face-only test passes even when the family never enters ModelSearchRequest
     [Fact]
     public void ANSWERING_A_CHIP_SEARCHES_THAT_FAMILY()
     {
@@ -147,9 +149,9 @@ public class ChipAnswerTests
         var flow = new SetupFlow(probes);
         flow.StartPastEngine();
 
-        flow.Answer(ShelfControls.FamilyAnswer("qwen"));
+        ChipWalk.Narrow(flow, "qwen");
 
-        Assert.Equal("qwen", probes.LastRequest!.Family);
+        Assert.Equal("qwen", probes.LastRequest!.Family());
     }
 
     //a null alone would also pass with the Family field never set, so this pairs with the sibling that proves a value arrives
@@ -163,7 +165,7 @@ public class ChipAnswerTests
         flow.Answer(ShelfControls.FamilyAnswer("qwen"));
         flow.Answer(ShelfControls.FamilyAnswer("all"));
 
-        Assert.Null(probes.LastRequest!.Family);
+        Assert.Null(probes.LastRequest!.Family());
     }
 
     //the lit chip follows the answer that drove the search, so the row the user reads and the search cannot disagree
@@ -173,7 +175,7 @@ public class ChipAnswerTests
         var flow = new SetupFlow(new WizardProbes { Rows = [LiveRow()] });
         flow.StartPastEngine();
 
-        var after = Assert.IsType<WizardScreen.Choice>(flow.Answer(ShelfControls.FamilyAnswer("deepseek")));
+        var after = Assert.IsType<WizardScreen.Choice>(ChipWalk.Narrow(flow, "deepseek"));
 
         Assert.Equal("deepseek", after.Shelf!.Family);
     }

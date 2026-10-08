@@ -12,8 +12,8 @@ public class LocalShelfChipTests
     private const string C = @"D:\models\c\c-Q4_K_M.gguf";
     private const string D = @"D:\models\d\d-Q4_K_M.gguf";
 
-    private static ShelfRow HubRow() =>
-        new("qwen/qwen3.5-7b", "qwen", new HubQuant("qwen3.5-7b-Q4_K_M.gguf", 4_000_000_000, null),
+    private static ModelRow HubRow() =>
+        ShelfRows.Of("qwen/qwen3.5-7b", "qwen", new HubQuant("qwen3.5-7b-Q4_K_M.gguf", 4_000_000_000, null),
             FitRegime.FitsGpu, 262144, false, Badge: null, Downloads: 5, Gated: false,
             Params: 7_000_000_000);
 
@@ -96,6 +96,6 @@ public class LocalShelfChipTests
 
         var hub = Assert.IsType<WizardScreen.Choice>(flow.Answer(SetupFlow.SearchInstead));
 
-        Assert.Equal("all", hub.Shelf!.Family);
+        Assert.Equal(Families.Load().Landing, hub.Shelf!.Lit!.Order());
     }
 }

@@ -22,4 +22,4 @@
 
 ❯ type the path to the downloaded file or folder…                                 Tab or ↓ to type
 ────────────────────────────────────────────────────────────────────────────────────────────────────
-  Tab area   Enter choose   b back   Esc leave
+  Tab area   Enter choose   Esc leave

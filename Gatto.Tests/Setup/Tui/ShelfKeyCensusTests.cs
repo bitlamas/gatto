@@ -24,18 +24,17 @@ public class ShelfKeyCensusTests
         public long ElapsedMs => 0;
     }
 
-    private static ShelfRow Row(string id) => new(
+    private static ModelRow Row(string id) => ShelfRows.Of(
         id, id.Split('/')[0], new HubQuant("m-Q4_K_M.gguf", 4_000_000_000, null),
         FitRegime.FitsGpu, 262144, false, null, 900, false, Params: 3_000_000_000);
 
     private static WizardScreen.Choice LiveShelf()
     {
-        IReadOnlyList<ShelfRow> rows = [Row("unsloth/a"), Row("unsloth/b")];
+        IReadOnlyList<ModelRow> rows = [Row("unsloth/a"), Row("unsloth/b")];
         var flow = new SetupFlow(new WizardProbes
         {
             Rows = rows,
-            Curated = "unsloth",
-            Answer = _ => new HubSearchOutcome(rows, null, "unsloth", HiddenByFit: 12),
+            Answer = _ => WizardProbes.Outcome(rows, null),
         });
         return Assert.IsType<WizardScreen.Choice>(flow.StartPastEngine());
     }
@@ -70,7 +69,7 @@ public class ShelfKeyCensusTests
         var screen = LiveShelf();
         var ring = Shelf.Regions(screen.Shelf!, 100, 0, screen.Door is not null);
         var footer = Shelf.Keys(new FocusRing([.. ring], Region.List), ShelfSource.Hub, "leave",
-            searchKey: true, GlyphSet.Unicode, lift: true, back: true);
+            searchKey: true, GlyphSet.Unicode, lift: true);
 
         //read the footer alone, since it is this face's advertisement and the strip belongs to the plain face
         var named = footer.Select(k => k.Key)
@@ -107,18 +106,16 @@ public class ShelfKeyCensusTests
         var named = ShelfControls.For(screen.Shelf!).ToList();
 
         Assert.NotEmpty(named);
-        Assert.Contains(named, c => c.Key == 'f');
 
         foreach (var control in named)
         {
             Assert.Equal(control.Answer, ShelfControls.AnswerFor(control.Key));
 
-            IReadOnlyList<ShelfRow> rows = [Row("unsloth/a"), Row("unsloth/b")];
+            IReadOnlyList<ModelRow> rows = [Row("unsloth/a"), Row("unsloth/b")];
             var flow = new SetupFlow(new WizardProbes
             {
                 Rows = rows,
-                Curated = "unsloth",
-                Answer = _ => new HubSearchOutcome(rows, null, "unsloth", HiddenByFit: 12),
+                Answer = _ => WizardProbes.Outcome(rows, null),
             });
             flow.StartPastEngine();
 

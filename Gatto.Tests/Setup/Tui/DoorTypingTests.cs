@@ -70,7 +70,7 @@ public class DoorTypingTests
     public void ENTER_ON_AN_EMPTY_DOOR_WITH_NO_OFFER_ANSWERS_NOTHING()
     {
         var answer = WalkRender.AnswerAfter(Road(null), 100,
-            [Tab, WizardRig.Enter, WizardRig.Esc, WizardRig.Enter]);
+            [Tab, WizardRig.Enter, WizardRig.Enter]);
 
         Assert.Equal(SetupFlow.Retry, answer);
     }
@@ -122,7 +122,7 @@ public class DoorTypingTests
     {
         var shelf = new WizardScreen.Choice("planted.shelf", "Which model?",
             [new ChoiceOption("only", "The one option")],
-            Shelf: new ShelfView([], null, Gatto.Core.Hardware.MachineShape.Discrete),
+            Shelf: new ShelfView([], Gatto.Core.Hardware.MachineShape.Discrete),
             Door: "search models…");
 
         //m is the shelf's own key, so it must not end up in a draft and be answered as text

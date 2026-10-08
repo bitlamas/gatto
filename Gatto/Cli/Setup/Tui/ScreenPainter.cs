@@ -22,11 +22,11 @@ internal static class DoorHints
     //the ways in that work on every screen whose door has no key of its own. a function so the glyph set can supply the down key, the record's default is null
     public static string AnywhereOf(GlyphSet g) => $"Tab or {g.DownKey} to type";
 
-    //the shelf's door hint, and only /, since the wizard face binds no mouse
-    public const string Search = "/ to search";
+    //the shelf's door hint, and only ?, since the wizard face binds no mouse
+    public const string Search = "? to search";
 
-    //the local shelf's door says / to search, the same words as the shelf's
-    public const string SearchLocal = "/ to search";
+    //the local shelf's door says ? to search, the same words as the shelf's
+    public const string SearchLocal = "? to search";
 
     //what a search door says once the keys are in it, the keys rather than how to get there
     public static string FocusedOf(GlyphSet g) => $"Enter search {g.Dot} Esc back";

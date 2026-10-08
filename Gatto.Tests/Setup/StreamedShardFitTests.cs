@@ -17,10 +17,10 @@ public sealed class StreamedShardFitTests : IDisposable
         try { Directory.Delete(_dir, true); } catch (Exception) { }
     }
 
-    //a small machine, so the table decides which budget the set falls on
+    //a small machine whose 1.5 GB card holds a set less its 1 GB table, with that table beside it in a 1.2 GB RAM budget
     private static ProbeOutcome SmallMachine() => new(
-        new HardwareSnapshot(InstalledBytes: 4_000_000_000, OsVisibleBytes: 1_600_000_000,
-            GraphicsKind: GpuKind.Discrete, GraphicsMemoryBytes: 2_000_000_000, GraphicsVendorId: "1002"),
+        new HardwareSnapshot(InstalledBytes: 4_000_000_000, OsVisibleBytes: 2_400_000_000,
+            GraphicsKind: GpuKind.Discrete, GraphicsMemoryBytes: 3_110_000_000, GraphicsVendorId: "1002"),
         "ok", CpuName: "test cpu", GpuName: "test gpu");
 
     private LiveSetupProbes Probes() =>
@@ -100,8 +100,8 @@ public sealed class StreamedShardFitTests : IDisposable
     public void THE_CONTEXT_LADDER_SUBTRACTS_THE_TABLE_OF_A_MARKED_SET()
     {
         using var probes = Probes();
-        var marked = probes.ContextFor(Set("marked", marked: true, 710_000_000));
-        var plain = probes.ContextFor(Set("plain", marked: false, 710_000_000));
+        var marked = probes.ContextFor(Set("marked", marked: true, 1_400_000_000));
+        var plain = probes.ContextFor(Set("plain", marked: false, 1_400_000_000));
 
         Assert.True(marked > plain, $"the marked set took {marked} and the plain set took {plain}; the ladder is not subtracting the table");
     }

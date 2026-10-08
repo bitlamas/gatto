@@ -63,7 +63,7 @@ public class DoneRenderTests
             HubOffer = new ModelFetchOffer("google/gemma-4-26B-A4B-it-GGUF", "gemma-4-26B-A4B-it",
                 Weights, new HubQuant(Gguf, Bytes, "a1b2c3"), null),
             ModelResult = new HubFetchResult(HubFetchOutcome.Arrived),
-            Rows = [new ShelfRow("google/gemma-4-26B-A4B-it-GGUF", "google",
+            Rows = [ShelfRows.Of("google/gemma-4-26B-A4B-it-GGUF", "google",
                 new HubQuant(Gguf, Bytes, "a1b2c3"), Gatto.Core.Models.FitRegime.FitsGpu,
                 32768, false, null, 100, false)],
             Audition = audition ?? new AuditionCheck(

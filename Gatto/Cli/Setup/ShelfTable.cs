@@ -8,14 +8,11 @@ namespace Gatto.Cli.Setup;
 //how much of the shelf survives the width. each step drops the least decisive thing, so size and quant merge first and the measured marks go last
 internal enum ShelfStage
 {
-    //model, size, quant, updated, marks
+    //model, params, context, size, quant, marks
     Full,
 
-    //model, size+quant, updated, marks
+    //model, params, context, size+quant, marks
     MergedSizeQuant,
-
-    //model, size+quant, marks
-    NoUpdated,
 
     //model, params, size+quant, marks. the floor keeps the marks, so the context column is what gives at narrow widths
     NoContext,
@@ -25,15 +22,15 @@ internal enum ShelfStage
 internal static class ShelfTable
 {
     //the parameter count comes from the GGUF's own total, so no expert count is read from the repo name. absent means an empty cell rather than a guess
-    internal static string ParamsCell(ShelfRow r)
+    internal static string ParamsCell(ModelRow r)
     {
         if (r.Params is not { } p || p <= 0) return "";
         var billions = p / 1_000_000_000.0;
         //1000B is a number with no unit, so the billions roll to T with the same format. sizes are not rolled past GB
         if (billions >= 1000)
-            return (billions / 1000).ToString("0.#", System.Globalization.CultureInfo.InvariantCulture) + "T";
+            return (billions / 1000).ToString("0.0", System.Globalization.CultureInfo.InvariantCulture) + "T";
         return billions >= 1
-            ? billions.ToString("0.#", System.Globalization.CultureInfo.InvariantCulture) + "B"
+            ? billions.ToString("0.0", System.Globalization.CultureInfo.InvariantCulture) + "B"
             : Math.Round(p / 1_000_000.0).ToString("0", System.Globalization.CultureInfo.InvariantCulture) + "M";
     }
 
@@ -48,11 +45,11 @@ internal static class ShelfTable
     public static string TierRuleOf(GlyphSet g) => g.Rule + g.Rule;
 
     //the stage that fits, measured against the renderer's own column arithmetic rather than a table of guessed thresholds
-    public static ShelfStage StageFor(IReadOnlyList<ShelfRow> rows, int width, string? curatedPublisher,
+    public static ShelfStage StageFor(IReadOnlyList<ModelRow> rows, int width,
         Gatto.Core.Hardware.MachineShape shape, GlyphSet glyphs)
     {
-        foreach (var stage in new[] { ShelfStage.Full, ShelfStage.MergedSizeQuant, ShelfStage.NoUpdated })
-            if (Fits(Spec(rows, stage, curatedPublisher, shape, glyphs), width)) return stage;
+        foreach (var stage in new[] { ShelfStage.Full, ShelfStage.MergedSizeQuant })
+            if (Fits(Spec(rows, stage, shape, glyphs), width)) return stage;
 
         //the floor is returned whether or not it fits, since nothing is left to drop and the renderer wraps instead of cutting
         return ShelfStage.NoContext;
@@ -65,7 +62,7 @@ internal static class ShelfTable
     }
 
     //the shelf as a spec: a header row, then each tier's label row followed by its models. the separator is a row, and rows arrive already ordered
-    public static TableSpec Spec(IReadOnlyList<ShelfRow> rows, ShelfStage stage, string? curatedPublisher,
+    public static TableSpec Spec(IReadOnlyList<ModelRow> rows, ShelfStage stage,
         Gatto.Core.Hardware.MachineShape shape, GlyphSet? glyphs)
     {
         //the context column exists only when some row has one, since a column of blanks costs its header and gap for nothing
@@ -75,7 +72,7 @@ internal static class ShelfTable
         var body = new List<IReadOnlyList<string>>();
 
         //model rows only, with the tier labels interleaved by the caller so they stop setting the model column's floor
-        foreach (var row in rows) body.Add(Cells(row, stage, curatedPublisher, ctx, g));
+        foreach (var row in rows) body.Add(Cells(row, stage, ctx, g));
 
         //sizes right-align so a column can be compared, and the alignment is set where the header is built rather than read back off its text
         return new TableSpec(
@@ -84,10 +81,10 @@ internal static class ShelfTable
 
     //the laid-out shelf: one call, one renderer, one set of column widths
     public static IReadOnlyList<RenderedRow> Render(
-        IReadOnlyList<ShelfRow> rows, Theme theme, int width, string? curatedPublisher,
+        IReadOnlyList<ModelRow> rows, Theme theme, int width,
         Gatto.Core.Hardware.MachineShape shape, GlyphSet glyphs) =>
         TableLayout.AlignedRows(
-            Spec(rows, StageFor(rows, width, curatedPublisher, shape, glyphs), curatedPublisher, shape, glyphs),
+            Spec(rows, StageFor(rows, width, shape, glyphs), shape, glyphs),
             theme, width);
 
     private const string SizeHeader = "size";
@@ -109,11 +106,8 @@ internal static class ShelfTable
     {
         ShelfStage.Full =>
             [.. Ins([Left("model"), Left("params")], ctx, Left(CtxHeader)),
-             Right(SizeHeader), Left("quant"), Left("updated"), Left("")],
+             Right(SizeHeader), Left("quant"), Left("")],
         ShelfStage.MergedSizeQuant =>
-            [.. Ins([Left("model"), Left("params")], ctx, Left(CtxHeader)),
-             Right(SizeQuantHeaderOf(g)), Left("updated"), Left("")],
-        ShelfStage.NoUpdated =>
             [.. Ins([Left("model"), Left("params")], ctx, Left(CtxHeader)),
              Right(SizeQuantHeaderOf(g)), Left("")],
         //the floor drops context and keeps the marks
@@ -127,46 +121,36 @@ internal static class ShelfTable
     private const string CtxHeader = "context";
 
     //an absent window shows an empty cell rather than a guess, with the digits from SearchRow.Ctx
-    private static string Ctx(ShelfRow r) =>
+    private static string Ctx(ModelRow r) =>
         r.NativeCtx is { } ctx and > 0 ? SearchRow.Ctx(ctx) : "";
 
     private static IReadOnlyList<string> Cells(
-        ShelfRow r, ShelfStage stage, string? curatedPublisher, bool ctx, GlyphSet g) =>
+        ModelRow r, ShelfStage stage, bool ctx, GlyphSet g) =>
         stage switch
         {
             ShelfStage.Full =>
-                [.. Ins([Name(r, curatedPublisher), ParamsCell(r)], ctx, Ctx(r)),
-                 SearchRow.Gb(r.PickedQuant.Bytes), Quant(r), Updated(r), Marks(r, g)],
+                [.. Ins([Name(r), ParamsCell(r)], ctx, Ctx(r)),
+                 SearchRow.Gb(SearchRow.RowBytes(r)), Quant(r), Marks(r, g)],
             ShelfStage.MergedSizeQuant =>
-                [.. Ins([Name(r, curatedPublisher), ParamsCell(r)], ctx, Ctx(r)), SizeQuant(r), Updated(r), Marks(r, g)],
-            ShelfStage.NoUpdated =>
-                [.. Ins([Name(r, curatedPublisher), ParamsCell(r)], ctx, Ctx(r)), SizeQuant(r), Marks(r, g)],
-            _ => [Name(r, curatedPublisher), ParamsCell(r), SizeQuant(r), Marks(r, g)],
+                [.. Ins([Name(r), ParamsCell(r)], ctx, Ctx(r)), SizeQuant(r), Marks(r, g)],
+            _ => [Name(r), ParamsCell(r), SizeQuant(r), Marks(r, g)],
         };
 
-    //the identity, with the publisher dropped on a curated shelf since the header already names it
-    private static string Name(ShelfRow r, string? curatedPublisher) =>
-        curatedPublisher is { Length: > 0 } pub
-            && r.RepoId.StartsWith(pub + "/", StringComparison.OrdinalIgnoreCase)
-            ? r.RepoId[(pub.Length + 1)..]
-            : r.RepoId;
+    //the model's own name, which no publisher prefixes
+    private static string Name(ModelRow r) => r.Model;
 
     //an unconventional filename shows an empty cell, since QuantToken.Of omits rather than guesses
-    private static string Quant(ShelfRow r) =>
-        Gatto.Core.Acquire.QuantToken.Of(r.PickedQuant.FileName) ?? "";
+    private static string Quant(ModelRow r) =>
+        Gatto.Core.Acquire.QuantToken.Of(SearchRow.RowFileName(r)) ?? "";
 
-    private static string SizeQuant(ShelfRow r)
+    private static string SizeQuant(ModelRow r)
     {
         var q = Quant(r);
-        return q.Length == 0 ? SearchRow.Gb(r.PickedQuant.Bytes) : $"{SearchRow.Gb(r.PickedQuant.Bytes)} {q}";
+        return q.Length == 0 ? SearchRow.Gb(SearchRow.RowBytes(r)) : $"{SearchRow.Gb(SearchRow.RowBytes(r))} {q}";
     }
 
-    //year-month, and empty when the Hub did not tell us rather than a made-up date
-    private static string Updated(ShelfRow r) =>
-        r.LastModified is { } m ? m.ToString("yyyy-MM", System.Globalization.CultureInfo.InvariantCulture) : "";
-
     //the marks column is headerless, glyphs only and never adjectives, since a mark is a fact rather than a verdict
-    private static string Marks(ShelfRow r, GlyphSet g)
+    private static string Marks(ModelRow r, GlyphSet g)
     {
         var marks = new List<string>();
         if (r.Vision) marks.Add(g.Vision);
@@ -177,7 +161,7 @@ internal static class ShelfTable
     }
 
     //what the marks on this shelf mean, null when no row has one. each segment appears only when a row has that glyph
-    public static string? Legend(IReadOnlyList<ShelfRow> rows, GlyphSet? glyphs)
+    public static string? Legend(IReadOnlyList<ModelRow> rows, GlyphSet? glyphs)
     {
         var g = glyphs ?? GlyphSet.Unicode;
         var parts = new List<string>();
@@ -195,10 +179,10 @@ internal static class ShelfTable
     }
 
     //one line of the shelf, a model or the tier heading that opens its group
-    internal readonly record struct ShelfLine(ShelfRow? Row, FitRegime Tier);
+    internal readonly record struct ShelfLine(ModelRow? Row, FitRegime Tier);
 
     //a change of tier starts a group, and the caller reads its rows from here so the options and the table describe one screen
-    internal static IReadOnlyList<ShelfLine> Lines(IReadOnlyList<ShelfRow> rows)
+    internal static IReadOnlyList<ShelfLine> Lines(IReadOnlyList<ModelRow> rows)
     {
         var lines = new List<ShelfLine>();
         FitRegime? tier = null;

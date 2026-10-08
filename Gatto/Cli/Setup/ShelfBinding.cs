@@ -13,8 +13,8 @@ namespace Gatto.Cli.Setup;
 internal enum ShelfSource { Hub, Local }
 
 internal sealed record ShelfView(
-    IReadOnlyList<ShelfRow> Rows, string? CuratedPublisher, MachineShape Shape,
-    SearchOrder Axis = SearchOrder.MostDownloaded, bool Lift = false, int HiddenByFit = 0,
+    IReadOnlyList<ModelRow> Rows, MachineShape Shape,
+    bool Lift = false, int HiddenByFit = 0,
     bool CarriedOver = false, int HiddenByKind = 0,
     IReadOnlyList<string>? Families = null, string? Family = null,
     int Total = 0, int HiddenOlder = 0, int MoreBelow = 0, bool ShowAll = false,
@@ -26,14 +26,15 @@ internal sealed record ShelfView(
     int HiddenByFamily = 0,
     string? Resume = null,
     bool Searched = false,
-    bool Loading = false)
+    bool Loading = false,
+    IReadOnlySet<string>? Lit = null,   //the families the Hub shelf lists, every one lit on the chips row. null leaves the one Family chip
+    bool MoreBehind = false,   //the engine said a would show more than this shelf
+    bool? SmallestFirst = null,   //the params sort, null while the engine's order stands
+    int OnCard = 0, int InMemory = 0, int TooBig = 0,   //the engine's count of each regime, which the lifted count row reads
+    bool Cut = false, int? RateLimitedFor = null, bool RateLimited = false)   //why the search stopped short, and the server's seconds when it named them
 {
     //nothing was fetched at all, no rows and no family ladder. an empty search keeps its chips and keys, so the two states must stay apart
     public bool NothingFetched => Rows.Count == 0 && Families is not { Count: > 0 };
-
-    //whether the chips row's right-hand slot is drawn, which decides both its Tab stop and its pick. the local shelf reuses the slot for its folder
-    public bool HasPublisherSlot =>
-        Source == ShelfSource.Hub && CuratedPublisher is { Length: > 0 };
 
     //the facts list must hold one entry per row, and it throws when it does not. assign Rows before Facts in a with, since an initializer runs in source order
     public IReadOnlyList<Gatto.Cli.Setup.Tui.ModelFacts>? Facts
@@ -59,22 +60,19 @@ internal static class ShelfControls
 {
     internal static readonly IReadOnlyList<(char Key, string Word, string Answer)> All =
     [
-        //f opens the picker and stays, since the plain face has no slot beside the chips. f and the slot open the same screen
-        ('f', "publisher", SetupFlow.CtlPublisher),
-        ('s', "sort", SetupFlow.CtlSort),
-        ('/', "search", SetupFlow.CtlSearch),
-        ('a', "all sizes", SetupFlow.CtlLift),
+        ('?', "search", SetupFlow.CtlSearch),
+        ('a', "show all", SetupFlow.CtlLift),
     ];
 
-    //the controls this shelf has, read by both the widget and the header strip so no key is advertised without a deed. every shelf offers all of them
-    internal static IReadOnlyList<(char Key, string Word, string Answer)> For(ShelfView shelf) => All;
+    //the controls this shelf has, read by both the widget and the header strip so no key is advertised without a deed. a lifted shelf's a shows less
+    internal static IReadOnlyList<(char Key, string Word, string Answer)> For(ShelfView shelf) =>
+        shelf.Lift ? [.. All.Select(c => c.Key == 'a' ? c with { Word = "show less" } : c)] : All;
 
     internal static IReadOnlyList<char> Keys(ShelfView shelf) => [.. For(shelf).Select(c => c.Key)];
 
     //whether an answer is a control that stays on the shelf, so it pushes no back step. the typed row and the pick leave the screen and do push one
     internal static bool IsControl(string answer) =>
-        //the publisher is the one control that leaves the screen, since its key opens the picker, so it must push a step
-        (All.Any(c => c.Answer == answer) && answer != SetupFlow.CtlPublisher)
+        All.Any(c => c.Answer == answer) || answer == SetupFlow.CtlParams
         || answer.StartsWith(SetupFlow.CtlFamily, StringComparison.Ordinal)
         || answer == SetupFlow.CtlSource;
 
@@ -84,15 +82,12 @@ internal static class ShelfControls
     //m's answer, spelled here because the face knows the key and the flow knows the deed
     internal static string SourceAnswer() => SetupFlow.CtlSource;
 
-    //the answer for Enter in the publisher slot, which opens the picker f opens. without it Enter fell through to the list cursor and picked a model
-    internal static string PublisherAnswer() => SetupFlow.CtlPublisher;
-
     //a's answer, spelled here because the face knows the key and the flow knows the deed
     internal static string LiftAnswer() => SetupFlow.CtlLift;
 
     //whether this shelf can lift anything. an empty shelf offers nothing, but rows hidden by fit count even when none are shown
     internal static bool OffersLift(WizardScreen.Choice c) =>
-        c.Shelf is { } v && (v.Rows.Count > 0 || v.HiddenByFit > 0 || v.ShowAll);
+        c.Shelf is { } v && (v.Rows.Count > 0 || v.HiddenByFit > 0 || v.ShowAll || v.MoreBehind);
 
     //what the shelf's door answers with, the typed text wrapped the way a pick is. a typed 4096 and a row index are the same string
     internal static string TypedAnswer(string text) => SetupFlow.CtlTyped + text;
@@ -103,8 +98,8 @@ internal static class ShelfControls
             ? answer[SetupFlow.CtlTyped.Length..]
             : null;
 
-    //d searches the Hub and nothing else, so a local shelf or one that fetched nothing offers no d. the folder row on the local shelf stays a row
-    internal static bool OffersD(WizardScreen.Choice c) =>
+    //the question mark searches the Hub and nothing else, so a local shelf or one that fetched nothing offers no ?. the folder row on the local shelf stays a row
+    internal static bool OffersSearch(WizardScreen.Choice c) =>
         c.Shelf is { NothingFetched: false, Source: ShelfSource.Hub };
 
     //whether the option at this index is the folder door, so the painter, the arrows and the digits agree on which index is skipped
@@ -117,17 +112,23 @@ internal static class ShelfControls
         c.Shelf is { Source: ShelfSource.Hub }
         && c.Options.Any(o => string.Equals(o.Key, SetupFlow.Elsewhere, StringComparison.Ordinal));
 
-    //the row's answer, wrapped with the file the user picked in the pane. the flow unwraps it, swaps the quant and handles the inner key
-    internal static string PickAnswer(string key, string quant) =>
-        SetupFlow.CtlPick + quant + ":" + key;
+    //the row's answer, wrapped with the file the user chose in the pane. each part is escaped, so a repo id or a path can never split the answer
+    internal static string PickAnswer(string key, FileRef file) =>
+        SetupFlow.CtlPick + Uri.EscapeDataString(file.Publisher) + "|" + Uri.EscapeDataString(file.RepoId)
+        + "|" + Uri.EscapeDataString(file.Path) + ":" + key;
 
-    //the file index and the row's key, or null when this is not a pick. one home for the spelling
-    internal static (string Quant, string Key)? Unpick(string answer)
+    //the file and the row's key, or null when this is not a pick. one home for the spelling
+    internal static (FileRef File, string Key)? Unpick(string answer)
     {
         if (!answer.StartsWith(SetupFlow.CtlPick, StringComparison.Ordinal)) return null;
         var rest = answer[SetupFlow.CtlPick.Length..];
         var cut = rest.IndexOf(':');
-        return cut > 0 ? (rest[..cut], rest[(cut + 1)..]) : null;
+        if (cut <= 0) return null;
+        var parts = rest[..cut].Split('|');
+        return parts.Length == 3
+            ? (new FileRef(Uri.UnescapeDataString(parts[0]), Uri.UnescapeDataString(parts[1]),
+                Uri.UnescapeDataString(parts[2])), rest[(cut + 1)..])
+            : null;
     }
 
     //the strip the header shows, composed from the same list the widget gets so a dead key stops being advertised in the same edit
@@ -193,21 +194,8 @@ internal static class ShelfBinding
         return labels;
     }
 
-    //how this shelf is ordered, in words. only most-downloaded needs a qualifier, since the other axes show their evidence on the row
-    internal static string AxisWords(SearchOrder axis) => axis switch
-    {
-        //the four clauses share one grammar, and the qualifier is gone since the header's scope half carries that duty
-        SearchOrder.RecentlyUpdated => "sorted by newest",
-        SearchOrder.MostParams => "sorted by largest",
-        SearchOrder.VerifiedFirst => "verified first",
-        _ => "sorted by most downloaded",
-    };
-
     //what this shelf is and how it is ordered, the header's left half
-    internal static string StateSentence(ShelfView shelf, GlyphSet g) =>
-        shelf.CuratedPublisher is { Length: > 0 } pub
-            ? $"by {pub} {g.Dot} {AxisWords(shelf.Axis)}"
-            : $"every approved publisher {g.Dot} {AxisWords(shelf.Axis)}";
+    internal static string StateSentence(ShelfView shelf, GlyphSet g) => "every approved publisher";
 
     //it says what the filter hid, since does-not-fit is gatto's estimate that a overrules. it never says of N, because the count stops at the display cap
     internal static string CountLine(ShelfView shelf, GlyphSet g)
@@ -229,7 +217,20 @@ internal static class ShelfBinding
                 ? "1 skipped, not a model you can talk to"
                 : $"{shelf.HiddenByKind} skipped, not models you can talk to");
 
+        if (StoppedClause(shelf, null) is { } stopped) parts.Add(stopped);
         return string.Join($" {g.Dot} ", parts);
+    }
+
+    //why a search stopped short, null when it ran to the end. the seconds are the server's, counted down by what the face measured since the shelf was shown
+    internal static string? StoppedClause(ShelfView shelf, long? shownMs)
+    {
+        if (shelf.RateLimited)
+        {
+            if (shelf.RateLimitedFor is not { } seconds) return "Hugging Face asked gatto to wait";
+            var left = seconds - (int)((shownMs ?? 0) / 1000);
+            return left > 0 ? $"Hugging Face asked gatto to wait {left} s" : "Hugging Face asked gatto to wait, the wait is over";
+        }
+        return shelf.Cut ? "the search stopped before it finished" : null;
     }
 
     private static IReadOnlyList<SelectHeading> Headings(ShelfView shelf, Theme theme, int content,
@@ -330,8 +331,7 @@ internal static class ShelfBinding
         lines = ShelfTable.Lines(shelf.Rows);
         var groups = new List<List<string>>();
 
-        foreach (var row in ShelfTable.Render(shelf.Rows, theme, content, shelf.CuratedPublisher, shelf.Shape,
-                     glyphs))
+        foreach (var row in ShelfTable.Render(shelf.Rows, theme, content, shelf.Shape, glyphs))
         {
             if (!row.Continuation || groups.Count == 0) groups.Add([]);
             groups[^1].Add(row.Text);

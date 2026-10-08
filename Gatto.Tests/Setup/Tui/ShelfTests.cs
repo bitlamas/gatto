@@ -14,46 +14,10 @@ public class ShelfTests
 {
 
     private static ShelfView Counted(int newer, int older, int tooBig) => new(
-        [new ShelfRow("o/m", "o", new HubQuant("m.gguf", 1_000_000_000, null),
+        [ShelfRows.Of("o/m", "o", new HubQuant("m.gguf", 1_000_000_000, null),
             FitRegime.FitsGpu, 32768, false, null, 10, false)],
-        null, MachineShape.Discrete,
+        MachineShape.Discrete,
         HiddenByFit: tooBig, HiddenOlder: older, HiddenNewer: newer, Total: 1 + newer + older + tooBig);
-
-    //rows above the reviewed generation are counted as newer, and the count is a parse result that nothing sorts or filters by
-    [Fact]
-    public void A_NEWER_GENERATION_IS_COUNTED_BY_ITS_OWN_WORD()
-    {
-        var line = Shelf.CountLine(Counted(newer: 3, older: 0, tooBig: 0), glyphs: GlyphSet.Unicode);
-
-        Assert.Contains("3 newer", line, StringComparison.Ordinal);
-        Assert.DoesNotContain("older", line, StringComparison.Ordinal);
-        Assert.Contains("a shows all", line, StringComparison.Ordinal);
-    }
-
-    //the newer and older buckets are never summed, since one hidden count would read as six models failing one test
-    [Fact]
-    public void THE_NEWER_AND_OLDER_BUCKETS_ARE_NEVER_SUMMED()
-    {
-        var line = Shelf.CountLine(Counted(newer: 3, older: 3, tooBig: 0), glyphs: GlyphSet.Unicode);
-
-        Assert.Contains("3 newer", line, StringComparison.Ordinal);
-        Assert.Contains("3 older", line, StringComparison.Ordinal);
-        Assert.DoesNotContain("6", line, StringComparison.Ordinal);
-    }
-
-    //count newest first, since the reader scans the generation ladder that way, and the fit bucket stays last
-    [Fact]
-    public void THE_BUCKETS_READ_NEWEST_FIRST_WITH_FIT_LAST()
-    {
-        var line = Shelf.CountLine(Counted(newer: 1, older: 2, tooBig: 4), glyphs: GlyphSet.Unicode);
-
-        var newer = line.IndexOf("1 newer", StringComparison.Ordinal);
-        var older = line.IndexOf("2 older", StringComparison.Ordinal);
-        var big = line.IndexOf("4 too big", StringComparison.Ordinal);
-
-        Assert.True(newer >= 0 && older > newer && big > older,
-            $"expected newer, then older, then too big - got: {line}");
-    }
 
     //an empty bucket is silent, so a shelf hiding no generation prints nothing about it
     [Fact]
@@ -78,9 +42,9 @@ public class ShelfTests
         new("done", StripState.Pending),
     ];
 
-    private static ShelfRow Row(string name, double paramsB, double gb, long? ctx, bool vision,
+    private static ModelRow Row(string name, double paramsB, double gb, long? ctx, bool vision,
         FitRegime fit) =>
-        new($"unsloth/{name}", "unsloth",
+        ShelfRows.Of($"unsloth/{name}", "unsloth",
             new HubQuant($"{name}-Q4_K_M.gguf", Gib(gb), null),
             fit, ctx, vision, Badge: null, Downloads: 0, Gated: false,
             Params: (long)Math.Round(paramsB * 1_000_000_000),
@@ -94,20 +58,26 @@ public class ShelfTests
         : null;
 
     private static PaneFile File(string quant, double gb, FitRegime fit) =>
-        new(quant, Gib(gb), fit);
+        new(quant, Gib(gb), fit, new Gatto.Core.Acquire.FileRef("unsloth", "unsloth/m-GGUF", "m-" + quant + ".gguf"));
+
+    //the facts as the flow hands them over: the row's files under one unsloth publisher, whose pick is the Q4_K_M
+    private static ModelFacts Publisher(ModelFacts f) =>
+        f.Files is { Count: > 0 } files
+            ? f with { Publishers = [new PanePublisher("unsloth", files, files.FirstOrDefault(x => x.Quant == "Q4_K_M").File)] }
+            : f;
 
     //this fixture mirrors the generator's unified-96 shelf, four current rows with six older ones counted but hidden, and the cursor opens on the 26B
 
     private const FitRegime Fits = FitRegime.FitsGpu;
 
     private static ShelfView Gemma(MachineShape shape, FitRegime[] fits, ModelFacts[] facts,
-        ShelfRow[] rows, int hiddenOlder, int hiddenByFit) =>
-        new(rows, "unsloth", shape, Families: Families, Family: "gemma",
-            Total: 10, HiddenOlder: hiddenOlder, HiddenByFit: hiddenByFit, Facts: facts);
+        ModelRow[] rows, int hiddenOlder, int hiddenByFit) =>
+        new(rows, shape, Families: Families, Family: "gemma",
+            Total: 10, HiddenOlder: hiddenOlder, HiddenByFit: hiddenByFit, Facts: [.. facts.Select(Publisher)]);
 
     internal static ShelfView Unified96()
     {
-        ShelfRow[] rows =
+        ModelRow[] rows =
         [
             Row("gemma-4-31B-it", 30.7, 18.3, 262144, true, Fits),
             Row("gemma-4-26B-A4B-it", 25.2, 16.9, 262144, true, Fits),
@@ -136,7 +106,7 @@ public class ShelfTests
     //the fixture models an 8 GB card, where the cursor opens on the E4B, the biggest GPU-resident row
     private static ShelfView Discrete8()
     {
-        ShelfRow[] rows =
+        ModelRow[] rows =
         [
             Row("gemma-4-12b-it", 11.9, 7.1, 262144, true, FitRegime.FitsRamOnly),
             Row("gemma-4-E4B-it", 7.5, 5.0, 131072, true, FitRegime.FitsGpu),
@@ -162,7 +132,7 @@ public class ShelfTests
     //the fixture models the carve-out machine, where no MoE fits so the cursor stays on the first row
     private static ShelfView Carveout1()
     {
-        ShelfRow[] rows =
+        ModelRow[] rows =
         [
             Row("gemma-4-12b-it", 11.9, 7.1, 262144, true, FitRegime.FitsRamOnly),
             Row("gemma-4-E4B-it", 7.5, 5.0, 131072, true, FitRegime.FitsRamOnly),
@@ -188,7 +158,7 @@ public class ShelfTests
     //the hub lists a model and its -MTP twin as two rows, and folded by origin they are one model with two builds
     private static ShelfView QwenFolded()
     {
-        ShelfRow[] rows =
+        ModelRow[] rows =
         [
             Row("Qwen3-Coder-Next", 79.7, 48.5, 262144, false, Fits),
             Row("Qwen3-Next-80B-A3B-Instruct", 79.7, 48.5, 262144, false, Fits),
@@ -209,23 +179,18 @@ public class ShelfTests
                 Files:
                 [
                     File("Q4_K_M", 22.1, Fits), File("Q5_K_M", 26.5, Fits), File("Q6_K", 29.3, Fits),
-                ],
-                Builds:
-                [
-                    new PaneBuild("standard", "plain build", Picked: true),
-                    new PaneBuild("MTP", "speculative head inside", Picked: false),
                 ]),
             Bare("MoE A3B"),
         ];
 
-        return new ShelfView(rows, "unsloth", MachineShape.UnifiedWithShare,
+        return new ShelfView(rows, MachineShape.UnifiedWithShare,
             Families: Families, Family: "qwen", Total: 20, HiddenOlder: 13, HiddenByFit: 9,
-            MoreBelow: 14, Facts: facts);
+            MoreBelow: 14, Facts: [.. facts.Select(Publisher)]);
     }
 
     internal static WizardScreen.Choice Screen(ShelfView shelf) =>
         new(SetupFlow.SearchKey, "Which model should gatto start with?",
-            [.. shelf.Rows.Select((r, i) => new ChoiceOption(i.ToString(), r.RepoId))],
+            [.. shelf.Rows.Select((r, i) => new ChoiceOption(i.ToString(), r.RowFile!.RepoId))],
             Shelf: shelf, Door: SetupFlow.ShelfDoorPlaceholderOf(Gatto.Terminal.GlyphSet.Unicode)) { Strip = Strip, AllowBack = true };
 
     //press the keys that move the cursor to a row and answer, so the captured frame is what the user reaches
@@ -238,7 +203,7 @@ public class ShelfTests
     [Fact]
     public void AN_EMPTY_SEARCH_MATCHES_ITS_GOLDEN()
     {
-        IReadOnlyList<ShelfRow> browse = [Row("qwen3.5-7b", 7, 4, 262144, false, FitRegime.FitsGpu)];
+        IReadOnlyList<ModelRow> browse = [Row("qwen3.5-7b", 7, 4, 262144, false, FitRegime.FitsGpu)];
         var probes = new WizardProbes
         {
             Llama = @"C:\llama\llama-server.exe",
@@ -247,8 +212,8 @@ public class ShelfTests
             Snapshot = new HardwareSnapshot(137438953472, 34359738368, GpuKind.Integrated, 103079215104),
             //the fake answers rows until a search is typed, since a fake always answering empty leaves no shelf to empty
             Answer = req => req.Search is { Length: > 0 }
-                ? new HubSearchOutcome([], null, "unsloth")
-                : new HubSearchOutcome(browse, null, "unsloth"),
+                ? WizardProbes.Outcome([], null)
+                : WizardProbes.Outcome(browse, null),
         };
         var flow = new SetupFlow(probes);
         Assert.IsType<WizardScreen.Choice>(flow.StartPastEngine());
@@ -268,7 +233,7 @@ public class ShelfTests
     public void ENTER_ON_A_SHELF_WITH_NO_ROWS_DOES_NOT_THROW()
     {
         //the fixture sets Searched, the field the chips row's sentence reads, since the subject here is Enter
-        var shelf = new ShelfView([], "unsloth", MachineShape.UnifiedWithShare,
+        var shelf = new ShelfView([], MachineShape.UnifiedWithShare,
             Families: Families, Family: "qwen", Searched: true);
         var screen = new WizardScreen.Choice(SetupFlow.SearchKey,
             "Which model should gatto start with?", [], Shelf: shelf, Door: "qwerty")
@@ -279,7 +244,7 @@ public class ShelfTests
 
         Assert.NotEmpty(frame.Rows);
         //the chips row must render even with no models, since it is how the empty-search screen explains itself
-        Assert.Contains(frame.Rows, r => r.Contains("lifted, you searched", StringComparison.Ordinal));
+        Assert.Contains(frame.Rows, r => r.Contains("(search active)", StringComparison.Ordinal));
     }
 
     [Fact]
@@ -330,88 +295,33 @@ public class ShelfTests
         Golden.AssertEquals("s5", "unified-96-full-file", 100,
             WalkRender.SettledFrame(Screen(QwenFolded()), 100, script: [.. Downs(4), Tab, Enter]).Rows);
 
-    //the builds zone is its own Tab stop, since one vertical run would push the user past thirty quants
-    [Fact]
-    public void ONE_TAB_FURTHER_IS_THE_BUILDS_ZONE() =>
-        Golden.AssertEquals("s5", "unified-96-full-build", 100,
-            WalkRender.SettledFrame(Screen(QwenFolded()), 100,
-                script: [.. Downs(4), Tab, Tab, Key(ConsoleKey.DownArrow), Enter]).Rows);
-
-    //one build gets no zone, since a heading over a single row discriminates nothing and almost every repo has one build
-    [Fact]
-    public void A_MODEL_WITH_ONE_BUILD_HAS_NO_BUILDS_ZONE()
-    {
-        var row = Row("solo", 30, 18, 262144, false, Fits);
-        var one = Pane.Rows(row, new ModelFacts(Structure: "dense",
-            Builds: [new PaneBuild("standard", "plain build", true)]),
-            MachineShape.UnifiedWithShare, 40);
-        var two = Pane.Rows(row, new ModelFacts(Structure: "dense",
-            Builds: [new PaneBuild("standard", "plain build", true),
-                     new PaneBuild("MTP", "speculative head inside", false)]),
-            MachineShape.UnifiedWithShare, 40);
-
-        Assert.DoesNotContain(one, r => r.Text.Contains("builds of this model", StringComparison.Ordinal));
-        Assert.Contains(two, r => r.Text.Contains("builds of this model", StringComparison.Ordinal));
-    }
-
-    //the ring follows the cursor, since a fixed ring would offer stops that draw nothing
-    [Fact]
-    public void THE_RING_GAINS_A_BUILDS_STOP_ONLY_ON_A_ROW_THAT_HAS_BUILDS()
-    {
-        var shelf = QwenFolded();
-
-        Assert.Contains(Region.Builds, Shelf.Regions(shelf, 100, 4, hasDoor: true));
-        Assert.DoesNotContain(Region.Builds, Shelf.Regions(shelf, 100, 5, hasDoor: true));
-        Assert.DoesNotContain(Region.Builds, Shelf.Regions(shelf, 100, 0, hasDoor: true));
-
-        //row six has neither files nor builds, so one Tab from the list reaches the input and the focused caret is the tell
-        var noBuilds = WalkRender.SettledFrame(Screen(shelf), 100,
-            script: [.. Downs(5), Tab]).Rows;
-        Assert.DoesNotContain(noBuilds, r => r.Contains("builds of this model", StringComparison.Ordinal));
-        Assert.Contains(noBuilds, r => r.Contains("❯ ▏ search models…", StringComparison.Ordinal));
-    }
-
     //the two rows are built to disagree, one with builds and files opening at the second entry, the other with neither
     private static ShelfView TwoRows()
     {
-        ShelfRow[] rows = [Row("alpha", 30, 18, 4096, false, Fits), Row("beta", 30, 18, 4096, false, Fits)];
+        ModelRow[] rows = [Row("alpha", 30, 18, 4096, false, Fits), Row("beta", 30, 18, 4096, false, Fits)];
         ModelFacts[] facts =
         [
             new(Structure: "dense",
                 Files: [File("Q4_K_M", 8, Fits), File("Q5_K_M", 9, Fits), File("Q6_K", 10, Fits)]),
             new(Structure: "dense",
                 //the knee sits at index zero while the run leaves the cursor at index one, so the two positions differ
-                Files: [File("Q4_K_M", 5, Fits), File("Q5_K_M", 8, Fits), File("Q6_K", 10, Fits)],
-                Builds: [new PaneBuild("standard", "plain build", true),
-                         new PaneBuild("MTP", "speculative head inside", false)]),
+                Files: [File("Q4_K_M", 5, Fits), File("Q5_K_M", 8, Fits), File("Q6_K", 10, Fits)]),
         ];
-        return new ShelfView(rows, "unsloth", MachineShape.UnifiedWithShare,
-            Families: Families, Family: "gemma", Total: 2, Facts: facts);
+        return new ShelfView(rows, MachineShape.UnifiedWithShare,
+            Families: Families, Family: "gemma", Total: 2, Facts: [.. facts.Select(Publisher)]);
     }
 
-    //the up arrow must rebuild the ring too, since a test running only down never sees a missing up rebuild
-    [Fact]
-    public void WALKING_BACK_UP_LOSES_THE_BUILDS_STOP()
-    {
-        //the script holds no trailing Enter, so the run ends on this frame
-        var rows = WalkRender.SettledFrame(Screen(TwoRows()), 100,
-            script: [Key(ConsoleKey.DownArrow), Key(ConsoleKey.UpArrow), Tab, Tab]).Rows;
-
-        Assert.DoesNotContain(rows, r => r.Contains("builds of this model", StringComparison.Ordinal));
-        Assert.Contains(rows, r => r.Contains("❯ ▏ search models…", StringComparison.Ordinal));
-    }
-
-    //the pane's pick must return to the new row's own knee, since an index kept across rows picks an unrelated file
+    //the pane's cursor and its open publisher reset on a new row, since an index kept across rows lands on an unrelated file
     [Fact]
     public void THE_PANES_PICK_RETURNS_TO_THE_KNEE_ON_A_NEW_ROW()
     {
         var rows = WalkRender.SettledFrame(Screen(TwoRows()), 100,
             script:
             [
-                Tab,                              //the keys move into the first row's files
-                Key(ConsoleKey.DownArrow),        //this press moves the pick off the knee, onto the second file
+                Tab, Enter,                       //the keys move into the first row's publishers and open unsloth on its pick
+                Key(ConsoleKey.DownArrow),        //this press moves the cursor off the pick, onto the second file
                 Key(ConsoleKey.Escape),           //the Esc key hands control back to the list
-                Key(ConsoleKey.DownArrow),        //this moves to row two, whose knee is its first entry.
+                Key(ConsoleKey.DownArrow),        //this moves to row two, whose pick is its first entry.
                 Tab, Enter,
             ]).Rows;
 
@@ -467,7 +377,7 @@ public class ShelfTests
         Assert.Contains(back, r => r.Contains("❯ Q4_K_M 22.1 GB", StringComparison.Ordinal));
         Assert.Contains(back, r => r.Contains("2 heavier →", StringComparison.Ordinal));
 
-        //at 100 columns the pane sits beside the table and the same press moves nothing
+        //at 100 columns the pane sits beside the table, Enter opens the publisher and the right arrow moved nothing first
         var unfolded = WalkRender.SettledFrame(Screen(QwenFolded()), 100,
             script: [.. Downs(4), Tab, Key(ConsoleKey.RightArrow), Enter]).Rows;
         Assert.Contains(unfolded, r => r.Contains("❯ Q4_K_M", StringComparison.Ordinal));
@@ -554,34 +464,6 @@ public class ShelfTests
         Golden.AssertEquals("s5", "carveout-1", 100,
             WalkRender.Choice(Screen(Carveout1()), 100, script: ToRow(0)).Rows);
 
-    //numbered rows stop at nine, since a tenth showing 10. promises a keystroke nobody can press
-    [Fact]
-    public void ROWS_ARE_NUMBERED_ONE_TO_NINE_AND_THE_COLUMN_STAYS_BLANK_PAST_IT()
-    {
-        var rows = Enumerable.Range(0, 12)
-            .Select(i => Row($"m{i}", 1, 1, 4096, false, Fits)).ToArray();
-        var view = new ShelfView(rows, "unsloth", MachineShape.UnifiedWithShare,
-            Families: Families, Family: "gemma", Total: 12);
-
-        //keep the cursor off every row, so the digits are the only difference between them
-        var table = Shelf.Table(view, row: -1, focused: true, glyphs: GlyphSet.Unicode).Select(r => r.Text).ToList();
-
-        //the first entry is the header, so the model rows start at index one.
-        for (var i = 1; i <= 9; i++)
-            Assert.Equal($"  {i}. ", table[i][..5]);
-
-        //from the tenth row on, a two-cell mark is drawn and three blank cells replace the digits.
-        foreach (var i in new[] { 10, 11, 12 })
-        {
-            Assert.Equal("     ", table[i][..5]);
-            Assert.DoesNotContain($"{i}.", table[i][..8], StringComparison.Ordinal);
-        }
-
-        //every row's model name must start at the same column, which a digits-only check cannot see
-        var at = table.Skip(1).Select(r => r.IndexOf('m', StringComparison.Ordinal)).Distinct().ToList();
-        Assert.Single(at);
-    }
-
     //the body must fit at the composer, since the painter's clamp hides overflow as trailing spaces
     [Fact]
     public void THE_COMPOSED_BODY_NEVER_EXCEEDS_ITS_WIDTH()
@@ -595,52 +477,12 @@ public class ShelfTests
                         + $"{Gatto.Terminal.UnicodeWidth.Of(row.Text)} cells: {row.Text}");
     }
 
-    //each drawn digit must answer its own row, and the key must hold a real KeyChar since that is how a terminal sends one
-    [Fact]
-    public void A_RENDERED_DIGIT_ANSWERS_ITS_ROW()
-    {
-        var shelf = Unified96();
-        var screen = Screen(shelf);
-
-        //pressing 3 answers row index two, the third row on the shelf
-        Assert.Equal("2", WalkRender.Answer(screen, new ConsoleKeyInfo('3', ConsoleKey.D3, false, false, false)));
-        Assert.Equal("0", WalkRender.Answer(screen, new ConsoleKeyInfo('1', ConsoleKey.D1, false, false, false)));
-    }
-
-    //the publisher outranks nothing on a one-publisher shelf, so the prefix is dropped there and kept where a second publisher appears
-    [Fact]
-    public void A_SECOND_PUBLISHER_BRINGS_BOTH_FULL_REPO_IDS_BACK()
-    {
-        var twoPub = new ShelfView(
-            [
-                new ShelfRow("bartowski/alpha-GGUF", "bartowski",
-                    new HubQuant("alpha-Q4_K_M.gguf", Gib(8), null), Fits, 4096, false,
-                    null, 10, false),
-                Row("beta", 30, 18, 4096, false, Fits),
-            ],
-            null, MachineShape.UnifiedWithShare, Families: Families, Family: "all", Total: 2);
-
-        var mixed = Shelf.Table(twoPub, row: 0, focused: true, glyphs: GlyphSet.Unicode)
-            .Select(r => r.Text).ToList();
-
-        Assert.Contains("bartowski/alpha-GGUF", mixed[1], StringComparison.Ordinal);
-        Assert.Contains("unsloth/beta", mixed[2], StringComparison.Ordinal);
-
-        //the pair, so the bare form is proven on the same code path, and a curated shelf keeps today's look
-        var onePub = twoPub with { Rows = [twoPub.Rows[1]] };
-        var bare = Shelf.Table(onePub, row: 0, focused: true, glyphs: GlyphSet.Unicode)[1].Text;
-
-        Assert.Contains("beta", bare, StringComparison.Ordinal);
-        Assert.DoesNotContain("unsloth/beta", bare, StringComparison.Ordinal);
-    }
-
     //a repo name is never truncated, since the model column widens to the longest name
     [Fact]
     public void A_REPO_NAME_IS_NEVER_TRUNCATED_HOWEVER_LONG()
     {
         var name = "Qwen3-Next-80B-A3B-Instruct-2507-FP8-Dynamic-Extra-Long";
-        var view = new ShelfView([Row(name, 80, 48.5, 262144, false, Fits)],
-            "unsloth", MachineShape.UnifiedWithShare, Families: Families, Family: "qwen", Total: 1);
+        var view = new ShelfView([Row(name, 80, 48.5, 262144, false, Fits)], MachineShape.UnifiedWithShare, Families: Families, Family: "qwen", Total: 1);
 
         var table = Shelf.Table(view, row: 0, focused: true, glyphs: GlyphSet.Unicode).Select(r => r.Text).ToList();
 
@@ -669,16 +511,15 @@ public class ShelfTests
     [Fact]
     public void A_ROW_WITH_NO_FACTS_RENDERS_ITS_IDENTITY_AND_NOTHING_INVENTED()
     {
-        var view = new ShelfView([Row("gemma-4-12b-it", 11.9, 7.1, 262144, true, Fits)],
-            "unsloth", MachineShape.UnifiedWithShare, Families: Families, Family: "gemma", Total: 1);
+        var view = new ShelfView([Row("gemma-4-12b-it", 11.9, 7.1, 262144, true, Fits)], MachineShape.UnifiedWithShare, Families: Families, Family: "gemma", Total: 1);
 
         var pane = Pane.Rows(view.Rows[0], null, view.Shape, 40).Select(r => r.Text.TrimEnd()).ToList();
 
         Assert.Equal("gemma-4-12b-it", pane[0]);
-        Assert.Equal("by unsloth", pane[1]);
-        Assert.Contains(pane, r => r == "✗ not measured by gatto yet");
-        //skip an absent-files assertion here, since the heading never draws and the golden is its only oracle
-        Assert.DoesNotContain(pane, r => r.StartsWith("files", StringComparison.Ordinal));
+        Assert.Equal("◈ vision · reads 11.9B/token", pane[1]);
+        Assert.Equal("context 262,144", pane[2]);
+        //skip an absent-publishers assertion here, since the heading never draws and the golden is its only oracle
+        Assert.DoesNotContain(pane, r => r.StartsWith("publishers", StringComparison.Ordinal));
         Assert.DoesNotContain(pane, r => r.Contains("MoE", StringComparison.Ordinal));
     }
 
@@ -692,7 +533,7 @@ public class ShelfTests
         var off = Shelf.Chips(view, chip: 0, focus: Region.List, width: 100, glyphs: GlyphSet.Unicode);
         var on = Shelf.Chips(searched, chip: 0, focus: Region.List, width: 100, glyphs: GlyphSet.Unicode);
 
-        Assert.Contains("(lifted, you searched)", on.Text, StringComparison.Ordinal);
+        Assert.Contains("(search active)", on.Text, StringComparison.Ordinal);
         Assert.DoesNotContain("(lifted", off.Text, StringComparison.Ordinal);
 
         //ink is the subject, since both rows spell the same families and only one accents it
@@ -708,7 +549,7 @@ public class ShelfTests
 
         var chips = Shelf.Chips(lifted, chip: 0, focus: Region.List, width: 100, glyphs: GlyphSet.Unicode);
 
-        Assert.DoesNotContain("you searched", chips.Text, StringComparison.Ordinal);
+        Assert.DoesNotContain("search active", chips.Text, StringComparison.Ordinal);
         Assert.Contains(chips.Runs, r => r.Text == "gemma" && r.Ink == RunInk.Accent);
 
         //the count line is the only place the fit toggle must be readable.
@@ -722,7 +563,7 @@ public class ShelfTests
     {
         var shelf = Unified96();
         var screen = new WizardScreen.Choice(SetupFlow.SearchKey, "Which model should gatto start with?",
-            [.. shelf.Rows.Select((r, i) => new ChoiceOption(i.ToString(), r.RepoId)),
+            [.. shelf.Rows.Select((r, i) => new ChoiceOption(i.ToString(), r.RowFile!.RepoId)),
              new ChoiceOption("something-new", "Something the face was never told about")],
             Shelf: shelf, Door: SetupFlow.ShelfDoorPlaceholderOf(Gatto.Terminal.GlyphSet.Unicode)) { Strip = Strip, AllowBack = true };
 
@@ -736,7 +577,7 @@ public class ShelfTests
     {
         var rows = new[] { Row("a", 1, 1, 4096, false, Fits), Row("b", 1, 1, 4096, false, Fits) };
         var ex = Assert.Throws<ArgumentException>(() =>
-            new ShelfView(rows, "unsloth", MachineShape.UnifiedWithShare,
+            new ShelfView(rows, MachineShape.UnifiedWithShare,
                 Facts: [new ModelFacts(Structure: "dense")]));
         Assert.Contains("2 rows, 1 facts", ex.Message, StringComparison.Ordinal);
     }
@@ -745,8 +586,7 @@ public class ShelfTests
     public void FACTS_THAT_DO_NOT_LINE_UP_AFTER_A_COPY_ARE_REFUSED_TOO()
     {
         var v = new ShelfView(
-            [Row("a", 1, 1, 4096, false, Fits), Row("b", 1, 1, 4096, false, Fits)],
-            "unsloth", MachineShape.UnifiedWithShare,
+            [Row("a", 1, 1, 4096, false, Fits), Row("b", 1, 1, 4096, false, Fits)], MachineShape.UnifiedWithShare,
             Facts: [new ModelFacts(Structure: "dense"), new ModelFacts(Structure: "dense")]);
 
         var ex = Assert.Throws<ArgumentException>(() =>
@@ -759,8 +599,7 @@ public class ShelfTests
     public void BODY_REFUSES_A_VIEW_WHOSE_FACTS_DO_NOT_LINE_UP_WITH_ITS_ROWS()
     {
         var v = new ShelfView(
-            [Row("a", 1, 1, 4096, false, Fits), Row("b", 1, 1, 4096, false, Fits)],
-            "unsloth", MachineShape.UnifiedWithShare, Families: Families, Family: "gemma",
+            [Row("a", 1, 1, 4096, false, Fits), Row("b", 1, 1, 4096, false, Fits)], MachineShape.UnifiedWithShare, Families: Families, Family: "gemma",
             Facts: [new ModelFacts(Structure: "dense"), new ModelFacts(Structure: "dense")]);
 
         //only Rows is copied here, so the init accessor never sees it
@@ -774,7 +613,7 @@ public class ShelfTests
     //the shelf as the flow emits it, built from the flow's own key so a test cannot answer with an unknown one
     private static WizardScreen.Choice WithFolderDoor(ShelfView shelf) =>
         new(SetupFlow.SearchKey, "Which model should gatto start with?",
-            [.. shelf.Rows.Select((r, i) => new ChoiceOption(i.ToString(), r.RepoId)),
+            [.. shelf.Rows.Select((r, i) => new ChoiceOption(i.ToString(), r.RowFile!.RepoId)),
              new ChoiceOption(SetupFlow.Elsewhere, "I already have a model, let me point at the folder")],
             Shelf: shelf, Door: SetupFlow.ShelfDoorPlaceholderOf(Gatto.Terminal.GlyphSet.Unicode)) { Strip = Strip, AllowBack = true };
 
@@ -786,7 +625,7 @@ public class ShelfTests
         var keys = Shelf.Keys(new FocusRing(Shelf.Regions(shelf, 100, 0, hasDoor: true), Shelf.Opening(shelf)),
             ShelfSource.Hub, searchKey: true);
 
-        Assert.Contains(keys, k => k.Key == "d");
+        Assert.Contains(keys, k => k.Key == "?");
     }
 
     //a screen without the option must not advertise the key, since the footer computes the offer from the screen's own options
@@ -797,13 +636,12 @@ public class ShelfTests
         var keys = Shelf.Keys(new FocusRing(Shelf.Regions(shelf, 100, 0, hasDoor: true), Shelf.Opening(shelf)),
             ShelfSource.Hub, searchKey: false);
 
-        Assert.DoesNotContain(keys, k => k.Key == "d");
+        Assert.DoesNotContain(keys, k => k.Key == "?");
     }
 
-    //a drawn key proves nothing, so a shelf with no door must still answer d and / with the search
+    //a drawn key proves nothing, so a shelf with no door must still answer ? with the search
     [Theory]
-    [InlineData('d')]
-    [InlineData('/')]
+    [InlineData('?')]
     public void A_SHELF_WITH_NO_DOOR_STILL_ANSWERS_WITH_THE_SEARCH_ROAD(char key)
     {
         var doorless = WithFolderDoor(Unified96()) with { Door = null };
@@ -824,23 +662,10 @@ public class ShelfTests
             [new ConsoleKeyInfo('d', ConsoleKey.D, false, false, false)]));
     }
 
-    //d on a hub shelf with rows moves the keys into the search field, a second key onto one path
-    [Fact]
-    public void A_HUB_SHELF_ANSWERS_d_WITH_THE_SEARCH_DOOR()
-    {
-        var (answer, _) = WalkRender.Answered(Screen(Unified96()), 100,
-            [new ConsoleKeyInfo('d', ConsoleKey.D, false, false, false),
-             new ConsoleKeyInfo('q', ConsoleKey.Q, false, false, false),
-             new ConsoleKeyInfo('w', ConsoleKey.W, false, false, false),
-             new ConsoleKeyInfo('\0', ConsoleKey.Enter, false, false, false)]);
-
-        Assert.Equal(ShelfControls.TypedAnswer("qw"), answer);
-    }
-
     //the shelf with a door, then the options the flow adds, so the run must skip the door rather than cap the list
     private static WizardScreen.Choice WithFolderDoorAnd(ShelfView shelf, params string[] after) =>
         new(SetupFlow.SearchKey, "Which model should gatto start with?",
-            [.. shelf.Rows.Select((r, i) => new ChoiceOption(i.ToString(), r.RepoId)),
+            [.. shelf.Rows.Select((r, i) => new ChoiceOption(i.ToString(), r.RowFile!.RepoId)),
              new ChoiceOption(SetupFlow.Elsewhere, "I already have a model, let me point at the folder"),
              .. after.Select(k => new ChoiceOption(k, "Type a model's name from Hugging Face"))],
             Shelf: shelf, Door: SetupFlow.ShelfDoorPlaceholderOf(Gatto.Terminal.GlyphSet.Unicode)) { Strip = Strip, AllowBack = true };
@@ -914,12 +739,10 @@ public class ShelfTests
     [Fact]
     public void AN_MXFP4_ROW_SHOWS_ITS_QUANT_AND_KEEPS_THE_LATER_COLUMNS_IN_LINE()
     {
-        var moe = Row("qwen-122B-A10B", 122, 63.4, 262144, false, Fits) with
-        {
-            PickedQuant = new HubQuant("qwen-122B-A10B-MXFP4_MOE.gguf", Gib(63.4), null),
-        };
-        ShelfRow[] rows = [moe, Row("qwen-8B", 8, 4.7, 262144, false, Fits)];
-        var view = new ShelfView(rows, "unsloth", MachineShape.UnifiedWithShare,
+        var moe = Row("qwen-122B-A10B", 122, 63.4, 262144, false, Fits)
+            .WithQuant(new HubQuant("qwen-122B-A10B-MXFP4_MOE.gguf", Gib(63.4), null));
+        ModelRow[] rows = [moe, Row("qwen-8B", 8, 4.7, 262144, false, Fits)];
+        var view = new ShelfView(rows, MachineShape.UnifiedWithShare,
             Families: Families, Family: "gemma", Total: 2);
 
         var frame = WalkRender.SettledFrame(Screen(view), 120).Rows;

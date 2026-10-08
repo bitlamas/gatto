@@ -16,4 +16,4 @@
 
 ❯ type the path to llama-server.exe…                                              Tab or ↓ to type
 ────────────────────────────────────────────────────────────────────────────────────────────────────
-  Tab area   Enter next   b back   Esc leave
+  Tab area   Enter next   Esc back

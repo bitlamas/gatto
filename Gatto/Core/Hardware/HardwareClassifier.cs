@@ -45,6 +45,14 @@ internal static class HardwareClassifier
     //a laptop's integrated share of half its RAM stays under this, so only a machine built around its unified pool moves off the discrete card
     internal const ulong PoolOverCardsFloorBytes = 34359738368;
 
+    //the memory a card's share and a streamed table use together on unified memory. it is visible memory less half the OS floor, since the table is file pages Windows can drop
+    public static ulong StreamPoolBytes(HardwareSnapshot s, ClassifierBand? band = null)
+    {
+        var b = band ?? ClassifierBand.Default;
+        var keepFree = Math.Max(b.OsFloorBytes, s.OsVisibleBytes / b.OsFloorDivisor);
+        return s.OsVisibleBytes > keepFree / 2 ? s.OsVisibleBytes - keepFree / 2 : 0;
+    }
+
     //the shape comes from the device's kind rather than from memory arithmetic, and the installed minus visible gap says whether memory is hidden from Windows
     public static HardwareClass Classify(HardwareSnapshot s, ClassifierBand? band = null)
     {

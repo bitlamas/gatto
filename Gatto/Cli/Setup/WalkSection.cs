@@ -52,8 +52,6 @@ internal static class WalkSection
         ["model.found"] = Model,
         ["model.search"] = Model,
         ["model.loading"] = Model,
-        //the picker is part of choosing a model, since it is the shelf's own control opened full-screen
-        ["model.publisher"] = Model,
         ["model.typedid"] = Model,
         ["model.scanpath"] = Model,
         ["model.download"] = Model,

@@ -12,6 +12,31 @@ internal enum ArchRole
     Variant,
 }
 
+//how a tuned name is told from a base name: gemma marks the tuned model, qwen the base one, and the rule reads the model key once
+internal sealed record TunedRule(string? Mark, string? BaseMark)
+{
+    public bool IsTuned(string modelKey) =>
+        Mark is { Length: > 0 } m ? modelKey.Contains(m, StringComparison.OrdinalIgnoreCase)
+        : BaseMark is not { Length: > 0 } b || !HoldsSegment(modelKey, b);
+
+    //the mark as a whole segment, at the end or before a dash, so GLM-4-32B-Base-0414 reads as base and -Baseline would not
+    private static bool HoldsSegment(string key, string mark)
+    {
+        for (var at = key.IndexOf(mark, StringComparison.OrdinalIgnoreCase); at >= 0;
+             at = key.IndexOf(mark, at + 1, StringComparison.OrdinalIgnoreCase))
+        {
+            var end = at + mark.Length;
+            if (end == key.Length || key[end] == '-') return true;
+        }
+        return false;
+    }
+}
+
+//where a family's originals come from: the releaser org, its generations newest first as groups of name prefixes, the tuned rule and the build suffixes
+internal sealed record FamilyEntry(
+    string Releaser, IReadOnlyList<IReadOnlyList<string>> Generations, bool Ordered,
+    TunedRule Tuned, IReadOnlyList<string> Builds);
+
 //which chip a model sits under. family membership controls what is listed, the base_model fold controls what gets a row, and the two must stay apart
 internal sealed record Families(
     string Reviewed,
@@ -24,6 +49,13 @@ internal sealed record Families(
     string CurrentTierRelease = "") //the engine release the tier pin was last re-read against, held equal to the engine pin by a test
 {
     private const string ResourceName = "Gatto.Core.Acquire.families.json";
+
+    //the families lit when the shelf opens
+    public IReadOnlyList<string> Landing { get; init; } = [];
+
+    //per family, where its originals come from. a family with no entry finds nothing on the shelf
+    public IReadOnlyDictionary<string, FamilyEntry> Entries { get; init; } =
+        new Dictionary<string, FamilyEntry>(StringComparer.OrdinalIgnoreCase);
 
     //the naming stems the validator's second direction tests, matched as substrings. they are the chip names, so they cannot drift from the ladder
     internal static readonly IReadOnlyList<string> Stems = ["gemma", "qwen", "deepseek", "glm", "mistral"];
@@ -97,6 +129,7 @@ internal sealed record Families(
         var root = doc.RootElement;
 
         var members = new Dictionary<string, IReadOnlyDictionary<string, ArchRole>>(StringComparer.OrdinalIgnoreCase);
+        var entries = new Dictionary<string, FamilyEntry>(StringComparer.OrdinalIgnoreCase);
         if (root.TryGetProperty("families", out var fams))
             foreach (var family in fams.EnumerateObject())
             {
@@ -105,6 +138,7 @@ internal sealed record Families(
                 foreach (var arch in Names(family.Value, "standalone")) set[arch] = ArchRole.Standalone;
                 foreach (var arch in Names(family.Value, "variant")) set[arch] = ArchRole.Variant;
                 members[family.Name] = set;
+                if (EntryOf(family.Value) is { } entry) entries[family.Name] = entry;
             }
 
         return new Families(
@@ -115,7 +149,33 @@ internal sealed record Families(
             Map(root, "excluded"),
             Map(root, "current_tier"),
             Map(root, "arch_tiers"),
-            Str(root, "current_tier_release"));
+            Str(root, "current_tier_release"))
+        {
+            Landing = [.. Names(root, "landing")],
+            Entries = entries,
+        };
+    }
+
+    //null when the family names no releaser, so it lists nothing rather than everything
+    private static FamilyEntry? EntryOf(JsonElement family)
+    {
+        if (Str(family, "releaser") is not { Length: > 0 } releaser) return null;
+        var ordered = !family.TryGetProperty("ordered", out var o) || o.ValueKind != JsonValueKind.False;
+        TunedRule tuned = new(null, null);
+        if (family.TryGetProperty("tuned", out var t) && t.ValueKind == JsonValueKind.Object)
+            tuned = new(t.TryGetProperty("mark", out var m) ? m.GetString() : null,
+                t.TryGetProperty("base_mark", out var b) ? b.GetString() : null);
+        return new FamilyEntry(releaser, GroupsOf(family), ordered, tuned, [.. Names(family, "builds")]);
+    }
+
+    //each generation is an array of prefixes, a versioned family's a group of one
+    private static IReadOnlyList<IReadOnlyList<string>> GroupsOf(JsonElement family)
+    {
+        if (!family.TryGetProperty("generations", out var g) || g.ValueKind != JsonValueKind.Array) return [];
+        return [.. g.EnumerateArray()
+            .Where(x => x.ValueKind == JsonValueKind.Array)
+            .Select(x => (IReadOnlyList<string>)[.. x.EnumerateArray().Select(p => p.GetString() ?? "").Where(p => p.Length > 0)])
+            .Where(x => x.Count > 0)];
     }
 
     private static string Str(JsonElement e, string name) =>

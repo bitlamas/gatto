@@ -20,7 +20,7 @@ public class SetupFlowTests
         //settable, so a walk can add found models while it runs.
         public IReadOnlyList<Gatto.Core.Acquire.FoundModel> Found { get; set; } = [];
         public List<string?> ScanRoots { get; } = [];
-        public IReadOnlyList<Gatto.Core.Acquire.ShelfRow> Rows { get; init; } = [];
+        public IReadOnlyList<Gatto.Core.Acquire.ModelRow> Rows { get; init; } = [];
         public TypedIdOutcome TypedId { get; init; } = new TypedIdOutcome.Unreachable(false);
         public List<string> TypedIds { get; } = [];
         public AuditionOutcome Audition { get; init; } = AuditionOutcome.Passed;
@@ -94,24 +94,15 @@ public class SetupFlowTests
         //the cause an empty result reports, when the fixture has one. null keeps the unevidenced branch that claims nothing
         public Gatto.Core.Acquire.HubSearchCause? SearchOutcome { get; init; }
 
-        //which view the flow asked for, in order. the list is the oracle for the widen test, since wider copy alone cannot show the wider view was requested
-        public List<Gatto.Core.Acquire.HubSearchView> Views { get; } = [];
-
-        //the publisher a curated search narrowed to. null means the broadened view, which is also what a missing publisher reports
-        public string? CuratedPublisher { get; init; } = "somepublisher";
-
         //the search terms the flow asked for, in order. a term belongs to the request, so the returned rows cannot show it.
         public readonly List<string?> Searches = [];
 
-        public Gatto.Core.Acquire.HubSearchOutcome Search(Gatto.Core.Acquire.HubSearchRequest request)
+        public Gatto.Core.Acquire.ShelfOutcome SearchModels(Gatto.Core.Acquire.ModelSearchRequest request,
+            IProgress<Gatto.Core.Acquire.SearchProgress>? progress, CancellationToken ct)
         {
-            Asked.Add(nameof(Search));
-            Views.Add(request.View);
+            Asked.Add("Search");
             Searches.Add(request.Search);
-            return new Gatto.Core.Acquire.HubSearchOutcome(
-                Rows, Rows.Count > 0 ? null : SearchOutcome,
-                request.View == Gatto.Core.Acquire.HubSearchView.Curated ? CuratedPublisher : null,
-                HiddenOlder: HiddenOlder, HiddenNewer: HiddenNewer, HiddenByFamily: HiddenByFamily);
+            return WizardProbes.Outcome(Rows, SearchOutcome);
         }
 
         //rows the tier filter set aside as older, so a test can drive the count line's buckets through the flow rather than the renderer
@@ -219,11 +210,11 @@ public class SetupFlowTests
         }
     }
 
-    private static Gatto.Core.Acquire.ShelfRow Row(
+    private static Gatto.Core.Acquire.ModelRow Row(
         string repoId, Gatto.Core.Models.FitRegime fit = Gatto.Core.Models.FitRegime.FitsGpu,
         bool vision = false, Gatto.Core.Acquire.Badge? badge = null, long downloads = 100,
         string? structure = null) =>
-        new(repoId, repoId.Split('/')[0],
+        ShelfRows.Of(repoId, repoId.Split('/')[0],
             new Gatto.Core.Acquire.HubQuant("model-Q4_K_M.gguf", 4_000_000_000, null),
             fit, NativeCtx: 32768, Vision: vision, Badge: badge, Downloads: downloads, Gated: false,
             Structure: structure);
@@ -336,12 +327,12 @@ public class SetupFlowTests
     {
         var row = Row("o/m");
 
-        Assert.IsType<TypedIdOutcome.Ok>(TypedIdOutcome.For(new Gatto.Core.Acquire.HubLookup(row, false)));
-        Assert.IsType<TypedIdOutcome.NoWeights>(TypedIdOutcome.For(new Gatto.Core.Acquire.HubLookup(null, true)));
-        Assert.IsType<TypedIdOutcome.NoUsableQuant>(TypedIdOutcome.For(new Gatto.Core.Acquire.HubLookup(null, false)));
+        Assert.IsType<TypedIdOutcome.Ok>(TypedIdOutcome.For((row, false)));
+        Assert.IsType<TypedIdOutcome.NoWeights>(TypedIdOutcome.For((null, true)));
+        Assert.IsType<TypedIdOutcome.NoUsableQuant>(TypedIdOutcome.For((null, false)));
 
         //a priced row is never a refusal, even when a flag says otherwise.
-        Assert.IsType<TypedIdOutcome.Ok>(TypedIdOutcome.For(new Gatto.Core.Acquire.HubLookup(row, true)));
+        Assert.IsType<TypedIdOutcome.Ok>(TypedIdOutcome.For((row, true)));
     }
 
     //the screen names what the repo is and must accept another typed answer, since a missing dispatch arm throws here while every render check passes
@@ -366,41 +357,6 @@ public class SetupFlowTests
 
         //typing again is the point of a re-prompt, so this answers the screen, since a state with no dispatch arm throws here
         Assert.NotNull(flow.Answer("unsloth/gemma-4-e4b-it-GGUF"));
-    }
-
-    //a real search must pass both generation counts into the view, since every count-line test builds its ShelfView by hand
-    [Fact]
-    public void THE_LIVE_SHELF_CARRIES_BOTH_GENERATION_COUNTS()
-    {
-        var probes = new FakeProbes
-        {
-            Llama = @"C:\llama\llama-server.exe",
-            Rows = [Row("org/a"), Row("org/b")],
-            HiddenOlder = 4,
-            HiddenNewer = 2,
-        };
-        var screen = Assert.IsType<WizardScreen.Choice>(new SetupFlow(probes).StartPastEngine());
-
-        var line = Gatto.Cli.Setup.Tui.Shelf.CountLine(screen.Shelf!, glyphs: GlyphSet.Unicode);
-
-        Assert.Contains("2 newer", line, StringComparison.Ordinal);
-        Assert.Contains("4 older", line, StringComparison.Ordinal);
-    }
-
-    //the family count crosses three hops from the search to the shelf. it asserts the composed line, since reading a number back out proves nothing
-    [Fact]
-    public void THE_LIVE_SHELF_CARRIES_THE_FAMILY_COUNT()
-    {
-        var probes = new FakeProbes
-        {
-            Llama = @"C:\llama\llama-server.exe",
-            Rows = [Row("org/a"), Row("org/b")],
-            HiddenByFamily = 7,
-        };
-        var screen = Assert.IsType<WizardScreen.Choice>(new SetupFlow(probes).StartPastEngine());
-
-        Assert.Contains("7 in other families", Gatto.Cli.Setup.Tui.Shelf.CountLine(screen.Shelf!, glyphs: GlyphSet.Unicode),
-            StringComparison.Ordinal);
     }
 
     //the live flow must hand the row's facts along, since every structure test drove the renderer with its own. assert the composed row
@@ -2301,121 +2257,6 @@ ew.gguf", model.GgufPath);
     }
 
     [Fact]
-    public void The_ORDERING_IS_LABELLED_and_says_among_these_rather_than_implying_a_hub_wide_rank()
-    {
-        //the sort is a hidden recommendation, so the screen names it, since an unqualified "most downloaded" would claim a Hub-wide ranking
-        var probes = new FakeProbes
-        {
-            Llama = @"C:\llama\llama-server.exe",
-            Rows = [Row("org/a"), Row("org/b")],
-            CuratedPublisher = "unsloth",
-        };
-        var flow = new SetupFlow(probes);
-        var curated = Assert.IsType<WizardScreen.Choice>(flow.StartPastEngine());
-
-        Assert.Equal(SetupFlow.SearchKey, curated.Key);
-
-        //the ordering words are literals here, since reading the same helper the screen builds from would pass by construction
-        Assert.Equal(SetupFlow.ModelTitleFor(inSession: false), curated.Question);
-        foreach (var ordering in new[] { "downloaded", "newest", "fits", "sorted" })
-            Assert.DoesNotContain(ordering, curated.Question!, StringComparison.OrdinalIgnoreCase);
-        Assert.Empty(curated.BodyRows!);
-        var onCurated = ShelfBinding.StateSentence(curated.Shelf!, Gatto.Terminal.GlyphSet.Unicode);
-
-        //the curated shelf names its publisher, which keeps "most downloaded" a claim about one shelf
-        Assert.Contains("unsloth", onCurated, StringComparison.OrdinalIgnoreCase);
-        Assert.Contains("most downloaded", onCurated, StringComparison.OrdinalIgnoreCase);
-        Assert.DoesNotContain("newest", onCurated, StringComparison.OrdinalIgnoreCase);
-        //the fit wording sits in the tier headings, since lifting the filter makes a shelf-wide "these fit this machine" false
-        Assert.Contains(
-            ShelfBinding.For(curated.Shelf!, [], new Gatto.Terminal.Theme(Gatto.Terminal.TermCaps.Plain), glyphs: GlyphSet.Unicode).HeadingsAt(100),
-            h => h.Text.Contains("fit", StringComparison.OrdinalIgnoreCase));
-        //the publisher half is what tells the two shelves apart, so the curated sentence must not name every approved publisher
-        Assert.DoesNotContain("every approved publisher", onCurated, StringComparison.OrdinalIgnoreCase);
-
-        //widening is a control rather than a row, and it opens a picker, so the wide shelf comes on the answer after the control
-        flow.Answer(SetupFlow.CtlPublisher);
-        var broad = Assert.IsType<WizardScreen.Choice>(flow.Answer(SetupFlow.PickEveryPublisher));
-        var onBroad = ShelfBinding.StateSentence(broad.Shelf!, Gatto.Terminal.GlyphSet.Unicode);
-
-        //assert the view the engine was asked for, since wording alone would pass when the key changes nothing.
-        Assert.Equal(
-            [Gatto.Core.Acquire.HubSearchView.Curated, Gatto.Core.Acquire.HubSearchView.Broadened],
-            probes.Views);
-
-        Assert.Contains("downloaded", onBroad, StringComparison.OrdinalIgnoreCase);
-        //the label states the mechanism and never grades, so the fit half sits in the tier headings where a shelf-wide claim stays true
-        Assert.Contains(
-            ShelfBinding.For(broad.Shelf!, [], new Gatto.Terminal.Theme(Gatto.Terminal.TermCaps.Plain), glyphs: GlyphSet.Unicode).HeadingsAt(100),
-            h => h.Text.Contains("fit", StringComparison.OrdinalIgnoreCase));
-        //the header names the set that was searched, which keeps it from reading as a Hub-wide ranking
-        Assert.StartsWith("every approved publisher · ", onBroad, StringComparison.Ordinal);
-        Assert.DoesNotContain("newest", onBroad, StringComparison.OrdinalIgnoreCase);
-
-        //neither shelf's sentence may contain the word "best"
-        foreach (var said in new[] { onCurated, onBroad })
-            Assert.DoesNotContain("best", said, StringComparison.OrdinalIgnoreCase);
-    }
-
-    [Fact]
-    public void THE_WAY_OUT_OF_THE_CURATED_SHELF_IS_ON_THE_SCREEN_and_a_wide_shelf_does_not_offer_it()
-    {
-        //curation narrows a default, so the way out is a control. the wide shelf draws no publisher slot, since it has no curated publisher to name
-        var flow = new SetupFlow(new FakeProbes
-        {
-            Llama = @"C:\llama\llama-server.exe",
-            Rows = [Row("org/a")],
-            CuratedPublisher = "unsloth",
-        });
-        var curated = Assert.IsType<WizardScreen.Choice>(flow.StartPastEngine());
-
-        //the slot is drawn, is a Tab stop and picks on Enter, all from one predicate
-        Assert.True(curated.Shelf!.HasPublisherSlot);
-        Assert.Contains(Gatto.Terminal.Region.Publisher,
-            Gatto.Cli.Setup.Tui.Shelf.Regions(curated.Shelf!, 100, 0, curated.Door is not null));
-        //widening must not exist as a row and as a control at once
-        Assert.DoesNotContain(curated.Options, o => o.Key == SetupFlow.Broaden);
-
-        flow.Answer(SetupFlow.CtlPublisher);
-        var broad = Assert.IsType<WizardScreen.Choice>(flow.Answer(SetupFlow.PickEveryPublisher));
-        Assert.Contains("every approved publisher",
-            ShelfBinding.StateSentence(broad.Shelf!, Gatto.Terminal.GlyphSet.Unicode), StringComparison.Ordinal);
-        //the wide shelf names no curated publisher, so it draws no slot and reaches the picker by answering the control
-        Assert.False(broad.Shelf!.HasPublisherSlot);
-
-        //the numbered-row promise is about the screen's total, so a shelf keeps at most nine rows and controls take the keys.
-        Assert.True(curated.Options.Count <= 9, $"{curated.Options.Count} rows");
-        Assert.True(broad.Options.Count <= 9, $"{broad.Options.Count} rows");
-    }
-
-    [Fact]
-    public void A_CURATED_SEARCH_THAT_SEARCHED_EVERYONE_does_not_offer_to_widen_itself()
-    {
-        //with no default publisher slug the engine searched every org, so the screen must say so
-        var flow = new SetupFlow(new FakeProbes
-        {
-            Llama = @"C:\llama\llama-server.exe",
-            Rows = [Row("org/a")],
-            CuratedPublisher = null,
-        });
-        var search = Assert.IsType<WizardScreen.Choice>(flow.StartPastEngine());
-
-        Assert.DoesNotContain(search.Options, o => o.Key == SetupFlow.Broaden);
-
-        //the key opens a picker of every approved publisher, so the row stays away (one deed gets one affordance)
-        Assert.Contains('f', ShelfControls.Keys(search.Shelf!));
-        Assert.Contains("f publisher", ShelfControls.Strip(search.Shelf!, Gatto.Terminal.GlyphSet.Unicode), StringComparison.Ordinal);
-
-        //the sentence is computed from the axis the rows are in, so a label never describes the other view's sort
-        var said = ShelfBinding.StateSentence(search.Shelf!, Gatto.Terminal.GlyphSet.Unicode);
-        Assert.Contains("every approved publisher", said, StringComparison.Ordinal);
-        //both views use the same downloads axis, so the order half reads alike, and each half stands on its own
-        Assert.Contains("most downloaded", said, StringComparison.Ordinal);
-        //the header names the set that was searched, which keeps it from reading as a Hub-wide ranking
-        Assert.StartsWith("every approved publisher · ", said, StringComparison.Ordinal);
-    }
-
-    [Fact]
     public void AN_UNREACHABLE_HUB_degrades_to_the_paths_that_still_work()
     {
         //zero rows means the Hub is unreachable, and the wizard continues through a typed folder path
@@ -2459,7 +2300,7 @@ ew.gguf", model.GgufPath);
 
         flow.Answer("1");
 
-        Assert.Equal("org/b", flow.Picked!.RepoId);
+        Assert.Equal("org/b", flow.Picked!.RowFile!.RepoId);
         //only the model write is asserted, since choosing the engine records a write of its own
         Assert.Null(flow.Writes.CreateModel);   //picking a row records no download, since the browser does that later
     }
@@ -2483,9 +2324,56 @@ ew.gguf", model.GgufPath);
 
         flow.Answer(SetupFlow.TypeAnId);
         flow.Answer("someone/not-on-the-list");
+        flow.Answer("0");
 
-        Assert.Equal("someone/not-on-the-list", flow.Picked!.RepoId);
+        Assert.Equal("someone/not-on-the-list", flow.Picked!.RowFile!.RepoId);
         Assert.Contains("someone/not-on-the-list", probes.TypedIds);
+    }
+
+    //a lift that lands rows keeps no step, so back from the lifted shelf goes to the screen before the shelf and never to the unlifted one
+    [Fact]
+    public void BACK_NEVER_UNDOES_A_LIFT_THAT_FOUND_ROWS()
+    {
+        var flow = AtSearch(new FakeProbes { Llama = @"C:\llama\llama-server.exe", Rows = [Row("unsloth/a-GGUF")] });
+        var lifted = Assert.IsType<WizardScreen.Choice>(flow.Answer(SetupFlow.CtlLift));
+        Assert.True(lifted.Shelf!.Lift);
+        Assert.NotEmpty(lifted.Shelf.Rows);
+
+        var back = flow.Answer(SetupFlow.BackKey);
+        Assert.False(back is WizardScreen.Choice { Key: SetupFlow.SearchKey, Shelf.Lift: false },
+            "back from the lifted shelf showed the unlifted one");
+    }
+
+    //a typed repo id lands on the shelf as its one row with its pane, Enter goes on with the row's pick, and back returns to that row
+    [Fact]
+    public void A_TYPED_ID_LANDS_ON_ITS_ROW()
+    {
+        var probes = new FakeProbes
+        {
+            Llama = @"C:\llama\llama-server.exe",
+            TypedId = new TypedIdOutcome.Ok(Row("someone/typed-GGUF")),
+        };
+        var flow = AtSearch(probes);
+        flow.Answer(SetupFlow.TypeAnId);
+
+        var shelf = Assert.IsType<WizardScreen.Choice>(flow.Answer("someone/typed-GGUF"));
+        Assert.Equal(SetupFlow.SearchKey, shelf.Key);
+        Assert.Null(flow.Picked);
+        var view = shelf.Shelf!;
+        var row = Assert.Single(view.Rows);
+        Assert.Equal("someone/typed-GGUF", row.RowFile!.RepoId);
+        Assert.True(view.Searched);
+        Assert.NotNull(Assert.Single(view.Facts!).Publishers);
+
+        var next = flow.Answer("0");
+        Assert.NotEqual(SetupFlow.SearchKey, (next as WizardScreen.Choice)?.Key);
+        Assert.Equal("someone/typed-GGUF", flow.Picked!.RowFile!.RepoId);
+
+        var asked = probes.TypedIds.Count;
+        var back = Assert.IsType<WizardScreen.Choice>(flow.Answer(SetupFlow.BackKey));
+        Assert.Equal(SetupFlow.SearchKey, back.Key);
+        Assert.Equal(["someone/typed-GGUF"], back.Shelf!.Rows.Select(r => r.RowFile!.RepoId));
+        Assert.Equal(asked, probes.TypedIds.Count);
     }
 
     [Fact]

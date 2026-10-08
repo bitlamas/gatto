@@ -26,9 +26,34 @@ internal static class QuantToken
             : Path.GetFileNameWithoutExtension(name);
 
         foreach (var segment in stem.Split('-', '.'))
+        {
             if (Shape.IsMatch(segment)) return segment.ToUpperInvariant();
+            for (var i = segment.IndexOf('_'); i >= 0; i = segment.IndexOf('_', i + 1))   //from the first underscore, so 26B_q4_0 reads q4_0 before 0
+                if (Shape.IsMatch(segment[(i + 1)..])) return segment[(i + 1)..].ToUpperInvariant();
+        }
 
         return null;
+    }
+
+    //the floor's number: the bits after Q or IQ, 4 for MXFP4, the float width for BF16, F16 and F32
+    public static int? ClassOf(string? token)
+    {
+        if (token is not { Length: > 0 }) return null;
+        var t = token.ToUpperInvariant();
+        if (t.StartsWith("MXFP4", StringComparison.Ordinal)) return 4;
+        if (t is "BF16" or "F16") return 16;
+        if (t == "F32") return 32;
+        var at = t.StartsWith('I') ? 2 : 1;
+        var end = at;
+        while (end < t.Length && char.IsAsciiDigit(t[end])) end++;
+        return end > at && int.TryParse(t.AsSpan(at, end - at), out var bits) ? bits : null;
+    }
+
+    //class 4 up, 3 up at 20B or more, lifted admits every file with a token, and a file with no token is never admitted
+    public static bool AtFloor(string fileName, long? totalParams, bool lifted)
+    {
+        if (ClassOf(Of(fileName)) is not { } cls) return false;
+        return lifted || cls >= 4 || (cls >= 3 && totalParams >= 20_000_000_000);
     }
 
     //the quality/speed band smallest first, Q4 to Q6 with the top spelled Q6_K (Q6 has no Q6_K_M variant)

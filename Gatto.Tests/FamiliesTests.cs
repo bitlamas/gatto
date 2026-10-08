@@ -243,4 +243,63 @@ public class FamiliesTests
     [Fact]
     public void THE_TIER_PIN_WAS_RE_READ_AT_THE_ENGINE_PIN() =>
         Assert.Equal(Gatto.Roles.LlamaAssetSteering.PinnedRelease, F.CurrentTierRelease);
+
+    //the landing's newest prefix and the tier pin are one fact with two owners, so a test holds them equal
+    [Fact]
+    public void THE_NEWEST_QWEN_PREFIX_IS_THE_TIER_PIN()
+    {
+        var newest = F.Entries["qwen"].Generations[0][0];
+        var pin = F.PinFor("qwen");
+        var parsed = QwenTier.Of(newest.TrimEnd('-'));
+        Assert.Equal((pin.Major, pin.Minor), (parsed.Major, parsed.Minor));
+    }
+
+    //gemma's generation is an arch split, so its newest prefix must name the highest arch tier
+    [Fact]
+    public void THE_NEWEST_GEMMA_PREFIX_IS_THE_HIGHEST_ARCH_TIER()
+    {
+        Assert.Equal(["gemma-4-"], F.Entries["gemma"].Generations[0]);
+        Assert.Equal(4, F.PinFor("gemma").Major);
+    }
+
+    //the chips lit when the shelf opens
+    [Fact]
+    public void THE_LANDING_IS_GEMMA_AND_QWEN() =>
+        Assert.Equal(["gemma", "qwen"], F.Landing);
+
+    //gemma marks the tuned model and qwen the base one, so each family names its own rule
+    [Theory]
+    [InlineData("gemma", "gemma-4-31B-it", true)]
+    [InlineData("gemma", "gemma-4-31B", false)]
+    [InlineData("qwen", "Qwen3.5-9B", true)]
+    [InlineData("qwen", "Qwen3.5-9B-Base", false)]
+    [InlineData("glm", "GLM-4-32B-Base-0414", false)]
+    [InlineData("glm", "GLM-4-32B-0414", true)]
+    [InlineData("qwen", "Qwen3.5-9B-Baseline", true)]
+    public void THE_TUNED_RULE(string family, string key, bool tuned) =>
+        Assert.Equal(tuned, F.Entries[family].Tuned.IsTuned(key));
+
+    //mistral's lines carry no one version order, so a generation is a dated group of line prefixes, and the older group shows only under a
+    [Fact]
+    public void A_MISTRAL_GENERATION_IS_A_GROUP_OF_LINES()
+    {
+        var mistral = F.Entries["mistral"];
+        Assert.Equal("mistralai", mistral.Releaser);
+        Assert.Equal(["Mistral-Small-4-", "Ministral-3-", "Devstral-2-", "Devstral-Small-2-", "Magistral-Small-",
+            "Mistral-Medium-3.5-", "Mistral-Large-3-"], mistral.Generations[0]);
+        Assert.Equal(["Mistral-Small-3.2-", "Mistral-Small-3.1-", "Mistral-Nemo-", "Mistral-7B-", "Mixtral-", "Pixtral-"],
+            mistral.Generations[1]);
+        Assert.Equal(2, mistral.Generations.Count);
+    }
+
+    //every other family's generation is a group of one prefix
+    [Theory]
+    [InlineData("gemma")] [InlineData("qwen")] [InlineData("deepseek")] [InlineData("glm")]
+    public void A_VERSIONED_FAMILY_HAS_ONE_PREFIX_PER_GENERATION(string family) =>
+        Assert.All(F.Entries[family].Generations, g => Assert.Single(g));
+
+    //an entry with no ordered key is ordered, since every landing family has a version order
+    [Fact]
+    public void THE_LANDING_ENTRIES_ARE_ORDERED() =>
+        Assert.All(F.Landing, f => Assert.True(F.Entries[f].Ordered));
 }

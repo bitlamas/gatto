@@ -35,8 +35,8 @@ public class SetupRunnerWalkTests
         public IEnumerable<string> Keys => Seen.Select(ScreenKey.Of);
     }
 
-    private static ShelfRow Row(string repoId, string file = "model-Q4_K_M.gguf") =>
-        new(repoId, repoId.Split('/')[0], new HubQuant(file, 4_000_000_000, null),
+    private static ModelRow Row(string repoId, string file = "model-Q4_K_M.gguf") =>
+        ShelfRows.Of(repoId, repoId.Split('/')[0], new HubQuant(file, 4_000_000_000, null),
             Gatto.Core.Models.FitRegime.FitsGpu, 32768, false, null, 100, false);
 
     //a typed screen whose footer says Esc back must actually go back, since the flag and the deed must agree
@@ -59,6 +59,27 @@ public class SetupRunnerWalkTests
         var keys = surface.Keys.ToList();
         Assert.Contains(SetupFlow.LlamaPathKey, keys);
         Assert.Equal(2, keys.Count(k => k == SetupFlow.SteerKey));
+    }
+
+    //the leave answer on a typed screen leaves even where a way back exists, since the Ctrl+C chord leaves from every screen
+    [Fact]
+    public void THE_LEAVE_ANSWER_ON_A_TYPED_SCREEN_LEAVES_RATHER_THAN_GOING_BACK()
+    {
+        var surface = new ScriptedSurface(
+            SetupFlow.WelcomeGo, SetupFlow.MachineNext,
+            ShelfControls.TypedAnswer(@"C:\llama\llama-cli.exe"),
+            SetupFlow.LeaveKey);
+        var flow = new SetupFlow(new Probes
+        {
+            Llama = null,
+            Verify = _ => new Gatto.Core.Tools.ProbeResult(Gatto.Core.Tools.ProbeShape.NotClassic, "d"),
+        });
+
+        Assert.Equal(0, SetupRunner.Run(flow, surface, homePath: null));
+
+        var keys = surface.Keys.ToList();
+        Assert.Equal(1, keys.Count(k => k == SetupFlow.SteerKey));
+        Assert.IsType<WizardScreen.Terminal>(surface.Seen[^1]);
     }
 
     //the escape key on a numbered screen still leaves, since going back belongs to the typed screens where the footer says so
@@ -105,8 +126,8 @@ public class SetupRunnerWalkTests
     }
 
     //builds a shard-set row with a summed size and a file count, where ShardCount one is the single-file world the other runs use
-    private static ShelfRow SetRow(string repoId, int shards, long totalBytes) =>
-        new(repoId, repoId.Split('/')[0],
+    private static ModelRow SetRow(string repoId, int shards, long totalBytes) =>
+        ShelfRows.Of(repoId, repoId.Split('/')[0],
             new HubQuant($"m-Q4_K_M-00001-of-{shards:D5}.gguf", totalBytes, null, shards),
             Gatto.Core.Models.FitRegime.FitsGpu, 32768, false, null, 100, false);
 
@@ -148,10 +169,8 @@ public class SetupRunnerWalkTests
     [Fact]
     public void A_SINGLE_FILE_IN_A_FOLDER_IS_LINKED_BY_ITS_PATH()
     {
-        var row = Row("org/small") with
-        {
-            PickedQuant = new HubQuant("model-Q4_K_M.gguf", 4_000_000_000, null, Path: "Q4_K_M/model-Q4_K_M.gguf"),
-        };
+        var row = Row("org/small").WithQuant(
+            new HubQuant("model-Q4_K_M.gguf", 4_000_000_000, null, Path: "Q4_K_M/model-Q4_K_M.gguf"));
         var face = new ScriptedSurface([.. WalkOpening.PastEngine, "0"]);
         SetupRunner.Run(new SetupFlow(new Probes { Rows = [row] }), face, homePath: null);
 
@@ -543,11 +562,12 @@ public class SetupRunnerWalkTests
     [Fact]
     public void THE_TYPED_ID_DOOR_REACHES_THE_SAME_DOWNLOAD_SCREEN()
     {
-        //the typed-id path must reach the same download screen as the shelf path, since the step has one home
+        //the typed-id path lands on its row, whose Enter must reach the same download screen as the shelf path, since the step has one home
         var flow = new SetupFlow(new ProbesWithTypedId { Rows = [] });
         flow.StartPastEngine();
         flow.Answer(SetupFlow.TypeAnId);
-        var screen = Assert.IsType<WizardScreen.Choice>(flow.Answer("someone/model"));
+        flow.Answer("someone/model");
+        var screen = Assert.IsType<WizardScreen.Choice>(flow.Answer("0"));
 
         Assert.Equal(SetupFlow.DownloadKey, screen.Key);
     }
@@ -567,7 +587,7 @@ public class SetupRunnerWalkTests
 
         public string RunningVersion() => Gatto.Core.GattoVersion.String;
         public (Gatto.Roles.IdClash Kind, string? Id) ClashFor(string ggufPath, string? incomingRepoId) => (Gatto.Roles.IdClash.Free, null);
-        public IReadOnlyList<ShelfRow> Rows { get; init; } = [];
+        public IReadOnlyList<ModelRow> Rows { get; init; } = [];
 
         public HardwareSnapshot? Hardware() => new(34359738368, 34093496320, GpuKind.Discrete, 8589934592);
 
@@ -581,7 +601,8 @@ public class SetupRunnerWalkTests
         public ConnectProbe? ProbeAt(string baseUrl) => null;
         public IReadOnlyList<string> Roots { get; init; } = [];
         public ScanResult Scan(string? r) => new([], Roots);
-        public HubSearchOutcome Search(HubSearchRequest request) => new(Rows, null);
+        public ShelfOutcome SearchModels(ModelSearchRequest request, IProgress<SearchProgress>? progress, CancellationToken ct) =>
+            WizardProbes.Outcome(Rows);
         public (string Path, long Bytes)? ProjectorFor(string p) => null;
         public string? ArchitectureOf(string p) => null;
         public MoveOffer? MoveOfferFor(string p) => null;

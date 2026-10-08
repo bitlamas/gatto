@@ -36,9 +36,6 @@ internal interface ISetupProbes
     //whether the install screen shows its Windows Terminal aside. false by default, and GlyphSet.IsLegacyConsole answers it so both readings agree
     bool IsLegacyConsole() => false;
 
-    //every publisher the dated allowlist approves, in the allowlist's own order since that order was reviewed. empty is a real answer and the picker must survive it
-    IReadOnlyList<string> ApprovedPublishers() => [];
-
     //what answers on the probed ports, or null when nothing does. a probed port is never named, and a null NCtx is a real answer the wizard must not fill in
     Gatto.Core.Acquire.ConnectProbe? ProbeServer(IReadOnlyList<int>? skip = null);
 
@@ -51,12 +48,10 @@ internal interface ISetupProbes
     //every model already on this machine, newest-useful-first. it returns the roots it swept as well as the finds, so a miss can say where it looked
     ScanResult Scan(string? extraRoot);
 
-    //the allowlisted search, or an empty outcome that names its cause. the wizard renders the rows as they come, with fit and badge already computed
-    Gatto.Core.Acquire.HubSearchOutcome Search(Gatto.Core.Acquire.HubSearchRequest request);
-
-    //the same search reporting its progress and taking a token, so a screen can draw the wait and a chip can stop it. a probe that cannot answers the plain search
-    Gatto.Core.Acquire.HubSearchOutcome Search(Gatto.Core.Acquire.HubSearchRequest request,
-        IProgress<Gatto.Core.Acquire.SearchProgress>? progress, CancellationToken ct) => Search(request);
+    //the shelf of original models over the lit families, lifted or typed. a probe that cannot search answers an empty shelf with no cause
+    Gatto.Core.Acquire.ShelfOutcome SearchModels(Gatto.Core.Acquire.ModelSearchRequest request,
+        IProgress<Gatto.Core.Acquire.SearchProgress>? progress, CancellationToken ct) =>
+        new([], 0, 0, 0, false, 0, [], null);
 
     //evaluate a repo id the user typed, the escape hatch that takes any id. a malformed id is refused as a typo, before it reaches the wire
     TypedIdOutcome EvaluateTypedId(string repoId);
@@ -93,7 +88,7 @@ internal interface ISetupProbes
             $"this setup probe offered a fetch of {assets.Server.ZipName} and cannot perform one");
 
     //the offer to fetch this model itself, or null when gatto cannot. null by default, so a fake that says nothing about fetching keeps the browser screen
-    Gatto.Cli.Setup.ModelFetchOffer? ModelOffer(Gatto.Core.Acquire.ShelfRow row) => null;
+    Gatto.Cli.Setup.ModelFetchOffer? ModelOffer(Gatto.Core.Acquire.ModelRow row) => null;
 
     //a fetch that was paused and can be picked up again. found on disk, since the flow keeps no state, and a part file with no record is not offered
     internal sealed record PausedFetch(

@@ -3,7 +3,7 @@
 ────────────────────────────────────────────────────────────────────────────────────────────────────
   Which model should gatto start with?
 
-  gemma · qwen · deepseek · glm · mistral · all   (lifted, you searched)        publisher  unsloth
+  gemma · qwen · deepseek · glm · mistral · all   (search active)
 
 
        (^·_·^)ﾉ
@@ -15,4 +15,4 @@
 
 ❯ qwerty▏                                                                  Enter search · Esc back
 ────────────────────────────────────────────────────────────────────────────────────────────────────
-  Tab area   ↑↓ move   Enter next   m local   d search   b back   Esc back | fewer params = faster
+  Tab area   ↑↓ move   Enter next   m local   ? search   Esc back          | fewer params = faster

@@ -6,22 +6,9 @@ using Gatto.Core.Models;
 namespace Gatto.Core.Acquire;
 
 //a dated allowlist someone reviewed on a day, which decides which orgs the wizard proposes and never what a typed repo id reaches
-internal sealed record UploaderAllowlist(
-    string ReviewedDate, IReadOnlyList<string> Orgs, string? DefaultView = null)
+internal sealed record UploaderAllowlist(string ReviewedDate, IReadOnlyList<string> Orgs)
 {
     private const string ResourceName = "Gatto.Core.Acquire.uploader-allowlist.json";
-
-    //curated searches the one dated publisher, broadened every approved org. an unknown or absent default_view falls back to the whole list
-    public IReadOnlyList<string> OrgsFor(HubSearchView view) =>
-        CuratedPublisherFor(view) is { } only ? [only] : Orgs;
-
-    //who this view narrowed to, or null when it narrowed to nobody. the decision, which OrgsFor reads, since one org in the list is not a curated view
-    public string? CuratedPublisherFor(HubSearchView view) =>
-        view == HubSearchView.Curated && DefaultView is { Length: > 0 } d && Orgs.Contains(d) ? d : null;
-
-    //null or empty leaves the shipped default_view alone. no membership check here, since that decision lives in CuratedPublisherFor alone
-    public UploaderAllowlist Preferring(string? publisher) =>
-        publisher is { Length: > 0 } p ? this with { DefaultView = p } : this;
 
     //a missing embedded list throws, since an empty allowlist is a legitimate state and must not pass for a broken build
     public static UploaderAllowlist Load()
@@ -36,47 +23,9 @@ internal sealed record UploaderAllowlist(
             foreach (var o in arr.EnumerateArray())
                 if (o.ValueKind == JsonValueKind.String && o.GetString() is { Length: > 0 } slug)
                     orgs.Add(slug);
-        var view = doc.RootElement.TryGetProperty("default_view", out var v)
-            && v.ValueKind == JsonValueKind.String ? v.GetString() : null;
-        return new UploaderAllowlist(reviewed, orgs, view);
+        return new UploaderAllowlist(reviewed, orgs);
     }
 }
-
-//the view decides who is searched and how the rows are ordered, and OrderFor is the one home of that pairing
-internal enum HubSearchView
-{
-    //one dated publisher, most downloaded first
-    Curated,
-
-    //every approved org, most downloaded in the last 30 days
-    Broadened,
-}
-
-//orders rows inside a fit tier, which decides the group, and one weighted score for both would be a rubric rather than a sort
-internal enum SearchOrder
-{
-    //the Hub's rolling 30-day download count over the orgs searched
-    MostDownloaded,
-
-    //lastModified, and a repo with no date sorts last. an absent date is neither new nor old, so it falls back to a sort position instead of a made-up date
-    RecentlyUpdated,
-
-    //the listing's own gguf.total, which may sort because it is a measurement, and an absent count sorts last
-    MostParams,
-
-    //verified rows first, then the view's own axis inside each group, and this one is a user choice that must never become the default
-    VerifiedFirst,
-}
-
-//what a search produced, with cause null when rows exist or no evidence. count hidden-by-fit and not-checked apart, so the count line can be true
-
-//the view and every control that changes the query sit on one record, so a fake can record exactly what was asked for
-internal sealed record HubSearchRequest(
-    HubSearchView View, SearchOrder? Axis = null, bool IncludeUnfittable = false,
-    int? RowBudget = null, string? Search = null, string? Family = null,
-    string? Publisher = null);
-
-//repos refused for what they are, counted so the shelf can say what it hid. keep it apart from hidden-by-fit: there is no control beside this count
 
 //trees fetched this session, keyed by repo id, so a chip switch is free. session-scoped and safe for six threads reading and writing it at once
 internal sealed class HubTreeMemo(HubReadStore? disk = null)
@@ -101,6 +50,17 @@ internal sealed class HubTreeMemo(HubReadStore? disk = null)
 
     public void Put(string repoId, HubTree tree) => _trees[repoId] = tree;
 
+    //the tokenizers the table reads walked this launch, so a second file of the same model jumps its arrays
+    public TokenizerMemory Tokenizers { get; } = new();
+
+    //listings asked this session, keyed by what was asked, so a lifts from the landing without asking its listings again. a new launch asks afresh
+    private readonly System.Collections.Concurrent.ConcurrentDictionary<string, IReadOnlyList<HubListing>> _listings =
+        new(StringComparer.OrdinalIgnoreCase);
+
+    public IReadOnlyList<HubListing>? Listing(string key) => _listings.TryGetValue(key, out var rows) ? rows : null;
+
+    public void PutListing(string key, IReadOnlyList<HubListing> rows) => _listings[key] = rows;
+
     //structure reads remembered like the trees, keyed by repo id and file name. remember an unanswerable read too, so a chip switch does not ask again
     private readonly System.Collections.Concurrent.ConcurrentDictionary<string, GgufHeader?> _headers =
         new(StringComparer.OrdinalIgnoreCase);
@@ -124,23 +84,11 @@ internal sealed class HubTreeMemo(HubReadStore? disk = null)
     private static string Key(string repoId, string fileName) => repoId + "|" + fileName;
 }
 
-//rows below the family's dated pin that the budget never reached, which the count line names. rows above the pin keep their own number
-
-//what a typed repo id found and, when nothing, why: a repo with no weights gets its own sentence, checked before the tree call
-internal readonly record struct HubLookup(ShelfRow? Row, bool NoWeights);
-
 //which half of a search is running, the listing of the publishers or the reading of the models' files
 internal enum SearchStage { Listing, Reading }
 
 //one moment of a search for the screen that waits on it. both counts are measured while it runs, and the total can grow
 internal sealed record SearchProgress(SearchStage Stage, int Done, int Total, IReadOnlyList<string> Publishers);
-
-internal sealed record HubSearchOutcome(
-    IReadOnlyList<ShelfRow> Rows, HubSearchCause? Cause, string? CuratedPublisher = null,
-    int HiddenByFit = 0, int NotChecked = 0, int HiddenByKind = 0,
-    int HiddenOlder = 0, int HiddenNewer = 0,
-    //rows a family chip narrowed away, counted so the shelf can say so, since these did not fail a memory arithmetic
-    int HiddenByFamily = 0);
 
 //why a search came back empty: two causes, which get two different screens, and neither is inferred from the other's absence
 internal enum HubSearchCause
@@ -151,15 +99,6 @@ internal enum HubSearchCause
     //the Hub failed between listing and pricing: every request came back a failure. named for the fact, since every tree call failing is the same outage
     HubFailed,
 }
-
-//the result row as data, whose names and byte counts are attacker text sanitized at render, and whose fetched facts stay on the row
-internal sealed record ShelfRow(
-    string RepoId, string Publisher, HubQuant PickedQuant, FitRegime Fit,
-    long? NativeCtx, bool Vision, Badge? Badge, long Downloads, bool Gated,
-    DateTimeOffset? LastModified = null, long? Params = null,
-    IReadOnlyList<HubQuant>? AllQuants = null, IReadOnlyList<HubQuant>? Projectors = null,
-    string? Arch = null, string? Structure = null, (long Total, long Active)? Experts = null,
-    int FileCount = 0);
 
 //search proposes and the arithmetic disposes: one honest quant per model, gated repos never shown, and one org's outage never the search's
 internal static class HubSearch
@@ -173,371 +112,6 @@ internal static class HubSearch
     //six Hub requests in flight at once, one gate for both halves of the search. a politeness bound, and a parameter so a test can run at one
     internal const int HubConcurrency = 6;
 
-    //rows for every allowlisted org, and never a throw for a Hub problem: one org failing degrades that org. empty reports the cause the search recorded
-    public static async Task<HubSearchOutcome> AssembleAsync(
-        HubClient client, UploaderAllowlist allowlist, HardwareClass hw, int ctxForFit,
-        Func<string, Badge?> badgeLookup, CancellationToken ct, int rowBudget = DefaultRowBudget,
-        long minParams = 0, long maxParams = long.MaxValue,
-        HubSearchView view = HubSearchView.Broadened,
-        SearchOrder? axis = null, bool includeUnfittable = false,
-        int concurrency = HubConcurrency, HubTreeMemo? memo = null,
-        string? family = null, Families? families = null, string? search = null,
-        IProgress<SearchProgress>? progress = null)
-    {
-        var orgs = allowlist.OrgsFor(view);
-
-        //the counts move on six threads, so each report is made under one lock and a later report never shows a smaller count
-        var reportGate = new object();
-        int listed = 0, read = 0, reading = 0;
-        void Report(SearchStage stage)
-        {
-            if (progress is null) return;
-            lock (reportGate)
-                progress.Report(stage == SearchStage.Listing
-                    ? new SearchProgress(stage, listed, orgs.Count, orgs)
-                    : new SearchProgress(stage, read, reading, orgs));
-        }
-        Report(SearchStage.Listing);
-
-        //a typed search clears the family, and with it the tier, since the query is the filter and tiers are family-scoped
-        if (!string.IsNullOrWhiteSpace(search)) family = null;
-        //the view's pairing is the default, and the sort control supplies the exception
-        var natural = OrderFor(view);
-        var order = axis ?? natural;
-
-        //one gate for both phases, since they never overlap and a second semaphore would be a second number for one link
-        using var gate = new SemaphoreSlim(Math.Max(1, concurrency));
-
-        var listings = new List<HubListing>();
-        var orgFailures = 0;
-
-        //the orgs are listed concurrently and merged in org order, and the token is a budget, so expiry keeps the listings already in hand
-        var answered = await Task.WhenAll(orgs.Select(async org =>
-        {
-            //cancelled while queueing is not a Hub failure, since the org was never asked and counting it would read as an outage
-            try { await gate.WaitAsync(ct).ConfigureAwait(false); }
-            catch (OperationCanceledException) { return (Rows: (IReadOnlyList<HubListing>?)null, Failed: false); }
-
-            try
-            {
-                return (Rows: (IReadOnlyList<HubListing>?)
-                    await client.ListAsync(org, minParams, maxParams, ct, search)
-                        .ConfigureAwait(false),
-                    Failed: false);
-            }
-            //one org's outage degrades that org, and it is counted because every org failing is the difference between two screens
-            catch (HubUnavailableException) { return (Rows: null, Failed: true); }
-            //count it as a failure of this org, since a budget that expires with nothing priced ends at HubFailed. to the user a timeout and an outage are one fact
-            catch (OperationCanceledException) when (ct.IsCancellationRequested)
-            {
-                return (Rows: null, Failed: true);
-            }
-            finally
-            {
-                gate.Release();
-                lock (reportGate) listed++;
-                Report(SearchStage.Listing);
-            }
-        })).ConfigureAwait(false);
-
-        foreach (var (orgRows, failed) in answered)
-        {
-            if (failed) orgFailures++;
-            if (orgRows is not null) listings.AddRange(orgRows);
-        }
-
-        //every filter the listing can answer runs here, before any tree call, since a request on a hidden row is the budget leak
-        var kinds = ModelKinds.Load();
-        var hiddenByKind = 0;
-
-        //filter the family chip from Arch, which the listing already gives, and treat all and an unknown chip as no question at all
-        var chip = families is not null && family is { Length: > 0 } f
-            && !string.Equals(f, "all", StringComparison.OrdinalIgnoreCase) ? f : null;
-        var hiddenByFamily = 0;
-
-        var servable = new List<HubListing>(listings.Count);
-        foreach (var l in listings)
-        {
-            if (l.Gated || ModelDiscovery.IsWeightless(l.Params)) continue;
-            if (kinds.WillNotServe(l.PipelineTag, l.Causal, l.Arch)) { hiddenByKind++; continue; }
-            //a row with no architecture cannot answer the chip, and it is counted since the shelf must say what it narrowed away
-            if (chip is not null
-                && !string.Equals(families!.FamilyOf(l.Arch), chip, StringComparison.OrdinalIgnoreCase))
-            { hiddenByFamily++; continue; }
-            servable.Add(l);
-        }
-
-        var candidates = InAxisOrder(servable, order, natural, l => l.RepoId, Key, badgeLookup)
-            .ToList();
-
-        var rows = new List<ShelfRow>();
-        var treeCalls = 0;
-        var treeFailures = 0;
-        var hiddenByFit = 0;
-        //resolve the tier pin once before the loop, since the row budget now reads it, and an unversioned family leaves it null
-        var pin = family is not null && families is not null ? families.PinFor(family) : ModelTier.Unversioned;
-        //a lifted shelf shows every generation, so there is no current tier to seek and the budget stops the search
-        var tiered = pin.IsVersioned && families is not null && !includeUnfittable;
-
-        var reached = 0;
-        //price in bounded windows and merge in candidate order, so the shelf never depends on which response came back first
-        for (var at = 0; at < candidates.Count;)
-        {
-            //stop and keep what is priced: the rest go in the unreached bucket, so a search out of time reads as there is more
-            if (ct.IsCancellationRequested) break;
-            //on a tiered family keep pricing until the current generation has a row, since the budget alone would never reach it
-            if (treeCalls >= MaxTreeCalls) break;
-            if (rows.Count >= rowBudget && !MayReachFurther()) break;
-
-            //the window is what is still needed, capped by the concurrency and the ceiling's room, and a generation search gets the full concurrency
-            var needed = MayReachFurther() ? concurrency : rowBudget - rows.Count;
-            var window = Math.Min(
-                Math.Min(Math.Max(1, concurrency), Math.Max(1, needed)),
-                MaxTreeCalls - treeCalls);
-            //trim by tier only while over-pricing, since a short shelf comes out when the axis must still fill the budget
-            var taking = candidates.Skip(at).Take(window).ToList();
-            var chunk = MayReachFurther() ? CapToOneExtraTier(taking) : taking;
-            if (chunk.Count == 0) break;
-            at += chunk.Count;
-
-            reached += chunk.Count;
-            lock (reportGate) reading += chunk.Count;
-            Report(SearchStage.Reading);
-
-            var trees = await Task.WhenAll(chunk.Select(async listing =>
-            {
-                //the memo first, since a hit spends no request and never takes the gate or counts against the ceiling
-                if (memo?.Get(listing.RepoId) is { } remembered)
-                    return (Tree: (HubTree?)remembered, Failed: false, Spent: false);
-
-                try { await gate.WaitAsync(ct).ConfigureAwait(false); }
-                catch (OperationCanceledException) { return (Tree: (HubTree?)null, Failed: true, Spent: false); }
-
-                try
-                {
-                    var got = await client.TreeAsync(listing.RepoId, ct).ConfigureAwait(false);
-                    //a stop during the table reads leaves the tree unremembered, so the next search reads the tables itself
-                    try { got = await client.WithStreamedAsync(got, listing, ct, memo?.Disk).ConfigureAwait(false); }
-                    catch (OperationCanceledException) when (ct.IsCancellationRequested)
-                    { return (Tree: (HubTree?)got, Failed: false, Spent: true); }
-                    memo?.Put(listing.RepoId, got);
-                    return (Tree: (HubTree?)got, Failed: false, Spent: true);
-                }
-                catch (HubUnavailableException) { return (Tree: null, Failed: true, Spent: true); }
-                //count it as a tree failure, since a budget that died with nothing priced must end at HubFailed
-                catch (OperationCanceledException) when (ct.IsCancellationRequested)
-                {
-                    return (Tree: null, Failed: true, Spent: true);
-                }
-                finally { gate.Release(); }
-            }).Select(t => Counted(t))).ConfigureAwait(false);
-
-            //count the calls the window actually spent, since a memoised row spends nothing and the window was already sized against the ceiling's room
-            treeCalls += trees.Count(t => t.Spent);
-
-            //decide here, in candidate order: Pick and the row build are pure, so every count stays independent of the scheduler
-            foreach (var (listing, got) in chunk.Zip(trees))
-            {
-                if (got.Failed || got.Tree is not { } tree) { treeFailures++; continue; }
-
-                //counted here, since deriving it from the candidate and row counts would blame this machine's memory for a network outage
-                if (Pick(tree.Quants, hw, listing.NativeCtx, ctxForFit, listing.Params, includeUnfittable, listing.Arch)
-                    is not { } picked)
-                {
-                    hiddenByFit++;
-                    continue;
-                }
-
-                rows.Add(new ShelfRow(
-                    listing.RepoId, PublisherOf(listing.RepoId), picked.Quant, picked.Fit,
-                    listing.NativeCtx, tree.HasProjector, badgeLookup(listing.RepoId),
-                    listing.Downloads, listing.Gated, listing.LastModified, listing.Params,
-                    tree.Quants, tree.Projectors, listing.Arch,
-                    //every file the tree listed, passed to the pane's heading, which costs nothing since this loop already made the call
-                    FileCount: tree.FileCount));
-            }
-        }
-
-        //sort by tier over the axis order, since a stable sort keeps the axis inside each tier, and only a dated pin is tiered
-        var arranged = (IReadOnlyList<ShelfRow>)[.. Arrange(rows, order, natural, badgeLookup)];
-        var filled = Tiered(arranged, family, families, rowBudget, includeUnfittable);
-        var ordered = filled.Rows;
-
-        //the structure read runs over the rendered rows only, since a read for a row nobody sees is wasted. it shares the gate and the ceiling
-        ordered = await WithStructureAsync(
-            ordered, client, gate, memo, MaxTreeCalls - treeCalls, ct).ConfigureAwait(false);
-
-        return new HubSearchOutcome(ordered, ordered.Count > 0 ? null : CauseOf(),
-            allowlist.CuratedPublisherFor(view), hiddenByFit,
-            Math.Max(0, candidates.Count - reached), hiddenByKind,
-            filled.HiddenOlder, filled.HiddenNewer, hiddenByFamily);
-
-        //a model counts as read when its tree and tables are in, whichever way its work ended
-        async Task<T> Counted<T>(Task<T> work)
-        {
-            try { return await work.ConfigureAwait(false); }
-            finally
-            {
-                lock (reportGate) read++;
-                Report(SearchStage.Reading);
-            }
-        }
-
-        //whether the current generation still has no row, asked of the rows since the ceiling already stops the looking
-        bool NeedsCurrentTier() =>
-            tiered && !rows.Any(r => families!.TierFor(r.Arch, r.RepoId) is var t
-                && t.Major == pin.Major && t.Minor == pin.Minor);
-
-        //one extra tier per search, counted as distinct tiers among the rows already priced, so a three-tier listing makes two rounds
-        int TiersPriced() =>
-            rows.Select(r => families!.TierFor(r.Arch, r.RepoId))
-                .Select(t => (t.Major, t.Minor))
-                .Distinct()
-                .Count();
-
-        //the loop's question in one place, so the break and the window cannot disagree about how far to reach
-        bool MayReachFurther() => NeedsCurrentTier() && TiersPriced() <= 1;
-
-        //trim the chunk rather than the round count, since a single round under concurrency can price a listing that spans three tiers
-        List<HubListing> CapToOneExtraTier(List<HubListing> chunk)
-        {
-            if (!tiered || chunk.Count == 0) return chunk;
-
-            var seen = rows.Select(r => families!.TierFor(r.Arch, r.RepoId))
-                .Select(t => (t.Major, t.Minor)).ToHashSet();
-            var taken = new List<HubListing>();
-            foreach (var listing in chunk)
-            {
-                var t = families!.TierFor(listing.Arch, listing.RepoId);
-                var next = new HashSet<(int, int)>(seen) { (t.Major, t.Minor) };
-                if (next.Count > 2) break;
-                seen = next;
-                taken.Add(listing);
-            }
-            return taken;
-        }
-
-        //read the cause off what the search actually did, since each branch below names a fact the loops above recorded
-        HubSearchCause? CauseOf()
-        {
-            //every request failed at either half, since an outage after the listings is still an outage and not this machine's fault
-            if (orgs.Count > 0 && orgFailures == orgs.Count) return HubSearchCause.HubFailed;
-            if (treeCalls > 0 && treeFailures == treeCalls) return HubSearchCause.HubFailed;
-
-            //repos were listed and priced and none of them fit, which is the only evidence that lets the screen say so
-            if (treeCalls > treeFailures) return HubSearchCause.NothingFits;
-
-            //everything else stays unexplained, since naming one of the two causes would be inventing evidence
-            return null;
-        }
-    }
-
-    //the ladder when the family has a dated pin, a plain budget cut otherwise. a row of another family is ordered within the budget and kept
-    private static TierFillResult<ShelfRow> Tiered(
-        IReadOnlyList<ShelfRow> rows, string? family, Families? families, int budget, bool lifted)
-    {
-        //the a key lifts the tier default too, since a count line saying a shows all must not keep a generation hidden
-        if (lifted) return new([.. rows.Take(budget)], 0, 0);
-        if (family is null || families is null) return new([.. rows.Take(budget)], 0, 0);
-
-        var pin = families.PinFor(family);
-        if (!pin.IsVersioned) return new([.. rows.Take(budget)], 0, 0);
-
-        return TierFill.Select(rows, r => families.TierFor(r.Arch, r.RepoId), pin, budget);
-    }
-
-    //give each rendered row its structure cell from the file gatto picked, and leave it empty when the read fails
-    private static async Task<IReadOnlyList<ShelfRow>> WithStructureAsync(
-        IReadOnlyList<ShelfRow> rows, HubClient client, SemaphoreSlim gate,
-        HubTreeMemo? memo, int room, CancellationToken ct)
-    {
-        //a short-circuit rather than the bound: the per-row i >= room check is what stops the reads, this only saves the task fan-out
-        if (rows.Count == 0 || room <= 0) return rows;
-
-        var reads = await Task.WhenAll(rows.Select(async (row, i) =>
-        {
-            if (i >= room || ct.IsCancellationRequested)
-                return (Index: i, Facts: (StructureFacts?)null);
-
-            //the memo first, on the same terms as a tree, and an absence is remembered so an unanswerable file is asked once
-            if (memo is not null && memo.TryGetHeader(row.RepoId, row.PickedQuant.FileName, out var known))
-                return (Index: i, Facts: FactsOf(known));
-
-            //the disk second, which costs no request and none of the gate
-            if (memo?.Disk is { } disk && disk.TryGetStructure(row.RepoId, row.PickedQuant, out var kept))
-                return (Index: i, Facts: kept);
-
-            try { await gate.WaitAsync(ct).ConfigureAwait(false); }
-            catch (OperationCanceledException) { return (Index: i, Facts: (StructureFacts?)null); }
-
-            try
-            {
-                var got = await client
-                    .StructureHeaderAsync(row.RepoId, row.PickedQuant.RepoPath, ct)
-                    .ConfigureAwait(false);
-                memo?.PutHeader(row.RepoId, row.PickedQuant.FileName, got);
-                //only an answer goes to disk, since a failed read kept there would blank this file's cell until it changes
-                if (FactsOf(got) is { } read) memo?.Disk?.PutStructure(row.RepoId, row.PickedQuant, read);
-                return (Index: i, Facts: FactsOf(got));
-            }
-            catch (OperationCanceledException) when (ct.IsCancellationRequested)
-            { return (Index: i, Facts: (StructureFacts?)null); }
-            finally { gate.Release(); }
-        })).ConfigureAwait(false);
-
-        var built = new ShelfRow[rows.Count];
-        foreach (var (index, facts) in reads)
-            built[index] = facts is null
-                ? rows[index]
-                : rows[index] with { Structure = facts.Cell, Experts = facts.Experts };
-        return built;
-    }
-
-    //the two row values a header decides, or null when there was no header to read
-    private static StructureFacts? FactsOf(GgufHeader? header) =>
-        header is null ? null : new StructureFacts(ModelStructure.Cell(header), ModelStructure.Experts(header));
-
-    //the one place a view is paired with its axis, and now only the default, since the sort control lets a user choose another
-    public static SearchOrder OrderFor(HubSearchView view) => view switch
-    {
-        //both views take the downloads axis, since a newest-first curated shelf was overturned by watching it used
-        HubSearchView.Curated => SearchOrder.MostDownloaded,
-        _ => SearchOrder.MostDownloaded,
-    };
-
-    //the sort key both halves use, so the fetch order is the display order, and a null date sorts last
-    private static long Key(HubListing l, SearchOrder order) => order switch
-    {
-        SearchOrder.RecentlyUpdated => (l.LastModified ?? DateTimeOffset.MinValue).UtcTicks,
-        //absent is long.MinValue rather than 0, since descending puts it last and zero belongs to a repo that reports no parameters
-        SearchOrder.MostParams => l.Params ?? long.MinValue,
-        _ => l.Downloads,
-    };
-
-    private static long Key(ShelfRow r, SearchOrder order) => order switch
-    {
-        SearchOrder.RecentlyUpdated => (r.LastModified ?? DateTimeOffset.MinValue).UtcTicks,
-        SearchOrder.MostParams => r.Params ?? long.MinValue,
-        _ => r.Downloads,
-    };
-
-    //tier then axis, in one function both the engine and the face call. the axis is part of the query, so a sort control must not empty the shelf
-    public static IEnumerable<ShelfRow> Arrange(
-        IReadOnlyList<ShelfRow> rows, SearchOrder order, SearchOrder natural,
-        Func<string, Badge?> badgeLookup) =>
-        //sort the tier over the axis order, since a stable sort keeps the axis inside each tier and VerifiedFirst stays an ordering
-        InAxisOrder(rows, order, natural, r => r.RepoId, Key, badgeLookup)
-            .OrderBy(r => TierOf(r.Fit));
-
-    //the axis applied, two-level case included, so the fetch order and the display order cannot drift, with the view's natural axis as the tie-break
-    private static IOrderedEnumerable<T> InAxisOrder<T>(
-        IEnumerable<T> items, SearchOrder order, SearchOrder tieBreak,
-        Func<T, string> idOf, Func<T, SearchOrder, long> key, Func<string, Badge?> badgeLookup) =>
-        order == SearchOrder.VerifiedFirst
-            ? items.OrderByDescending(i => badgeLookup(idOf(i)) is not null)
-                   .ThenByDescending(i => key(i, tieBreak))
-            : items.OrderByDescending(i => key(i, order));
-
     //fit as a display tier: GPU, RAM, unknown, then does not fit, since an uncomputed fit is a weaker claim than a failed one
     private static int TierOf(FitRegime fit) => fit switch
     {
@@ -550,63 +124,234 @@ internal static class HubSearch
 
     //one quant per model, the best that fits the GPU then RAM, and no row when nothing fits, and inside a tier the knee
 
-    //one repo named by the user, priced like a browse row. null means the repo answered and nothing fits, unlike a failed request which throws
-    internal static async Task<HubLookup> LookupAsync(
-        HubClient client, string repoId, HardwareClass hw, int ctxForFit,
-        Func<string, Badge?> badgeLookup, CancellationToken ct)
+    //one repo named by the user as a model row of one publisher. the row comes back with no pick when the floor hid every file, so the pane can still choose one
+    internal static async Task<(ModelRow? Row, bool NoWeights)> LookupModelAsync(
+        HubClient client, string repoId, HardwareClass hw, int ctxForFit, CancellationToken ct)
     {
-        //call the model first, then the tree: the listing has context, gated and downloads, and pricing from the tree alone would drop them
         var listing = await client.ModelAsync(repoId, ct).ConfigureAwait(false);
-        if (listing is null) return new HubLookup(null, false);
-
-        //a repo that publishes no weights is its own answer. the parameter count arrives on the listing, so this costs no request and comes before the tree call
-        if (ModelDiscovery.IsWeightless(listing.Params)) return new HubLookup(null, true);
+        if (listing is null) return (null, false);
+        //gatto downloads no gated file, so a gated repo is refused here with the licence sentence rather than priced into a fetch that fails
+        if (listing.Gated)
+            throw new HubUnavailableException(repoId, (int)System.Net.HttpStatusCode.Forbidden, "gated", gated: true);
+        if (ModelDiscovery.IsWeightless(listing.Params)) return (null, true);
 
         var tree = await client.WithStreamedAsync(
-            await client.TreeAsync(repoId, ct).ConfigureAwait(false), listing, ct).ConfigureAwait(false);
-        if (Pick(tree.Quants, hw, listing.NativeCtx, ctxForFit, listing.Params, arch: listing.Arch) is not { } picked)
-            return new HubLookup(null, false);
+            await client.TreeAsync(repoId, ct).ConfigureAwait(false), listing, ct,
+            couldMove: TableCouldMove(listing, hw, ctxForFit)).ConfigureAwait(false);
+        var row = ShelfSearch.Price(ModelNameOf(listing.QuantizedFrom ?? listing.RepoId), null, 0, null, [(listing, tree)],
+            Families.Load(), hw, ctxForFit, lifted: false);
 
-        return new HubLookup(new ShelfRow(
-            listing.RepoId, PublisherOf(listing.RepoId), picked.Quant, picked.Fit,
-            listing.NativeCtx, tree.HasProjector, badgeLookup(listing.RepoId),
-            listing.Downloads, listing.Gated, listing.LastModified, listing.Params,
-            tree.Quants, tree.Projectors), false);
+        //the kind is read from the file the row shows, or the one the floor-lifted re-price will show, as every shelf row reads its own
+        var shown = row.RowFile is null ? ShelfSearch.Lifted(row, hw, ctxForFit) : row;
+        var read = (await ShelfSearch.WithStructureAsync([shown], client, null, async request =>
+        {
+            try { return await request().ConfigureAwait(false); }
+            catch (OperationCanceledException) when (ct.IsCancellationRequested) { return null; }
+        }, ct).ConfigureAwait(false))[0];
+        row = row with
+        {
+            Structure = read.Structure, Experts = read.Experts,
+            Active = row.RowFile is null ? row.Active : read.Active,
+        };
+        return (row, false);
     }
 
-    private static (HubQuant Quant, FitRegime Fit)? Pick(
+    //a typed search keeps the per-org listing, since finetunes appear only here, and groups the repos into models by their quantized source
+    internal static async Task<ShelfOutcome> TypedSearchAsync(HubClient client, UploaderAllowlist allowlist,
+        Families families, string search, HardwareClass hw, int ctxForFit, CancellationToken ct, HubTreeMemo? memo = null,
+        bool lifted = false, CancellationToken caller = default)
+    {
+        using var gate = new SemaphoreSlim(HubConcurrency);
+        var kinds = ModelKinds.Load();
+        int requests = 0, failures = 0;
+
+        var lists = await Task.WhenAll(allowlist.Orgs.Select(async org =>
+        {
+            try { await gate.WaitAsync(ct).ConfigureAwait(false); }
+            catch (OperationCanceledException) { return (Org: org, Rows: (IReadOnlyList<HubListing>?)null); }
+            try
+            {
+                Interlocked.Increment(ref requests);
+                return (Org: org, Rows: await client.ListAsync(org, 0, long.MaxValue, ct, search).ConfigureAwait(false));
+            }
+            catch (HubUnavailableException) { Interlocked.Increment(ref failures); return (Org: org, Rows: null); }
+            catch (OperationCanceledException) when (ct.IsCancellationRequested) { return (Org: org, Rows: null); }
+            finally { gate.Release(); }
+        })).ConfigureAwait(false);
+
+        //the Hub answers at most one page, so an org that filled it may hold more than the shelf could see
+        var fullPage = lists.Where(l => l.Rows is { Count: >= FullPage }).Select(l => l.Org).ToList();
+        var hiddenByKind = 0;
+        var servable = new List<HubListing>();
+        foreach (var l in lists.SelectMany(l => l.Rows ?? []))
+        {
+            //the Hub's search matches more loosely than the user typed, so a repo stays only when its name holds every typed word
+            if (!NameHoldsEveryWord(l.RepoId, search)) continue;
+            if (l.Gated || ModelDiscovery.IsWeightless(l.Params) || families.RoleOf(l.Arch) == ArchRole.Variant) continue;
+            if (kinds.WillNotServe(l.PipelineTag, l.Causal, l.Arch)) { hiddenByKind++; continue; }
+            servable.Add(l);
+        }
+
+        //a tagged repo joins its source's model, an untagged one is a model of its own, and the trees go to the most downloaded first
+        var groups = servable
+            .GroupBy(l => l.QuantizedFrom ?? l.RepoId, StringComparer.OrdinalIgnoreCase)
+            .OrderByDescending(g => g.Sum(l => l.Downloads))
+            .ToList();
+        var trees = new System.Collections.Concurrent.ConcurrentDictionary<string, HubTree>(StringComparer.OrdinalIgnoreCase);
+        var asked = new List<HubListing>();
+        foreach (var listing in groups.SelectMany(g => g.OrderByDescending(l => l.Downloads)))
+        {
+            if (memo?.Get(listing.RepoId) is { } remembered) trees[listing.RepoId] = remembered;
+            else if (asked.Count < MaxTreeCalls) asked.Add(listing);
+        }
+        await Task.WhenAll(asked.Select(async listing =>
+        {
+            try { await gate.WaitAsync(ct).ConfigureAwait(false); }
+            catch (OperationCanceledException) { return; }
+            try
+            {
+                //a tree kept on disk under the repo's unchanged date costs no api request
+                var disk = memo?.Disk;
+                HubTree tree;
+                if (disk is not null && disk.TryGetTree(listing.RepoId, listing.LastModified, out var kept))
+                {
+                    HubTrace.Hit("tree", "disk", listing.RepoId);
+                    tree = kept;
+                }
+                else
+                {
+                    Interlocked.Increment(ref requests);
+                    tree = await client.TreeAsync(listing.RepoId, ct).ConfigureAwait(false);
+                    disk?.PutTree(listing.RepoId, listing.LastModified, tree);
+                }
+                var got = await client.WithStreamedAsync(tree, listing, ct, disk, TableCouldMove(listing, hw, ctxForFit),
+                    memo?.Tokenizers).ConfigureAwait(false);
+                memo?.Put(listing.RepoId, got);
+                trees[listing.RepoId] = got;
+            }
+            catch (HubUnavailableException) { Interlocked.Increment(ref failures); }
+            catch (OperationCanceledException) when (ct.IsCancellationRequested) { }
+            finally { gate.Release(); }
+        })).ConfigureAwait(false);
+
+        //a adds the unfittable tier here too, and a group with no fitting file above the floor is what a promises
+        var priced = groups
+            .Select(g => ShelfSearch.Price(ModelNameOf(g.Key), null, 0, null,
+                [.. g.Where(l => trees.ContainsKey(l.RepoId)).Select(l => (l, trees[l.RepoId]))],
+                families, hw, ctxForFit, lifted))
+            .Where(r => r.Publishers.Count > 0)
+            .ToList();
+        //the shown rows read their headers as the shelf's do, before the order, since a memory row's active count comes from it
+        IReadOnlyList<ModelRow> rows = await ShelfSearch.WithStructureAsync([.. priced.Where(r => r.RowFile is not null)], client, memo,
+            async read =>
+            {
+                try { await gate.WaitAsync(ct).ConfigureAwait(false); }
+                catch (OperationCanceledException) { return null; }
+                try { return await read().ConfigureAwait(false); }
+                catch (OperationCanceledException) when (ct.IsCancellationRequested) { return null; }
+                finally { gate.Release(); }
+            }, ct).ConfigureAwait(false);
+        //a deadline that cut the search still leaves its rows their kind, read on a bound of their own
+        if (ShelfSearch.CutByTheDeadline(ct, caller)) rows = await ShelfSearch.AfterTheCutAsync(rows, client, memo, caller).ConfigureAwait(false);
+        var ordered = lifted ? ShelfSearch.Flat(rows) : ShelfSearch.ByWhereItRuns(rows);
+        var cause = ordered.Count > 0 ? (HubSearchCause?)null
+            : requests > 0 && failures == requests ? HubSearchCause.HubFailed
+            : trees.Count > 0 ? HubSearchCause.NothingFits : null;
+        return new ShelfOutcome(ordered,
+            ordered.Count(r => r.Fit == FitRegime.FitsGpu), ordered.Count(r => r.Fit == FitRegime.FitsRamOnly),
+            ordered.Count(r => r.Fit == FitRegime.DoesNotFit),
+            MoreBehindA: !lifted && priced.Any(ShelfSearch.TooBigAboveTheFloor), hiddenByKind, fullPage, cause, ct.IsCancellationRequested);
+    }
+
+    //the rows one listing request answers at most
+    internal const int FullPage = 1000;
+
+    //each typed word is found in the repo's name, the org left out, ignoring case and the separators - _ . and space on both sides, so gemma-4 finds Gemma4-31b
+    internal static bool NameHoldsEveryWord(string repoId, string search)
+    {
+        var name = Squeezed(repoId[(repoId.IndexOf('/') + 1)..]);
+        return search.Split(' ', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+            .Select(Squeezed)
+            .All(word => word.Length == 0 || name.Contains(word, StringComparison.Ordinal));
+    }
+
+    private static string Squeezed(string text) =>
+        string.Concat(text.Where(c => c is not ('-' or '_' or '.' or ' ')).Select(char.ToLowerInvariant));
+
+    //a model's name from a source id or a repo id: the name after the org, less a -GGUF a conversion repo adds. an org inside the name, as bartowski keeps it, stays
+    internal static string ModelNameOf(string id)
+    {
+        var name = id[(id.IndexOf('/') + 1)..];
+        const string Gguf = "-GGUF";
+        return name.Length > Gguf.Length && name.EndsWith(Gguf, StringComparison.OrdinalIgnoreCase) ? name[..^Gguf.Length] : name;
+    }
+
+    //lifted admits the unfittable tier and unlifted drops a model where nothing fits. both keep the quality floor unless the floor itself is lifted
+    internal static (HubQuant Quant, FitRegime Fit)? Pick(
         IReadOnlyList<HubQuant> quants, HardwareClass hw, long? nativeCtx, int ctxForFit,
-        long? repoParams = null, bool includeUnfittable = false, string? arch = null)
+        long? totalParams, bool lifted, string? arch = null, bool floorLifted = false) =>
+        Pick(quants, q => q, hw, nativeCtx, ctxForFit, totalParams, lifted, arch, floorLifted) is { } p ? (p.Item, p.Fit) : null;
+
+    //generic over the candidate, so a caller that tags each quant with its repo gets the tag back with the pick
+    internal static (T Item, FitRegime Fit)? Pick<T>(
+        IReadOnlyList<T> items, Func<T, HubQuant> quantOf, HardwareClass hw, long? nativeCtx, int ctxForFit,
+        long? totalParams, bool lifted, string? arch = null, bool floorLifted = false)
     {
         //the context window is resolved inside FitOf, so one place decides what a quant is priced at
-        (HubQuant Quant, FitRegime Fit)? bestGpu = null, bestRam = null, bestUnfit = null;
+        (T Item, FitRegime Fit)? bestGpu = null, bestRam = null, bestUnfit = null;
 
-        foreach (var q in Candidates(quants, repoParams))
+        foreach (var item in items)
         {
+            var q = quantOf(item);
+            if (ModelDiscovery.IsTooSmallToBeQuantization(q.Bytes, totalParams)) continue;
+            if (!QuantToken.AtFloor(q.FileName, totalParams, floorLifted)) continue;
             //the bytes are the tree's raw claim, the clamp at MaxFileBytes inside Estimate is what rejects an absurd size
             switch (FitOf(q.Bytes, nativeCtx, hw, ctxForFit, arch, q.StreamedBytes))
             {
-                case FitRegime.FitsGpu when bestGpu is not { } g || Beats(q, g.Quant):
-                    bestGpu = (q, FitRegime.FitsGpu); break;
-                case FitRegime.FitsRamOnly when bestRam is not { } r || Beats(q, r.Quant):
-                    bestRam = (q, FitRegime.FitsRamOnly); break;
+                case FitRegime.FitsGpu when bestGpu is not { } g || Beats(q, quantOf(g.Item)):
+                    bestGpu = (item, FitRegime.FitsGpu); break;
+                case FitRegime.FitsRamOnly when bestRam is not { } r || Beats(q, quantOf(r.Item)):
+                    bestRam = (item, FitRegime.FitsRamOnly); break;
                 //the unfittable tier keeps the smallest quant, the one that misses by least, where the tiers above keep the best one that fits
-                case FitRegime.DoesNotFit when includeUnfittable
-                        && (bestUnfit is not { } u || q.Bytes < u.Quant.Bytes):
-                    bestUnfit = (q, FitRegime.DoesNotFit); break;
+                case FitRegime.DoesNotFit when lifted
+                        && (bestUnfit is not { } u || Smaller(q, quantOf(u.Item))):
+                    bestUnfit = (item, FitRegime.DoesNotFit); break;
             }
         }
         //the fit filter is a removable default: unlifted, a model where nothing fits yields null and never becomes a row
-        return bestGpu ?? bestRam ?? (includeUnfittable ? bestUnfit : null);
+        return bestGpu ?? bestRam ?? (lifted ? bestUnfit : null);
     }
 
-    //inside a tier, a band member outranks a non-member whatever the sizes, bytes decide between two non-members, and nothing is rejected for its size
-    private static bool Beats(HubQuant candidate, HubQuant incumbent)
+    //inside a regime: the band, then the band's own range largest first, then above it smallest first, then below it largest first. equal bytes fall to the name, so list order never decides
+    internal static bool Beats(HubQuant candidate, HubQuant incumbent)
     {
         var a = QuantToken.BandRank(candidate.FileName);
         var b = QuantToken.BandRank(incumbent.FileName);
-        return a != b ? a > b : candidate.Bytes > incumbent.Bytes;
+        if (a != b) return a > b;
+        if (a < 0)
+        {
+            var ga = Reach(candidate.FileName);
+            var gb = Reach(incumbent.FileName);
+            if (ga != gb) return ga > gb;
+            if (ga == 1) return Smaller(candidate, incumbent);
+        }
+        return candidate.Bytes != incumbent.Bytes
+            ? candidate.Bytes > incumbent.Bytes
+            : string.CompareOrdinal(candidate.FileName, incumbent.FileName) < 0;
     }
+
+    //where a non-band file sits against the band: 2 its own range, 1 above it, 0 below it
+    private static int Reach(string fileName) => QuantToken.ClassOf(QuantToken.Of(fileName)) switch
+    {
+        > 6 => 1,
+        >= 4 => 2,
+        _ => 0,
+    };
+
+    private static bool Smaller(HubQuant candidate, HubQuant incumbent) =>
+        candidate.Bytes != incumbent.Bytes
+            ? candidate.Bytes < incumbent.Bytes
+            : string.CompareOrdinal(candidate.FileName, incumbent.FileName) < 0;
 
     //clamp the native context before Estimate, which throws when it is over the cap, so a listing claiming 50,000,000 still yields a row
     private static int ContextForFit(long? nativeCtx, int ctxForFit)
@@ -618,6 +363,14 @@ internal static class HubSearch
     //the quant floor lives here so no caller disagrees about which files are quants. the candidate's bytes sum a shard set, so a sharded model is priced whole
     internal static IEnumerable<HubQuant> Candidates(IReadOnlyList<HubQuant> quants, long? repoParams) =>
         quants.Where(q => !ModelDiscovery.IsTooSmallToBeQuantization(q.Bytes, repoParams));
+
+    //with no discrete card the verdict moves one way as the table grows, so equal ends mean no read can change it. beside one, only a whole file that fits the card and the RAM budget is safe unread
+    internal static Func<HubQuant, bool> TableCouldMove(HubListing listing, HardwareClass hw, int ctxForFit) =>
+        q => hw.Topology == MemoryTopology.Discrete
+            ? !(FitOf(q.Bytes, listing.NativeCtx, hw, ctxForFit, listing.Arch, null) == FitRegime.FitsGpu
+                && q.Bytes <= (long)hw.RamBudgetBytes)
+            : FitOf(q.Bytes, listing.NativeCtx, hw, ctxForFit, listing.Arch, null)
+                != FitOf(q.Bytes, listing.NativeCtx, hw, ctxForFit, listing.Arch, q.Bytes);
 
     //which regime one quant falls in, with one home so Pick and the pane's quants zone cannot disagree
     internal static FitRegime FitOf(long bytes, long? nativeCtx, HardwareClass hw, int ctxForFit,
@@ -633,10 +386,4 @@ internal static class HubSearch
     private static GgufHeader BareHeader(long? nativeCtx, string? arch = null) => new(
         GgufOutcome.Complete, null, arch, null, nativeCtx, null,
         null, null, null, null, null, null, null);
-
-    private static string PublisherOf(string repoId)
-    {
-        var slash = repoId.IndexOf('/');
-        return slash > 0 ? repoId[..slash] : repoId;
-    }
 }

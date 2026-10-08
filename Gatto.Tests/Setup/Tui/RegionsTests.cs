@@ -9,7 +9,7 @@ public class RegionsTests
     //the shelf's own region order, verbatim
     private static Region[] Shelf =>
     [
-        Region.Strip, Region.Families, Region.List, Region.Files, Region.Builds, Region.Search,
+        Region.Strip, Region.Families, Region.List, Region.Files, Region.Search,
     ];
 
     [Fact]
@@ -24,8 +24,8 @@ public class RegionsTests
         var ring = new FocusRing(Shelf, Region.Strip);
         //the ring must wrap, since an end forces the user to remember which way they came
         Assert.Equal(
-            [Region.Families, Region.List, Region.Files, Region.Builds, Region.Search, Region.Strip],
-            Enumerable.Range(0, 6).Select(_ => ring.Next()).ToArray());
+            [Region.Families, Region.List, Region.Files, Region.Search, Region.Strip],
+            Enumerable.Range(0, 5).Select(_ => ring.Next()).ToArray());
     }
 
     [Fact]
@@ -58,10 +58,10 @@ public class RegionsTests
     public void A_click_focuses_any_region_directly_not_by_walking()
     {
         var ring = new FocusRing(Shelf);
-        Assert.True(ring.Focus(Region.Builds));
-        Assert.Equal(Region.Builds, ring.Current);
+        Assert.True(ring.Focus(Region.Files));
+        Assert.Equal(Region.Files, ring.Current);
         Assert.False(ring.Focus(Region.Families) && false);      //the region exists here, so Focus returns true and the added && false feeds the false assert
-        Assert.False(new FocusRing([Region.List]).Focus(Region.Builds));   //when the region is absent, focus refuses and does not move
+        Assert.False(new FocusRing([Region.List]).Focus(Region.Files));   //when the region is absent, focus refuses and does not move
     }
 
     //the Esc hint comes from the ring's state, since a screen that computed it could disagree and describe a state that is not real
@@ -71,7 +71,7 @@ public class RegionsTests
     [InlineData(2, "leave")]    //index 2 is Region.List
     [InlineData(3, "back")]     //index 3 is Region.Files
     [InlineData(0, "back")]     //index 0 is Region.Strip
-    [InlineData(5, "back")]     //index 5 is Region.Search
+    [InlineData(4, "back")]     //index 4 is Region.Search
     public void The_Esc_verb_is_derived_from_where_the_keys_are(int at, string verb)
     {
         //the screen half is held constant as leave, so the theory tests only the region half. what Esc does on the list is the face's job, asserted at its handler

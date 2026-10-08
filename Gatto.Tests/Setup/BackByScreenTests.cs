@@ -13,11 +13,11 @@ public class BackByScreenTests
         Llama = @"C:\llama\llama-server.exe",
         Rows =
         [
-            new("unsloth/gemma-4-26B-A4B-it", "unsloth",
+            ShelfRows.Of("unsloth/gemma-4-26B-A4B-it", "unsloth",
                 new HubQuant("gemma-4-26B-A4B-it-Q4_K_M.gguf", 4_000_000_000, null),
                 FitRegime.FitsGpu, 262144, false, Badge: null, Downloads: 5,
                 Gated: false, Params: 25_200_000_000, Arch: "gemma3"),
-            new("unsloth/Qwen3.6-35B-A3B", "unsloth",
+            ShelfRows.Of("unsloth/Qwen3.6-35B-A3B", "unsloth",
                 new HubQuant("Qwen3.6-35B-A3B-Q4_K_M.gguf", 4_100_000_000, null),
                 FitRegime.FitsGpu, 262144, false, Badge: null, Downloads: 4,
                 Gated: false, Params: 34_700_000_000, Arch: "qwen3moe"),
@@ -47,8 +47,7 @@ public class BackByScreenTests
     public void A_CHIP_THEN_B_LANDS_ON_THE_SCREEN_BEFORE_THE_SHELF()
     {
         var (flow, _) = OnTheShelf();
-        var filtered = Assert.IsType<WizardScreen.Choice>(
-            flow.Answer(ShelfControls.FamilyAnswer("gemma")));
+        var filtered = Assert.IsType<WizardScreen.Choice>(ChipWalk.Narrow(flow, "gemma"));
         Assert.Equal("gemma", filtered.Shelf!.Family);
 
         Assert.Equal(SetupFlow.FoundKey, ScreenKey.Of(flow.Answer(SetupFlow.BackKey)));
@@ -59,7 +58,7 @@ public class BackByScreenTests
     public void THE_FILTER_SURVIVES_THE_STEP_BACK_AND_THE_STEP_FORWARD()
     {
         var (flow, _) = OnTheShelf();
-        flow.Answer(ShelfControls.FamilyAnswer("gemma"));
+        ChipWalk.Narrow(flow, "gemma");
         flow.Answer(SetupFlow.BackKey);
 
         var again = Assert.IsType<WizardScreen.Choice>(flow.Answer(SetupFlow.FoundUse));
@@ -82,11 +81,8 @@ public class BackByScreenTests
     [Fact]
     public void EVERY_SHELF_CONTROL_IS_ONE_AND_THE_TWO_THAT_ADVANCE_ARE_NOT()
     {
-        //the f key opens a screen, the other controls re-ask in place, so it is the one control whose push must stay.
-        foreach (var c in ShelfControls.All.Where(c => c.Answer != SetupFlow.CtlPublisher))
+        foreach (var c in ShelfControls.All)
             Assert.True(ShelfControls.IsControl(c.Answer), c.Answer);
-
-        Assert.False(ShelfControls.IsControl(SetupFlow.CtlPublisher));
 
         Assert.True(ShelfControls.IsControl(ShelfControls.FamilyAnswer("gemma")));
         Assert.True(ShelfControls.IsControl(ShelfControls.SourceAnswer()));

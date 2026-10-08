@@ -7,37 +7,31 @@ namespace Gatto.Cli.Setup;
 //a local file as a shelf row, priced like the Hub shelf and with the Hub-only fields left empty
 internal static class LocalShelf
 {
-    //a found model priced against this machine, and the badge is passed in by the flow rather than looked up here
-    public static ShelfRow Row(FoundModel m, HardwareClass? hw, int ctxForFit = 4096,
+    //a found model priced against this machine, as one publisher (its folder) holding one repo (its file). the badge is passed in by the flow
+    public static ModelRow Row(FoundModel m, HardwareClass? hw, int ctxForFit = 4096,
         Gatto.Core.Acquire.Badge? badge = null)
     {
         var name = System.IO.Path.GetFileName(m.Path);
         var stem = StemOf(name);
+        var folder = System.IO.Path.GetDirectoryName(m.Path) ?? "";
         var fit = m.Header is { } h && hw is { } machine
             ? FitArithmetic.Judge(FitArithmetic.Estimate(h, m.FileBytes, ctxForFit, KvCacheKind.F16, m.StreamedBytes), machine)
             : FitRegime.Unknown;
+        var quant = new HubQuant(name, m.FileBytes, null);
+        var file = new FileRef(folder, folder, name);
 
-        return new ShelfRow(
-            RepoId: stem,
-            Publisher: "",
-            PickedQuant: new HubQuant(name, m.FileBytes, null),
-            Fit: fit,
-            NativeCtx: m.Header?.ContextLength,
-            Vision: false,
-            Badge: badge,
-            Downloads: 0,
-            Gated: false,
-            LastModified: null,
-            Params: null,
-            AllQuants: null,
-            Projectors: null,
-            Arch: m.Header?.Architecture,
+        return new ModelRow(
+            Model: stem, Family: null, Generation: 0,
+            Params: null, Active: null, Arch: m.Header?.Architecture, NativeCtx: m.Header?.ContextLength, Vision: false,
+            Publishers: [new PublisherOffer(folder, [new RepoFiles(folder, [quant], [], 1, 0)], file, quant, fit, 0)],
+            RowPublisher: 0, RowFile: file, Fit: fit,
             Structure: m.Header is { } sh ? ModelStructure.Cell(sh) : null,
-            Experts: m.Header is { } eh ? ModelStructure.Experts(eh) : null);
+            Experts: m.Header is { } eh ? ModelStructure.Experts(eh) : null,
+            Badge: badge);
     }
 
     //no hardware means no fit at all, an invented machine would put marks on rows nobody measured
-    public static ShelfRow Unpriced(FoundModel m, Gatto.Core.Acquire.Badge? badge = null) =>
+    public static ModelRow Unpriced(FoundModel m, Gatto.Core.Acquire.Badge? badge = null) =>
         Row(m, null, badge: badge);
 
     //the shard words are composed here from the set, and the have marks come in from the flow rather than from a probe

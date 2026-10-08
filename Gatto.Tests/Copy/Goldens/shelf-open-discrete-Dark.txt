@@ -1,0 +1,25 @@
+ESC[38;2;232;232;232m  gatto setupESC[0m                                                                                   ESC[38;2;153;153;153mv0.5.0 · build 1a2b3c4ESC[0m
+  ESC[38;2;151;202;114mmachineESC[0mESC[38;2;151;202;114m ✓ESC[0mESC[38;2;153;153;153m · ESC[0mESC[38;2;151;202;114mengineESC[0mESC[38;2;151;202;114m ✓ESC[0mESC[38;2;153;153;153m · ESC[0mESC[38;2;255;166;77m❯ ESC[0mESC[38;2;255;166;77mmodelESC[0mESC[38;2;153;153;153m · ESC[0mESC[38;2;153;153;153mcheckESC[0mESC[38;2;153;153;153m · ESC[0mESC[38;2;153;153;153mdoneESC[0m
+ESC[38;2;153;153;153m────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────ESC[0m
+ESC[38;2;232;232;232m  Which model should gatto start with?ESC[0m
+
+  ESC[38;2;255;166;77mgemmaESC[0mESC[38;2;153;153;153m · ESC[0mESC[38;2;255;166;77mqwenESC[0mESC[38;2;153;153;153m · ESC[0mESC[38;2;153;153;153mdeepseekESC[0mESC[38;2;153;153;153m · ESC[0mESC[38;2;153;153;153mglmESC[0mESC[38;2;153;153;153m · ESC[0mESC[38;2;153;153;153mmistralESC[0mESC[38;2;153;153;153m · ESC[0mESC[38;2;153;153;153mallESC[0m
+
+ESC[38;2;153;153;153m  model           params ▾  size · quant    kind      runsESC[0m      ESC[38;2;255;166;77m│ESC[0m ESC[38;2;232;232;232mgemma-4-E4B-itESC[0m                                        
+ESC[38;2;153;153;153m  on the graphics cardESC[0m                                          ESC[38;2;255;166;77m│ESC[0m ESC[38;2;153;153;153m◈ visionESC[0mESC[38;2;153;153;153m · ESC[0mESC[38;2;153;153;153mreads ESC[0mESC[38;2;255;166;77m8BESC[0mESC[38;2;153;153;153m/tokenESC[0mESC[38;2;153;153;153m · ESC[0mESC[38;2;153;153;153mcontext ESC[0mESC[38;2;255;166;77m131,072ESC[0m           
+ESC[38;2;153;153;153m› ESC[0mESC[38;2;232;232;232mgemma-4-E4B-it      8.0B  4.7 GB  Q4_K_M  dense   ESC[0m  ESC[38;2;151;202;114m✓ESC[0mESC[38;2;153;153;153m GPU    ESC[0m ESC[38;2;255;166;77m│ESC[0m                                                       
+                                                                ESC[38;2;255;166;77m│ESC[0m ESC[38;2;153;153;153mpublishers (3)ESC[0m                                        
+ESC[38;2;153;153;153m  in system memory, fastest firstESC[0m                               ESC[38;2;255;166;77m│ESC[0m ESC[38;2;153;153;153m› ESC[0mESC[38;2;153;153;153m▾ ESC[0munsloth             4.7 GB Q4_K_M  ESC[38;2;151;202;114m✓ESC[0mESC[38;2;153;153;153m GPUESC[0m          
+  Qwen3.8-27B        27.0B  12.3 GB Q3_K_M  dense     ESC[38;2;240;195;112m⚠ESC[0mESC[38;2;153;153;153m RAM    ESC[0m ESC[38;2;255;166;77m│ESC[0m ESC[38;2;153;153;153m    … 1 lighter ↑ESC[0m                                     
+                                                                ESC[38;2;255;166;77m│ESC[0m   ESC[38;2;255;166;77m❯ ESC[0mESC[38;2;255;166;77mQ4_K_M     4.7 GBESC[0m  ESC[38;2;151;202;114m✓ESC[0mESC[38;2;153;153;153m GPUESC[0m                          
+                                                                ESC[38;2;255;166;77m│ESC[0m   ESC[38;2;153;153;153m  ESC[0mQ5_K_M     5.5 GB  ESC[38;2;240;195;112m⚠ESC[0mESC[38;2;153;153;153m RAMESC[0m                          
+                                                                ESC[38;2;255;166;77m│ESC[0m   ESC[38;2;153;153;153m  ESC[0mQ6_K       6.3 GB  ESC[38;2;240;195;112m⚠ESC[0mESC[38;2;153;153;153m RAMESC[0m                          
+                                                                ESC[38;2;255;166;77m│ESC[0m ESC[38;2;153;153;153m    … 1 heavier ↓ESC[0m                                     
+                                                                ESC[38;2;255;166;77m│ESC[0m ESC[38;2;153;153;153m  ESC[0mESC[38;2;153;153;153m▸ ESC[0mbartowski           4.7 GB Q4_K_M  ESC[38;2;151;202;114m✓ESC[0mESC[38;2;153;153;153m GPUESC[0m          
+                                                                ESC[38;2;255;166;77m│ESC[0m ESC[38;2;153;153;153m  ESC[0mESC[38;2;153;153;153m▸ ESC[0mlmstudio-community  4.7 GB Q4_K_M  ESC[38;2;151;202;114m✓ESC[0mESC[38;2;153;153;153m GPUESC[0m          
+
+ESC[38;2;153;153;153m  1–2 of 2 · a show allESC[0m
+
+ESC[38;2;153;153;153m❯ search models…ESC[0m                                                                                           ESC[38;2;153;153;153m? to searchESC[0m
+ESC[38;2;153;153;153m────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────ESC[0m
+  ESC[38;2;232;232;232mTabESC[0mESC[38;2;153;153;153m areaESC[0m   ESC[38;2;232;232;232m↑↓ESC[0mESC[38;2;153;153;153m moveESC[0m   ESC[38;2;232;232;232mEnterESC[0mESC[38;2;153;153;153m chooseESC[0m   ESC[38;2;232;232;232mmESC[0mESC[38;2;153;153;153m localESC[0m   ESC[38;2;232;232;232m?ESC[0mESC[38;2;153;153;153m searchESC[0m   ESC[38;2;232;232;232maESC[0mESC[38;2;153;153;153m show allESC[0m   ESC[38;2;232;232;232mEscESC[0mESC[38;2;153;153;153m backESC[0m                       ESC[38;2;153;153;153m| ✓ GPU · ⚠ RAMESC[0m

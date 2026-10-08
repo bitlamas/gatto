@@ -15,4 +15,4 @@
   2. Leave them in Downloads
 
 ────────────────────────────────────────────────────────────────────────────────────────────────────
-  Enter choose   b back   Esc leave
+  Enter choose   Esc back

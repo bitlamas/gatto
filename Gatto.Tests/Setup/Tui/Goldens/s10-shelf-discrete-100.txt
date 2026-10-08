@@ -2,26 +2,17 @@
 
   Which model should gatto add?
 
-  gemma · qwen · deepseek · glm · mistral · all                                 publisher  unsloth
+  gemma · qwen · deepseek · glm · mistral · all
 
-     model               params  size · quant    kind      runs      │ gemma-4-26B-A4B-it           
-  1. gemma-4-31B-it       30.7B  18.3 GB Q4_K_M  dense     ✓ GPU     │ by unsloth                   
-❯ 2. gemma-4-26B-A4B-it   25.2B  16.9 GB Q4_K_M  MoE A4B   ✓ GPU     │                              
-  3. gemma-4-12b-it       11.9B  7.1 GB  Q4_K_M  dense     ✓ GPU     │ context up to 262,144        
-  4. gemma-4-E4B-it        7.5B  5.0 GB  Q4_K_M  dense     ✓ GPU     │ ◈ vision · can see images    
-                                                                     │ reads 4B params/token        
-                                                                     │ arch      gemma4             
-                                                                     │ ✗ not measured by gatto yet  
-                                                                     │                              
-                                                                     │ files (22)                   
-                                                                     │   … 4 lighter ↑              
-                                                                     │ › Q4_K_M    16.9 GB  ✓ GPU   
-                                                                     │   Q5_K_S    18.9 GB  ✓ GPU   
-                                                                     │   Q5_K_M    21.2 GB  ✓ GPU   
-                                                                     │   … 2 heavier ↓              
+  model               params ▾  size · quant    kind      runs      │ gemma-4-26B-A4B-it            
+  gemma-4-31B-it         30.7B  18.3 GB Q4_K_M  dense     ✓ GPU     │ ◈ vision · reads 4B/token     
+❯ gemma-4-26B-A4B-it     25.2B  16.9 GB Q4_K_M  MoE A4B   ✓ GPU     │ context 262,144               
+  gemma-4-12b-it         11.9B  7.1 GB  Q4_K_M  dense     ✓ GPU     │                               
+  gemma-4-E4B-it          7.5B  5.0 GB  Q4_K_M  dense     ✓ GPU     │ publishers (1)                
+                                                                    │ › ▸ unsloth  16.9 GB Q4_K_M  ✓
 
-  1–4 of 10 · 6 older, a shows all
+  1–4 of 10
 
-❯ search models…                                                                       / to search
+❯ search models…                                                                       ? to search
 ────────────────────────────────────────────────────────────────────────────────────────────────────
   Tab area   Enter next   m local   d search   a all sizes   Esc back  | ✓ GPU · ⚠ RAM · ✗ too big

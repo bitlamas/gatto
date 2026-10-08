@@ -34,10 +34,10 @@ public class SidecarCandidateTests
         var row = await Pick(Gemma4, vram, 32_000_000_000UL);
 
         Assert.NotNull(row);
-        Assert.DoesNotContain("mtp", row!.PickedQuant.FileName, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("mtp", row!.FileName, StringComparison.OrdinalIgnoreCase);
         //stated positively, so the guard can't be satisfied by picking nothing at all
-        Assert.True(row.PickedQuant.Bytes > 5_000_000_000L,
-            $"[{label}] offered {row.PickedQuant.FileName} at {row.PickedQuant.Bytes / 1e9:F2} GB — "
+        Assert.True(row.Bytes > 5_000_000_000L,
+            $"[{label}] offered {row.FileName} at {row.Bytes / 1e9:F2} GB — "
             + "a file that small cannot be this 26B model");
     }
 
@@ -111,7 +111,7 @@ public class SidecarCandidateTests
             8_000_000_000UL, 32_000_000_000UL, prms: 27_300_000_000L);
 
         Assert.NotNull(row);
-        Assert.Equal("Qwen3.8-27B-UD-Q4_K_M.gguf", row!.PickedQuant.FileName);
+        Assert.Equal("Qwen3.8-27B-UD-Q4_K_M.gguf", row!.FileName);
     }
 
     //the second signal: the arithmetic floor
@@ -127,23 +127,9 @@ public class SidecarCandidateTests
             6_000_000_000UL, 32_000_000_000UL);
 
         Assert.NotNull(row);
-        Assert.Equal("gemma-4-26B-A4B-it-UD-Q3_K_M.gguf", row!.PickedQuant.FileName);
+        Assert.Equal("gemma-4-26B-A4B-it-UD-Q3_K_M.gguf", row!.FileName);
         //the name rule cannot see this file either, asserted so the row can't become a second sidecar guard later
         Assert.False(ModelDiscovery.IsCompanionArtifact("flashdraft-gemma-4-26B-BF16.gguf"));
-    }
-
-    [Fact]
-    public async Task A_FILE_TOO_SMALL_TO_BE_THIS_MODEL_IS_NOT_A_CANDIDATE_via_the_browse_walk()
-    {
-        var hub = new BrowseHandler();
-        var client = new HubClient(new HttpClient(hub) { Timeout = Timeout.InfiniteTimeSpan });
-        var outcome = await HubSearch.AssembleAsync(client, new UploaderAllowlist("2026-08-23", ["unsloth"]),
-            new HardwareClass(MemoryTopology.Discrete, ShareKind.None, 6_000_000_000UL, 32_000_000_000UL,
-                new HardwareSnapshot(0UL, 1UL, GpuKind.Discrete, 0UL), 0, BudgetBound.None),
-            4096, _ => null, CancellationToken.None);
-
-        var row = Assert.Single(outcome.Rows);
-        Assert.Equal("gemma-4-26B-A4B-it-UD-Q3_K_M.gguf", row.PickedQuant.FileName);
     }
 
     [Fact]
@@ -194,12 +180,12 @@ public class SidecarCandidateTests
     private static Task<HubTree> Tree((string Path, long Bytes)[] files) =>
         Client(files).TreeAsync("unsloth/gemma-4-26B-A4B-it-GGUF", CancellationToken.None);
 
-    private static async Task<ShelfRow?> Pick(
+    private static async Task<HubQuant?> Pick(
         (string Path, long Bytes)[] files, ulong vram, ulong ram, long prms = 26_000_000_000L) =>
-        (await HubSearch.LookupAsync(Client(files, prms), "unsloth/gemma-4-26B-A4B-it-GGUF",
+        (await HubSearch.LookupModelAsync(Client(files, prms), "unsloth/gemma-4-26B-A4B-it-GGUF",
             new HardwareClass(MemoryTopology.Discrete, ShareKind.None, vram, ram,
                 new HardwareSnapshot(0UL, 1UL, GpuKind.Discrete, 0UL), 0, BudgetBound.None),
-            4096, _ => null, CancellationToken.None)).Row;
+            4096, CancellationToken.None)).Row?.RowQuant;
 
     private sealed class Handler(string tree, string model) : HttpMessageHandler
     {

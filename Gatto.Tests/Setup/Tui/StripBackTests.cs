@@ -34,10 +34,9 @@ public class StripBackTests
         new("model.search", "Which model should gatto start with?",
             [new ChoiceOption("0", "unsloth/gemma-4-26B-A4B-it")],
             Shelf: new ShelfView(
-                [new ShelfRow("unsloth/gemma-4-26B-A4B-it", "unsloth",
+                [ShelfRows.Of("unsloth/gemma-4-26B-A4B-it", "unsloth",
                     new HubQuant("gemma-Q4_K_M.gguf", 16_900_000_000, null),
-                    FitRegime.FitsGpu, 131072, false, Badge: null, Downloads: 0, Gated: false)],
-                "unsloth", MachineShape.UnifiedWithShare,
+                    FitRegime.FitsGpu, 131072, false, Badge: null, Downloads: 0, Gated: false)], MachineShape.UnifiedWithShare,
                 Families: ["gemma", "all"], Family: "gemma"),
             Door: SetupFlow.ShelfDoorPlaceholderOf(Gatto.Terminal.GlyphSet.Unicode))
         { Strip = Road, AllowBack = allowBack };

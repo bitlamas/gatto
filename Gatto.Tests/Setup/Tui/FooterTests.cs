@@ -106,8 +106,8 @@ public class FooterTests
     {
         //every region a shelf can offer, so Shelf.Keys returns every key one can draw
         var every = Gatto.Cli.Setup.Tui.Shelf.Keys(
-            new FocusRing([Region.Families, Region.Publisher, Region.List, Region.Search]),
-            ShelfSource.Hub, searchKey: true, lift: true, back: true);
+            new FocusRing([Region.Families, Region.List, Region.Search]),
+            ShelfSource.Hub, searchKey: true, lift: true);
 
         Assert.True(Gatto.Terminal.UnicodeWidth.Of(Footer.Compose(78, every)) > 78,
             "the fixture is not actually too wide, so the planted positive proves nothing");

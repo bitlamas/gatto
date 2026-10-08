@@ -70,14 +70,14 @@ public class InSessionCheckTests
         Assert.DoesNotContain("you", all, StringComparison.OrdinalIgnoreCase);
     }
 
-    //b on the check ask answers "Add it unchecked", through the real flow and the real face
+    //one Esc on the check ask answers "Add it unchecked", through the real flow and the real face, since nothing is behind it
     [Fact]
-    public void B_ON_THE_CHECK_ASK_ADDS_IT_UNCHECKED()
+    public void ESC_ON_THE_CHECK_ASK_ADDS_IT_UNCHECKED()
     {
         var ask = CheckStep(new SetupFlow(Probes(heldBy: "qwen3.5")));
+        Assert.False(ask.AllowBack);
 
-        var (answer, _) = WalkRender.Answered(ask, 100,
-            [new ConsoleKeyInfo('b', ConsoleKey.B, false, false, false)]);
+        var (answer, _) = WalkRender.Answered(ask, 100, [WizardRig.Esc]);
 
         Assert.Equal(SetupFlow.AddUnchecked, answer);
     }

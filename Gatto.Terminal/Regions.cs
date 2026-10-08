@@ -1,15 +1,12 @@
 namespace Gatto.Terminal;
 
-//the areas the keys can be in, in tab order. files and builds are separate stops so nobody must scroll thirty quants to reach builds
+//the areas the keys can be in, in tab order
 public enum Region
 {
     Strip,
     Families,
-    //the publisher slot, a control now, Enter opens the picker. ordered after Families to follow the chips row left to right
-    Publisher,
     List,
     Files,
-    Builds,
     //the region that takes typed input, shown as search on the shelf. the same component wherever it appears
     Search,
 }

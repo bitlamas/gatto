@@ -75,8 +75,6 @@ public sealed record GattoConfig(
     int? MemoryIndexBudget = null,
     //tri-state, where null means never asked so no network happens, and it ships with its TopKeys entry and writer or the reader refuses it
     bool? UpdateCheck = null,
-    //the publisher the shelf opens on, validated against the uploader allowlist at load so a typo is refused
-    string? DefaultPublisher = null,
     //true stops the server this home started when the user quits, so the first window to quit stops it for the others
     bool StopServerOnExit = false)
 {
@@ -101,7 +99,7 @@ public sealed record GattoConfig(
 
     //the one statement of what gatto.json accepts, asserted against the schema in both directions, so a key added here needs a schema entry
     internal static readonly string[] TopKeys =
-        { "$schema", "endpoints", "default_endpoint", "default_model", "defaults", "default_publisher", "llama_server", "context_files", "theme", "glyphs", "reasoning", "regions", "search", "weights_root", "think", "alt_screen", "dump_on_exit", "stop_server_on_exit", "mouse", "wheel_lines", "copy_on_select", "auto_compact", "deny_reason", "memory", "update_check", "extensions" };
+        { "$schema", "endpoints", "default_endpoint", "default_model", "defaults", "llama_server", "context_files", "theme", "glyphs", "reasoning", "regions", "search", "weights_root", "think", "alt_screen", "dump_on_exit", "stop_server_on_exit", "mouse", "wheel_lines", "copy_on_select", "auto_compact", "deny_reason", "memory", "update_check", "extensions" };
     internal static readonly string[] ValidThemes = { "dark", "light", "auto" };
     //the same three-value shape as theme: auto asks the host, the two names answer for it
     internal static readonly string[] ValidGlyphs = { "auto", "unicode", "ascii" };
@@ -259,22 +257,6 @@ public sealed record GattoConfig(
                 throw new GattoConfigException(
                     $"gatto.json has \"default_model\" '{legacyModel}' and defaults.{defaultEp}.model '{tabled}'; remove one");
             defaults[defaultEp] = new EndpointDefaults(legacyModel, entry?.Effort);
-        }
-
-        //the shelf's publisher checked against the compiled allowlist, and the refusal names every slug so a user can see the whole set
-        string? defaultPublisher = null;
-        if (root.TryGetProperty("default_publisher", out var dp) && dp.ValueKind != JsonValueKind.Null)
-        {
-            if (dp.ValueKind != JsonValueKind.String)
-                throw new GattoConfigException("gatto.json has a \"default_publisher\" with the wrong type — must be a string");
-            defaultPublisher = dp.GetString();
-            var orgs = Gatto.Core.Acquire.UploaderAllowlist.Load().Orgs;
-            //an empty string is refused like an unknown slug, since leaving the key out is the only way to mean no preference
-            if (!orgs.Contains(defaultPublisher, StringComparer.Ordinal))
-                throw new GattoConfigException(
-                    $"gatto.json has an unknown \"default_publisher\": '{defaultPublisher}' — known publishers: "
-                    + string.Join(", ", orgs)
-                    + ". The list is compiled in, so adding one is a new gatto release.");
         }
 
         string? llamaServer = null;
@@ -544,7 +526,7 @@ public sealed record GattoConfig(
             }
         }
 
-        return new GattoConfig(endpoints, defaultEp, defaults, llamaServer, contextCompat, contextHome, theme, glyphs, reasoning, search, weightsDir, think, altScreen, dumpOnExit, mouse, wheelLines, copyOnSelect, autoCompact, denyReason, memoryEnabled, memoryIndexBudget, updateCheck, defaultPublisher, stopServerOnExit)
+        return new GattoConfig(endpoints, defaultEp, defaults, llamaServer, contextCompat, contextHome, theme, glyphs, reasoning, search, weightsDir, think, altScreen, dumpOnExit, mouse, wheelLines, copyOnSelect, autoCompact, denyReason, memoryEnabled, memoryIndexBudget, updateCheck, stopServerOnExit)
         { Raw = root };
     }
 

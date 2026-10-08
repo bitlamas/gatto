@@ -24,7 +24,7 @@ public class SearchFoundNothingTests
         }
     }
 
-    private static ShelfRow Ranked(string id) => new(
+    private static ModelRow Ranked(string id) => ShelfRows.Of(
         RepoId: id, Publisher: id.Split('/')[0],
         PickedQuant: new HubQuant("m-Q4_K_M.gguf", 18_000_000_000, null),
         Fit: FitRegime.FitsGpu, NativeCtx: 262144, Vision: false, Badge: null,
@@ -33,13 +33,13 @@ public class SearchFoundNothingTests
     //the fake must answer rows for the unfiltered browse and honour IncludeUnfittable, or the a key answers empty
     private static SetupFlow Flow(HubSearchCause? cause, int tooBig = 0)
     {
-        IReadOnlyList<ShelfRow> rows = [Ranked("o/qwen-small"), Ranked("o/qwen-tiny")];
+        IReadOnlyList<ModelRow> rows = [Ranked("o/qwen-small"), Ranked("o/qwen-tiny")];
         var probes = new WizardProbes
         {
             Rows = rows,
-            Answer = req => req.Search is { Length: > 0 } && !req.IncludeUnfittable
-                ? new HubSearchOutcome([], cause, null, HiddenByFit: tooBig)
-                : new HubSearchOutcome(rows, null, null, HiddenByFit: 0),
+            Answer = req => req.Search is { Length: > 0 } && !req.Lifted
+                ? WizardProbes.Outcome([], cause, moreBehindA: tooBig > 0)
+                : WizardProbes.Outcome(rows, null),
         };
         var flow = new SetupFlow(probes);
         Assert.IsType<WizardScreen.Choice>(flow.StartPastEngine());
@@ -117,7 +117,6 @@ public class SearchFoundNothingTests
         //assert the front of the sentence, the tail comes from Shelf.HiddenClause and is pinned elsewhere
         Assert.Contains("nothing answering \"test\" fits this machine's memory",
             painted, StringComparison.Ordinal);
-        Assert.Contains("9 too big", painted, StringComparison.Ordinal);
         Assert.Contains("a shows all", painted, StringComparison.Ordinal);
     }
 
@@ -132,29 +131,6 @@ public class SearchFoundNothingTests
         var lifted = Assert.IsType<WizardScreen.Choice>(flow.Answer(SetupFlow.CtlLift));
 
         Assert.NotEmpty(lifted.Shelf!.Rows);
-    }
-
-    //a shelf emptied by newer rows counts them and must not name a fit that never ran, the fixture sets only the newer count
-    [Fact]
-    public void ROWS_HELD_BACK_FOR_BEING_NEWER_DO_NOT_EARN_A_SENTENCE_ABOUT_MEMORY()
-    {
-        IReadOnlyList<ShelfRow> rows = [Ranked("o/qwen-small")];
-        var probes = new WizardProbes
-        {
-            Rows = rows,
-            Answer = req => req.Search is { Length: > 0 }
-                ? new HubSearchOutcome([], null, null, HiddenByFit: 0, HiddenNewer: 3)
-                : new HubSearchOutcome(rows, null, null),
-        };
-        var flow = new SetupFlow(probes);
-        Assert.IsType<WizardScreen.Choice>(flow.StartPastEngine());
-
-        var painted = Painted(Assert.IsType<WizardScreen.Choice>(
-            flow.Answer(ShelfControls.TypedAnswer("test"))));
-
-        Assert.DoesNotContain("fits this machine's memory", painted, StringComparison.Ordinal);
-        Assert.Contains("3 newer", painted, StringComparison.Ordinal);
-        Assert.Contains("a shows all", painted, StringComparison.Ordinal);
     }
 
     //an unreachable Hub keeps the discovery screen, since the search never ran, there is no shelf and no honest sentence about the word
@@ -175,7 +151,7 @@ public class SearchFoundNothingTests
         var probes = new WizardProbes
         {
             Rows = [],
-            Answer = _ => new HubSearchOutcome([], HubSearchCause.NothingFits, null, HiddenByFit: 0),
+            Answer = _ => WizardProbes.Outcome([], HubSearchCause.NothingFits),
         };
         var flow = new SetupFlow(probes);
 

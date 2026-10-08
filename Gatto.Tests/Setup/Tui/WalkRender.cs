@@ -48,6 +48,18 @@ internal static class WalkRender
         return new Captured(key, width, face.LastPainted);
     }
 
+    //the settled frame's rows inked in a given theme, for a golden that pins colour as well as text
+    public static IReadOnlyList<string> Inked(WizardScreen.Choice c, int width, int height, Theme theme,
+        IEnumerable<ConsoleKeyInfo>? script = null)
+    {
+        var surface = new RecordingSurface { Width = width, Height = height };
+        var face = new TuiWizardSurface(surface, new ScriptedKeys(script ?? []), theme, version: "0.5.0",
+            build: "1a2b3c4", nowMs: () => 0, clock: _ => new AlwaysReady());
+        try { face.Choose(c); }
+        catch (WalkEnded) { }
+        return face.LastInked;
+    }
+
     //what a keystroke answers, beside the frame it left on screen. the script must resolve, a run that goes dry has no answer to report
     public static (string? Answer, IReadOnlyList<string> Rows) Answered(
         WizardScreen.Choice c, int width, IEnumerable<ConsoleKeyInfo> script)

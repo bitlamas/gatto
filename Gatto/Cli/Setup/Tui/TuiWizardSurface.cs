@@ -14,6 +14,9 @@ internal sealed class TuiWizardSurface : IWizardSurface, IDisposable
     private readonly Theme _theme;
     private readonly Func<long> _nowMs;
     private readonly ArmedChord _chord = new();
+
+    //the armed row of the Ctrl+C chord, which leaves from any screen that runs no work
+    internal const string CtrlCAgain = "Ctrl+C again to leave";
     private readonly string _version;
     private readonly string _build;
     private readonly string _command;
@@ -74,6 +77,9 @@ internal sealed class TuiWizardSurface : IWizardSurface, IDisposable
 
     //the last loading frame's composer by elapsed time and the moment its wait began, null after any other paint
     private Func<long, Func<int, int, Screen>>? _lastLoading;
+
+    //when the screen in hand was first shown, so a count the server gave in seconds counts down on the face's clock
+    private long _shownAtMs;
     private long _lastLoadingBegan;
 
     //when the last question was answered, so the drain can judge the wait. 0 would read as answered, since every fake clock starts at 0
@@ -383,6 +389,9 @@ internal sealed class TuiWizardSurface : IWizardSurface, IDisposable
     //derived from the painted rows, so the record and the screen cannot disagree about what a row says
     internal IReadOnlyList<string> LastPainted => [.. _painted.Select(r => r.Text)];
 
+    //the same rows inked for the theme, so a golden can pin the colours a frame was drawn in
+    internal IReadOnlyList<string> LastInked => [.. _painted.Select(Ink)];
+
     //the IWizardSurface members below
 
     public string? Choose(WizardScreen.Choice c, Func<bool>? watch = null, Func<FetchTick?>? tick = null,
@@ -411,6 +420,7 @@ internal sealed class TuiWizardSurface : IWizardSurface, IDisposable
         var typed = new System.Text.StringBuilder();
         //the watch's start, since the face owns the clock and a browser watch has no tick to measure it
         var began = _nowMs();
+        _shownAtMs = began;
 
         while (true)
         {
@@ -436,13 +446,18 @@ internal sealed class TuiWizardSurface : IWizardSurface, IDisposable
             //go round and repaint on the watch's own clock, since repainting per chunk would strobe on a fast line
             if (next.Key is not { } key) continue;
 
-            //one Ctrl+C leaves, a single press costs nothing while nothing is on disk. on a watching screen it arms Esc's chord and answers the last option
+            //two Ctrl+C presses inside the REPL's window leave from any screen. on a watching screen they arm Esc's chord, which names the price and answers the last option
             if (IsCtrlC(key))
             {
-                if (!c.Watching) return null;
-                if (_chord.ArmedAt(_nowMs()) == Chord.Quit)
-                    return c.KeysOnly ? c.Options[^1].Key : null;
-                _chord.Fire(Chord.Quit, _nowMs());
+                if (c.Watching)
+                {
+                    if (_chord.ArmedAt(_nowMs()) == Chord.Quit)
+                        return c.KeysOnly ? c.Options[^1].Key : null;
+                    _chord.Fire(Chord.Quit, _nowMs());
+                    continue;
+                }
+                if (_chord.ArmedAt(_nowMs()) == Chord.Leave) return null;
+                _chord.Fire(Chord.Leave, _nowMs());
                 continue;
             }
 
@@ -462,12 +477,13 @@ internal sealed class TuiWizardSurface : IWizardSurface, IDisposable
                 //on a keys-only screen Esc is the second option, one press with no chord
                 if (c.KeysOnly) return c.Options[1].Key;
 
-                //a numbered screen can make Esc an answer instead of a leave. this comes before the in-session branch, which returns null and would drop a decided answer
+                //one Esc goes back one level wherever the flow has a screen behind this one
+                if (EscGoesBack(c)) return SetupFlow.BackKey;
+
+                //a numbered screen can make Esc an answer instead of a leave. this comes before the leave, which returns null and would drop a decided answer
                 if (EscAnswer(c) is { } answered) return answered.Key;
 
-                //on a shelf with no list in the ring, Esc takes the flow's back key, which the hint and footer already name
-                if (c.Shelf is not null && c.AllowBack && !ring.Has(Region.List)) return SetupFlow.BackKey;
-
+                //with nothing behind, Esc twice leaves
                 if (_chord.ArmedAt(_nowMs()) == Chord.Quit) return null;
                 _chord.Fire(Chord.Quit, _nowMs());
                 continue;
@@ -532,7 +548,15 @@ internal sealed class TuiWizardSurface : IWizardSurface, IDisposable
                         && c.Shelf is { Families: { } fam } && at.Chip < fam.Count - 1:
                     at = at with { Chip = at.Chip + 1 };
                     continue;
-                //the vertical arrows step through the pane's files, since one shared index would let Tab move the model
+                //the vertical arrows step through the publishers and the open one's files
+                case ConsoleKey.UpArrow or ConsoleKey.DownArrow when ring.Current == Region.Files && Accordion(c, cursor) is { } pubs:
+                {
+                    var lines = Pane.Lines(pubs, at.Open);
+                    var here = Pane.LineAt(lines, at.File, RowPublisher(c, cursor));
+                    at = at with { File = Math.Clamp(here + (key.Key == ConsoleKey.UpArrow ? -1 : 1), 0, lines.Count - 1) };
+                    continue;
+                }
+                //a folded pane steps through the row publisher's files, since one shared index would let Tab move the model
                 case ConsoleKey.UpArrow when ring.Current == Region.Files:
                     at = at with { File = Math.Max(0, Pane.FileAt(Files(c, cursor), at.File) - 1) };
                     continue;
@@ -541,16 +565,6 @@ internal sealed class TuiWizardSurface : IWizardSurface, IDisposable
                     {
                         File = Math.Min(Math.Max(0, Files(c, cursor).Count - 1),
                             Pane.FileAt(Files(c, cursor), at.File) + 1),
-                    };
-                    continue;
-                //the vertical arrows step through the builds here, since the pane is two Tab stops with their own cursors
-                case ConsoleKey.UpArrow when ring.Current == Region.Builds:
-                    at = at with { Build = Math.Max(0, Build(c, cursor, at) - 1) };
-                    continue;
-                case ConsoleKey.DownArrow when ring.Current == Region.Builds:
-                    at = at with
-                    {
-                        Build = Math.Min(Math.Max(0, Builds(c, cursor).Count - 1), Build(c, cursor, at) + 1),
                     };
                     continue;
                 //down past the last option enters the door, and up brings the keys back. plain door screens only, since a shelf's arrows step through the table
@@ -564,7 +578,7 @@ internal sealed class TuiWizardSurface : IWizardSurface, IDisposable
                     continue;
                 //the vertical arrows do nothing in the slot or the chips row, each zone holds one value moved with Tab or the arrows
                 case ConsoleKey.UpArrow or ConsoleKey.DownArrow
-                        when ring.Current is Region.Publisher or Region.Families:
+                        when ring.Current is Region.Families:
                     continue;
                 //skip the folder door's index rather than stopping at it, since its row is gone. a ceiling would strand the row the flow adds after it
                 case ConsoleKey.UpArrow when Step(c, cursor, -1) is { } up:
@@ -580,7 +594,19 @@ internal sealed class TuiWizardSurface : IWizardSurface, IDisposable
                 //inert exactly when the screen only advances on the watch, the same answer the plain face uses
                 case ConsoleKey.Enter when c.OnlyTheWatchAdvances:
                     continue;
-                //the Enter key belongs to the region the keys are in, and the pane's own Enter answers with the file it shows
+                //an Enter on a publisher opens it and closes the one open, an Enter on a file chooses that file
+                case ConsoleKey.Enter when ring.Current == Region.Files && Accordion(c, cursor) is { } pubs:
+                {
+                    var lines = Pane.Lines(pubs, at.Open);
+                    var line = lines[Pane.LineAt(lines, at.File, RowPublisher(c, cursor))];
+                    if (Pane.FileOn(pubs, line) is { } chosen)
+                        return ShelfControls.PickAnswer(c.Options[cursor].Key, chosen);
+                    at = line.Publisher == at.Open
+                        ? at with { Open = -1, File = Pane.Lines(pubs, -1).ToList().IndexOf(line) }
+                        : at with { Open = line.Publisher, File = Pane.OpenedAt(pubs, line.Publisher) };
+                    continue;
+                }
+                //a folded pane's Enter answers with the file it shows
                 case ConsoleKey.Enter when ring.Current == Region.Files:
                     at = at with
                     {
@@ -588,46 +614,34 @@ internal sealed class TuiWizardSurface : IWizardSurface, IDisposable
                         PickedQuant = Pane.QuantAt(Files(c, cursor), at.File),
                     };
                     //reaching this arm proves cursor indexes an option, since the Files zone is in the ring only when the row had files
-                    return at.PickedQuant is { Length: > 0 } paneQuant
+                    return at.PickedQuant is { } paneQuant
                         ? ShelfControls.PickAnswer(c.Options[cursor].Key, paneQuant)
                         : c.Options[cursor].Key;
-                case ConsoleKey.Enter when ring.Current == Region.Builds:
-                    at = at with { Build = Build(c, cursor, at) };
-                    continue;
                 case ConsoleKey.Enter when ring.Current == Region.Families
                         && c.Shelf is { Families: { Count: > 0 } fams } && at.Chip >= 0 && at.Chip < fams.Count:
                     return ShelfControls.FamilyAnswer(fams[at.Chip]);
-                //the slot's Enter answers the publisher rather than the list's cursor
-                case ConsoleKey.Enter when ring.Current == Region.Publisher:
-                    return ShelfControls.PublisherAnswer();
                 //bound the cursor by the option count, since a search that matched nothing still draws chips and a door
                 case ConsoleKey.Enter when cursor >= 0 && cursor < c.Options.Count:
                     //the pane's pick travels with the key, or the footer's pick would promise a deed nothing did
-                    return at.PickedQuant is { Length: > 0 } pickedQuant
+                    return at.PickedQuant is { } pickedQuant
                         ? ShelfControls.PickAnswer(c.Options[cursor].Key, pickedQuant)
                         : c.Options[cursor].Key;
                 case ConsoleKey.Enter:
                     continue;   //no cursor, so Enter answers nothing
             }
 
-            //the slash key takes the keys to the door, and d does the same where the shelf offers it
-            if ((key.KeyChar == '/' || (key.KeyChar == 'd' && ShelfControls.OffersD(c)))
-                && c.Shelf is not null && ring.Focus(Region.Search)) continue;
+            //the question mark takes the keys to the door, the one search key on every shelf
+            if (key.KeyChar == '?' && c.Shelf is not null && ring.Focus(Region.Search)) continue;
 
             //m switches source on a shelf, and where a screen offers the switch, since elsewhere it is a typed letter
             if (key.KeyChar == 'm' && (c.Shelf is not null || c.SwitchesSource)) return ShelfControls.SourceAnswer();
             //a lifts the fit filter that the count line advertises, and only past the door block where it is a typed letter
             if (key.KeyChar == 'a' && ShelfControls.OffersLift(c)) return ShelfControls.LiftAnswer();
-            //b is back, guarded on the same flag the footer reads so it works exactly where it is drawn
-            if (key.KeyChar == 'b' && c.AllowBack) return SetupFlow.BackKey;
-            //where the screen allows no back, b answers the option Esc answers
-            if (key.KeyChar == 'b' && !c.AllowBack && EscAnswer(c) is { } escAnswered) return escAnswered.Key;
             //neither f nor s is bound here, since this face's footer names neither (a key is named or not bound). s leaves a real gap, there is no sort on this face
-            if ((key.KeyChar == 'd' && ShelfControls.OffersD(c)) || (key.KeyChar == '/' && c.Shelf is not null))
-                return SetupFlow.CtlSearch;
+            if (key.KeyChar == '?' && c.Shelf is not null) return SetupFlow.CtlSearch;
 
             //a digit lights its row first, then answers, where the screen draws numbers. inert on a render-and-wait screen, where one press would stop the fetch
-            if (key.KeyChar is >= '1' and <= '9' && !c.Unnumbered && !c.OnlyTheWatchAdvances)
+            if (key.KeyChar is >= '1' and <= '9' && c.Shelf is null && !c.Unnumbered && !c.OnlyTheWatchAdvances)
             {
                 var i = key.KeyChar - '1';
                 if (i >= c.Options.Count) continue;
@@ -676,27 +690,39 @@ internal sealed class TuiWizardSurface : IWizardSurface, IDisposable
                 //the door is idle while the keys are in the list, and its hint is how the user learns Tab reaches it. with no offer the door has the keys, so it draws no hint
                 Door: new DoorRow(a.Placeholder ?? "", draft.ToString(),
                     ring.HasSecondArea ? DoorHints.AnywhereOf(_glyphs) : ""),
-                //the Esc word follows the region. two areas word it leave, one area takes back when the ask allows it, so the drawn verb can't lie
+                //the Esc word follows the region and the flow: back wherever a screen is behind, leave only where it leaves
                 Keys: ring.HasSecondArea
                     ? [new("Tab", "area"), new("Enter", a.EnterVerb),
-                       new("Esc", ring.EscVerb("leave"))]
+                       new("Esc", ring.EscVerb(a.AllowBack ? "back" : "leave"))]
                     : [new("Enter", a.EnterVerb),
                        new("Esc", ring.EscVerb(a.AllowBack ? "back" : "leave"))],
-                //the armed row is the only sign the chord is armed, otherwise the first Esc looks like it did nothing
-                Armed: offer is not null && _chord.ArmedAt(_nowMs()) == Chord.Quit
-                    ? "Esc again to leave"
-                    : null));
+                //the armed row is the only sign the chord is armed, otherwise the first press looks like it did nothing
+                Armed: _chord.ArmedAt(_nowMs()) switch
+                {
+                    Chord.Quit when offer is not null => "Esc again to leave",
+                    Chord.Leave => CtrlCAgain,
+                    _ => null,
+                }));
 
             //a resize comes back false, so the loop goes round and repaints at the new size
             if (!KeyOrResize()) continue;
             var key = _keys.ReadKey();
-            //one Ctrl+C leaves a typed screen, where no work is running for a press to interrupt
-            if (IsCtrlC(key)) return null;
+            //two Ctrl+C presses leave a typed screen too, so a press meant for a draft never ends the wizard
+            if (IsCtrlC(key))
+            {
+                if (_chord.ArmedAt(_nowMs()) == Chord.Leave) return SetupFlow.LeaveKey;
+                _chord.Fire(Chord.Leave, _nowMs());
+                continue;
+            }
+            if (key.Key != ConsoleKey.Escape) _chord.Disarm();
             switch (key.Key)
             {
                 case ConsoleKey.Escape:
                     //the first Esc returns the keys to the list and is spent doing that. the ring answers it, so nothing is assumed
                     if (ring.EscReturnsToList()) { _chord.Disarm(); continue; }
+
+                    //one Esc goes back one level wherever the flow has a screen behind this one
+                    if (a.AllowBack) return SetupFlow.BackKey;
 
                     //a door-only ask has no list, so one press leaves. the chord belongs to the screen that has a list
                     if (offer is null) return null;
@@ -745,6 +771,9 @@ internal sealed class TuiWizardSurface : IWizardSurface, IDisposable
         }
         return found;
     }
+
+    //one Esc is back wherever the flow has a screen behind, except where work is running or starting, which keep the chord that names its price
+    private static bool EscGoesBack(WizardScreen.Choice c) => c.AllowBack && !c.Watching && !c.Starting;
 
     //both key loops ask this instead of testing the modifier mask, so they can't leave on different keys
     private static bool IsCtrlC(ConsoleKeyInfo key) =>
@@ -856,12 +885,12 @@ internal sealed class TuiWizardSurface : IWizardSurface, IDisposable
         //the shelf names its own keys, the arrows and m, and its Enter says next since picking a model is the step's answer
         if (c.Shelf is { } keysShelf)
             return Shelf.Keys(ring, keysShelf.Source,
-                //with no list in the ring, Esc words as back when the flow has one. b is a letter in the field, so it is not offered there
-                c.AllowBack && !ring.Has(Region.List) ? "back" : "leave",
+                //the Esc word is back wherever the flow has a screen behind, the same flag the key arm reads
+                EscGoesBack(c) ? "back" : "leave",
                 //one predicate for the folder door, read by the footer, the key arm and the row painter, so they cannot disagree
-                ShelfControls.OffersD(c), g, ShelfControls.OffersLift(c), c.AllowBack && ring.Has(Region.List),
+                ShelfControls.OffersSearch(c), g, ShelfControls.OffersLift(c),
                 //with no list a door takes every letter, so m is typed there instead of answered
-                sourceKey: ring.Has(Region.List) || c.Door is null);
+                sourceKey: ring.Has(Region.List) || c.Door is null, lifted: keysShelf.Lift);
 
         //a no-default screen words Enter as confirm, since with no cursor yet the key answers nothing
         var enter = c.NoDefault
@@ -875,21 +904,15 @@ internal sealed class TuiWizardSurface : IWizardSurface, IDisposable
                 ? [new FooterKey(g.ArrowsKey, "move")]
                 : [];
 
-        //the Esc verb is leave on a numbered screen, unless an option declares that Esc answers it. it comes from the same field the key branch reads
+        //the Esc verb is back wherever the flow has a screen behind, else what an option declares Esc answers, else leave. the key branch reads the same fields
         if (!c.KeysOnly)
         {
-            var escOption = EscAnswer(c);
-            var escVerb = escOption?.EscVerb ?? "leave";
-            //with no back key the b key answers what Esc answers, so the two share one label. that only holds while the keys are on the list
-            var escKey = escOption is not null && !c.AllowBack && ring.EscVerb(escVerb) == escVerb
-                ? "b / Esc" : "Esc";
-            //every screen before a write offers the b back key, read off AllowBack
-            IReadOnlyList<FooterKey> back = c.AllowBack ? [new("b", "back")] : [];
+            var escVerb = EscGoesBack(c) ? "back" : EscAnswer(c)?.EscVerb ?? "leave";
             //the m key appears where the screen offers the source switch, the flag the key arm reads
             IReadOnlyList<FooterKey> source = c.SwitchesSource ? [new("m", "local")] : [];
             return ring.HasSecondArea
-                ? [new("Tab", "area"), .. move, enter, .. source, .. back, new(escKey, ring.EscVerb(escVerb))]   //the Tab key leads, read off the ring so the row and the ring agree on a second area
-                : [.. move, enter, .. source, .. back, new(escKey, ring.EscVerb(escVerb))];
+                ? [new("Tab", "area"), .. move, enter, .. source, new("Esc", ring.EscVerb(escVerb))]   //the Tab key leads, read off the ring so the row and the ring agree on a second area
+                : [.. move, enter, .. source, new("Esc", ring.EscVerb(escVerb))];
         }
 
         //a watching screen answers no Enter, and each key is drawn with the option's own label, so a verb can't outlive the deed behind it
@@ -1075,19 +1098,13 @@ internal sealed class TuiWizardSurface : IWizardSurface, IDisposable
     private bool Folded(WizardScreen.Choice c) =>
         c.Shelf is { } sv && Shelf.PaneWidth(sv, Width, _glyphs) == 0;
 
-    private static IReadOnlyList<PaneBuild> Builds(WizardScreen.Choice c, int cursor) =>
-        c.Shelf is { Facts: { } facts } && cursor >= 0 && cursor < facts.Count
-            ? facts[cursor].Builds ?? []
-            : [];
+    //the publishers the wide pane lists for the row under the cursor, null where the pane is folded or lists none
+    private IReadOnlyList<PanePublisher>? Accordion(WizardScreen.Choice c, int cursor) =>
+        !Folded(c) && c.Shelf is { Facts: { } facts } && cursor >= 0 && cursor < facts.Count
+        && facts[cursor].Publishers is { Count: > 0 } pubs ? pubs : null;
 
-    //where the build cursor sits, with -1 resolved to the build gatto would take
-    private static int Build(WizardScreen.Choice c, int cursor, ShelfCursors at)
-    {
-        var builds = Builds(c, cursor);
-        if (at.Build >= 0 && at.Build < builds.Count) return at.Build;
-        var picked = builds.ToList().FindIndex(b => b.Picked);
-        return picked >= 0 ? picked : 0;
-    }
+    private static int RowPublisher(WizardScreen.Choice c, int cursor) =>
+        c.Shelf is { } sv && cursor >= 0 && cursor < sv.Rows.Count ? sv.Rows[cursor].RowPublisher : 0;
 
     //the next index the arrows may rest on, skipping any option the face does not paint. the cursor can never rest on a row the user cannot see
     private static int? Step(WizardScreen.Choice c, int cursor, int delta)
@@ -1103,12 +1120,17 @@ internal sealed class TuiWizardSurface : IWizardSurface, IDisposable
             ? new FocusRing(Shelf.Regions(sv, Width, cursor, c.Door is not null), Shelf.Opening(sv))
             : null!;
 
+    //the rows the pane may take beside the table: the models the window allows and the table's own header and more-below line, 0 for an unknown height
+    private static int PaneRows(ShelfView v, int allowance, int outside) =>
+        allowance <= 0 ? 0
+            : Shelf.RowBudget(Math.Max(1, allowance - outside - Shelf.GroupRows(v))) + Shelf.TableChrome + Shelf.GroupRows(v);
+
     //the row window recomputed from the painter's allowance. an allowance of 0 means unknown, and the cursor is never windowed out
     private static ShelfView Windowed(ShelfView v, int cursor, int allowance, int outside)
     {
         if (allowance <= 0) return v;
-        //at least 1, an allowance of 0 means an unknown height
-        var window = Math.Max(Shelf.RowBudget(Math.Max(1, allowance - outside)), cursor + 1);
+        //at least 1, an allowance of 0 means an unknown height. the group headings are rows the models pay for
+        var window = Math.Max(Shelf.RowBudget(Math.Max(1, allowance - outside - Shelf.GroupRows(v))), cursor + 1);
         if (v.Rows.Count <= window) return v;
         return v with
         {
@@ -1149,12 +1171,12 @@ internal sealed class TuiWizardSurface : IWizardSurface, IDisposable
           ];
 
     //where the cursors are on a shelf: one per zone, built with Start so the pane pick never lands on file zero
-    internal readonly record struct ShelfCursors(int Chip, int File, int Build, string? PickedQuant)
+    internal readonly record struct ShelfCursors(int Chip, int File, int Open, Gatto.Core.Acquire.FileRef? PickedQuant)
     {
         public static ShelfCursors Start => new(0, -1, -1, null);
 
-        //a new model brings a new file list and builds, so both pane cursors and the quant pick reset
-        public ShelfCursors OnANewRow() => this with { File = -1, Build = -1, PickedQuant = null };
+        //a new model brings new publishers, so the pane cursor, the open publisher and the quant pick reset
+        public ShelfCursors OnANewRow() => this with { File = -1, Open = -1, PickedQuant = null };
     }
 
     //how long the most recently resolved watch ran, kept on the face since only the loop can time it
@@ -1196,9 +1218,29 @@ internal sealed class TuiWizardSurface : IWizardSurface, IDisposable
         }
 
         return new Screen([], Region.List, null, [], null, [new FooterKey("Esc", "leave")],
-            Armed: _chord.ArmedAt(_nowMs()) == Chord.Quit ? "Esc again to leave" : null,
+            Armed: _chord.ArmedAt(_nowMs()) switch
+            {
+                Chord.Quit => "Esc again to leave",
+                Chord.Leave => CtrlCAgain,
+                _ => null,
+            },
             Hero: hero, Command: StartingCommand);
     }
+
+    //what leaving this screen costs, worded for the Esc chord
+    private static string Price(WizardScreen.Choice c, FetchTick? t) =>
+        //a screen's own declared price comes first in the ladder, so a screen that sets one is never silently overruled
+        c.ArmedCost is { Length: > 0 } declared ? declared
+        //a paused screen has a live tick and no live fetch, so it prices Esc with CostOfKept. the live arm would say it stops a fetch already stopped
+        : c.Paused && t is { } held ? Widget.CostOfKept(held)
+        : t is { } armed ? Widget.Cost(armed)
+        //a screen whose fetch already stopped prices Esc off what it kept, so the armed row cannot deny the kept figures above it
+        : c.Kept is { } kept ? Widget.CostOfKept(kept)
+        : "Esc again to leave";
+
+    //the same price worded for the Ctrl+C chord, so the key the row names is the key that pays it
+    private static string ForCtrlC(string price) =>
+        price.StartsWith("Esc again", StringComparison.Ordinal) ? "Ctrl+C again" + price["Esc again".Length..] : price;
 
     private Screen ScreenFor(WizardScreen.Choice c, FocusRing ring, int cursor, FetchTick? t,
         ShelfCursors at, int width, int allowance, long? watching = null, CheckTick? k = null,
@@ -1213,7 +1255,8 @@ internal sealed class TuiWizardSurface : IWizardSurface, IDisposable
             //the shelf replaces the option rows, since the models are the options, and its escape rows follow as ordinary options
             .. c.Shelf is { } sv
                 ? [.. Shelf.Body(Windowed(sv, cursor, allowance, Outside(c, t, k, width, sv, cursor, load)), cursor, at.Chip, at.File,
-                       ring.Current, width, at.Build, _glyphs,
+                       ring.Current, width, at.Open, _glyphs, shownMs: Math.Max(0, _nowMs() - _shownAtMs),
+                       paneRows: PaneRows(sv, allowance, Outside(c, t, k, width, sv, cursor, load)),
                        //a loading shelf's purr sits in the list, timed on the face's clock like every watch
                        working: sv.Loading && watching is { } loadingMs
                            ? Shelf.LoadingRow(load?.Step ?? "", loadingMs, _glyphs) : (PaintedRow?)null),
@@ -1241,16 +1284,13 @@ internal sealed class TuiWizardSurface : IWizardSurface, IDisposable
         Legend: c.Legend is { Length: > 0 } said ? new Legend(LegendKind.Sentence, said)
             //a shelf that fetched nothing draws no legend either, since there are no marks to explain, while an empty search keeps one
             : c.Shelf is { NothingFetched: false, Loading: false } lv ? FitMarks.LegendFor(lv.Shape, _glyphs) : null,
-        //the armed sentence belongs to the screen: leaving setup costs nothing, and a stopped fetch prices what has landed
-        Armed: _chord.ArmedAt(_nowMs()) != Chord.Quit ? null
-            //a screen's own declared price comes first in the ladder, so a screen that sets one is never silently overruled
-            : c.ArmedCost is { Length: > 0 } declared ? declared
-            //a paused screen has a live tick and no live fetch, so it prices Esc with CostOfKept. the live arm would say it stops a fetch already stopped
-            : c.Paused && t is { } held ? Widget.CostOfKept(held)
-            : t is { } armed ? Widget.Cost(armed)
-            //a screen whose fetch already stopped prices Esc off what it kept, so the armed row cannot deny the kept figures above it
-            : c.Kept is { } kept ? Widget.CostOfKept(kept)
-            : "Esc again to leave",
+        //the armed sentence belongs to the screen: leaving setup costs nothing, and a stopped fetch prices what has landed. either chord names the same price
+        Armed: _chord.ArmedAt(_nowMs()) switch
+        {
+            Chord.Quit => Price(c, t),
+            Chord.Leave => ForCtrlC(Price(c, t)),
+            _ => null,
+        },
         Hero: c.Hero is { Count: > 0 } cat ? [.. cat.Select(l => PaintedRow.Of(l, RunInk.Accent))] : null,
         //the purr in its four states: a live tick wins, a bare watch times on the face's clock, then the two settled forms
         Working: t is { } working ? Widget.Purr(working, _glyphs)

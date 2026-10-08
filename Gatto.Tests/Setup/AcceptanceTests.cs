@@ -2,6 +2,8 @@ using Gatto.Cli.Setup;
 using Gatto.Core.Acquire;
 using Gatto.Core.Hardware;
 
+using Gatto.Tests.Fakes;
+
 namespace Gatto.Tests.Setup;
 
 //these tests run the whole wizard flow end to end. name a property another test already pins, don't assert it again, since two copies can disagree
@@ -12,7 +14,7 @@ public class AcceptanceTests
         public HardwareSnapshot? Snap { get; init; } = new(34359738368, 34093496320, GpuKind.Discrete, 8589934592);
         public string? Llama { get; init; } = @"C:\llama\llama-server.exe";
         public IReadOnlyList<FoundModel> Found { get; init; } = [];
-        public IReadOnlyList<ShelfRow> Rows { get; init; } = [];
+        public IReadOnlyList<ModelRow> Rows { get; init; } = [];
         public TypedIdOutcome Typed { get; init; } = new TypedIdOutcome.Unreachable(false);
         public ConnectProbe? Server { get; init; }
         public int Ctx { get; init; } = 8192;
@@ -33,7 +35,8 @@ public class AcceptanceTests
         public ConnectProbe? ProbeAt(string baseUrl) => null;
         public IReadOnlyList<string> Roots { get; init; } = [];
         public ScanResult Scan(string? r) => new(Found, Roots);
-        public HubSearchOutcome Search(HubSearchRequest request) { Searches++; return new(Rows, null); }
+        public ShelfOutcome SearchModels(ModelSearchRequest request, IProgress<SearchProgress>? progress, CancellationToken ct)
+        { Searches++; return WizardProbes.Outcome(Rows); }
         public (string Path, long Bytes)? ProjectorFor(string p) => null;
         public string? ArchitectureOf(string p) => null;
         public MoveOffer? MoveOfferFor(string p) => null;
@@ -126,15 +129,16 @@ public class AcceptanceTests
         var flow = new SetupFlow(new Probes
         {
             Rows = [],
-            Typed = new TypedIdOutcome.Ok(new ShelfRow(
+            Typed = new TypedIdOutcome.Ok(ShelfRows.Of(
                 "someone/model", "someone", new HubQuant("m.gguf", 4_000_000_000, null),
                 Gatto.Core.Models.FitRegime.FitsGpu, 32768, false, null, 1, false)),
         });
         flow.StartPastEngine();
         flow.Answer(SetupFlow.TypeAnId);
         flow.Answer("someone/model");
+        flow.Answer("0");
 
-        Assert.Equal("someone/model", flow.Picked!.RepoId);
+        Assert.Equal("someone/model", flow.Picked!.RowFile!.RepoId);
     }
 
     [Fact]
@@ -223,7 +227,8 @@ public class AcceptanceTests
         public ConnectProbe? ProbeAt(string baseUrl) => null;
         public IReadOnlyList<string> Roots { get; init; } = [];
         public ScanResult Scan(string? r) => new([new(@"D:\m\a.gguf", 1, null)], Roots);
-        public HubSearchOutcome Search(HubSearchRequest request) => new([], null);
+        public ShelfOutcome SearchModels(ModelSearchRequest request, IProgress<SearchProgress>? progress, CancellationToken ct) =>
+            WizardProbes.Outcome([]);
         public (string Path, long Bytes)? ProjectorFor(string p) => null;
         public string? ArchitectureOf(string p) => null;
         public MoveOffer? MoveOfferFor(string p) => null;

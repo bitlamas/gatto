@@ -7,7 +7,8 @@ internal enum KvCacheKind { F16, Q8_0 }
 //what a model costs, split so a caller can say why. assumed terms are recorded rather than penalized again, and unknown terms widen Judge's margin
 internal sealed record FitEstimate(
     long WeightsBytes, long KvCacheBytes,
-    IReadOnlyList<string> UnknownTerms, IReadOnlyList<string> AssumedTerms);
+    IReadOnlyList<string> UnknownTerms, IReadOnlyList<string> AssumedTerms,
+    long StreamedBytes = 0);   //the table taken off the weights, which still sits in system memory
 
 internal enum FitRegime { FitsGpu, FitsRamOnly, DoesNotFit, Unknown }
 
@@ -81,13 +82,17 @@ internal static class FitArithmetic
         }
 
         //the streamed table is priced against no GPU. a claim bigger than the weights is clamped, so a lie cannot make the model free
+        long table = 0;
         if (streamedBytes is > 0 and var streamed)
-            weights -= Math.Min(streamed, weights);
+        {
+            table = Math.Min(streamed, weights);
+            weights -= table;
+        }
         else if (streamedBytes is null
             && (h.DeclaresPerLayerInput || Gatto.Core.Acquire.StreamedTensors.Load().Streams(h.Architecture)))
             assumed.Add("priced as the whole file: the per-layer input table was not read, and the engine keeps it off the GPU");
 
-        return new FitEstimate(weights, kvBytes, unknown, assumed);
+        return new FitEstimate(weights, kvBytes, unknown, assumed, table);
     }
 
     //the declared key and value lengths, which some models make unequal. the fallback rounds head_dim up, since truncating would underestimate
@@ -115,7 +120,7 @@ internal static class FitArithmetic
     private static long? Plausible(long? value, long cap) =>
         value is { } v && v > 0 && v <= cap ? v : null;
 
-    //GPU then RAM, and a CPU-only machine skips the GPU comparison. the zeroing is here, so a hand-built HardwareClass cannot break the rule
+    //GPU then RAM, a CPU-only machine skips the GPU comparison, and a streamed table is memory too, beside the card in system memory or in the pool unified memory shares
     public static FitRegime Judge(FitEstimate e, HardwareClass hw)
     {
         var gpuBudget = hw.Topology == MemoryTopology.CpuOnly ? 0UL : hw.GpuBudgetBytes;
@@ -126,9 +131,15 @@ internal static class FitArithmetic
             var needed = e.UnknownTerms.Count > 0
                 ? total * HeadroomNumerator / HeadroomDenominator   //the widened margin for unknown terms
                 : total;
+            var table = e.StreamedBytes;
 
-            if (needed <= (long)gpuBudget) return FitRegime.FitsGpu;
-            if (needed <= (long)hw.RamBudgetBytes) return FitRegime.FitsRamOnly;
+            var beside = table == 0 || hw.Topology switch
+            {
+                MemoryTopology.Unified => needed + table <= (long)HardwareClassifier.StreamPoolBytes(hw.Snapshot),
+                _ => table <= (long)hw.RamBudgetBytes,
+            };
+            if (needed <= (long)gpuBudget && beside) return FitRegime.FitsGpu;
+            if (needed + table <= (long)hw.RamBudgetBytes) return FitRegime.FitsRamOnly;
             return FitRegime.DoesNotFit;
         }
     }

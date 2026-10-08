@@ -16,7 +16,7 @@ public class SourceSwitchTests
                 BlockCount: 32, HeadCount: 32, HeadCountKv: 8, EmbeddingLength: 4096,
                 KeyLength: 128, ValueLength: 128, ChatTemplate: null));
 
-    private static ShelfRow HubRow() => new(
+    private static ModelRow HubRow() => ShelfRows.Of(
         "unsloth/gemma-4-26B-A4B-it", "unsloth",
         new HubQuant("gemma-4-26B-A4B-it-Q4_K_M.gguf", 4_000_000_000, null),
         FitRegime.FitsGpu, 262144, false, Badge: null, Downloads: 5, Gated: false,
@@ -125,7 +125,7 @@ public class SourceSwitchTests
         var local = Assert.IsType<WizardScreen.Choice>(flow.Answer(ShelfControls.SourceAnswer()));
 
         Assert.Single(local.Shelf!.Rows);
-        Assert.Contains("arrived-later", local.Shelf!.Rows[0].RepoId, StringComparison.Ordinal);
+        Assert.Contains("arrived-later", local.Shelf!.Rows[0].RowFile!.RepoId, StringComparison.Ordinal);
     }
 
     //the fork
@@ -161,7 +161,7 @@ public class SourceSwitchTests
 
         var qwen = Assert.IsType<WizardScreen.Choice>(flow.Answer(ShelfControls.FamilyAnswer("qwen")));
         Assert.Single(qwen.Shelf!.Rows);
-        Assert.Contains("Qwen3", qwen.Shelf!.Rows[0].RepoId, StringComparison.Ordinal);
+        Assert.Contains("Qwen3", qwen.Shelf!.Rows[0].RowFile!.RepoId, StringComparison.Ordinal);
 
         flow.Answer(qwen.Options[0].Key);
 

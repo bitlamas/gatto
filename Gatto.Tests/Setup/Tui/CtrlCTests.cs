@@ -6,7 +6,7 @@ using Gatto.Tests.Fakes;
 
 namespace Gatto.Tests.Setup.Tui;
 
-//one Ctrl+C leaves, except where a press has a cost. the press must arrive as a key through TreatControlCAsInput, so it shares one leave rule with Esc
+//two Ctrl+C presses inside the REPL's window leave from every screen, and the first only arms. the press must arrive as a key through TreatControlCAsInput
 public class CtrlCTests
 {
     private sealed class Keys(IEnumerable<ConsoleKeyInfo> k) : IKeySource
@@ -45,11 +45,30 @@ public class CtrlCTests
         [new ChoiceOption("stop", "stop the download")],
         KeysOnly: true, Watching: true);
 
-    //null is what the runner reads as leaving, the value Esc Esc also gives, so both keys reach one leave rule
+    //one press arms and says so, and the script running dry is the sign it did not leave
     [Fact]
-    public void CTRL_C_ONCE_LEAVES_AN_ORDINARY_SCREEN()
+    public void ONE_CTRL_C_ARMS_AND_DOES_NOT_LEAVE()
     {
-        Assert.Null(Face(0, CtrlC).Choose(Offer()));
+        var f = Face(0, CtrlC);
+        Assert.Throws<InvalidOperationException>(() => f.Choose(Offer()));
+        Assert.Contains(f.LastPainted, r => r.Contains(TuiWizardSurface.CtrlCAgain, StringComparison.Ordinal));
+    }
+
+    //null is what the runner reads as leaving, so two presses leave even where Esc would go back
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void TWO_CTRL_C_LEAVE_AN_ORDINARY_SCREEN(bool allowBack)
+    {
+        Assert.Null(Face(0, CtrlC, CtrlC).Choose(Offer() with { AllowBack = allowBack }));
+    }
+
+    //arming one chord disarms the other, so Esc then Ctrl+C then Esc completes neither
+    [Fact]
+    public void THE_TWO_CHORDS_DO_NOT_MIX()
+    {
+        var f = Face(0, K(ConsoleKey.Escape), CtrlC, K(ConsoleKey.Escape));
+        Assert.Throws<InvalidOperationException>(() => f.Choose(Offer()));
     }
 
     //mid-fetch the press arms the same chord Esc uses, since a download is running and a press has a cost. the test reads a second key
@@ -76,14 +95,28 @@ public class CtrlCTests
         Assert.Throws<InvalidOperationException>(() => f.Choose(Fetching(), watch: () => false));
     }
 
-    //a typed screen has no watch, so one press leaves on the same rule as Esc
+    //a typed screen takes the same two presses, so a press meant for a draft never ends the wizard. the second answers the leave key, which outranks a way back
     [Fact]
-    public void CTRL_C_LEAVES_A_TYPED_SCREEN_TOO()
+    public void TWO_CTRL_C_LEAVE_A_TYPED_SCREEN_TOO()
     {
         var ask = new WizardScreen.Ask("model.typedid", "Which repo?", _ => null,
-            Placeholder: "type an id…");
+            Placeholder: "type an id…") { AllowBack = true };
 
-        Assert.Null(Face(0, CtrlC).Ask(ask));
+        var once = Face(0, CtrlC);
+        Assert.Throws<InvalidOperationException>(() => once.Ask(ask));
+        Assert.Contains(once.LastPainted, r => r.Contains(TuiWizardSurface.CtrlCAgain, StringComparison.Ordinal));
+
+        Assert.Equal(SetupFlow.LeaveKey, Face(0, CtrlC, CtrlC).Ask(ask));
+    }
+
+    //one Esc on a typed screen with a screen behind it is back
+    [Fact]
+    public void ESC_ON_A_TYPED_SCREEN_GOES_BACK()
+    {
+        var ask = new WizardScreen.Ask("model.typedid", "Which repo?", _ => null,
+            Placeholder: "type an id…") { AllowBack = true };
+
+        Assert.Equal(SetupFlow.BackKey, Face(0, K(ConsoleKey.Escape)).Ask(ask));
     }
 
     //any other key disarms, since the chord is shared with Esc and a stale warning would describe a state the user has left

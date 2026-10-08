@@ -11,7 +11,7 @@ namespace Gatto.Tests.Setup.Tui;
 //the quants window's height must not depend on the file count, a taller frame loses its top in the panel. every check compares two frames at the same height
 public class InSessionLayoutHoldsTests
 {
-    private static ShelfRow Row() => new(
+    private static ModelRow Row() => ShelfRows.Of(
         RepoId: "unsloth/gemma-4-26B", Publisher: "unsloth",
         PickedQuant: new HubQuant("Q4_K_M.gguf", 16_900_000_000, null),
         Fit: FitRegime.FitsGpu, NativeCtx: 262144, Vision: false, Badge: null,
@@ -22,7 +22,7 @@ public class InSessionLayoutHoldsTests
         var pane = Enumerable.Range(0, files)
             .Select(i => new PaneFile("Q" + i, 4_000_000_000L + i, FitRegime.FitsGpu))
             .ToList();
-        var shelf = new ShelfView([Row()], "unsloth", shape, Total: 1,
+        var shelf = new ShelfView([Row()], shape, Total: 1,
             Families: Families.Load().Ladder, Family: "all",
             Facts: [new ModelFacts(Files: pane)]);
         return new WizardScreen.Choice(SetupFlow.SearchKey, SetupFlow.ModelTitleFor(inSession: true),
@@ -122,8 +122,7 @@ public class InSessionLayoutHoldsTests
     public void A_ROW_WITH_NO_FILES_DOES_NOT_MOVE_THE_FRAME(bool unified)
     {
         var shape = unified ? MachineShape.UnifiedWithShare : MachineShape.Discrete;
-        var mixed = new ShelfView([Row(), Row() with { RepoId = "unsloth/no-files" }],
-            "unsloth", shape, Total: 2, Families: Families.Load().Ladder, Family: "all",
+        var mixed = new ShelfView([Row(), Row() with { Model = "unsloth/no-files" }], shape, Total: 2, Families: Families.Load().Ladder, Family: "all",
             Facts: [
                 new ModelFacts(Files: [
                     new PaneFile("Q4_K_M", 4_000_000_000, FitRegime.FitsGpu),
@@ -143,13 +142,13 @@ public class InSessionLayoutHoldsTests
     [Fact]
     public void A_SHELF_WITH_NO_FILES_ANYWHERE_SPENDS_NOTHING_ON_THE_BLOCK()
     {
-        var bare = new ShelfView([Row(), Row() with { RepoId = "unsloth/two" }],
-            "unsloth", MachineShape.Discrete, Total: 2,
+        var bare = new ShelfView([Row(), Row() with { Model = "unsloth/two" }], MachineShape.Discrete, Total: 2,
             Families: Families.Load().Ladder, Family: "all");
         var withFiles = bare with
         {
             Facts = [
-                new ModelFacts(Files: [new PaneFile("Q4_K_M", 4_000_000_000, FitRegime.FitsGpu)]),
+                new ModelFacts(Publishers: [new PanePublisher("unsloth",
+                    [new PaneFile("Q4_K_M", 4_000_000_000, FitRegime.FitsGpu)], null)]),
                 new ModelFacts(Files: null),
             ],
         };

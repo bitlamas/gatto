@@ -10,7 +10,7 @@ namespace Gatto.Tests.Setup;
 //a chip press that leaves nothing fitting shows the cat and one chip-scoped sentence, keeps the chips row, and drops the catalogue-wide one.
 public class ChipFoundNothingTests
 {
-    private static ShelfRow Ranked(string id, string arch) => new(
+    private static ModelRow Ranked(string id, string arch) => ShelfRows.Of(
         RepoId: id, Publisher: id.Split('/')[0],
         PickedQuant: new HubQuant("m-Q4_K_M.gguf", 18_000_000_000, null),
         Fit: FitRegime.FitsGpu, NativeCtx: 262144, Vision: false, Badge: null,
@@ -20,21 +20,20 @@ public class ChipFoundNothingTests
         string chip, int tooBig = 27, int otherFamilies = 0, HubSearchCause? cause = HubSearchCause.NothingFits,
         GlyphSet? set = null)
     {
-        IReadOnlyList<ShelfRow> rows = [Ranked("o/qwen-small", "qwen3"), Ranked("o/qwen-tiny", "qwen3")];
+        IReadOnlyList<ModelRow> rows = [Ranked("o/qwen-small", "qwen3"), Ranked("o/qwen-tiny", "qwen3")];
         var probes = new WizardProbes
         {
             Rows = rows,
             //the fake gives the too-big rows back to a lift (empty answers for every family would make the lift guard unfalsifiable).
-            Answer = req => req.Family is null || req.IncludeUnfittable
-                ? new HubSearchOutcome(rows, null, null, HiddenByFit: 0)
-                : new HubSearchOutcome([], cause, null, HiddenByFit: tooBig,
-                    HiddenByFamily: otherFamilies),
+            Answer = req => req.Family() is null || req.Lifted
+                ? WizardProbes.Outcome(rows, null)
+                : WizardProbes.Outcome([], cause, moreBehindA: tooBig > 0),
         };
         var flow = new SetupFlow(probes);
         //the flow owns the glyph set, it composes the cat and the sentence. a test that sets it on the painter alone would still draw a Unicode cat and call it ASCII.
         if (set is not null) flow.Glyphs = set;
         Assert.IsType<WizardScreen.Choice>(flow.StartPastEngine());
-        return (flow, Assert.IsType<WizardScreen.Choice>(flow.Answer(SetupFlow.CtlFamily + chip)));
+        return (flow, Assert.IsType<WizardScreen.Choice>(ChipWalk.Narrow(flow, chip)));
     }
 
     private static string PaintedIn(GlyphSet g, WizardScreen.Choice screen, int width = 100) =>
@@ -55,7 +54,7 @@ public class ChipFoundNothingTests
 
         Assert.Contains(Gatto.Repl.Cats.EmptyOf(GlyphSet.Unicode), painted, StringComparison.Ordinal);
         Assert.Contains(
-            $"No gemma model fits this machine's memory {GlyphSet.Unicode.Dot} 27 too big, a shows all",
+            $"No gemma model fits this machine's memory {GlyphSet.Unicode.Dot} a shows all",
             painted, StringComparison.Ordinal);
     }
 
@@ -87,7 +86,7 @@ public class ChipFoundNothingTests
         var probes = new WizardProbes
         {
             Rows = [],
-            Answer = _ => new HubSearchOutcome([], HubSearchCause.NothingFits, null, HiddenByFit: 27),
+            Answer = _ => WizardProbes.Outcome([], HubSearchCause.NothingFits),
         };
         var screen = Assert.IsType<WizardScreen.Choice>(new SetupFlow(probes).StartPastEngine());
 
@@ -99,21 +98,10 @@ public class ChipFoundNothingTests
     [Fact]
     public void A_HUB_THAT_COULD_NOT_BE_REACHED_STILL_COLLAPSES_TO_TWO_REGIONS()
     {
-        var view = new ShelfView([], null, Gatto.Core.Hardware.MachineShape.Discrete);
+        var view = new ShelfView([], Gatto.Core.Hardware.MachineShape.Discrete);
 
         Assert.True(view.NothingFetched);
         Assert.Equal([Region.Search], Shelf.Regions(view, 100, -1, hasDoor: false));
-    }
-
-    //the sentence's tail is the count line's own clause, so a change can't leave two spellings on two screens.
-    [Fact]
-    public void THE_SENTENCE_TAIL_IS_THE_COUNT_LINES_OWN_CLAUSE()
-    {
-        var (_, screen) = AfterChip("gemma");
-        var clause = Shelf.HiddenClause(0, 0, 27, GlyphSet.Unicode);
-
-        Assert.Equal("27 too big, a shows all", clause);
-        Assert.Contains(clause!, Painted(screen), StringComparison.Ordinal);
     }
 
     //the sentence names a, so the key must be bound and must lead somewhere. press it, an offered key is not enough.
@@ -137,41 +125,6 @@ public class ChipFoundNothingTests
         Assert.Equal(SetupFlow.ModelTitleFor(inSession: false), screen.Question);
     }
 
-    //the shelf holds no model of this family and nothing was priced out, so the sentence names all rather than a.
-    [Fact]
-    public void A_CHIP_WHOSE_FAMILY_THE_SHELF_DOES_NOT_CARRY_DRAWS_THE_CAT_AND_ITS_OWN_SENTENCE()
-    {
-        var (_, screen) = AfterChip("mistral", tooBig: 0, otherFamilies: 12);
-
-        var painted = Painted(screen);
-        Assert.Contains(Gatto.Repl.Cats.EmptyOf(GlyphSet.Unicode), painted, StringComparison.Ordinal);
-        Assert.Contains(
-            $"No mistral model on this shelf {GlyphSet.Unicode.Dot} 12 in other families, all shows them",
-            painted, StringComparison.Ordinal);
-    }
-
-    //the fit sentence wins when both counts are set (the fixture makes them disagree). a nonzero fit count means every row of that family was too big.
-    [Fact]
-    public void THE_FIT_SENTENCE_WINS_WHEN_BOTH_NUMBERS_ARE_SET()
-    {
-        var (_, screen) = AfterChip("gemma", tooBig: 27, otherFamilies: 12);
-
-        var painted = Painted(screen);
-        Assert.Contains("fits this machine's memory", painted, StringComparison.Ordinal);
-        Assert.DoesNotContain("in other families", painted, StringComparison.Ordinal);
-    }
-
-    //the count line's family clause and the sentence's tail compose in one place, so all shows them can't gain a second spelling.
-    [Fact]
-    public void THE_FAMILY_TAIL_IS_THE_COUNT_LINES_OWN_CLAUSE()
-    {
-        var (_, screen) = AfterChip("mistral", tooBig: 0, otherFamilies: 12);
-        var clause = Shelf.FamilyClause(12);
-
-        Assert.Equal("12 in other families, all shows them", clause);
-        Assert.Contains(clause!, Painted(screen), StringComparison.Ordinal);
-    }
-
     //a chip that hides nothing is not the empty state, neither key would lead anywhere. the search's own copy keeps the cause this screen can't show.
     [Fact]
     public void A_CHIP_THAT_HIDES_NOTHING_EITHER_WAY_KEEPS_THE_SEARCHS_OWN_COPY()
@@ -190,12 +143,10 @@ public class ChipFoundNothingTests
     {
         var a = GlyphSet.Ascii;
         var (_, fit) = AfterChip("gemma", set: a);
-        var (_, family) = AfterChip("mistral", tooBig: 0, otherFamilies: 12, set: a);
 
         foreach (var (screen, sentence) in new[]
         {
-            (fit, $"No gemma model fits this machine's memory {a.Dot} 27 too big, a shows all"),
-            (family, $"No mistral model on this shelf {a.Dot} 12 in other families, all shows them"),
+            (fit, $"No gemma model fits this machine's memory {a.Dot} a shows all"),
         })
         {
             var painted = PaintedIn(a, screen);

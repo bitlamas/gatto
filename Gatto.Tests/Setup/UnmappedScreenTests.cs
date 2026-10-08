@@ -51,7 +51,6 @@ public class UnmappedScreenTests : IDisposable
         public ConnectProbe? ProbeAt(string baseUrl) => null;
         public IReadOnlyList<string> Roots { get; init; } = [];
         public ScanResult Scan(string? r) => new(Found, Roots);
-        public HubSearchOutcome Search(HubSearchRequest request) => new([], null);
         public (string Path, long Bytes)? ProjectorFor(string p) => null;
         public string? ArchitectureOf(string p) => null;
         public MoveOffer? MoveOfferFor(string p) => Move;
@@ -186,7 +185,6 @@ public class UnmappedScreenTests : IDisposable
         public string? GattoServingOn(int port) => _inner.GattoServingOn(port);
 
         public ConnectProbe? ProbeAt(string baseUrl) => null;
-        public HubSearchOutcome Search(HubSearchRequest request) => _inner.Search(request);
         public (string Path, long Bytes)? ProjectorFor(string p) => _inner.ProjectorFor(p);
         public MoveOffer? MoveOfferFor(string p) => _inner.MoveOfferFor(p);
         public (Gatto.Core.Models.FitRegime Alone, Gatto.Core.Models.FitRegime WithProjector)? PairFit(string p, long b) => _inner.PairFit(p, b);

@@ -13,4 +13,4 @@
   liquid/lfm2-1.2b
 
 ────────────────────────────────────────────────────────────────────────────────────────────────────
-  ↑↓ move   Enter choose   b back   Esc leave
+  ↑↓ move   Enter choose   Esc back

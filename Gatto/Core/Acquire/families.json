@@ -27,23 +27,41 @@
   ],
   "ladder": ["gemma", "qwen", "deepseek", "glm", "mistral", "all"],
 
+  "_landing_comment": [
+    "The chips lit when the shelf opens. A chip click toggles one family; 'all' lights every one.",
+    "",
+    "Each family below names where its ORIGINALS come from, read from the releasers' own Hub",
+    "listings on 2026-10-07: `releaser` is the org that publishes them, `generations` the name",
+    "prefixes newest first (the first is what the landing shows, the reach-back walks down the",
+    "list), `tuned` the rule that tells a tuned name from a base one (gemma marks the tuned model",
+    "with `mark`, qwen the base one with `base_mark`, a whole segment), and `builds` the suffixes that make a source",
+    "a build of another source's model, compared without case. A generation is a group of prefixes,",
+    "one for a versioned family. A name with a suffix not listed is a",
+    "model of its own: a new build kind shows as an extra row until this list learns it, never as a",
+    "missing one. Owning the source does not make an original: medgemma and Qwen-AgentWorld fail the",
+    "prefix. Two tests hold the newest prefixes to the tier pin and the arch tiers below."
+  ],
+  "landing": ["gemma", "qwen"],
+
   "_families_comment": [
     "standalone = a model that gets its own row. variant = a same-origin BUILD of one, folded",
     "into the row it belongs to and never rendered alone.",
     "",
-    "Two axes, and conflating them deletes a feature: family membership controls what is LISTED,",
-    "the cardData.base_model fold controls what gets a ROW. gemma4-assistant is Gemma 4's",
-    "speculative-decoding draft model -- the gemma equivalent of qwen's -MTP repos, which the pane",
-    "already renders as 'speculative head inside'. Excluding it would never list its repos, so they",
-    "would never fold, and EVERY Gemma 4 row would silently lose its builds-zone option.",
-    "",
-    "A variant-arch repo with no base_model is DROPPED rather than rendered: losing a build option",
-    "quietly beats offering a draft model as though it were something to talk to."
+    "gemma4-assistant is Gemma 4's speculative-decoding draft model. Its source folds into the",
+    "model it drafts for (the `-assistant` build suffix), so it never shows as a row of its own,",
+    "and a repo of a variant arch gives no pick, no file and no vote on the model's total: a",
+    "470M-parameter draft that fits the card must never be picked over the real model's files."
   ],
   "families": {
     "gemma": {
       "standalone": ["gemma3", "gemma3n", "gemma4"],
-      "variant": ["gemma4-assistant"]
+      "variant": ["gemma4-assistant"],
+      "releaser": "google",
+      "generations": [["gemma-4-"], ["gemma-3n-"], ["gemma-3-"]],
+      "tuned": {"mark": "-it"},
+      "builds": ["-gguf", "-qat-q4_0-unquantized", "-qat-q4_0-gguf", "-qat-int4-unquantized",
+                 "-qat-mobile-transformers", "-qat-mobile-ct", "-qat-w4a16-ct", "-litert-preview",
+                 "-litert-lm", "-assistant"]
     },
     "qwen": {
       "_comment": [
@@ -52,19 +70,55 @@
         "qwen shelf at all."
       ],
       "standalone": ["qwen3", "qwen3moe", "qwen3next", "qwen35", "qwen35moe", "qwen3vl", "qwen3vlmoe", "qwen4exp"],
-      "variant": []
+      "variant": [],
+      "releaser": "Qwen",
+      "generations": [["Qwen3.8-"], ["Qwen3.6-"], ["Qwen3.5-"], ["Qwen3-"]],
+      "tuned": {"base_mark": "-Base"},
+      "builds": ["-GGUF", "-FP8", "-AWQ", "-GPTQ-Int4", "-GPTQ-Int8", "-MLX-4bit", "-MLX-6bit",
+                 "-MLX-8bit", "-MLX-bf16"]
     },
     "deepseek": {
+      "_comment": [
+        "The chat line is DeepSeek-V<n>. R1 is left out: its own model is V3-sized and its distills",
+        "are Qwen and Llama models, which a typed search reaches."
+      ],
       "standalone": ["deepseek2", "deepseek32", "deepseek4"],
-      "variant": []
+      "variant": [],
+      "releaser": "deepseek-ai",
+      "generations": [["DeepSeek-V4.1-"], ["DeepSeek-V4-"], ["DeepSeek-V3.2-"], ["DeepSeek-V3.1-"], ["DeepSeek-V3-"],
+                      ["DeepSeek-V2.5-"], ["DeepSeek-V2-"]],
+      "tuned": {"base_mark": "-Base"},
+      "builds": ["-DSpark"]
     },
     "glm": {
+      "_comment": [
+        "The chat line is GLM-<n>; each vision line (4.6V, 4.5V, 4.1V) is a generation of its own,",
+        "after the text line of the same number."
+      ],
       "standalone": ["glm4", "glm4moe", "glm-dsa"],
-      "variant": []
+      "variant": [],
+      "releaser": "zai-org",
+      "generations": [["GLM-5.3-"], ["GLM-5.2-"], ["GLM-5.1-"], ["GLM-5-"], ["GLM-4.7-"], ["GLM-4.6V-"], ["GLM-4.6-"],
+                      ["GLM-4.5V-"], ["GLM-4.5-"], ["GLM-4.1V-"], ["GLM-4-"]],
+      "tuned": {"base_mark": "-Base"},
+      "builds": ["-FP8", "-BF16"]
     },
     "mistral": {
+      "_comment": [
+        "mistralai's current models are separate lines, each with its own numbering or a date, so a",
+        "generation is a dated group of line prefixes rather than one version (ruled 2026-10-07). The",
+        "older group shows only under a. Voxtral and Leanstral are in neither group."
+      ],
       "standalone": ["mistral3", "mistral4"],
-      "variant": []
+      "variant": [],
+      "releaser": "mistralai",
+      "generations": [
+        ["Mistral-Small-4-", "Ministral-3-", "Devstral-2-", "Devstral-Small-2-", "Magistral-Small-",
+         "Mistral-Medium-3.5-", "Mistral-Large-3-"],
+        ["Mistral-Small-3.2-", "Mistral-Small-3.1-", "Mistral-Nemo-", "Mistral-7B-", "Mixtral-", "Pixtral-"]
+      ],
+      "tuned": {"base_mark": "-Base"},
+      "builds": ["-GGUF", "_gguf", "-BF16", "-FP8", "-NVFP4", "-ONNX", "-Eagle"]
     }
   },
 

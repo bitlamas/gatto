@@ -34,10 +34,10 @@ public class HubStreamedTableTests
         ? ShardOneProbe()
         : File.ReadAllBytes(Path.Combine(AppContext.BaseDirectory, "Fixtures", "dn4", name));
 
-    //a machine whose budget the set fits only without its table: 73.7 GB at the bare margin is 92.1, the whole file is 128
-    private static HardwareClass Machine() => new(
-        MemoryTopology.Unified, ShareKind.Dynamic, 95_000_000_000UL, 95_000_000_000UL,
-        new HardwareSnapshot(null, 1UL, GpuKind.Integrated, null), 0, BudgetBound.Heap);
+    //a machine whose budget the set fits only without its table: 73.7 GB at the bare margin is 92.1, the whole file is 128. its pool holds the table beside it
+    private static HardwareClass Machine(ulong budget = 95_000_000_000UL) => new(
+        MemoryTopology.Unified, ShareKind.Dynamic, budget, budget,
+        new HardwareSnapshot(null, 160_000_000_000UL, GpuKind.Integrated, null), 0, BudgetBound.Heap);
 
     private static string ModelJson(string arch) =>
         $"{{\"id\":\"{Repo}\",\"downloads\":1211625,\"gated\":false,\"pipeline_tag\":\"text-generation\","
@@ -107,10 +107,14 @@ public class HubStreamedTableTests
 
     private static HubClient Client(Hub hub) => new(new HttpClient(hub) { Timeout = Timeout.InfiniteTimeSpan });
 
-    private static Task<HubLookup> Lookup(Hub hub) =>
-        HubSearch.LookupAsync(Client(hub), Repo, Machine(), 4096, _ => null, CancellationToken.None);
+    //the table's reads: the 24-byte probe of shard one and every read of the shards that hold tensors. the row's kind reads shard one's header from 0 on its own
+    private static IEnumerable<(string File, long From, long To)> TableReads(Hub hub) =>
+        hub.Ranges.Where(r => r.File != Shard(1) || r.To == 23);
 
-    //the test drives HubSearch.LookupAsync, the path a typed id takes
+    private static Task<(ModelRow? Row, bool NoWeights)> Lookup(Hub hub) =>
+        HubSearch.LookupModelAsync(Client(hub), Repo, Machine(), 4096, CancellationToken.None);
+
+    //the test drives HubSearch.LookupModelAsync, the path a typed id takes
     [Fact]
     public async Task A_LISTED_ARCHITECTURE_IS_PRICED_WITHOUT_ITS_TABLE_AND_FITS()
     {
@@ -119,8 +123,20 @@ public class HubStreamedTableTests
 
         Assert.NotNull(row);
         Assert.Equal(FitRegime.FitsGpu, row!.Fit);
-        Assert.Equal(TableBytes, row.PickedQuant.StreamedBytes);
+        Assert.Equal(TableBytes, row.RowQuant!.StreamedBytes);
         Assert.Empty(hub.NotFound);
+    }
+
+    //a file that fits the card whole needs no table, since no table could change that verdict, so it costs no read
+    [Fact]
+    public async Task A_FILE_THAT_FITS_WHOLE_READS_NO_TABLE()
+    {
+        var hub = new Hub("qwen4exp");
+        var row = (await HubSearch.LookupModelAsync(Client(hub), Repo, Machine(200_000_000_000UL), 4096, CancellationToken.None)).Row;
+
+        Assert.Empty(TableReads(hub));
+        Assert.Equal(FitRegime.FitsGpu, row!.Fit);
+        Assert.Null(row.RowQuant!.StreamedBytes);
     }
 
     //the reads overlap to stay inside the search's budget, and a run that overlaps asks for the same ranges as one that doesn't
@@ -133,7 +149,7 @@ public class HubStreamedTableTests
 
         var row = (await Lookup(hub)).Row;
 
-        Assert.Equal(TableBytes, row!.PickedQuant.StreamedBytes);
+        Assert.Equal(TableBytes, row!.RowQuant!.StreamedBytes);
         Assert.True(hub.MaxInFlight >= 2, $"at most {hub.MaxInFlight} read was in flight at once");
         Assert.Equal(sequentialBudget.Ranges.Count, hub.Ranges.Count);
         Assert.Equal(sequentialBudget.Ranges.Sum(r => r.To - r.From + 1), hub.Ranges.Sum(r => r.To - r.From + 1));
@@ -145,18 +161,20 @@ public class HubStreamedTableTests
         var hub = new Hub("qwen4exp");
         await Lookup(hub);
 
-        Assert.Equal([(Shard(1), 0L, 23L)], hub.Ranges.Where(r => r.File == Shard(1)));
+        Assert.Equal([(Shard(1), 0L, 23L)], TableReads(hub).Where(r => r.File == Shard(1)));
         Assert.All(new[] { 2, 3, 4 }, i => Assert.Contains(hub.Ranges, r => r.File == Shard(i) && r.From > 0 || r.File == Shard(i) && r.To > 23));
     }
 
     [Fact]
-    public async Task AN_UNLISTED_ARCHITECTURE_MAKES_NO_HEADER_REQUEST_AND_PRICES_AS_BEFORE()
+    public async Task AN_UNLISTED_ARCHITECTURE_MAKES_NO_TABLE_REQUEST_AND_PRICES_AS_BEFORE()
     {
         var hub = new Hub("qwen3");
         var row = (await Lookup(hub)).Row;
 
-        Assert.Empty(hub.Ranges);
-        Assert.Null(row);
+        //priced as the whole file the set does not fit, and the typed door still returns the row with its regime
+        Assert.Empty(TableReads(hub));
+        Assert.Equal(FitRegime.DoesNotFit, row!.Fit);
+        Assert.Null(row.RowFile);
     }
 
     //a read that fails prices the quant whole rather than subtracting a table it never read
@@ -166,7 +184,7 @@ public class HubStreamedTableTests
         var hub = new Hub("qwen4exp", failing: Shard(3));
         var lookup = await Lookup(hub);
 
-        Assert.Null(lookup.Row);
+        Assert.Equal(FitRegime.DoesNotFit, lookup.Row!.Fit);
         Assert.False(lookup.NoWeights);
     }
 
@@ -181,36 +199,27 @@ public class HubStreamedTableTests
             t => t.StartsWith("priced as the whole file", StringComparison.Ordinal));
     }
 
-    //the test drives the browse walk inside HubSearch.AssembleAsync
+    //one typed search over a fresh memo and the store, which is what a new gatto model is. it is the engine path that reads the store over this hub's exact ranges
+    private static Task<ShelfOutcome> Search(Hub hub, HubReadStore store) =>
+        HubSearch.TypedSearchAsync(Client(hub), new UploaderAllowlist("2026-09-21", ["unsloth"]), Families.Load(),
+            "Qwen3.8-Flash-Next", Machine(), 4096, CancellationToken.None, memo: new HubTreeMemo(store));
+
+    //the typed search prices the set the way the lookup does, and reads the structure from shard one through its folder
     [Fact]
-    public async Task THE_BROWSE_WALK_PRICES_THE_SAME_WAY()
+    public async Task THE_SEARCH_PRICES_THE_SAME_WAY()
     {
-        var hub = new Hub("qwen4exp");
-        var outcome = await HubSearch.AssembleAsync(Client(hub), new UploaderAllowlist("2026-09-21", ["unsloth"]),
-            Machine(), 4096, _ => null, CancellationToken.None);
+        var home = NewHome();
+        try
+        {
+            var hub = new Hub("qwen4exp");
+            var row = Assert.Single((await Search(hub, new HubReadStore(home))).Rows);
 
-        var row = Assert.Single(outcome.Rows);
-        Assert.Equal(FitRegime.FitsGpu, row.Fit);
-        Assert.Equal(TableBytes, row.PickedQuant.StreamedBytes);
-        //the pick probes shard one once, and the structure column reads 16 KB of the same file after the pick
-        Assert.Single(hub.Ranges, r => r.File == Shard(1) && r.To == 23);
-        Assert.DoesNotContain(hub.Ranges, r => r.File == Shard(1) && r.To > 16383);
-        //the structure column's read reached the picked file through its folder too
-        Assert.Contains(hub.Ranges, r => r.File == Shard(1) && r.To == 16383);
-        Assert.Empty(hub.NotFound);
-    }
-
-    //one browse walk over a fresh memo and the store, which is what a new gatto model is
-    private static Task<HubSearchOutcome> Browse(Hub hub, HubReadStore store) =>
-        HubSearch.AssembleAsync(Client(hub), new UploaderAllowlist("2026-09-21", ["unsloth"]),
-            Machine(), 4096, _ => null, CancellationToken.None, memo: new HubTreeMemo(store));
-
-    //a home that exists, since the store writes nothing into a home the wizard has not created
-    private static string NewHome()
-    {
-        var home = Path.Combine(Path.GetTempPath(), "gatto-hubreads-" + Guid.NewGuid().ToString("N"));
-        Directory.CreateDirectory(home);
-        return home;
+            Assert.Equal(FitRegime.FitsGpu, row.Fit);
+            Assert.Equal(TableBytes, row.RowQuant!.StreamedBytes);
+            Assert.Single(hub.Ranges, r => r.File == Shard(1) && r.To == 23);
+            Assert.Empty(hub.NotFound);
+        }
+        finally { Directory.Delete(home, recursive: true); }
     }
 
     //the sharded set has no hash of its own, so this also proves the key built from the members' hashes finds it
@@ -221,14 +230,14 @@ public class HubStreamedTableTests
         try
         {
             var first = new Hub("qwen4exp");
-            var before = Assert.Single((await Browse(first, new HubReadStore(home))).Rows);
+            var before = Assert.Single((await Search(first, new HubReadStore(home))).Rows);
             Assert.NotEmpty(first.Ranges);
 
             var second = new Hub("qwen4exp");
-            var after = Assert.Single((await Browse(second, new HubReadStore(home))).Rows);
+            var after = Assert.Single((await Search(second, new HubReadStore(home))).Rows);
 
             Assert.Empty(second.Ranges);
-            Assert.Equal(TableBytes, after.PickedQuant.StreamedBytes);
+            Assert.Equal(TableBytes, after.RowQuant!.StreamedBytes);
             Assert.Equal(before.Fit, after.Fit);
             Assert.Equal(before.Structure, after.Structure);
             Assert.Equal(before.Experts, after.Experts);
@@ -243,10 +252,10 @@ public class HubStreamedTableTests
         var home = NewHome();
         try
         {
-            await Browse(new Hub("qwen4exp"), new HubReadStore(home));
+            await Search(new Hub("qwen4exp"), new HubReadStore(home));
             var changed = new Hub("qwen4exp") { Oid = "def" };
 
-            await Browse(changed, new HubReadStore(home));
+            await Search(changed, new HubReadStore(home));
 
             Assert.NotEmpty(changed.Ranges);
         }
@@ -260,17 +269,17 @@ public class HubStreamedTableTests
         var home = NewHome();
         try
         {
-            await Browse(new Hub("qwen4exp", failing: Shard(3)), new HubReadStore(home));
+            await Search(new Hub("qwen4exp", failing: Shard(3)), new HubReadStore(home));
             var retry = new Hub("qwen4exp");
 
-            await Browse(retry, new HubReadStore(home));
+            await Search(retry, new HubReadStore(home));
 
             Assert.Contains(retry.Ranges, r => r.File == Shard(3));
         }
         finally { Directory.Delete(home, recursive: true); }
 
         var absent = Path.Combine(Path.GetTempPath(), "gatto-hubreads-" + Guid.NewGuid().ToString("N"));
-        await Browse(new Hub("qwen4exp"), new HubReadStore(absent));
+        await Search(new Hub("qwen4exp"), new HubReadStore(absent));
         Assert.False(Directory.Exists(absent));
     }
 
@@ -284,8 +293,10 @@ public class HubStreamedTableTests
         try
         {
             var store = new HubReadStore(home);
-            await Browse(new Hub("qwen4exp"), store);
-            foreach (var entry in Directory.GetFiles(store.Dir, "*.json"))
+            await Search(new Hub("qwen4exp"), store);
+            var entries = Directory.GetFiles(store.Dir, "*.json");
+            Assert.NotEmpty(entries);
+            foreach (var entry in entries)
             {
                 using var doc = System.Text.Json.JsonDocument.Parse(File.ReadAllText(entry));
                 var key = doc.RootElement.GetProperty("key").GetString();
@@ -296,12 +307,20 @@ public class HubStreamedTableTests
             }
             var again = new Hub("qwen4exp");
 
-            var row = Assert.Single((await Browse(again, new HubReadStore(home))).Rows);
+            var row = Assert.Single((await Search(again, new HubReadStore(home))).Rows);
 
             Assert.NotEmpty(again.Ranges);
-            Assert.Equal(TableBytes, row.PickedQuant.StreamedBytes);
+            Assert.Equal(TableBytes, row.RowQuant!.StreamedBytes);
         }
         finally { Directory.Delete(home, recursive: true); }
+    }
+
+    //a home that exists, since the store writes nothing into a home the wizard has not created
+    private static string NewHome()
+    {
+        var home = Path.Combine(Path.GetTempPath(), "gatto-hubreads-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(home);
+        return home;
     }
 
     //a move refused while another gatto holds the entry open keeps the old entry and leaves no temp file behind
@@ -330,7 +349,8 @@ public class HubStreamedTableTests
     [Fact]
     public async Task THE_PANE_PRICES_FROM_THE_SAME_STREAMED_BYTES()
     {
-        var row = (await Lookup(new Hub("qwen4exp"))).Row!;
+        var row = (await HubSearch.LookupModelAsync(Client(new Hub("qwen4exp")), Repo, Machine(), 4096,
+            CancellationToken.None)).Row!;
         var zone = Assert.Single(Gatto.Cli.Setup.SetupFlow.QuantsOf(row, Machine())!);
 
         Assert.Equal(FitRegime.FitsGpu, row.Fit);

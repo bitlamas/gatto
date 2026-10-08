@@ -3,7 +3,7 @@
 ────────────────────────────────────────────────────────────────────────────────────────────────────
   Which model should gatto start with?     (^· ·^)⟆ purrrrrr 3s
 
-  gemma · qwen · deepseek · glm · mistral · all   (lifted, you searched)        publisher  unsloth
+  gemma · qwen · deepseek · glm · mistral · all   (search active)               publisher  unsloth
 
      model               params  size · quant    kind     │ gemma-4-26B-A4B-it                      
   1. gemma-4-31B-it       30.7B  18.3 GB Q4_K_M  dense    │ by unsloth                              

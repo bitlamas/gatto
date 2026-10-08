@@ -8,7 +8,7 @@ namespace Gatto.Tests.Fakes;
 internal sealed class WizardProbes : ISetupProbes
 {
     public string? Llama { get; init; } = @"C:\llama\llama-server.exe";
-    public IReadOnlyList<ShelfRow> Rows { get; init; } = [];
+    public IReadOnlyList<ModelRow> Rows { get; init; } = [];
     public IReadOnlyList<FoundModel> Found { get; set; } = [];
 
     //settable, since setup screens quote this machine in their text and a copy test must pick which machine
@@ -36,9 +36,6 @@ internal sealed class WizardProbes : ISetupProbes
 
     //pretend to run on a legacy console or a modern terminal. false is the modern terminal, and every screen in the corpus was drawn there.
     public bool IsLegacyConsole() => LegacyConsole;
-
-    //the publishers the picker lists, three by default so the picker has a choice to make
-    public IReadOnlyList<string> ApprovedPublishers() => Publishers;
 
     public IReadOnlyList<string> Publishers { get; init; } = ["unsloth", "bartowski", "ggml-org"];
 
@@ -86,36 +83,32 @@ internal sealed class WizardProbes : ISetupProbes
         return new(Found, Roots);
     }
     //record the last search request. controls change what the flow asks, so a control test asserts the ask, and the engine's handling is tested elsewhere.
-    public HubSearchRequest? LastRequest { get; private set; }
+    public ModelSearchRequest? LastRequest { get; private set; }
 
-    //script the search answer, so a fixture forces every shelf state. null keeps the default shape, so no existing test changes meaning.
-    public Func<HubSearchRequest, HubSearchOutcome>? Answer { get; init; }
+    //every request the flow made, in order, so a test can say a control asked nothing
+    public List<ModelSearchRequest> Requests { get; } = [];
 
-    public HubSearchOutcome Search(HubSearchRequest request)
+    //script the search answer, so a fixture forces every shelf state. null answers the rows above, so no existing test changes meaning.
+    public Func<ModelSearchRequest, ShelfOutcome>? Answer { get; init; }
+
+    //a search that reports and waits like the Hub, for the loading shelf. null answers at once, so no other fixture changes meaning
+    public Func<ModelSearchRequest, IProgress<SearchProgress>?, CancellationToken, ShelfOutcome>? Slow { get; init; }
+
+    public ShelfOutcome SearchModels(ModelSearchRequest request, IProgress<SearchProgress>? progress, CancellationToken ct)
     {
         LastRequest = request;
-        //the outcome must report the publisher that was searched. otherwise the slot keeps the machine preference, and a guard asserts about the fake.
-        return Answer?.Invoke(request) ?? new(Rows, null,
-            request.View == HubSearchView.Curated ? request.Publisher ?? Curated : null,
-            HiddenByFit: Hidden);
+        lock (Requests) Requests.Add(request);
+        if (Slow is { } slow) return slow(request, progress, ct);
+        return Answer?.Invoke(request) ?? Outcome(Rows);
     }
 
-    //a search that reports and waits like the Hub, for the loading shelf. null answers through Search(request), so no other fixture changes meaning
-    public Func<HubSearchRequest, IProgress<SearchProgress>?, CancellationToken, HubSearchOutcome>? Slow { get; init; }
-
-    public HubSearchOutcome Search(HubSearchRequest request, IProgress<SearchProgress>? progress,
-        CancellationToken ct)
-    {
-        if (Slow is not { } slow) return Search(request);
-        LastRequest = request;
-        return slow(request, progress, ct);
-    }
-
-    //how many rows the fit filter hid, shown on the count line. zero unless a test raises it.
-    public int Hidden { get; init; }
-
-    //the curated publisher the curated view reports. null makes the filter meaningless, and the screen must render that state differently.
-    public string? Curated { get; init; }
+    //an outcome over the given rows, counted per regime the way the engine counts them
+    public static ShelfOutcome Outcome(IReadOnlyList<ModelRow> rows, HubSearchCause? cause = null,
+        bool moreBehindA = false, int hiddenByKind = 0) =>
+        new(rows, rows.Count(r => r.Fit == Gatto.Core.Models.FitRegime.FitsGpu),
+            rows.Count(r => r.Fit == Gatto.Core.Models.FitRegime.FitsRamOnly),
+            rows.Count(r => r.Fit == Gatto.Core.Models.FitRegime.DoesNotFit),
+            moreBehindA, hiddenByKind, [], rows.Count > 0 ? null : cause);
     public (string Path, long Bytes)? ProjectorFor(string p) => null;
     public string? ArchitectureOf(string p) => null;
     //a delegate answering where a found file would be offered a move to (a hard-coded null voids the assertion in every fixture)
@@ -169,7 +162,7 @@ internal sealed class WizardProbes : ISetupProbes
     //what gatto would fetch for a picked row. null is the browser-watch branch, so a test that cares about the hub offer sets it
     public ModelFetchOffer? HubOffer { get; init; }
 
-    public ModelFetchOffer? ModelOffer(Gatto.Core.Acquire.ShelfRow row) => HubOffer;
+    public ModelFetchOffer? ModelOffer(Gatto.Core.Acquire.ModelRow row) => HubOffer;
 
     //how the model fetch ends. arrived by default, and tests set the failure arms.
     public Gatto.Core.Acquire.HubFetchResult ModelResult { get; set; } =
@@ -278,12 +271,16 @@ internal sealed class WizardProbes : ISetupProbes
     //count the check starts, since only the count tells a stop from a stop and a restart
     public int AuditionStarts { get; private set; }
 
+    //the repo id the last check was handed, the badge's tag for the search that offered the model
+    public string? AuditionRepoId { get; private set; }
+
     public AuditionCheck RunAudition(string p, string? repoId,
         IProgress<Gatto.Roles.Audition.AuditionProgress>? progress = null,
         CancellationToken ct = default)
     {
         //the deed before the count, so a test that sees the count also sees the deed
         Deed("audition");
+        AuditionRepoId = repoId;
         AuditionStarts++;
         foreach (var m in AuditionMoments) progress?.Report(m);
 
@@ -477,4 +474,10 @@ internal sealed class WizardProbes : ISetupProbes
             ? new ProveOutcome(false, $"{h} is the running server", TimeSpan.Zero, ServedByAnother: h)
             : Prove;
     }
+}
+
+//the one chip a request lit, null for the landing pair or every family, which is what the old request's family said for no chip
+internal static class RequestFamily
+{
+    public static string? Family(this ModelSearchRequest r) => r.Lit.Count == 1 ? r.Lit.First() : null;
 }

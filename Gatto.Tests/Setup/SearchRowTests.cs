@@ -8,43 +8,49 @@ namespace Gatto.Tests.Setup;
 //the rules split across the table and the pane, so a test names its surface and guards what a row must not say
 public class SearchRowTests
 {
-    private static ShelfRow Row(
+    private static ModelRow Row(
         FitRegime fit = FitRegime.FitsGpu, bool vision = false, Badge? badge = null,
         long? ctx = 32768, long bytes = 4_000_000_000) =>
-        new("org/model", "org", new HubQuant("model-Q4_K_M.gguf", bytes, null),
+        ShelfRows.Of("org/model", "org", new HubQuant("model-Q4_K_M.gguf", bytes, null),
             fit, ctx, vision, badge, Downloads: 500, Gated: false);
 
     private const Gatto.Core.Hardware.MachineShape Discrete = Gatto.Core.Hardware.MachineShape.Discrete;
 
     //the table answers which row to choose, so assert on what it renders (a column that stops being emitted must fail here)
-    private static string Table(ShelfRow r, Gatto.Core.Hardware.MachineShape shape = Discrete) =>
-        string.Join(" · ", ShelfTable.Render([r], new Theme(TermCaps.Plain), 200, null, shape, glyphs: GlyphSet.Unicode)
+    private static string Table(ModelRow r, Gatto.Core.Hardware.MachineShape shape = Discrete) =>
+        string.Join(" · ", ShelfTable.Render([r], new Theme(TermCaps.Plain), 200, shape, glyphs: GlyphSet.Unicode)
             .Select(x => x.Text));
 
     //the pane answers what this row is, drive the production path so the tests can't pass against an unreachable screen
-    private static string Pane(ShelfRow r) =>
+    private static string Pane(ModelRow r) =>
         string.Join(" · ", Gatto.Cli.Setup.Tui.Pane
             .Rows(r, null, Discrete, 100, glyphs: GlyphSet.Unicode).Select(x => x.Text));
+
+    //a badge is set only by the local shelf, so its words are read off the local pane
+    private static string LocalPane(ModelRow r) =>
+        string.Join(" · ", Gatto.Cli.Setup.Tui.Pane
+            .Rows(r, new Gatto.Cli.Setup.Tui.ModelFacts(LocalPath: @"D:\models"), Discrete, 100, glyphs: GlyphSet.Unicode)
+            .Select(x => x.Text));
 
     //the tier line answers how these rows fit, drive it through ShelfBinding so the claim stays about what reaches a screen
     private static string TierLine(FitRegime fit)
     {
         var row = Row(fit);
-        var view = new ShelfView([row], null, Discrete);
-        var headings = ShelfBinding.For(view, [new Gatto.Repl.SelectOption(row.RepoId)],
+        var view = new ShelfView([row], Discrete);
+        var headings = ShelfBinding.For(view, [new Gatto.Repl.SelectOption(row.RowFile!.RepoId)],
             new Theme(TermCaps.Plain), glyphs: GlyphSet.Unicode).HeadingsAt(100);
         return string.Join(" · ", headings.Select(h => h.Text));
     }
 
     //use Both only for a rule that forbids something anywhere. a presence claim met by either surface would not see a fact on the wrong one.
-    private static string Both(ShelfRow r, Gatto.Core.Hardware.MachineShape shape = Discrete) =>
+    private static string Both(ModelRow r, Gatto.Core.Hardware.MachineShape shape = Discrete) =>
         Table(r, shape) + " · " + Pane(r);
 
     [Fact]
     public void A_BADGE_says_what_was_MEASURED_and_never_recommends()
     {
         //the words must state what was measured, they live on the pane since a bare tick in the table reads as a recommendation
-        var pane = Pane(Row(badge: new Badge("org/model", new DateOnly(2026, 8, 10), "abc1234", "temp 0.7")));
+        var pane = LocalPane(Row(badge: new Badge("org/model", new DateOnly(2026, 8, 10), "abc1234", "temp 0.7")));
 
         Assert.Contains("tool-calling verified", pane, StringComparison.Ordinal);
         Assert.Contains("2026-08", pane, StringComparison.Ordinal);
@@ -59,8 +65,8 @@ public class SearchRowTests
         var badge = new Badge("org/model", new DateOnly(2026, 8, 10), "abc1234", "temp 0.7",
             Passed: 5, Ran: 5);
 
-        var perfect = Pane(Row(badge: badge));
-        var marginal = Pane(Row(badge: badge with { Passed = 4 }));
+        var perfect = LocalPane(Row(badge: badge));
+        var marginal = LocalPane(Row(badge: badge with { Passed = 4 }));
 
         Assert.DoesNotContain("tasks", perfect, StringComparison.Ordinal);
         Assert.Contains("4 of 5 tasks", marginal, StringComparison.Ordinal);
@@ -123,7 +129,7 @@ public class SearchRowTests
 
         Assert.Contains("32,768", pane, StringComparison.Ordinal);
         //the phrase comes from the pane itself, this test is about the number and its separator
-        Assert.Contains("context up to", pane, StringComparison.Ordinal);
+        Assert.Contains("context 32,768", pane, StringComparison.Ordinal);
         Assert.DoesNotContain("32 768", pane, StringComparison.Ordinal);
         Assert.DoesNotContain(" ctx", pane, StringComparison.Ordinal);
     }
@@ -143,7 +149,7 @@ public class SearchRowTests
 
             Assert.Contains("262,144", pane, StringComparison.Ordinal);
             //the phrase comes from the pane itself, this test is about the number and its separator
-        Assert.Contains("context up to", pane, StringComparison.Ordinal);
+            Assert.Contains("context 262,144", pane, StringComparison.Ordinal);
             Assert.DoesNotContain("262.144", pane, StringComparison.Ordinal);   //a period here reads as a decimal in de-DE
             //build the three space forms from their code points, U+202F and U+00A0 look like a plain space in the source
             foreach (var sep in new[] { (char)0x0020, (char)0x202F, (char)0x00A0 })

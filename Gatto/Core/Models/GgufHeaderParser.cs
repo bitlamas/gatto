@@ -37,6 +37,18 @@ internal sealed record GgufHeader(
             || (EmbeddingLength is not null && HeadCount is not null));
 }
 
+//what one walk of a string array learned, so a later file holding the same array can jump it: its key, element count, byte length and last bytes
+internal interface IStringArrayJumps
+{
+    //the remembered walk of this array, waiting for one in progress. null means walk it, and the caller may now be the one others wait for
+    (long Bytes, byte[] Tail)? Remembered(string key, ulong count);
+
+    void Walked(string key, ulong count, long bytes, byte[] tail);
+
+    //a walk that did not finish, so whoever waits on it walks for itself
+    void Failed(string key, ulong count);
+}
+
 internal static class GgufHeaderParser
 {
     private const uint Magic = 0x46554747;
@@ -46,13 +58,13 @@ internal static class GgufHeaderParser
     private const int MaxArrayCount = 10_000_000;
     private const int MaxArrayDepth = 4;              //arrays never nest in practice, but lying bytes can
 
-    //never throws on bad bytes, a non-seekable stream is a caller bug, and the stream must be positioned at the header's start
-    public static GgufHeader Parse(Stream s)
+    //never throws on bad bytes, a non-seekable stream is a caller bug, and the stream must be positioned at the header's start. jumps lets a remote read skip an array another file walked
+    public static GgufHeader Parse(Stream s, IStringArrayJumps? jumps = null)
     {
         if (!s.CanSeek)
             throw new ArgumentException(
                 "GgufHeaderParser.Parse requires a seekable stream", nameof(s));
-        var walker = new Walker(s);
+        var walker = new Walker(s, jumps);
         try { return walker.Walk(); }
         catch (IOException) { return walker.Snapshot(GgufOutcome.Truncated); }
         catch (NotSupportedException) { return walker.Snapshot(GgufOutcome.Truncated); }
@@ -63,7 +75,7 @@ internal static class GgufHeaderParser
 
     private enum Step { Ok, Truncated, Malformed }
 
-    private sealed class Walker(Stream s)
+    private sealed class Walker(Stream s, IStringArrayJumps? jumps)
     {
         private readonly byte[] _scratch = new byte[8];
         private readonly Dictionary<string, long> _ints = new(StringComparer.Ordinal);
@@ -138,7 +150,7 @@ internal static class GgufHeaderParser
                     continue;
                 }
 
-                step = SkipValue(type, depth: 0);
+                step = type == 9 && jumps is not null ? SkipTopArray(key) : SkipValue(type, depth: 0);
                 if (step != Step.Ok) return Result(Outcome(step));
             }
 
@@ -247,6 +259,72 @@ internal static class GgufHeaderParser
             if (usable && count > 0) _ints[key] = total;
             return Step.Ok;
         }
+
+        //the bytes a later file checks before trusting a jump: the end of the array, and a string at the landing point
+        private const int TailBytes = 64;
+
+        //a top-level array on a remote read: fixed widths skip arithmetically, a string array jumps a remembered walk or is walked and remembered
+        private Step SkipTopArray(string key)
+        {
+            if (!TryReadU32(out var elemType)) return Step.Truncated;
+            if (!TryReadU64(out var count)) return Step.Truncated;
+            if (count > MaxArrayCount) return Fail($"implausibly large array count in GGUF: {count}");
+            if (FixedWidth(elemType) is { } width) return TrySkip((long)count * width) ? Step.Ok : Step.Truncated;
+            if (elemType != 8)
+            {
+                for (ulong i = 0; i < count; i++)
+                {
+                    var step = SkipValue(elemType, depth: 1);
+                    if (step != Step.Ok) return step;
+                }
+                return Step.Ok;
+            }
+
+            var start = s.Position;
+            if (jumps!.Remembered(key, count) is { } known && Jumped(start, known.Bytes, known.Tail)) return Step.Ok;
+            s.Position = start;
+
+            var walked = false;
+            try
+            {
+                for (ulong i = 0; i < count; i++)
+                {
+                    var step = SkipString();
+                    if (step != Step.Ok) return step;
+                }
+                var end = s.Position;
+                var tail = new byte[(int)Math.Min(TailBytes, end - start)];
+                s.Position = end - tail.Length;
+                s.ReadExactly(tail);
+                jumps.Walked(key, count, end - start, tail);
+                walked = true;
+                return Step.Ok;
+            }
+            finally { if (!walked) jumps.Failed(key, count); }
+        }
+
+        //trust a jump only when the bytes before the landing point are the remembered tail and a string parses there, else the caller walks
+        private bool Jumped(long start, long bytes, byte[] tail)
+        {
+            var landing = start + bytes;
+            if (bytes < tail.Length || landing > s.Length || landing - tail.Length < start) return false;
+            s.Position = landing - tail.Length;
+            var seen = new byte[tail.Length];
+            s.ReadExactly(seen);
+            if (!seen.AsSpan().SequenceEqual(tail)) return false;
+            if (!TryReadU64(out var len) || len == 0 || len > MaxStringBytes || (long)len > Remaining) return false;
+            s.Position = landing;
+            return true;
+        }
+
+        private static int? FixedWidth(uint type) => type switch
+        {
+            0 or 1 or 7 => 1,
+            2 or 3 => 2,
+            4 or 5 or 6 => 4,
+            10 or 11 or 12 => 8,
+            _ => null,
+        };
 
         private static GgufOutcome Outcome(Step s) =>
             s == Step.Malformed ? GgufOutcome.Malformed : GgufOutcome.Truncated;
@@ -359,6 +437,8 @@ internal static class GgufHeaderParser
                     if (!TryReadU64(out var count)) return Step.Truncated;
                     if (count > MaxArrayCount)
                         return Fail($"implausibly large array count in GGUF: {count}");
+                    //fixed-width elements skip arithmetically, the same bound the element loop would hit
+                    if (FixedWidth(elemType) is { } width) return TrySkip((long)count * width) ? Step.Ok : Step.Truncated;
                     for (ulong i = 0; i < count; i++)
                     {
                         var step = SkipValue(elemType, depth + 1);

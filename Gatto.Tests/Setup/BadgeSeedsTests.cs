@@ -21,34 +21,12 @@ public class BadgeSeedsTests : IDisposable
     }
 
     [Fact]
-    public async Task A_MEASUREMENT_WRITTEN_THE_WAY_PRODUCTION_WRITES_IT_APPEARS_ON_THE_SEARCH_ROW()
-    {
-        BadgeWriter.Write(_home, "Qwen3-8B-Q4_K_M.gguf", Verdict(pass: true), repoId: "org/Qwen3-8B-GGUF");
-
-        var row = await SearchRowFor("org/Qwen3-8B-GGUF");
-
-        Assert.NotNull(row.Badge);
-        Assert.Equal("Qwen3-8B-Q4_K_M.gguf", row.Badge!.ModelKey);
-        Assert.Equal("org/Qwen3-8B-GGUF", row.Badge.RepoId);
-    }
-
-    [Fact]
-    public async Task A_MEASUREMENT_OF_A_DIFFERENT_REPO_DOES_NOT_BADGE_THIS_ONE()
-    {
-        //the only record on disk belongs to another repo, so a reader that returns whatever it finds fails here.
-        BadgeWriter.Write(_home, "Other-Q4_K_M.gguf", Verdict(pass: true), repoId: "org/something-else");
-
-        Assert.Null((await SearchRowFor("org/Qwen3-8B-GGUF")).Badge);
-    }
-
-    [Fact]
-    public async Task A_FAILED_MEASUREMENT_IS_NOT_A_BADGE_BY_REPO_ID_EITHER()
+    public void A_FAILED_MEASUREMENT_IS_NOT_A_BADGE_BY_REPO_ID_EITHER()
     {
         //every measurement is written, pass or fail, and only the reader decides a fail is no badge. a second reader with its own rule would badge a failed model.
         BadgeWriter.Write(_home, "Qwen3-8B-Q4_K_M.gguf", Verdict(pass: false), repoId: "org/Qwen3-8B-GGUF");
 
         Assert.Null(BadgeRegister.LookupByRepoId(_home, "org/Qwen3-8B-GGUF"));
-        Assert.Null((await SearchRowFor("org/Qwen3-8B-GGUF")).Badge);
     }
 
     [Fact]
@@ -101,21 +79,6 @@ public class BadgeSeedsTests : IDisposable
         //a fresh machine has no register dir at all, and that must answer null.
         Assert.Null(BadgeRegister.LookupByRepoId(_home, "org/anything"));
         Assert.Null(BadgeRegister.LookupByRepoId(_home, ""));
-    }
-
-    //one search row through the real engine over a stub hub, with the badge lookup wired as production wires it.
-    private async Task<ShelfRow> SearchRowFor(string repoId)
-    {
-        var http = new HttpClient(new StubHub(repoId)) { Timeout = Timeout.InfiniteTimeSpan };
-        var outcome = await HubSearch.AssembleAsync(
-            new HubClient(http), new UploaderAllowlist("2026-08-14", ["org"]),
-            new HardwareClass(MemoryTopology.Discrete, ShareKind.None, 40_000_000_000, 80_000_000_000,
-                new HardwareSnapshot(0UL, 1UL, GpuKind.Discrete, 0UL), 0, BudgetBound.None),
-            ctxForFit: 8192,
-            badgeLookup: id => BadgeRegister.LookupByRepoId(_home, id),
-            CancellationToken.None);
-
-        return Assert.Single(outcome.Rows);
     }
 
     private sealed class StubHub(string repoId) : HttpMessageHandler

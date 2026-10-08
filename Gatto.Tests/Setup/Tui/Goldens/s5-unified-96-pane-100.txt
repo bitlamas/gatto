@@ -3,26 +3,22 @@
 ────────────────────────────────────────────────────────────────────────────────────────────────────
   Which model should gatto start with?
 
-  gemma · qwen · deepseek · glm · mistral · all                                 publisher  unsloth
+  gemma · qwen · deepseek · glm · mistral · all
 
-     model               params  size · quant    kind     │ gemma-4-26B-A4B-it                      
-  1. gemma-4-31B-it       30.7B  18.3 GB Q4_K_M  dense    │ by unsloth                              
-› 2. gemma-4-26B-A4B-it   25.2B  16.9 GB Q4_K_M  MoE A4B  │                                         
-  3. gemma-4-12b-it       11.9B  7.1 GB  Q4_K_M  dense    │ context up to 262,144                   
-  4. gemma-4-E4B-it        7.5B  5.0 GB  Q4_K_M  dense    │ ◈ vision · can see images               
-                                                          │ reads 4B params/token                   
-                                                          │ arch      gemma4                        
-                                                          │ ✗ not measured by gatto yet             
-                                                          │                                         
-                                                          │ files (22)                              
-                                                          │   … 5 lighter ↑                         
-                                                          │   Q5_K_S    18.9 GB  ✓ fits             
-                                                          │   Q5_K_M    21.2 GB  ✓ fits             
-                                                          │ ❯ Q6_K      23.2 GB  ✓ fits             
-                                                          │   … 1 heavier ↓                         
+  model               params ▾  size · quant    kind     │ gemma-4-26B-A4B-it                       
+  gemma-4-31B-it         30.7B  18.3 GB Q4_K_M  dense    │ ◈ vision · reads 4B/token                
+› gemma-4-26B-A4B-it     25.2B  16.9 GB Q4_K_M  MoE A4B  │ context 262,144                          
+  gemma-4-12b-it         11.9B  7.1 GB  Q4_K_M  dense    │                                          
+  gemma-4-E4B-it          7.5B  5.0 GB  Q4_K_M  dense    │ publishers (1)                           
+                                                         │ › ▾ unsloth  16.9 GB Q4_K_M  ✓ fits      
+                                                         │     … 4 lighter ↑                        
+                                                         │   ❯ Q4_K_M    16.9 GB  ✓ fits            
+                                                         │     Q5_K_S    18.9 GB  ✓ fits            
+                                                         │     Q5_K_M    21.2 GB  ✓ fits            
+                                                         │     … 2 heavier ↓                        
 
-  1–4 of 10 · 6 older, a shows all
+  1–4 of 10
 
-❯ search models…                                                                       / to search
+❯ search models…                                                                       ? to search
 ────────────────────────────────────────────────────────────────────────────────────────────────────
-  Enter choose   m local   d search   a all sizes   b back   Esc back      | fewer params = faster
+  Tab area   Enter choose   m local   ? search   a show all   Esc back     | fewer params = faster

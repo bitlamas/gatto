@@ -9,7 +9,7 @@ namespace Gatto.Tests.Setup.Tui;
 //the blank row above the shelf's door is always kept, even when the frame runs over and the fit must take a blank
 public class DoorBlankFitTests
 {
-    private static ShelfRow Hub(int i, FitRegime fit) => new(
+    private static ModelRow Hub(int i, FitRegime fit) => ShelfRows.Of(
         $"unsloth/model-{i:00}-GGUF", "unsloth",
         new HubQuant($"model-{i:00}-Q4_K_M.gguf", 4_000_000_000, null),
         fit, 262144, false, Badge: null, Downloads: 5, Gated: false, Params: 8_000_000_000);

@@ -3,26 +3,24 @@
 ────────────────────────────────────────────────────────────────────────────────
   Which model should gatto start with?
 
-  gemma · qwen · deepseek · glm · mistral · all             publisher  unsloth
+  gemma · qwen · deepseek · glm · mistral · all
 
-     model                        params  size · quant    kind    
-  1. Qwen3-Coder-Next              79.7B  48.5 GB Q4_K_M  MoE     
-  2. Qwen3-Next-80B-A3B-Instruct   79.7B  48.5 GB Q4_K_M  MoE A3B 
-  3. Qwen3-Next-80B-A3B-Thinking   79.7B  48.5 GB Q4_K_M  MoE A3B 
-  4. Qwen3.5-35B-A3B               35.5B  22.6 GB Q4_K_M  MoE A3B 
-❯ 5. Qwen3.6-35B-A3B               34.7B  22.1 GB Q4_K_M  MoE A3B 
-  6. Qwen-AgentWorld-35B-A3B       34.7B  22.1 GB Q4_K_M  MoE A3B 
-     … 14 more below
+  model                        params ▾  size · quant    kind    
+  Qwen3-Coder-Next                79.7B  48.5 GB Q4_K_M  MoE     
+  Qwen3-Next-80B-A3B-Instruct     79.7B  48.5 GB Q4_K_M  MoE A3B 
+  Qwen3-Next-80B-A3B-Thinking     79.7B  48.5 GB Q4_K_M  MoE A3B 
+  Qwen3.5-35B-A3B                 35.5B  22.6 GB Q4_K_M  MoE A3B 
+❯ Qwen3.6-35B-A3B                 34.7B  22.1 GB Q4_K_M  MoE A3B 
+  Qwen-AgentWorld-35B-A3B         34.7B  22.1 GB Q4_K_M  MoE A3B 
+  … 14 more below
 
-  1–6 of 20 · 13 older · 9 too big, a shows all
+  1–6 of 20
 
 ────────────────────────────────────────────────────────────────────────────────
   Qwen3.6-35B-A3B  ·  by unsloth
   context up to 262,144 · ◈ vision · reads 3B params/token
   files · › Q4_K_M 22.1 GB  ✓ fits · … 2 heavier →
-  builds · › standard plain build · MTP speculative head
-  ✗ not measured yet
 
-❯ search models…                                                   / to search
+❯ search models…                                                   ? to search
 ────────────────────────────────────────────────────────────────────────────────
-  Enter next   m local   d search   a all sizes   b back   Esc leave
+  Enter next   m local   ? search   a show all   Esc back

@@ -38,7 +38,7 @@ internal static class FitMarks
     public static Legend LegendFor(MachineShape shape, GlyphSet? glyphs) =>
         HasRunsColumn(shape)
             ? new Legend(LegendKind.Marks, string.Join($" {(glyphs ?? GlyphSet.Unicode).Dot} ",
-                new[] { FitRegime.FitsGpu, FitRegime.FitsRamOnly, FitRegime.DoesNotFit }
+                new[] { FitRegime.FitsGpu, FitRegime.FitsRamOnly }
                     .Select(f => Of(f, shape, glyphs).Text)))
             : new Legend(LegendKind.Sentence, "fewer params = faster");
 }

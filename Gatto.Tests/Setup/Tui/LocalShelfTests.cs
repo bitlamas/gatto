@@ -39,8 +39,8 @@ public class LocalShelfTests
             "1 file + mmproj", @"google\gemma-3-12b-it"),
     ];
 
-    private static ShelfRow Row(int i) =>
-        new(Local[i].Name, "", new HubQuant(Local[i].Name + ".gguf", Gib(Local[i].Gb), null),
+    private static ModelRow Row(int i) =>
+        ShelfRows.Of(Local[i].Name, "", new HubQuant(Local[i].Name + ".gguf", Gib(Local[i].Gb), null),
             FitRegime.FitsGpu, Local[i].Ctx, Local[i].Vision, Badge: null, Downloads: 0,
             Gated: false, Params: null,
             Structure: Local[i].Kind.StartsWith("MoE", StringComparison.Ordinal) ? Local[i].Kind : "dense");
@@ -55,7 +55,7 @@ public class LocalShelfTests
         var keep = Enumerable.Range(0, Local.Length)
             .Where(i => family == "all" || Local[i].Family == family).ToArray();
         return new ShelfView(
-            [.. keep.Select(Row)], CuratedPublisher: null, MachineShape.UnifiedWithShare,
+            [.. keep.Select(Row)], MachineShape.UnifiedWithShare,
             Families: Ladder, Family: family, Total: Local.Length,
             Facts: [.. keep.Select(Facts)],
             Source: ShelfSource.Local, Folder: Dir,
@@ -64,7 +64,7 @@ public class LocalShelfTests
 
     private static WizardScreen.Choice Screen(ShelfView v) =>
         new(SetupFlow.SearchKey, "Which model should gatto start with?",
-            [.. v.Rows.Select((r, i) => new ChoiceOption(i.ToString(), r.RepoId))],
+            [.. v.Rows.Select((r, i) => new ChoiceOption(i.ToString(), r.Model))],
             Shelf: v, Door: SetupFlow.LocalShelfDoorPlaceholderOf(Gatto.Terminal.GlyphSet.Unicode))
         { Strip = Strip };
 
@@ -134,17 +134,17 @@ public class LocalShelfTests
             Assert.Single(Shelf.Keys(ring, ShelfSource.Hub), k => k.Key == "m").Verb);
     }
 
-    //the local shelf replaces the publisher slot with the folder, so the test checks both labels (a renderer with no slot passes one direction)
+    //the local shelf's chips row ends in the folder, and the hub's ends at its chips, so each label is checked on both shelves
     [Fact]
-    public void THE_PUBLISHER_SLOT_BECOMES_THE_FOLDER()
+    public void THE_FOLDER_SLOT_IS_THE_LOCAL_SHELFS_ALONE()
     {
         var local = Shelf.Chips(View(), chip: 0, focus: Region.List, width: 100, glyphs: GlyphSet.Unicode).Text;
-        var hub = Shelf.Chips(View() with { Source = ShelfSource.Hub, CuratedPublisher = "unsloth" },
+        var hub = Shelf.Chips(View() with { Source = ShelfSource.Hub },
             chip: 0, focus: Region.List, width: 100, glyphs: GlyphSet.Unicode).Text;
 
         Assert.Contains("folder  ", local, StringComparison.Ordinal);
         Assert.DoesNotContain("publisher", local, StringComparison.Ordinal);
-        Assert.Contains("publisher  unsloth", hub, StringComparison.Ordinal);
+        Assert.DoesNotContain("publisher", hub, StringComparison.Ordinal);
         Assert.DoesNotContain("folder", hub, StringComparison.Ordinal);
     }
 
@@ -162,16 +162,6 @@ public class LocalShelfTests
         Assert.Contains("params", hub, StringComparison.Ordinal);
     }
 
-    //the TUI shelf binds only / and m, so nothing opens a publisher picker and the slot must draw no caret
-    [Fact]
-    public void THE_PUBLISHER_SLOT_DRAWS_NO_CARET_BECAUSE_NO_KEY_OPENS_A_PICKER()
-    {
-        var hub = Shelf.Chips(View() with { Source = ShelfSource.Hub, CuratedPublisher = "unsloth" },
-            chip: 0, focus: Region.List, width: 100, glyphs: GlyphSet.Unicode).Text;
-
-        Assert.DoesNotContain("▾", hub, StringComparison.Ordinal);
-    }
-
     //the folder slot is drawn by the same code, so it drops the caret too. no key opens the folder on either face
     [Fact]
     public void NOR_DOES_THE_LOCAL_SHELFS_FOLDER_SLOT() =>
@@ -179,16 +169,10 @@ public class LocalShelfTests
             StringComparison.Ordinal);
 
     //the slot sizes its gap from the string it draws, so dropping the caret must shorten that string too
-    [Theory]
-    [InlineData(true)]
-    [InlineData(false)]
-    public void THE_SLOT_STILL_REACHES_THE_RIGHT_EDGE(bool hub)
+    [Fact]
+    public void THE_SLOT_STILL_REACHES_THE_RIGHT_EDGE()
     {
-        var v = hub
-            ? View() with { Source = ShelfSource.Hub, CuratedPublisher = "unsloth" }
-            : View();
-
-        var text = Shelf.Chips(v, chip: 0, focus: Region.List, width: 100, glyphs: GlyphSet.Unicode).Text;
+        var text = Shelf.Chips(View(), chip: 0, focus: Region.List, width: 100, glyphs: GlyphSet.Unicode).Text;
 
         //the slot ends two cells short of the right edge, so 98 is pinned as a literal rather than read from Margins
         Assert.Equal(98, Gatto.Terminal.UnicodeWidth.Of(text));
@@ -215,12 +199,12 @@ public class LocalShelfTests
 
     //the local door ends with / to search and names no click, since the wizard face has no mouse
     [Fact]
-    public void THE_LOCAL_DOOR_ENDS_WITH_SLASH_TO_SEARCH_AND_OFFERS_NO_CLICK()
+    public void THE_LOCAL_DOOR_ENDS_WITH_QUESTION_MARK_TO_SEARCH_AND_OFFERS_NO_CLICK()
     {
         var door = RowContaining(Render(), "search these, or type a .gguf");
 
         //the wizard face has no mouse, so the hint must not offer "or click"
-        Assert.EndsWith("/ to search", door.TrimEnd(), StringComparison.Ordinal);
+        Assert.EndsWith("? to search", door.TrimEnd(), StringComparison.Ordinal);
         Assert.DoesNotContain("click", door, StringComparison.Ordinal);
     }
 
@@ -256,17 +240,29 @@ public class LocalShelfTests
     {
         var r = LocalShelf.Row(Found("gemma-4-26B-A4B-it-UD-Q4_K_M.gguf", 16.9), Hw());
 
-        Assert.Equal("", r.Publisher);
+        Assert.Single(r.Publishers);
         Assert.Null(r.Badge);
         Assert.Null(r.Params);
-        Assert.Null(r.LastModified);
-        Assert.Equal(0, r.Downloads);
-        Assert.False(r.Gated);
+        Assert.Null(r.Active);
+        Assert.Equal(0, r.RowOffer!.Downloads);
 
         //assert the fields it does fill, otherwise a mapper that fills nothing passes the nulls above
-        Assert.Equal("gemma-4-26B-A4B-it-UD-Q4_K_M", r.RepoId);
-        Assert.Equal(Gib(16.9), r.PickedQuant.Bytes);
-        Assert.Equal("Q4_K_M", QuantToken.Of(r.PickedQuant.FileName));
+        Assert.Equal("gemma-4-26B-A4B-it-UD-Q4_K_M", r.Model);
+        Assert.Equal(Gib(16.9), r.RowQuant!.Bytes);
+        Assert.Equal("Q4_K_M", QuantToken.Of(r.RowQuant!.FileName));
+    }
+
+    //the folder is the one publisher, the file its one repo, and the badge the register gave rides on the row
+    [Fact]
+    public void A_LOCAL_ROW_IS_THE_FOLDER_WITH_ONE_REPO_AND_KEEPS_ITS_BADGE()
+    {
+        var badge = new Badge("org/model", new DateOnly(2026, 8, 10), "abc1234", "temp 0.7");
+        var r = LocalShelf.Row(Found("gemma-4-26B-A4B-it-UD-Q4_K_M.gguf", 16.9), Hw(), badge: badge);
+
+        var publisher = Assert.Single(r.Publishers);
+        var repo = Assert.Single(publisher.Repos);
+        Assert.Single(repo.Quants);
+        Assert.Equal(badge, r.Badge);
     }
 
     //a shard set is one model, so the stem strips the -00001-of-00003 suffix, otherwise the shelf names the model after shard one

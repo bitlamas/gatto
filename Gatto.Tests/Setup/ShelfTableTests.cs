@@ -10,11 +10,11 @@ namespace Gatto.Tests.Setup;
 public class ShelfTableTests
 {
     //the default parameter count is a measured number, so the formatter meets the shape it will see
-    private static ShelfRow Row(
+    private static ModelRow Row(
         string repoId, long bytes = 4_000_000_000, string file = "model-Q4_K_M.gguf",
         FitRegime fit = FitRegime.FitsGpu, bool vision = false, Badge? badge = null,
         string? modified = "2026-08-01", long downloads = 10, long? prms = 30_532_122_624) =>
-        new(repoId, repoId.Split('/')[0], new HubQuant(file, bytes, "sha"), fit,
+        ShelfRows.Of(repoId, repoId.Split('/')[0], new HubQuant(file, bytes, "sha"), fit,
             NativeCtx: 262144, Vision: vision, Badge: badge, Downloads: downloads, Gated: false,
             LastModified: modified is null ? null : DateTimeOffset.Parse(modified + "T00:00:00Z",
                 System.Globalization.CultureInfo.InvariantCulture,
@@ -33,14 +33,12 @@ public class ShelfTableTests
     private static Theme Plain() => new(new TermCaps(Rich: false, TrueColor: false));
 
     private static IReadOnlyList<string> Lines(
-        IReadOnlyList<ShelfRow> rows, int width, string? publisher = "unsloth") =>
-        ShelfTable.Render(rows, Plain(), width, publisher, Gatto.Core.Hardware.MachineShape.Discrete, glyphs: GlyphSet.Unicode).Select(r => r.Text).ToList();
+        IReadOnlyList<ModelRow> rows, int width) =>
+        ShelfTable.Render(rows, Plain(), width, Gatto.Core.Hardware.MachineShape.Discrete, glyphs: GlyphSet.Unicode).Select(r => r.Text).ToList();
 
     //the oracle must measure the real width, since an infinite terminal never reaches the last column. the sweep steps by one, so the exact-fit width is in it
-    [Theory]
-    [InlineData(true)]
-    [InlineData(false)]
-    public void NO_LINE_EVER_EXCEEDS_THE_TERMINAL_WIDTH_at_any_width(bool curated)
+    [Fact]
+    public void NO_LINE_EVER_EXCEEDS_THE_TERMINAL_WIDTH_at_any_width()
     {
         var rows = new[]
         {
@@ -52,7 +50,7 @@ public class ShelfTableTests
 
         for (var width = 20; width <= 140; width++)
         {
-            foreach (var line in Lines(rows, width, curated ? "unsloth" : null))
+            foreach (var line in Lines(rows, width))
                 Assert.True(UnicodeWidth.Of(line) <= width,
                     $"width {width}: a line of {UnicodeWidth.Of(line)} cells, \"{line}\"");
         }
@@ -84,14 +82,12 @@ public class ShelfTableTests
         var rows = new[] { Row("unsloth/abc-GGUF", 4_000_000_000, "abc-Q4_K_M.gguf") };
 
         //each width comes from hand-counted cells plus gaps rather than from asking StageFor. the tier label left the grid, so the model column is the longest name
-        Assert.Equal(ShelfStage.Full, ShelfTable.StageFor(rows, 52, "unsloth", Gatto.Core.Hardware.MachineShape.Discrete, glyphs: GlyphSet.Unicode));
-        Assert.Equal(ShelfStage.MergedSizeQuant, ShelfTable.StageFor(rows, 51, "unsloth", Gatto.Core.Hardware.MachineShape.Discrete, glyphs: GlyphSet.Unicode));
-        Assert.Equal(ShelfStage.NoUpdated, ShelfTable.StageFor(rows, 50, "unsloth", Gatto.Core.Hardware.MachineShape.Discrete, glyphs: GlyphSet.Unicode));
-        Assert.Equal(ShelfStage.NoUpdated, ShelfTable.StageFor(rows, 42, "unsloth", Gatto.Core.Hardware.MachineShape.Discrete, glyphs: GlyphSet.Unicode));
+        Assert.Equal(ShelfStage.Full, ShelfTable.StageFor(rows, 43, Gatto.Core.Hardware.MachineShape.Discrete, glyphs: GlyphSet.Unicode));
+        Assert.Equal(ShelfStage.MergedSizeQuant, ShelfTable.StageFor(rows, 42, Gatto.Core.Hardware.MachineShape.Discrete, glyphs: GlyphSet.Unicode));
 
         //the last stage is returned even when it does not fit, since nothing more can be dropped and the renderer wraps.
-        Assert.Equal(ShelfStage.NoContext, ShelfTable.StageFor(rows, 41, "unsloth", Gatto.Core.Hardware.MachineShape.Discrete, glyphs: GlyphSet.Unicode));
-        Assert.Equal(ShelfStage.NoContext, ShelfTable.StageFor(rows, 10, "unsloth", Gatto.Core.Hardware.MachineShape.Discrete, glyphs: GlyphSet.Unicode));
+        Assert.Equal(ShelfStage.NoContext, ShelfTable.StageFor(rows, 41, Gatto.Core.Hardware.MachineShape.Discrete, glyphs: GlyphSet.Unicode));
+        Assert.Equal(ShelfStage.NoContext, ShelfTable.StageFor(rows, 10, Gatto.Core.Hardware.MachineShape.Discrete, glyphs: GlyphSet.Unicode));
     }
 
     [Fact]
@@ -107,10 +103,10 @@ public class ShelfTableTests
         var floors = 0;
         for (var width = 20; width <= 140; width++)
         {
-            if (ShelfTable.StageFor(rows, width, "unsloth", Gatto.Core.Hardware.MachineShape.Discrete, glyphs: GlyphSet.Unicode)
+            if (ShelfTable.StageFor(rows, width, Gatto.Core.Hardware.MachineShape.Discrete, glyphs: GlyphSet.Unicode)
                 == ShelfStage.NoContext) floors++;
 
-            var flat = string.Concat(Lines(rows, width, "unsloth"));
+            var flat = string.Concat(Lines(rows, width));
             foreach (var glyph in new[] { Gatto.Terminal.GlyphSet.Unicode.Vision, Gatto.Terminal.GlyphSet.Unicode.Ok, Gatto.Terminal.GlyphSet.Unicode.OtherBuild })
                 Assert.True(flat.Contains(glyph, StringComparison.Ordinal),
                     $"width {width}: the marks column lost \"{glyph}\"");
@@ -125,7 +121,7 @@ public class ShelfTableTests
     {
         //the floor gives up the context column, since the model's page still shows the number. the two halves are asserted as a pair so neither drifts
         var spec = ShelfTable.Spec(
-            [Row("unsloth/abc-GGUF", vision: true)], ShelfStage.NoContext, "unsloth",
+            [Row("unsloth/abc-GGUF", vision: true)], ShelfStage.NoContext,
             Gatto.Core.Hardware.MachineShape.Discrete, glyphs: GlyphSet.Unicode);
 
         Assert.DoesNotContain("context", spec.Headers);
@@ -136,7 +132,7 @@ public class ShelfTableTests
     public void CONTEXT_IS_A_COLUMN_and_it_is_the_listings_own_number()
     {
         var spec = ShelfTable.Spec(
-            [Row("unsloth/abc-GGUF")], ShelfStage.Full, "unsloth", Gatto.Core.Hardware.MachineShape.Discrete, glyphs: GlyphSet.Unicode);
+            [Row("unsloth/abc-GGUF")], ShelfStage.Full, Gatto.Core.Hardware.MachineShape.Discrete, glyphs: GlyphSet.Unicode);
 
         //the digits come from SearchRow.Ctx, the one home for that rule, so no two surfaces spell the number differently
         Assert.Equal(SearchRow.Ctx(262144), Cell(spec, "context"));
@@ -147,7 +143,7 @@ public class ShelfTableTests
     {
         //a listing without a context leaves every cell empty, and the empty column costs its header plus a gap. a column that separates nothing reads as information
         var none = ShelfTable.Spec(
-            [Row("unsloth/abc-GGUF") with { NativeCtx = null }], ShelfStage.Full, "unsloth",
+            [Row("unsloth/abc-GGUF") with { NativeCtx = null }], ShelfStage.Full,
             Gatto.Core.Hardware.MachineShape.Discrete, glyphs: GlyphSet.Unicode);
 
         Assert.DoesNotContain("context", none.Headers);
@@ -157,7 +153,7 @@ public class ShelfTableTests
         //one row with a context is enough to bring the column back for the whole shelf.
         var some = ShelfTable.Spec(
             [Row("unsloth/abc-GGUF") with { NativeCtx = null }, Row("unsloth/def-GGUF")],
-            ShelfStage.Full, "unsloth", Gatto.Core.Hardware.MachineShape.Discrete, glyphs: GlyphSet.Unicode);
+            ShelfStage.Full, Gatto.Core.Hardware.MachineShape.Discrete, glyphs: GlyphSet.Unicode);
 
         Assert.Contains("context", some.Headers);
         Assert.Equal("", Cell(some, "context"));
@@ -170,9 +166,9 @@ public class ShelfTableTests
         var rows = new[] { Row("unsloth/abc-GGUF") };
 
         foreach (var stage in new[]
-                 { ShelfStage.Full, ShelfStage.MergedSizeQuant, ShelfStage.NoUpdated, ShelfStage.NoContext })
+                 { ShelfStage.Full, ShelfStage.MergedSizeQuant, ShelfStage.NoContext })
         {
-            var spec = ShelfTable.Spec(rows, stage, "unsloth", Gatto.Core.Hardware.MachineShape.Discrete, glyphs: GlyphSet.Unicode);
+            var spec = ShelfTable.Spec(rows, stage, Gatto.Core.Hardware.MachineShape.Discrete, glyphs: GlyphSet.Unicode);
             Assert.Equal("params", spec.Headers[1]);
             Assert.Equal("30.5B", spec.Rows[0][1]);
         }
@@ -183,7 +179,7 @@ public class ShelfTableTests
     {
         //a repo name is a marketing string, so a count nobody gave stays an empty cell
         var spec = ShelfTable.Spec(
-            [Row("unsloth/Qwen3-Coder-30B-A3B-GGUF", prms: null)], ShelfStage.Full, "unsloth", Gatto.Core.Hardware.MachineShape.Discrete, glyphs: GlyphSet.Unicode);
+            [Row("unsloth/Qwen3-Coder-30B-A3B-GGUF", prms: null)], ShelfStage.Full, Gatto.Core.Hardware.MachineShape.Discrete, glyphs: GlyphSet.Unicode);
 
         Assert.Equal("", spec.Rows[0][1]);
     }
@@ -193,9 +189,9 @@ public class ShelfTableTests
     {
         //the field gives only the total, and no source but the repo name gives an active expert count, so that number is omitted
         var spec = ShelfTable.Spec(
-            [Row("unsloth/gemma-4-26B-A4B-GGUF", prms: 27_009_346_304)], ShelfStage.Full, "unsloth", Gatto.Core.Hardware.MachineShape.Discrete, glyphs: GlyphSet.Unicode);
+            [Row("unsloth/gemma-4-26B-A4B-GGUF", prms: 27_009_346_304)], ShelfStage.Full, Gatto.Core.Hardware.MachineShape.Discrete, glyphs: GlyphSet.Unicode);
 
-        Assert.Equal("27B", spec.Rows[0][1]);
+        Assert.Equal("27.0B", spec.Rows[0][1]);
         Assert.DoesNotContain("A4B", spec.Rows[0][1], StringComparison.OrdinalIgnoreCase);
     }
 
@@ -203,7 +199,7 @@ public class ShelfTableTests
     public void A_SUB_BILLION_MODEL_IS_SAID_IN_MILLIONS_rather_than_as_zero_point_something()
     {
         //a sub-billion count in millions reads as a real figure, where 0.4B reads as a rounding artefact
-        var spec = ShelfTable.Spec([Row("unsloth/small-GGUF", prms: 352_000_000)], ShelfStage.Full, "unsloth", Gatto.Core.Hardware.MachineShape.Discrete, glyphs: GlyphSet.Unicode);
+        var spec = ShelfTable.Spec([Row("unsloth/small-GGUF", prms: 352_000_000)], ShelfStage.Full, Gatto.Core.Hardware.MachineShape.Discrete, glyphs: GlyphSet.Unicode);
 
         Assert.Equal("352M", spec.Rows[0][1]);
     }
@@ -217,7 +213,7 @@ public class ShelfTableTests
         var previous = ShelfStage.Full;
         for (var width = 140; width >= 20; width--)
         {
-            var stage = ShelfTable.StageFor(rows, width, "unsloth", Gatto.Core.Hardware.MachineShape.Discrete, glyphs: GlyphSet.Unicode);
+            var stage = ShelfTable.StageFor(rows, width, Gatto.Core.Hardware.MachineShape.Discrete, glyphs: GlyphSet.Unicode);
             Assert.True(stage >= previous, $"width {width}: {previous} → {stage} recovered a column");
             previous = stage;
         }
@@ -233,12 +229,12 @@ public class ShelfTableTests
             Row("unsloth/b-GGUF", fit: FitRegime.FitsRamOnly),  //this row's tier has the longest label, the worst case for the model column's width.
         };
 
-        var rendered = ShelfTable.Render(rows, Plain(), 120, "unsloth",
+        var rendered = ShelfTable.Render(rows, Plain(), 120,
             Gatto.Core.Hardware.MachineShape.Discrete, glyphs: GlyphSet.Unicode);
         var header = rendered[0].Text;
 
         //the expected start is computed from the fixture, so a renamed fixture cannot silently change the assertion
-        var longestName = rows.Max(r => r.RepoId["unsloth/".Length..].Length);
+        var longestName = rows.Max(r => r.RowFile!.RepoId["unsloth/".Length..].Length);
         var expected = Math.Max("model".Length, longestName) + 2;
 
         Assert.Equal(expected, header.IndexOf("params", StringComparison.Ordinal));
@@ -257,7 +253,7 @@ public class ShelfTableTests
             Row("unsloth/b-GGUF", fit: FitRegime.FitsGpu),
             Row("unsloth/c-GGUF", fit: FitRegime.FitsRamOnly),
         };
-        var spec = ShelfTable.Spec(rows, ShelfStage.Full, "unsloth", Gatto.Core.Hardware.MachineShape.Discrete, glyphs: GlyphSet.Unicode);
+        var spec = ShelfTable.Spec(rows, ShelfStage.Full, Gatto.Core.Hardware.MachineShape.Discrete, glyphs: GlyphSet.Unicode);
 
         //the grid holds models only, with the tier lines interleaved in afterwards
         Assert.Equal(3, spec.Rows.Count);
@@ -274,9 +270,9 @@ public class ShelfTableTests
     [Fact]
     public void AN_EMPTY_SHELF_RENDERS_ITS_HEADER_AND_NO_ROWS()
     {
-        var spec = ShelfTable.Spec([], ShelfStage.Full, "unsloth", Gatto.Core.Hardware.MachineShape.Discrete, glyphs: GlyphSet.Unicode);
+        var spec = ShelfTable.Spec([], ShelfStage.Full, Gatto.Core.Hardware.MachineShape.Discrete, glyphs: GlyphSet.Unicode);
         Assert.Empty(spec.Rows);
-        Assert.NotEmpty(ShelfTable.Render([], Plain(), 80, "unsloth", Gatto.Core.Hardware.MachineShape.Discrete, glyphs: GlyphSet.Unicode));
+        Assert.NotEmpty(ShelfTable.Render([], Plain(), 80, Gatto.Core.Hardware.MachineShape.Discrete, glyphs: GlyphSet.Unicode));
     }
 
     [Fact]
@@ -288,7 +284,7 @@ public class ShelfTableTests
             Row("unsloth/v-GGUF", vision: true,
                 badge: new Badge("unsloth/v-GGUF", new DateOnly(2026, 8, 1), "b", "n")),
         };
-        var spec = ShelfTable.Spec(rows, ShelfStage.Full, "unsloth", Gatto.Core.Hardware.MachineShape.Discrete, glyphs: GlyphSet.Unicode);
+        var spec = ShelfTable.Spec(rows, ShelfStage.Full, Gatto.Core.Hardware.MachineShape.Discrete, glyphs: GlyphSet.Unicode);
 
         Assert.Equal("", spec.Headers[^1]);
         var marks = spec.Rows[0][^1];
@@ -299,38 +295,15 @@ public class ShelfTableTests
     }
 
     [Fact]
-    public void THE_CURATED_SHELF_DROPS_THE_PUBLISHER_FROM_EVERY_ROW_because_the_header_says_it()
-    {
-        var rows = new[] { Row("unsloth/abc-GGUF") };
-
-        Assert.Equal("abc-GGUF", ShelfTable.Spec(rows, ShelfStage.Full, "unsloth", Gatto.Core.Hardware.MachineShape.Discrete, glyphs: GlyphSet.Unicode).Rows[0][0]);
-        //when the header names no publisher, the row name keeps the publisher
-        Assert.Equal("unsloth/abc-GGUF", ShelfTable.Spec(rows, ShelfStage.Full, null, Gatto.Core.Hardware.MachineShape.Discrete, glyphs: GlyphSet.Unicode).Rows[0][0]);
-        //don't assert the state sentence here, its one home is ShelfBinding.StateSentence
-    }
-
-    [Fact]
-    public void A_DATE_WE_WERE_NEVER_GIVEN_IS_AN_EMPTY_CELL_never_a_guess()
-    {
-        //a date we weren't given reads as a blank cell (a blank can't mislead)
-        var spec = ShelfTable.Spec([Row("unsloth/a-GGUF", modified: null)], ShelfStage.Full, "unsloth", Gatto.Core.Hardware.MachineShape.Discrete, glyphs: GlyphSet.Unicode);
-
-        Assert.Equal("", Cell(spec, "updated"));
-        Assert.Equal("2026-08", Cell(
-            ShelfTable.Spec([Row("unsloth/a-GGUF")], ShelfStage.Full, "unsloth", Gatto.Core.Hardware.MachineShape.Discrete, glyphs: GlyphSet.Unicode),
-            "updated"));
-    }
-
-    [Fact]
     public void AN_UNCONVENTIONAL_FILENAME_LEAVES_THE_QUANT_BLANK_rather_than_inventing_one()
     {
         //an odd file name leaves the quant cell blank, the rule omits rather than guesses
         var spec = ShelfTable.Spec(
-            [Row("unsloth/a-GGUF", file: "weights.gguf")], ShelfStage.Full, "unsloth", Gatto.Core.Hardware.MachineShape.Discrete, glyphs: GlyphSet.Unicode);
+            [Row("unsloth/a-GGUF", file: "weights.gguf")], ShelfStage.Full, Gatto.Core.Hardware.MachineShape.Discrete, glyphs: GlyphSet.Unicode);
 
         Assert.Equal("", Cell(spec, "quant"));
         Assert.Equal("Q4_K_M", Cell(
-            ShelfTable.Spec([Row("unsloth/a-GGUF")], ShelfStage.Full, "unsloth", Gatto.Core.Hardware.MachineShape.Discrete, glyphs: GlyphSet.Unicode),
+            ShelfTable.Spec([Row("unsloth/a-GGUF")], ShelfStage.Full, Gatto.Core.Hardware.MachineShape.Discrete, glyphs: GlyphSet.Unicode),
             "quant"));
     }
 

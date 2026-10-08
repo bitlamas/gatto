@@ -1,7 +1,7 @@
 namespace Gatto.Repl.Input;
 
-//the two-press chord currently armed
-public enum Chord { None, ClearComposer, Quit }
+//the two-press chord currently armed. the wizard's Ctrl+C chord is its own value, apart from its Esc chord, so arming one disarms the other
+public enum Chord { None, ClearComposer, Quit, Leave }
 
 //the press-again state machine behind Esc·Esc and Ctrl+C·Ctrl+C, arming one chord disarms the other, and time is passed in
 public sealed class ArmedChord

@@ -16,9 +16,9 @@ public class HaveMarksTests
                 BlockCount: 32, HeadCount: 32, HeadCountKv: 8, EmbeddingLength: 4096,
                 KeyLength: 128, ValueLength: 128, ChatTemplate: null));
 
-    private static ShelfRow HubRow(string repo = "unsloth/gemma-4-26B-A4B-it",
+    private static ModelRow HubRow(string repo = "unsloth/gemma-4-26B-A4B-it",
         string file = "gemma-4-26B-A4B-it-Q4_K_M.gguf") =>
-        new(repo, "unsloth", new HubQuant(file, 4_000_000_000, null),
+        ShelfRows.Of(repo, "unsloth", new HubQuant(file, 4_000_000_000, null),
             FitRegime.FitsGpu, 262144, false, Badge: null, Downloads: 5, Gated: false,
             Params: 25_200_000_000);
 

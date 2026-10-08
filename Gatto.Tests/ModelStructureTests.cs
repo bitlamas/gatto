@@ -182,9 +182,9 @@ public class ModelStructureTests
             .Rows(Row(), facts, MachineShape.Discrete, 40)
             .Select(r => r.Text.TrimEnd()));
 
-        //the pane drops the A when it reads the number back, so the cell says MoE A4B and the line says reads 4B params/token
+        //the pane drops the A when it reads the number back, so the cell says MoE A4B and the line says reads 4B/token
         Assert.Contains("MoE A4B", facts.Structure!, StringComparison.Ordinal);
-        Assert.Contains("reads 4B params/token", text, StringComparison.Ordinal);
+        Assert.Contains("reads 4B/token", text, StringComparison.Ordinal);
     }
 
     //a bare MoE cell must still render the experts line. a real file reaches this shape
@@ -202,7 +202,7 @@ public class ModelStructureTests
         Assert.Contains("reads 10 of 512 experts/token", text, StringComparison.Ordinal);
     }
 
-    private static ShelfRow Row() => new(
+    private static ModelRow Row() => ShelfRows.Of(
         "qwen/Qwen3.8-27B-GGUF", "qwen", new HubQuant("q.gguf", 16_000_000_000, null),
         FitRegime.FitsGpu, 32768, false, null, 100, false);
 }

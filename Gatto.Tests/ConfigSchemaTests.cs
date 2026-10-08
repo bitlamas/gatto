@@ -146,18 +146,6 @@ public class ConfigSchemaTests
         Assert.False(root.GetProperty("additionalProperties").GetBoolean());
     }
 
-    //the default_publisher enum must come from the allowlist in Core\Acquire, a copy drifts on the first new org. without the enum, no editor can complete the key
-    [Fact]
-    public void THE_PUBLISHER_ENUM_IS_EXACTLY_THE_DATED_ALLOWLIST()
-    {
-        var offered = At(Root(), "properties.default_publisher.enum")
-            .EnumerateArray().Select(v => v.GetString()!)
-            .OrderBy(v => v, StringComparer.Ordinal).ToArray();
-        var accepted = Sorted([.. Gatto.Core.Acquire.UploaderAllowlist.Load().Orgs]);
-
-        Assert.Equal(accepted, offered);
-    }
-
     //the regions key stays described and marked deprecated, dropping it makes an editor flag a config gatto loads without complaint
     [Fact]
     public void REGIONS_IS_DESCRIBED_AND_MARKED_DEPRECATED()

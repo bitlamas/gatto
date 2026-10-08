@@ -366,6 +366,11 @@ public class CommandCorpusTests : IDisposable
         "audition-report-fabrication-Dark", "audition-report-fabrication-Plain",
         "audition-report-stopped-Dark", "audition-report-stopped-Plain",
         "audition-progress-Dark", "audition-progress-Plain",
+        "shelf-landing-discrete-Dark", "shelf-landing-discrete-Plain",
+        "shelf-landing-unified-Dark", "shelf-landing-unified-Plain",
+        "shelf-landing-nocard-Dark", "shelf-landing-nocard-Plain",
+        "shelf-lifted-discrete-Dark", "shelf-lifted-discrete-Plain",
+        "shelf-open-discrete-Dark", "shelf-open-discrete-Plain",
         //these come from ServeCorpusTests, and they are named here because the manifest asserts the whole directory
         "serve-stop-live-Dark", "serve-stop-live-Plain",
         "serve-stop-kill-failed-Dark", "serve-stop-kill-failed-Plain",

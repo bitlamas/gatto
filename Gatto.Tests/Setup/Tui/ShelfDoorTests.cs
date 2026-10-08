@@ -7,7 +7,7 @@ namespace Gatto.Tests.Setup.Tui;
 //the shelf's search field takes typed text, and that answer is read before AnswerSearch's numbered tail, which throws on anything else
 public class ShelfDoorTests
 {
-    private static readonly ConsoleKeyInfo Slash = new('/', ConsoleKey.Oem2, false, false, false);
+    private static readonly ConsoleKeyInfo Slash = new('?', ConsoleKey.Oem2, false, false, false);
     private static ConsoleKeyInfo Key(ConsoleKey k) => new('\0', k, false, false, false);
 
     private static IEnumerable<ConsoleKeyInfo> Type(string text) =>
@@ -70,7 +70,7 @@ public class ShelfDoorTests
     public void THE_ARROWS_STILL_WALK_THE_TABLE_FROM_THE_DOOR()
     {
         var (answer, _) = WalkRender.Answered(ShelfTests.Screen(ShelfTests.Unified96()), 100,
-            [Slash, Key(ConsoleKey.DownArrow), Key(ConsoleKey.Escape), Key(ConsoleKey.Enter)]);
+            [Slash, Key(ConsoleKey.DownArrow), Key(ConsoleKey.Enter), Key(ConsoleKey.Enter)]);
 
         Assert.Equal("1", answer);
     }

@@ -94,12 +94,50 @@ public class QuantTokenTests
         Assert.Equal("Q4_K_M", QuantToken.Of(good));
     }
 
+    //a token can end a segment after an underscore, and each underscore is tried from the first, so 26B_q4_0 reads Q4_0 and not the last 0
+    [Theory]
+    [InlineData("gemma-4-26B_q4_0-it.gguf", "Q4_0")]
+    [InlineData("model_Q4_K_M.gguf", "Q4_K_M")]
+    [InlineData("Qwen3.5-9B-UD-Q4_K_XL.gguf", "Q4_K_XL")]
+    [InlineData("mmproj-F16.gguf", "F16")]
+    [InlineData("weights_v2_1.gguf", null)]
+    public void A_TOKEN_AFTER_ANY_UNDERSCORE_IS_READ(string name, string? token) =>
+        Assert.Equal(token, QuantToken.Of(name));
+
+    //the floor reads one number per token: the bits after Q or IQ, or the float width
+    [Theory]
+    [InlineData("Q4_K_M", 4)] [InlineData("IQ4_XS", 4)] [InlineData("Q4_0", 4)]
+    [InlineData("IQ3_XXS", 3)] [InlineData("Q3_K_L", 3)] [InlineData("Q2_K", 2)]
+    [InlineData("IQ1_S", 1)] [InlineData("MXFP4", 4)] [InlineData("BF16", 16)] [InlineData("F32", 32)]
+    public void THE_CLASS_IS_THE_NUMBER_AFTER_Q(string token, int cls) =>
+        Assert.Equal(cls, QuantToken.ClassOf(token));
+
+    [Fact]
+    public void NO_TOKEN_HAS_NO_CLASS() => Assert.Null(QuantToken.ClassOf(null));
+
+    //the floor is class 4 up, 3 up at 20B or more, everything with a token when lifted, and never a file with no token
+    [Theory]
+    [InlineData("m-Q4_K_M.gguf", 9_000_000_000L, false, true)]
+    [InlineData("m-Q3_K_L.gguf", 9_000_000_000L, false, false)]
+    [InlineData("m-Q3_K_L.gguf", 27_000_000_000L, false, true)]
+    [InlineData("m-IQ2_XXS.gguf", 27_000_000_000L, false, false)]
+    [InlineData("m-IQ2_XXS.gguf", 27_000_000_000L, true, true)]
+    [InlineData("m-BF16.gguf", 9_000_000_000L, false, true)]
+    [InlineData("weights.gguf", 9_000_000_000L, true, false)]
+    public void THE_FLOOR(string name, long total, bool lifted, bool admitted) =>
+        Assert.Equal(admitted, QuantToken.AtFloor(name, total, lifted));
+
+    //a model with no total takes the Q4 floor
+    [Fact]
+    public void NO_TOTAL_TAKES_THE_Q4_FLOOR() =>
+        Assert.False(QuantToken.AtFloor("m-Q3_K_L.gguf", null, false));
+
     private static IReadOnlyList<string> Shelf(string fileName) =>
         ShelfTable.Render(
-            [new ShelfRow("o/m", "o", new HubQuant(fileName, 4_000_000_000, "sha"),
+            [ShelfRows.Of("o/m", "o", new HubQuant(fileName, 4_000_000_000, "sha"),
                 FitRegime.FitsGpu, NativeCtx: 262144, Vision: false, Badge: null,
                 Downloads: 10, Gated: false)],
-            new Theme(new TermCaps(Rich: false, TrueColor: false)), 140, "o", Gatto.Core.Hardware.MachineShape.Discrete, glyphs: GlyphSet.Unicode)
+            new Theme(new TermCaps(Rich: false, TrueColor: false)), 140, Gatto.Core.Hardware.MachineShape.Discrete, glyphs: GlyphSet.Unicode)
         .Select(r => r.Text).ToList();
 
     private static bool StatusQuant(string fileName, out string? token)

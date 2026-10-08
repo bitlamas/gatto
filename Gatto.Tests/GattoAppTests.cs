@@ -560,8 +560,6 @@ public class GattoAppTests : IDisposable
         public string? LlamaServerPath() => null;
         public bool HasResolvableModel() => throw new NotSupportedException();
         public Gatto.Cli.Setup.ScanResult Scan(string? extraRoot) => throw new NotSupportedException();
-        public Gatto.Core.Acquire.HubSearchOutcome Search(Gatto.Core.Acquire.HubSearchRequest request) =>
-            throw new NotSupportedException();
         public (string Path, long Bytes)? ProjectorFor(string p) => null;
         public string? ArchitectureOf(string p) => null;
         public Gatto.Cli.Setup.MoveOffer? MoveOfferFor(string p) => null;

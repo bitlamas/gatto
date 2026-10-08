@@ -24,7 +24,7 @@ public class SiblingFileNotLoadedTests
     //both files answer the same id, since a profile's files all resolve to their profile
     private static WizardProbes Probes(string? loadedPath) => new()
     {
-        Rows = [new("unsloth/gemma-4-e4b", "unsloth",
+        Rows = [ShelfRows.Of("unsloth/gemma-4-e4b", "unsloth",
             new HubQuant("gemma-4-e4b-Q4_K_M.gguf", 4_000_000_000, null),
             FitRegime.FitsGpu, 262144, false, Badge: null, Downloads: 5, Gated: false,
             Params: 4_000_000_000)],
@@ -48,7 +48,7 @@ public class SiblingFileNotLoadedTests
     {
         var at = v.Rows
             .Select((r, i) => (r, i))
-            .Single(x => x.r.PickedQuant.FileName.Equals(fileName, StringComparison.OrdinalIgnoreCase))
+            .Single(x => x.r.RowQuant!.FileName.Equals(fileName, StringComparison.OrdinalIgnoreCase))
             .i;
         return v.Facts![at].Have;
     }
@@ -98,10 +98,10 @@ public class SiblingFileNotLoadedTests
     {
         var at = v.Rows
             .Select((r, i) => (r, i))
-            .Single(x => x.r.PickedQuant.FileName.Equals(fileName, StringComparison.OrdinalIgnoreCase))
+            .Single(x => x.r.RowQuant!.FileName.Equals(fileName, StringComparison.OrdinalIgnoreCase))
             .i;
         return Pane.Rows(v.Rows[at], v.Facts![at], v.Shape, 100,
-                cursor: at, focused: false, build: -1, focus: Region.List)
+                cursor: at, focused: false)
             .Single(row => row.Text.Contains("added", StringComparison.Ordinal)
                         || row.Text.Contains("loaded", StringComparison.Ordinal))
             .Text;

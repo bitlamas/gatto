@@ -159,6 +159,9 @@ internal sealed class SetupFlow(ISetupProbes probes)
     //render back as a row rather than a keystroke, so both askable kinds stay uniform without touching SelectPrompt
     public const string BackKey = "back";
 
+    //a typed screen's answer that leaves the wizard, where a bare null still means back for a face with no leave of its own
+    public const string LeaveKey = "leave";
+
     //say why going back is refused and what to do instead (a re-run probes as satisfied and only adds)
     public const string BackRefused =
         "can't go back, the model and config were already written; finish, then re-run gatto setup "
@@ -181,26 +184,12 @@ internal sealed class SetupFlow(ISetupProbes probes)
     public const string Elsewhere = "elsewhere";
     public const string SearchInstead = "search";
     public const string TypeAnId = "typeid";
-    //widen to every approved publisher in one step, offer no way to narrow again (the narrow shelf already failed)
-    public const string Broaden = "broaden";
-
-    //name what a control press did and let the face translate it, so the flow needs no second entry point. put the pressed key in the face
-    public const string CtlPublisher = "shelf.publisher";
-
-    //open the publisher picker from its slot, re-search as the picked publisher, and return to the shelf on Esc.
-    public const string PublisherKey = "model.publisher";
-
-    //prefix the picker row's answer, a publisher slug and a screen key are both strings and a bare one could match an option key
-    public const string PickPublisher = "publisher:";
-
-    //put the wide shelf on its own picker row (the only way to all publishers)
-    public const string PickEveryPublisher = "publisher:*";
-
     //prefix the shelf's typed answer, a typed number and a row index are the same string
     public const string CtlTyped = "shelf.typed:";
-    public const string CtlSort = "shelf.sort";
     public const string CtlLift = "shelf.lift";
     public const string CtlSearch = "shelf.search";
+    //the params header's click, which re-arranges the rows in hand and asks the engine nothing
+    public const string CtlParams = "shelf.params";
 
     //prefix the family answer with the chip's own name, the face hands it over and the helper composes it (other controls take no argument)
     public const string CtlFamily = "shelf.family:";
@@ -384,71 +373,68 @@ internal sealed class SetupFlow(ISetupProbes probes)
 
     //record that default_model reached disk, the leaving sentence must come from the completed write. set it only after the done-pause's write applies
     private bool _defaultLanded;
-    private IReadOnlyList<ShelfRow> _rows = [];
+    private IReadOnlyList<ModelRow> _rows = [];
     //hold why the last search was empty when the engine can say, and read it with the row count (null covers both cases)
     private HubSearchCause? _searchCause;
-    //open the curated shelf and let the broaden row move it (curated shows the dated publisher by download count)
-    private HubSearchView _view = HubSearchView.Curated;
-
-    //keep the chosen axis null until the user picks one (null means nobody chose and the view's own order answers)
-    private SearchOrder? _axis;
-
     //default the fit filter to on, and say what it hid (a is what lifts it)
     private bool _lift;
 
-    //leave the family null for all, all is the absence of a filter and a stored string would miss the family lookup
-    private string? _family;
+    //the repo a typed id looked up while its one-row shelf is showing, null once any search replaces it
+    private string? _lookedUp;
+
+    //the families the Hub shelf lists, the landing pair at open
+    private IReadOnlySet<string> _lit = new HashSet<string>(Families.Load().Landing, StringComparer.OrdinalIgnoreCase);
+
+    //every family on the chip row, which is what all lights
+    private static IReadOnlySet<string> EveryFamily() =>
+        new HashSet<string>(Families.Load().Ladder.Where(f => f != "all"), StringComparer.OrdinalIgnoreCase);
+
+    //the one chip the face lights for a lit set: the family itself, all for every family, none for a pair
+    private string? LitChip() =>
+        _lit.Count == 1 ? _lit.First() : _lit.SetEquals(EveryFamily()) ? "all" : null;
+
+    //the families lit when the shelf opens, and what the chip row comes back to when it would be empty
+    private static IReadOnlySet<string> LandingPair() =>
+        new HashSet<string>(Families.Load().Landing, StringComparer.OrdinalIgnoreCase);
+
+    //a chip toggles its family, all lights every family and a second all brings the landing pair back. the row is never empty
+    private void Light(string chip)
+    {
+        var every = EveryFamily();
+        if (chip is "all" or "")
+        {
+            _lit = _lit.SetEquals(every) ? LandingPair() : every;
+            return;
+        }
+        var next = new HashSet<string>(_lit, StringComparer.OrdinalIgnoreCase);
+        if (!next.Remove(chip)) next.Add(chip);
+        _lit = next.Count == 0 ? LandingPair() : next;
+    }
+
+    //the params sort as the user last clicked it, null while the engine's own order stands
+    private bool? _smallestFirst;
+
+    //the rows in hand by total parameters, the direction the click chose, a row with no total last
+    private IReadOnlyList<ModelRow> Sorted(IReadOnlyList<ModelRow> rows) => _smallestFirst switch
+    {
+        true => [.. rows.OrderBy(r => r.Params is null).ThenBy(r => r.Params ?? 0).ThenBy(r => r.Model, StringComparer.Ordinal)],
+        false => [.. rows.OrderBy(r => r.Params is null).ThenByDescending(r => r.Params ?? 0).ThenBy(r => r.Model, StringComparer.Ordinal)],
+        null => rows,
+    };
 
     //keep the local shelf's chip in its own field, one shared family could empty the local shelf when the user narrows the Hub
     private string? _localFamily;
 
-    //draw the approved publishers as a screen, the wizard borrows no REPL component. mark the current publisher rather than hide it
-    private WizardScreen PublisherPicker()
-    {
-        var approved = probes.ApprovedPublishers();
-        var current = _publisher ?? _curatedPublisher;
-
-        return Emit(new WizardScreen.Choice(
-            PublisherKey,
-            "Which publisher should gatto search?",
-            [
-                .. approved.Select(p => new ChoiceOption(
-                    PickPublisher + p, p,
-                    //take the mark from the option's own recommended flag, so the screen cannot tick one name and answer with another.
-                    Recommended: _view == HubSearchView.Curated
-                        && string.Equals(p, current, StringComparison.OrdinalIgnoreCase),
-                    //word the mark current rather than recommended, it means the shelf searches this publisher
-                    MarkWord: "current")),
-                new ChoiceOption(PickEveryPublisher, "Every approved publisher",
-                    Recommended: _view == HubSearchView.Broadened, MarkWord: "current"),
-            ],
-            BodyRows:
-            [
-                new WizardRow("gatto searches publishers it has reviewed, so a search cannot reach "
-                    + "an upload nobody looked at."),
-            ]), PublisherKey);
-    }
-
-    //keep the chosen publisher on the request, one keystroke must not change a stored setting
-    private string? _publisher;
-
     //keep the searched words, the empty screen quotes them and a re-run searches the same. clear them when a family chip is pressed, the engine cannot hold both
     private string? _search;
 
-    //latch whether the curated view can narrow, a non-null publisher on the first search means the allowlist's default view is a real org
-
-
-    //take the hidden-by-fit count from the engine, a screen that recomputed it would hold a second opinion about a measured number
-    private int _hiddenByFit;
-    //count the rows set aside below and above the reviewed generation in two buckets (the count line names them separately)
-    private int _hiddenOlder;
-    private int _hiddenNewer;
-    //keep the hidden-by-kind count apart from the fit count, only the fit count has a key to undo it
+    //keep the hidden-by-kind count from the engine, since nothing on the shelf undoes it
     private int _hiddenByKind;
-    //keep the family count separate from the kind count, only the family filter is undone by pressing a
-    private int _hiddenByFamily;
-    //name the publisher whose shelf this is, and branch the copy on it rather than the view, so the copy describes what was searched.
-    private string? _curatedPublisher;
+    //whether a would show more than this shelf, as the engine said, so the count row promises a only when it can keep the promise
+    private bool _moreBehind;
+
+    //the last search's regime counts and why it stopped short, which the count row reads
+    private ShelfOutcome? _counted;
     //keep the projector found beside the chosen model from the ask to its answer, per run like every other field here.
     private string? _projector;
     //keep the replace flag across the projector ask, that ask sits between the collision answer and the scaffold
@@ -702,7 +688,7 @@ internal sealed class SetupFlow(ISetupProbes probes)
     public FoundModel? Selected { get; private set; }
 
     //the shelf row the user chose when the model comes from the Hub. the browser does the download, this flow only records the choice
-    public ShelfRow? Picked { get; private set; }
+    public ModelRow? Picked { get; private set; }
 
     //whether the user asked to go straight into gatto when setup ends (the caller does the launching)
     public bool StartReplWhenDone { get; private set; }
@@ -715,17 +701,19 @@ internal sealed class SetupFlow(ISetupProbes probes)
         string? Awaiting, ConnectProbe? Found, IReadOnlyList<FoundModel> Discovered,
         //store the typed folder beside the rows it filtered (a user choice, going back restores both together)
         string? ScanTyped,
-        IReadOnlyList<ShelfRow> Rows, HubSearchCause? SearchCause, HubSearchView View,
-        //the Axis and Lift controls travel with going back, the next search reads them. shelf counts stay out, a search runs before each render and rewrites them
-        SearchOrder? Axis, bool Lift,
-        //the search, the family and the publisher stay live rather than snapshotted. back must show the shelf as the user left it filtered
-        string? CuratedPublisher, string? ModelId, string? LlamaPath, AuditionCheck? Check,
+        IReadOnlyList<ModelRow> Rows, HubSearchCause? SearchCause,
+        //the lift travels with going back, the next search reads it. shelf counts stay out, a search runs before each render and rewrites them
+        bool Lift,
+        //the search, the lit families and the params sort stay live rather than snapshotted. back must show the shelf as the user left it
+        string? ModelId, string? LlamaPath, AuditionCheck? Check,
         string? ConnectBaseUrl, int ConnectContext, string? ConnectEndpointName,
         bool ConnectBesideLocal,
-        SetupPath Path, WriteSet Writes, FoundModel? Selected, ShelfRow? Picked,
+        SetupPath Path, WriteSet Writes, FoundModel? Selected, ModelRow? Picked,
         bool StartReplWhenDone, WizardScreen Screen,
         //whether this step's screen came from a control that hit no list. going back restores the flag, so a control pressed there still undoes the step
-        bool ControlStep);
+        bool ControlStep,
+        //the repo a typed id landed on, so going back shows that one-row shelf again rather than re-running a search
+        string? LookedUp);
 
     //a stack of snapshots, no persistence and no resume (replaying would re-run probes, which are neither free nor idempotent)
     private readonly Stack<Snapshot> _back = new();
@@ -736,11 +724,10 @@ internal sealed class SetupFlow(ISetupProbes probes)
     private WizardScreen? LastScreen => _emitted.Count > 0 ? _emitted[^1] : null;
 
     private Snapshot Capture(WizardScreen screen) => new(
-        _awaiting, _found, _discovered, _scanTyped, _rows, _searchCause, _view, _axis, _lift,
-        _curatedPublisher,
+        _awaiting, _found, _discovered, _scanTyped, _rows, _searchCause, _lift,
         _modelId, _llamaPath, _check,
         _connectBaseUrl, _connectContext, _connectEndpointName, _besideLocal,
-        Path, Writes, Selected, Picked, StartReplWhenDone, screen, _controlStep);
+        Path, Writes, Selected, Picked, StartReplWhenDone, screen, _controlStep, _lookedUp);
 
     //step back to the previous screen with the state it was answered under. after a write the step refuses with a screen, so the flow shows it and a test can open it
     private WizardScreen Back()
@@ -748,6 +735,9 @@ internal sealed class SetupFlow(ISetupProbes probes)
         if (!CanGoBack)
             //second guard, reachable when a face offers back without advertising AllowBack. it renders a sentence (silence would teach the user their key is broken)
             return Emit(new WizardScreen.Info("back.refused", [new WizardRow(BackRefused)]), _awaiting);
+
+        //a step back keeps the partial the drop screen offered to delete, so a later leave cannot delete what no screen it shows has priced, and a resume finds it
+        _droppedPartial = null;
 
         //back from an empty typed-folder shelf goes to the machine's shelf. steps of the same search are skipped, and one entry always stays
         if (_awaiting == DiscoveredKey && _scanTyped is not null && _discovered.Count == 0)
@@ -761,10 +751,7 @@ internal sealed class SetupFlow(ISetupProbes probes)
         _scanTyped = s.ScanTyped;
         _rows = s.Rows;
         _searchCause = s.SearchCause;
-        _view = s.View;
-        _axis = s.Axis;
         _lift = s.Lift;
-        _curatedPublisher = s.CuratedPublisher;
         _modelId = s.ModelId;
         _llamaPath = s.LlamaPath;
         _check = s.Check;
@@ -778,9 +765,10 @@ internal sealed class SetupFlow(ISetupProbes probes)
         Selected = s.Selected;
         Picked = s.Picked;
         StartReplWhenDone = s.StartReplWhenDone;
+        _lookedUp = s.LookedUp;
 
-        //recompose the shelf from live fields and re-run the search, a chips row could otherwise show a filter the rows lack
-        if (s.Screen is WizardScreen.Choice { Key: SearchKey }) return Search();
+        //recompose the shelf from live fields and re-run the search, a chips row could otherwise show a filter the rows lack. a looked-up row has no search to re-run
+        if (s.Screen is WizardScreen.Choice { Key: SearchKey }) return _lookedUp is not null ? SearchScreen() : Search();
 
         //the screen is emitted again, the transcript keeps both visits (both happened)
         return Emit(WithBack(s.Screen), s.Awaiting);
@@ -1111,10 +1099,10 @@ internal sealed class SetupFlow(ISetupProbes probes)
             return Back();
         }
 
-        //unwrap the pane's pick before the dispatch, the row's own key continues as if no pane existed and consumers read PickedQuant
+        //unwrap the pane's pick before the dispatch, the row's own key continues as if no pane existed and consumers read the row's file
         if (ShelfControls.Unpick(answer) is { } picked)
         {
-            ApplyPickedQuant(picked.Key, picked.Quant);
+            ApplyPickedFile(picked.Key, picked.File);
             answer = picked.Key;
         }
 
@@ -1207,8 +1195,6 @@ internal sealed class SetupFlow(ISetupProbes probes)
             ScanPathKey => DiscoverTyped(Gatto.Roles.LlamaAssetSteering.NormalizePath(answer)),
             SearchKey => AnswerSearch(answer),
             ShelfLoadingKey => AnswerShelfLoading(answer),
-            //the picker's rows are shelf answers and get their own arm. the census asks whether Answer can dispatch each screen, a shared key would answer that by accident
-            PublisherKey => AnswerSearch(answer),
             //route the typed-id ask through the same classifier, it gets the path handling too
             TypedIdKey => AnswerTypedText(answer),
             //guard the watch's own keys or a typed folder, same reason as the guards above
@@ -2455,7 +2441,7 @@ internal sealed class SetupFlow(ISetupProbes probes)
         _discovered = rescan.Found;
         _scanRoots = rescan.Roots;
         //return to consent when the rescan cannot find the arrival it announced, the watch would render a stale cause after a verified fetch
-        return _discovered.FirstOrDefault(m => Answers(m, Picked!.PickedQuant)) is { } landed
+        return _discovered.FirstOrDefault(m => Answers(m, Picked!.RowQuant!)) is { } landed
             ? Adopt(landed)
             : ModelConsent(_modelOffer!);
     }
@@ -2550,7 +2536,7 @@ internal sealed class SetupFlow(ISetupProbes probes)
                  new ChoiceOption(SearchInstead, "Find one to download instead")],
                 Door: $"type a folder path{Glyphs.Ellipsis}",
                 //pass no families for an empty shelf, the block takes the table's place and the chips row draws nothing
-                Shelf: new ShelfView([], null, Shape, Source: ShelfSource.Local, Empty: EmptyLocalRows())),
+                Shelf: new ShelfView([], Shape, Source: ShelfSource.Local, Empty: EmptyLocalRows())),
                 DiscoveredKey);
 
         if (_discovered.Count == 0)
@@ -2598,8 +2584,10 @@ internal sealed class SetupFlow(ISetupProbes probes)
     }
 
     //the fit check decides the shelf's rows. an empty result offers the ways that still work
-    private WizardScreen Search(IReadOnlyList<ShelfRow>? keepIfEmpty = null, Func<WizardScreen>? then = null)
+    private WizardScreen Search(IReadOnlyList<ModelRow>? keepIfEmpty = null, Func<WizardScreen>? then = null)
     {
+        //any search replaces a looked-up row
+        _lookedUp = null;
         //drop _scanTyped here, every path from the local shelf to the Hub passes through this method. a latch outliving its shelf would filter the next
         _scanTyped = null;
         //every Hub search runs behind the loading shelf where the face draws one, so a chip or a typed word never freezes the frame
@@ -2610,48 +2598,40 @@ internal sealed class SetupFlow(ISetupProbes probes)
     }
 
     //the query as the controls set it now, read on the flow's thread so a load carries the question that was asked
-    private HubSearchRequest CurrentRequest() =>
-        new(_view, _axis, _lift, RowBudget, _search, _family, _publisher);
+    private ModelSearchRequest CurrentRequest() => new(_lit, _lift, _search);
 
     //run the search without emitting a screen, the caller reads the outcome first and a screen no face painted would still sit in _emitted
-    private void RunSearch(IReadOnlyList<ShelfRow>? keepIfEmpty) =>
-        ApplySearch(probes.Search(CurrentRequest()), keepIfEmpty);
+    private void RunSearch(IReadOnlyList<ModelRow>? keepIfEmpty) =>
+        ApplySearch(probes.SearchModels(CurrentRequest(), null, CancellationToken.None), keepIfEmpty);
 
     //the search's fields set from its outcome, on the flow's thread whether the search ran here or behind the loading shelf
-    private void ApplySearch(HubSearchOutcome outcome, IReadOnlyList<ShelfRow>? keepIfEmpty)
+    private void ApplySearch(ShelfOutcome outcome, IReadOnlyList<ModelRow>? keepIfEmpty)
     {
-
-        //keep the rows when a sort returns nothing, the sort control must never empty the list it arranges. re-sort them through the shared Arrange
+        //keep the rows in hand when a search that only re-arranges returns nothing, so it never empties the list it arranges
         if (outcome.Rows.Count == 0 && keepIfEmpty is { Count: > 0 } kept)
         {
             //set _carriedOver where the fallback happened rather than from the result's shape, so the sentence can say the order changed but the selection did not
             _carriedOver = true;
-            var badges = kept.ToDictionary(r => r.RepoId, r => r.Badge, StringComparer.OrdinalIgnoreCase);
-            _rows = [.. HubSearch.Arrange(kept, _axis ?? HubSearch.OrderFor(_view),
-                HubSearch.OrderFor(_view), id => badges.GetValueOrDefault(id))];
+            _rows = kept;
         }
         else
         {
             _carriedOver = false;
-            _rows = outcome.Rows;
+            _rows = Sorted(outcome.Rows);
             _searchCause = outcome.Cause;
-            _hiddenByFit = outcome.HiddenByFit;
             _hiddenByKind = outcome.HiddenByKind;
-            _hiddenByFamily = outcome.HiddenByFamily;
-            _hiddenOlder = outcome.HiddenOlder;
-            _hiddenNewer = outcome.HiddenNewer;
+            _moreBehind = outcome.MoreBehindA;
+            _counted = outcome;
         }
         //set _stoodOnAShelf from the rows that came back, so it reports the shelf the user actually has
         if (_rows.Count > 0) _stoodOnAShelf = true;
-        //refresh _curatedPublisher from the new outcome even when the rows were held, a sort leaves the view unchanged
-        _curatedPublisher = outcome.CuratedPublisher;
     }
 
     //one load of the shelf: the scan and the search it waits for, both returning facts and writing no field, and the screen it lands on
     private sealed record ShelfLoad(
         ShelfSource Source, Task<ScanResult>? Scan, string? ScanRoot,
-        Task<HubSearchOutcome>? Search, CancellationTokenSource? Stop,
-        IReadOnlyList<ShelfRow>? KeepIfEmpty, Func<WizardScreen> Then,
+        Task<ShelfOutcome>? Search, CancellationTokenSource? Stop,
+        IReadOnlyList<ModelRow>? KeepIfEmpty, Func<WizardScreen> Then,
         Task? Other = null, string? Step = null,   //another wait the landing reads through Then, a typed repo id's lookup, with the step line that names it
         bool Opening = false,   //drawn on the start-up screen rather than the loading shelf
         Serving? Serving = null);   //the serving probe the landed shelf marks its loaded model from
@@ -2687,7 +2667,7 @@ internal sealed class SetupFlow(ISetupProbes probes)
 
     //start the scan, the search or both on the pool and draw the loading shelf at once. a scan already running can be carried over
     private WizardScreen StartLoad(bool scan, string? scanRoot, bool search,
-        IReadOnlyList<ShelfRow>? keepIfEmpty, Func<WizardScreen> then,
+        IReadOnlyList<ModelRow>? keepIfEmpty, Func<WizardScreen> then,
         ShelfSource source = ShelfSource.Hub, Task<ScanResult>? scanning = null,
         Task? other = null, string? step = null, bool opening = false, bool serving = true)
     {
@@ -2711,7 +2691,7 @@ internal sealed class SetupFlow(ISetupProbes probes)
 
         _load = new ShelfLoad(source,
             scanning ?? (scan ? Task.Run(() => probes.Scan(scanRoot)) : null), scanRoot,
-            search ? Task.Run(() => probes.Search(request, sink, token)) : null, stop,
+            search ? Task.Run(() => probes.SearchModels(request, sink, token)) : null, stop,
             keepIfEmpty, then, other, step, opening, serving ? _serving : null);
         return LoadingScreen();
     }
@@ -2740,8 +2720,9 @@ internal sealed class SetupFlow(ISetupProbes probes)
             ModelTitle,
             [],
             //the face reads no shape from a loading view, so the machine is not read before the first frame
-            Shelf: new ShelfView([], hub ? _curatedPublisher : null, Gatto.Core.Hardware.MachineShape.CpuOnly,
-                Families: Families.Load().Ladder, Family: (hub ? _family : _localFamily) ?? "all",
+            Shelf: new ShelfView([], Gatto.Core.Hardware.MachineShape.CpuOnly,
+                Families: Families.Load().Ladder, Family: hub ? LitChip() : _localFamily ?? "all",
+                Lit: hub ? _lit : null,
                 Source: hub ? ShelfSource.Hub : ShelfSource.Local,
                 Folder: hub ? null : _scanTyped,
                 Searched: hub && _search is { Length: > 0 },
@@ -2827,8 +2808,7 @@ internal sealed class SetupFlow(ISetupProbes probes)
 
         if (load.Search is not null && key.StartsWith(CtlFamily, StringComparison.Ordinal))
         {
-            var chip = key[CtlFamily.Length..];
-            _family = chip is "all" or "" ? null : chip;
+            Light(key[CtlFamily.Length..]);
             _search = null;
             return RestartSearch(load);
         }
@@ -2839,7 +2819,6 @@ internal sealed class SetupFlow(ISetupProbes probes)
             && !HubUrl.TryParse(typed, out _))
         {
             _search = typed.Trim().Length == 0 ? null : typed.Trim();
-            if (_search is not null) _family = null;
             return RestartSearch(load);
         }
 
@@ -2864,7 +2843,8 @@ internal sealed class SetupFlow(ISetupProbes probes)
     {
         _load = null;
         if (load.Scan is { } scan) ApplyScan(Joined(scan, new ScanResult([], [])), load.ScanRoot);
-        if (load.Search is { } search) ApplySearch(Joined(search, new HubSearchOutcome([], null)), load.KeepIfEmpty);
+        if (load.Search is { } search)
+            ApplySearch(Joined(search, new ShelfOutcome([], 0, 0, 0, false, 0, [], null)), load.KeepIfEmpty);
         WizardScreen shown;
         _servingNow = load.Serving is { } serving ? (Joined(serving.Id, null), Joined(serving.Path, null)) : null;
         try { shown = load.Then(); }
@@ -2922,9 +2902,6 @@ internal sealed class SetupFlow(ISetupProbes probes)
         {
             //the allowlist shapes browsing, a user can still type any model by name
             options.Add(new ChoiceOption(TypeAnId, "Type a model's name from Hugging Face"));
-            //gate this on the curated slug, a dropped slug already searched everyone. a widen row over a wide list is a row that does nothing
-            if (_curatedPublisher is { Length: > 0 })
-                options.Add(new ChoiceOption(Broaden, "Show models from every approved publisher"));
         }
         //keep the neutral empty branch, it claims nothing and covers an emptiness the engine cannot evidence
 
@@ -2943,24 +2920,22 @@ internal sealed class SetupFlow(ISetupProbes probes)
             //door and shelf appear together only when a family ladder is in force, whatever the row count. pass the shown slice, the cap above decided it
             Door: HasLadder ? ShelfDoorPlaceholderOf(Glyphs) : null,
             Shelf: !HasLadder ? null : new ShelfView(
-                [.. _rows.Take(shown)], _curatedPublisher, Shape,
-                //resolve the axis here, _axis is null until s and the view's default answers. one place decides, so header and rows cannot describe different orders
-                _axis ?? HubSearch.OrderFor(_view), _lift, _hiddenByFit,
+                [.. _rows.Take(shown)], Shape,
+                Lift: _lift,
                 //take the ladder from the families table, the chip order is recorded in families.json and a second copy could drift
-                Families: Families.Load().Ladder, Family: _family ?? "all",
-                CarriedOver: _carriedOver, HiddenByKind: _hiddenByKind,
-                //the local shelf feeds this field too, Shelf.cs composes the sentence for both sides
-                HiddenByFamily: _hiddenByFamily,
+                Families: Families.Load().Ladder, Family: LitChip(), Lit: _lit, SmallestFirst: _smallestFirst,
+                CarriedOver: _carriedOver, HiddenByKind: _hiddenByKind, MoreBehind: _moreBehind,
+                OnCard: _counted?.OnCard ?? 0, InMemory: _counted?.InMemory ?? 0, TooBig: _counted?.TooBig ?? 0,
+                Cut: _counted?.Cut ?? false, RateLimitedFor: _counted?.RateLimitedFor, RateLimited: _counted?.RateLimited ?? false,
                 //count what the budget left off from the rows this search produced, a budget-sized count could report rows that never existed
-                HiddenOlder: _hiddenOlder, HiddenNewer: _hiddenNewer,
-                Total: _rows.Count + _hiddenByFit + _hiddenOlder + _hiddenNewer,
+                Total: _rows.Count,
                 MoreBelow: _rows.Count - shown,
                 //build the facts over the same enumeration as the rows, the index alignment ShelfView guards then holds by construction
                 Facts: [.. _rows.Take(shown).Select(r => FactsFor(r, loadedId, hardware))],
                 //the option and the table read the same resume string from here, one home read twice
                 Resume: resume is null ? null : ResumeRow(resume),
-                //the chips row's own searched bit, separate from the fit toggle above
-                Searched: _search is { Length: > 0 },
+                //the chips row's own searched bit, separate from the fit toggle above. a looked-up repo is a search too
+                Searched: _search is { Length: > 0 } || _lookedUp is not null,
                 //leave Empty null whenever rows are on the shelf. the chip-empty line may not name a or all, neither would lift anything
                 Empty: ChipFoundNothing ? ChipEmptyRows()
                     : SearchFoundNothing ? SearchEmptyRows()
@@ -3002,7 +2977,7 @@ internal sealed class SetupFlow(ISetupProbes probes)
             [.. shown.Select(m => hw is null
                 ? LocalShelf.Unpriced(m, probes.BadgeForFile(System.IO.Path.GetFileName(m.Path)))
                 : LocalShelf.Row(m, hw, badge: probes.BadgeForFile(System.IO.Path.GetFileName(m.Path))))],
-            CuratedPublisher: null, Shape,
+            Shape,
             Families: Families.Load().Ladder, Family: _localFamily ?? "all",
             Total: _discovered.Count,
             //resolve a local row through ExistingModelFor and reuse the answer, the mark and the id are two readings of one lookup
@@ -3026,48 +3001,67 @@ internal sealed class SetupFlow(ISetupProbes probes)
     ];
 
     //read every field off the row, hardware passed in once per screen, a null structure renders an empty cell and never a guess
-    private Tui.ModelFacts FactsFor(ShelfRow r, string? loadedId,
+    private Tui.ModelFacts FactsFor(ModelRow r, string? loadedId,
         Gatto.Core.Hardware.HardwareClass? hw)
     {
         //ask the repo first, the file name only when there is no repo. carry the id too, the pane names it and a second ask could drift
-        var id = probes.ModelForHubRow(r.RepoId, r.PickedQuant.FileName);
+        var id = r.RowFile is { } file ? probes.ModelForHubRow(file.RepoId, SearchRow.RowFileName(r)) : null;
+        var fileCount = r.RowFile is { } f && r.RepoOf(f) is { FileCount: > 0 } repo ? repo.FileCount : (int?)null;
         return new(Structure: r.Structure, Experts: r.Experts,
             //a Hub row names a repo rather than a file here, so the facts carry no path
             Have: HaveFor(id, loadedId), HaveId: id,
             //quants come from the tree call the search already made, fit uses FitOf like Pick, so pane and row cannot disagree
-            FileCount: r.FileCount > 0 ? r.FileCount : null,
-            Files: QuantsOf(r, hw));
+            FileCount: fileCount,
+            Files: QuantsOf(r, hw),
+            Publishers: PublishersOf(r, hw));
     }
 
-    //price every quant the repo listed, null when the tree gave none so the pane says nothing rather than claiming there are none
-    internal static IReadOnlyList<Tui.PaneFile>? QuantsOf(ShelfRow r,
+    //every publisher priced the way QuantsOf prices the row's, the row's own publisher taking the row's file as its pick
+    internal static IReadOnlyList<Tui.PanePublisher>? PublishersOf(ModelRow r,
         Gatto.Core.Hardware.HardwareClass? hw)
     {
-        if (r.AllQuants is not { Count: > 0 } quants || hw is not { } machine) return null;
-
-        //keep the repo's own order, the renderer sorts. drop files with no readable quant, an unnamed entry cannot be picked
-        return [.. HubSearch.Candidates(quants, r.Params)
-            .Select(q => (Token: Gatto.Core.Acquire.QuantToken.Of(q.FileName), q.Bytes, q.StreamedBytes))
-            .Where(q => q.Token is { Length: > 0 })
-            .Select(q => new Tui.PaneFile(
-                q.Token!,
-                q.Bytes,
-                HubSearch.FitOf(q.Bytes, r.NativeCtx, machine, Tui.Pane.KvContext, r.Arch, q.StreamedBytes)))];
+        if (hw is not { } machine || r.Publishers.Count == 0) return null;
+        return [.. r.Publishers.Select((offer, i) => new Tui.PanePublisher(offer.Org, FilesOf(r, offer, machine),
+            i == r.RowPublisher ? r.RowFile : offer.Pick))];
     }
 
-    //apply the pick once, by replacing the row, matched by label because pane and repo order differ. an unresolvable pick leaves the old quant standing
-    private void ApplyPickedQuant(string key, string quant)
+    //price every file the row's publisher holds across its repos, a file with no token included, null when the trees gave none
+    internal static IReadOnlyList<Tui.PaneFile>? QuantsOf(ModelRow r,
+        Gatto.Core.Hardware.HardwareClass? hw)
+    {
+        if (hw is not { } machine || (r.RowOffer ?? r.Publishers.FirstOrDefault()) is not { } offer) return null;
+
+        var files = FilesOf(r, offer, machine);
+        return files.Count > 0 ? files : null;
+    }
+
+    //keep the repos' own order, the renderer sorts. a file is named by reference, since two repos of one publisher can both hold a Q4_K_M
+    private static IReadOnlyList<Tui.PaneFile> FilesOf(ModelRow r, PublisherOffer offer,
+        Gatto.Core.Hardware.HardwareClass machine) =>
+        Tui.PaneFile.Tagged([.. offer.Repos.SelectMany(repo => HubSearch.Candidates(repo.Quants, r.Params)
+            .Select(q => new Tui.PaneFile(
+                QuantToken.Of(q.FileName),
+                q.Bytes,
+                HubSearch.FitOf(q.Bytes, r.NativeCtx, machine, Tui.Pane.KvContext, r.Arch, q.StreamedBytes),
+                new FileRef(offer.Org, repo.RepoId, q.RepoPath))))]);
+
+    //apply the choice once, by replacing the row's file and its regime. an unresolvable reference leaves the old file standing
+    private void ApplyPickedFile(string key, FileRef file)
     {
         if (!int.TryParse(key, System.Globalization.NumberStyles.None,
                 System.Globalization.CultureInfo.InvariantCulture, out var at)
             || at < 0 || at >= _rows.Count) return;
 
-        if (_rows[at].AllQuants is not { Count: > 0 } quants) return;
-        if (quants.FirstOrDefault(q =>
-                string.Equals(QuantToken.Of(q.FileName), quant, StringComparison.OrdinalIgnoreCase))
-            is not { } chosen) return;
-
-        _rows = [.. _rows.Select((r, i) => i == at ? r with { PickedQuant = chosen } : r)];
+        var row = _rows[at];
+        if (row.QuantOf(file) is not { } chosen) return;
+        var publisher = row.Publishers.ToList().FindIndex(p => string.Equals(p.Org, file.Publisher, StringComparison.OrdinalIgnoreCase));
+        var fit = probes.Hardware() is { } snapshot
+            ? HubSearch.FitOf(chosen.Bytes, row.NativeCtx, Gatto.Core.Hardware.HardwareClassifier.Classify(snapshot),
+                Tui.Pane.KvContext, row.Arch, chosen.StreamedBytes)
+            : row.Fit;
+        _rows = [.. _rows.Select((r, i) => i == at
+            ? r with { RowFile = file, Fit = fit, RowPublisher = publisher >= 0 ? publisher : r.RowPublisher }
+            : r)];
     }
 
     //loaded is a claim about a file, so compare paths when both are known. with no path to compare, a matching id still reads loaded
@@ -3113,7 +3107,8 @@ internal sealed class SetupFlow(ISetupProbes probes)
 
     //a chip emptied the shelf, which is not the search finding nothing. only true when a count backs the emptiness
     private bool ChipFoundNothing =>
-        _rows.Count == 0 && _family is { Length: > 0 } && (_hiddenByFit > 0 || _hiddenByFamily > 0);
+        _rows.Count == 0 && _search is null && LitChip() is { } chip && chip != "all"
+        && _searchCause is HubSearchCause.NothingFits;
 
     //latched once the walk has stood on a shelf, not derived from the search and family, because the all chip clears both
     private bool HasLadder => _stoodOnAShelf && _searchCause is not HubSearchCause.HubFailed;
@@ -3136,7 +3131,7 @@ internal sealed class SetupFlow(ISetupProbes probes)
 
     //the fit case wins when both numbers are set, it means this family has rows and every one was too big
     private string ChipSentence() =>
-        FamilyEmptySentence(_family, HeldClause, PricedOut, _hiddenByFamily);
+        FamilyEmptySentence(LitChip(), HeldClause, PricedOut, 0);
 
     //the fit clause wins, it is the one sentence the engine actually measured. the local shelf passes no fit clause, nothing there is held for price
     private string FamilyEmptySentence(string? family, string? heldClause, bool pricedOut, int hiddenByFamily)
@@ -3151,11 +3146,10 @@ internal sealed class SetupFlow(ISetupProbes probes)
     }
 
     //what the a key brings back, or null when it brings back nothing. named once so sentences cannot ask the question differently
-    private string? HeldClause =>
-        Gatto.Cli.Setup.Tui.Shelf.HiddenClause(_hiddenNewer, _hiddenOlder, _hiddenByFit, Glyphs);
+    private string? HeldClause => _moreBehind ? "a shows all" : null;
 
-    //separate the pricing question from HeldClause, rows held for being newer were never priced
-    private bool PricedOut => _hiddenByFit > 0;
+    //the engine listed models and none had a file that fits, which is the only evidence for a sentence about memory
+    private bool PricedOut => _searchCause is HubSearchCause.NothingFits;
 
     //this emptiness has no count behind it, so the sentence must not name a or all, neither lifts anything here
     private IReadOnlyList<string> NothingToShowRows() =>
@@ -3270,18 +3264,7 @@ internal sealed class SetupFlow(ISetupProbes probes)
     internal const string OutOfReach = "Hugging Face is out of reach, showing the models on this machine.";
 
     //one home for the ways out of an empty shelf, three branches offering them separately would drift
-    private string NextWays => _curatedPublisher is { Length: > 0 }
-        ? "You can widen the list, point gatto at a model you already have, or name one directly."
-        : "You can point gatto at a model you already have, or name one directly.";
-
-    //verified-first is in the cycle but never the default (pressing s is the explicit choice)
-    private static SearchOrder NextAxis(SearchOrder current) => current switch
-    {
-        SearchOrder.MostDownloaded => SearchOrder.RecentlyUpdated,
-        SearchOrder.RecentlyUpdated => SearchOrder.MostParams,
-        SearchOrder.MostParams => SearchOrder.VerifiedFirst, //no size axis, a size is known only after the tree call
-        _ => SearchOrder.MostDownloaded,
-    };
+    private const string NextWays = "You can point gatto at a model you already have, or name one directly.";
 
     private WizardScreen AnswerSearch(string key)
     {
@@ -3290,49 +3273,21 @@ internal sealed class SetupFlow(ISetupProbes probes)
             && probes.ResumeOffer(paused) is { } resumed)
             return ModelConsent(resumed);
 
-        //widening changes only the view and reruns the same search, there is no second path to drift
-        if (key == Broaden)
-        {
-            _view = HubSearchView.Broadened;
-            return Search();
-        }
-
-        //each control changes what the question is and re-asks it, none answers it, so every one returns Search()
-        if (key == CtlPublisher) return PublisherPicker();
-
-        //re-search rather than filter what is on screen, the publisher is part of the query and decides which orgs get a tree call
-        if (key.StartsWith(PickPublisher, StringComparison.Ordinal))
-        {
-            if (key == PickEveryPublisher)
-            {
-                _publisher = null;
-                _view = HubSearchView.Broadened;
-            }
-            else
-            {
-                _publisher = key[PickPublisher.Length..];
-                _view = HubSearchView.Curated;
-            }
-
-            return Search();
-        }
-
-        if (key == CtlSort)
-        {
-            //s alone passes the rows in hand. f searches elsewhere and an empty result is a true answer, a can only add rows
-            var onScreen = _rows;
-            _axis = NextAxis(_axis ?? HubSearch.OrderFor(_view));
-            return Search(keepIfEmpty: onScreen);
-        }
-
         //m is a toggle, so the flow reads its own state rather than the answer
         if (key == CtlSource) return ToLocalShelf();
 
-        //store all as null rather than a sixth family, a literal all would miss the families table and end up null by accident
+        //the first click sorts smallest first, each later click flips it, and the rows in hand are re-arranged without a request
+        if (key == CtlParams)
+        {
+            _smallestFirst = _smallestFirst is not true;
+            _rows = Sorted(_rows);
+            return SearchScreen();
+        }
+
+        //a chip lights its family, all lights every family
         if (key.StartsWith(CtlFamily, StringComparison.Ordinal))
         {
-            var chip = key[CtlFamily.Length..];
-            _family = chip is "all" or "" ? null : chip;
+            Light(key[CtlFamily.Length..]);
             //the chip clears the typed search, the engine ignores family while a search is in force, without the clear the key does nothing
             _search = null;
             return Search();
@@ -3370,8 +3325,6 @@ internal sealed class SetupFlow(ISetupProbes probes)
     private WizardScreen SearchFor(string text)
     {
         _search = text.Length == 0 ? null : text;
-        //drop the family when a search is typed, the engine did it silently and the chip stayed accented. keep the engine's guard anyway
-        if (_search is not null) _family = null;
         return Search();
     }
 
@@ -3419,7 +3372,7 @@ internal sealed class SetupFlow(ISetupProbes probes)
         switch (outcome)
         {
             case TypedIdOutcome.Ok ok:
-                return PickedFromHub(ok.Row);
+                return LookedUp(ok.Row);
 
             case TypedIdOutcome.Malformed:
                 //the refusal names the shape of a valid name
@@ -3460,10 +3413,27 @@ internal sealed class SetupFlow(ISetupProbes probes)
         }
     }
 
+    //a typed repo id lands on the shelf as its one row, so the pane can choose another file before Enter goes forward with the row's pick
+    private WizardScreen LookedUp(ModelRow row)
+    {
+        _lookedUp = row.RowFile?.RepoId ?? row.Model;
+        _carriedOver = false;
+        _rows = [row];
+        _searchCause = null;
+        _hiddenByKind = 0;
+        _moreBehind = false;
+        int Is(Gatto.Core.Models.FitRegime fit) => row.Fit == fit ? 1 : 0;
+        _counted = new ShelfOutcome(_rows,
+            Is(Gatto.Core.Models.FitRegime.FitsGpu), Is(Gatto.Core.Models.FitRegime.FitsRamOnly), Is(Gatto.Core.Models.FitRegime.DoesNotFit),
+            MoreBehindA: false, HiddenByKind: 0, FullPageOrgs: [], Cause: null);
+        _stoodOnAShelf = true;
+        return SearchScreen();
+    }
+
     //after the pick: the download, and the watch
 
     //every pick ends on a screen that waits, an Info with nothing after it ends the run
-    private WizardScreen PickedFromHub(ShelfRow row)
+    private WizardScreen PickedFromHub(ModelRow row)
     {
         Picked = row;
         //a fresh pick starts a new watch, nothing explained yet
@@ -3482,14 +3452,14 @@ internal sealed class SetupFlow(ISetupProbes probes)
     }
 
     //the carried cause decides which sentence renders, each arm says only what it can claim
-    private WizardScreen DownloadScreen(ShelfRow row)
+    private WizardScreen DownloadScreen(ModelRow row)
     {
         var files = WatchFiles(row);
         //use the larger of the two counts, a shard set may report one member against thirteen shards, undercounting leaves a partial model
-        var count = Math.Max(files.Count, row.PickedQuant.ShardCount);
+        var count = Math.Max(files.Count, row.RowQuant!.ShardCount);
         var rows = new List<WizardRow>
         {
-            new(WatchCauseSentence(count, files.Count, row.PickedQuant.Bytes), RowTone.Aside),
+            new(WatchCauseSentence(count, files.Count, row.RowQuant!.Bytes), RowTone.Aside),
             "",
             ModelFacts.Row("download", FileWord(files[0]), lift: files[0].Name),
         };
@@ -3500,8 +3470,8 @@ internal sealed class SetupFlow(ISetupProbes probes)
 
         //many files get the repo's file list, a single file the direct link. branch on the count, don't re-derive from names
         var url = count > 1
-            ? Gatto.Core.Acquire.HubUrl.Tree(row.RepoId)
-            : Gatto.Core.Acquire.HubUrl.Download(row.RepoId, row.PickedQuant.RepoPath);
+            ? Gatto.Core.Acquire.HubUrl.Tree(row.RowFile!.RepoId)
+            : Gatto.Core.Acquire.HubUrl.Download(row.RowFile!.RepoId, row.RowQuant!.RepoPath);
         rows.Add(ModelFacts.Row("from", Trimmed(url))); //the link is the instruction, a bare file name sends people to a search engine
         rows.Add("");
 
@@ -3534,7 +3504,7 @@ internal sealed class SetupFlow(ISetupProbes probes)
         return Emit(new WizardScreen.Choice(
             DownloadKey, ModelTitle, WatchOptions(row), BodyRows: rows, Watching: true,
             Door: $"type the path to the downloaded file or folder{Glyphs.Ellipsis}",
-            ArrivedLabel: $"{Glyphs.Ok} {row.PickedQuant.FileName} arrived"), DownloadKey);
+            ArrivedLabel: $"{Glyphs.Ok} {row.RowQuant!.FileName} arrived"), DownloadKey);
     }
 
 
@@ -3567,11 +3537,11 @@ internal sealed class SetupFlow(ISetupProbes probes)
 
 
     //the watch waits for every file, not just the name that matched. a declined encoder is not missing
-    private bool UnitHere(ShelfRow row) =>
+    private bool UnitHere(ModelRow row) =>
         WatchFiles(row).Where(f => f.Encoder).All(f => _declinedEncoder || Arrived(f.Name));
 
     //offer it only where the missing files are encoders and something has already arrived. a set without shards cannot load
-    private bool CanGoTextOnly(ShelfRow row)
+    private bool CanGoTextOnly(ModelRow row)
     {
         var files = WatchFiles(row);
         if (!files.Any(Arrived2)) return false;
@@ -3583,12 +3553,13 @@ internal sealed class SetupFlow(ISetupProbes probes)
     }
 
     //the files the user must fetch, worded with the same composer as consent, the two screens cannot describe one unit differently
-    private static IReadOnlyList<ModelFetchFile> WatchFiles(ShelfRow row)
+    private static IReadOnlyList<ModelFetchFile> WatchFiles(ModelRow row)
     {
         var files = new List<ModelFetchFile>();
-        foreach (var m in row.PickedQuant.Members)
+        foreach (var m in row.RowQuant!.Members)
             files.Add(new(m.FileName, SizeWords.Auto(m.Bytes)));
-        if (Gatto.Core.Acquire.ProjectorPick.Best(row.Projectors) is { } encoder)
+        //the encoder comes from the chosen file's own repo, since another publisher's encoder belongs to another download
+        if (Gatto.Core.Acquire.ProjectorPick.Best(row.RowProjectors) is { } encoder)
             foreach (var m in encoder.Members)
                 files.Add(new(m.FileName, SizeWords.Auto(m.Bytes), Encoder: true));
         return files;
@@ -3620,7 +3591,7 @@ internal sealed class SetupFlow(ISetupProbes probes)
         url.StartsWith("https://", StringComparison.Ordinal) ? url["https://".Length..] : url;
 
     //the answer that loses nothing comes first, above the one that abandons work already on disk
-    private IReadOnlyList<ChoiceOption> WatchOptions(ShelfRow row) =>
+    private IReadOnlyList<ChoiceOption> WatchOptions(ModelRow row) =>
         CanGoTextOnly(row)
             ? [new ChoiceOption(UseTextOnly, "Use it text-only"),
                new ChoiceOption(PickAnother, "Pick a different model", Advances: false)]
@@ -3661,7 +3632,7 @@ internal sealed class SetupFlow(ISetupProbes probes)
         _scanRoots = rescan.Roots;
 
         //the poll answers has anything changed. a partial set matches while Adopt refuses it, an is-it-there poll would resolve the screen the instant it appeared
-        var mark = MarkOf(_discovered.FirstOrDefault(m => Answers(m, row.PickedQuant)));
+        var mark = MarkOf(_discovered.FirstOrDefault(m => Answers(m, row.RowQuant!)));
         if (mark == _watchMark) return false;
 
         _watchMark = mark;
@@ -3701,10 +3672,10 @@ internal sealed class SetupFlow(ISetupProbes probes)
         //read the _discovered the poll refreshed, a second scan could disagree with the first. a vanished file just returns to the watch
         if (key == Landed)
         {
-            if (_discovered.FirstOrDefault(m => Answers(m, row.PickedQuant)) is not { } arrived)
+            if (_discovered.FirstOrDefault(m => Answers(m, row.RowQuant!)) is not { } arrived)
                 return DownloadScreen(row);
 
-            var check = Accept(arrived, row.PickedQuant);
+            var check = Accept(arrived, row.RowQuant!);
             return check.Verdict switch
             {
                 //still being written or unreadable both mean not yet, neither is an accusation
@@ -3721,7 +3692,7 @@ internal sealed class SetupFlow(ISetupProbes probes)
         if (key == UseTextOnly)
         {
             _declinedEncoder = true;
-            return _discovered.FirstOrDefault(m => Answers(m, row.PickedQuant)) is { } weights
+            return _discovered.FirstOrDefault(m => Answers(m, row.RowQuant!)) is { } weights
                 ? Adopt(weights)
                 : DownloadScreen(row);
         }
@@ -3734,7 +3705,7 @@ internal sealed class SetupFlow(ISetupProbes probes)
         var rescan = probes.Scan(null);
         _discovered = rescan.Found;
         _scanRoots = rescan.Roots;
-        var landed = _discovered.FirstOrDefault(m => Answers(m, row.PickedQuant));
+        var landed = _discovered.FirstOrDefault(m => Answers(m, row.RowQuant!));
 
         return landed is null ? DownloadScreen(row) : Adopt(landed);
     }
@@ -3749,7 +3720,7 @@ internal sealed class SetupFlow(ISetupProbes probes)
         //only reached from the download watch, which returns to search when nothing is picked
         if (Picked is not { } row) return DiscoveredScreen(heading: null);
 
-        if (_discovered.FirstOrDefault(m => Answers(m, row.PickedQuant)) is { } landed) return Adopt(landed);
+        if (_discovered.FirstOrDefault(m => Answers(m, row.RowQuant!)) is { } landed) return Adopt(landed);
 
         return _discovered.Count == 0
             ? DownloadScreen(row)
@@ -3783,7 +3754,7 @@ internal sealed class SetupFlow(ISetupProbes probes)
     }
 
     //the watch keeps watching, nothing adopted and nothing deleted. the file is the user's, unlike the fetch's mismatch which deletes what it pulled
-    private WizardScreen WrongFile(ShelfRow row, FoundModel found, WatchCheck check)
+    private WizardScreen WrongFile(ModelRow row, FoundModel found, WatchCheck check)
     {
         //a collection expression because a spread inside an object initializer does not compile
         List<WizardRow> rows =
@@ -3802,7 +3773,7 @@ internal sealed class SetupFlow(ISetupProbes probes)
                 ]
                 :
                 [
-                    ModelFacts.Row("expected", SizeWords.Auto(row.PickedQuant.Bytes)
+                    ModelFacts.Row("expected", SizeWords.Auto(row.RowQuant!.Bytes)
                         + $" {Glyphs.Dot} the size Hugging Face lists"),
                     ModelFacts.Row("got", SizeWords.Auto(found.FileBytes)
                         + $" {Glyphs.Dot} the file in " + Folder(found.Path)),
@@ -3818,7 +3789,7 @@ internal sealed class SetupFlow(ISetupProbes probes)
         return Emit(new WizardScreen.Choice(
             DownloadKey, ModelTitle, WatchOptions(row), BodyRows: rows, Watching: true,
             Door: $"type the path to the downloaded file or folder{Glyphs.Ellipsis}",
-            ArrivedLabel: $"{Glyphs.Ok} {row.PickedQuant.FileName} arrived"), DownloadKey);
+            ArrivedLabel: $"{Glyphs.Ok} {row.RowQuant!.FileName} arrived"), DownloadKey);
     }
 
     //a set answers the pick by stem and shard count (shards arrive in any order), Adopt still decides it's complete
@@ -4219,7 +4190,7 @@ internal sealed class SetupFlow(ISetupProbes probes)
         _checkClock ??= System.Diagnostics.Stopwatch.StartNew();
 
         //read Picked on this thread, the delegate runs on the pool (the repo id tags the badge for the search that offered it)
-        var repoId = Picked?.RepoId;
+        var repoId = Picked?.RowFile?.RepoId;
 
         //ask the machine whether this model's server is up, a road flag is only a proxy. read it before StartNew or it races the task it describes
         _serverAlreadyUp = probes.ServerAlreadyUp(modelId);
@@ -4487,7 +4458,7 @@ internal sealed class SetupFlow(ISetupProbes probes)
         }
 
         //a different file holding the same id is a question only the user can answer, don't merge it with the reuse above
-        var (clash, clashId) = probes.ClashFor(model.Path, Picked?.RepoId);
+        var (clash, clashId) = probes.ClashFor(model.Path, Picked?.RowFile?.RepoId);
         if (clashId is { Length: > 0 } held)
         {
             _clashingModelId = held;
@@ -4801,7 +4772,7 @@ internal sealed class SetupFlow(ISetupProbes probes)
         {
             CreateModel = new WriteSet.Model(model.Path, Port: DefaultPort,
                 Context: probes.ContextFor(model.Path), Replace: replace,
-                Source: Picked is { } row && Answers(model, row.PickedQuant) ? new Gatto.Roles.ModelSource(row.RepoId, row.PickedQuant.FileName) : null,
+                Source: Picked is { RowFile: { } file, RowQuant: { } quant } && Answers(model, quant) ? new Gatto.Roles.ModelSource(file.RepoId, quant.FileName) : null,
                 PinGpu: probes.ServeOnlyGpu()),
         };
         //pause for the writer before offering anything, no screen may audition a model that isn't on disk yet

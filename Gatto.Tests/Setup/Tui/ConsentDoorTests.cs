@@ -30,8 +30,8 @@ public class ConsentDoorTests
     }
 
     //a shelf row that offers the quant under test.
-    private static ShelfRow Row(string repoId, HubQuant quant) =>
-        new(repoId, repoId.Split('/')[0], quant, Gatto.Core.Models.FitRegime.FitsGpu,
+    private static ModelRow Row(string repoId, HubQuant quant) =>
+        ShelfRows.Of(repoId, repoId.Split('/')[0], quant, Gatto.Core.Models.FitRegime.FitsGpu,
             32768, false, null, 100, false);
 
     private static (SetupFlow Flow, WizardScreen.Choice Consent) At(WizardProbes probes)

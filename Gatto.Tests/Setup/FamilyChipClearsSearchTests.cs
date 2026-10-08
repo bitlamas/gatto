@@ -10,7 +10,7 @@ namespace Gatto.Tests.Setup;
 //answering a family chip must clear the typed search. the fixture answers nothing to a search, so a surviving term empties the shelf.
 public class FamilyChipClearsSearchTests
 {
-    private static ShelfRow Row(string id, string arch) => new(
+    private static ModelRow Row(string id, string arch) => ShelfRows.Of(
         RepoId: id, Publisher: id.Split('/')[0],
         PickedQuant: new HubQuant("m-Q4_K_M.gguf", 4_000_000_000, null),
         Fit: FitRegime.FitsGpu, NativeCtx: 262144, Vision: false, Badge: null,
@@ -19,10 +19,10 @@ public class FamilyChipClearsSearchTests
     private static string Family => Families.Load().Ladder[0];
 
     //record each request so a test can assert what the flow asked the engine rather than infer it from the answer.
-    private static (SetupFlow Flow, List<HubSearchRequest> Asked) OnTheHubShelf()
+    private static (SetupFlow Flow, List<ModelSearchRequest> Asked) OnTheHubShelf()
     {
-        IReadOnlyList<ShelfRow> browse = [Row("o/one", "gemma3"), Row("o/two", "qwen3")];
-        var asked = new List<HubSearchRequest>();
+        IReadOnlyList<ModelRow> browse = [Row("o/one", "gemma3"), Row("o/two", "qwen3")];
+        var asked = new List<ModelSearchRequest>();
         var probes = new WizardProbes
         {
             //the engine setting is what pushes a screen behind the shelf. without it the back-key tests would answer the shelf with a key it does not have.
@@ -35,8 +35,8 @@ public class FamilyChipClearsSearchTests
                 asked.Add(req);
                 //a typed search answers nothing and a browse answers rows, so a word that survives the chip press empties the shelf.
                 return req.Search is { Length: > 0 }
-                    ? new HubSearchOutcome([], null, null)
-                    : new HubSearchOutcome(browse, null, null);
+                    ? WizardProbes.Outcome([], null)
+                    : WizardProbes.Outcome(browse, null);
             },
         };
         //the run starts on the Hub shelf only when CanSwitchSource is true, else every chip below drives the local arm.
@@ -54,11 +54,11 @@ public class FamilyChipClearsSearchTests
         Assert.IsType<WizardScreen.Choice>(flow.Answer(ShelfControls.TypedAnswer("LFM")));
 
         var screen = Assert.IsType<WizardScreen.Choice>(
-            flow.Answer(SetupFlow.CtlFamily + Family));
+            ChipWalk.Narrow(flow, Family));
 
         //assert at the request as well as the rows, since rows can come back for other reasons.
         Assert.Null(asked[^1].Search);
-        Assert.Equal(Family, asked[^1].Family);
+        Assert.Equal(Family, asked[^1].Family());
         Assert.NotEmpty(screen.Shelf!.Rows);
     }
 
@@ -70,7 +70,7 @@ public class FamilyChipClearsSearchTests
         flow.Answer(ShelfControls.TypedAnswer("LFM"));
 
         var screen = Assert.IsType<WizardScreen.Choice>(
-            flow.Answer(SetupFlow.CtlFamily + Family));
+            ChipWalk.Narrow(flow, Family));
 
         Assert.Equal(Family, screen.Shelf!.Family);
         Assert.Null(screen.Draft);
@@ -96,7 +96,7 @@ public class FamilyChipClearsSearchTests
         var screen = Assert.IsType<WizardScreen.Choice>(flow.Answer(SetupFlow.CtlFamily + "all"));
 
         Assert.Null(asked[^1].Search);
-        Assert.Null(asked[^1].Family);
+        Assert.Null(asked[^1].Family());
         Assert.NotEmpty(screen.Shelf!.Rows);
     }
 
@@ -106,9 +106,9 @@ public class FamilyChipClearsSearchTests
     {
         var (flow, asked) = OnTheHubShelf();
 
-        flow.Answer(SetupFlow.CtlFamily + Family);
+        ChipWalk.Narrow(flow, Family);
 
-        Assert.Equal(Family, asked[^1].Family);
+        Assert.Equal(Family, asked[^1].Family());
         Assert.Null(asked[^1].Search);
     }
 
@@ -121,7 +121,7 @@ public class FamilyChipClearsSearchTests
         var before = asked.Count;
 
         flow.Answer(SetupFlow.CtlSource);
-        flow.Answer(SetupFlow.CtlFamily + Family);
+        ChipWalk.Narrow(flow, Family);
 
         //the local control redraws the local shelf and asks the hub nothing, so a count change means the two controls stopped being separate.
         Assert.Equal(before, asked.Count);
@@ -135,7 +135,7 @@ public class FamilyChipClearsSearchTests
         flow.Answer(ShelfControls.TypedAnswer("LFM"));
 
         flow.Answer(SetupFlow.CtlSource);
-        flow.Answer(SetupFlow.CtlFamily + Family);
+        ChipWalk.Narrow(flow, Family);
         flow.Answer(SetupFlow.CtlSource);
 
         Assert.Equal("LFM", asked[^1].Search);
@@ -147,7 +147,7 @@ public class FamilyChipClearsSearchTests
     {
         var (flow, asked) = OnTheHubShelf();
         flow.Answer(ShelfControls.TypedAnswer("LFM"));
-        flow.Answer(SetupFlow.CtlFamily + Family);
+        ChipWalk.Narrow(flow, Family);
 
         var back = Assert.IsType<WizardScreen.Choice>(flow.Answer(SetupFlow.BackKey));
 
@@ -155,7 +155,7 @@ public class FamilyChipClearsSearchTests
         Assert.Equal(Family, back.Shelf!.Family);
         Assert.False(back.Shelf.Searched);
         //assert the request too (the rows are re-fetched under the live filter, so the chips row and the rows could describe different shelves)
-        Assert.Equal(Family, asked[^1].Family);
+        Assert.Equal(Family, asked[^1].Family());
         Assert.Null(asked[^1].Search);
     }
 
@@ -174,59 +174,27 @@ public class FamilyChipClearsSearchTests
         Assert.Equal("LFM", asked[^1].Search);
     }
 
-    //a typed search must drop the family (the engine nulls it, so the shelf would claim a filter the rows did not use)
-    [Fact]
-    public void A_TYPED_SEARCH_DROPS_THE_FAMILY()
-    {
-        var (flow, asked) = OnTheHubShelf();
-        flow.Answer(SetupFlow.CtlFamily + Family);
-
-        var searched = Assert.IsType<WizardScreen.Choice>(
-            flow.Answer(ShelfControls.TypedAnswer("LFM")));
-
-        Assert.Null(asked[^1].Family);
-        Assert.Equal("LFM", asked[^1].Search);
-        Assert.Equal("all", searched.Shelf!.Family);
-        Assert.True(searched.Shelf.Searched);
-    }
-
-    //the flow must never send a family and a search together. the engine's guard stays as dead code and must not be what holds the rule
-    [Fact]
-    public void THE_FLOW_NEVER_SENDS_A_FAMILY_AND_A_SEARCH_AT_ONCE()
-    {
-        var (flow, asked) = OnTheHubShelf();
-
-        flow.Answer(SetupFlow.CtlFamily + Family);
-        flow.Answer(ShelfControls.TypedAnswer("LFM"));
-        flow.Answer(SetupFlow.CtlFamily + "all");
-        flow.Answer(ShelfControls.TypedAnswer("other"));
-        flow.Answer(SetupFlow.CtlFamily + Family);
-
-        Assert.NotEmpty(asked);
-        Assert.DoesNotContain(asked, r => r.Family is { Length: > 0 } && r.Search is { Length: > 0 });
-    }
-
     //a chip that empties the shelf for no countable reason must still keep its frame
     [Theory]
     [InlineData(false)]
     [InlineData(true)]
     public void A_CHIP_THAT_EMPTIES_THE_SHELF_FOR_NO_COUNTABLE_REASON_KEEPS_ITS_FRAME(bool allChip)
     {
-        IReadOnlyList<ShelfRow> browse = [Row("o/one", "gemma3")];
+        IReadOnlyList<ModelRow> browse = [Row("o/one", "gemma3")];
         var calls = 0;
         var probes = new WizardProbes
         {
             Llama = @"C:\llama\llama-server.exe",
             Rows = browse,
             Answer = _ => ++calls == 1
-                ? new HubSearchOutcome(browse, null, null)
-                : new HubSearchOutcome([], null, null, HiddenByKind: 4),
+                ? WizardProbes.Outcome(browse, null)
+                : WizardProbes.Outcome([], null, hiddenByKind: 4),
         };
         var flow = new SetupFlow(probes) { CanSwitchSource = true };
         Assert.IsType<WizardScreen.Choice>(flow.StartPastEngine());
 
         var screen = Assert.IsType<WizardScreen.Choice>(
-            flow.Answer(SetupFlow.CtlFamily + (allChip ? "all" : Family)));
+            allChip ? flow.Answer(SetupFlow.CtlFamily + "all") : ChipWalk.Narrow(flow, Family));
 
         Assert.Empty(screen.Shelf!.Rows);
         Assert.NotNull(screen.Door);
@@ -250,21 +218,21 @@ public class FamilyChipClearsSearchTests
         Assert.Equal(Region.Search, Shelf.Opening(searchEmpty.Shelf));
 
         //the chip half needs its own probes (that fixture's chip clears the word, so the browse answers rows and the shelf is not empty)
-        IReadOnlyList<ShelfRow> browse = [Row("o/one", "gemma3")];
+        IReadOnlyList<ModelRow> browse = [Row("o/one", "gemma3")];
         var calls = 0;
         var probes = new WizardProbes
         {
             Llama = @"C:\llama\llama-server.exe",
             Rows = browse,
             Answer = _ => ++calls == 1
-                ? new HubSearchOutcome(browse, null, null)
-                : new HubSearchOutcome([], null, null, HiddenByKind: 4),
+                ? WizardProbes.Outcome(browse, null)
+                : WizardProbes.Outcome([], null, hiddenByKind: 4),
         };
         var flow = new SetupFlow(probes) { CanSwitchSource = true };
         Assert.IsType<WizardScreen.Choice>(flow.StartPastEngine());
 
         var chipEmpty = Assert.IsType<WizardScreen.Choice>(
-            flow.Answer(SetupFlow.CtlFamily + Family));
+            ChipWalk.Narrow(flow, Family));
         Assert.Empty(chipEmpty.Shelf!.Rows);
         Assert.Equal(Region.Families, Shelf.Opening(chipEmpty.Shelf));
     }
@@ -273,21 +241,21 @@ public class FamilyChipClearsSearchTests
     [Fact]
     public void A_HUB_THAT_GOES_UNREACHABLE_MID_WALK_DOES_NOT_GET_THE_SHELF_FRAME()
     {
-        IReadOnlyList<ShelfRow> browse = [Row("o/one", "gemma3")];
+        IReadOnlyList<ModelRow> browse = [Row("o/one", "gemma3")];
         var calls = 0;
         var probes = new WizardProbes
         {
             Llama = @"C:\llama\llama-server.exe",
             Rows = browse,
             Answer = _ => ++calls == 1
-                ? new HubSearchOutcome(browse, null, null)
-                : new HubSearchOutcome([], HubSearchCause.HubFailed, null),
+                ? WizardProbes.Outcome(browse, null)
+                : WizardProbes.Outcome([], HubSearchCause.HubFailed),
         };
         var flow = new SetupFlow(probes) { CanSwitchSource = true };
         Assert.IsType<WizardScreen.Choice>(flow.StartPastEngine());
 
         var screen = Assert.IsType<WizardScreen.Choice>(
-            flow.Answer(SetupFlow.CtlFamily + Family));
+            ChipWalk.Narrow(flow, Family));
 
         Assert.Null(screen.Shelf);
         Assert.Contains(screen.BodyRows!,

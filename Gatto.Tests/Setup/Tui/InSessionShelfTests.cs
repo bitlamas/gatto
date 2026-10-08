@@ -22,7 +22,7 @@ public class InSessionShelfTests
 
     private static WizardScreen.Choice InSessionScreen(ShelfView shelf) =>
         new(SetupFlow.SearchKey, SetupFlow.ModelTitleFor(inSession: true),
-            [.. shelf.Rows.Select((r, i) => new ChoiceOption(i.ToString(), r.RepoId))],
+            [.. shelf.Rows.Select((r, i) => new ChoiceOption(i.ToString(), r.RowFile!.RepoId))],
             Shelf: shelf, Door: SetupFlow.ShelfDoorPlaceholderOf(Gatto.Terminal.GlyphSet.Unicode))
         { Strip = InSessionStrip };
 
@@ -55,14 +55,24 @@ public class InSessionShelfTests
         return (f, () => f.LastPainted);
     }
 
-    //the shelf list's Esc arms the chord, two presses with the first painting the sentence
+    //the shelf the wizard opened on has nothing behind it, so its Esc arms the chord, two presses with the first painting the sentence
     [Fact]
-    public void ON_THE_SETUP_ROAD_THE_CHORD_STILL_ARMS()
+    public void ON_THE_OPENING_SHELF_THE_CHORD_STILL_ARMS()
     {
         var (f, painted) = Face(watching: false, Esc, Esc);
 
-        Assert.Null(f.Choose(ShelfTests.Screen(ShelfTests.Unified96())));
+        Assert.Null(f.Choose(ShelfTests.Screen(ShelfTests.Unified96()) with { AllowBack = false }));
         Assert.Contains(painted(), r => r.Contains("Esc again to leave", StringComparison.Ordinal));
+    }
+
+    //a shelf with a screen behind it takes one Esc as back and arms nothing
+    [Fact]
+    public void A_SHELF_WITH_A_SCREEN_BEHIND_GOES_BACK()
+    {
+        var (f, painted) = Face(watching: false, Esc);
+
+        Assert.Equal(SetupFlow.BackKey, f.Choose(ShelfTests.Screen(ShelfTests.Unified96())));
+        Assert.DoesNotContain(painted(), r => r.Contains("Esc again", StringComparison.Ordinal));
     }
 
     //a watching screen that is not keys-only keeps its chord, a press costs bytes and minutes (a keys-only watcher never reaches this branch)
@@ -97,7 +107,7 @@ public class InSessionShelfTests
     //the setup flow's empty shelf, matching the shape of s5-unified-96-local-empty-100
     private static WizardScreen.Choice EmptyLocalSetupScreen() =>
         new(SetupFlow.SearchKey, "Which model should gatto start with?", [],
-            Shelf: new ShelfView([], CuratedPublisher: null, MachineShape.UnifiedWithShare,
+            Shelf: new ShelfView([], MachineShape.UnifiedWithShare,
                 Source: ShelfSource.Local,
                 Empty: ["", Gatto.Repl.Cats.EmptyOf(glyphs: GlyphSet.Unicode), "", "no models on this machine yet, gatto looked in:"]),
             Door: "type a folder path…")
@@ -147,24 +157,20 @@ public class InSessionShelfTests
     [Fact]
     public void THE_COMPOSED_PANEL_MATCHES_ITS_DRAWN_FRAME()
     {
-        var drawn = File.ReadAllLines(Path.Combine(Golden.Dir, "s10-shelf-100.txt"));
-
         var rendered = WalkRender.Choice(InSessionScreen(ShelfTests.Unified96()), 100,
             script: [Down, Enter]).Rows;
 
-        Assert.Equal(Golden.Body(drawn), Golden.Body(rendered));
+        Golden.AssertBody("s10-shelf-100.txt", rendered);
     }
 
     //the discrete twin differs from the frame above only in the machine, a discrete shelf has one more column
     [Fact]
     public void THE_DISCRETE_PANEL_MATCHES_ITS_OWN_DRAWN_FRAME()
     {
-        var drawn = File.ReadAllLines(Path.Combine(Golden.Dir, "s10-shelf-discrete-100.txt"));
-
         var view = ShelfTests.Unified96() with { Shape = MachineShape.Discrete };
         var rendered = WalkRender.Choice(InSessionScreen(view), 100, script: [Down, Enter]).Rows;
 
-        Assert.Equal(Golden.Body(drawn), Golden.Body(rendered));
+        Golden.AssertBody("s10-shelf-discrete-100.txt", rendered);
     }
 
     //the discrete table has the runs column and the unified one has none, so the twin is not a copy of the same frame
@@ -248,12 +254,10 @@ public class InSessionShelfTests
     [Fact]
     public void THE_COMPOSED_PANEL_FOLDS_UNDER_THE_TABLE_AT_80()
     {
-        var drawn = File.ReadAllLines(Path.Combine(Golden.Dir, "s10-shelf-80-80.txt"));
-
         var rendered = WalkRender.Choice(InSessionScreen(ShelfTests.Unified96()), 80,
             script: [Down, Enter]).Rows;
 
-        Assert.Equal(Golden.Body(drawn), Golden.Body(rendered));
+        Golden.AssertBody("s10-shelf-80-80.txt", rendered);
     }
 
     //compare the two widths rather than one, a guard that read only 80 would pass on a face that always folds
@@ -295,7 +299,7 @@ public class InSessionShelfTests
 
     private static ShelfView LocalShelfView()
     {
-        var rows = LocalFive.Select(m => new ShelfRow(
+        var rows = LocalFive.Select(m => ShelfRows.Of(
             m.Name, "", new HubQuant(m.Name + ".gguf", Gib(m.Gb), null),
             FitRegime.FitsGpu, m.Ctx, m.Vision, Badge: null, Downloads: 0,
             Gated: false, Params: null,
@@ -308,7 +312,7 @@ public class InSessionShelfTests
             Files: [new PaneFile(QuantToken.Of(m.Name + ".gguf") ?? "Q4_K_M",
                 Gib(m.Gb), FitRegime.FitsGpu)])).ToArray();
 
-        return new ShelfView(rows, CuratedPublisher: null, MachineShape.UnifiedWithShare,
+        return new ShelfView(rows, MachineShape.UnifiedWithShare,
             Families: ["gemma", "qwen", "deepseek", "glm", "mistral", "all"], Family: "all",
             Total: LocalFive.Length, Facts: facts,
             Source: ShelfSource.Local, Folder: LocalDir);
@@ -318,7 +322,7 @@ public class InSessionShelfTests
     {
         var shelf = LocalShelfView();
         return new WizardScreen.Choice(SetupFlow.SearchKey, SetupFlow.ModelTitleFor(inSession: true),
-            [.. shelf.Rows.Select((r, i) => new ChoiceOption(i.ToString(), r.RepoId))],
+            [.. shelf.Rows.Select((r, i) => new ChoiceOption(i.ToString(), r.RowFile!.RepoId))],
             //the notice goes in the body above the chips, the slot the discovery line uses on the Hub shelf
             BodyRows: notice ? [new WizardRow(SetupFlow.OutOfReach, Tone: RowTone.Aside)] : [],
             Shelf: shelf,
@@ -332,12 +336,10 @@ public class InSessionShelfTests
     [InlineData(false, "s10-local-have-100.txt")]
     public void THE_LOCAL_SHELF_MATCHES_ITS_DRAWN_FRAME(bool notice, string golden)
     {
-        var drawn = File.ReadAllLines(Path.Combine(Golden.Dir, golden));
-
         var rendered = WalkRender.Choice(LocalScreen(notice), 100,
             script: [Down, Down, Down, Enter]).Rows;
 
-        Assert.Equal(Golden.Body(drawn), Golden.Body(rendered));
+        Golden.AssertBody(golden, rendered);
     }
 
     //the two frames must differ only by the notice, or a drift in another row passes both tests
@@ -422,7 +424,7 @@ public class InSessionShelfTests
         //every model keeps a table line, the last one included
         for (var i = 0; i < view.Rows.Count; i++)
             Assert.DoesNotContain("resume ", labels[i + 1], StringComparison.Ordinal);
-        Assert.Contains(view.Rows[^1].RepoId.Split('/')[^1].Replace("-GGUF", ""),
+        Assert.Contains(view.Rows[^1].RowFile!.RepoId.Split('/')[^1].Replace("-GGUF", ""),
             labels[view.Rows.Count], StringComparison.Ordinal);
     }
 }

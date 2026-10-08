@@ -13,4 +13,4 @@
   2. Pick a different model
 
 ────────────────────────────────────────────────────────────────────────────────────────────────────
-  Enter choose   b back   Esc leave
+  Enter choose   Esc back

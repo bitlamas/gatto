@@ -14,7 +14,7 @@ public class EmptyShelfKeysTests
     private static readonly ConsoleKeyInfo B = new('b', ConsoleKey.B, false, false, false);
     private static readonly ConsoleKeyInfo Esc = new('\0', ConsoleKey.Escape, false, false, false);
 
-    private static ShelfRow HubRow() => new(
+    private static ModelRow HubRow() => ShelfRows.Of(
         "unsloth/gemma-4-26B-A4B-it", "unsloth",
         new HubQuant("gemma-4-26B-A4B-it-Q4_K_M.gguf", 4_000_000_000, null),
         FitRegime.FitsGpu, 262144, false, Badge: null, Downloads: 5, Gated: false,
@@ -30,7 +30,7 @@ public class EmptyShelfKeysTests
     {
         Llama = @"C:\llama\llama-server.exe",
         Rows = hubUp ? [HubRow()] : [],
-        Answer = hubUp ? null : _ => new HubSearchOutcome([], HubSearchCause.HubFailed),
+        Answer = hubUp ? null : _ => WizardProbes.Outcome([], HubSearchCause.HubFailed),
         Roots = [@"C:\home\weights"],
         Found = [.. found],
     }) { CanSwitchSource = true };
@@ -74,16 +74,16 @@ public class EmptyShelfKeysTests
         Assert.NotEmpty(hub.Shelf!.Rows);
     }
 
-    //the outage screen is not a shelf, but m switches source, b goes back to the local shelf and Esc still arms the leave
+    //the outage screen is not a shelf, but m switches source and Esc goes back to the local shelf
     [Fact]
-    public void M_FROM_THE_LOCAL_SHELF_TO_THE_OUTAGE_SCREEN_WHERE_M_WORKS_AND_B_RETURNS()
+    public void M_FROM_THE_LOCAL_SHELF_TO_THE_OUTAGE_SCREEN_WHERE_M_WORKS_AND_ESC_RETURNS()
     {
         var (flow, outage) = OutageFromTheLocalShelf();
         Assert.True(outage.SwitchesSource);
         Assert.True(outage.AllowBack);
 
         Assert.Equal(SetupFlow.CtlSource, WalkRender.Answered(outage, 100, [M]).Answer);
-        var (answer, _) = WalkRender.Answered(outage, 100, [B]);
+        var (answer, _) = WalkRender.Answered(outage, 100, [WizardRig.Esc]);
         Assert.Equal(SetupFlow.BackKey, answer);
 
         var local = Assert.IsType<WizardScreen.Choice>(flow.Answer(answer!));
@@ -135,14 +135,14 @@ public class EmptyShelfKeysTests
     }
 
     [Fact]
-    public void THE_OUTAGE_SCREEN_S_FOOTER_OFFERS_M_LOCAL_AND_B_BACK()
+    public void THE_OUTAGE_SCREEN_S_FOOTER_OFFERS_M_LOCAL_AND_ESC_BACK()
     {
         var (_, outage) = OutageFromTheLocalShelf();
 
         var footer = Footer(WalkRender.SettledFrame(outage, 100).Rows);
 
         Assert.Contains("m local", footer, StringComparison.Ordinal);
-        Assert.Contains("b back", footer, StringComparison.Ordinal);
+        Assert.Contains("Esc back", footer, StringComparison.Ordinal);
     }
 
     //a count of one must read as one, so the assertion is on the frame
@@ -209,7 +209,7 @@ public class EmptyShelfKeysTests
         var flow = new SetupFlow(new WizardProbes
         {
             Rows = [],
-            Answer = _ => new HubSearchOutcome([], HubSearchCause.HubFailed),
+            Answer = _ => WizardProbes.Outcome([], HubSearchCause.HubFailed),
             Roots = [@"C:\Users\you\.gatto\weights\"],
             Found = [OnDisk("one")],
         }) { CanSwitchSource = true };

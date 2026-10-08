@@ -12,8 +12,8 @@ public class InSessionFoundCountTests
     private const string Loose = @"C:\weights\gemma-4-e2b\gemma-4-e2b-Q4_K_M.gguf";
 
     //the fixture needs a Hub row, since the discovery sentence appears only on a search screen that has rows
-    private static ShelfRow HubRow() =>
-        new("qwen/qwen3.5-7b", "qwen", new HubQuant("qwen3.5-7b-Q4_K_M.gguf", 4_000_000_000, null),
+    private static ModelRow HubRow() =>
+        ShelfRows.Of("qwen/qwen3.5-7b", "qwen", new HubQuant("qwen3.5-7b-Q4_K_M.gguf", 4_000_000_000, null),
             FitRegime.FitsGpu, 262144, false, Badge: null, Downloads: 5, Gated: false,
             Params: 7_000_000_000);
 
@@ -67,8 +67,8 @@ public class InSessionFoundCountTests
         var shelf = Assert.IsType<WizardScreen.Choice>(flow.Answer(SetupFlow.CtlSource)).Shelf!;
 
         Assert.Equal(2, shelf.Rows.Count);
-        Assert.Contains(shelf.Rows, r => r.RepoId.Contains("qwen3.5-4b", StringComparison.OrdinalIgnoreCase));
-        Assert.Contains(shelf.Rows, r => r.RepoId.Contains("gemma-4-e2b", StringComparison.OrdinalIgnoreCase));
+        Assert.Contains(shelf.Rows, r => r.RowFile!.RepoId.Contains("qwen3.5-4b", StringComparison.OrdinalIgnoreCase));
+        Assert.Contains(shelf.Rows, r => r.RowFile!.RepoId.Contains("gemma-4-e2b", StringComparison.OrdinalIgnoreCase));
 
         //the adopted row must show a have-mark, so the shelf tells the two rows apart without hiding either.
         Assert.Contains(shelf.Facts!, f => f.Have != Gatto.Terminal.HaveMark.None);

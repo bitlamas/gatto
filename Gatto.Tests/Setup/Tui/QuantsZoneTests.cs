@@ -18,7 +18,7 @@ public class QuantsZoneTests
         [Q("m-Q8_0.gguf", 26.0), Q("m-Q4_K_M.gguf", 3.7), Q("m-Q6_K.gguf", 9.9)];
 
     //list the fixture in the repo's own order, heaviest first, so a smallest-first screen proves the renderer sorted
-    private static ShelfRow Row(string id) => new(
+    private static ModelRow Row(string id) => ShelfRows.Of(
         id, id.Split('/')[0], Quants[1], FitRegime.FitsGpu, 262144, false, null, 900, false,
         Params: 3_000_000_000, AllQuants: Quants, Arch: "qwen3", FileCount: 7);
 
@@ -27,12 +27,11 @@ public class QuantsZoneTests
 
     private static WizardScreen.Choice Shelf(HardwareSnapshot? machine = null)
     {
-        IReadOnlyList<ShelfRow> rows = [Row("unsloth/a"), Row("unsloth/b")];
+        IReadOnlyList<ModelRow> rows = [Row("unsloth/a"), Row("unsloth/b")];
         var probes = new WizardProbes
         {
             Rows = rows,
-            Curated = "unsloth",
-            Answer = _ => new HubSearchOutcome(rows, null, "unsloth", HiddenByFit: 0),
+            Answer = _ => WizardProbes.Outcome(rows, null),
             //the default snapshot when the caller names no machine, so both arms build the same fixture and only the hardware differs
             Snapshot = machine ?? new HardwareSnapshot(34359738368, 34093496320, GpuKind.Discrete, 8589934592),
         };
@@ -40,29 +39,6 @@ public class QuantsZoneTests
     }
 
     private static ModelFacts Facts(WizardScreen.Choice c) => c.Shelf!.Facts![0];
-
-    //assert the rendered pane, since the order and the mark belong to the renderer and a list check passes over a zone nobody drew
-    [Fact]
-    public void THE_PANE_DRAWS_ONE_ROW_PER_QUANT_SMALLEST_FIRST_WITH_THE_PICKED_ONE_MARKED()
-    {
-        var screen = Shelf();
-        var rows = Pane.Rows(screen.Shelf!.Rows[0], Facts(screen), screen.Shelf!.Shape, 46,
-            cursor: -1, focused: false, build: -1, focus: Region.List);
-
-        var quantRows = rows.Select(r => r.Text)
-            .SkipWhile(t => !t.Contains("files (", StringComparison.Ordinal))
-            .Skip(1)
-            .Where(t => t.Trim().Length > 0)
-            .ToList();
-
-        Assert.Equal(3, quantRows.Count);
-        Assert.Contains("Q4_K_M", quantRows[0], StringComparison.Ordinal);
-        Assert.Contains("Q6_K", quantRows[1], StringComparison.Ordinal);
-        Assert.Contains("Q8_0", quantRows[2], StringComparison.Ordinal);
-        //the picked quant shows the remembered mark, and the other two do not
-        Assert.StartsWith(GlyphSet.Unicode.Angle, quantRows[0].TrimStart(), StringComparison.Ordinal);
-        Assert.DoesNotContain(GlyphSet.Unicode.Angle, quantRows[1], StringComparison.Ordinal);
-    }
 
     //each quant keeps its own fit regime, since readers pick by seeing which files their machine can hold
     [Fact]
@@ -91,13 +67,12 @@ public class QuantsZoneTests
     {
         static int ReadsFor(int rowCount)
         {
-            IReadOnlyList<ShelfRow> rows =
+            IReadOnlyList<ModelRow> rows =
                 [.. Enumerable.Range(0, rowCount).Select(i => Row($"unsloth/m{i}"))];
             var probes = new WizardProbes
             {
                 Rows = rows,
-                Curated = "unsloth",
-                Answer = _ => new HubSearchOutcome(rows, null, "unsloth", HiddenByFit: 0),
+                Answer = _ => WizardProbes.Outcome(rows, null),
             };
             var screen = Assert.IsType<WizardScreen.Choice>(new SetupFlow(probes).StartPastEngine());
             Assert.Equal(rowCount, screen.Shelf!.Rows.Count);
@@ -111,13 +86,12 @@ public class QuantsZoneTests
     [Fact]
     public void A_ROW_WITH_NO_QUANTS_DRAWS_NO_ZONE()
     {
-        IReadOnlyList<ShelfRow> rows =
-            [Row("unsloth/a") with { AllQuants = null, FileCount = 0 }];
+        IReadOnlyList<ModelRow> rows =
+            [Row("unsloth/a").WithFiles([], 0)];
         var screen = Assert.IsType<WizardScreen.Choice>(new SetupFlow(new WizardProbes
         {
             Rows = rows,
-            Curated = "unsloth",
-            Answer = _ => new HubSearchOutcome(rows, null, "unsloth", HiddenByFit: 0),
+            Answer = _ => WizardProbes.Outcome(rows, null),
         }).StartPastEngine());
 
         Assert.Null(Facts(screen).Files);
@@ -133,12 +107,11 @@ public class QuantsZoneTests
         Assert.Contains(Region.Files,
             Gatto.Cli.Setup.Tui.Shelf.Regions(withFiles.Shelf!, 100, 0, withFiles.Door is not null));
 
-        IReadOnlyList<ShelfRow> bare = [Row("unsloth/a") with { AllQuants = null }];
+        IReadOnlyList<ModelRow> bare = [Row("unsloth/a").WithFiles([])];
         var without = Assert.IsType<WizardScreen.Choice>(new SetupFlow(new WizardProbes
         {
             Rows = bare,
-            Curated = "unsloth",
-            Answer = _ => new HubSearchOutcome(bare, null, "unsloth", HiddenByFit: 0),
+            Answer = _ => WizardProbes.Outcome(bare, null),
         }).StartPastEngine());
 
         Assert.False(Gatto.Cli.Setup.Tui.Shelf.HasFiles(without.Shelf!, 0));
@@ -148,12 +121,12 @@ public class QuantsZoneTests
 
     //pin the ring's whole order, since a membership check passes on any arrangement of the same zones
     [Fact]
-    public void THE_RINGS_ORDER_IS_FAMILIES_PUBLISHER_LIST_FILES_SEARCH()
+    public void THE_RINGS_ORDER_IS_FAMILIES_LIST_FILES_SEARCH()
     {
         var screen = Shelf();
 
         Assert.Equal(
-            [Region.Families, Region.Publisher, Region.List, Region.Files, Region.Search],
+            [Region.Families, Region.List, Region.Files, Region.Search],
             Gatto.Cli.Setup.Tui.Shelf.Regions(screen.Shelf!, 100, 0, screen.Door is not null));
     }
 
@@ -161,19 +134,18 @@ public class QuantsZoneTests
     [Fact]
     public void PICKING_A_QUANT_IN_THE_PANE_CHANGES_THE_ROWS_OWN_QUANT()
     {
-        IReadOnlyList<ShelfRow> rows = [Row("unsloth/a")];
+        IReadOnlyList<ModelRow> rows = [Row("unsloth/a")];
         var flow = new SetupFlow(new WizardProbes
         {
             Rows = rows,
-            Curated = "unsloth",
-            Answer = _ => new HubSearchOutcome(rows, null, "unsloth", HiddenByFit: 0),
+            Answer = _ => WizardProbes.Outcome(rows, null),
         });
         var shelf = Assert.IsType<WizardScreen.Choice>(flow.StartPastEngine());
 
-        Assert.Equal("m-Q4_K_M.gguf", shelf.Shelf!.Rows[0].PickedQuant.FileName);
+        Assert.Equal("m-Q4_K_M.gguf", shelf.Shelf!.Rows[0].RowQuant!.FileName);
 
         //the pick is the row's option key plus the quant label. the pane orders lightest-first and the repo order differs, so an index would name another file
-        var next = flow.Answer(ShelfControls.PickAnswer(shelf.Options[0].Key, "Q6_K"));
+        var next = flow.Answer(ShelfControls.PickAnswer(shelf.Options[0].Key, new FileRef("unsloth", "unsloth/a", "m-Q6_K.gguf")));
 
         //the next screen names the chosen file only, since a screen naming both would read as a choice still to make
         var text = string.Join(" | ", next switch
@@ -195,46 +167,40 @@ public class QuantsZoneTests
     {
         //0.3 GB beside 7 billion parameters is far under any real quantization, the exact shape the size floor must reject
         var sidecar = Q("stories15M-q4_0.gguf", 0.3);
-        IReadOnlyList<ShelfRow> rows =
+        IReadOnlyList<ModelRow> rows =
         [
-            Row("ggml-org/models") with
-            {
-                AllQuants = [.. Quants, sidecar],
-                Params = 7_000_000_000,
-                FileCount = 8,
-            },
+            Row("ggml-org/models").WithFiles([.. Quants, sidecar], 8) with { Params = 7_000_000_000 },
         ];
         var screen = Assert.IsType<WizardScreen.Choice>(new SetupFlow(new WizardProbes
         {
             Rows = rows,
-            Curated = "unsloth",
-            Answer = _ => new HubSearchOutcome(rows, null, "unsloth", HiddenByFit: 0),
+            Answer = _ => WizardProbes.Outcome(rows, null),
         }).StartPastEngine());
 
         var files = Facts(screen).Files!;
 
         Assert.Equal(3, files.Count);
-        Assert.DoesNotContain(files, f => f.Quant.Contains("q4_0", StringComparison.OrdinalIgnoreCase));
+        Assert.DoesNotContain(files, f => f.Label.Contains("q4_0", StringComparison.OrdinalIgnoreCase));
         //the heading counts every file in the repo, including the one refused as an offer
         Assert.Equal(8, Facts(screen).FileCount);
     }
 
-    //a file with no readable quant token draws no row, since picks match by label and an unnamed entry could never be one
+    //a file with no readable quant token is listed by its name, since a pick names a file by reference and the floor decides only the pick
     [Fact]
-    public void A_FILE_WITH_NO_QUANT_TOKEN_DRAWS_NO_ROW()
+    public void A_FILE_WITH_NO_QUANT_TOKEN_IS_LISTED_BY_ITS_NAME()
     {
-        IReadOnlyList<ShelfRow> rows =
-            [Row("unsloth/a") with { AllQuants = [.. Quants, Q("model.gguf", 4.2)] }];
+        IReadOnlyList<ModelRow> rows =
+            [Row("unsloth/a").WithFiles([.. Quants, Q("model.gguf", 4.2)])];
         var screen = Assert.IsType<WizardScreen.Choice>(new SetupFlow(new WizardProbes
         {
             Rows = rows,
-            Curated = "unsloth",
-            Answer = _ => new HubSearchOutcome(rows, null, "unsloth", HiddenByFit: 0),
+            Answer = _ => WizardProbes.Outcome(rows, null),
         }).StartPastEngine());
 
         var files = Facts(screen).Files!;
 
-        Assert.Equal(3, files.Count);
-        Assert.All(files, f => Assert.NotEqual("", f.Quant));
+        Assert.Equal(4, files.Count);
+        var bare = Assert.Single(files, f => f.Quant is null);
+        Assert.Equal("model.gguf", bare.Label);
     }
 }

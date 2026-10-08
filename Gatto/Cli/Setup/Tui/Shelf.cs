@@ -1,5 +1,6 @@
 using Gatto.Core.Acquire;
 using Gatto.Core.Hardware;
+using Gatto.Core.Models;
 using Gatto.Terminal;
 
 namespace Gatto.Cli.Setup.Tui;
@@ -9,8 +10,6 @@ internal static class Shelf
 {
     private const string Indent = "  ";
 
-    //the digit column width: a digit, a period and a space up to nine, three blank cells past nine
-    private const int NumberWidth = 3;
 
     //the mark where the keys are, ❯, and › for what is remembered, one pair the whole wizard shares
     private static string HereOf(GlyphSet g) => g.Prompt + " ";
@@ -18,14 +17,15 @@ internal static class Shelf
     private static string PickOf(GlyphSet g) => $"{g.Angle} ";
     private const string NoMark = "  ";
 
-    private const int ParamsColumn = 6;
+    //wide enough for the header and its sort mark, with the values ending under the mark
+    private const int ParamsColumn = 8;
     private const int SizeQuantColumn = 14;
     private const int KindColumn = 8;
     private const int RunsColumn = 9;
 
     //everything the model column is measured against: the mark, the digits, the fixed columns and the gaps between them
     private const int Chrome =
-        2 + NumberWidth
+        2
         + 2 + ParamsColumn
         + 2 + SizeQuantColumn
         + 2 + KindColumn
@@ -86,13 +86,12 @@ internal static class Shelf
             else
             {
                 //a typed search lifts the family, so no chip is active while one is showing. the chips row reads Searched and the count line reads Lift
-                var active = !v.Searched
-                    && string.Equals(families[i], v.Family, StringComparison.OrdinalIgnoreCase);
+                var active = !v.Searched && Lights(v, families, families[i]);
                 runs.Add(new Run(families[i], active ? RunInk.Accent : RunInk.Dim));
             }
         }
 
-        if (v.Searched) runs.Add(new Run("   (lifted, you searched)", RunInk.Dim));
+        if (v.Searched) runs.Add(new Run("   (search active)", RunInk.Dim));
 
         //on a local shelf the folder takes the publisher slot, and the path is cut from the front like the pane's
         if (v.Source == ShelfSource.Local)
@@ -101,9 +100,17 @@ internal static class Shelf
                 : Slot(runs, "folder  ", Pane.PathTail(dir, FolderSlot, glyphs ?? GlyphSet.Unicode),
                        width, focused: false, g);
 
-        if (!v.HasPublisherSlot || v.CuratedPublisher is not { Length: > 0 } pub)
-            return new PaintedRow(runs);
-        return Slot(runs, "publisher  ", pub, width, focus == Region.Publisher, g);
+        return new PaintedRow(runs);
+    }
+
+    //a chip is lit when its family is in the lit set, and all when every family is. a shelf with no set lights its one family
+    private static bool Lights(ShelfView v, IReadOnlyList<string> families, string chip)
+    {
+        if (v.Lit is not { } lit) return string.Equals(chip, v.Family, StringComparison.OrdinalIgnoreCase);
+        var every = families.Where(f => !string.Equals(f, "all", StringComparison.OrdinalIgnoreCase)).ToList();
+        return string.Equals(chip, "all", StringComparison.OrdinalIgnoreCase)
+            ? every.Count > 0 && every.All(f => lit.Contains(f, StringComparer.OrdinalIgnoreCase))
+            : lit.Contains(chip, StringComparer.OrdinalIgnoreCase);
     }
 
     //the folder slot's budget, 34 cells of path before the cut from the front starts
@@ -133,7 +140,7 @@ internal static class Shelf
     //a local file name is capped at 24 cells with an ellipsis. a repo name never is, since it is an identifier the user may retype
     private const int LocalNameCap = 24;
 
-    private static string Name(ShelfView v, ShelfRow r, GlyphSet g) =>
+    private static string Name(ShelfView v, ModelRow r, GlyphSet g) =>
         v.Source == ShelfSource.Local ? TermText.TruncateCells(Name(v, r), LocalNameCap, g) : Name(v, r);
 
     //the model column takes the widest name on screen, after a local name is capped
@@ -170,12 +177,14 @@ internal static class Shelf
         //the size-quant cell takes the widest pair shown, because Pane.Cells pads and never clips, so a narrow cell pushes every column after it
         var sqw = SizeQuantWidth(v);
         var sw = SizeWidth(v);
+        //the params header carries the sort's direction, largest first until a click turns it
+        var paramsHeader = "params " + (v.SmallestFirst is true ? g.CaretUp : g.Caret);
         var rows = new List<PaintedRow>
         {
             PaintedRow.Of(
-                new string(' ', 2 + NumberWidth)
+                Indent
                 + Pane.Cells("model", mw) + "  "
-                + (paramsCol ? Pane.Right("params", ParamsColumn) + "  " : "")
+                + (paramsCol ? Pane.Right(paramsHeader, ParamsColumn) + "  " : "")
                 //the TUI shelf composes its own header, separate from ShelfTable's, so a fix to one header must be made in both
                 + Pane.Cells($"size {(glyphs ?? GlyphSet.Unicode).Dot} quant", sqw) + "  "
                 + Pane.Cells("kind", KindColumn)
@@ -183,14 +192,18 @@ internal static class Shelf
                 RunInk.Dim),
         };
 
+        //the two groups are named only on a card, when both have rows and the engine's order stands, since a flat or re-sorted list has no groups
+        var grouped = Grouped(v);
+
         for (var i = 0; i < v.Rows.Count; i++)
         {
             var r = v.Rows[i];
-            var older = v.Facts is { } fs && i < fs.Count && fs[i].Older;
-            //numbers stop at nine, past it the column is blank, since a tenth row with "10." would promise a key that is not there
-            var number = i < 9
-                ? $"{i + 1}. "
-                : new string(' ', NumberWidth);
+            if (grouped && (i == 0 || v.Rows[i - 1].Fit != r.Fit))
+            {
+                if (i > 0) rows.Add(PaintedRow.Of(""));
+                rows.Add(PaintedRow.Of(Indent + GroupHeading(r.Fit), RunInk.Dim));
+            }
+            var number = "";
             var body = Pane.Cells(Name(v, r, g), mw) + "  "
                      + (paramsCol ? Pane.Right(ShelfTable.ParamsCell(r), ParamsColumn) + "  " : "")
                      + Pane.Cells(SizeQuant(r, sw), sqw) + "  "
@@ -209,7 +222,7 @@ internal static class Shelf
             else
             {
                 cells.Add(new Run(NoMark + number));
-                cells.Add(new Run(body, older ? RunInk.Dim : RunInk.Plain));
+                cells.Add(new Run(body, RunInk.Plain));
             }
 
             //one tail column, and the have-mark outranks the fit mark since what the user already has changes what Enter means
@@ -244,19 +257,40 @@ internal static class Shelf
 
         //the rows the budget left off are counted, since a list that just stops reads as a complete one
         if (v.MoreBelow > 0)
-            rows.Add(PaintedRow.Of(new string(' ', 2 + NumberWidth) + $"{g.Ellipsis} {v.MoreBelow} more below", RunInk.Dim));
+            rows.Add(PaintedRow.Of(Indent + $"{g.Ellipsis} {v.MoreBelow} more below", RunInk.Dim));
 
         return rows;
     }
 
+    //the table splits into the card's rows and memory's only on a discrete card, in the engine's order, when both groups have rows
+    internal static bool Grouped(ShelfView v) =>
+        FitMarks.HasRunsColumn(v.Shape) && !v.Lift && v.SmallestFirst is null
+        && v.Rows.Any(x => x.Fit == FitRegime.FitsGpu) && v.Rows.Any(x => x.Fit == FitRegime.FitsRamOnly);
+
+    //the rows the two headings and the blank between the groups take, which the row window pays for
+    internal static int GroupRows(ShelfView v) => Grouped(v) ? 3 : 0;
+
+    //the table's rows that are not models, its header and the more-below line, which sit beside the pane as the models do
+    internal const int TableChrome = 2;
+
+    //where a group of rows runs, said as the drawn page says it. memory is fastest first because the engine orders it by what is read per token
+    internal static string GroupHeading(FitRegime fit) => fit switch
+    {
+        FitRegime.FitsGpu => "on the graphics card",
+        FitRegime.FitsRamOnly => "in system memory, fastest first",
+        _ => "too big for this machine",
+    };
+
     //the count line: the position and the hidden buckets by name. a bucket with a key says so, the one without stays quiet about keys
-    public static string CountLine(ShelfView v, GlyphSet? glyphs)
+    public static string CountLine(ShelfView v, GlyphSet? glyphs, long? shownMs = null)
     {
         var g = glyphs ?? GlyphSet.Unicode;
         //a zero total means the producer did not count, so report the rows in hand, smaller than the truth and never wrong
         var total = Math.Max(v.Total, v.Rows.Count + v.MoreBelow);
         //the Range glyph, since this is a range's typography rather than a not-run mark
         var position = $"1{g.Range}{v.Rows.Count} of {total}";
+
+        if (v.Source == ShelfSource.Hub) return Tail(g, position, HubClauses(v, g, shownMs));
 
         //the LOCAL shelf's legend, and only the local shelf's, since its cells are bare glyphs. the marks it lists come from the rows on screen
         var legend = v.Source == ShelfSource.Local
@@ -272,6 +306,26 @@ internal static class Shelf
         var family = FamilyClause(v.HiddenByFamily);
 
         return Tail(g, position, hidden, family, legend);
+    }
+
+    //the hub shelf's clauses: what is measured and what a adds, or under a how many rows each regime holds, then why the search stopped short
+    private static string?[] HubClauses(ShelfView v, GlyphSet g, long? shownMs)
+    {
+        var clauses = new List<string?>();
+        if (v.Lift)
+        {
+            var fitting = FitMarks.HasRunsColumn(v.Shape)
+                ? [(v.OnCard, FitRegime.FitsGpu), (v.InMemory, FitRegime.FitsRamOnly)]
+                : new[] { (v.OnCard + v.InMemory, FitRegime.FitsGpu) };
+            foreach (var (n, fit) in fitting.Append((v.TooBig, FitRegime.DoesNotFit)))
+                if (n > 0) clauses.Add($"{n} {FitMarks.Of(fit, v.Shape, g).Text}");
+        }
+        else if (v.MoreBehind)
+        {
+            clauses.Add("a show all");
+        }
+        clauses.Add(ShelfBinding.StoppedClause(v, shownMs));
+        return [.. clauses];
     }
 
     //what another family chip is holding, and "all" shows it. both the chip's sentence and the count line end in this clause
@@ -292,10 +346,10 @@ internal static class Shelf
     private static string Tail(GlyphSet g, string position, params string?[] clauses) =>
         string.Join($" {g.Dot} ", new[] { position }.Concat(clauses.Where(c => c is { Length: > 0 }))!);
 
-    //the whole middle of the screen: chips, the table beside its pane, the count line. file is -1 for wherever the knee is
+    //the whole middle of the screen: chips, the table beside its pane, the count line. file is -1 for the row's own publisher, open -1 for none open
     public static IReadOnlyList<PaintedRow> Body(
-        ShelfView v, int row, int chip, int file, Region focus, int width, int build = -1,
-        GlyphSet? glyphs = null, PaintedRow? working = null)
+        ShelfView v, int row, int chip, int file, Region focus, int width, int open = -1,
+        GlyphSet? glyphs = null, PaintedRow? working = null, long? shownMs = null, int paneRows = 0)
     {
         var g = glyphs ?? GlyphSet.Unicode;
         //the facts list must line up with the rows. a copy that sets only Rows keeps the old facts, and the readers below guard the index so a short list goes unnoticed
@@ -337,15 +391,14 @@ internal static class Shelf
         if (pane > 0 && row >= 0 && row < v.Rows.Count)
         {
             var facts = v.Facts is { } fs && row < fs.Count ? fs[row] : null;
-            //the files block keeps its height on a shelf where some row has files. a shelf with none draws it for no row, so the frame cannot move
-            var anyFiles = v.Facts is { } all && all.Any(f => f.Files is { Count: > 0 });
+            //the publishers block keeps its height on a shelf where some row has publishers. a shelf with none draws it for no row, so the frame cannot move
+            var anyFiles = v.Facts is { } all && all.Any(f => f.Publishers is { Count: > 0 });
             rows.AddRange(Beside(
                 table,
-                Pane.Rows(v.Rows[row], facts, v.Shape, pane, file, focus == Region.Files, build, focus, glyphs,
-                    holdFilesBlock: anyFiles),
+                Pane.Rows(v.Rows[row], facts, v.Shape, pane, file, focus == Region.Files, open, glyphs,
+                    holdFilesBlock: anyFiles, maxRows: paneRows > 0 ? Math.Max(paneRows, table.Count) : 0),
                 LeftWidth(v, g),
-                //the divider accents for either pane zone, since a divider lit only for the files would say the keys are elsewhere
-                focus is Region.Files or Region.Builds, g));
+                focus == Region.Files, g));
         }
         else
         {
@@ -353,7 +406,7 @@ internal static class Shelf
         }
 
         rows.Add(PaintedRow.Of(""));
-        rows.Add(PaintedRow.Of(Indent + CountLine(v, g), RunInk.Dim));
+        rows.Add(PaintedRow.Of(Indent + CountLine(v, g, shownMs), RunInk.Dim));
 
         //below the pane's threshold the facts move under the count line, since the count belongs with the table it describes
         if (pane == 0 && row >= 0 && row < v.Rows.Count)
@@ -370,7 +423,7 @@ internal static class Shelf
         var g = glyphs ?? GlyphSet.Unicode;
         var ms = Math.Max(0, elapsedMs);
         return new PaintedRow([
-            new Run(new string(' ', 2 + NumberWidth) + Gatto.Repl.Cats.Face(g) + " "
+            new Run(Indent + Gatto.Repl.Cats.Face(g) + " "
                 + Gatto.Repl.Render.PurrFrames.Short.At(ms), RunInk.Accent),
             new Run("   " + (step.Length > 0 ? $"{step} {g.Dot} " : "")
                 + Gatto.Repl.Render.ChromeTicker.FormatElapsed(ms), RunInk.Dim)]);
@@ -411,27 +464,21 @@ internal static class Shelf
         if (v.NothingFetched) return [Region.Search];
 
         //the strip is not a Tab stop, and the slot sits between the families and the list as the chips row reads
-        List<Region> ring = v.HasPublisherSlot
-            ? [Region.Families, Region.Publisher, Region.List]
-            : [Region.Families, Region.List];
+        List<Region> ring = [Region.Families, Region.List];
         if (HasFiles(v, row)) ring.Add(Region.Files);
-        if (HasBuilds(v, row)) ring.Add(Region.Builds);
         //the search region joins the ring only where there is a door, since a zone offering nothing is a Tab stop that changes nothing
         if (hasDoor) ring.Add(Region.Search);
         return ring;
     }
 
     internal static bool HasFiles(ShelfView v, int row) =>
-        v.Facts is { } fs && row >= 0 && row < fs.Count && fs[row].Files is { Count: > 0 };
-
-    //more than one build, the same count the pane draws on, since a zone with one build is a Tab stop that changes nothing
-    internal static bool HasBuilds(ShelfView v, int row) =>
-        v.Facts is { } fs && row >= 0 && row < fs.Count && fs[row].Builds is { Count: > 1 };
+        v.Facts is { } fs && row >= 0 && row < fs.Count
+        && (fs[row].Files is { Count: > 0 } || fs[row].Publishers?.Any(p => p.Files.Count > 0) == true);
 
     //m is labelled with its destination. atList is what Esc does on the list, since the shelf cannot know where it is
     public static IReadOnlyList<FooterKey> Keys(FocusRing ring, ShelfSource source,
         string atList = "leave", bool searchKey = false, GlyphSet? glyphs = null,
-        bool lift = false, bool back = false, bool sourceKey = true) =>
+        bool lift = false, bool sourceKey = true, bool lifted = false) =>
     [
         //every key is read off the ring, so the row cannot advertise one that goes nowhere. the two hints hold their shed rank and go first
         .. ring.HasSecondArea ? (IReadOnlyList<FooterKey>)[new("Tab", "area", Shed: 2)] : [],
@@ -443,27 +490,20 @@ internal static class Shelf
             //three words for three deeds: choose commits and moves on, pick commits and stays, next moves on with what is already committed
             ? (IReadOnlyList<FooterKey>)[new("Enter",
                 ring.Current is Region.Files ? "choose"
-                    : ring.Current is Region.Builds or Region.Publisher ? "pick"
                     : "next")]
             : [],
         //the m key is offered only where no typing door takes the letters, otherwise it would be typed rather than answered
         .. sourceKey ? (IReadOnlyList<FooterKey>)[new("m", source == ShelfSource.Local ? "hub" : "local")] : [],
-        //d searches, offered on the hub shelf only, and the key arm reads the same predicate OffersD
-        .. searchKey ? (IReadOnlyList<FooterKey>)[new("d", "search")] : [],
+        //the question mark searches, offered on the hub shelf only, and the key arm reads the same predicate OffersSearch
+        .. searchKey ? (IReadOnlyList<FooterKey>)[new("?", "search")] : [],
         //a lifts the fit filter, and it is offered only where OffersLift says so. the count line promises the key, this row answers it
-        .. lift ? (IReadOnlyList<FooterKey>)[new("a", "all sizes")] : [],
-        //b goes back only where there is a back to go to, so the key is not drawn after the write pause
-        .. back ? (IReadOnlyList<FooterKey>)[new("b", "back")] : [],
+        .. lift ? (IReadOnlyList<FooterKey>)[new("a", lifted ? "show less" : "show all")] : [],
         //the Esc key is not a region and always has a deed, so it survives every collapse. m leads d, so the two keys that change the view come first
         new("Esc", ring.EscVerb(atList)),
     ];
 
-    //drops the publisher prefix while every row shares one publisher, a second one makes it what tells rows apart
-    private static string Name(ShelfView v, ShelfRow r) =>
-        v.Rows.All(x => string.Equals(x.Publisher, r.Publisher, StringComparison.OrdinalIgnoreCase))
-        && r.RepoId.StartsWith(r.Publisher + "/", StringComparison.OrdinalIgnoreCase)
-            ? r.RepoId[(r.Publisher.Length + 1)..]
-            : r.RepoId;
+    //the model's own name, which no publisher prefixes
+    private static string Name(ShelfView v, ModelRow r) => r.Model;
 
     //the ruled column, or what the widest row needs. a cell narrower than its content pushes the columns after it, since Pane.Cells pads and never clips
     private static int SizeQuantWidth(ShelfView v) =>
@@ -473,13 +513,13 @@ internal static class Shelf
 
     //the widest size shown, so every quant token starts in one column
     private static int SizeWidth(ShelfView v) =>
-        v.Rows.Count == 0 ? 0 : v.Rows.Max(r => UnicodeWidth.Of(SearchRow.Gb(r.PickedQuant.Bytes)));
+        v.Rows.Count == 0 ? 0 : v.Rows.Max(r => UnicodeWidth.Of(SearchRow.Gb(SearchRow.RowBytes(r))));
 
     //an unconventional filename shows the size alone, the token rule lives in QuantToken.Of
-    private static string SizeQuant(ShelfRow r, int sizeWidth)
+    private static string SizeQuant(ModelRow r, int sizeWidth)
     {
-        var gb = SearchRow.Gb(r.PickedQuant.Bytes);
-        return QuantToken.Of(r.PickedQuant.FileName) is { Length: > 0 } q ? $"{Pane.Cells(gb, sizeWidth)} {q}" : gb;
+        var gb = SearchRow.Gb(SearchRow.RowBytes(r));
+        return QuantToken.Of(SearchRow.RowFileName(r)) is { Length: > 0 } q ? $"{Pane.Cells(gb, sizeWidth)} {q}" : gb;
     }
 
     //the structure cell is view data, read from the producer's facts. an empty cell means the producer said nothing about that row

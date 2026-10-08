@@ -8,7 +8,7 @@ namespace Gatto.Tests.Setup;
 //gatto model draws its shelf before the Hub answers, runs the scan beside the search, and lands when both are in
 public class LoadingShelfFlowTests
 {
-    private static ShelfRow Row(string id) => new(
+    private static ModelRow Row(string id) => ShelfRows.Of(
         id, id.Split('/')[0], new HubQuant("m-Q4_K_M.gguf", 4_000_000_000, null),
         FitRegime.FitsGpu, 262144, false, null, 900, false, Params: 3_000_000_000, Arch: "qwen3");
 
@@ -16,24 +16,32 @@ public class LoadingShelfFlowTests
     private sealed class HeldHub
     {
         public readonly ManualResetEventSlim Release = new(false);
-        public readonly List<(HubSearchRequest Request, CancellationToken Token)> Asked = [];
+        public readonly List<(ModelSearchRequest Request, CancellationToken Token)> Asked = [];
         public volatile bool Returned;
 
-        public HubSearchOutcome Search(HubSearchRequest request, IProgress<SearchProgress>? progress,
+        public ShelfOutcome Search(ModelSearchRequest request, IProgress<SearchProgress>? progress,
             CancellationToken ct)
         {
             lock (Asked) Asked.Add((request, ct));
             //bounded, so a test that forgets the release fails instead of hanging the run
             Release.Wait(Bound, CancellationToken.None);
             Returned = true;
-            return new HubSearchOutcome([Row("unsloth/a")], null);
+            return WizardProbes.Outcome([Row("unsloth/a")], null);
         }
     }
 
     private static (string Request, CancellationToken Token)[] Asked(HeldHub hub)
     {
-        lock (hub.Asked) return [.. hub.Asked.Select(a => (a.Request.Family ?? "", a.Token))];
+        lock (hub.Asked) return [.. hub.Asked.Select(a => (LitOf(a.Request), a.Token))];
     }
+
+    //the families a request lit, sorted and joined, so a test names the set a chip press left
+    private static string LitOf(ModelSearchRequest r) => string.Join(",", r.Lit.Order());
+
+    private static string LandingLit => string.Join(",", Families.Load().Landing.Order());
+
+    //a chip that is not in the landing pair, so its press adds a family rather than turning one off
+    private static string Added => Families.Load().Ladder[2];
 
     [Fact]
     public void THE_FIRST_FRAME_IS_PAINTED_BEFORE_ANY_HUB_REQUEST_RETURNS()
@@ -100,12 +108,12 @@ public class LoadingShelfFlowTests
         var hub = new HeldHub();
         var flow = new SetupFlow(new WizardProbes
         {
-            Slow = (r, p, ct) => r.Family is null ? new HubSearchOutcome([Row("unsloth/a")], null) : hub.Search(r, p, ct),
+            Slow = (r, p, ct) => LitOf(r) == LandingLit ? WizardProbes.Outcome([Row("unsloth/a")], null) : hub.Search(r, p, ct),
         });
         var right = new ConsoleKeyInfo('\0', ConsoleKey.RightArrow, false, false, false);
         var rig = new WizardRig(width: 120) { PollTime = true };
-        //the second family's chip on the landed shelf, then the third's while that load is held, then the chord
-        var face = new Recording(rig.TuiFace(WizardRig.Tab, WizardRig.Tab, right, WizardRig.Enter,
+        //the second family's chip on the landed shelf turns it off, then the third's lights it while that load is held, then the chord
+        var face = new Recording(rig.TuiFace(WizardRig.Tab, WizardRig.Tab, WizardRig.Tab, right, WizardRig.Enter,
             WizardRig.Tab, WizardRig.Tab, right, right, WizardRig.Enter, WizardRig.Esc, WizardRig.Esc))
         {
             OnLaterLoad = () => rig.WatchKeyBudget = 7,
@@ -117,8 +125,8 @@ public class LoadingShelfFlowTests
             //the two searches start on the pool, so they can arrive in either order and after the runner returned
             Assert.True(SpinUntil(() => Asked(hub).Length == 2));
             var asked = Asked(hub);
-            var first = Assert.Single(asked, a => a.Request == ladder[1]);
-            var second = Assert.Single(asked, a => a.Request == ladder[2]);
+            var first = Assert.Single(asked, a => a.Request == ladder[0]);
+            var second = Assert.Single(asked, a => a.Request == string.Join(",", new[] { ladder[0], ladder[2] }.Order()));
             Assert.True(first.Token.IsCancellationRequested);
             Assert.NotEqual(first.Token, second.Token);
         }
@@ -143,7 +151,7 @@ public class LoadingShelfFlowTests
             {
                 searching.Set();
                 met.Search = scanning.Wait(Bound, CancellationToken.None);
-                return new HubSearchOutcome([Row("unsloth/a"), Row("unsloth/b")], null);
+                return WizardProbes.Outcome([Row("unsloth/a"), Row("unsloth/b")], null);
             },
         };
         var flow = new SetupFlow(probes) { CanSwitchSource = true, LoadsShelfInBackground = true };
@@ -174,7 +182,7 @@ public class LoadingShelfFlowTests
                 progress.Report(new SearchProgress(SearchStage.Reading, 6, 13, ["unsloth"]));
                 reported.Set();
                 next.Wait(Bound, CancellationToken.None);
-                return new HubSearchOutcome([], null);
+                return WizardProbes.Outcome([], null);
             },
         };
         var flow = new SetupFlow(probes) { CanSwitchSource = true, LoadsShelfInBackground = true };
@@ -205,7 +213,7 @@ public class LoadingShelfFlowTests
                 progress!.Report(new SearchProgress(SearchStage.Listing, 3, 11, ["a", "b"]));
                 reported.Set();
                 done.Wait(Bound, CancellationToken.None);
-                return new HubSearchOutcome([], null);
+                return WizardProbes.Outcome([], null);
             },
         };
         var flow = new SetupFlow(probes) { CanSwitchSource = true, LoadsShelfInBackground = true };
@@ -227,7 +235,7 @@ public class LoadingShelfFlowTests
         {
             CanSwitchSource = true, LoadsShelfInBackground = true,
         };
-        var family = Families.Load().Ladder[1];
+        var family = Added;
         try
         {
             flow.StartAtModelSegment();
@@ -236,8 +244,8 @@ public class LoadingShelfFlowTests
             Assert.True(SpinUntil(() => Asked(hub).Length == 2));
 
             var asked = Asked(hub);
-            Assert.True(Assert.Single(asked, a => a.Request == "").Token.IsCancellationRequested);
-            Assert.False(Assert.Single(asked, a => a.Request == family).Token.IsCancellationRequested);
+            Assert.True(Assert.Single(asked, a => a.Request == LandingLit).Token.IsCancellationRequested);
+            Assert.False(Assert.Single(asked, a => a.Request.Split(',').Contains(family)).Token.IsCancellationRequested);
         }
         finally { hub.Release.Set(); }
     }
@@ -263,7 +271,6 @@ public class LoadingShelfFlowTests
             lock (hub.Asked)
             {
                 Assert.Equal("coder", hub.Asked[1].Request.Search);
-                Assert.Null(hub.Asked[1].Request.Family);
                 Assert.True(hub.Asked[0].Token.IsCancellationRequested);
             }
         }
@@ -314,7 +321,7 @@ public class LoadingShelfFlowTests
         finally { held.Release.Set(); }
 
         //left from the landed shelf, the load answering at once
-        var landed = new SetupFlow(new WizardProbes { Slow = (r, p, ct) => new HubSearchOutcome([Row("unsloth/a")], null) });
+        var landed = new SetupFlow(new WizardProbes { Slow = (r, p, ct) => WizardProbes.Outcome([Row("unsloth/a")], null) });
         SetupRunner.Run(landed, new WizardRig(width: 120) { PollTime = true }.TuiFace(WizardRig.Esc, WizardRig.Esc),
             homePath: null, modelSegmentOnly: true);
 
@@ -324,8 +331,8 @@ public class LoadingShelfFlowTests
         {
             Slow = (r, p, ct) =>
             {
-                if (r.Family is not null) hold.Wait(Bound, CancellationToken.None);
-                return new HubSearchOutcome([Row("unsloth/a")], null);
+                if (r.Family() is not null) hold.Wait(Bound, CancellationToken.None);
+                return WizardProbes.Outcome([Row("unsloth/a")], null);
             },
         });
         var right = new ConsoleKeyInfo('\0', ConsoleKey.RightArrow, false, false, false);
@@ -371,12 +378,11 @@ public class LoadingShelfFlowTests
     //a flow on gatto setup's road standing on the landed Hub shelf, its chip searches held while the test holds the hub
     private static SetupFlow OnTheSetupShelf(HeldHub? chipHub)
     {
-        var family = Families.Load().Ladder[1];
         var flow = new SetupFlow(new WizardProbes
         {
-            Slow = (request, progress, ct) => request.Family == family && chipHub is { } held
+            Slow = (request, progress, ct) => request.Lit.Contains(Added) && chipHub is { } held
                 ? held.Search(request, progress, ct)
-                : new HubSearchOutcome([Row("unsloth/a")], null),
+                : WizardProbes.Outcome([Row("unsloth/a")], null),
         })
         {
             CanSwitchSource = true, LoadsShelfInBackground = true, OpensOnLoadingScreen = true,
@@ -392,7 +398,7 @@ public class LoadingShelfFlowTests
     [Fact]
     public void B_DURING_A_CHIPS_LOAD_AND_B_AFTER_IT_LANDS_REACH_THE_SAME_SCREEN()
     {
-        var chip = ShelfControls.FamilyAnswer(Families.Load().Ladder[1]);
+        var chip = ShelfControls.FamilyAnswer(Added);
         var held = new HeldHub();
         try
         {
@@ -423,7 +429,7 @@ public class LoadingShelfFlowTests
         var held = new HeldHub();
         var flow = new SetupFlow(new WizardProbes
         {
-            Slow = (r, p, ct) => r.Family is null ? new HubSearchOutcome([Row("unsloth/a")], null) : held.Search(r, p, ct),
+            Slow = (r, p, ct) => r.Family() is null ? WizardProbes.Outcome([Row("unsloth/a")], null) : held.Search(r, p, ct),
         })
         {
             CanSwitchSource = true, LoadsShelfInBackground = true, OpensOnLoadingScreen = true,
@@ -450,7 +456,7 @@ public class LoadingShelfFlowTests
         var searches = 0;
         var probes = new WizardProbes
         {
-            Slow = (r, p, ct) => { Interlocked.Increment(ref searches); return new HubSearchOutcome([Row("unsloth/a")], null); },
+            Slow = (r, p, ct) => { Interlocked.Increment(ref searches); return WizardProbes.Outcome([Row("unsloth/a")], null); },
             Loaded = "a",
             OnLoaded = () => hold.Wait(Bound),
         };
@@ -480,7 +486,7 @@ public class LoadingShelfFlowTests
         using var hold = new ManualResetEventSlim(false);
         var probes = new WizardProbes
         {
-            Slow = (r, p, ct) => new HubSearchOutcome([Row("unsloth/a")], null),
+            Slow = (r, p, ct) => WizardProbes.Outcome([Row("unsloth/a")], null),
             Loaded = "a",
             OnLoaded = () => hold.Wait(Bound),
         };
@@ -517,24 +523,26 @@ public class LoadingShelfFlowTests
     {
         var probes = new WizardProbes
         {
-            Slow = (request, progress, ct) => new HubSearchOutcome([Row("unsloth/a")], null),
+            Slow = (request, progress, ct) => WizardProbes.Outcome([Row("unsloth/a")], null),
             Found = [new FoundModel(@"D:\w\a\a-Q4_K_M.gguf", 4_000_000_000, null)],
             Typed = id => new TypedIdOutcome.Unreachable(false),
         };
         var right = new ConsoleKeyInfo('\0', ConsoleKey.RightArrow, false, false, false);
         static ConsoleKeyInfo[] Typed(string text) =>
-            [WizardRig.Ch('/'), .. text.Select(WizardRig.Ch), WizardRig.Enter];
+            [WizardRig.Ch('?'), .. text.Select(WizardRig.Ch), WizardRig.Enter];
         ConsoleKeyInfo[] keys = path switch
         {
             "start" => [],
-            "chip" => [WizardRig.Tab, WizardRig.Tab, right, WizardRig.Enter],
+            "chip" => [WizardRig.Tab, WizardRig.Tab, WizardRig.Tab, right, WizardRig.Enter],
             "term" => Typed("coder"),
             "m" => [WizardRig.Ch('m')],
             "folder" => Typed(@"D:\w"),
             _ => Typed("org/model"),
         };
         var rig = new WizardRig(width: 120) { PollTime = true, Pulse = new FakePulse() };
-        var face = new Pulsing(rig.TuiFace([.. keys, WizardRig.Esc, WizardRig.Esc, WizardRig.Esc, WizardRig.Esc]), rig.Pulse);
+        //the repo id path takes one Esc back to the shelf from the lookup's question, then every path leaves on the Ctrl+C chord
+        ConsoleKeyInfo[] back = path == "repo id" ? [WizardRig.Esc] : [];
+        var face = new Pulsing(rig.TuiFace([.. keys, .. back, WizardRig.CtrlC, WizardRig.CtrlC]), rig.Pulse);
 
         SetupRunner.Run(new SetupFlow(probes), face, homePath: null, modelSegmentOnly: true);
 
@@ -625,7 +633,7 @@ public class LoadingShelfFlowTests
     {
         var probes = new WizardProbes
         {
-            Slow = (request, progress, ct) => new HubSearchOutcome([Row("unsloth/a")], null),
+            Slow = (request, progress, ct) => WizardProbes.Outcome([Row("unsloth/a")], null),
             Found = [new FoundModel(@"D:\w\a\a-Q4_K_M.gguf", 4_000_000_000, null)],
             Typed = id => new TypedIdOutcome.Unreachable(false),
         };
@@ -690,7 +698,7 @@ public class LoadingShelfFlowTests
         using var hold = new ManualResetEventSlim(false);
         var probes = new WizardProbes
         {
-            Slow = (request, progress, ct) => new HubSearchOutcome([Row("unsloth/a")], null),
+            Slow = (request, progress, ct) => WizardProbes.Outcome([Row("unsloth/a")], null),
             Typed = id => { hold.Wait(Bound); return new TypedIdOutcome.Unreachable(false); },
         };
         var flow = new SetupFlow(probes) { CanSwitchSource = true, LoadsShelfInBackground = true };

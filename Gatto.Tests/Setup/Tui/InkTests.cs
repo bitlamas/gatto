@@ -86,7 +86,7 @@ public class InkTests
             ModelTicks = result is null ? [] : [FetchTickValue],
             Rows =
             [
-                new Gatto.Core.Acquire.ShelfRow(FetchRepo, "unsloth",
+                ShelfRows.Of(FetchRepo, "unsloth",
                     FetchQuant(FetchFile, (long)(16.9 * FetchGib)),
                     Gatto.Core.Models.FitRegime.FitsGpu, 32768, true, null, 100, false,
                     Projectors: [FetchQuant("mmproj-F16.gguf", 851L * 1024 * 1024)]),
@@ -191,7 +191,7 @@ public class InkTests
         {
             Rows =
             [
-                new Gatto.Core.Acquire.ShelfRow(WatchRepo, "unsloth", WatchQuant(sha!),
+                ShelfRows.Of(WatchRepo, "unsloth", WatchQuant(sha!),
                     Gatto.Core.Models.FitRegime.FitsGpu, 32768, false, null, 100, false),
             ],
             Roots = [WatchInto, WatchDownloads],
@@ -260,7 +260,7 @@ public class InkTests
         {
             Rows =
             [
-                new Gatto.Core.Acquire.ShelfRow(WatchRepo, "unsloth", WatchQuant(null!),
+                ShelfRows.Of(WatchRepo, "unsloth", WatchQuant(null!),
                     Gatto.Core.Models.FitRegime.FitsGpu, 32768, true, null, 100, false,
                     Projectors: [new Gatto.Core.Acquire.HubQuant("mmproj-F16.gguf", 851L << 20, null)]),
             ],
@@ -285,7 +285,7 @@ public class InkTests
         {
             Rows =
             [
-                new Gatto.Core.Acquire.ShelfRow(WatchRepo, "unsloth", WatchQuant(new string('a', 64)),
+                ShelfRows.Of(WatchRepo, "unsloth", WatchQuant(new string('a', 64)),
                     Gatto.Core.Models.FitRegime.FitsGpu, 32768, false, null, 100, false),
             ],
             Roots = [WatchInto, WatchDownloads],

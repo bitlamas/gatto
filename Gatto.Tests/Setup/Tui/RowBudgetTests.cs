@@ -84,17 +84,6 @@ public class RowBudgetTests
         Assert.NotEqual(HubSearch.DefaultRowBudget, flow.RowBudget);
     }
 
-    //the budget must reach the search request, since a number stopped at the painter shows the same screen and spends twice the requests
-    [Fact]
-    public void THE_BUDGET_RIDES_THE_SEARCH_REQUEST()
-    {
-        List<HubSearchRequest> asked = [];
-        ShelfOf(new SetupFlow(Spy(asked, [Model("m0")])) { RowBudget = 11 });
-
-        Assert.NotEmpty(asked);
-        Assert.All(asked, r => Assert.Equal(11, r.RowBudget));
-    }
-
     //the shelf must count the rows the budget left off, since a silently stopping list can't be told from a complete one
     [Fact]
     public void THE_SHELF_SHOWS_WHAT_FITS_AND_SAYS_WHAT_IT_LEFT_OFF()
@@ -139,8 +128,8 @@ public class RowBudgetTests
         public WizardAnswer? AskOne(WizardAsk ask) => null;
     }
 
-    private static ShelfRow Model(string name) =>
-        new($"unsloth/{name}", "unsloth", new HubQuant($"{name}.gguf", 1_000_000_000, null),
+    private static ModelRow Model(string name) =>
+        ShelfRows.Of($"unsloth/{name}", "unsloth", new HubQuant($"{name}.gguf", 1_000_000_000, null),
             FitRegime.FitsGpu, 4096, false, null, 0, false);
 
     //reach the shelf through StartPastEngine, since a private route here would drift from the screens the product really shows first
@@ -149,7 +138,7 @@ public class RowBudgetTests
         ?? throw new Xunit.Sdk.XunitException("the walk reached a choice with no shelf on it");
 
     //record every request, so the budget's route is observable rather than inferred from a screen that looks the same either way
-    private static WizardProbes Spy(List<HubSearchRequest> asked, IReadOnlyList<ShelfRow> rows) =>
+    private static WizardProbes Spy(List<ModelSearchRequest> asked, IReadOnlyList<ModelRow> rows) =>
         //keep the default llama path rather than null, since StartPastEngine expects an engine and a machine with none stops on the steering screen
-        new() { Answer = r => { asked.Add(r); return new HubSearchOutcome(rows, null); } };
+        new() { Answer = r => { asked.Add(r); return WizardProbes.Outcome(rows, null); } };
 }

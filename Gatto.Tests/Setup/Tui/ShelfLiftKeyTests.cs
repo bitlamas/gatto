@@ -30,20 +30,20 @@ public class ShelfLiftKeyTests
     private static ConsoleKeyInfo Ch(char c) => new(c, ConsoleKey.A, false, false, false);
     private static readonly ConsoleKeyInfo Enter = new('\0', ConsoleKey.Enter, false, false, false);
 
-    private static ShelfRow Row(int i) => new(
+    private static ModelRow Row(int i) => ShelfRows.Of(
         $"unsloth/model-{i:00}", "unsloth", new HubQuant($"m{i:00}-Q4_K_M.gguf", 1_000_000_000, null),
         FitRegime.FitsGpu, 32768, false, null, 10, false, Params: 4_000_000_000);
 
     private static ShelfView View(MachineShape shape = MachineShape.Discrete,
         ShelfSource source = ShelfSource.Hub) => new(
-        [.. Enumerable.Range(0, 6).Select(Row)], "unsloth", shape,
+        [.. Enumerable.Range(0, 6).Select(Row)], shape,
         Families: ["gemma", "all"], Family: "gemma", Total: 6, Source: source);
 
     private static WizardScreen.Choice Screen(bool inSession = false, ShelfView? shelf = null,
         bool everyKey = false)
     {
         var view = shelf ?? View();
-        var options = view.Rows.Select((r, i) => new ChoiceOption(i.ToString(), r.RepoId)).ToList();
+        var options = view.Rows.Select((r, i) => new ChoiceOption(i.ToString(), r.RowFile!.RepoId)).ToList();
         //the everyKey flag adds the folder option and the back, so the row shows all eight keys, which the width pins expect
         if (everyKey) options.Add(new ChoiceOption(SetupFlow.Elsewhere, "Look in another folder…"));
 
@@ -96,7 +96,7 @@ public class ShelfLiftKeyTests
     [Fact]
     public void A_IS_TEXT_IN_A_FOCUSED_SHELF_DOOR()
     {
-        var (answer, _) = Press(Screen(), 100, Ch('/'), Ch('a'), Enter);
+        var (answer, _) = Press(Screen(), 100, Ch('?'), Ch('a'), Enter);
 
         Assert.Equal(ShelfControls.TypedAnswer("a"), answer);
     }
@@ -109,11 +109,11 @@ public class ShelfLiftKeyTests
         var flow = new SetupFlow(probes);
         flow.StartPastOpening();
         flow.Answer(SetupFlow.FoundUse);
-        Assert.False(probes.LastRequest!.IncludeUnfittable, "the shelf opened with the filter already lifted");
+        Assert.False(probes.LastRequest!.Lifted, "the shelf opened with the filter already lifted");
 
         flow.Answer(SetupFlow.CtlLift);
 
-        Assert.True(probes.LastRequest!.IncludeUnfittable, "the search was not re-run with the filter lifted");
+        Assert.True(probes.LastRequest!.Lifted, "the search was not re-run with the filter lifted");
     }
 
     //one footer serves both shelves, so the local shelf must answer a rather than fall to the row-index reader
@@ -136,12 +136,12 @@ public class ShelfLiftKeyTests
     //the keys row must stay one line and shed hints before the legend, and each pin here was measured from this build
     [Theory]
     //every expected row below was printed from Footer.Compose, so don't hand-adjust them since the shed is what they protect
-    [InlineData("unified", 120, "  Tab area   ↑↓ move   Enter next   m local   d search   a all sizes   b back   Esc leave      | fewer params = faster")]
-    [InlineData("unified", 100, "  Enter next   m local   d search   a all sizes   b back   Esc leave       | fewer params = faster")]
-    [InlineData("unified", 80, "  Enter next   m local   d search   a all sizes   b back   Esc leave")]
-    [InlineData("discrete", 120, "  Tab area   ↑↓ move   Enter next   m local   d search   a all sizes   b back   Esc leave  | ✓ GPU · ⚠ RAM · ✗ too big")]
-    [InlineData("discrete", 100, "  Enter next   m local   d search   a all sizes   b back   Esc leave   | ✓ GPU · ⚠ RAM · ✗ too big")]
-    [InlineData("discrete", 80, "  Enter next   m local   d search   a all sizes   b back   Esc leave")]
+    [InlineData("unified", 120, "  Tab area   ↑↓ move   Enter next   m local   ? search   a show all   Esc back                 | fewer params = faster")]
+    [InlineData("unified", 100, "  Tab area   Enter next   m local   ? search   a show all   Esc back       | fewer params = faster")]
+    [InlineData("unified", 80, "  Enter next   m local   ? search   a show all   Esc back")]
+    [InlineData("discrete", 120, "  Tab area   ↑↓ move   Enter next   m local   ? search   a show all   Esc back                         | ✓ GPU · ⚠ RAM")]
+    [InlineData("discrete", 100, "  Tab area   ↑↓ move   Enter next   m local   ? search   a show all   Esc back     | ✓ GPU · ⚠ RAM")]
+    [InlineData("discrete", 80, "  Enter next   m local   ? search   a show all   Esc back      | ✓ GPU · ⚠ RAM")]
     //a second byte pin for the session rows would fail about the wrong thing, so their Esc leave is pinned at its own site
     public void THE_KEYS_ROW_IS_ONE_LINE_AT_EVERY_WIDTH(string shape, int width, string expected)
     {

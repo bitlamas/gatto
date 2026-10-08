@@ -12,7 +12,7 @@ public class LoadingShelfFaceTests
 
     private static WizardScreen.Choice Loading() => new(
         SetupFlow.ShelfLoadingKey, "Which model should gatto add?", [],
-        Shelf: new ShelfView([], null, MachineShape.UnifiedWithShare,
+        Shelf: new ShelfView([], MachineShape.UnifiedWithShare,
             Families: ["gemma", "qwen", "all"], Family: "all", Loading: true),
         Watching: true, Door: "search models…");
 
@@ -119,7 +119,7 @@ public class LoadingShelfFaceTests
     public void ONLY_ESC_ACTS_ON_THE_START_UP_SCREEN()
     {
         var right = new ConsoleKeyInfo('\0', ConsoleKey.RightArrow, false, false, false);
-        ConsoleKeyInfo[] keys = [WizardRig.Tab, right, WizardRig.Ch('m'), WizardRig.Ch('b'), WizardRig.Ch('/'),
+        ConsoleKeyInfo[] keys = [WizardRig.Tab, right, WizardRig.Ch('m'), WizardRig.Ch('b'), WizardRig.Ch('?'),
             WizardRig.Ch('a'), WizardRig.Enter, WizardRig.Digit('1'), WizardRig.Esc, WizardRig.Esc];
         var rig = new WizardRig(width: 100) { PollTime = true, WatchKeyBudget = keys.Length };
         var face = rig.TuiFace(keys);

@@ -61,8 +61,6 @@ public class WizardVoiceTests
         public Gatto.Core.Acquire.ConnectProbe? ProbeAt(string baseUrl) => null;
         public IReadOnlyList<string> Roots { get; init; } = [];
         public ScanResult Scan(string? r) => new([], Roots);
-        public Gatto.Core.Acquire.HubSearchOutcome Search(Gatto.Core.Acquire.HubSearchRequest request) =>
-            new([], null);
         public (string Path, long Bytes)? ProjectorFor(string p) => null;
         public string? ArchitectureOf(string p) => null;
         public MoveOffer? MoveOfferFor(string p) => null;

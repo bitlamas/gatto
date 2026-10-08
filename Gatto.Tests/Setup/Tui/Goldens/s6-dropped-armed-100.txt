@@ -13,4 +13,4 @@
   2. Pick a different model
 
 ────────────────────────────────────────────────────────────────────────────────────────────────────
-  Esc again: deletes the 11.2 GB already here
+  Ctrl+C again: deletes the 11.2 GB already here

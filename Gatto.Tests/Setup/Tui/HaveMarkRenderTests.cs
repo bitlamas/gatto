@@ -13,22 +13,22 @@ public class HaveMarkRenderTests
     //the unified shape the corpus frames were drawn on, which has no runs column, so the have column's width is readable
     private const MachineShape NoRunsColumn = MachineShape.UnifiedWithShare;
 
-    private static ShelfRow Row(string repo = "unsloth/gemma-4-26B-A4B-it",
+    private static ModelRow Row(string repo = "unsloth/gemma-4-26B-A4B-it",
         string file = "gemma-4-26B-A4B-it-Q4_K_M.gguf") =>
-        new(repo, "unsloth", new HubQuant(file, 4_000_000_000, null),
+        ShelfRows.Of(repo, "unsloth", new HubQuant(file, 4_000_000_000, null),
             FitRegime.FitsGpu, 262144, false, Badge: null, Downloads: 5, Gated: false,
             Params: 25_200_000_000);
 
     private static ShelfView Hub(MachineShape shape, params HaveMark[] marks) =>
         new([.. marks.Select((_, i) => Row($"unsloth/model-{i}", $"model-{i}-Q4_K_M.gguf"))],
-            "unsloth", shape,
+            shape,
             Total: marks.Length,
             Facts: [.. marks.Select(m => new ModelFacts(Structure: "dense", Have: m))],
             Source: ShelfSource.Hub);
 
     private static ShelfView Local(MachineShape shape, params HaveMark[] marks) =>
         new([.. marks.Select((_, i) => Row($"unsloth/model-{i}", $"model-{i}-Q4_K_M.gguf"))],
-            null, shape,
+            shape,
             Total: marks.Length,
             Facts: [.. marks.Select(m => new ModelFacts(
                 Structure: "dense", LocalPath: @"C:\weights\model\", FilesHere: "1 file", Have: m))],
@@ -121,15 +121,14 @@ public class HaveMarkRenderTests
     [Fact]
     public void A_WIDE_SIZE_NEVER_PUSHES_THE_PANE_RULE_ONTO_THE_ROW()
     {
-        static ShelfRow Wide(int i, string file, long bytes) =>
-            new($"unsloth/model-{i}", "unsloth", new HubQuant(file, bytes, null),
+        static ModelRow Wide(int i, string file, long bytes) =>
+            ShelfRows.Of($"unsloth/model-{i}", "unsloth", new HubQuant(file, bytes, null),
                 FitRegime.FitsGpu, 262144, false, Badge: null, Downloads: 5, Gated: false,
                 Params: 35_000_000_000);
         var v = new ShelfView(
             [Wide(0, "Qwen3.6-35B-A3B-UD-Q5_K_S.gguf", 25_560_000_000),
              Wide(1, "Qwen3.8-Flash-Next-Q4_K_XL.gguf", 102_440_000_000),
-             Wide(2, "Big-Model-Q4_K_XL.gguf", 600_000_000_000)],
-            null, NoRunsColumn, Total: 3,
+             Wide(2, "Big-Model-Q4_K_XL.gguf", 600_000_000_000)], NoRunsColumn, Total: 3,
             Facts: [new ModelFacts(Structure: "MoE A3B", LocalPath: @"C:\weights\a\", FilesHere: "1 file", Have: HaveMark.Loaded),
                     new ModelFacts(Structure: "MoE", LocalPath: @"C:\weights\b\", FilesHere: "1 file", Have: HaveMark.Added),
                     new ModelFacts(Structure: "dense", LocalPath: @"C:\weights\c\", FilesHere: "1 file", Have: HaveMark.None)],
@@ -267,12 +266,13 @@ public class HaveMarkRenderTests
         //two files, so the mark is tied to the quant on disk rather than to the whole list
         var facts = new ModelFacts(
             Have: HaveMark.Loaded,
-            Files: [
+            Publishers: [new PanePublisher("unsloth", [
                 new PaneFile("Q4_K_M", 5_000_000_000, FitRegime.FitsGpu),
-                new PaneFile("Q6_K", 7_100_000_000, FitRegime.FitsGpu)]);
+                new PaneFile("Q6_K", 7_100_000_000, FitRegime.FitsGpu)], null)]);
 
-        var rows = Pane.Rows(Row(), facts, NoRunsColumn, 36, cursor: 0)
-            .Select(r => r.Text.TrimEnd()).ToList();
+        //the publisher open, and its own line left out since it names no file
+        var rows = Pane.Rows(Row(), facts, NoRunsColumn, 36, cursor: 1, open: 0)
+            .Select(r => r.Text.TrimEnd()).Where(r => !r.Contains('▾')).ToList();
 
         var onDisk = Assert.Single(rows, r => r.Contains("Q4_K_M", StringComparison.Ordinal));
         var other = Assert.Single(rows, r => r.Contains("Q6_K", StringComparison.Ordinal));

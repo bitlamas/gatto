@@ -1,0 +1,25 @@
+  gatto setup                                                                                   v0.5.0 · build 1a2b3c4
+  machine ✓ · engine ✓ · ❯ model · check · done
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+  Which model should gatto start with?
+
+  gemma · qwen · deepseek · glm · mistral · all
+
+  model           params ▾  size · quant    kind      runs      │ gemma-4-E4B-it
+  on the graphics card                                          │ ◈ vision · reads 8B/token · context 131,072
+› gemma-4-E4B-it      8.0B  4.7 GB  Q4_K_M  dense     ✓ GPU     │
+                                                                │ publishers (3)
+  in system memory, fastest first                               │ › ▾ unsloth             4.7 GB Q4_K_M  ✓ GPU
+  Qwen3.8-27B        27.0B  12.3 GB Q3_K_M  dense     ⚠ RAM     │     … 1 lighter ↑
+                                                                │   ❯ Q4_K_M     4.7 GB  ✓ GPU
+                                                                │     Q5_K_M     5.5 GB  ⚠ RAM
+                                                                │     Q6_K       6.3 GB  ⚠ RAM
+                                                                │     … 1 heavier ↓
+                                                                │   ▸ bartowski           4.7 GB Q4_K_M  ✓ GPU
+                                                                │   ▸ lmstudio-community  4.7 GB Q4_K_M  ✓ GPU
+
+  1–2 of 2 · a show all
+
+❯ search models…                                                                                           ? to search
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+  Tab area   ↑↓ move   Enter choose   m local   ? search   a show all   Esc back                       | ✓ GPU · ⚠ RAM

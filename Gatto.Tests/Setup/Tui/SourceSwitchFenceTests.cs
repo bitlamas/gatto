@@ -14,7 +14,7 @@ public class SourceSwitchFenceTests
                 BlockCount: 32, HeadCount: 32, HeadCountKv: 8, EmbeddingLength: 4096,
                 KeyLength: 128, ValueLength: 128, ChatTemplate: null));
 
-    private static ShelfRow HubRow() => new(
+    private static ModelRow HubRow() => ShelfRows.Of(
         "unsloth/gemma-4-26B-A4B-it", "unsloth",
         new HubQuant("gemma-4-26B-A4B-it-Q4_K_M.gguf", 4_000_000_000, null),
         FitRegime.FitsGpu, 262144, false, Badge: null, Downloads: 5, Gated: false,
@@ -24,7 +24,7 @@ public class SourceSwitchFenceTests
     private static WizardProbes Outage() => new()
     {
         Rows = [],
-        Answer = _ => new HubSearchOutcome([], HubSearchCause.HubFailed),
+        Answer = _ => WizardProbes.Outcome([], HubSearchCause.HubFailed),
         Found = [OnDisk("one"), OnDisk("two")],
     };
 

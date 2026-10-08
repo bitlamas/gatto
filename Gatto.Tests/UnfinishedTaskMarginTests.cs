@@ -104,14 +104,14 @@ public class UnfinishedTaskMarginTests : IDisposable
     [Fact]
     public void THE_MARGIN_SAYS_UNFINISHED_and_never_grades_the_model()
     {
-        var row = new ShelfRow("o/m", "o", new HubQuant("m-Q4_K_M.gguf", 4_000_000_000, null),
+        var row = ShelfRows.Of("o/m", "o", new HubQuant("m-Q4_K_M.gguf", 4_000_000_000, null),
             Gatto.Core.Models.FitRegime.FitsGpu, 32768, false,
             new Badge("o/m", new DateOnly(2026, 8, 13), "abc", "vendor", Passed: 4, Ran: 5, Unfinished: 1),
             10, false);
 
         //assert on the pane the shelf really draws, a surface nobody calls proves nothing
         var detail = string.Join(" · ", Gatto.Cli.Setup.Tui.Pane
-            .Rows(row, null, Gatto.Core.Hardware.MachineShape.Discrete, 100,
+            .Rows(row, new Gatto.Cli.Setup.Tui.ModelFacts(LocalPath: @"D:\models"), Gatto.Core.Hardware.MachineShape.Discrete, 100,
                 glyphs: Gatto.Terminal.GlyphSet.Unicode).Select(x => x.Text));
 
         Assert.Contains("4 of 5 tasks, one unfinished", detail, StringComparison.Ordinal);
@@ -124,13 +124,13 @@ public class UnfinishedTaskMarginTests : IDisposable
     [Fact]
     public void A_CLEAN_SWEEP_STILL_SAYS_NOTHING_EXTRA()
     {
-        var row = new ShelfRow("o/m", "o", new HubQuant("m-Q4_K_M.gguf", 4_000_000_000, null),
+        var row = ShelfRows.Of("o/m", "o", new HubQuant("m-Q4_K_M.gguf", 4_000_000_000, null),
             Gatto.Core.Models.FitRegime.FitsGpu, 32768, false,
             new Badge("o/m", new DateOnly(2026, 8, 13), "abc", "vendor", Passed: 5, Ran: 5), 10, false);
 
         //assert on the pane the shelf really draws, a surface nobody calls proves nothing
         var detail = string.Join(" · ", Gatto.Cli.Setup.Tui.Pane
-            .Rows(row, null, Gatto.Core.Hardware.MachineShape.Discrete, 100,
+            .Rows(row, new Gatto.Cli.Setup.Tui.ModelFacts(LocalPath: @"D:\models"), Gatto.Core.Hardware.MachineShape.Discrete, 100,
                 glyphs: Gatto.Terminal.GlyphSet.Unicode).Select(x => x.Text));
 
         Assert.Contains("tool-calling verified", detail, StringComparison.Ordinal);

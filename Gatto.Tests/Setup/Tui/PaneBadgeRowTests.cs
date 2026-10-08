@@ -12,8 +12,8 @@ public class PaneBadgeRowTests
 {
     private const MachineShape Shape = MachineShape.UnifiedWithShare;
 
-    private static ShelfRow Row(Badge? badge) =>
-        new("qwen/qwen3.5-4b", "qwen", new HubQuant("qwen3.5-4b-Q4_K_M.gguf", 4_000_000_000, null),
+    private static ModelRow Row(Badge? badge) =>
+        ShelfRows.Of("qwen/qwen3.5-4b", "qwen", new HubQuant("qwen3.5-4b-Q4_K_M.gguf", 4_000_000_000, null),
             FitRegime.FitsGpu, 262144, false, Badge: badge, Downloads: 5, Gated: false,
             Params: 4_000_000_000);
 
@@ -26,8 +26,8 @@ public class PaneBadgeRowTests
     [Fact]
     public void THE_BADGE_ROW_CARRIES_ONE_OK_GLYPH()
     {
-        var row = Pane.Rows(Row(Verified), new ModelFacts(), Shape, 100,
-                cursor: 0, focused: false, build: -1, focus: Region.List)
+        var row = Pane.Rows(Row(Verified), new ModelFacts(LocalPath: @"D:\models"), Shape, 100,
+                cursor: 0, focused: false)
             .Single(r => r.Text.Contains("tool-calling verified", StringComparison.Ordinal));
 
         Assert.Equal(1, OkGlyphs(row.Text));
@@ -37,8 +37,8 @@ public class PaneBadgeRowTests
     [Fact]
     public void THE_BADGE_ROW_STILL_SAYS_WHAT_WAS_MEASURED_AND_WHEN()
     {
-        var row = Pane.Rows(Row(Verified), new ModelFacts(), Shape, 100,
-                cursor: 0, focused: false, build: -1, focus: Region.List)
+        var row = Pane.Rows(Row(Verified), new ModelFacts(LocalPath: @"D:\models"), Shape, 100,
+                cursor: 0, focused: false)
             .Single(r => r.Text.Contains("tool-calling verified", StringComparison.Ordinal));
 
         Assert.Contains("tool-calling verified 2026-08", row.Text, StringComparison.Ordinal);
@@ -50,8 +50,8 @@ public class PaneBadgeRowTests
     [Fact]
     public void A_ROW_WITH_NO_BADGE_CARRIES_NO_OK_GLYPH_ON_ITS_BADGE_ROW()
     {
-        var row = Pane.Rows(Row(null), new ModelFacts(), Shape, 100,
-                cursor: 0, focused: false, build: -1, focus: Region.List)
+        var row = Pane.Rows(Row(null), new ModelFacts(LocalPath: @"D:\models"), Shape, 100,
+                cursor: 0, focused: false)
             .Single(r => r.Text.Contains("not measured", StringComparison.Ordinal));
 
         Assert.Equal(0, OkGlyphs(row.Text));

@@ -18,7 +18,7 @@ public class ShelfCoverageTests
         Passed: 4, Ran: 5);
 
     //the fixture's numbers must not match anything else on screen, or a census can pass on the wrong text
-    private static ShelfRow TheRow() => new(
+    private static ModelRow TheRow() => ShelfRows.Of(
         RepoId: "bartowski/Qwen3-Coder-GGUF",
         Publisher: "bartowski",
         PickedQuant: new HubQuant("Qwen3-Coder-Q4_K_M.gguf", 4_000_000_000, null),
@@ -79,12 +79,12 @@ public class ShelfCoverageTests
     public void The_model_IDENTITY_is_reachable()
     {
         //this fixture is broadened, so the publisher stays on the row and the full repo id must be on screen. a user has to recognise it and may have to type it
-        AssertReachable(ShelfFrames(), "identity", TheRow().RepoId);
+        AssertReachable(ShelfFrames(), "identity", TheRow().Model);
     }
 
     [Fact]
     public void The_download_SIZE_is_reachable()
-        => AssertReachable(ShelfFrames(), "size", SearchRow.Gb(TheRow().PickedQuant.Bytes));
+        => AssertReachable(ShelfFrames(), "size", SearchRow.Gb(TheRow().RowQuant!.Bytes));
 
     [Fact]
     public void The_FIT_words_are_reachable()
@@ -103,7 +103,7 @@ public class ShelfCoverageTests
         //the fixture ships a projector, so the glyph and the encoder file name both exist to be found.
         var frames = ShelfFrames();
         AssertReachable(frames, "vision glyph", Gatto.Terminal.GlyphSet.Unicode.Vision);
-        AssertReachable(frames, "vision encoder", ProjectorPick.Best(TheRow().Projectors)!.FileName);
+        AssertReachable(frames, "vision encoder", ProjectorPick.Best(TheRow().RowProjectors)!.FileName);
     }
 
     //the needle is the marker the table draws
@@ -131,7 +131,7 @@ public class ShelfCoverageTests
     //rendered at 120 columns so the model's row cannot wrap. a continuation line would split the fact from the identity
     private static void AssertOnTheModelRow(string label, string fact)
     {
-        var id = TheRow().RepoId;
+        var id = TheRow().Model;
         var rows = ShelfFrames(120).SelectMany(f => f.Split('\n'))
             .Where(r => r.Contains(id, StringComparison.Ordinal)).ToList();
 
@@ -151,20 +151,16 @@ public class ShelfCoverageTests
     [Fact]
     public void The_QUANT_token_is_a_column_on_the_model_row()
     {
-        var quant = QuantToken.Of(TheRow().PickedQuant.FileName);
+        var quant = QuantToken.Of(TheRow().RowQuant!.FileName);
         Assert.False(string.IsNullOrEmpty(quant), "fixture's file name no longer yields a quant token");
         AssertOnTheModelRow("quant", quant!);
     }
-
-    [Fact]
-    public void The_UPDATED_month_is_a_column_on_the_model_row()
-        => AssertOnTheModelRow("updated", "2026-07");
 
     [Fact(Skip = "homeless until the model's page is built as the one home for the facts: the model's page carried this and the pane never gained it. Re-point, do not delete, the property is ruled and only its home is missing. Un-skips in the commit that gives the pane the facts.")]
     public void THE_MODELS_PAGE_ANNOUNCES_VISION_EXACTLY_ONCE()
     {
         //the oracle counts the word vision rather than the glyph. the fixture ships one projector, so no second mention is legitimate
-        Assert.Single(TheRow().Projectors!);
+        Assert.Single(TheRow().RowProjectors!);
 
         var page = ShelfFrames()[^1].Split('\n')
             .Where(r => r.Contains("vision", StringComparison.OrdinalIgnoreCase))

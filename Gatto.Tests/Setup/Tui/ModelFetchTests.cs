@@ -42,8 +42,8 @@ public class ModelFetchTests
             [new HubFile(Shard1, (long)(25.1 * Gib), Sha),
              new HubFile(Shard2, (long)(23.4 * Gib), Sha)]);
 
-    private static ShelfRow Row(string repoId, HubQuant quant, IReadOnlyList<HubQuant>? projectors = null) =>
-        new(repoId, repoId.Split('/')[0], quant, Gatto.Core.Models.FitRegime.FitsGpu,
+    private static ModelRow Row(string repoId, HubQuant quant, IReadOnlyList<HubQuant>? projectors = null) =>
+        ShelfRows.Of(repoId, repoId.Split('/')[0], quant, Gatto.Core.Models.FitRegime.FitsGpu,
             32768, projectors is { Count: > 0 }, null, 100, false, Projectors: projectors);
 
     private static ModelFetchOffer VisionOffer() =>
@@ -399,10 +399,49 @@ public class ModelFetchTests
 
     //the screen has no live tick here, so its own figure is what the armed row names
     [Fact]
-    public void THE_DROPS_ARMED_ESC_MATCHES_ITS_GOLDEN() =>
+    public void THE_DROPS_ARMED_CTRL_C_MATCHES_ITS_GOLDEN() =>
         Golden.AssertEquals("s6", "dropped-armed", 100,
             WalkRender.Choice(Ending(Dropping()), 100,
-                script: [WizardRig.Esc, WizardRig.Esc]).Rows);
+                script: [WizardRig.CtrlC, WizardRig.CtrlC]).Rows);
+
+    //back from the drop screen keeps the partial, so a leave from the restored screen deletes nothing it never priced
+    [Fact]
+    public void BACK_FROM_THE_DROP_KEEPS_THE_PARTIAL()
+    {
+        var probes = Dropping();
+        var dropped = Ending(probes);
+        Assert.Equal(SetupFlow.ModelDroppedKey, dropped.Key);
+        Assert.Equal(SetupFlow.BackKey, WalkRender.Answered(dropped, 100, [WizardRig.Esc]).Answer);
+
+        var flow = new SetupFlow(probes);
+        flow.StartPastEngine();
+        flow.Answer("0");
+        flow.Answer(SetupFlow.ModelFetchNow);
+        flow.Answer(SetupFlow.Landed);
+        flow.Answer(SetupFlow.BackKey);
+        flow.MarkLeaving();
+
+        Assert.Empty(probes.PartialsDeleted);
+    }
+
+    //the leave chord on the drop screen itself still keeps its priced promise and deletes the partial
+    [Fact]
+    public void THE_LEAVE_CHORD_ON_THE_DROP_DELETES_THE_PARTIAL()
+    {
+        var probes = Dropping();
+        var flow = new SetupFlow(probes);
+        flow.StartPastEngine();
+        flow.Answer("0");
+        flow.Answer(SetupFlow.ModelFetchNow);
+        var dropped = Assert.IsType<WizardScreen.Choice>(flow.Answer(SetupFlow.Landed));
+
+        var (answer, frame) = WalkRender.Answered(dropped, 100, [WizardRig.CtrlC, WizardRig.CtrlC]);
+        Assert.Null(answer);
+        Assert.Contains(frame, r => r.Contains("Ctrl+C again: deletes the 11.2 GB already here", StringComparison.Ordinal));
+
+        flow.MarkLeaving();
+        Assert.Single(probes.PartialsDeleted);
+    }
 
     //a screen with kept bytes must not print the nothing-has-been-written line, so the figure is asserted as well
     [Fact]
@@ -411,13 +450,13 @@ public class ModelFetchTests
         var screen = Ending(Dropping());
         Assert.NotNull(screen.Kept);
 
-        var armed = WalkRender.Choice(screen, 100, script: [WizardRig.Esc, WizardRig.Esc]).Rows;
+        var armed = WalkRender.Choice(screen, 100, script: [WizardRig.CtrlC, WizardRig.CtrlC]).Rows;
         var body = string.Join("\n", armed);
 
         Assert.DoesNotContain("nothing has been written", body, StringComparison.Ordinal);
         //the kept row and the armed row, both off the one tick the screen carries
         Assert.Contains("11.2 of 25.1 GB", body, StringComparison.Ordinal);
-        Assert.Contains("Esc again: deletes the 11.2 GB already here", body, StringComparison.Ordinal);
+        Assert.Contains("Ctrl+C again: deletes the 11.2 GB already here", body, StringComparison.Ordinal);
     }
 
     //the mismatch names both fingerprints, one alone leaves the user nothing to check

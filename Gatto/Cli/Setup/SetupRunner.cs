@@ -78,7 +78,9 @@ internal static class SetupRunner
                     return 0;
 
                 case WizardScreen.Ask a:
-                    if (face.Ask(a) is not { } typed)
+                    var asked = face.Ask(a);
+                    if (asked == SetupFlow.LeaveKey) return Left(face, flow);
+                    if (asked is not { } typed)
                     {
                         //the Esc key on a typed screen goes back when AllowBack is set, which is what the footer already promises
                         if (!a.AllowBack) return Left(face, flow);

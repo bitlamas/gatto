@@ -7,7 +7,12 @@ namespace Gatto.Cli.Setup;
 //the row's words (name, size, fit, badge, context) and nothing more, and the badge says what was measured rather than recommending
 internal static class SearchRow
 {
-    public static string Label(ShelfRow r) => $"{r.RepoId}";
+    public static string Label(ModelRow r) => r.Model;
+
+    //the bytes and the file name of the row's file, zero and empty when the row has none, so a cell renders blank rather than throwing
+    internal static long RowBytes(ModelRow r) => r.RowQuant?.Bytes ?? 0;
+
+    internal static string RowFileName(ModelRow r) => r.RowQuant?.FileName ?? "";
 
     //keep Gb, FitWords, BadgeWordsBare and Ctx here, the table, the pane and the tier line all call them
 

@@ -8,7 +8,7 @@ internal abstract record TypedIdOutcome
     private TypedIdOutcome() { }
 
     //the id resolved and the arithmetic priced it
-    internal sealed record Ok(ShelfRow Row) : TypedIdOutcome;
+    internal sealed record Ok(ModelRow Row) : TypedIdOutcome;
 
     //refused before the wire, since the text is not org/name, and the copy names the shape
     internal sealed record Malformed : TypedIdOutcome;
@@ -19,10 +19,10 @@ internal abstract record TypedIdOutcome
     //the repo answered and publishes no weights, which is not the user's fault and not the repo's
     internal sealed record NoWeights : TypedIdOutcome;
 
-    //the lookup's answer as an outcome, kept here so a pure mapping can be tested. a row wins, and the flag tells the two refusals apart
-    internal static TypedIdOutcome For(HubLookup lookup) => lookup switch
+    //the lookup's answer as an outcome, kept here so a pure mapping can be tested. a row with a file wins, and the flag tells the two refusals apart
+    internal static TypedIdOutcome For((ModelRow? Row, bool NoWeights) lookup) => lookup switch
     {
-        { Row: { } row } => new Ok(row),
+        { Row: { RowFile: not null } row } => new Ok(row),
         { NoWeights: true } => new NoWeights(),
         _ => new NoUsableQuant(),
     };

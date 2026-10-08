@@ -11,25 +11,25 @@ public class PaneArchRowTests
 {
     private const MachineShape Shape = MachineShape.UnifiedWithShare;
 
-    private static ShelfRow Row(string? arch) =>
-        new("unsloth/GLM-4.7-Flash-GGUF", "unsloth",
+    private static ModelRow Row(string? arch) =>
+        ShelfRows.Of("unsloth/GLM-4.7-Flash-GGUF", "unsloth",
             new HubQuant("GLM-4.7-Flash-Q4_K_M.gguf", 4_000_000_000, null),
             FitRegime.FitsGpu, 131072, false, Badge: null, Downloads: 5, Gated: false,
             Params: 4_000_000_000, Arch: arch);
 
-    private static IReadOnlyList<PaintedRow> Wide(ShelfRow r) =>
-        Pane.Rows(r, new ModelFacts(), Shape, 100, cursor: 0, focused: false, build: -1,
-            focus: Region.List);
+    private static IReadOnlyList<PaintedRow> Wide(ModelRow r) =>
+        Pane.Rows(r, new ModelFacts(), Shape, 100, cursor: 0, focused: false,
+            glyphs: null);
 
-    private static IReadOnlyList<PaintedRow> Folded(ShelfRow r, int width = 80) =>
+    private static IReadOnlyList<PaintedRow> Folded(ModelRow r, int width = 80) =>
         Pane.Fold(r, new ModelFacts(), Shape, width, focused: false);
 
     //the widths the ladder serves, the fold only appears below the pane's threshold
     public static TheoryData<int> Rungs() => [52, 72, 80, 120];
 
     //the 23B repo for width guards, its params clause is one cell wider and that cell decides 80 or 81
-    private static ShelfRow Widest() =>
-        new("unsloth/GLM-4.7-Flash-REAP-23B-A3B-GGUF", "unsloth",
+    private static ModelRow Widest() =>
+        ShelfRows.Of("unsloth/GLM-4.7-Flash-REAP-23B-A3B-GGUF", "unsloth",
             new HubQuant("GLM-4.7-Flash-REAP-Q4_K_M.gguf", 13_000_000_000, null),
             FitRegime.FitsGpu, 131072, false, Badge: null, Downloads: 5, Gated: false,
             Params: 23_000_000_000, Arch: "deepseek2");
@@ -42,16 +42,6 @@ public class PaneArchRowTests
 
         Assert.Equal("deepseek", families.FamilyOf("deepseek2"));
         Assert.Equal("glm", families.FamilyOf("glm4moe"));
-    }
-
-    //a GLM-named repo under the deepseek chip says deepseek2 in its pane
-    [Fact]
-    public void A_GLM_NAMED_REPO_UNDER_THE_deepseek_CHIP_SAYS_deepseek2_IN_ITS_PANE()
-    {
-        var row = Assert.Single(Wide(Row("deepseek2")),
-            r => r.Text.Contains("arch", StringComparison.Ordinal));
-
-        Assert.Equal("arch      deepseek2", row.Text.Trim());
     }
 
     //the fold shows the arch on its own row, in the label and value shape files and builds use

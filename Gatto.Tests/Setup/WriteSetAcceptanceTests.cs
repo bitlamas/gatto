@@ -391,7 +391,6 @@ public class WriteSetAcceptanceTests : IDisposable
         public ConnectProbe? ProbeAt(string baseUrl) => null;
         public IReadOnlyList<string> Roots { get; init; } = [];
         public ScanResult Scan(string? r) => new(Found, Roots);
-        public HubSearchOutcome Search(HubSearchRequest request) => new([], null);
         public (string Path, long Bytes)? ProjectorFor(string p) => null;
         public string? ArchitectureOf(string p) => null;
         public MoveOffer? MoveOfferFor(string p) => null;

@@ -16,6 +16,15 @@ internal static class Golden
         }
     }
 
+    //the corpus in the source tree, which a bless writes and the build copies
+    private static string SourceDir()
+    {
+        var d = new DirectoryInfo(AppContext.BaseDirectory);
+        while (d is not null && !File.Exists(Path.Combine(d.FullName, "Gatto.sln"))) d = d.Parent;
+        Assert.True(d is not null, "could not find the repo root from " + AppContext.BaseDirectory);
+        return Path.Combine(d!.FullName, "Gatto.Tests", "Setup", "Tui", "Goldens");
+    }
+
     //one screen by generator, name and width, so a caller cannot ask for a width the corpus does not hold
     public static IReadOnlyList<string> Load(string generator, string screen, int width)
     {
@@ -42,6 +51,27 @@ internal static class Golden
     //the wizard's body, the title row through the row above the keys, anchored on the strip since the corpus mocks open with a transcript
     public static IReadOnlyList<string> Body(IReadOnlyList<string> rows)
     {
+        var (start, count) = BodySpan(rows);
+        return [.. rows.Skip(start).Take(count)];
+    }
+
+    //the body checked against a drawn mock. a bless rewrites the body inside the mock, keeping its transcript, and fails as AssertEquals does
+    public static void AssertBody(string file, IReadOnlyList<string> rendered)
+    {
+        if (Environment.GetEnvironmentVariable("GATTO_BLESS_GOLDENS") == "1")
+        {
+            var written = Path.Combine(SourceDir(), file);
+            var lines = Gatto.Tests.Census.SourceTree.Read(written).TrimEnd('\n').Split('\n');
+            var (start, count) = BodySpan(lines);
+            File.WriteAllText(written, string.Join("\n", [.. lines.Take(start), .. Body(rendered), .. lines.Skip(start + count)]) + "\n");
+            Assert.Fail($"GATTO_BLESS_GOLDENS wrote {written}, so read its diff in git and run again without the variable");
+        }
+        Assert.Equal(Body(File.ReadAllLines(Path.Combine(Dir, file))), Body(rendered));
+    }
+
+    //where the body sits: the row after the title's blank, up to the keys row
+    private static (int Start, int Count) BodySpan(IReadOnlyList<string> rows)
+    {
         //the strip is the one row with a section cursor and the separators, so the count is exactly one
         var strips = rows.Select((r, i) => (r: r.Trim(), i))
             .Where(t => t.r.Contains(" · ", StringComparison.Ordinal)
@@ -57,7 +87,7 @@ internal static class Golden
         var title = strips[0] + 2;
         Assert.True(keys > title,
             $"the frame has no keys row under its title:\n{string.Join("\n", rows)}");
-        return [.. rows.Skip(title).Take(keys - title)];
+        return (title, keys - title);
     }
 
     //null when the rows match, otherwise the first row that differs with both values shown
@@ -80,6 +110,14 @@ internal static class Golden
             Assert.True(Gatto.Terminal.UnicodeWidth.Of(row) <= width,
                 $"{generator}/{screen}: a rendered row is {Gatto.Terminal.UnicodeWidth.Of(row)} cells "
                 + $"but the golden is {width} wide - this render was made at the wrong width");
+
+        //a bless run writes the render over the golden and fails, so a bless is never green and a stray variable shows at once
+        if (Environment.GetEnvironmentVariable("GATTO_BLESS_GOLDENS") == "1")
+        {
+            var written = Path.Combine(SourceDir(), $"{generator}-{screen}-{width}.txt");
+            File.WriteAllText(written, string.Join("\n", actual) + "\n");
+            Assert.Fail($"GATTO_BLESS_GOLDENS wrote {written}, so read its diff in git and run again without the variable");
+        }
 
         var diff = Diff(Load(generator, screen, width), actual);
         Assert.True(diff is null, $"{generator}-{screen}-{width}.txt\n{diff}");

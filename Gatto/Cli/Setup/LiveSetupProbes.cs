@@ -19,7 +19,9 @@ internal sealed class LiveSetupProbes(string homePath, Gatto.Terminal.GlyphSet g
     //where Dispose's own lines go, the note sink is not read again after the record is printed, so null means the notes writer
     TextWriter? afterWalk = null,
     //a server start in progress, said to the face's purr and not to the notes, so it never reaches the scrollback
-    Action? working = null)
+    Action? working = null,
+    //the shelf's Hub requests go through this handler, null keeps the network, and a test hands a fake Hub here
+    HttpMessageHandler? hubHandler = null)
     : ISetupProbes, IDisposable
 {
     private readonly Gatto.Terminal.GlyphSet _glyphs = glyphs;
@@ -274,6 +276,7 @@ internal sealed class LiveSetupProbes(string homePath, Gatto.Terminal.GlyphSet g
         RestoreReleased(line);
         //one empty line after the last row, so the prompt doesn't sit against it
         if (line.Noted) console.WriteLine();
+        lock (_hubGate) _hubHttp?.Dispose();
     }
 
     //the same row rule as Note, applied to the line Dispose speaks through
@@ -395,9 +398,6 @@ internal sealed class LiveSetupProbes(string homePath, Gatto.Terminal.GlyphSet g
     public bool IsLegacyConsole() =>
         Gatto.Terminal.GlyphSet.IsLegacyConsole(Gatto.Terminal.GlyphSet.HostEnv());
 
-    //the approved publishers in their own order
-    public IReadOnlyList<string> ApprovedPublishers() => Allowlist.Orgs;
-
     //the active file and its size from the same Model.Load the name comes from, so both rows describe one file
     public (string Path, long Bytes)? ActiveModelFile(string modelId)
     {
@@ -512,72 +512,52 @@ internal sealed class LiveSetupProbes(string homePath, Gatto.Terminal.GlyphSet g
     //the tree memo lives on the session object, a memo inside one HubClient would forget on every chip switch. its header reads also go to disk under the home
     private readonly HubTreeMemo _trees = new(new HubReadStore(homePath));
 
-    //the allowlist with this home's publisher preferred, and an unreadable config curates nothing rather than breaking the shelf
-    internal UploaderAllowlist Allowlist => UploaderAllowlist.Load().Preferring(PreferredPublisher());
+    //one Hub client for the session, so the window the Hub reported in one search binds the next. its http is untimed and each search holds its own deadline
+    private HubClient? _hub;
+    private HttpClient? _hubHttp;
+    private readonly object _hubGate = new();
 
-    private bool _publisherNoted;
-
-    //setup is where the user picks a publisher, so a broken gatto.json gets one note saying why the set one is not used
-    private string? PreferredPublisher()
+    private HubClient Hub()
     {
-        try { return GattoConfig.Load(homePath).DefaultPublisher; }
-        catch (GattoConfigException ex)
+        lock (_hubGate)
         {
-            //no gatto.json yet is normal during setup, so only a file that exists and fails is named
-            if (!_publisherNoted && File.Exists(Path.Combine(homePath, "gatto.json")))
-            {
-                _publisherNoted = true;
-                Note($"{ex.Message} {_glyphs.Dot} the shelf opens on its usual publisher");
-            }
-            return null;
+            _hubHttp ??= hubHandler is null
+                ? new HttpClient { Timeout = Timeout.InfiniteTimeSpan }
+                : new HttpClient(hubHandler, disposeHandler: false) { Timeout = Timeout.InfiniteTimeSpan };
+            return _hub ??= new HubClient(_hubHttp);
         }
     }
 
-    public HubSearchOutcome Search(HubSearchRequest request) => Search(request, null, CancellationToken.None);
+    //the last unlifted shelf and the lit families it was for, so a lifts from it and a stop never takes a landing row away
+    private (string Lit, IReadOnlyList<ModelRow> Rows)? _landing;
 
-    //the caller's token is linked into the search's own deadline, so a chip click stops the Hub requests it no longer wants
-    public HubSearchOutcome Search(HubSearchRequest request, IProgress<SearchProgress>? progress,
-        CancellationToken ct)
+    private static string LitKey(IReadOnlySet<string> lit) =>
+        string.Join(",", lit.Select(f => f.ToLowerInvariant()).Order(StringComparer.Ordinal));
+
+    //the shelf of original models, or a typed search, under the same deadline as every search. a surprise is an empty shelf with no cause
+    public ShelfOutcome SearchModels(ModelSearchRequest request, IProgress<SearchProgress>? progress, CancellationToken ct)
     {
-        //no hardware means nothing was priced, so return an empty result with a null cause
-        if (Hardware() is not { } snapshot) return new HubSearchOutcome([], null);
+        var empty = new ShelfOutcome([], 0, 0, 0, false, 0, [], null);
+        if (Hardware() is not { } snapshot) return empty;
         var hw = Gatto.Core.Hardware.HardwareClassifier.Classify(snapshot);
 
-        using var http = new HttpClient { Timeout = Timeout.InfiniteTimeSpan };
         using var cts = CancellationTokenSource.CreateLinkedTokenSource(ct);
         cts.CancelAfter(TimeSpan.FromSeconds(30));
         try
         {
-            return HubSearch.AssembleAsync(
-                new HubClient(http),
-                //the request's publisher wins over the machine's preference, and a slug the list doesn't have falls back to the shipped default
-                Allowlist.Preferring(request.Publisher),
-                hw,
-                //price fit at the pane's own ctx value, a literal here is a second owner of the same number
-                ctxForFit: Tui.Pane.KvContext,
-                //the lambda gets the repo id, so a lookup by file name would find nothing
-                badgeLookup: id => BadgeRegister.LookupByRepoId(homePath, id),
-                cts.Token,
-                //every search control passes straight through from the request, this probe adds no policy of its own
-                view: request.View,
-                axis: request.Axis,
-                includeUnfittable: request.IncludeUnfittable,
-                search: request.Search,
-                //the chip and the families table go together, a family with no table to read its pin from drops to the untiered path
-                family: request.Family,
-                families: Families.Load(),
-                //the face's row budget goes straight through, this probe doesn't decide how much of the search to use
-                rowBudget: request.RowBudget ?? HubSearch.DefaultRowBudget,
-                //the memo lives on the session, so a chip switch doesn't buy the same trees twice
-                memo: _trees,
-                progress: progress).GetAwaiter().GetResult();
+            if (request.Search is { } typed && !string.IsNullOrWhiteSpace(typed))
+                return HubSearch.TypedSearchAsync(Hub(), UploaderAllowlist.Load(), Families.Load(), typed.Trim(), hw,
+                    Tui.Pane.KvContext, cts.Token, _trees, request.Lifted, caller: ct).GetAwaiter().GetResult();
+
+            var key = LitKey(request.Lit);
+            var landing = request.Lifted && _landing is { } l && l.Lit == key ? l.Rows : null;
+            var outcome = ShelfSearch.AssembleAsync(Hub(), UploaderAllowlist.Load(), Families.Load(), request.Lit, hw,
+                Tui.Pane.KvContext, request.Lifted, cts.Token, memo: _trees, progress: progress, landing: landing, caller: ct)
+                .GetAwaiter().GetResult();
+            if (!request.Lifted) _landing = (key, outcome.Rows);
+            return outcome;
         }
-        //one catch for everything, a narrower one for an expired deadline would name a case that can't arrive
-        catch (Exception)
-        {
-            //a surprise is not a diagnosis, so report the emptiness with no cause
-            return new HubSearchOutcome([], null);
-        }
+        catch (Exception) { return empty; }
     }
 
     //read a null Status as the malformed case (the guard refused the id), a status code as the Hub answering badly
@@ -591,13 +571,12 @@ internal sealed class LiveSetupProbes(string homePath, Gatto.Terminal.GlyphSet g
             using var http = new HttpClient { Timeout = Timeout.InfiniteTimeSpan };
             using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(30));
 
-            //look a typed id up directly, the allowlist shapes browsing and never limits what a user may name
-            var lookup = HubSearch.LookupAsync(
-                new HubClient(http), repoId, hw, //the fit window takes the pane's own value, a literal here is a second owner of one number
-                //a literal that happens to match the pane's number is still a second owner of it
-                ctxForFit: Tui.Pane.KvContext,
-                badgeLookup: id => BadgeRegister.LookupByRepoId(homePath, id),
-                cts.Token).GetAwaiter().GetResult();
+            //look a typed id up directly, the allowlist shapes browsing and never limits what a user may name. the fit window is the pane's own value
+            var lookup = HubSearch.LookupModelAsync(
+                new HubClient(http), repoId, hw, Tui.Pane.KvContext, cts.Token).GetAwaiter().GetResult();
+
+            //the floor decides the pick and never what a user may take, so a named repo whose every file sits under it is priced lifted
+            if (lookup.Row is { RowFile: null } bare) lookup = (ShelfSearch.Lifted(bare, hw, Tui.Pane.KvContext), false);
 
             //a null row means the repo answered with nothing usable (a failed request throws instead), and the outcome type says which nothing
             return TypedIdOutcome.For(lookup);
@@ -932,19 +911,21 @@ internal sealed class LiveSetupProbes(string homePath, Gatto.Terminal.GlyphSet g
     }
 
     //withhold the offer unless every file can be verified, the consent screen says each fingerprint is checked
-    public Gatto.Cli.Setup.ModelFetchOffer? ModelOffer(Gatto.Core.Acquire.ShelfRow row)
+    public Gatto.Cli.Setup.ModelFetchOffer? ModelOffer(Gatto.Core.Acquire.ModelRow row)
     {
-        if (!Gatto.Core.Acquire.HubFetch.CanVerify(row.PickedQuant)) return null;
+        if (row.RowFile is not { } file || row.RowQuant is not { } weights) return null;
+        if (!Gatto.Core.Acquire.HubFetch.CanVerify(weights)) return null;
 
-        var encoder = Gatto.Core.Acquire.ProjectorPick.Best(row.Projectors);
+        //the encoder comes from the chosen file's own repo, since another publisher's encoder belongs to another download
+        var encoder = Gatto.Core.Acquire.ProjectorPick.Best(row.RowProjectors);
         if (encoder is not null && !Gatto.Core.Acquire.HubFetch.CanVerify(encoder)) return null;
 
         //take the id from the repo through the same slug rule the scan uses, so the fetch's folder and the scan's id agree
         var id = Gatto.Core.Models.ModelId.Slug(
-            Gatto.Cli.Setup.SetupFlow.ModelDisplayName(row.RepoId));
-        return new(row.RepoId, id,
+            Gatto.Cli.Setup.SetupFlow.ModelDisplayName(file.RepoId));
+        return new(file.RepoId, id,
             ModelLocation.ForModel(homePath, SafeWeightsDir(), id) + Path.DirectorySeparatorChar,
-            row.PickedQuant, encoder);
+            weights, encoder);
     }
 
     //fetch the weights first and stop there if they fail, so a bad quant never spends bandwidth on the encoder
