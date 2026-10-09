@@ -47,7 +47,7 @@ public class SourceSwitchFenceTests
             var screen = Take(flow, flow.StartPastEngine());
 
             if (screen is WizardScreen.Choice { Key: SetupFlow.DiscoveredKey })
-                Take(flow, flow.Answer(SetupFlow.SearchInstead));
+                Take(flow, flow.Answer(SetupFlow.CtlSource));
         }
 
         return (rows, screens);

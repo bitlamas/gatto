@@ -24,7 +24,7 @@ internal static class ShelfTable
     //the parameter count comes from the GGUF's own total, so no expert count is read from the repo name. absent means an empty cell rather than a guess
     internal static string ParamsCell(ModelRow r)
     {
-        if (r.Params is not { } p || p <= 0) return "";
+        if (r.Params is not { } p || p <= 0) return r.ParamsLabel ?? "";
         var billions = p / 1_000_000_000.0;
         //1000B is a number with no unit, so the billions roll to T with the same format. sizes are not rolled past GB
         if (billions >= 1000)

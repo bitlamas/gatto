@@ -10,11 +10,17 @@ internal static class WizardSession
         AltScreen alt, Func<int> walk, Func<IReadOnlyList<string>> lastFrame, TextWriter epilogue,
         Func<IReadOnlyList<string>>? notes = null, bool registerHooks = true,
         Func<bool?>? take = null, Action<bool?>? giveBack = null,
-        string command = Tui.ScreenPainter.DefaultCommand)
+        string command = Tui.ScreenPainter.DefaultCommand, ConsoleInputMode? inputMode = null)
     {
-        if (registerHooks) alt.RegisterExitHooks();
+        if (registerHooks)
+        {
+            alt.RegisterExitHooks();
+            inputMode?.RegisterExitHooks();
+        }
         //the takeover hides the cursor and the Restore in the finally brings it back, on the throw path too
         alt.Enter(command, hideCursor: true);   //pass the same command the header shows, so the tab and the header read alike
+        //the input mode and the Ctrl+C take both write the processed-input bit, so they nest and the second in leaves first
+        inputMode?.Enter();
         var ctrlC = (take ?? TakeControlC)();
         try
         {
@@ -23,6 +29,7 @@ internal static class WizardSession
         finally
         {
             (giveBack ?? GiveBackControlC)(ctrlC);
+            inputMode?.Restore();
             alt.Restore();
 
             //print the notes first, then the closing frame, one empty line on each side. each of them ends with an empty row, so drop those blank rows at the edges
@@ -42,7 +49,7 @@ internal static class WizardSession
     //what a run leaves in scrollback: gatto model's line, setup's record, the leave block, or the last frame on a throw
     internal static IReadOnlyList<string> Scrollback(SetupFlow flow, Func<IReadOnlyList<string>> lastPainted,
         int width, GlyphSet glyphs, VersionStamp stamp, DateOnly on, string command, Theme? theme) =>
-        flow.AddedClosing is { } added
+        flow.AddedClosings is { Count: > 0 } added
             ? Tui.Epilogue.LeaveBlock(glyphs, stamp.Version, stamp.Build, command, added, width, stamp.Dev, theme)
         : flow.RecordRows() is { Count: > 0 } facts
             ? Tui.Epilogue.Lines(facts, stamp.Version, stamp.Build, on, flow.RecordClosing, width, glyphs,

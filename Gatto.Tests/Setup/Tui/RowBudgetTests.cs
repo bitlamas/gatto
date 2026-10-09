@@ -32,16 +32,12 @@ public class RowBudgetTests
         Assert.Equal(HubSearch.DefaultRowBudget, Shelf.RowBudget(0));
     }
 
-    //only the TUI face overrides the default budget, since a face that forgot to would show six rows on a tall screen
+    //only the TUI face overrides the default budget, since it scrolls its own window and a face that forgot would show six rows on a tall screen
     [Fact]
-    public void THE_TUI_FACE_TAKES_ITS_BUDGET_FROM_THE_TERMINAL_AND_THE_PLAIN_FACES_DO_NOT()
+    public void THE_TUI_FACE_ASKS_FOR_EVERY_ROW_AND_THE_PLAIN_FACES_DO_NOT()
     {
-        var tall = Face(height: 60);
-        var short_ = Face(height: 24);
-
-        Assert.True(tall.RowBudget > short_.RowBudget,
-            $"a 60-row terminal affords {tall.RowBudget} and a 24-row one {short_.RowBudget}");
-        Assert.Equal(Shelf.RowBudget(60), tall.RowBudget);
+        Assert.Equal(int.MaxValue, Face(height: 60).RowBudget);
+        Assert.Equal(int.MaxValue, Face(height: 24).RowBudget);
 
         //the in-session face numbers its rows, so the interface default is the right answer here
         IWizardSurface prompter = new PrompterWizardSurface(new SilentPrompter(), TextWriter.Null);
@@ -80,8 +76,7 @@ public class RowBudgetTests
 
         SetupRunner.Run(flow, Face(height: 60));
 
-        Assert.Equal(Shelf.RowBudget(60), flow.RowBudget);
-        Assert.NotEqual(HubSearch.DefaultRowBudget, flow.RowBudget);
+        Assert.Equal(int.MaxValue, flow.RowBudget);
     }
 
     //the shelf must count the rows the budget left off, since a silently stopping list can't be told from a complete one
@@ -104,11 +99,11 @@ public class RowBudgetTests
     //the row count reads the surface's height and nothing else, since no caller supplies a panel ceiling
 
 
-    //a face that owns the screen still has no panel to ask, so it reads the terminal (asking always would return the plain default)
+    //a terminal that will not say its height leaves the face no window to scroll, so it keeps the plain default
     [Fact]
-    public void A_FACE_THAT_OWNS_THE_SCREEN_STILL_SIZES_FOR_THE_TERMINAL()
+    public void A_FACE_WITH_NO_KNOWN_HEIGHT_KEEPS_THE_PLAIN_BUDGET()
     {
-        Assert.Equal(Shelf.RowBudget(40), Face(height: 40).RowBudget);
+        Assert.Equal(HubSearch.DefaultRowBudget, Face(height: 0).RowBudget);
     }
 
     private static TuiWizardSurface Face(int height) =>

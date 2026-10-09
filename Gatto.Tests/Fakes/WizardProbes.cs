@@ -384,8 +384,14 @@ internal sealed class WizardProbes : ISetupProbes
     //how many times the shelf asked. the marks look the same either way, so only a count proves it asked once per shelf rather than once per row
     public int LoadedAsked { get; set; }
 
-    public string? ExistingModelFor(string ggufPath) =>
-        Existing.TryGetValue(ggufPath, out var id) ? id : ExistingModel;
+    //every ask per path, since the live probe reads the models folder on each one
+    public Dictionary<string, int> ExistingAsked { get; } = new(StringComparer.OrdinalIgnoreCase);
+
+    public string? ExistingModelFor(string ggufPath)
+    {
+        ExistingAsked[ggufPath] = ExistingAsked.GetValueOrDefault(ggufPath) + 1;
+        return Existing.TryGetValue(ggufPath, out var id) ? id : ExistingModel;
+    }
     //the verdict for the id clash. the held id comes from Colliding and its kind from ClashKind, with no collision answering free
     public (Gatto.Roles.IdClash Kind, string? Id) ClashFor(string ggufPath, string? incomingRepoId) =>
         Colliding is { Length: > 0 } ? (ClashKind, Colliding) : (Gatto.Roles.IdClash.Free, null);

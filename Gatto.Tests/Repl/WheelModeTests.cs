@@ -12,13 +12,6 @@ public class WheelModeTests : IDisposable
     private readonly string _cwd = Directory.CreateTempSubdirectory("gatto-wheel-").FullName;
     public void Dispose() { try { Directory.Delete(_cwd, recursive: true); } catch { } }
 
-    private sealed class FakeCtl : IConsoleModeControl
-    {
-        public uint Mode;
-        public uint Get() => Mode;
-        public void Set(uint m) => Mode = m;
-    }
-
     [Fact]
     public async Task A_mouse_off_session_turns_alternate_scroll_off_with_the_alt_screen_and_back_on_as_it_leaves()
     {
@@ -58,7 +51,7 @@ public class WheelModeTests : IDisposable
     [Fact]
     public async Task A_mouse_on_session_leaves_alternate_scroll_alone()
     {
-        var h = new RichReplHarness(_cwd, mouseEnabled: true, modeControl: new FakeCtl());
+        var h = new RichReplHarness(_cwd, mouseEnabled: true, modeControl: new FakeConsoleModeControl());
         h.Keys.Line("/quit");
 
         await h.RunAsync();

@@ -157,6 +157,37 @@ public class HaveMarksTests
         Assert.Equal(1, probes.LoadedAsked);
     }
 
+    //a key that only re-arranges the rows reuses the shelf's answer, since a server that does not answer costs each ask its whole deadline
+    [Fact]
+    public void A_SORT_A_LOCAL_CHIP_OR_A_ASKS_THE_SERVER_NOTHING()
+    {
+        var x = OnDisk("x");
+        var probes = new WizardProbes
+        {
+            Rows = [HubRow("a/one", "one.gguf"), HubRow("a/two", "two.gguf")],
+            Found = [x, OnDisk("y")],
+            Existing = { [x.Path] = "x-model" },
+            Loaded = "x-model",
+        };
+        var flow = new SetupFlow(probes) { CanSwitchSource = true };
+        flow.StartPastEngine();
+
+        probes.LoadedAsked = 0;
+        flow.Answer(SetupFlow.CtlParams);
+        Assert.Equal(0, probes.LoadedAsked);
+
+        flow.Answer(ShelfControls.SourceAnswer());
+        probes.LoadedAsked = 0;
+        probes.LoadedPathAsked = 0;
+        flow.Answer(SetupFlow.CtlParams);
+        flow.Answer(ShelfControls.FamilyAnswer("all"));
+        var local = Assert.IsType<WizardScreen.Choice>(flow.Answer(SetupFlow.CtlLift));
+        Assert.Equal(0, probes.LoadedAsked);
+        Assert.Equal(0, probes.LoadedPathAsked);
+        //the kept answer still marks the loaded row
+        Assert.Contains(local.Shelf!.Facts!, f => f.Have == HaveMark.Loaded);
+    }
+
     //fixtures
 
     //the model's id is set on the facts on both shelves, since the render tests build their own facts and would pass without it

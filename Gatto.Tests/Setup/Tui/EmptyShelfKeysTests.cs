@@ -178,13 +178,13 @@ public class EmptyShelfKeysTests
         Assert.Contains("press Esc to go back", frame, StringComparison.Ordinal);
     }
 
-    //the numbered face binds no m and has no typed field, so the flow keeps both options for it (nothing constructs that face today)
+    //the door types a folder and Esc reaches the Hub, so the empty local shelf has no option rows
     [Fact]
-    public void THE_EMPTY_LOCAL_SHELF_KEEPS_BOTH_OPTIONS_FOR_THE_NUMBERED_FACE()
+    public void THE_EMPTY_LOCAL_SHELF_HAS_NO_OPTION_ROWS()
     {
         var (_, empty) = EmptyLocalFromTheHub();
 
-        Assert.Equal([SetupFlow.Elsewhere, SetupFlow.SearchInstead], empty.Options.Select(o => o.Key));
+        Assert.Empty(empty.Options);
     }
 
     //the empty local shelf's golden is rendered from the flow's own screen, so it moves with the product

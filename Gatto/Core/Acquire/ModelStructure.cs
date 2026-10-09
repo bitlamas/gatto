@@ -34,6 +34,28 @@ internal static partial class ModelStructure
     public static bool Answered(GgufHeader h) =>
         h.ExpertCount is not null || h.Outcome == GgufOutcome.Complete;
 
+    //the params cell's anchored shape: an optional multiplier, a bounded number and unit, an optional active tail. the label is uploader text and reaches the cell only through this
+    [GeneratedRegex(@"^(\d{1,3}x)?(\d{1,5}(?:\.\d{1,3})?)([KMBT])(-A\d{1,5}(?:\.\d{1,3})?[KMBT])?\z", RegexOptions.CultureInvariant)]   //the end anchor is the end of the text, since a dollar sign also matches before a final newline
+    private static partial Regex SizeShape();
+
+    //32 characters bound the match, so a label of any length costs one short check
+    private const int MaxSizeLabel = 32;
+
+    //the label when it has the anchored shape, else null, so an escape or a newline never reaches the table
+    public static string? SizeCell(string? label) =>
+        label is { Length: > 0 and <= MaxSizeLabel } && SizeShape().IsMatch(label) ? label : null;
+
+    //the label's parameters in one unit, an N x M label as the product, null when the shape does not match
+    public static double? SizeMagnitude(string? label)
+    {
+        if (SizeCell(label) is null) return null;
+        var m = SizeShape().Match(label!);
+        var times = m.Groups[1].Success ? double.Parse(m.Groups[1].Value[..^1], System.Globalization.CultureInfo.InvariantCulture) : 1;
+        var n = double.Parse(m.Groups[2].Value, System.Globalization.CultureInfo.InvariantCulture);
+        var unit = m.Groups[3].Value switch { "K" => 1e3, "M" => 1e6, "B" => 1e9, _ => 1e12 };
+        return times * n * unit;
+    }
+
     //the label's last segment, admitted only if it is an A-number, so 512x2.5B leaves the cell as bare MoE
     private static string? Tail(string? sizeLabel)
     {

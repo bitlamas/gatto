@@ -152,13 +152,13 @@ public class LocalShelfTests
 
     //every local row leaves Params null, so the params column stays out of the local table and the hub shelf keeps its own
     [Fact]
-    public void THE_PARAMS_COLUMN_IS_ON_THE_HUB_SHELF_AND_NOT_ON_THE_LOCAL_ONE()
+    public void THE_PARAMS_COLUMN_IS_ON_BOTH_SHELVES()
     {
         var local = Shelf.Table(View(), row: 0, focused: true, glyphs: GlyphSet.Unicode)[0].Text;
         var hub = Shelf.Table(View() with { Source = ShelfSource.Hub }, row: 0, focused: true,
             glyphs: GlyphSet.Unicode)[0].Text;
 
-        Assert.DoesNotContain("params", local, StringComparison.Ordinal);
+        Assert.Contains("params", local, StringComparison.Ordinal);
         Assert.Contains("params", hub, StringComparison.Ordinal);
     }
 
@@ -197,13 +197,12 @@ public class LocalShelfTests
         Assert.StartsWith("…", got, StringComparison.Ordinal);
     }
 
-    //the local door ends with / to search and names no click, since the wizard face has no mouse
+    //the local door's hint names its key and no click, a press on the door needs no words
     [Fact]
     public void THE_LOCAL_DOOR_ENDS_WITH_QUESTION_MARK_TO_SEARCH_AND_OFFERS_NO_CLICK()
     {
-        var door = RowContaining(Render(), "search these, or type a .gguf");
+        var door = RowContaining(Render(), "type a .gguf to add");
 
-        //the wizard face has no mouse, so the hint must not offer "or click"
         Assert.EndsWith("? to search", door.TrimEnd(), StringComparison.Ordinal);
         Assert.DoesNotContain("click", door, StringComparison.Ordinal);
     }
@@ -228,6 +227,10 @@ public class LocalShelfTests
 
     //the mapper's honesty table
 
+    //one file as the group of one a scan of a single file makes
+    private static ModelRow OneRow(FoundModel m, HardwareClass? hw, Badge? badge = null) =>
+        LocalShelf.Row(Assert.Single(LocalShelf.Group([m])), m, hw, badge: badge);
+
     private static FoundModel Found(string name, double gb, int shards = 1) =>
         new(Path.Combine(Dir, "unsloth", name), Gib(gb), null, shards);
 
@@ -238,7 +241,7 @@ public class LocalShelfTests
     [Fact]
     public void A_FOUND_MODEL_MAPS_ONTO_A_ROW_THAT_CLAIMS_NOTHING_IT_CANNOT_KNOW()
     {
-        var r = LocalShelf.Row(Found("gemma-4-26B-A4B-it-UD-Q4_K_M.gguf", 16.9), Hw());
+        var r = OneRow(Found("gemma-4-26B-A4B-it-UD-Q4_K_M.gguf", 16.9), Hw());
 
         Assert.Single(r.Publishers);
         Assert.Null(r.Badge);
@@ -247,7 +250,7 @@ public class LocalShelfTests
         Assert.Equal(0, r.RowOffer!.Downloads);
 
         //assert the fields it does fill, otherwise a mapper that fills nothing passes the nulls above
-        Assert.Equal("gemma-4-26B-A4B-it-UD-Q4_K_M", r.Model);
+        Assert.Equal("gemma-4-26B-A4B-it", r.Model);   //the model's name, the quant and its UD segment cut
         Assert.Equal(Gib(16.9), r.RowQuant!.Bytes);
         Assert.Equal("Q4_K_M", QuantToken.Of(r.RowQuant!.FileName));
     }
@@ -257,7 +260,7 @@ public class LocalShelfTests
     public void A_LOCAL_ROW_IS_THE_FOLDER_WITH_ONE_REPO_AND_KEEPS_ITS_BADGE()
     {
         var badge = new Badge("org/model", new DateOnly(2026, 8, 10), "abc1234", "temp 0.7");
-        var r = LocalShelf.Row(Found("gemma-4-26B-A4B-it-UD-Q4_K_M.gguf", 16.9), Hw(), badge: badge);
+        var r = OneRow(Found("gemma-4-26B-A4B-it-UD-Q4_K_M.gguf", 16.9), Hw(), badge);
 
         var publisher = Assert.Single(r.Publishers);
         var repo = Assert.Single(publisher.Repos);
@@ -276,5 +279,5 @@ public class LocalShelfTests
     //fit runs the same arithmetic as the hub shelf, and a file with no readable header is Unknown, which draws no glyph
     [Fact]
     public void A_FILE_WITH_NO_READABLE_HEADER_IS_UNKNOWN_NOT_FITTING() =>
-        Assert.Equal(FitRegime.Unknown, LocalShelf.Row(Found("mystery.gguf", 4), Hw()).Fit);
+        Assert.Equal(FitRegime.Unknown, OneRow(Found("mystery.gguf", 4), Hw()).Fit);
 }

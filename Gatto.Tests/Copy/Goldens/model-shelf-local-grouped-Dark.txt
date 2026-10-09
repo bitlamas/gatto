@@ -1,0 +1,24 @@
+ESC[38;2;232;232;232m  gatto modelESC[0m                                                                                   ESC[38;2;153;153;153mv0.5.0 · build 1a2b3c4ESC[0m
+  ESC[38;2;255;166;77m❯ ESC[0mESC[38;2;255;166;77mmodelESC[0mESC[38;2;153;153;153m · ESC[0mESC[38;2;153;153;153mcheckESC[0mESC[38;2;153;153;153m · ESC[0mESC[38;2;153;153;153mdoneESC[0m
+ESC[38;2;153;153;153m────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────ESC[0m
+ESC[38;2;232;232;232m  Found a model already on this machineESC[0m
+
+  ESC[38;2;153;153;153mgemmaESC[0mESC[38;2;153;153;153m · ESC[0mESC[38;2;153;153;153mqwenESC[0mESC[38;2;153;153;153m · ESC[0mESC[38;2;153;153;153mdeepseekESC[0mESC[38;2;153;153;153m · ESC[0mESC[38;2;153;153;153mglmESC[0mESC[38;2;153;153;153m · ESC[0mESC[38;2;153;153;153mmistralESC[0mESC[38;2;153;153;153m · ESC[0mESC[38;2;255;166;77mallESC[0m
+
+ESC[38;2;153;153;153m  model     params ▾  size · quant    kind    ESC[0m ESC[38;2;255;166;77m│ESC[0m ESC[38;2;232;232;232mQwen3-8BESC[0m                                                               
+ESC[38;2;153;153;153m› ESC[0mESC[38;2;232;232;232mQwen3-8B        8B  4.7 GB Q4_K_M   dense   ESC[0m ESC[38;2;255;166;77m│ESC[0m ESC[38;2;153;153;153mC:\models\ESC[0m                                                             
+                                               ESC[38;2;255;166;77m│ESC[0m                                                                        
+                                               ESC[38;2;255;166;77m│ESC[0m context up to ESC[38;2;255;166;77m32,768ESC[0m                                                   
+                                               ESC[38;2;255;166;77m│ESC[0m ESC[38;2;153;153;153mreads all ESC[0m8BESC[38;2;153;153;153m params/tokenESC[0m                                              
+                                               ESC[38;2;255;166;77m│ESC[0m ESC[38;2;153;153;153march      ESC[0mqwen3                                                        
+                                               ESC[38;2;255;166;77m│ESC[0m ESC[38;2;153;153;153m✗ not measured by gatto yetESC[0m                                            
+                                               ESC[38;2;255;166;77m│ESC[0m                                                                        
+                                               ESC[38;2;255;166;77m│ESC[0m ESC[38;2;153;153;153m› ESC[0mESC[38;2;153;153;153m▾ ESC[0mC:\models   4.7 GB Q4_K_M  ESC[38;2;151;202;114m✓ESC[0mESC[38;2;153;153;153m fitsESC[0m                                  
+                                               ESC[38;2;255;166;77m│ESC[0m   ESC[48;2;34;27;18mESC[38;2;255;166;77m❯ ESC[0mESC[48;2;34;27;18mESC[38;2;255;166;77mQ4_K_M     4.7 GBESC[0mESC[48;2;34;27;18m  ESC[0mESC[48;2;34;27;18mESC[38;2;151;202;114m✓ESC[0mESC[48;2;34;27;18mESC[38;2;153;153;153m fitsESC[0m                                          
+                                               ESC[38;2;255;166;77m│ESC[0m ESC[38;2;153;153;153m  ESC[0mESC[38;2;153;153;153m▸ ESC[0mD:\weights  8.4 GB Q8_0  ESC[38;2;151;202;114m✓ESC[0mESC[38;2;153;153;153m fitsESC[0m                                    
+
+ESC[38;2;153;153;153m  1–1 of 1ESC[0m
+
+ESC[38;2;153;153;153m❯ type a .gguf to add, a folder to look in…ESC[0m                                                                ESC[38;2;153;153;153m? to searchESC[0m
+ESC[38;2;153;153;153m────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────ESC[0m
+  ESC[38;2;232;232;232mTabESC[0mESC[38;2;153;153;153m areaESC[0m   ESC[38;2;232;232;232m↑↓ESC[0mESC[38;2;153;153;153m moveESC[0m   ESC[38;2;232;232;232mEnterESC[0mESC[38;2;153;153;153m chooseESC[0m   ESC[38;2;232;232;232mmESC[0mESC[38;2;153;153;153m hubESC[0m   ESC[38;2;232;232;232maESC[0mESC[38;2;153;153;153m show allESC[0m   ESC[38;2;232;232;232mEscESC[0mESC[38;2;153;153;153m backESC[0m                            ESC[38;2;153;153;153m| fewer params = fasterESC[0m

@@ -348,7 +348,7 @@ internal static class HubSearch
         _ => 0,
     };
 
-    private static bool Smaller(HubQuant candidate, HubQuant incumbent) =>
+    internal static bool Smaller(HubQuant candidate, HubQuant incumbent) =>
         candidate.Bytes != incumbent.Bytes
             ? candidate.Bytes < incumbent.Bytes
             : string.CompareOrdinal(candidate.FileName, incumbent.FileName) < 0;

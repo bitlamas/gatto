@@ -475,6 +475,11 @@ public class LoadingShelfFlowTests
             Assert.Equal(Gatto.Terminal.HaveMark.Loaded, shelf.Shelf!.Facts![0].Have);
             Assert.Equal(1, probes.LoadedAsked);
             Assert.Equal(1, searches);
+
+            //a sort after the landing re-arranges with the landed answer and asks the server nothing
+            var sorted = Assert.IsType<WizardScreen.Choice>(flow.Answer(SetupFlow.CtlParams));
+            Assert.Equal(Gatto.Terminal.HaveMark.Loaded, sorted.Shelf!.Facts![0].Have);
+            Assert.Equal(1, probes.LoadedAsked);
         }
         finally { hold.Set(); }
     }

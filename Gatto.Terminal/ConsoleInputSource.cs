@@ -76,6 +76,55 @@ public sealed class ConsoleInputSource(IConsoleInputReader reader) : IInputSourc
             return false;
         }
     }
+
+    //a wait ends on what the wizard acts on. the OS peek holds 16 records and a press behind them is invisible to it, so the buffer is drained into the queue first
+    public bool EventAvailable
+    {
+        get
+        {
+            DropMovesAndReleases();
+            DrainWithoutBlocking(WaitRounds);
+            DropMovesAndReleases();
+            return _pending.Count > 0;
+        }
+    }
+
+    //keys survive a screen change as type-ahead, a press on the old screen must not reach the new one
+    public void DropMouse()
+    {
+        DrainWithoutBlocking(DropRounds);
+        Keep(e => e is not MouseEvent);
+    }
+
+    //a wait answers within a poll, so 8 peeked rounds bound a pointer that keeps moving. a drop runs longer, since a stale press it misses reaches the next screen as a live one
+    private const int WaitRounds = 8, DropRounds = 64;
+
+    private void DropMovesAndReleases() => Keep(e => e is not MouseEvent { Kind: MouseKind.Move or MouseKind.Release });
+
+    private void Keep(Func<InputEvent, bool> keep)
+    {
+        for (var i = _pending.Count; i > 0; i--)
+        {
+            var e = _pending.Dequeue();
+            if (keep(e)) _pending.Enqueue(e);
+        }
+    }
+
+    //read exactly what the peek counted, so one round reads at most a peek's worth. the read cannot block, the peek saw records
+    private void DrainWithoutBlocking(int rounds)
+    {
+        for (var round = 0; round < rounds; round++)
+        {
+            var n = reader.Peek(_peek);
+            if (n <= 0) return;
+            var buf = new INPUT_RECORD[n];
+            var got = reader.Read(buf);
+            if (got <= 0) return;
+            Interlocked.Add(ref _recordsRead, got);
+            for (var i = 0; i < got; i++) Translate(buf[i]);
+            FlushHeldMove();
+        }
+    }
 }
 
 //the real reader over STD_INPUT_HANDLE, using the Unicode entry point so accented, CJK and surrogate-pair characters marshal correctly

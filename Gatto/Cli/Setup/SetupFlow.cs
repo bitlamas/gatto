@@ -182,7 +182,6 @@ internal sealed class SetupFlow(ISetupProbes probes)
     public const string No = "no";
     public const string Retry = "retry";
     public const string Elsewhere = "elsewhere";
-    public const string SearchInstead = "search";
     public const string TypeAnId = "typeid";
     //prefix the shelf's typed answer, a typed number and a row index are the same string
     public const string CtlTyped = "shelf.typed:";
@@ -259,6 +258,10 @@ internal sealed class SetupFlow(ISetupProbes probes)
 
     //keep the decline label in one const, a test scripts the prompter with it and a short script reads as the user leaving
     internal const string AddUncheckedLabel = "Add it unchecked, nothing on this machine changes";
+
+    //both check screens of gatto model end with it: the model is added and the shelf it came from returns for another
+    public const string AddAnother = "model.add.another";
+    internal const string AddAnotherLabel = "Add another model";
 
     //the skip path's own stop, and the two keys on its arrival.
     public const string SkipStop = "model.audition.skip.stop";
@@ -367,7 +370,7 @@ internal sealed class SetupFlow(ISetupProbes probes)
     private string? _scanTyped;
 
     //record which screen armed the pause, inferring the route from the model id would loop back into the arming screen
-    private enum ResumeStage { ScaffoldPause, DonePause, ConsentPause }
+    private enum ResumeStage { ScaffoldPause, DonePause, ConsentPause, AnotherPause }
 
     private ResumeStage _resumeStage = ResumeStage.ScaffoldPause;
 
@@ -415,12 +418,18 @@ internal sealed class SetupFlow(ISetupProbes probes)
     private bool? _smallestFirst;
 
     //the rows in hand by total parameters, the direction the click chose, a row with no total last
-    private IReadOnlyList<ModelRow> Sorted(IReadOnlyList<ModelRow> rows) => _smallestFirst switch
+    private IReadOnlyList<ModelRow> Sorted(IReadOnlyList<ModelRow> rows) =>
+        SortedBy(rows, r => r.Params is { } p ? p : ModelStructure.SizeMagnitude(r.ParamsLabel), r => r.Model);
+
+    //the sort over anything that carries a total and a name, so the local shelf's options and facts move with their rows. each key is read once
+    private IReadOnlyList<T> SortedBy<T>(IReadOnlyList<T> items, Func<T, double?> totalOf, Func<T, string> nameOf)
     {
-        true => [.. rows.OrderBy(r => r.Params is null).ThenBy(r => r.Params ?? 0).ThenBy(r => r.Model, StringComparer.Ordinal)],
-        false => [.. rows.OrderBy(r => r.Params is null).ThenByDescending(r => r.Params ?? 0).ThenBy(r => r.Model, StringComparer.Ordinal)],
-        null => rows,
-    };
+        if (_smallestFirst is not { } smallest) return items;
+        var keyed = items.Select(x => (Item: x, Total: totalOf(x), Name: nameOf(x))).ToList();
+        var ordered = keyed.OrderBy(k => k.Total is null);
+        ordered = smallest ? ordered.ThenBy(k => k.Total ?? 0) : ordered.ThenByDescending(k => k.Total ?? 0);
+        return [.. ordered.ThenBy(k => k.Name, StringComparer.Ordinal).Select(k => k.Item)];
+    }
 
     //keep the local shelf's chip in its own field, one shared family could empty the local shelf when the user narrows the Hub
     private string? _localFamily;
@@ -718,7 +727,10 @@ internal sealed class SetupFlow(ISetupProbes probes)
     //a stack of snapshots, no persistence and no resume (replaying would re-run probes, which are neither free nor idempotent)
     private readonly Stack<Snapshot> _back = new();
 
-    private bool CanGoBack => _back.Count > 0 && !_applied;
+    private bool CanGoBack => _back.Count > 0 && !_backClosed;
+
+    //the back stack closes at the first apply, and a second round opens it again, since a step back never undoes a write. _applied keeps the closing record
+    private bool _backClosed;
 
     //the screen the flow waits on, the last emitted one (every branch emits its screen last)
     private WizardScreen? LastScreen => _emitted.Count > 0 ? _emitted[^1] : null;
@@ -1099,17 +1111,19 @@ internal sealed class SetupFlow(ISetupProbes probes)
             return Back();
         }
 
-        //unwrap the pane's pick before the dispatch, the row's own key continues as if no pane existed and consumers read the row's file
+        //unwrap the pane's pick before the dispatch, the row's own key continues as if no pane existed and consumers read the row's file. a local pick is a path, kept for the row's answer to resolve
+        _localChoice = null;
         if (ShelfControls.Unpick(answer) is { } picked)
         {
-            ApplyPickedFile(picked.Key, picked.File);
+            if (_awaiting == DiscoveredKey) _localChoice = LocalShelf.PathOf(picked.File);
+            else ApplyPickedFile(picked.Key, picked.File);
             answer = picked.Key;
         }
 
         //capture the step being left before a handler changes a field. a control that stays on the shelf pushes nothing, except when the screen it reaches holds no list
-        var control = ShelfControls.IsControl(answer);
+        var control = ShelfControls.IsControl(answer) || (_addRoad && IsAddress(answer));   //an address on gatto model is answered in place, a control
         if (control && _controlStep) { _back.Pop(); _controlStep = false; }
-        var stepped = _awaiting is not null && !_applied && LastScreen is { } current
+        var stepped = _awaiting is not null && !_backClosed && LastScreen is { } current
             && current is not WizardScreen.Choice { Watching: true }   //a watch ends with its task, so a later back to it shows a stop for work that finished
             && Push(Capture(current));
         //clear the flag only after the capture, the step being left keeps the value a step back restores
@@ -1153,7 +1167,7 @@ internal sealed class SetupFlow(ISetupProbes probes)
     //a control's step waiting on its load is not one b returns to, so the loading shelf offers back only when a step lies behind it
     private WizardScreen HonestBack(WizardScreen.Choice loading)
     {
-        var honest = loading with { AllowBack = _back.Count > 1 && !_applied };
+        var honest = loading with { AllowBack = _back.Count > 1 && !_backClosed };
         if (_emitted.Count > 0 && ReferenceEquals(_emitted[^1], loading)) _emitted[^1] = honest;
         return honest;
     }
@@ -1250,6 +1264,42 @@ internal sealed class SetupFlow(ISetupProbes probes)
     }
 
 
+    //what an address at a Hub door says on gatto model, which adds models and talks to the server it already has
+    private const string AddressNotice = "gatto setup connects gatto to a server. This screen adds models.";
+
+    //the address the user typed on the connect road, null after a port scan
+    private string? _typedServer;
+
+    private static bool IsAddress(string answer) =>
+        ShelfControls.Untyped(answer) is { } t && Gatto.Cli.Setup.Tui.TypedDoor.Classify(t) == Gatto.Cli.Setup.Tui.DoorInput.Address;
+
+    //every typed-id ask says the same: a name is needed, and on gatto model an address is answered here while on setup it passes on to the connect road
+    private string? TypedIdProblem(string t) =>
+        t.Trim().Length == 0 ? "Type a name like org/model"
+        : _addRoad && Gatto.Cli.Setup.Tui.TypedDoor.Classify(t) == Gatto.Cli.Setup.Tui.DoorInput.Address ? AddressNotice
+        : null;
+
+    //one answer for an address at any Hub door: in place on gatto model, the connect road on gatto setup. an ask comes back as it was, its own check says the notice
+    private WizardScreen AnswerAddress(string typed)
+    {
+        if (_addRoad)
+            return LastScreen switch
+            {
+                WizardScreen.Choice here => Emit(here with { Notice = AddressNotice }, _awaiting),
+                WizardScreen.Ask ask => Emit(ask, _awaiting),
+                _ => throw new InvalidOperationException("an address was answered with nothing on screen to keep"),
+            };
+
+        //the model road's own writes go with it, the engine stays, since a step back returns to the llama road and the engine is on disk
+        if (_awaiting == ShelfLoadingKey) CancelLoad();
+        Writes = Writes with { CreateModel = null, ModelLlamaServer = null, MoveTo = null, Projector = null, ActivateFile = null };
+        Picked = null;
+        Selected = null;
+        _modelId = null;
+        Path = SetupPath.Connect;
+        return TypedAddress(typed);
+    }
+
     //leave the llama road for the user's own server in one home (three screens open it, three copies could disagree)
     private WizardScreen TakeConnectRoad()
     {
@@ -1276,7 +1326,14 @@ internal sealed class SetupFlow(ISetupProbes probes)
         RetryKey,
         "Which server should gatto talk to?",
         [new ChoiceOption(Retry, "Look again")],
-        BodyRows: _ownServerSaid is { } said
+        BodyRows: _typedServer is { } typedServer
+            ? [
+                new WizardRow($"No server answered at {typedServer}."),
+                new WizardRow(""),
+                new WizardRow("Start your server, then look again, or type its address if it lives "
+                    + "somewhere else."),
+              ]
+            : _ownServerSaid is { } said
             ? [
                 new WizardRow($"{said} No other server answered."),
                 new WizardRow(""),
@@ -1294,12 +1351,15 @@ internal sealed class SetupFlow(ISetupProbes probes)
 
     //accept only the retry option or a typed address. falling into the default arm would leave setup, the worst reading of a typed address
     private WizardScreen AnswerRetry(string optionKey) =>
-        optionKey == Retry ? ProbeForServer() : TypedAddress(ShelfControls.Untyped(optionKey)!);
+        optionKey == Retry ? _typedServer is { } typed ? TypedAddress(typed) : ProbeForServer()
+            : TypedAddress(ShelfControls.Untyped(optionKey)!);
 
     //probe exactly the address the user typed, on silence re-show that screen (they told gatto where to look)
     private WizardScreen TypedAddress(string typed)
     {
-        _found = probes.ProbeAt(typed.Trim());
+        //the address is kept, so the silence names it and Look again asks it again
+        _typedServer = typed.Trim();
+        _found = probes.ProbeAt(_typedServer);
         _contextWasReported = _found?.NCtx is > 0;
         return _found is null ? NoServerAnswered() : Complete(_found.BaseUrl, _found.NCtx ?? 0);
     }
@@ -1310,6 +1370,7 @@ internal sealed class SetupFlow(ISetupProbes probes)
         //gatto's own serving server is narrated and passed rather than offered. the match keys on the answered port, a typed read stops a dead process claiming it
         List<int>? spent = null;
         _ownServerSaid = null;
+        _typedServer = null;
         while (true)
         {
             _found = probes.ProbeServer(spent);
@@ -1625,7 +1686,7 @@ internal sealed class SetupFlow(ISetupProbes probes)
 
     //the local shelf's longer placeholder, from the local shelf's own goldens, its door both searches the machine and takes a path
     internal static string LocalShelfDoorPlaceholderOf(Gatto.Terminal.GlyphSet g) =>
-        $"search these, or type a .gguf to add, a folder to look in{g.Ellipsis}";
+        $"type a .gguf to add, a folder to look in{g.Ellipsis}";
 
     //the one title for every screen of the engine step, a title that varied would read as a different step. it asks which build gatto should use
     internal const string EngineTitle = "Which engine build fits this machine?";
@@ -2480,6 +2541,7 @@ internal sealed class SetupFlow(ISetupProbes probes)
     //treat a typed .gguf as the model itself, sweep its folder and adopt the scan's row (a second FoundModel here could disagree)
     private WizardScreen DiscoverTyped(string root)
     {
+        _pickedFromLocal = true;
         //sweep a non-.gguf path as itself, and a .gguf's folder, a file path as a folder hides every model
         var scanRoot = root.EndsWith(".gguf", StringComparison.OrdinalIgnoreCase)
             ? System.IO.Path.GetDirectoryName(root) is { Length: > 0 } folder ? folder : null
@@ -2532,8 +2594,8 @@ internal sealed class SetupFlow(ISetupProbes probes)
             return Emit(new WizardScreen.Choice(
                 DiscoveredKey,
                 ModelTitle,
-                [new ChoiceOption(Elsewhere, $"Look in another folder{Glyphs.Ellipsis}"),
-                 new ChoiceOption(SearchInstead, "Find one to download instead")],
+                //the door types a folder and Esc reaches the Hub, so the shelf has no option rows
+                [],
                 Door: $"type a folder path{Glyphs.Ellipsis}",
                 //pass no families for an empty shelf, the block takes the table's place and the chips row draws nothing
                 Shelf: new ShelfView([], Shape, Source: ShelfSource.Local, Empty: EmptyLocalRows())),
@@ -2552,35 +2614,42 @@ internal sealed class SetupFlow(ISetupProbes probes)
             });
         }
 
-        //adopted models stay (with their have-mark), this is also the reuse picker
-        var shown = new List<(int At, FoundModel Model)>();
+        //adopted models stay (with their have-mark), this is also the reuse picker. one row per model, its files in the pane
+        var groups = LocalShelf.Group(_discovered);
+        var hw = HardwareClass();
+        //read once per shelf, the answer comes from probing the running server, and the model of each file comes from reading the models folder
+        var loadedPath = LoadedPath();
+        var existing = Memo(probes.ExistingModelFor);
+        var shown = new List<(int At, LocalShelf.LocalGroup Group, FoundModel File, bool Ruled)>();
         //no chip lit shows every family, models with no family included
-        for (var i = 0; i < _discovered.Count; i++)
-            if (_localFamily is not { } fam
-                || Families.Load().FamilyOf(_discovered[i].Header?.Architecture) == fam)
-                shown.Add((i, _discovered[i]));
+        for (var i = 0; i < groups.Count; i++)
+        {
+            var (file, ruled) = RowFileFor(groups[i], hw, loadedPath, existing);
+            if (_localFamily is not { } fam || Families.Load().FamilyOf(file.Header?.Architecture) == fam)
+                shown.Add((i, groups[i], file, ruled));
+        }
+        //a params click sorts the local shelf as it sorts the Hub's, each option moving with its row
+        shown = [.. SortedBy(shown, s => ModelStructure.SizeMagnitude(s.File.Header?.SizeLabel), s => s.Group.Name)];
 
         var options = new List<ChoiceOption>();
-        foreach (var (at, m) in shown)
+        foreach (var (at, g, m, _) in shown)
             //keep a vendor off the row, a vendor label editorialises about someone else's weights
             options.Add(new ChoiceOption(
-                at.ToString(System.Globalization.CultureInfo.InvariantCulture), //index into _discovered even when a chip filters, AnswerDiscovered reads it back from there
-                System.IO.Path.GetFileName(m.Path),
+                at.ToString(System.Globalization.CultureInfo.InvariantCulture), //index into the scan's groups even when a chip filters, AnswerDiscovered regroups the same scan and reads the row's file by path
+                g.Name,
                 $"{Gb((ulong)Math.Max(0, m.FileBytes))} {Glyphs.Dot} {System.IO.Path.GetDirectoryName(m.Path)}"));
-        options.Add(new ChoiceOption(Elsewhere, $"Look in another folder{Glyphs.Ellipsis}"));
-        options.Add(new ChoiceOption(SearchInstead, "Find one to download instead"));
 
         return Emit(new WizardScreen.Choice(
             DiscoveredKey,
-            heading ?? (_discovered.Count == 1 ? "Found a model already on this machine" : $"Found {_discovered.Count} models already on this machine"),
+            heading ?? (groups.Count == 1 ? "Found a model already on this machine" : $"Found {groups.Count} models already on this machine"),
             options,
             //draw the notice in the body above the chips, where the Hub shelf puts its discovery line, so a shelf's reason always appears there
             BodyRows: notice is { Length: > 0 } why ? [new WizardRow(why, Tone: RowTone.Aside)] : [],
             //keep the door even when a chip empties the shelf, only the filter can empty it here. a null door and shelf make the face draw a numbered list
             Door: LocalShelfDoorPlaceholderOf(Glyphs),
             //draw the local list through the same shelf view as the Hub, only the source differs
-            Shelf: LocalView([.. shown.Select(s => s.Model)],
-                empty: shown.Count == 0 ? LocalChipEmptyRows(_discovered.Count) : null)), DiscoveredKey);
+            Shelf: LocalView([.. shown.Select(s => (s.Group, s.File, s.Ruled))], hw, groups.Count, loadedPath, existing,
+                empty: shown.Count == 0 ? LocalChipEmptyRows(groups.Count) : null)), DiscoveredKey);
     }
 
     //the fit check decides the shelf's rows. an empty result offers the ways that still work
@@ -2650,9 +2719,32 @@ internal sealed class SetupFlow(ISetupProbes probes)
     //the serving probe's answers while a landed load composes its screen, null otherwise so every other screen reads the server itself
     private (string? Id, string? Path)? _servingNow;
 
-    private string? LoadedId() => _servingNow is { } now ? now.Id : probes.LoadedModelId();
+    //the last answers a shelf drew from, which a key that only re-arranges its rows reuses. a closed port costs each ask its 2 s deadline
+    private (bool Known, string? Value) _keptId, _keptPath;
 
-    private string? LoadedPath() => _servingNow is { } now ? now.Path : probes.LoadedModelPath();
+    private bool _rearranging;
+
+    private string? LoadedId()
+    {
+        if (_servingNow is { } now) return (_keptId = (true, now.Id)).Value;
+        if (_rearranging && _keptId.Known) return _keptId.Value;
+        return (_keptId = (true, probes.LoadedModelId())).Value;
+    }
+
+    private string? LoadedPath()
+    {
+        if (_servingNow is { } now) return (_keptPath = (true, now.Path)).Value;
+        if (_rearranging && _keptPath.Known) return _keptPath.Value;
+        return (_keptPath = (true, probes.LoadedModelPath())).Value;
+    }
+
+    //a sort, a local chip or a local a draws the same rows in another order or subset, so it asks the server nothing
+    private WizardScreen Rearranged(Func<WizardScreen> screen)
+    {
+        _rearranging = true;
+        try { return screen(); }
+        finally { _rearranging = false; }
+    }
 
     //the search reports from the pool, so its latest moment and the generation that may write it sit under one lock
     private readonly object _loadGate = new();
@@ -2813,6 +2905,11 @@ internal sealed class SetupFlow(ISetupProbes probes)
             return RestartSearch(load);
         }
 
+        //an address is no term, it is answered as at the shelf's own door
+        if (ShelfControls.Untyped(key) is { } address
+            && Gatto.Cli.Setup.Tui.TypedDoor.Classify(address) == Gatto.Cli.Setup.Tui.DoorInput.Address)
+            return AnswerAddress(address);
+
         //a term typed in the door restarts the load with that term, the chip rule applied to the door. a path or a repo id goes its own way
         if (load.Search is not null && ShelfControls.Untyped(key) is { } typed
             && Gatto.Cli.Setup.Tui.TypedDoor.Classify(typed) != Gatto.Cli.Setup.Tui.DoorInput.Path
@@ -2962,35 +3059,59 @@ internal sealed class SetupFlow(ISetupProbes probes)
     }
 
     //the block that replaces the table when a chip hides every row, keep it in the view because body rows render above the shelf
-    private ShelfView LocalView(IReadOnlyList<FoundModel> shown, IReadOnlyList<string>? empty = null)
+    private ShelfView LocalView(IReadOnlyList<(LocalShelf.LocalGroup Group, FoundModel File, bool Ruled)> shown,
+        Gatto.Core.Hardware.HardwareClass? hw, int total, string? loadedPath, Func<string, string?> existing,
+        IReadOnlyList<string>? empty = null)
     {
-        var hw = probes.Hardware() is { } probe
-            ? Gatto.Core.Hardware.HardwareClassifier.Classify(probe) : null;
-
         //read once here, the answer comes from probing the running server
         var loadedId = LoadedId();
-        //read the loaded path too, a profile can name several files and a scan finds them all
-        var loadedPath = LoadedPath();
 
         return new ShelfView(
-            //the badge register is keyed by file name, so a local row asks by the name on disk
-            [.. shown.Select(m => hw is null
-                ? LocalShelf.Unpriced(m, probes.BadgeForFile(System.IO.Path.GetFileName(m.Path)))
-                : LocalShelf.Row(m, hw, badge: probes.BadgeForFile(System.IO.Path.GetFileName(m.Path))))],
+            //the badge register is keyed by file name and the badge stays on the row of the badged file, so a row asks by its file's name on disk
+            [.. shown.Select(s => LocalShelf.Row(s.Group, s.File, hw, badge: probes.BadgeForFile(System.IO.Path.GetFileName(s.File.Path))))],
             Shape,
             Families: Families.Load().Ladder, Family: _localFamily ?? "all",
-            Total: _discovered.Count,
+            Total: total,
             //resolve a local row through ExistingModelFor and reuse the answer, the mark and the id are two readings of one lookup
-            Facts: [.. shown.Select(m =>
+            Facts: [.. shown.Select(s =>
             {
-                var id = probes.ExistingModelFor(m.Path);
-                return LocalShelf.FactsFor(m, HaveFor(id, loadedId, m.Path, loadedPath), id);
+                var id = existing(s.File.Path);
+                return LocalShelf.FactsFor(s.Group, s.File, s.Ruled, hw, have: HaveFor(id, loadedId, s.File.Path, loadedPath), haveId: id);
             })],
             Source: ShelfSource.Local,
+            SmallestFirst: _smallestFirst,
             Folder: _scanTyped,
-            HiddenByFamily: _discovered.Count - shown.Count,
+            HiddenByFamily: total - shown.Count,
             Empty: empty);
     }
+
+    //the machine classified once per screen, null when the hardware could not be read, so no row is priced against an invented machine
+    private Gatto.Core.Hardware.HardwareClass? HardwareClass() =>
+        probes.Hardware() is { } probe ? Gatto.Core.Hardware.HardwareClassifier.Classify(probe) : null;
+
+    //a group's row file by the rules of the local shelf, and whether a rule chose it. with none, the first complete file stands and carries no pick mark
+    private (FoundModel File, bool Ruled) RowFileFor(LocalShelf.LocalGroup g, Gatto.Core.Hardware.HardwareClass? hw,
+        string? loadedPath, Func<string, string?> existing)
+    {        //the active file is a full path, so two folders' files of one name stay apart
+        var active = g.Files.Select(f => existing(f.Path)).OfType<string>()
+            .Select(id => probes.ActiveModelFile(id)?.Path).FirstOrDefault(p => p is not null);
+        var ruled = LocalShelf.RowFileOf(g, hw,
+            served: f => loadedPath is not null && string.Equals(f.Path, loadedPath, StringComparison.OrdinalIgnoreCase),
+            activePath: active, listed: f => existing(f.Path) is not null,
+            //the pick rule's floor reads the total from the size label, so a Q3 file never wins by rule without one
+            totalParams: (long?)g.Files.Select(f => f.Header?.SizeLabel).Select(ModelStructure.SizeMagnitude).FirstOrDefault(m => m is not null));
+        return ruled is { } r ? (r, true) : (g.Files.FirstOrDefault(f => f.IsComplete) ?? g.Files[0], false);
+    }
+
+    //one answer per path for the life of one screen, since the live lookup reads the models folder on every call
+    private static Func<string, string?> Memo(Func<string, string?> ask)
+    {
+        var seen = new Dictionary<string, string?>(StringComparer.OrdinalIgnoreCase);
+        return path => seen.TryGetValue(path, out var id) ? id : seen[path] = ask(path);
+    }
+
+    //a pane's local file choice, as a full path, set by the unpick step and read by the row's answer that follows it
+    private string? _localChoice;
 
     //reuse the shared family clause. no fit branch here, the local shelf never hides rows for price
     private IReadOnlyList<string> LocalChipEmptyRows(int hiddenByFamily) =>
@@ -3281,7 +3402,7 @@ internal sealed class SetupFlow(ISetupProbes probes)
         {
             _smallestFirst = _smallestFirst is not true;
             _rows = Sorted(_rows);
-            return SearchScreen();
+            return Rearranged(SearchScreen);
         }
 
         //a chip lights its family, all lights every family
@@ -3304,7 +3425,7 @@ internal sealed class SetupFlow(ISetupProbes probes)
             return Emit(new WizardScreen.Ask(
                 TypedIdKey,
                 "What is it called on Hugging Face?",
-                Validate: t => t.Trim().Length == 0 ? "Type a name like org/model" : null,
+                Validate: TypedIdProblem,
                 Placeholder: "Type or paste the id, e.g. org/model"), TypedIdKey);
 
         if (key == Elsewhere)
@@ -3331,6 +3452,7 @@ internal sealed class SetupFlow(ISetupProbes probes)
     //one classifier for both doors, so the two typing screens share one grammar
     private WizardScreen AnswerTypedText(string typed)
     {
+        if (Gatto.Cli.Setup.Tui.TypedDoor.Classify(typed) == Gatto.Cli.Setup.Tui.DoorInput.Address) return AnswerAddress(typed);
         if (Gatto.Cli.Setup.Tui.TypedDoor.Classify(typed) == Gatto.Cli.Setup.Tui.DoorInput.Path)
             return DiscoverTyped(Gatto.Roles.LlamaAssetSteering.NormalizePath(typed));
 
@@ -3348,7 +3470,7 @@ internal sealed class SetupFlow(ISetupProbes probes)
             return Emit(new WizardScreen.Ask(
                 TypedIdKey,
                 "That's a collection, which is many models, open one of them and paste that instead",
-                Validate: t => t.Trim().Length == 0 ? "Type a name like org/model" : null,
+                Validate: TypedIdProblem,
                 Placeholder: "Type or paste the id, e.g. org/model"), TypedIdKey);
 
         //use the parsed id, a pasted link resolves the repo it names
@@ -3379,7 +3501,7 @@ internal sealed class SetupFlow(ISetupProbes probes)
                 return Emit(new WizardScreen.Ask(
                     TypedIdKey,
                     "That doesn't look like a Hugging Face name, they look like org/model, e.g. bartowski/Qwen3-8B-GGUF",
-                    Validate: t => t.Trim().Length == 0 ? "Type a name like org/model" : null,
+                    Validate: TypedIdProblem,
                     Placeholder: "Type or paste the id, e.g. org/model"), TypedIdKey);
 
             //say it as a fact about the files, a verdict on the model is not allowed here
@@ -3387,7 +3509,7 @@ internal sealed class SetupFlow(ISetupProbes probes)
                 return Emit(new WizardScreen.Ask(
                     TypedIdKey,
                     "Found it, but none of its files fit this machine, try a smaller model",
-                    Validate: t => t.Trim().Length == 0 ? "Type a name like org/model" : null,
+                    Validate: TypedIdProblem,
                     Placeholder: "Type or paste the id, e.g. org/model"), TypedIdKey);
 
             //say what the repo is, don't blame what the user typed
@@ -3395,7 +3517,7 @@ internal sealed class SetupFlow(ISetupProbes probes)
                 return Emit(new WizardScreen.Ask(
                     TypedIdKey,
                     "Found it, but that repo publishes no weights, it holds no model to run",
-                    Validate: t => t.Trim().Length == 0 ? "Type a name like org/model" : null,
+                    Validate: TypedIdProblem,
                     Placeholder: "Type or paste the id, e.g. org/model"), TypedIdKey);
 
             case TypedIdOutcome.Unreachable u:
@@ -3405,7 +3527,7 @@ internal sealed class SetupFlow(ISetupProbes probes)
                         ? "That one needs you to accept its licence on Hugging Face first"
                         //say "or private", the Hub answers 401 whether a repo is absent or it is private
                         : "Couldn't find that one, check the name, or it may be private",
-                    Validate: t => t.Trim().Length == 0 ? "Type a name like org/model" : null,
+                    Validate: TypedIdProblem,
                     Placeholder: "Type or paste the id, e.g. org/model"), TypedIdKey);
 
             default:
@@ -3436,6 +3558,7 @@ internal sealed class SetupFlow(ISetupProbes probes)
     private WizardScreen PickedFromHub(ModelRow row)
     {
         Picked = row;
+        _pickedFromLocal = false;
         //a fresh pick starts a new watch, nothing explained yet
         _watchMark = "";
         //an offer exists only when every file has a published fingerprint, the same rule the fetch refuses on. the screen cannot offer what the fetch would decline
@@ -3867,6 +3990,7 @@ internal sealed class SetupFlow(ISetupProbes probes)
                 new ChoiceOption(Yes, "Yes, check it", Recommended: true),
                 //the skip option states what it does, one load and one arrival, no tasks
                 new ChoiceOption(Skip, "Skip the tasks, just make sure it answers"),
+                .. _addRoad ? (IReadOnlyList<ChoiceOption>)[new ChoiceOption(AddAnother, AddAnotherLabel)] : [],
             ],
             BodyRows:
             [
@@ -3890,6 +4014,7 @@ internal sealed class SetupFlow(ISetupProbes probes)
             new ChoiceOption(Yes, "Check it now"),
             //this road has no switch, so the label promises adding unchecked
             new ChoiceOption(AddUnchecked, AddUncheckedLabel, EscVerb: "add it unchecked"),
+            new ChoiceOption(AddAnother, AddAnotherLabel),
         ],
         BodyRows:
         [
@@ -3913,6 +4038,7 @@ internal sealed class SetupFlow(ISetupProbes probes)
     //yes releases the held server, it is the ask's own promise. no must not touch the server, its sentence says nothing changes
     private WizardScreen AnswerInSessionCheck(string key)
     {
+        if (key == AddAnother && _modelId is not null) return AddAnotherModel();
         if (_modelId is null || key != Yes) return Done();
         probes.ReleaseHeldServer();
         return StartAudition(_modelId);
@@ -4075,6 +4201,7 @@ internal sealed class SetupFlow(ISetupProbes probes)
     {
         NeedsWritesApplied = false;
         _applied = true;      //from here on, saying nothing was written would be a lie
+        _backClosed = true;
 
         //the write set always holds the unapplied delta, so the total reset cannot forget a member. read the members the closing needs before clearing
         if (Writes.InstallTo is { } landed) _installedTo = landed;
@@ -4097,12 +4224,14 @@ internal sealed class SetupFlow(ISetupProbes probes)
             ResumeStage.DonePause => ProveScreen(),
             //the consent pause resumes into the summary, null covers the roads that end their own way so they terminate as before
             ResumeStage.ConsentPause => InSessionEnding(),
+            ResumeStage.AnotherPause => BackForAnother(),
             _ => throw new InvalidOperationException("unreachable, ResumeStage is closed"),
         };
     }
 
     private WizardScreen AnswerAuditionOffer(string key) =>
         _modelId is null ? Done()
+        : key == AddAnother ? AddAnotherModel()
         : key == Yes ? StartAudition(_modelId)
         //the skip is not a decline, gatto still makes sure the model loads and answers, one load and one arrival
         : key == Skip ? StartTheOneLoad()
@@ -4408,32 +4537,40 @@ internal sealed class SetupFlow(ISetupProbes probes)
         {
             var chip = key[CtlFamily.Length..];
             _localFamily = chip is "all" or "" ? null : chip;
-            return DiscoveredScreen(heading: null);
+            return Rearranged(() => DiscoveredScreen(heading: null));
         }
 
-        if (key == Elsewhere)
-            return Emit(new WizardScreen.Ask(
-                ScanPathKey,
-                "Which folder should gatto look in?",
-                Validate: t => Gatto.Roles.LlamaAssetSteering.NormalizePath(t).Length == 0 ? "Type a folder path" : null,
-                Placeholder: @"Type or paste the folder, e.g. C:\models"),
-                ScanPathKey);
+        //the params header sorts here as on the Hub, one field for both shelves, so m keeps the order
+        if (key == CtlParams)
+        {
+            _smallestFirst = _smallestFirst is not true;
+            return Rearranged(() => DiscoveredScreen(heading: null));
+        }
 
         //the footer draws a here, so answer it (unhandled it reaches Numbered and throws, and the toggle is shared with the Hub shelf)
         if (key == CtlLift)
         {
             _lift = !_lift;
-            return DiscoveredScreen(heading: null);
+            return Rearranged(() => DiscoveredScreen(heading: null));
         }
 
-        if (key == SearchInstead) return Search();
+        //an address is answered as at the Hub's doors, everything else typed here is a path
+        if (ShelfControls.Untyped(key) is { } address
+            && Gatto.Cli.Setup.Tui.TypedDoor.Classify(address) == Gatto.Cli.Setup.Tui.DoorInput.Address)
+            return AnswerAddress(address);
 
         //the typed answer is a folder, read it through Untyped (a numeral typed in the door and a row index are the same string)
         if (ShelfControls.Untyped(key) is { } typedAnswer
             && Gatto.Roles.LlamaAssetSteering.NormalizePath(typedAnswer) is { Length: > 0 } typedRoot)
             return DiscoverTyped(typedRoot);
 
-        return Adopt(Numbered(_discovered, key, DiscoveredKey));
+        //the key names a group of the same scan, and the file is resolved by path: the pane's choice, else the row's file
+        var group = Numbered(LocalShelf.Group(_discovered), key, DiscoveredKey);
+        _pickedFromLocal = true;
+        var path = _localChoice ?? RowFileFor(group, HardwareClass(), LoadedPath(), Memo(probes.ExistingModelFor)).File.Path;
+        _localChoice = null;
+        return Adopt(group.Files.FirstOrDefault(f => string.Equals(f.Path, path, StringComparison.OrdinalIgnoreCase))
+            ?? throw new InvalidOperationException($"{DiscoveredKey} chose {path}, which is not one of the row's files"));
     }
 
     //the one completion point for a chosen model. a found file stays put, a wizard pick must not move 30 GB
@@ -4795,6 +4932,80 @@ internal sealed class SetupFlow(ISetupProbes probes)
         _resumeStage = ResumeStage.DonePause;
         NeedsWritesApplied = true;
         return Emit(new WizardScreen.Info("default.ready", [$"Saving your choices{Glyphs.Ellipsis}"]), null);
+    }
+
+    //the write and the saving pause of Done, resumed to the shelf the model came from rather than to the prove load
+    private WizardScreen AddAnotherModel()
+    {
+        var saving = Done();
+        _resumeStage = ResumeStage.AnotherPause;
+        return saving;
+    }
+
+    //the shelf comes back with the model on it and nothing behind it, its chips, lift, sort and search as the user left them
+    private WizardScreen BackForAnother()
+    {
+        _added.Add((_modelId!, AddedHow));
+        ResetForAnotherModel();
+        //the local shelf rescans, so a model this walk downloaded is listed
+        return _pickedFromLocal ? ToLocalShelf() : SearchScreen();
+    }
+
+    //the shelf the model was picked from, the Hub's (a typed id's one-row shelf included) or this machine's
+    private bool _pickedFromLocal;
+
+    //the models added before the one in hand, in the order added, each with its closing words
+    private readonly List<(string Id, string How)> _added = [];
+
+    //every field one model's walk sets, from its pick to its check, read off the declarations. the shelf's and the road's fields stay
+    private void ResetForAnotherModel()
+    {
+        Picked = null;
+        Selected = null;
+        _modelId = null;
+        _modelFile = null;
+        _modelOffer = null;
+        _modelView = null;
+        _modelVerified = false;
+        _modelFetch = null;
+        _modelFetchCancel = null;
+        _modelFetchPause = null;
+        _modelPaused = false;
+        _modelClock = null;
+        _modelElapsedMs = 0;
+        _heldSaid = false;
+        _heldBy = null;
+        _check = null;
+        _checkStopped = false;
+        _checkClock = null;
+        _asksMade = 0;
+        _audition = null;
+        _auditionCancel = null;
+        ResetCheck();
+        _proved = null;
+        _proveFailed = null;
+        _proving = null;
+        _loading = null;
+        _summaryOutcome = null;
+        _joining = null;
+        _moveOffer = null;
+        _moveReplace = false;
+        _projector = null;
+        _projectorReplace = false;
+        _declinedEncoder = false;
+        _clashingModelId = null;
+        _arrivedByWatch = false;
+        _droppedPartial = null;
+        _watchMark = "";
+        _watchCause = WatchCause.NoFingerprint;
+        _watchingSet = null;
+        _rootNote = null;
+        _localChoice = null;
+        lock (_tickGate) _tick = null;
+        _resumeStage = ResumeStage.ScaffoldPause;
+        _back.Clear();
+        _backClosed = false;
+        _controlStep = false;
     }
 
     //prove-it runs after the write so the saved sentence is true. guard its one run by counting probe calls, a ran-already flag would hide the routing bug
@@ -5231,15 +5442,26 @@ internal sealed class SetupFlow(ISetupProbes probes)
             ? new WizardRow($"nothing added {Glyphs.Dot} gatto model whenever you're ready", Highlight: ["gatto model"])
             : LeaveStep;
 
-    //gatto model's closing is one line under the header, like its nothing-added leave. null on setup, before the writes, and on a throw
-    internal WizardRow? AddedClosing =>
-        _addRoad && _applied && (_finished || _left) && _modelId is { } id
-            ? new WizardRow($"{id} added{AddedHow} {Glyphs.Dot} "
-                + (_proveFailed is not null && _summaryOutcome is null
+    //gatto model's closing is one line per model added under the header, in the order added, like its nothing-added leave. empty on setup, before the writes, and on a throw
+    internal IReadOnlyList<WizardRow> AddedClosings
+    {
+        get
+        {
+            if (!_addRoad || !_applied || !(_finished || _left)) return [];
+            List<(string Id, string How)> added = [.. _added];
+            if (_modelId is { } current) added.Add((current, AddedHow));
+            if (added.Count == 0) return [];
+            //the earlier models have their own outcome words, and only the last row says how to use its model
+            var rows = added.SkipLast(1).Select(a => new WizardRow($"{a.Id} added{a.How}")).ToList();
+            var (id, how) = added[^1];
+            rows.Add(new WizardRow($"{id} added{how} {Glyphs.Dot} "
+                + (_modelId is not null && _proveFailed is not null && _summaryOutcome is null
                     ? "gatto doctor checks everything and says what to fix"
                     : $"run gatto, then /model {id} to use it"),
-                Highlight: ["gatto doctor", "gatto", $"/model {id}"])
-            : null;
+                Highlight: ["gatto doctor", "gatto", $"/model {id}"]));
+            return rows;
+        }
+    }
 
     //what the user did with the check, read from the deed. a server that failed after the check outranks its verdict, the tail sends the user to doctor
     private string AddedHow =>
@@ -5250,6 +5472,8 @@ internal sealed class SetupFlow(ISetupProbes probes)
         : _check is { Outcome: AuditionOutcome.CouldNotRun } ? ", the check couldn't run"
         : _checkStopped ? ", you stopped the check"
         : _summaryOutcome?.ServedByAnother is { } holding ? $", not checked while {holding} holds the server"
+        //a model added for another with no check run keeps the holder the check ask named
+        : !_left && _check is null && _summaryOutcome is null && _heldBy is { } held ? $", not checked while {held} holds the server"
         : _proved is not null ? ", it answers and the five tasks were skipped"
         : _left ? ", you left before checking it"
         : ", not checked";

@@ -16,6 +16,7 @@
 
 ❯ 1. Check it now
   2. Add it unchecked, nothing on this machine changes
+  3. Add another model
 
 ────────────────────────────────────────────────────────────────────────────────────────────────────
   Enter choose   b / Esc add it unchecked

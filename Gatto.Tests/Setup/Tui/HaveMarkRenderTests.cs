@@ -219,6 +219,19 @@ public class HaveMarkRenderTests
         Assert.Contains("✓ added as gemma-4-e4b-it · Q4_K_M", onDisk);
     }
 
+    //a long id is cut with an ellipsis so the quant after it stays whole and the line fits the pane
+    [Fact]
+    public void A_LONG_ID_IS_CUT_AND_THE_QUANT_STAYS_WHOLE()
+    {
+        var facts = new ModelFacts(Have: HaveMark.Added, HaveId: "gemma-4-e2b-it-mobile-wna8o8-gguf");
+
+        var rows = Pane.Rows(Row(), facts, NoRunsColumn, 40).Select(r => r.Text.TrimEnd()).ToList();
+
+        var have = Assert.Single(rows, r => r.StartsWith("✓ added as ", StringComparison.Ordinal));
+        Assert.EndsWith("… · Q4_K_M", have, StringComparison.Ordinal);
+        Assert.All(rows, r => Assert.True(Gatto.Terminal.UnicodeWidth.Of(r) <= 40, r));
+    }
+
     //a producer with no id for an added model falls back to the compact form rather than a sentence with a hole in it
     [Fact]
     public void AND_AN_ADDED_MODEL_WITH_NO_ID_STAYS_COMPACT()

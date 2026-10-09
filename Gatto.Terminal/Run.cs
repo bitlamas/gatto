@@ -17,8 +17,10 @@ public enum RunInk
     Warn,
 }
 
-//one run of text and the ink it uses, since the keys row needs bright and dim on one line
-public readonly record struct Run(string Text, RunInk Ink = RunInk.Plain);
+//one run of text and the ink it uses, since the keys row needs bright and dim on one line. the tag is what a press on this text does, carried by every step that copies the run
+public readonly record struct Run(string Text, RunInk Ink = RunInk.Plain, object? Tag = null,
+    bool Joined = false,   //a joined run was split from the one before it only to carry a tag, so a face paints the two as one
+    bool Band = false);   //the run sits on the selection band, the ground under the row the keys are on
 
 //what the fit may drop, in order: a structural blank, then a paragraph blank, then an optional row
 public enum RowFit
@@ -43,6 +45,9 @@ public readonly record struct PaintedRow(IReadOnlyList<Run> Runs, RowFit Fit = R
     public static implicit operator PaintedRow(string text) => Of(text);
 
     public string Text => string.Concat(Runs.Select(r => r.Text));
+
+    //the same row with every run on the selection band
+    public PaintedRow Banded() => this with { Runs = [.. Runs.Select(r => r with { Band = true })] };
 
     //cut to a visible-cell budget, run by run and rune by rune, so a surrogate pair is never halved
     public PaintedRow Clamp(int width)

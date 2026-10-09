@@ -17,7 +17,7 @@ internal sealed record GgufHeader(
     long? BlockCount, long? HeadCount, long? HeadCountKv,
     long? EmbeddingLength, long? KeyLength, long? ValueLength,
     string? ChatTemplate, long? TensorCount = null,   //null only when the header was cut short, and 0 means the file holds no tensors and is no model
-    string? SizeLabel = null, long? ExpertCount = null, long? ExpertUsedCount = null,   //the size label is uploader text and reaches a screen only through ModelStructure. a dense model has no expert count at all
+    string? SizeLabel = null, long? ExpertCount = null, long? ExpertUsedCount = null,   //the size label is uploader text and reaches a screen only through ModelStructure's anchored shapes, the kind cell and the params cell. a dense model has no expert count at all
     GgufTensors? Tensors = null, long? EmbeddingLengthPerLayerInput = null,
     long? FullAttentionInterval = null)   //a hybrid architecture puts full attention on one block in this many, and only those keep a cache
 {

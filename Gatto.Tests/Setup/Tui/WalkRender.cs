@@ -32,17 +32,22 @@ internal static class WalkRender
         return new Captured(key, width, face.LastPainted);
     }
 
+    //the row budget the real face hands the flow at this size
+    public static int RowBudget(int width, int height) =>
+        new TuiWizardSurface(new RecordingSurface { Width = width, Height = height }, new ScriptedKeys([]),
+            new Theme(new TermCaps(true, true)), version: "0.5.0", build: "1a2b3c4", nowMs: () => 0).RowBudget;
+
     //the script must resolve on its first key, or the captured frame is a later one. a numbered screen passes Enter, an Esc arms the leave chord and repaints
 
     //the frame the walk comes to rest on, through Choose so the binder stays the subject. script holds the keys to press before the run goes dry
     public static Captured SettledFrame(WizardScreen.Choice c, int width, string key = "choice",
-        IEnumerable<ConsoleKeyInfo>? script = null, int height = 0)
+        IEnumerable<ConsoleKeyInfo>? script = null, int height = 0, string command = ScreenPainter.DefaultCommand)
     {
         var surface = new RecordingSurface { Width = width, Height = height };
         //nowMs is frozen at 0 here, so the clock has to be eager or the chord's wait never expires and the run hangs
         var face = new TuiWizardSurface(surface, new ScriptedKeys(script ?? []),
             new Theme(new TermCaps(true, true)), version: "0.5.0", build: "1a2b3c4", nowMs: () => 0,
-            clock: _ => new AlwaysReady());
+            clock: _ => new AlwaysReady(), command: command);
         try { face.Choose(c); }
         catch (WalkEnded) { }
         return new Captured(key, width, face.LastPainted);
@@ -50,11 +55,11 @@ internal static class WalkRender
 
     //the settled frame's rows inked in a given theme, for a golden that pins colour as well as text
     public static IReadOnlyList<string> Inked(WizardScreen.Choice c, int width, int height, Theme theme,
-        IEnumerable<ConsoleKeyInfo>? script = null)
+        IEnumerable<ConsoleKeyInfo>? script = null, string command = ScreenPainter.DefaultCommand)
     {
         var surface = new RecordingSurface { Width = width, Height = height };
         var face = new TuiWizardSurface(surface, new ScriptedKeys(script ?? []), theme, version: "0.5.0",
-            build: "1a2b3c4", nowMs: () => 0, clock: _ => new AlwaysReady());
+            build: "1a2b3c4", nowMs: () => 0, clock: _ => new AlwaysReady(), command: command);
         try { face.Choose(c); }
         catch (WalkEnded) { }
         return face.LastInked;

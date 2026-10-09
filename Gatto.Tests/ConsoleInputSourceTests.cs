@@ -1,4 +1,5 @@
 using Gatto.Terminal;
+using static Gatto.Tests.Fakes.BatchConsoleReader;
 
 namespace Gatto.Tests;
 
@@ -17,18 +18,6 @@ public class ConsoleInputSourceTests
             return n;                                                              //the Peek copy does not dequeue
         }
     }
-
-    private static INPUT_RECORD KeyRec(char ch, ushort rep, bool down = true) => new()
-    {
-        EventType = NativeInput.EventKey,
-        KeyEvent = new KEY_EVENT_RECORD { bKeyDown = down ? 1 : 0, wVirtualKeyCode = 0x41, UnicodeChar = ch, wRepeatCount = rep },
-    };
-
-    private static INPUT_RECORD MouseRec(uint buttons) => new()
-    {
-        EventType = NativeInput.EventMouse,
-        MouseEvent = new MOUSE_EVENT_RECORD { dwButtonState = buttons },
-    };
 
     [Fact]
     public void RepeatCount_expands_to_that_many_KeyEvents()

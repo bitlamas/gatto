@@ -69,6 +69,9 @@ internal abstract record WizardScreen
 
         //the screen the model step opens on while its first shelf loads, drawn as the cat with the purr and the step line beside it, with Esc the one key
         public bool Starting { get; init; }
+
+        //one line the face shows above the body until the first key or press, since the face's own loop never hands an arrow back to the flow
+        public string? Notice { get; init; }
     }
 
     //rows the user reads and acknowledges, each a WizardRow so a span can be accented like a body row

@@ -22,7 +22,7 @@ internal static class DoorHints
     //the ways in that work on every screen whose door has no key of its own. a function so the glyph set can supply the down key, the record's default is null
     public static string AnywhereOf(GlyphSet g) => $"Tab or {g.DownKey} to type";
 
-    //the shelf's door hint, and only ?, since the wizard face binds no mouse
+    //the shelf's door hint names its key only, a press on the door needs no words
     public const string Search = "? to search";
 
     //the local shelf's door says ? to search, the same words as the shelf's
@@ -102,7 +102,9 @@ internal static class ScreenPainter
             var (doorRow, column) = DoorRowText(door, s.Focused == Region.Search, width, g);
             doorAt = rows.Count;
             caretColumn = column;
-            rows.Add(doorRow);
+            //a press anywhere on the door moves the keys into it
+            var doorTag = new HitTag(HitKind.Door, Area: Region.Search);
+            rows.Add(new PaintedRow([.. doorRow.Runs.Select(r => r with { Tag = doorTag })], doorRow.Fit));
         }
 
         rows.Add(PaintedRow.Of(string.Concat(Enumerable.Repeat(g.Rule, Math.Max(1, width))), RunInk.Dim));

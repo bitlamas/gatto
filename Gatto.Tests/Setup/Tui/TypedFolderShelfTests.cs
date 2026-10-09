@@ -34,8 +34,9 @@ public class TypedFolderShelfTests
         Found = [.. found],
     };
 
+    //each row's file, since a row is named after its model and these files are one model each
     private static IReadOnlyList<string> FileRows(WizardScreen.Choice c) =>
-        [.. c.Options.Select(o => o.Label).Where(l => l.EndsWith(".gguf", StringComparison.Ordinal))];
+        [.. (c.Shelf?.Rows ?? []).Select(r => r.RowFile!.Path)];
 
     private static WizardScreen.Choice Typing(SetupFlow flow) =>
         Assert.IsType<WizardScreen.Choice>(flow.Answer(ShelfControls.TypedAnswer(Typed)));
@@ -121,22 +122,6 @@ public class TypedFolderShelfTests
         Assert.Equal(["one-Q4_K_M.gguf", "three-Q4_K_M.gguf"], FileRows(redrawn));
     }
 
-    //back onto a typed folder's shelf keeps its folder slot on the redraw, the snapshot restores the folder with its rows
-    [Fact]
-    public void BACK_ONTO_A_TYPED_FOLDER_S_SHELF_KEEPS_ITS_LABEL()
-    {
-        var flow = new SetupFlow(Probes(hub: true, Weights, Inside));
-        Assert.Equal(ShelfSource.Local, Assert.IsType<WizardScreen.Choice>(flow.StartAtModelSegment()).Shelf!.Source);
-        Assert.Single(FileRows(Typing(flow)));
-        Assert.Equal(SetupFlow.SearchKey, Assert.IsType<WizardScreen.Choice>(flow.Answer(SetupFlow.SearchInstead)).Key);
-        Assert.Equal(SetupFlow.DiscoveredKey, Assert.IsType<WizardScreen.Choice>(flow.Answer(SetupFlow.BackKey)).Key);
-
-        var redrawn = Assert.IsType<WizardScreen.Choice>(flow.Answer(ShelfControls.FamilyAnswer("all")));
-
-        Assert.Equal(Typed, redrawn.Shelf!.Folder);
-        Assert.Equal(["three-Q4_K_M.gguf"], FileRows(redrawn));
-    }
-
     //a typed folder does not label the isn't-there-yet shelf after a Hub pick. that shelf lists the models gatto can see, so it has no folder slot
     [Fact]
     public void THE_WATCH_S_LANDED_PATH_HAS_NO_STALE_FOLDER()
@@ -145,7 +130,7 @@ public class TypedFolderShelfTests
         var flow = new SetupFlow(Probes(hub: true, Weights, Inside, landed));
         Assert.Equal(ShelfSource.Local, Assert.IsType<WizardScreen.Choice>(flow.StartAtModelSegment()).Shelf!.Source);
         Assert.Single(FileRows(Typing(flow)));
-        Assert.Equal(SetupFlow.SearchKey, Assert.IsType<WizardScreen.Choice>(flow.Answer(SetupFlow.SearchInstead)).Key);
+        Assert.Equal(SetupFlow.SearchKey, Assert.IsType<WizardScreen.Choice>(flow.Answer(SetupFlow.CtlSource)).Key);
         flow.Answer("0");
         flow.Answer(SetupFlow.Elsewhere);
 
@@ -208,23 +193,6 @@ public class TypedFolderShelfTests
 
         Assert.Equal(SetupFlow.BackKey, answer);
         var home = Assert.IsType<WizardScreen.Choice>(flow.Answer(answer!));
-        Assert.Null(home.Shelf!.Folder);
-        Assert.Equal(Machine, FileRows(home));
-    }
-
-    //back from an empty folder reached through the folder question lands on the machine's shelf
-    [Fact]
-    public void BACK_FROM_AN_EMPTY_FOLDER_REACHED_THROUGH_THE_QUESTION_LANDS_ON_THE_MACHINE_S_SHELF()
-    {
-        var flow = new SetupFlow(Probes(hub: false, Weights, Downloads));
-        flow.StartAtModelSegment();
-        Assert.IsType<WizardScreen.Ask>(flow.Answer(SetupFlow.Elsewhere));
-        var empty = Assert.IsType<WizardScreen.Choice>(flow.Answer(Typed));
-        Assert.Empty(empty.Shelf!.Rows);
-
-        var home = Assert.IsType<WizardScreen.Choice>(flow.Answer(SetupFlow.BackKey));
-
-        Assert.Equal(SetupFlow.DiscoveredKey, home.Key);
         Assert.Null(home.Shelf!.Folder);
         Assert.Equal(Machine, FileRows(home));
     }

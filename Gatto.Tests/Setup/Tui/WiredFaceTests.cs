@@ -50,6 +50,10 @@ public class WiredFaceTests
         Assert.Contains("gatto setup needs a terminal it can ask questions in", body, StringComparison.Ordinal);
 
         Assert.Contains("new Setup.Tui.TuiWizardSurface(", body, StringComparison.Ordinal);
+        //the mouse setting reaches all three places it acts: the face's source, the alt screen's wheel and the session's input mode
+        Assert.Contains("surface, input.Source, chrome,", body, StringComparison.Ordinal);
+        Assert.Contains("QuietWheel = input.QuietWheel", body, StringComparison.Ordinal);
+        Assert.Contains("inputMode: input.Mode", body, StringComparison.Ordinal);
         Assert.Contains("Setup.WizardSession.Run(", body, StringComparison.Ordinal);
         Assert.DoesNotContain("new Setup.SetupFace(", body);
 
@@ -234,12 +238,14 @@ public class WiredFaceTests
     [Fact]
     public void THE_VERSION_AND_BUILD_HAVE_NO_DEFAULTS_TO_FALL_BACK_ON()
     {
-        var ctor = typeof(TuiWizardSurface).GetConstructors(BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance).Single();
-        foreach (var name in new[] { "version", "build" })
-        {
-            var p = ctor.GetParameters().Single(x => x.Name == name);
-            Assert.False(p.HasDefaultValue, $"`{name}` has a default again — a banner that prints a literal is a banner that can be wrong silently");
-        }
+        var ctors = typeof(TuiWizardSurface).GetConstructors(BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance);
+        Assert.NotEmpty(ctors);
+        foreach (var ctor in ctors)
+            foreach (var name in new[] { "version", "build" })
+            {
+                var p = ctor.GetParameters().Single(x => x.Name == name);
+                Assert.False(p.HasDefaultValue, $"`{name}` has a default again — a banner that prints a literal is a banner that can be wrong silently");
+            }
     }
 
     //gap 5: the probes write into the face

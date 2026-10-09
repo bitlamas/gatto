@@ -52,10 +52,9 @@ public class LocalShelfChipRenderTests
         var frame = string.Join("\n", WalkRender.SettledFrame(screen, 100, "local-after-hub-chip").Rows);
 
         Assert.Contains("Found 3 models already on this machine", frame, StringComparison.Ordinal);
-        //the rows carry no numbers, and the name prints without the .gguf extension
-        Assert.Contains("b-Q4_K_M", frame, StringComparison.Ordinal);
-        Assert.Contains("c-Q4_K_M", frame, StringComparison.Ordinal);
-        Assert.Contains("d-Q4_K_M", frame, StringComparison.Ordinal);
+        //the rows carry no numbers, and a row is named after its model, without the quant or the .gguf extension
+        Assert.Equal(["b", "c", "d"], screen.Shelf!.Rows.Select(r => r.Model));
+        Assert.DoesNotContain("b-Q4_K_M", frame, StringComparison.Ordinal);
         Assert.Contains("1–3 of 3", frame, StringComparison.Ordinal);
 
         //the face draws the numbered option list only when it has no shelf and no folder placeholder. seeing it beside the found models means the shelf is missing
@@ -68,8 +67,7 @@ public class LocalShelfChipRenderTests
     {
         var flow = new SetupFlow(Probes()) { CanSwitchSource = false };
         flow.StartAtModelSegment();
-        flow.Answer(SetupFlow.Elsewhere);
-        flow.Answer(@"D:\models");
+        flow.Answer(ShelfControls.TypedAnswer(@"D:\models"));
         var screen = Assert.IsType<WizardScreen.Choice>(flow.Answer(SetupFlow.CtlFamily + AFamily));
 
         var frame = string.Join("\n", WalkRender.SettledFrame(screen, 100, "local-chip-empty").Rows);

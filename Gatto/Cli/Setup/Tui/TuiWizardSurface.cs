@@ -10,7 +10,7 @@ namespace Gatto.Cli.Setup.Tui;
 internal sealed class TuiWizardSurface : IWizardSurface, IDisposable
 {
     private readonly ITermSurface _surface;
-    private readonly IKeySource _keys;
+    private readonly IInputSource _input;
     private readonly Theme _theme;
     private readonly Func<long> _nowMs;
     private readonly ArmedChord _chord = new();
@@ -31,16 +31,30 @@ internal sealed class TuiWizardSurface : IWizardSurface, IDisposable
         Func<IPurrPulse>? pulse = null,
         GlyphSet? glyphs = null,
         Gatto.Repl.Render.PurrFrames? fullPurr = null,
-        string command = ScreenPainter.DefaultCommand)
+        string command = ScreenPainter.DefaultCommand, int doubleClickMs = DefaultDoubleClickMs)
+        : this(surface, new KeyInputSource(keys), theme, version, build, nowMs, clock, pulse, glyphs, fullPurr, command,
+            doubleClickMs) { }
+
+    //the system's double-click time when no caller read it, the Windows default
+    private const int DefaultDoubleClickMs = 500;
+
+    //the key form above wraps its keys, so every face a test builds keeps compiling and behaving
+    public TuiWizardSurface(ITermSurface surface, IInputSource input, Theme theme, string version, string build,
+        Func<long>? nowMs = null, Func<bool, IPollClock>? clock = null,
+        Func<IPurrPulse>? pulse = null,
+        GlyphSet? glyphs = null,
+        Gatto.Repl.Render.PurrFrames? fullPurr = null,
+        string command = ScreenPainter.DefaultCommand, int doubleClickMs = DefaultDoubleClickMs)
     {
         _command = command;
+        _doubleClickMs = doubleClickMs;
         //the purr is chosen once when the face is built, and null keeps the frame every golden pins
         _fullPurr = fullPurr ?? Gatto.Repl.Render.PurrFrames.Full;
         //the set is handed in rather than read from a static, and the Unicode default keeps every call site and golden unchanged
         _glyphs = glyphs ?? GlyphSet.Unicode;
         _pulse = pulse;
         _surface = surface;
-        _keys = keys;
+        _input = input;
         _theme = theme;
         //injectable so a chord's expiry is testable without waiting two seconds. a frozen one plus a null clock hangs the run
         _nowMs = nowMs ?? (() => Environment.TickCount64);
@@ -179,11 +193,11 @@ internal sealed class TuiWizardSurface : IWizardSurface, IDisposable
 
     private static readonly TimeSpan PurrEvery = TimeSpan.FromMilliseconds(120);
 
-    //drop keys typed before this screen existed, but only after a wait long enough to have drawn a purr
+    //drop keys and presses made before this screen existed, but only after a wait long enough to have drawn a purr. the availability check drops moves and releases itself
     private void DrainIfTheWaitWasLong()
     {
         if (_answeredAtMs is not { } answered || _nowMs() - answered < PurrAfterMs) return;
-        try { while (_keys.KeyAvailable) _keys.ReadKey(); }
+        try { while (_input.EventAvailable) _input.Read(); }
         catch (Exception) { } //redirected stdin answers nothing
     }
 
@@ -262,8 +276,8 @@ internal sealed class TuiWizardSurface : IWizardSurface, IDisposable
     //the live width, one answer for wrapping and clamping so the two cannot disagree at the screen's edge
     private int Width => _surface.Width > 0 ? _surface.Width : 100;
 
-    //how many model rows this face may show, read from the live height each time it is asked
-    public int RowBudget => Shelf.RowBudget(RowsAvailable);
+    //every row, since this face scrolls its own window over the shelf. an unknown height has no window, so it keeps the plain budget
+    public int RowBudget => RowsAvailable > 0 ? int.MaxValue : Shelf.RowBudget(RowsAvailable);
 
     //the terminal's height, since this face owns the screen, read when asked rather than cached
     private int RowsAvailable => _surface.Height;
@@ -357,8 +371,14 @@ internal sealed class TuiWizardSurface : IWizardSurface, IDisposable
             _painted = next;
             _paintedWidth = Width;
             _paintedHeight = _surface.Height;
+            _lastHits = HitMap.Of(next, _paintedWidth, _paintedHeight);
         }
     }
+
+    //the press targets of the frame on screen, replaced with it under the write gate, since a pulse tick repaints from a pool thread
+    private HitMap _lastHits = HitMap.None;
+
+    internal HitMap LastHits { get { lock (_writeGate) return _lastHits; } }
 
     //the frame's caret, or the cursor stays hidden. the row comes from the distance to the bottom and the fitted count, since the fit drops blanks above the door
     private static string CursorAt(CaretSpot? spot, int painted)
@@ -374,15 +394,30 @@ internal sealed class TuiWizardSurface : IWizardSurface, IDisposable
 
     //paint the already clamped row, or the clamp counts escape bytes and loses visible cells
     private string Ink(PaintedRow row) =>
-        string.Concat(row.Runs.Select(r => r.Ink switch
+        string.Concat(SameInkJoined(row.Runs).Select(r =>
+            //the band goes down before the ink, and the reset after each painted run lifts it, so a run off the band carries none
+            (r.Band ? Ansi.Bg(_theme.Map(Theme.UserInputBg), _theme.TrueColor) : "") + r.Ink switch
+            {
+                RunInk.Bright => _theme.Paint(r.Text, Theme.Bright),
+                RunInk.Dim => _theme.Paint(r.Text, Theme.Dim),
+                RunInk.Accent => _theme.Paint(r.Text, Theme.Accent),
+                RunInk.Ok => _theme.Paint(r.Text, Theme.Ok),
+                RunInk.Warn => _theme.Paint(r.Text, Theme.Warn),
+                _ => r.Band ? r.Text + Ansi.Reset : r.Text,
+            }));
+
+    //a run split from its neighbour only to carry a press target paints as one with it, so a tag never changes the bytes a frame writes
+    private static IEnumerable<Run> SameInkJoined(IReadOnlyList<Run> runs)
+    {
+        Run? open = null;
+        foreach (var r in runs)
         {
-            RunInk.Bright => _theme.Paint(r.Text, Theme.Bright),
-            RunInk.Dim => _theme.Paint(r.Text, Theme.Dim),
-            RunInk.Accent => _theme.Paint(r.Text, Theme.Accent),
-            RunInk.Ok => _theme.Paint(r.Text, Theme.Ok),
-            RunInk.Warn => _theme.Paint(r.Text, Theme.Warn),
-            _ => r.Text,
-        }));
+            if (open is { } o && r.Joined && o.Ink == r.Ink && o.Band == r.Band) { open = o with { Text = o.Text + r.Text }; continue; }
+            if (open is { } done) yield return done;
+            open = r;
+        }
+        if (open is { } last) yield return last;
+    }
 
     //what the last Paint put on screen, plain, the oracle a render test diffs against its golden
 
@@ -391,6 +426,9 @@ internal sealed class TuiWizardSurface : IWizardSurface, IDisposable
 
     //the same rows inked for the theme, so a golden can pin the colours a frame was drawn in
     internal IReadOnlyList<string> LastInked => [.. _painted.Select(Ink)];
+
+    //every run of the row carries the tag, so a press anywhere on it is a press on it
+    private static PaintedRow Tagged(PaintedRow row, HitTag tag) => new([.. row.Runs.Select(r => r with { Tag = tag })], row.Fit);
 
     //the IWizardSurface members below
 
@@ -413,20 +451,101 @@ internal sealed class TuiWizardSurface : IWizardSurface, IDisposable
         var ring = new FocusRing(regions,
             c.Shelf is { } opening ? Shelf.Opening(opening) : Region.List);
         var cursor = c.NoDefault ? -1 : 0;
-        var at = ShelfCursors.Start;
+        var at = LocalRow(c, cursor, ShelfCursors.Start);
         //where the keys sit on the strip, null until they move so the painter rests them on the section
         int? stripAt = null;
         //what the user has typed into the door, which wins over the screen's composed draft while they are in it
         var typed = new System.Text.StringBuilder();
-        //the watch's start, since the face owns the clock and a browser watch has no tick to measure it
-        var began = _nowMs();
+        //the watch's start, since the face owns the clock and a browser watch has no tick to measure it. a load re-emitted with a notice is the same load, so its clock carries on
+        long began;
+        lock (_writeGate) began = Loads(c) && c.Notice is not null && _lastLoading is not null ? _lastLoadingBegan : _nowMs();
+        var notice = c.Notice;
         _shownAtMs = began;
+        var dropped = false;
+        //the wheel's notches and the keys a press stands for, read before the next event
+        var synthetic = new Queue<ConsoleKeyInfo>();
+        NewScreenForTheMouse(c.Key);
+        //a new screen's cursor starts on its first row, so its window does too
+        _shelfTop = 0;
+
+        //a mouse event becomes the answer it names, the key it acts as, or nothing. every effect goes through what the matching key does
+        (string? Answer, ConsoleKeyInfo? Key) OnMouse(MouseEvent m)
+        {
+            HitMap hits;
+            lock (_writeGate) hits = _lastHits;
+            //a frame painted at another size puts nothing where the pointer is, so the event is dropped and the loop repaints
+            if (hits.Width != Width || hits.Height != _surface.Height) return (null, null);
+            //while work runs only the footer words answer, and the wheel does nothing off the shelf
+            var footerOnly = c.Starting || c.Watching && c.KeysOnly;
+            if (m.Kind == MouseKind.Wheel)
+            {
+                if (!footerOnly && c.Shelf is not null && hits.At(m.X, m.Y) is { Tag: { Kind: not HitKind.FoldedFile, Area: Region.List or Region.Files } wt })
+                {
+                    ring.Focus(wt.Area!.Value);
+                    foreach (var k in Notches(m.WheelDelta)) synthetic.Enqueue(k);
+                }
+                return (null, null);
+            }
+            if (Pressed(m, hits, cursor) is not { } tag) return (null, null);
+            if (footerOnly && tag.Kind != HitKind.FooterKey) return (null, null);
+            //a target in an area the keys cannot enter does nothing, so a pane press never falls through to answer the row
+            if (tag.Area is { } area && !ring.Focus(area)) return (null, null);
+            switch (tag.Kind)
+            {
+                case HitKind.Row or HitKind.EscapeRow when tag.Index == cursor:
+                    return tag.Kind == HitKind.EscapeRow ? (tag.Answer, null) : (null, EnterKey);
+                case HitKind.Row or HitKind.EscapeRow:
+                    _chord.Disarm();
+                    cursor = tag.Index;
+                    at = LocalRow(c, cursor, at.OnANewRow());
+                    ring = RingFor(c, cursor) ?? ring;
+                    return (null, null);
+                //an option row off the shelf answers as Enter on it once it is the one selected
+                case HitKind.OptionRow when tag.Index == cursor:
+                    return (null, EnterKey);
+                case HitKind.OptionRow:
+                    _chord.Disarm();
+                    if (!ShelfControls.IsFolderDoor(c, tag.Index)) cursor = tag.Index;
+                    return (null, null);
+                case HitKind.PaneLine or HitKind.PaneFile when Accordion(c, cursor) is { } pubs:
+                {
+                    var line = Pane.Lines(pubs, at.Open).ToList().IndexOf(new PaneLine(tag.Index, tag.Kind == HitKind.PaneLine ? -1 : tag.File));
+                    if (line < 0) return (null, null);
+                    at = at with { File = line };
+                    return (null, EnterKey);
+                }
+                case HitKind.FoldedFile:
+                    return (null, EnterKey);
+                case HitKind.Chip:
+                    at = at with { Chip = tag.Index };
+                    return (null, EnterKey);
+                case HitKind.ParamsHeader:
+                    return (SetupFlow.CtlParams, null);
+                case HitKind.Clause or HitKind.FooterKey:
+                    return (null, tag.Key is { } word ? FooterKeys.KeyOf(word) : null);
+                case HitKind.RegimeJump when c.Shelf is { } sv && tag.Regimes is { } regimes:
+                {
+                    //the jump looks in the shown rows only, the ones this frame painted
+                    var to = hits.Targets.Where(x => x.Tag.Kind == HitKind.Row && x.Tag.Index < sv.Rows.Count
+                            && regimes.Contains(sv.Rows[x.Tag.Index].Fit))
+                        .Select(x => x.Tag.Index).DefaultIfEmpty(-1).Min();
+                    if (to < 0) return (null, null);
+                    _chord.Disarm();
+                    cursor = to;
+                    at = LocalRow(c, cursor, at.OnANewRow());
+                    ring = RingFor(c, cursor) ?? ring;
+                    return (null, null);
+                }
+                default:
+                    return (null, null);
+            }
+        }
 
         while (true)
         {
             //read the tick once per frame, one moment per screen. freeze the ring into the composer, or a resize mid-Tab composes a region the frame never showed
             var frozen = ring.Frozen();
-            var shown = typed.Length > 0 ? c with { Draft = typed.ToString() } : c;
+            var shown = (typed.Length > 0 ? c with { Draft = typed.ToString() } : c) with { Notice = notice };
             var elapsedMs = c.Watching ? Math.Max(0, _nowMs() - began) : (long?)null;
             var tickNow = tick?.Invoke();
             var checkNow = check?.Invoke();
@@ -435,16 +554,34 @@ internal sealed class TuiWizardSurface : IWizardSurface, IDisposable
                 ? StartFor(shown, ms ?? 0, loadNow)
                 : ScreenFor(shown, frozen, cursor, tickNow, at, w, h, ms, checkNow, stripAt, loadNow);
             Paint(At(elapsedMs));
+            //a press made on the last screen must not reach this frame, so the queue loses its mouse once this frame is up
+            if (!dropped) { DropMouse(); dropped = true; }
             //kept after the paint, so the pulse between this screen and the next moves this frame's purr
             if (Loads(c)) lock (_writeGate) { _lastLoading = ms => At(ms); _lastLoadingBegan = began; }
 
-            //on a watching screen the thing can turn up with no key pressed, so look for it between key checks
-            var next = NextKey(c, watch);
+            //on a watching screen the thing can turn up with no key pressed, so look for it between key checks. a key the wheel queued goes first
+            var queued = synthetic.Count > 0;
+            var next = queued ? (Arrived: false, Event: (InputEvent?)new KeyEvent(synthetic.Dequeue())) : NextKey(c, watch);
             //the length of the watch just ended, which the flow has no clock to measure for the next screen
             if (next.Arrived) { _watchedMs = Math.Max(0, _nowMs() - began); return SetupFlow.Landed; }
 
+            //the notice goes at the first key or press, the user has read it by then
+            if (!queued && next.Event is KeyEvent or MouseEvent { Kind: MouseKind.Press }) notice = null;
+
+            ConsoleKeyInfo key;
+            //a letter a press stands for is that key's deed, never text for the door
+            var viaMouse = false;
+            if (next.Event is KeyEvent { Key: var typedKey }) key = typedKey;
+            else if (next.Event is MouseEvent mouse)
+            {
+                var (answer, asKey) = OnMouse(mouse);
+                if (answer is not null) return answer;
+                if (asKey is not { } pressedKey) continue;
+                key = pressedKey;
+                viaMouse = true;
+            }
             //go round and repaint on the watch's own clock, since repainting per chunk would strobe on a fast line
-            if (next.Key is not { } key) continue;
+            else continue;
 
             //two Ctrl+C presses inside the REPL's window leave from any screen. on a watching screen they arm Esc's chord, which names the price and answers the last option
             if (IsCtrlC(key))
@@ -502,7 +639,7 @@ internal sealed class TuiWizardSurface : IWizardSurface, IDisposable
                         return o.Key;
 
             //the door takes the keys first, but on a shelf the list keeps what the draft can't use. both Tab and Up leave the door, Enter on an empty one returns the keys
-            if (ring.Current == Region.Search && c.Door is not null
+            if (ring.Current == Region.Search && c.Door is not null && !(viaMouse && key.KeyChar >= ' ')
                 && key.Key is not (ConsoleKey.Tab or ConsoleKey.UpArrow)
                 && (c.Shelf is null || key.Key is ConsoleKey.Enter or ConsoleKey.Backspace
                     || (key.KeyChar >= ' ' && key.KeyChar != Del)))
@@ -583,12 +720,12 @@ internal sealed class TuiWizardSurface : IWizardSurface, IDisposable
                 //skip the folder door's index rather than stopping at it, since its row is gone. a ceiling would strand the row the flow adds after it
                 case ConsoleKey.UpArrow when Step(c, cursor, -1) is { } up:
                     cursor = up;
-                    at = at.OnANewRow();
+                    at = LocalRow(c, cursor, at.OnANewRow());
                     ring = RingFor(c, cursor) ?? ring;
                     continue;
                 case ConsoleKey.DownArrow when Step(c, cursor, +1) is { } down:
                     cursor = down;
-                    at = at.OnANewRow();
+                    at = LocalRow(c, cursor, at.OnANewRow());
                     ring = RingFor(c, cursor) ?? ring;
                     continue;
                 //inert exactly when the screen only advances on the watch, the same answer the plain face uses
@@ -670,6 +807,8 @@ internal sealed class TuiWizardSurface : IWizardSurface, IDisposable
             : new FocusRing([Region.List, Region.Search]);
         var draft = new System.Text.StringBuilder();
         string? problem = null;
+        var dropped = false;
+        NewScreenForTheMouse(a.Key);
 
         while (true)
         {
@@ -684,8 +823,8 @@ internal sealed class TuiWizardSurface : IWizardSurface, IDisposable
                     .. offer is null
                         ? (IReadOnlyList<PaintedRow>)[]
                         : [PaintedRow.Of(""),
-                           Option(_glyphs, new ChoiceOption(offer.Value, offer.Label), 0,
-                               ring.Current == Region.List ? 0 : -1)],
+                           Tagged(Option(_glyphs, new ChoiceOption(offer.Value, offer.Label), 0,
+                               ring.Current == Region.List ? 0 : -1), new HitTag(HitKind.OptionRow, Index: 0, Answer: offer.Value, Area: Region.List))],
                 ],
                 //the door is idle while the keys are in the list, and its hint is how the user learns Tab reaches it. with no offer the door has the keys, so it draws no hint
                 Door: new DoorRow(a.Placeholder ?? "", draft.ToString(),
@@ -704,9 +843,15 @@ internal sealed class TuiWizardSurface : IWizardSurface, IDisposable
                     _ => null,
                 }));
 
+            if (!dropped) { DropMouse(); dropped = true; }
             //a resize comes back false, so the loop goes round and repaints at the new size
             if (!KeyOrResize()) continue;
-            var key = _keys.ReadKey();
+            ConsoleKeyInfo key;
+            var ev = NextEvent();
+            if (ev is KeyEvent { Key: var typedKey }) key = typedKey;
+            //a press on the offer row selects it and a second answers it, a press on the door moves the keys there, and a footer word acts as its key
+            else if (ev is MouseEvent mouse && AskPress(mouse, ring, offer) is { } pressedKey) key = pressedKey;
+            else continue;
             //two Ctrl+C presses leave a typed screen too, so a press meant for a draft never ends the wizard
             if (IsCtrlC(key))
             {
@@ -750,6 +895,27 @@ internal sealed class TuiWizardSurface : IWizardSurface, IDisposable
             }
 
             Edit(draft, key);
+        }
+    }
+
+    //the key a press on a typed screen stands for, or null once it moved the focus or landed on nothing
+    private ConsoleKeyInfo? AskPress(MouseEvent m, FocusRing ring, AskOffer? offer)
+    {
+        HitMap hits;
+        lock (_writeGate) hits = _lastHits;
+        if (hits.Width != Width || hits.Height != _surface.Height) return null;
+        if (Pressed(m, hits, ring.Current == Region.List && offer is not null ? 0 : -1) is not { } tag) return null;
+        switch (tag.Kind)
+        {
+            case HitKind.OptionRow when ring.Current == Region.List:
+                return EnterKey;
+            case HitKind.OptionRow or HitKind.Door:
+                ring.Focus(tag.Area ?? Region.Search);
+                return null;
+            case HitKind.FooterKey when tag.Key is { } word:
+                return FooterKeys.KeyOf(word);
+            default:
+                return null;
         }
     }
 
@@ -797,7 +963,7 @@ internal sealed class TuiWizardSurface : IWizardSurface, IDisposable
 
         //recommended is a claim gatto stands behind, so a picker that only marks the current row gives its own word
         if (o.Recommended) runs.Add(new Run("  " + (o.MarkWord ?? "recommended"), RunInk.Dim));
-        return new PaintedRow(runs);
+        return index == cursor ? new PaintedRow(runs).Banded() : new PaintedRow(runs);
     }
 
     //the terminal screen renders like any other, and the caller prints its rows to scrollback once the alt screen is restored. otherwise they vanish with the buffer
@@ -812,7 +978,7 @@ internal sealed class TuiWizardSurface : IWizardSurface, IDisposable
             null, []));
 
     //the next key, or null when a watching screen's thing arrived first. it waits one interval, hands back for a repaint, and asks the watch first
-    private (bool Arrived, ConsoleKeyInfo? Key) NextKey(WizardScreen.Choice c, Func<bool>? watch)
+    private (bool Arrived, InputEvent? Event) NextKey(WizardScreen.Choice c, Func<bool>? watch)
     {
         var isWatch = c.Watching && watch is not null;
         TimeSpan budget;
@@ -831,19 +997,81 @@ internal sealed class TuiWizardSurface : IWizardSurface, IDisposable
         {
             //an armed chord expires by time, so wait at most its window or the hint stays drawn until some other key arrives
             if (_chord.RemainingMs(_nowMs()) is not { } left)
-                return KeyOrResize() ? (false, _keys.ReadKey()) : (false, null);
+                return KeyOrResize() ? (false, NextEvent()) : (false, null);
             budget = ArmWait(left);
         }
 
-        var clock = _clock?.Invoke(isWatch) ?? new ConsolePollClock(_keys);
-        return clock.WaitForKey(budget) ? (false, _keys.ReadKey()) : (false, null);
+        var clock = _clock?.Invoke(isWatch) ?? new ConsolePollClock(_input);
+        return clock.WaitForKey(budget) ? (false, NextEvent()) : (false, null);
+    }
+
+    //one read for every loop: a key goes down the key paths, a mouse event to the hit test
+    private InputEvent NextEvent() => _input.Read();
+
+    private readonly int _doubleClickMs;
+
+    //the last press, for the face's own double-click timing, since whether the host sets the OS flag is not known
+    private (long Ms, int X, int Y)? _lastPress;
+
+    //the wheel's raw delta not yet a whole notch, since a touchpad sends fractions
+    private int _wheelLeft;
+
+    private static readonly ConsoleKeyInfo EnterKey = new('\r', ConsoleKey.Enter, false, false, false);
+
+    //another screen forgets the last press and the wheel's remainder. a shelf an answer re-emits is the same screen, so the second press of a double click on a chip stays a second press
+    private void NewScreenForTheMouse(string screen)
+    {
+        if (screen == _mouseScreen) return;
+        _mouseScreen = screen;
+        _lastPress = null;
+        _wheelLeft = 0;
+    }
+
+    private string? _mouseScreen;
+
+    //what a left press lands on in the painted frame, or null. the second press of a double click acts only on the row the first selected, so a double click on Esc arms once
+    private HitTag? Pressed(MouseEvent m, HitMap hits, int selected)
+    {
+        if (m.Kind != MouseKind.Press || m.Button != MouseButton.Left) return null;
+        var second = IsSecondPress(m);
+        if (hits.At(m.X, m.Y) is not { Tag: var tag }) return null;
+        if (second && !(tag.Kind is HitKind.Row or HitKind.EscapeRow or HitKind.OptionRow && tag.Index == selected)) return null;
+        return tag;
+    }
+
+    //a press on the same cell within the system double-click time of the last one is a second press
+    private bool IsSecondPress(MouseEvent m)
+    {
+        var now = _nowMs();
+        var second = _lastPress is { } p && p.X == m.X && p.Y == m.Y && now - p.Ms <= _doubleClickMs;
+        _lastPress = (now, m.X, m.Y);
+        return second;
+    }
+
+    //one up per 120 of positive delta and one down per 120 of negative, the remainder kept for the next notch
+    private IEnumerable<ConsoleKeyInfo> Notches(int delta)
+    {
+        _wheelLeft += delta;
+        var whole = _wheelLeft / 120;
+        _wheelLeft -= whole * 120;
+        var key = whole > 0
+            ? new ConsoleKeyInfo('\0', ConsoleKey.UpArrow, false, false, false)
+            : new ConsoleKeyInfo('\0', ConsoleKey.DownArrow, false, false, false);
+        return Enumerable.Repeat(key, Math.Abs(whole));
+    }
+
+    //redirected stdin answers nothing, as the long-wait drain allows
+    private void DropMouse()
+    {
+        try { _input.DropMouse(); }
+        catch (Exception) { }
     }
 
     //true when a key is waiting, false when the window changed size first, so the caller repaints without a keystroke. only surfaces that report resize poll here
     private bool KeyOrResize()
     {
         if (!_surface.ReportsResize) return true;
-        var poll = _clock?.Invoke(false) ?? new ConsolePollClock(_keys);
+        var poll = _clock?.Invoke(false) ?? new ConsolePollClock(_input);
         while (!poll.WaitForKey(ResizePoll))
             if (Width != _paintedWidth || _surface.Height != _paintedHeight) return false;
         return true;
@@ -1009,7 +1237,7 @@ internal sealed class TuiWizardSurface : IWizardSurface, IDisposable
             };
             //the status mark is its own run, so a coloured glyph can open a sentence the rest of the row paints plain
             if (r.Glyph is not { } g)
-                return Classify(r, Tailed(Marked(r.Text, SpansOf(r, r.Text), ink), r.Tail, width));
+                return Classify(r, KeyClause(r, Tailed(Marked(r.Text, SpansOf(r, r.Text), ink), r.Tail, width)));
             var mark = Gatto.Cli.Setup.Glyphs.Of(g, _glyphs);
             //find the mark's own position in the text, since Toned folds it in behind the row's indent. a fixed prefix would draw it twice
             var at = r.Text.IndexOf(mark, StringComparison.Ordinal);
@@ -1023,6 +1251,23 @@ internal sealed class TuiWizardSurface : IWizardSurface, IDisposable
             ]), r.Tail, width));
         })
     ];
+
+    //a key named in prose with what it shows, such as m shows them, answers a press as the key does. the key and its words are one target
+    private static PaintedRow KeyClause(WizardRow src, PaintedRow row)
+    {
+        if (src.Keys is not { Count: > 0 } keys) return row;
+        var runs = row.Runs.ToList();
+        for (var i = 0; i + 1 < runs.Count; i++)
+        {
+            if (runs[i].Ink != RunInk.Bright || !keys.Contains(runs[i].Text)
+                || !runs[i + 1].Text.StartsWith(" shows", StringComparison.Ordinal)) continue;
+            var tag = new HitTag(HitKind.Clause, Key: runs[i].Text);
+            runs[i] = runs[i] with { Tag = tag };
+            runs[i + 1] = runs[i + 1] with { Tag = tag };
+            return new PaintedRow(runs, row.Fit);
+        }
+        return row;
+    }
 
     //the ink a status mark draws in, the frame's half of RowGlyph, since the plain face wants the character and has no ink
     internal static RunInk GlyphInk(RowGlyph glyph) => glyph switch
@@ -1125,19 +1370,46 @@ internal sealed class TuiWizardSurface : IWizardSurface, IDisposable
         allowance <= 0 ? 0
             : Shelf.RowBudget(Math.Max(1, allowance - outside - Shelf.GroupRows(v))) + Shelf.TableChrome + Shelf.GroupRows(v);
 
-    //the row window recomputed from the painter's allowance. an allowance of 0 means unknown, and the cursor is never windowed out
-    private static ShelfView Windowed(ShelfView v, int cursor, int allowance, int outside)
+    //the first row the shelf's window shows, kept between frames so the window moves only when the cursor leaves it
+    private int _shelfTop;
+
+    //the row window recomputed from the painter's allowance. an allowance of 0 means unknown, and the window follows the cursor so every row is reachable
+    private ShelfView Windowed(ShelfView v, int cursor, int allowance, int outside)
     {
         if (allowance <= 0) return v;
-        //at least 1, an allowance of 0 means an unknown height. the group headings are rows the models pay for
-        var window = Math.Max(Shelf.RowBudget(Math.Max(1, allowance - outside - Shelf.GroupRows(v))), cursor + 1);
-        if (v.Rows.Count <= window) return v;
+        //at least 1 model row, an allowance of 0 means an unknown height. the group headings are rows the models pay for
+        var groups = Shelf.GroupRows(v);
+        var room = Shelf.RowBudget(Math.Max(1, allowance - outside - groups)) + groups;
+        if (Fits(v, 0, room) >= v.Rows.Count) { _shelfTop = 0; return v; }
+        var top = Math.Clamp(_shelfTop, 0, v.Rows.Count - 1);
+        if (cursor >= 0 && cursor < top) top = cursor;
+        while (cursor >= top + Fits(v, top, room)) top++;
+        _shelfTop = top;
+        var count = Fits(v, top, room);
         return v with
         {
-            Rows = [.. v.Rows.Take(window)],
-            Facts = v.Facts is { } f ? [.. f.Take(window)] : null,
-            MoreBelow = v.MoreBelow + (v.Rows.Count - window),
+            Rows = [.. v.Rows.Skip(top).Take(count)],
+            Facts = v.Facts is { } f ? [.. f.Skip(top).Take(count)] : null,
+            MoreAbove = top,
+            MoreBelow = v.MoreBelow + (v.Rows.Count - top - count),
+            Groups = Shelf.Grouped(v),
         };
+    }
+
+    //how many rows from top fit the room: a line each, one for the more-above line, and each group heading's lines as Table draws them
+    private static int Fits(ShelfView v, int top, int room)
+    {
+        var grouped = Shelf.Grouped(v);
+        var used = top > 0 ? 1 : 0;
+        var n = 0;
+        for (var i = top; i < v.Rows.Count; i++)
+        {
+            var cost = 1 + (!grouped ? 0 : i == top ? 1 : v.Rows[i - 1].Fit != v.Rows[i].Fit ? 2 : 0);
+            if (used + cost > room) break;
+            used += cost;
+            n++;
+        }
+        return Math.Max(1, n);
     }
 
     //the flow's rows past the ones the shelf drew, painted so the cursor can never rest on an invisible row. they draw no numbers
@@ -1152,10 +1424,14 @@ internal sealed class TuiWizardSurface : IWizardSurface, IDisposable
         var rows = new List<PaintedRow> { PaintedRow.Of("") };
         for (var i = shelf.Rows.Count; i < c.Options.Count; i++)
             if (!door || !string.Equals(c.Options[i].Key, SetupFlow.Elsewhere, StringComparison.Ordinal))
+            {
+                //a press selects the row, and a press on the selected one answers it
+                var tag = new HitTag(HitKind.EscapeRow, Index: i, Answer: c.Options[i].Key);
                 rows.Add(i == cursor
-                    ? new PaintedRow([new Run(g.Prompt + " ", RunInk.Accent),
-                        new Run(c.Options[i].Label, RunInk.Bright)])
-                    : PaintedRow.Of("  " + c.Options[i].Label));
+                    ? new PaintedRow([new Run(g.Prompt + " ", RunInk.Accent, tag),
+                        new Run(c.Options[i].Label, RunInk.Bright, tag)]).Banded()
+                    : new PaintedRow([new Run("  " + c.Options[i].Label, Tag: tag)]));
+            }
         //only the blank is left when the door was the only row, so return no rows at all
         return rows.Count > 1 ? rows : [];
     }
@@ -1169,6 +1445,17 @@ internal sealed class TuiWizardSurface : IWizardSurface, IDisposable
             Region.List,
             .. c.Door is not null ? (IReadOnlyList<Region>)[Region.Search] : [],
           ];
+
+    //a local row whose files sit in one folder opens that folder's line, since a closed line over the only folder is a step for nothing. folded, the files start on the row's file rather than the Hub's knee
+    private ShelfCursors LocalRow(WizardScreen.Choice c, int cursor, ShelfCursors at)
+    {
+        if (c.Shelf is not { Source: ShelfSource.Local, Facts: { } facts } sv || cursor < 0 || cursor >= facts.Count) return at;
+        if (Folded(c))
+            return facts[cursor].Files is { Count: > 0 } files
+                && Pane.Ordered(files).ToList().FindIndex(f => f.File == sv.Rows[cursor].RowFile) is var i and >= 0
+                ? at with { File = i } : at;
+        return facts[cursor].Publishers is { Count: 1 } ? at with { Open = 0 } : at;
+    }
 
     //where the cursors are on a shelf: one per zone, built with Start so the pane pick never lands on file zero
     internal readonly record struct ShelfCursors(int Chip, int File, int Open, Gatto.Core.Acquire.FileRef? PickedQuant)
@@ -1254,15 +1541,14 @@ internal sealed class TuiWizardSurface : IWizardSurface, IDisposable
             .. BodyAbove(c, t, k, width, load),
             //the shelf replaces the option rows, since the models are the options, and its escape rows follow as ordinary options
             .. c.Shelf is { } sv
-                ? [.. Shelf.Body(Windowed(sv, cursor, allowance, Outside(c, t, k, width, sv, cursor, load)), cursor, at.Chip, at.File,
-                       ring.Current, width, at.Open, _glyphs, shownMs: Math.Max(0, _nowMs() - _shownAtMs),
-                       paneRows: PaneRows(sv, allowance, Outside(c, t, k, width, sv, cursor, load)),
+                ? [.. ShelfRows(sv, cursor, at, ring, width, allowance, Outside(c, t, k, width, sv, cursor, load),
                        //a loading shelf's purr sits in the list, timed on the face's clock like every watch
-                       working: sv.Loading && watching is { } loadingMs
+                       sv.Loading && watching is { } loadingMs
                            ? Shelf.LoadingRow(load?.Step ?? "", loadingMs, _glyphs) : (PaintedRow?)null),
                    //the escape rows index the full shelf, so the window must not move their option index. a cursor is drawn only while the ring holds a list
                    .. Escapes(_glyphs, c, sv, ring.Has(Region.List) ? cursor : -1)]
-                : c.KeysOnly ? [] : c.Options.Select((o, i) => Option(_glyphs, o, i, cursor, c.Unnumbered)),
+                : c.KeysOnly ? [] : c.Options.Select((o, i) =>
+                    Tagged(Option(_glyphs, o, i, cursor, c.Unnumbered), new HitTag(HitKind.OptionRow, Index: i, Answer: o.Key, Area: Region.List))),
             //an option list never sits on the footer rule, so a screen with options but no door or shelf adds the blank itself
             .. !c.KeysOnly && c.Door is null && c.Shelf is null && c.Options.Count > 0
                 ? [PaintedRow.Of("")]
@@ -1301,10 +1587,22 @@ internal sealed class TuiWizardSurface : IWizardSurface, IDisposable
             : c.PurredSinceWatch ? Widget.Settled(_watchedMs, _glyphs)
             : null);
 
+    //the shelf through its window, the cursor counted from the window's first row since Shelf.Body reads it so
+    private IReadOnlyList<PaintedRow> ShelfRows(ShelfView sv, int cursor, ShelfCursors at, FocusRing ring, int width,
+        int allowance, int outside, PaintedRow? working)
+    {
+        var wv = Windowed(sv, cursor, allowance, outside);
+        return Shelf.Body(wv, cursor < 0 ? cursor : cursor - wv.MoreAbove, at.Chip, at.File,
+            ring.Current, width, at.Open, _glyphs, working, shownMs: Math.Max(0, _nowMs() - _shownAtMs),
+            paneRows: PaneRows(sv, allowance, outside));
+    }
+
     //the body rows above the shelf or the options, composed in one place so the row window can count them
     private IReadOnlyList<PaintedRow> BodyAbove(WizardScreen.Choice c, FetchTick? t, CheckTick? k, int width,
         ShelfLoadTick? load = null) =>
     [
+        //the notice sits where the shelf's own notices sit, above its body, and the row window counts it once
+        .. c.Notice is { Length: > 0 } said ? Rows([new WizardRow(said, RowTone.Aside), ""], width) : (IReadOnlyList<PaintedRow>)[],
         .. Rows(c.BodyRows, width),
         //the loading shelf's line about this machine, in the place the discovery line takes once the shelf lands
         .. c.Shelf is { Loading: true } && load?.Local is { Length: > 0 } local

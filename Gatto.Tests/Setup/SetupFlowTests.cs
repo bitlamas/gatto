@@ -1,7 +1,7 @@
-using Gatto.Tests.Fakes;
 using Gatto.Cli.Setup;
 using Gatto.Core.Hardware;
 using Gatto.Terminal;
+using Gatto.Tests.Fakes;
 
 namespace Gatto.Tests.Setup;
 
@@ -994,12 +994,6 @@ public class SetupFlowTests
         Gatto.Core.Home.GattoConfigWriter.UpsertEndpoint(home.Path, "local", "http://127.0.0.1:1235", 4096);
 
         Assert.Null(new LiveSetupProbes(home.Path, glyphs: GlyphSet.Unicode).ExistingEndpointFor("http://127.0.0.1:8080"));
-    }
-
-    private sealed class TempHome : IDisposable
-    {
-        public string Path { get; } = Directory.CreateTempSubdirectory("gatto-endpoint-").FullName;
-        public void Dispose() { try { Directory.Delete(Path, true); } catch { } }
     }
 
     private static SetupFlow ConnectTo(string baseUrl, string? existingEndpoint)
@@ -2182,8 +2176,9 @@ ew.gguf", model.GgufPath);
         var choice = Assert.IsType<WizardScreen.Choice>(flow.StartPastEngine());
 
         Assert.Equal(SetupFlow.DiscoveredKey, choice.Key);
-        Assert.Contains(choice.Options, o => o.Label == "qwen.gguf");
-        Assert.Contains(choice.Options, o => o.Label == "gemma.gguf");
+        //a row is named after its model, the file's name less its extension and quant
+        Assert.Contains(choice.Options, o => o.Label == "qwen");
+        Assert.Contains(choice.Options, o => o.Label == "gemma");
     }
 
     [Fact]
@@ -2249,9 +2244,8 @@ ew.gguf", model.GgufPath);
         };
         var flow = new SetupFlow(probes);
         flow.StartPastEngine();
-        flow.Answer(SetupFlow.Elsewhere);
 
-        flow.Answer("  \"D:/weights\"  ");
+        flow.Answer(ShelfControls.TypedAnswer("  \"D:/weights\"  "));
 
         Assert.Equal(@"D:\weights", probes.ScanRoots[^1]);
     }

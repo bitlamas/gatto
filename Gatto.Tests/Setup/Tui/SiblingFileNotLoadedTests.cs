@@ -7,7 +7,7 @@ using Gatto.Tests.Fakes;
 
 namespace Gatto.Tests.Setup.Tui;
 
-//only the path tells the two files of one id apart, so the sibling file must not read as loaded
+//two files of one model are one row, and only the path tells which of them the server holds, so the row takes that file and wears the loaded mark
 public class SiblingFileNotLoadedTests
 {
     private const string Folder = @"C:\weights\gemma-4-e4b";
@@ -43,46 +43,34 @@ public class SiblingFileNotLoadedTests
         return local.Shelf!;
     }
 
-    //read the mark by file name, the row order is the scan's and an assertion on an index breaks when the shelf sorts
-    private static HaveMark MarkFor(ShelfView v, string fileName)
-    {
-        var at = v.Rows
-            .Select((r, i) => (r, i))
-            .Single(x => x.r.RowQuant!.FileName.Equals(fileName, StringComparison.OrdinalIgnoreCase))
-            .i;
-        return v.Facts![at].Have;
-    }
-
     [Fact]
-    public void ONLY_THE_ACTIVE_FILE_WEARS_THE_LOADED_MARK()
+    public void THE_ROW_TAKES_THE_SERVED_FILE_AND_WEARS_THE_LOADED_MARK()
     {
         var shelf = LocalShelfOf(Probes(loadedPath: Eighth));
-
-        Assert.Equal(HaveMark.Loaded, MarkFor(shelf, "gemma-4-e4b-Q8_0.gguf"));
-        Assert.Equal(HaveMark.OtherFile, MarkFor(shelf, "gemma-4-e4b-Q4_K_M.gguf"));
+        var row = Assert.Single(shelf.Rows);
+        Assert.Equal("gemma-4-e4b-Q8_0.gguf", row.RowQuant!.FileName);
+        Assert.Equal(HaveMark.Loaded, shelf.Facts![0].Have);
     }
 
-    //move the server to the other file and the marks must swap, or a fix keyed off row order would pass
+    //move the server to the other file and the row's file must follow, or a pick keyed off scan order would pass
     [Fact]
-    public void AND_THE_MARKS_SWAP_WHEN_THE_SERVER_MOVES()
+    public void AND_THE_ROWS_FILE_FOLLOWS_THE_SERVER()
     {
         var shelf = LocalShelfOf(Probes(loadedPath: Quarter));
-
-        Assert.Equal(HaveMark.Loaded, MarkFor(shelf, "gemma-4-e4b-Q4_K_M.gguf"));
-        Assert.Equal(HaveMark.OtherFile, MarkFor(shelf, "gemma-4-e4b-Q8_0.gguf"));
+        Assert.Equal("gemma-4-e4b-Q4_K_M.gguf", Assert.Single(shelf.Rows).RowQuant!.FileName);
+        Assert.Equal(HaveMark.Loaded, shelf.Facts![0].Have);
     }
 
-    //a null LoadedModelPath marks nothing rather than marking against, so both rows keep the loaded mark
+    //a null LoadedModelPath marks nothing rather than marking against, so the row keeps the loaded mark
     [Fact]
     public void AND_A_PATH_NOBODY_COULD_READ_LEAVES_THE_MARK_ALONE()
     {
         var shelf = LocalShelfOf(Probes(loadedPath: null));
-
-        Assert.Equal(HaveMark.Loaded, MarkFor(shelf, "gemma-4-e4b-Q4_K_M.gguf"));
-        Assert.Equal(HaveMark.Loaded, MarkFor(shelf, "gemma-4-e4b-Q8_0.gguf"));
+        Assert.Single(shelf.Rows);
+        Assert.Equal(HaveMark.Loaded, shelf.Facts![0].Have);
     }
 
-    //ask the server for LoadedModelPath once per shelf, two rows render the same either way and only a count can show it
+    //ask the server for LoadedModelPath once per shelf, the rows render the same either way and only a count can show it
     [Fact]
     public void THE_LOADED_FILE_IS_ASKED_ONCE_PER_SHELF()
     {
@@ -92,47 +80,15 @@ public class SiblingFileNotLoadedTests
         Assert.Equal(1, probes.LoadedPathAsked);
     }
 
-    //the rendered half
-
-    private static string HaveRowOf(ShelfView v, string fileName)
+    //the pane names the file in use, the one the row took
+    [Fact]
+    public void THE_PANE_NAMES_THE_ACTIVE_FILE()
     {
-        var at = v.Rows
-            .Select((r, i) => (r, i))
-            .Single(x => x.r.RowQuant!.FileName.Equals(fileName, StringComparison.OrdinalIgnoreCase))
-            .i;
-        return Pane.Rows(v.Rows[at], v.Facts![at], v.Shape, 100,
-                cursor: at, focused: false)
-            .Single(row => row.Text.Contains("added", StringComparison.Ordinal)
-                        || row.Text.Contains("loaded", StringComparison.Ordinal))
+        var shelf = LocalShelfOf(Probes(loadedPath: Eighth));
+        var have = Pane.Rows(shelf.Rows[0], shelf.Facts![0], shelf.Shape, 100, cursor: 0, focused: false)
+            .Single(row => row.Text.Contains("loaded", StringComparison.Ordinal) || row.Text.Contains("added", StringComparison.Ordinal))
             .Text;
-    }
-
-    //the column cannot show the difference, so the pane names the active file and the sibling row does not
-    [Fact]
-    public void THE_PANE_NAMES_THE_ACTIVE_FILE_AND_ONLY_THE_ACTIVE_FILE()
-    {
-        var shelf = LocalShelfOf(Probes(loadedPath: Eighth));
-
-        var live = HaveRowOf(shelf, "gemma-4-e4b-Q8_0.gguf");
-        var other = HaveRowOf(shelf, "gemma-4-e4b-Q4_K_M.gguf");
-
-        Assert.Contains("the model you're on", live, StringComparison.Ordinal);
-        Assert.DoesNotContain("not the file in use", live, StringComparison.Ordinal);
-
-        Assert.Contains("not the file in use", other, StringComparison.Ordinal);
-        Assert.DoesNotContain("the model you're on", other, StringComparison.Ordinal);
-    }
-
-    //the sibling row draws the added glyph, and the check reads the rendered row rather than the enum
-    [Fact]
-    public void AND_THE_SIBLING_ROW_DRAWS_THE_ADDED_GLYPH_NOT_THE_LIVE_DOT()
-    {
-        var g = Gatto.Terminal.GlyphSet.Unicode;
-        var shelf = LocalShelfOf(Probes(loadedPath: Eighth));
-
-        var other = HaveRowOf(shelf, "gemma-4-e4b-Q4_K_M.gguf");
-
-        Assert.StartsWith(g.Ok, other, StringComparison.Ordinal);
-        Assert.DoesNotContain(g.Loaded, other, StringComparison.Ordinal);
+        Assert.Contains("the model you're on", have, StringComparison.Ordinal);
+        Assert.DoesNotContain("not the file in use", have, StringComparison.Ordinal);
     }
 }

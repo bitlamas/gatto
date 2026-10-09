@@ -4,9 +4,12 @@ using Gatto.Terminal;
 
 namespace Gatto.Cli.Setup;
 
-//the live clock behind the wizard's watch, one home for both faces. it waits on the key source and knows nothing about directories
-internal sealed class ConsolePollClock(IKeySource keys) : IPollClock
+//the live clock behind the wizard's watch, one home for both faces. it waits on what the source can act on and knows nothing about directories
+internal sealed class ConsolePollClock(Func<bool> available) : IPollClock
 {
+    public ConsolePollClock(IKeySource keys) : this(() => keys.KeyAvailable) { }
+    public ConsolePollClock(IInputSource source) : this(() => source.EventAvailable) { }
+
     private readonly System.Diagnostics.Stopwatch _clock = System.Diagnostics.Stopwatch.StartNew();
 
     public long ElapsedMs => _clock.ElapsedMilliseconds;
@@ -16,11 +19,11 @@ internal sealed class ConsolePollClock(IKeySource keys) : IPollClock
         var until = _clock.ElapsedMilliseconds + (long)budget.TotalMilliseconds;
         while (_clock.ElapsedMilliseconds < until)
         {
-            try { if (keys.KeyAvailable) return true; }
+            try { if (available()) return true; }
             catch (Exception) { } //redirected stdin throws here, so nothing is ever typed
             Thread.Sleep(10);
         }
-        try { return keys.KeyAvailable; }
+        try { return available(); }
         catch (Exception) { return false; }
     }
 }

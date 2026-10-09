@@ -1,0 +1,20 @@
+  gatto model                                                                                   v0.5.0 · build 1a2b3c4
+  ❯ model · check · done
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+  Found a model already on this machine
+
+  gemma · qwen · deepseek · glm · mistral · all
+
+  model     params ▾  size · quant    kind     │ Qwen3-8B
+› Qwen3-8B        8B  4.7 GB Q4_K_M   dense    │ C:\models\
+                                               │
+                                               │ context up to 32,768
+                                               │ › ▾ C:\models   4.7 GB Q4_K_M  ✓ fits
+                                               │   ❯ Q4_K_M     4.7 GB  ✓ fits
+                                               │   ▸ D:\weights  8.4 GB Q8_0  ✓ fits
+
+  1–1 of 1
+
+❯ type a .gguf to add, a folder to look in…                                                                ? to search
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+  Tab area   ↑↓ move   Enter choose   m hub   a show all   Esc back                            | fewer params = faster

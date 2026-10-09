@@ -65,11 +65,15 @@ public static class Footer
         for (var i = 0; i < keys.Count; i++)
         {
             if (i > 0) runs.Add(new Run(new string(' ', KeyGap)));
-            runs.Add(new Run(keys[i].Key, RunInk.Bright));
-            runs.Add(new Run(" " + keys[i].Verb, RunInk.Dim));
+            //a press on a key word acts as its key, so key and verb carry the key's own string. the arrows name a pair and take no press
+            var tag = IsArrows(keys[i].Key) ? null : keys[i].Key;
+            runs.Add(new Run(keys[i].Key, RunInk.Bright, tag));
+            runs.Add(new Run(" " + keys[i].Verb, RunInk.Dim, tag));
         }
         return runs;
     }
+
+    private static bool IsArrows(string key) => key == GlyphSet.Unicode.ArrowsKey || key == GlyphSet.Ascii.ArrowsKey;
 
     //the legend dim, pushed right. the gap comes from the same left string the plain row builds
     private static IReadOnlyList<Run> Gap(List<Run> runs, string left, string right, int width)

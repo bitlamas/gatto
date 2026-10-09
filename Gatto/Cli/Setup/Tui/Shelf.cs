@@ -78,16 +78,18 @@ internal static class Shelf
         for (var i = 0; i < families.Count; i++)
         {
             if (i > 0) runs.Add(new Run($" {g.Dot} ", RunInk.Dim));
+            //a press on a chip moves the chip cursor to it and toggles it, its separators answer nothing
+            var chipTag = new HitTag(HitKind.Chip, Index: i, Area: Region.Families);
             if (focused && i == chip)
             {
                 runs.Add(new Run(HereOf(glyphs ?? GlyphSet.Unicode), RunInk.Accent));
-                runs.Add(new Run(families[i], RunInk.Bright));
+                runs.Add(new Run(families[i], RunInk.Bright, chipTag));
             }
             else
             {
                 //a typed search lifts the family, so no chip is active while one is showing. the chips row reads Searched and the count line reads Lift
                 var active = !v.Searched && Lights(v, families, families[i]);
-                runs.Add(new Run(families[i], active ? RunInk.Accent : RunInk.Dim));
+                runs.Add(new Run(families[i], active ? RunInk.Accent : RunInk.Dim, chipTag));
             }
         }
 
@@ -147,13 +149,13 @@ internal static class Shelf
     internal static int ModelWidth(ShelfView v, GlyphSet g) =>
         v.Rows.Count == 0 ? 0 : v.Rows.Max(r => UnicodeWidth.Of(Name(v, r, g)));
 
-    //the local shelf leaves the params column out, so its column and gap come off what the model is measured against
-    private static int ChromeOf(ShelfView v) =>
-        v.Source == ShelfSource.Local ? Chrome - 2 - ParamsColumn : Chrome;
-
     //the table's share of the row, divider included. the size and quant column is counted at the width the rows are padded to rather than its constant
     internal static int LeftWidth(ShelfView v, GlyphSet g) =>
-        ModelWidth(v, g) + ChromeOf(v) - SizeQuantColumn + SizeQuantWidth(v) + TailChrome(v);
+        ModelWidth(v, g) + Chrome - SizeQuantColumn + SizeQuantWidth(v) - ParamsColumn + ParamsWidth(v) + TailChrome(v);
+
+    //the ruled column, or the widest cell shown, since a size label such as 397B-A17B is wider than any count the Hub prints
+    private static int ParamsWidth(ShelfView v) =>
+        v.Rows.Count == 0 ? ParamsColumn : Math.Max(ParamsColumn, v.Rows.Max(r => UnicodeWidth.Of(ShelfTable.ParamsCell(r))));
 
     //the pane's column, or 0 when it would be narrower than Pane.MinWidth. the table's width decides it, so long names fold the shelf sooner
     internal static int PaneWidth(ShelfView v, int width, GlyphSet g)
@@ -171,29 +173,34 @@ internal static class Shelf
         var mw = ModelWidth(v, g);
         //a loading view does not know the machine yet, so its header has no runs column until the rows land
         var runs = !v.Loading && FitMarks.HasRunsColumn(v.Shape);
-        //the local shelf has no params to show, so its header, cell and gap stay out and the model column takes the freed cells
-        var paramsCol = v.Source != ShelfSource.Local;
         var tail = Math.Max(0, TailChrome(v) - 2);
         //the size-quant cell takes the widest pair shown, because Pane.Cells pads and never clips, so a narrow cell pushes every column after it
         var sqw = SizeQuantWidth(v);
         var sw = SizeWidth(v);
         //the params header carries the sort's direction, largest first until a click turns it
         var paramsHeader = "params " + (v.SmallestFirst is true ? g.CaretUp : g.Caret);
+        //the header's params word is the sort's click target, so it is its own run and its padding is not
+        var pw = ParamsWidth(v);
+        var paramsPad = new string(' ', Math.Max(0, pw - UnicodeWidth.Of(paramsHeader)));
         var rows = new List<PaintedRow>
         {
-            PaintedRow.Of(
-                Indent
-                + Pane.Cells("model", mw) + "  "
-                + (paramsCol ? Pane.Right(paramsHeader, ParamsColumn) + "  " : "")
-                //the TUI shelf composes its own header, separate from ShelfTable's, so a fix to one header must be made in both
-                + Pane.Cells($"size {(glyphs ?? GlyphSet.Unicode).Dot} quant", sqw) + "  "
-                + Pane.Cells("kind", KindColumn)
-                + (runs ? "  runs" : ""),
-                RunInk.Dim),
+            new([
+                new Run(Indent + Pane.Cells("model", mw) + "  " + paramsPad, RunInk.Dim),
+                new Run(paramsHeader, RunInk.Dim, new HitTag(HitKind.ParamsHeader), Joined: true),
+                new Run("  "
+                    //the TUI shelf composes its own header, separate from ShelfTable's, so a fix to one header must be made in both
+                    + Pane.Cells($"size {(glyphs ?? GlyphSet.Unicode).Dot} quant", sqw) + "  "
+                    + Pane.Cells("kind", KindColumn)
+                    + (runs ? "  runs" : ""),
+                    RunInk.Dim, Joined: true)]),
         };
 
         //the two groups are named only on a card, when both have rows and the engine's order stands, since a flat or re-sorted list has no groups
         var grouped = Grouped(v);
+
+        //the rows the window scrolled past are counted as the ones below it are
+        if (v.MoreAbove > 0)
+            rows.Add(PaintedRow.Of(Indent + $"{g.Ellipsis} {v.MoreAbove} more above", RunInk.Dim));
 
         for (var i = 0; i < v.Rows.Count; i++)
         {
@@ -205,7 +212,7 @@ internal static class Shelf
             }
             var number = "";
             var body = Pane.Cells(Name(v, r, g), mw) + "  "
-                     + (paramsCol ? Pane.Right(ShelfTable.ParamsCell(r), ParamsColumn) + "  " : "")
+                     + Pane.Right(ShelfTable.ParamsCell(r), pw) + "  "
                      + Pane.Cells(SizeQuant(r, sw), sqw) + "  "
                      + Pane.Cells(Structure(v, i), KindColumn);
 
@@ -252,7 +259,10 @@ internal static class Shelf
                 }
             }
 
-            rows.Add(new PaintedRow(cells));
+            //the row's index on the full shelf names it, never its painted line, since headings sit between rows and the window scrolls
+            var rowTag = new HitTag(HitKind.Row, Index: v.MoreAbove + i, Area: Region.List);
+            //the row under the keys sits on the band, the table's cells only, since the pane beside it is another area
+            rows.Add(new PaintedRow([.. cells.Select(c => c with { Tag = rowTag, Band = i == row && focused })]));
         }
 
         //the rows the budget left off are counted, since a list that just stops reads as a complete one
@@ -264,7 +274,7 @@ internal static class Shelf
 
     //the table splits into the card's rows and memory's only on a discrete card, in the engine's order, when both groups have rows
     internal static bool Grouped(ShelfView v) =>
-        FitMarks.HasRunsColumn(v.Shape) && !v.Lift && v.SmallestFirst is null
+        v.Groups ?? FitMarks.HasRunsColumn(v.Shape) && !v.Lift && v.SmallestFirst is null
         && v.Rows.Any(x => x.Fit == FitRegime.FitsGpu) && v.Rows.Any(x => x.Fit == FitRegime.FitsRamOnly);
 
     //the rows the two headings and the blank between the groups take, which the row window pays for
@@ -282,13 +292,17 @@ internal static class Shelf
     };
 
     //the count line: the position and the hidden buckets by name. a bucket with a key says so, the one without stays quiet about keys
-    public static string CountLine(ShelfView v, GlyphSet? glyphs, long? shownMs = null)
+    public static string CountLine(ShelfView v, GlyphSet? glyphs, long? shownMs = null) =>
+        string.Concat(CountRuns(v, glyphs, shownMs).Select(r => r.Text));
+
+    //the count line as one run per clause, so a clause that answers a key or jumps to a regime carries its own target
+    public static IReadOnlyList<Run> CountRuns(ShelfView v, GlyphSet? glyphs, long? shownMs = null)
     {
         var g = glyphs ?? GlyphSet.Unicode;
         //a zero total means the producer did not count, so report the rows in hand, smaller than the truth and never wrong
-        var total = Math.Max(v.Total, v.Rows.Count + v.MoreBelow);
+        var total = Math.Max(v.Total, v.MoreAbove + v.Rows.Count + v.MoreBelow);
         //the Range glyph, since this is a range's typography rather than a not-run mark
-        var position = $"1{g.Range}{v.Rows.Count} of {total}";
+        var position = $"{v.MoreAbove + 1}{g.Range}{v.MoreAbove + v.Rows.Count} of {total}";
 
         if (v.Source == ShelfSource.Hub) return Tail(g, position, HubClauses(v, g, shownMs));
 
@@ -298,33 +312,36 @@ internal static class Shelf
             : null;
 
         if (v.ShowAll)
-            return Tail(g, position, "older and too-big rows shown, a hides them", legend);
+            return Tail(g, position, ("older and too-big rows shown, a hides them", null), (legend, null));
 
         var hidden = HiddenClause(v.HiddenNewer, v.HiddenOlder, v.HiddenByFit, g);
 
         //the family clause stays out of the hidden list. that filter is lifted with "all", so its number can't sit under a sentence naming "a"
         var family = FamilyClause(v.HiddenByFamily);
 
-        return Tail(g, position, hidden, family, legend);
+        return Tail(g, position, (hidden, new HitTag(HitKind.Clause, Key: "a")), (family, null), (legend, null));
     }
 
     //the hub shelf's clauses: what is measured and what a adds, or under a how many rows each regime holds, then why the search stopped short
-    private static string?[] HubClauses(ShelfView v, GlyphSet g, long? shownMs)
+    private static (string?, HitTag?)[] HubClauses(ShelfView v, GlyphSet g, long? shownMs)
     {
-        var clauses = new List<string?>();
+        var clauses = new List<(string?, HitTag?)>();
         if (v.Lift)
         {
+            //a count without the runs column counts the card and memory together, so its jump looks for either
             var fitting = FitMarks.HasRunsColumn(v.Shape)
-                ? [(v.OnCard, FitRegime.FitsGpu), (v.InMemory, FitRegime.FitsRamOnly)]
-                : new[] { (v.OnCard + v.InMemory, FitRegime.FitsGpu) };
-            foreach (var (n, fit) in fitting.Append((v.TooBig, FitRegime.DoesNotFit)))
-                if (n > 0) clauses.Add($"{n} {FitMarks.Of(fit, v.Shape, g).Text}");
+                ? [(v.OnCard, FitRegime.FitsGpu, (IReadOnlySet<FitRegime>)new HashSet<FitRegime> { FitRegime.FitsGpu }),
+                   (v.InMemory, FitRegime.FitsRamOnly, new HashSet<FitRegime> { FitRegime.FitsRamOnly })]
+                : new[] { (v.OnCard + v.InMemory, FitRegime.FitsGpu,
+                    (IReadOnlySet<FitRegime>)new HashSet<FitRegime> { FitRegime.FitsGpu, FitRegime.FitsRamOnly }) };
+            foreach (var (n, fit, regimes) in fitting.Append((v.TooBig, FitRegime.DoesNotFit, new HashSet<FitRegime> { FitRegime.DoesNotFit })))
+                if (n > 0) clauses.Add(($"{n} {FitMarks.Of(fit, v.Shape, g).Text}", new HitTag(HitKind.RegimeJump, Regimes: regimes)));
         }
         else if (v.MoreBehind)
         {
-            clauses.Add("a show all");
+            clauses.Add(("a show all", new HitTag(HitKind.Clause, Key: "a")));
         }
-        clauses.Add(ShelfBinding.StoppedClause(v, shownMs));
+        clauses.Add((ShelfBinding.StoppedClause(v, shownMs), null));
         return [.. clauses];
     }
 
@@ -343,8 +360,23 @@ internal static class Shelf
     }
 
     //the count line's clauses joined by the one separator, skipping the empty ones, so a fourth clause is not a rewrite of the third
-    private static string Tail(GlyphSet g, string position, params string?[] clauses) =>
-        string.Join($" {g.Dot} ", new[] { position }.Concat(clauses.Where(c => c is { Length: > 0 }))!);
+    private static IReadOnlyList<Run> Tail(GlyphSet g, string position, params (string? Text, HitTag? Tag)[] clauses)
+    {
+        //untagged text stays one run, so the row paints as the one string it was before it carried targets
+        var runs = new List<Run>();
+        var plain = new System.Text.StringBuilder(position);
+        foreach (var (text, tag) in clauses)
+        {
+            if (text is not { Length: > 0 }) continue;
+            plain.Append($" {g.Dot} ");
+            if (tag is null) { plain.Append(text); continue; }
+            runs.Add(new Run(plain.ToString(), RunInk.Dim, Joined: runs.Count > 0));
+            plain.Clear();
+            runs.Add(new Run(text, RunInk.Dim, tag, Joined: true));
+        }
+        if (plain.Length > 0) runs.Add(new Run(plain.ToString(), RunInk.Dim, Joined: runs.Count > 0));
+        return runs;
+    }
 
     //the whole middle of the screen: chips, the table beside its pane, the count line. file is -1 for the row's own publisher, open -1 for none open
     public static IReadOnlyList<PaintedRow> Body(
@@ -406,7 +438,8 @@ internal static class Shelf
         }
 
         rows.Add(PaintedRow.Of(""));
-        rows.Add(PaintedRow.Of(Indent + CountLine(v, g, shownMs), RunInk.Dim));
+        var count = CountRuns(v, g, shownMs);
+        rows.Add(new PaintedRow([count[0] with { Text = Indent + count[0].Text }, .. count.Skip(1)]));
 
         //below the pane's threshold the facts move under the count line, since the count belongs with the table it describes
         if (pane == 0 && row >= 0 && row < v.Rows.Count)

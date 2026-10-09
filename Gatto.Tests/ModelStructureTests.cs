@@ -202,6 +202,38 @@ public class ModelStructureTests
         Assert.Contains("reads 10 of 512 experts/token", text, StringComparison.Ordinal);
     }
 
+    //the params cell takes the size label only in its anchored shape, the second route a label has to a screen
+    [Theory]
+    [InlineData("35B-A3B", "35B-A3B", 35e9)]
+    [InlineData("8x7B", "8x7B", 56e9)]
+    [InlineData("270M", "270M", 270e6)]
+    [InlineData("1.5T", "1.5T", 1.5e12)]
+    [InlineData("E4B", null, null)]
+    [InlineData("8B\u001b[31m", null, null)]
+    [InlineData("8B\nX", null, null)]
+    [InlineData("8 B", null, null)]
+    [InlineData(null, null, null)]
+    public void A_SIZE_LABEL_SHOWS_ONLY_IN_ITS_SHAPE(string? label, string? cell, double? magnitude)
+    {
+        Assert.Equal(cell, ModelStructure.SizeCell(label));
+        Assert.Equal(magnitude, ModelStructure.SizeMagnitude(label));
+    }
+
+    //the end of the shape is the end of the text, a final newline included
+    [Theory]
+    [InlineData("7B\n")]
+    [InlineData("8x7B\n")]
+    [InlineData("35B-A3B\n")]
+    public void A_TRAILING_NEWLINE_IS_NOT_THE_SHAPE(string label)
+    {
+        Assert.Null(ModelStructure.SizeCell(label));
+        Assert.Null(ModelStructure.SizeMagnitude(label));
+    }
+
+    [Fact]
+    public void A_FIVE_THOUSAND_CHARACTER_LABEL_SHOWS_BLANK() =>
+        Assert.Null(ModelStructure.SizeCell(new string('9', 5000) + "B"));
+
     private static ModelRow Row() => ShelfRows.Of(
         "qwen/Qwen3.8-27B-GGUF", "qwen", new HubQuant("q.gguf", 16_000_000_000, null),
         FitRegime.FitsGpu, 32768, false, null, 100, false);

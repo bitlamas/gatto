@@ -61,13 +61,18 @@ internal static class Epilogue
 
     //what a wizard run that wrote nothing leaves in scrollback: the header and the leave sentence at column zero, no title row, no rules
     public static IReadOnlyList<string> LeaveBlock(GlyphSet g, string version, string build, string command,
-        WizardRow? said, int width, bool dev = false, Theme? theme = null)
+        WizardRow? said, int width, bool dev = false, Theme? theme = null) =>
+        LeaveBlock(g, version, build, command, said is null ? [] : [said], width, dev, theme);
+
+    //one row per model a walk added, each under the header as the single line is
+    public static IReadOnlyList<string> LeaveBlock(GlyphSet g, string version, string build, string command,
+        IReadOnlyList<WizardRow> said, int width, bool dev = false, Theme? theme = null)
     {
         List<string> lines = [Head(g, version, build, on: null, command: command, dev: dev, theme: theme)];
-        if (said is not null)
+        if (said.Count > 0)
         {
             lines.Add("");
-            lines.AddRange(Body([said], width, g, theme));
+            lines.AddRange(Body(said, width, g, theme));
         }
         return lines;
     }

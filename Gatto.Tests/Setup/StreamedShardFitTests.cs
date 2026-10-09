@@ -115,8 +115,8 @@ public sealed class StreamedShardFitTests : IDisposable
         Assert.Equal(TableBytes, found.StreamedBytes);
 
         var hw = HardwareClassifier.Classify(SmallMachine().Snapshot!);
-        var withTable = LocalShelf.Row(found, hw).Fit;
-        var withoutTable = LocalShelf.Row(found with { StreamedBytes = null }, hw).Fit;
+        var withTable = LocalShelf.FitOf(found, hw, 4096);
+        var withoutTable = LocalShelf.FitOf(found with { StreamedBytes = null }, hw, 4096);
         Assert.NotEqual(withoutTable, withTable);
     }
 }

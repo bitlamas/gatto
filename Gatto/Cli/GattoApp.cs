@@ -1714,17 +1714,23 @@ public static class GattoApp
         //the face defaults no timer, the pulse is passed in by name and disposed at the end. the glyph set is resolved here beside the theme and handed to the face
         var wizardCommand = command ?? (modelSegmentOnly ? "gatto model" : "gatto setup");   //the words the user typed, so gatto model new is not reported as gatto model
 
+        //the wizard runs before the config loader and reads the mouse setting itself, alt_screen gates the REPL's mouse and not this
+        var input = Setup.WizardInput.For(Setup.WizardInput.MouseOf(home),
+            () => new ConsoleInputSource(new Win32ConsoleInputReader()), () => new KeyInputSource(new ConsoleKeySource()),
+            () => new ConsoleInputMode(new Win32ConsoleModeControl()), Setup.WizardInput.SystemDoubleClickMs);
+
         using var face = new Setup.Tui.TuiWizardSurface(
-            surface, new ConsoleKeySource(), chrome,
+            surface, input.Source, chrome,
             Gatto.Core.GattoVersion.String, Gatto.Core.GattoVersion.Build ?? "",
             command: wizardCommand,
             pulse: () => new Gatto.Terminal.TimerPurrPulse(),
             glyphs: glyphs,
             //the purr is drawn once here from the pool, so nothing a test constructs can reach the draw
-            fullPurr: Gatto.Repl.Render.PurrFrames.RandomFromPool());
+            fullPurr: Gatto.Repl.Render.PurrFrames.RandomFromPool(),
+            doubleClickMs: input.DoubleClickMs);
 
         //the wizard runs on the alt buffer and gives it back on every exit, WizardSession owns that lifecycle
-        var alt = new AltScreen(surface);
+        var alt = new AltScreen(surface) { QuietWheel = input.QuietWheel };
 
         //rich comes from the banner and the probes write into the face, so their lines reach the user at the epilogue
         var probes = new Setup.LiveSetupProbes(home, face.Glyphs, face.Notes,
@@ -1741,7 +1747,7 @@ public static class GattoApp
                 alt, () => Setup.SetupRunner.Run(flow, face, home, modelSegmentOnly),
                 () => Setup.WizardSession.Scrollback(flow, () => face.LastPainted, surface.Width, face.Glyphs,
                     VersionStamp.Running, DateOnly.FromDateTime(DateTime.Now), wizardCommand, theme),
-                Console.Out, notes: () => face.CapturedNotes, command: wizardCommand);
+                Console.Out, notes: () => face.CapturedNotes, command: wizardCommand, inputMode: input.Mode);
 
             //the shipped files are written after the wizard and only when the home exists, since writing them is what creates it
             if (Directory.Exists(home))

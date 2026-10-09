@@ -35,6 +35,32 @@ internal static class QuantToken
         return null;
     }
 
+    //the stem before its quant token, found as Of finds it, with unsloth's UD segment cut with the token. null when the name declares none
+    public static string? HeadBefore(string fileName)
+    {
+        string name;
+        try { name = Path.GetFileName(fileName); }
+        catch (ArgumentException) { return null; }
+        var stem = ShardName.Parse(name) is { } shard ? shard.Stem : Path.GetFileNameWithoutExtension(name);
+
+        var start = 0;
+        var prevStart = -1;
+        var prev = "";
+        for (var i = 0; i <= stem.Length; i++)
+        {
+            if (i < stem.Length && stem[i] is not ('-' or '.')) continue;
+            var segment = stem[start..i];
+            if (Shape.IsMatch(segment))
+                return stem[..(string.Equals(prev, "UD", StringComparison.OrdinalIgnoreCase) && prevStart >= 0 ? prevStart : start)];
+            for (var u = segment.IndexOf('_'); u >= 0; u = segment.IndexOf('_', u + 1))
+                if (Shape.IsMatch(segment[(u + 1)..])) return stem[..(start + u)];
+            prev = segment;
+            prevStart = start;
+            start = i + 1;
+        }
+        return null;
+    }
+
     //the floor's number: the bits after Q or IQ, 4 for MXFP4, the float width for BF16, F16 and F32
     public static int? ClassOf(string? token)
     {

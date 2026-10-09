@@ -25,13 +25,6 @@ public class AwaySnapTests : IDisposable
         public bool KeyDownAvailable => _q.Count > 0;
     }
 
-    private sealed class FakeCtl : IConsoleModeControl
-    {
-        public uint Mode;
-        public uint Get() => Mode;
-        public void Set(uint m) => Mode = m;
-    }
-
     private static ConsoleKeyInfo Key(char c, ConsoleKey k, bool ctrl = false) => new(c, k, false, false, ctrl);
     private static readonly ConsoleKeyInfo Esc = Key('\x1b', ConsoleKey.Escape);
     private static readonly ConsoleKeyInfo PageUp = Key('\0', ConsoleKey.PageUp);
@@ -155,7 +148,7 @@ public class AwaySnapTests : IDisposable
     //the turn's reply is long enough to scroll, and the keys given here are typed in stages as the screen reaches each one
     private RichReplHarness Rig(ToolRegistry? tools = null)
     {
-        var h = new RichReplHarness(_cwd, width: 60, height: 30, mouseEnabled: true, modeControl: new FakeCtl(), tools: tools);
+        var h = new RichReplHarness(_cwd, width: 60, height: 30, mouseEnabled: true, modeControl: new FakeConsoleModeControl(), tools: tools);
         h.Keys.Line("go");
         return h;
     }
@@ -249,7 +242,7 @@ public class AwaySnapTests : IDisposable
         reg.Register(touch);
         var hooks = new Gatto.Core.Loop.HookBus();
         var chrome = new ChromeHandle();
-        var h = new RichReplHarness(_cwd, width: 60, height: 30, mouseEnabled: true, modeControl: new FakeCtl(), tools: reg, hooks: hooks, chrome: chrome);
+        var h = new RichReplHarness(_cwd, width: 60, height: 30, mouseEnabled: true, modeControl: new FakeConsoleModeControl(), tools: reg, hooks: hooks, chrome: chrome);
         var prompter = new Gatto.Repl.RichPermissionPrompter(h.Surface, new Theme(new TermCaps(true, true)), h.Keys, h.Pump, chrome);
         var gate = new Gatto.Core.Loop.Permissions.PermissionGate(Gatto.Core.Loop.Permissions.PermissionStore.InMemory(_cwd), prompter, autoYes: false);
         gate.AllowReadClass("wait");   //the gate asks for every other tool, and only the guarded one may open the prompt

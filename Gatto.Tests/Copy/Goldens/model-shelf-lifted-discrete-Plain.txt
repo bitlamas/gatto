@@ -1,0 +1,20 @@
+  gatto model                                                                                   v0.5.0 · build 1a2b3c4
+  ❯ model · check · done
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+  Which model should gatto add?
+
+  gemma · qwen · deepseek · glm · mistral · all
+
+  model              params ▾  size · quant     kind      runs      │ gemma-4-E4B-it
+❯ gemma-4-E4B-it         8.0B  4.7 GB   Q4_K_M  dense     ✓ GPU     │ ◈ vision · reads 8B/token · context 131,072
+  Qwen3.8-27B           27.0B  12.3 GB  Q3_K_M  dense     ⚠ RAM     │
+  Qwen3.5-9B             9.0B  7.1 GB   Q6_K    dense     ⚠ RAM     │ publishers (3)
+  Qwen3.5-397B-A17B    397.0B  169.9 GB Q3_K_M  MoE A17B  ✗ too big │ › ▸ unsloth             4.7 GB Q4_K_M  ✓ GPU
+  Qwen3.6-35B-A3B       35.0B  15.8 GB  Q3_K_M  MoE A3B   ✗ too big │   ▸ bartowski           4.7 GB Q4_K_M  ✓ GPU
+  gemma-4-31B-it        31.0B  13.6 GB  Q3_K_M  dense     ✗ too big │   ▸ lmstudio-community  4.7 GB Q4_K_M  ✓ GPU
+
+  1–6 of 6 · 1 ✓ GPU · 2 ⚠ RAM · 3 ✗ too big
+
+❯ search models…                                                                                           ? to search
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+  Tab area   ↑↓ move   Enter next   m local   ? search   a show less   Esc leave                       | ✓ GPU · ⚠ RAM

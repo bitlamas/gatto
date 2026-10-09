@@ -65,8 +65,7 @@ public class LocalShelfChipTests
     {
         var flow = new SetupFlow(Probes()) { CanSwitchSource = false };
         flow.StartAtModelSegment();
-        flow.Answer(SetupFlow.Elsewhere);
-        flow.Answer(@"D:\models");
+        flow.Answer(ShelfControls.TypedAnswer(@"D:\models"));
 
         var screen = Assert.IsType<WizardScreen.Choice>(
             flow.Answer(SetupFlow.CtlFamily + AFamily));
@@ -94,7 +93,7 @@ public class LocalShelfChipTests
         flow.Answer(@"D:\models");
         flow.Answer(SetupFlow.CtlFamily + AFamily);
 
-        var hub = Assert.IsType<WizardScreen.Choice>(flow.Answer(SetupFlow.SearchInstead));
+        var hub = Assert.IsType<WizardScreen.Choice>(flow.Answer(SetupFlow.CtlSource));
 
         Assert.Equal(Families.Load().Landing, hub.Shelf!.Lit!.Order());
     }

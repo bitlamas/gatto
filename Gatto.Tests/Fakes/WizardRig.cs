@@ -5,15 +5,15 @@ using Gatto.Terminal;
 namespace Gatto.Tests.Fakes;
 
 //drive a wizard face with scripted keys and read the screen back. the surface and the plain writer share one buffer, so their interleaving is visible
-internal sealed class WizardRig(int width = 80, Gatto.Terminal.GlyphSet? glyphs = null)
+internal sealed class WizardRig(int width = 80, Gatto.Terminal.GlyphSet? glyphs = null, bool defaultClock = false)
 {
     public static readonly Theme T = new(new TermCaps(true, true));
 
     public readonly RecordingSurface Surface = new() { Width = width };
     private readonly List<ConsoleKeyInfo> _keys = [];
 
-    //the key source of the last face, so the clock can ask whether a scripted key waits. the source registers itself, since a separate count would be a second answer
-    private Keys? _source;
+    //the scripted count of the last face's source, so the clock can ask whether a scripted input waits. the source registers itself, since a separate count would be a second answer
+    private Func<int>? _source;
 
     //capture the screen at every block on input, since the final screen erases the prompt block and the raw stream holds text erased later
     public List<string> Frames { get; } = [];
@@ -24,7 +24,7 @@ internal sealed class WizardRig(int width = 80, Gatto.Terminal.GlyphSet? glyphs 
     private Gatto.Cli.Setup.Tui.TuiWizardSurface? _tui;
 
     //one method captures both lists, so they cannot record different moments.
-    private void Snapshot()
+    internal void Snapshot()
     {
         Frames.Add(TerminalReplay.Plain(Surface.Text));
         if (_tui is not null) PaintedFrames.Add(_tui.LastPainted);
@@ -48,6 +48,40 @@ internal sealed class WizardRig(int width = 80, Gatto.Terminal.GlyphSet? glyphs 
             pulse: Pulse is { } beat ? () => beat : null,
             nowMs: PollTime ? () => Interlocked.Read(ref _pollNow) : null);
     }
+
+    //the face over a script of input events and actions, an action runs before the next read. a distinct name, since an overload beside TuiFace makes its empty calls ambiguous
+    public Gatto.Cli.Setup.Tui.TuiWizardSurface TuiFaceEvents(params object[] script)
+    {
+        var source = new ScriptedInputSource(Snapshot, [.. Flat(script)]);
+        _source = () => source.Remaining;
+        return TuiFaceOver(source);
+    }
+
+    //a RigMouse press arrives as its parts, and the marker that ends the double-click window becomes the action that moves the clock past it
+    private IEnumerable<object> Flat(IEnumerable<object> script)
+    {
+        foreach (var item in script)
+            if (item is object[] parts) foreach (var p in Flat(parts)) yield return p;
+            else if (item is RigMouse.PastTheWindow) yield return (Action)(() => Interlocked.Add(ref _pressOffset, DoubleClickMs + 1));
+            else yield return item;
+    }
+
+    //the face's double-click window, fixed so a test decides whether two presses are one double click
+    public const int DoubleClickMs = 500;
+
+    //added to the face's clock, so a scripted gap between presses can pass the window without the test sleeping
+    private long _pressOffset;
+
+    //the face over a given source, with the rig's clock unless the rig was built to leave the face its own
+    public Gatto.Cli.Setup.Tui.TuiWizardSurface TuiFaceOver(IInputSource source) =>
+        _tui = new Gatto.Cli.Setup.Tui.TuiWizardSurface(
+            Surface, source, T, "0.5.0", "1a2b3c4",
+            clock: defaultClock ? null : isWatchPoll => new RigClock(this, isWatchPoll), glyphs: glyphs,
+            pulse: Pulse is { } beat ? () => beat : null,
+            nowMs: PollTime
+                ? () => Interlocked.Read(ref _pollNow) + Interlocked.Read(ref _pressOffset)
+                : () => Environment.TickCount64 + Interlocked.Read(ref _pressOffset),
+            doubleClickMs: DoubleClickMs);
 
     //the pulse the next TuiFace purrs with between screens, none by default so no frame changes off the clock
     public FakePulse? Pulse { get; set; }
@@ -149,7 +183,7 @@ internal sealed class WizardRig(int width = 80, Gatto.Terminal.GlyphSet? glyphs 
     public int WatchKeyBudget { get; set; }
 
     //count the scripted keys that no reader has taken, and report zero before any face was built.
-    public int KeysPending => _source?.Remaining ?? 0;
+    public int KeysPending => _source?.Invoke() ?? 0;
 
     //don't make a space with Ch, the watching footer matches key.Key and a space made that way presses nothing
     public static ConsoleKeyInfo Space => new(' ', ConsoleKey.Spacebar, false, false, false);
@@ -164,7 +198,7 @@ internal sealed class WizardRig(int width = 80, Gatto.Terminal.GlyphSet? glyphs 
         {
             this.rig = rig;
             _q = new Queue<ConsoleKeyInfo>(keys);
-            rig._source = this;
+            rig._source = () => _q.Count;
         }
 
         public int Remaining => _q.Count;

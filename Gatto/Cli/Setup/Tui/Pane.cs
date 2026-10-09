@@ -30,7 +30,8 @@ internal readonly record struct PaneFile(string? Quant, long Bytes, FitRegime Fi
 }
 
 //one publisher as the pane lists it: every file it holds, priced, and the file it would take, or null when none fits
-internal sealed record PanePublisher(string Org, IReadOnlyList<PaneFile> Files, FileRef? Pick);
+internal sealed record PanePublisher(string Org, IReadOnlyList<PaneFile> Files, FileRef? Pick,
+    bool Marked = true);   //false when no rule chose the pick, so its file carries no pick mark
 
 //one line of the publisher list: a publisher's own line when File is -1, otherwise one of the open publisher's files in size order
 internal readonly record struct PaneLine(int Publisher, int File);
@@ -61,6 +62,9 @@ internal static class Pane
     //below this the pane compacts: the have-row drops the model id
     private const int CompactWidth = 36;
 
+    //the fewest cells a cut id keeps, ellipsis included, below which the line drops the id rather than show a stub
+    private const int MinIdCells = 8;
+
     //how many files the window shows at once: three, with the knee at the top so the file gatto would pick opens the list
     private const int Window = 3;
 
@@ -77,7 +81,10 @@ internal static class Pane
         var f = facts ?? new ModelFacts();
         //a pane taller than the rows the frame left beside the table would push the frame past the terminal
         if (f.LocalPath is not null)
-            return maxRows > 0 ? [.. LocalRows(r, f, shape, width, g).Take(maxRows)] : LocalRows(r, f, shape, width, g);
+        {
+            var local = LocalRows(r, f, shape, width, g, cursor, open, focused, maxRows);
+            return maxRows > 0 ? [.. local.Take(maxRows)] : local;
+        }
 
         var rows = new List<PaintedRow>();
         foreach (var line in Wrap(Name(r), width)) rows.Add(PaintedRow.Of(line, RunInk.Bright));
@@ -107,7 +114,8 @@ internal static class Pane
     }
 
     //the local pane, where the model is the file that is here, so the file block is two lines and nothing opens
-    private static IReadOnlyList<PaintedRow> LocalRows(ModelRow r, ModelFacts f, MachineShape shape, int width, GlyphSet g)
+    private static IReadOnlyList<PaintedRow> LocalRows(ModelRow r, ModelFacts f, MachineShape shape, int width, GlyphSet g,
+        int cursor = -1, int open = -1, bool focused = false, int maxRows = 0)
     {
         var rows = new List<PaintedRow>();
 
@@ -129,10 +137,6 @@ internal static class Pane
                 new Run("context up to ", RunInk.Plain),
                 new Run(ctx.ToString("N0", System.Globalization.CultureInfo.InvariantCulture), RunInk.Accent)]));
 
-        rows.Add(r.Vision
-            ? new PaintedRow([new Run($"{g.Vision} vision {g.Dot} ", RunInk.Dim), new Run("can see images")])
-            : PaintedRow.Of("text only", RunInk.Dim));
-
         rows.Add(new PaintedRow(Reads(r, f, g)));
 
         //the pane says which architecture this row is, on every row that has one. the family chips group by a fact the table does not show
@@ -147,6 +151,25 @@ internal static class Pane
             : new PaintedRow([new Run(g.Bad + " " + NotMeasured, RunInk.Dim)]));
 
         rows.Add(PaintedRow.Of(""));
+
+        //each folder is a line as a publisher is on the Hub pane, and the lines scroll to keep the cursor's line in view
+        if (f.Publishers is { Count: > 0 } pubs)
+        {
+            var block = PublisherRows(pubs, r.RowPublisher, shape, width, cursor, open, focused, f, null, g,
+                out var focusRow, out var openRow, folders: true);
+            //in a short frame the facts give way first, the folder lines are what the keys act on. the name and the folder path stay
+            var head = (f.Have != HaveMark.None ? 1 : 0) + Wrap(Name(r), width).Count + 1;
+            if (maxRows > 0 && rows.Count + block.Count > maxRows)
+            {
+                var forBlock = Math.Min(block.Count, Math.Max(1, maxRows - head - 1));
+                rows.RemoveRange(Math.Min(rows.Count, Math.Max(head, maxRows - forBlock)), Math.Max(0, rows.Count - Math.Max(head, maxRows - forBlock)));
+            }
+            var keep = maxRows > 0 ? Math.Max(1, maxRows - rows.Count) : block.Count;
+            var start = Math.Clamp(focusRow - keep / 2, 0, Math.Max(0, block.Count - keep));
+            if (openRow >= 0 && openRow < focusRow && focusRow - openRow < keep) start = Math.Min(start, openRow);
+            rows.AddRange(block.Skip(start).Take(keep));
+            return [.. rows.Select(row => Pad(row, width))];
+        }
 
         //the quant is a fact here rather than a choice
         rows.Add(new PaintedRow([
@@ -213,7 +236,7 @@ internal static class Pane
     private static IReadOnlyList<PaintedRow> PublisherRows(
         IReadOnlyList<PanePublisher> pubs, int rowPublisher, MachineShape shape, int width,
         int cursor, int open, bool focused, ModelFacts f, string? haveQuant, GlyphSet g, out int focusRow,
-        out int openRow)
+        out int openRow, bool folders = false)
     {
         var lines = Lines(pubs, open);
         var at = LineAt(lines, cursor, rowPublisher);
@@ -234,7 +257,9 @@ internal static class Pane
             {
                 new(mark, here ? RunInk.Accent : RunInk.Dim),
                 new((p == open ? g.Caret : g.Triangle) + " ", RunInk.Dim),
-                new(Cells(Clip(pubs[p].Org, orgWidth, g), orgWidth) + "  ", here ? RunInk.Accent : RunInk.Plain),
+                //a folder keeps its end, which names it, a publisher its start
+                new(Cells(folders ? PathTail(pubs[p].Org, orgWidth, g) : Clip(pubs[p].Org, orgWidth, g), orgWidth) + "  ",
+                    here ? RunInk.Accent : RunInk.Plain),
             };
             var ordered = Ordered(pubs[p].Files);
             var pick = PickIndex(ordered, pubs[p].Pick);
@@ -249,11 +274,13 @@ internal static class Pane
             {
                 head.Add(new Run("no file fits", RunInk.Dim));
             }
-            rows.Add(new PaintedRow(head));
+            //a press on the line acts as Enter on it, so it carries its publisher
+            var lineTag = new HitTag(HitKind.PaneLine, Index: p, Area: Region.Files);
+            rows.Add(new PaintedRow([.. head.Select(x => x with { Tag = lineTag, Band = here })]));
 
             if (p != open) continue;
             openRow = rows.Count - 1;
-            var window = OpenRows(ordered, pick, lines[at].Publisher == p ? lines[at].File : -1,
+            var window = OpenRows(p, pubs[p].Marked, ordered, pick, lines[at].Publisher == p ? lines[at].File : -1,
                 focused, shape, p == rowPublisher ? f.Have : HaveMark.None, haveQuant, width, g, out var cursorRow);
             if (cursorRow >= 0) focusRow = rows.Count + cursorRow;
             rows.AddRange(window);
@@ -263,7 +290,7 @@ internal static class Pane
 
     //the open publisher's window: three files from its pick, moved to keep the cursor in view, the rest counted at the edges
     private static IReadOnlyList<PaintedRow> OpenRows(
-        IReadOnlyList<PaneFile> ordered, int pick, int cursorFile, bool focused, MachineShape shape,
+        int publisher, bool marked, IReadOnlyList<PaneFile> ordered, int pick, int cursorFile, bool focused, MachineShape shape,
         HaveMark have, string? haveQuant, int width, GlyphSet g, out int cursorRow)
     {
         var start = Math.Clamp(Math.Max(0, pick), 0, Math.Max(0, ordered.Count - Window));
@@ -277,7 +304,7 @@ internal static class Pane
         {
             if (i == cursorFile) cursorRow = rows.Count;
             var here = focused && i == cursorFile;
-            var mark = here ? $"{g.Prompt} " : i == pick ? $"{g.Angle} " : "  ";
+            var mark = here ? $"{g.Prompt} " : i == pick && marked ? $"{g.Angle} " : "  ";
             //the have-mark outranks the fit mark here, since a file you already hold does not need to be told it would fit
             var onDisk = have != HaveMark.None
                 && string.Equals(ordered[i].Quant, haveQuant, StringComparison.OrdinalIgnoreCase);
@@ -285,14 +312,17 @@ internal static class Pane
             var word = onDisk ? HaveMarks.Word(have) : fit.Word;
             //the line is four cells, the file cells and the glyph before the word, which goes when the pane is narrower
             if (4 + QuantColumn + SizeColumn + 2 + 1 + 1 + UnicodeWidth.Of(word) > width) word = "";
-            rows.Add(new PaintedRow([
-                new Run("  "),
-                new Run(mark, here ? RunInk.Accent : RunInk.Dim),
+            //the file's index is its place in the ordered list, the index a pane line names
+            var fileTag = new HitTag(HitKind.PaneFile, Index: publisher, File: i, Area: Region.Files);
+            var line = new PaintedRow([
+                new Run(mark, here ? RunInk.Accent : RunInk.Dim, fileTag),
                 new Run(Cells(ordered[i].Label, QuantColumn) + Right(SearchRow.Gb(ordered[i].Bytes), SizeColumn),
-                    here ? RunInk.Accent : RunInk.Plain),
-                new Run("  "),
-                new Run(onDisk ? HaveMarks.Glyph(have, g) : fit.Glyph, onDisk ? HaveMarks.Ink(have) : fit.Ink),
-                new Run(word.Length > 0 ? " " + word : "", RunInk.Dim)]));
+                    here ? RunInk.Accent : RunInk.Plain, fileTag),
+                new Run("  ", Tag: fileTag),
+                new Run(onDisk ? HaveMarks.Glyph(have, g) : fit.Glyph, onDisk ? HaveMarks.Ink(have) : fit.Ink, fileTag),
+                new Run(word.Length > 0 ? " " + word : "", RunInk.Dim, fileTag)]);
+            //the indent stays off the band, which starts at the mark as the publisher line's does
+            rows.Add(new PaintedRow([new Run("  "), .. (here ? line.Banded() : line).Runs]));
         }
         var rest = ordered.Count - start - Math.Min(Window, ordered.Count - start);
         if (rest > 0) rows.Add(PaintedRow.Of($"    {g.Ellipsis} {rest} heavier {g.Down}", RunInk.Dim));
@@ -406,8 +436,10 @@ internal static class Pane
         var tail = Gatto.Core.Acquire.QuantToken.Of(SearchRow.RowFileName(r)) is { Length: > 0 } q
             ? $" {g.Dot} " + q
             : "";
-        var text = width >= CompactWidth && f.HaveId is { Length: > 0 } id
-            ? $"{bare} as {id}{tail}"
+        //an id longer than the pane allows is cut from its end, so the quant after it stays whole and the line never meets the edge
+        var room = width - Gatto.Terminal.UnicodeWidth.Of($"{bare} as {tail}");
+        var text = width >= CompactWidth && f.HaveId is { Length: > 0 } id && room >= MinIdCells
+            ? $"{bare} as {Gatto.Terminal.TermText.TruncateCells(id, room, g)}{tail}"
             : bare + tail;
 
         //a sibling of the loaded file gets a note, since the column cannot say why its neighbour has the dot. the note is fitted the way the loaded sentence is
@@ -460,8 +492,13 @@ internal static class Pane
             facts2.Add(new Run(SearchRow.Ctx(ctx), RunInk.Accent));
             lead = false;
         }
-        facts2.Add(new Run((lead ? "" : $" {g.Dot} ") + (r.Vision ? $"{g.Vision} vision" : "text only"), RunInk.Dim));
-        facts2.Add(new Run($" {g.Dot} ", RunInk.Dim));
+        //a local row says nothing about vision, its files carry no reading of it
+        if (f.LocalPath is null)
+        {
+            facts2.Add(new Run((lead ? "" : $" {g.Dot} ") + (r.Vision ? $"{g.Vision} vision" : "text only"), RunInk.Dim));
+            lead = false;
+        }
+        if (!lead) facts2.Add(new Run($" {g.Dot} ", RunInk.Dim));
         facts2.AddRange(Reads(r, f, g));
         rows.Add(new PaintedRow(facts2));
 
@@ -470,7 +507,10 @@ internal static class Pane
             rows.Add(new PaintedRow([new Run("  "), new Run($"arch {g.Dot} ", RunInk.Dim),
                                      new Run(foldedArch)]));
 
-        rows.Add(new PaintedRow(FoldFiles(r, f, shape, focused, cursor, g)));
+        var shown = FoldFiles(r, f, shape, focused, cursor, g);
+        //the shown file answers a press as Enter on it, the label in front of it does not
+        var foldTag = new HitTag(HitKind.FoldedFile, File: f.Files is { Count: > 0 } ff ? FileAt(ff, cursor) : -1, Area: Region.Files);
+        rows.Add(new PaintedRow([.. shown.Take(2), .. shown.Skip(2).Select(x => x with { Tag = foldTag })]));
 
         //a hub row carries no badge, so only the local fold says what gatto measured, the wide pane's rule in shorter words
         if (f.LocalPath is not null)

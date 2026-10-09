@@ -330,7 +330,7 @@ public class InSessionShelfTests
         { Strip = InSessionStrip };
     }
 
-    //one fixture family for both local frames, the out-of-reach notice set on the first alone. the params column stays empty, no local shelf can produce one
+    //one fixture family for both local frames, the out-of-reach notice set on the first alone. the params column draws each file's size label in its anchored shape
     [Theory]
     [InlineData(true, "s10-local-landing-100.txt")]
     [InlineData(false, "s10-local-have-100.txt")]

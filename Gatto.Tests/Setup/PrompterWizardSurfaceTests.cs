@@ -157,7 +157,7 @@ public class PrompterWizardSurfaceTests
         string? heldBy = null)
     {
         //write a real synthetic GGUF header, the flow validates the magic and a text stub aborts the run
-        var gguf = Path.Combine(home, FirstRowLabel);
+        var gguf = Path.Combine(home, FirstFile);
         File.WriteAllBytes(gguf, GgufTestBytes.SyntheticHeader(kv =>
         {
             kv.Str("general.architecture", "qwen3");
@@ -177,8 +177,9 @@ public class PrompterWizardSurfaceTests
         };
     }
 
-    //the discovery screen labels a row with its file name, and FakePrompter answers by label
-    private const string FirstRowLabel = "tiny-Q4_K_M.gguf";
+    //the discovery screen labels a row with its model's name, the file's name less its quant, and FakePrompter answers by label
+    private const string FirstFile = "tiny-Q4_K_M.gguf";
+    private const string FirstRowLabel = "tiny";
 
     //one pattern must match the setup voice in every spelling, with a bounded gap so it cannot match across a sentence
     private static readonly System.Text.RegularExpressions.Regex SetUpVoice =

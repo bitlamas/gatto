@@ -371,6 +371,13 @@ public class CommandCorpusTests : IDisposable
         "shelf-landing-nocard-Dark", "shelf-landing-nocard-Plain",
         "shelf-lifted-discrete-Dark", "shelf-lifted-discrete-Plain",
         "shelf-open-discrete-Dark", "shelf-open-discrete-Plain",
+        "model-shelf-landing-discrete-Dark", "model-shelf-landing-discrete-Plain",
+        "model-shelf-landing-unified-Dark", "model-shelf-landing-unified-Plain",
+        "model-shelf-landing-nocard-Dark", "model-shelf-landing-nocard-Plain",
+        "model-shelf-lifted-discrete-Dark", "model-shelf-lifted-discrete-Plain",
+        "model-shelf-open-discrete-Dark", "model-shelf-open-discrete-Plain",
+        "model-shelf-local-grouped-Dark", "model-shelf-local-grouped-Plain",
+        "shelf-local-grouped-120x20-Plain", "shelf-local-grouped-120x30-Plain",
         //these come from ServeCorpusTests, and they are named here because the manifest asserts the whole directory
         "serve-stop-live-Dark", "serve-stop-live-Plain",
         "serve-stop-kill-failed-Dark", "serve-stop-kill-failed-Plain",

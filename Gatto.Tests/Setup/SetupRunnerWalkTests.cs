@@ -479,7 +479,7 @@ public class SetupRunnerWalkTests
         Assert.Equal(SetupFlow.DiscoveredKey, screen.Key);
         Assert.Null(flow.Selected);
         Assert.DoesNotContain("already on this machine", screen.Question!, StringComparison.Ordinal);
-        Assert.Contains(screen.Options, o => o.Label == "something-else.gguf");
+        Assert.Contains(screen.Options, o => o.Label == "something-else");
     }
 
     //the startup scan runs before the wizard proposes anything, so the already-here sentence is true here
