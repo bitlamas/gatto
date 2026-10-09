@@ -372,6 +372,16 @@ internal sealed class WizardProbes : ISetupProbes
     //per-path answers, for when two rows must be marked differently. the map wins over the scalar, so existing fixtures still mark both
     public Dictionary<string, string> Existing { get; } = new(StringComparer.OrdinalIgnoreCase);
 
+    //what each added model's profile recorded, keyed by model id
+    public Dictionary<string, AddedFacts> Added { get; } = new(StringComparer.OrdinalIgnoreCase);
+
+    AddedFacts? ISetupProbes.Added(string modelId) => Added.TryGetValue(modelId, out var a) ? a : null;
+
+    //the files with a projector by name in their folder
+    public HashSet<string> ProjectorsBeside { get; } = new(StringComparer.OrdinalIgnoreCase);
+
+    public bool ProjectorBeside(string ggufPath) => ProjectorsBeside.Contains(ggufPath);
+
     //the hub answer keyed by file name, since a repo listing has no paths. the repo answer outranks it
     public Dictionary<string, string> Named { get; } = new(StringComparer.OrdinalIgnoreCase);
 

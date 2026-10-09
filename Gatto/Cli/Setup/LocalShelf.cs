@@ -9,7 +9,7 @@ internal static class LocalShelf
 {
     //a model's files priced against this machine, one publisher per folder holding that folder's files. the row's file decides the row's fit, quant and folder, and the badge is passed in by the flow
     public static ModelRow Row(LocalGroup g, FoundModel rowFile, HardwareClass? hw, int ctxForFit = 4096,
-        Gatto.Core.Acquire.Badge? badge = null)
+        Gatto.Core.Acquire.Badge? badge = null, bool vision = false)
     {
         var folders = Folders(g);
         var offers = folders.Select(f =>
@@ -22,7 +22,7 @@ internal static class LocalShelf
         var rowFolder = folders.FindIndex(f => f.Files.Contains(rowFile));
         return new ModelRow(
             Model: g.Name, Family: null, Generation: 0,
-            Params: null, Active: null, Arch: rowFile.Header?.Architecture, NativeCtx: rowFile.Header?.ContextLength, Vision: false,
+            Params: null, Active: null, Arch: rowFile.Header?.Architecture, NativeCtx: rowFile.Header?.ContextLength, Vision: vision,
             Publishers: offers,
             RowPublisher: rowFolder, RowFile: FileRefOf(rowFile), Fit: FitOf(rowFile, hw, ctxForFit),
             Structure: rowFile.Header is { } sh ? ModelStructure.Cell(sh) : null,
@@ -56,7 +56,8 @@ internal static class LocalShelf
 
     //the pane's folder lines and the folded frame's file, each file priced by FitOf as its row is. a row whose file no rule chose draws no pick mark
     public static Gatto.Cli.Setup.Tui.ModelFacts FactsFor(LocalGroup g, FoundModel rowFile, bool ruled, HardwareClass? hw,
-        int ctxForFit = 4096, Gatto.Terminal.HaveMark have = Gatto.Terminal.HaveMark.None, string? haveId = null)
+        int ctxForFit = 4096, Gatto.Terminal.HaveMark have = Gatto.Terminal.HaveMark.None, string? haveId = null,
+        string? publisher = null)
     {
         var dir = System.IO.Path.GetDirectoryName(rowFile.Path);
         Gatto.Cli.Setup.Tui.PaneFile Line(FoundModel f) => new(QuantToken.Of(f.Path), f.FileBytes, FitOf(f, hw, ctxForFit),
@@ -73,7 +74,8 @@ internal static class LocalShelf
             LocalPath: dir is { Length: > 0 } ? dir + System.IO.Path.DirectorySeparatorChar : null,
             FilesHere: FilesWords(rowFile),
             Have: have,
-            HaveId: haveId);
+            HaveId: haveId,
+            Publisher: publisher);
     }
 
     //say how many of the set's files are here, a partial set has to read as partial before the user picks it

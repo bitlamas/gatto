@@ -564,4 +564,37 @@ public class ModelScaffoldTests : IDisposable
         //what replaces the directory must still load as a model.
         Assert.Equal(again, Model.Load(_dir, again).Id);
     }
+
+    private const string QatRepo = "unsloth/gemma-4-E2B-it-qat-GGUF";
+
+    //the repo the user picked names a fetched model, since a header name such as mobile wNa8o8 -> gguf is not the model the shelf showed
+    [Fact]
+    public void A_FETCHED_MODEL_TAKES_ITS_ID_FROM_THE_REPO()
+    {
+        var fetched = ModelScaffold.Create(_dir, Fixture("tiny.gguf"), port: 1235,
+            source: new ModelSource(QatRepo, "tiny.gguf"));
+
+        Assert.Equal("gemma-4-e2b-it-qat", fetched);
+        //the twin: a file found on disk has no repo and keeps the header's name, so a source-blind id would pass the line above
+        Assert.NotEqual(fetched, ModelScaffold.Create(_dir, SecondCopy(), port: 1235));
+    }
+
+    //the clash check names the id the scaffold will write, so a second quant of a fetched model finds the model it joins
+    [Fact]
+    public void THE_CLASH_CHECK_DERIVES_THE_SAME_ID_FROM_THE_REPO()
+    {
+        ModelScaffold.Create(_dir, Fixture("tiny.gguf"), port: 1235, source: new ModelSource(QatRepo, "tiny.gguf"));
+
+        Assert.Equal((IdClash.SameModel, "gemma-4-e2b-it-qat"), ModelScaffold.ClashFor(_dir, SecondCopy(), QatRepo));
+    }
+
+    [Theory]
+    [InlineData("unsloth/gemma-4-E2B-it-qat-GGUF", "gemma-4-e2b-it-qat")]
+    [InlineData("bartowski/Qwen_Qwen3.5-9B-GGUF", "qwen-qwen3.5-9b")]
+    [InlineData("ggml-org/gemma-3-1b-it-gguf", "gemma-3-1b-it")]
+    [InlineData("someone/plain-model", "plain-model")]
+    public void A_REPO_NAMES_ITS_MODEL_WITHOUT_ITS_ORG_AND_ITS_GGUF_SUFFIX(string repo, string id)
+    {
+        Assert.Equal(id, Gatto.Core.Models.ModelId.FromRepo(repo));
+    }
 }

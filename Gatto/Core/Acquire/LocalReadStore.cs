@@ -10,7 +10,7 @@ internal sealed record LocalScanFacts(GgufHeader Header, long? StreamedBytes);
 internal sealed class LocalReadStore(string homePath)
 {
     //the schema version is in the folder name, so a change to what an entry means starts a new folder and the old one is never read
-    internal const string Folder = "local-reads-1";
+    internal const string Folder = "local-reads-2";
 
     private readonly DiskEntries _entries = new(homePath, Folder);
 
@@ -69,7 +69,8 @@ internal sealed class LocalReadStore(string homePath)
                 SizeLabel: Text("size_label"), ExpertCount: Number("expert_count"),
                 ExpertUsedCount: Number("expert_used_count"), Tensors: null,
                 EmbeddingLengthPerLayerInput: Number("embedding_length_per_layer_input"),
-                FullAttentionInterval: Number("full_attention_interval"));
+                FullAttentionInterval: Number("full_attention_interval"),
+                QuantizedBy: Text("quantized_by"));
             var streamed = Number("streamed");
             if (!ok) return false;
             facts = new LocalScanFacts(header, streamed);
@@ -101,6 +102,7 @@ internal sealed class LocalReadStore(string homePath)
             Number("expert_used_count", h.ExpertUsedCount);
             Number("embedding_length_per_layer_input", h.EmbeddingLengthPerLayerInput);
             Number("full_attention_interval", h.FullAttentionInterval);
+            Text("quantized_by", h.QuantizedBy);
             Number("streamed", facts.StreamedBytes);
         });
 }

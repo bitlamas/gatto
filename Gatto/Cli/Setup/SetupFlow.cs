@@ -3058,6 +3058,18 @@ internal sealed class SetupFlow(ISetupProbes probes)
         return DiscoveredScreen(heading: null, invitation: true);
     }
 
+    //a publisher is uploader text, cut like a local file name so a long one cannot push the pane
+    private const int PublisherCells = 24;
+
+    //a projector beside a file is this model's only when every model file in that folder is this model's, a shared folder such as Downloads proves nothing
+    private bool OnlyModelIn(string ggufPath, string groupName)
+    {
+        var folder = System.IO.Path.GetDirectoryName(ggufPath);
+        return _discovered
+            .Where(f => string.Equals(System.IO.Path.GetDirectoryName(f.Path), folder, StringComparison.OrdinalIgnoreCase))
+            .All(f => string.Equals(LocalShelf.ModelNameOf(System.IO.Path.GetFileName(f.Path)), groupName, StringComparison.OrdinalIgnoreCase));
+    }
+
     //the block that replaces the table when a chip hides every row, keep it in the view because body rows render above the shelf
     private ShelfView LocalView(IReadOnlyList<(LocalShelf.LocalGroup Group, FoundModel File, bool Ruled)> shown,
         Gatto.Core.Hardware.HardwareClass? hw, int total, string? loadedPath, Func<string, string?> existing,
@@ -3066,18 +3078,27 @@ internal sealed class SetupFlow(ISetupProbes probes)
         //read once here, the answer comes from probing the running server
         var loadedId = LoadedId();
 
+        //resolve a local row through ExistingModelFor once, and read its profile and its folder once, so the row and its facts share one reading
+        var read = shown.Select(s =>
+        {
+            var id = existing(s.File.Path);
+            var added = id is { } known ? probes.Added(known) : null;
+            var vision = added?.HasProjector == true
+                || probes.ProjectorBeside(s.File.Path) && OnlyModelIn(s.File.Path, s.Group.Name);
+            var publisher = added?.RepoId is { Length: > 0 } repo ? repo.Split('/')[0] : s.File.Header?.QuantizedBy;
+            return (Id: id, Vision: vision, Publisher: publisher is { Length: > 0 } named
+                ? Gatto.Terminal.TermText.TruncateCells(Gatto.Terminal.TermText.Sanitize(named), PublisherCells, Glyphs) : null);
+        }).ToList();
+
         return new ShelfView(
             //the badge register is keyed by file name and the badge stays on the row of the badged file, so a row asks by its file's name on disk
-            [.. shown.Select(s => LocalShelf.Row(s.Group, s.File, hw, badge: probes.BadgeForFile(System.IO.Path.GetFileName(s.File.Path))))],
+            [.. shown.Select((s, i) => LocalShelf.Row(s.Group, s.File, hw, badge: probes.BadgeForFile(System.IO.Path.GetFileName(s.File.Path)),
+                vision: read[i].Vision))],
             Shape,
             Families: Families.Load().Ladder, Family: _localFamily ?? "all",
             Total: total,
-            //resolve a local row through ExistingModelFor and reuse the answer, the mark and the id are two readings of one lookup
-            Facts: [.. shown.Select(s =>
-            {
-                var id = existing(s.File.Path);
-                return LocalShelf.FactsFor(s.Group, s.File, s.Ruled, hw, have: HaveFor(id, loadedId, s.File.Path, loadedPath), haveId: id);
-            })],
+            Facts: [.. shown.Select((s, i) => LocalShelf.FactsFor(s.Group, s.File, s.Ruled, hw,
+                have: HaveFor(read[i].Id, loadedId, s.File.Path, loadedPath), haveId: read[i].Id, publisher: read[i].Publisher))],
             Source: ShelfSource.Local,
             SmallestFirst: _smallestFirst,
             Folder: _scanTyped,
@@ -4595,7 +4616,7 @@ internal sealed class SetupFlow(ISetupProbes probes)
         }
 
         //a different file holding the same id is a question only the user can answer, don't merge it with the reuse above
-        var (clash, clashId) = probes.ClashFor(model.Path, Picked?.RowFile?.RepoId);
+        var (clash, clashId) = probes.ClashFor(model.Path, SourceOf(model)?.RepoId);
         if (clashId is { Length: > 0 } held)
         {
             _clashingModelId = held;
@@ -4899,6 +4920,10 @@ internal sealed class SetupFlow(ISetupProbes probes)
         return Done();
     }
 
+    //the repo a model came from, only for the file the user picked. the id and the clash check both read this one answer
+    private Gatto.Roles.ModelSource? SourceOf(FoundModel model) =>
+        Picked is { RowFile: { } file, RowQuant: { } quant } && Answers(model, quant) ? new Gatto.Roles.ModelSource(file.RepoId, quant.FileName) : null;
+
     //the model intent in one place, replacing or not, so the collision branch can't drift on context, port or the pause
 
     //this records an intent and pauses for the writer. if a screen ever sits between an intent and its pause, add the back-walk test in the same commit
@@ -4909,7 +4934,7 @@ internal sealed class SetupFlow(ISetupProbes probes)
         {
             CreateModel = new WriteSet.Model(model.Path, Port: DefaultPort,
                 Context: probes.ContextFor(model.Path), Replace: replace,
-                Source: Picked is { RowFile: { } file, RowQuant: { } quant } && Answers(model, quant) ? new Gatto.Roles.ModelSource(file.RepoId, quant.FileName) : null,
+                Source: SourceOf(model),
                 PinGpu: probes.ServeOnlyGpu()),
         };
         //pause for the writer before offering anything, no screen may audition a model that isn't on disk yet

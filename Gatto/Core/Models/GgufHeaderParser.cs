@@ -19,7 +19,8 @@ internal sealed record GgufHeader(
     string? ChatTemplate, long? TensorCount = null,   //null only when the header was cut short, and 0 means the file holds no tensors and is no model
     string? SizeLabel = null, long? ExpertCount = null, long? ExpertUsedCount = null,   //the size label is uploader text and reaches a screen only through ModelStructure's anchored shapes, the kind cell and the params cell. a dense model has no expert count at all
     GgufTensors? Tensors = null, long? EmbeddingLengthPerLayerInput = null,
-    long? FullAttentionInterval = null)   //a hybrid architecture puts full attention on one block in this many, and only those keep a cache
+    long? FullAttentionInterval = null,   //a hybrid architecture puts full attention on one block in this many, and only those keep a cache
+    string? QuantizedBy = null)   //who made the quants, uploader text that is sanitized before any screen shows it
 {
     //an architecture that declares a per-layer input streams a table the GPU never holds, so a fit priced without its tensor table prices too much
     public bool DeclaresPerLayerInput => EmbeddingLengthPerLayerInput is > 0;
@@ -79,7 +80,7 @@ internal static class GgufHeaderParser
     {
         private readonly byte[] _scratch = new byte[8];
         private readonly Dictionary<string, long> _ints = new(StringComparer.Ordinal);
-        private string? _arch, _name, _chatTemplate, _sizeLabel, _malformation;
+        private string? _arch, _name, _chatTemplate, _sizeLabel, _quantizedBy, _malformation;
         private long? _tensorCount;
         private GgufTensors? _tensors;
 
@@ -108,7 +109,7 @@ internal static class GgufHeaderParser
                 if (!TryReadU32(out var type)) return Result(GgufOutcome.Truncated);
 
                 if (type == 8 && key is "general.architecture" or "general.name"
-                    or "general.size_label" or "tokenizer.chat_template")
+                    or "general.size_label" or "general.quantized_by" or "tokenizer.chat_template")
                 {
                     step = ReadString(out var text);
                     if (step != Step.Ok) return Result(Outcome(step));
@@ -118,6 +119,7 @@ internal static class GgufHeaderParser
                         case "general.name": _name = text; break;
                         //stored without interpretation, the rule for whether it may be shown lives in ModelStructure
                         case "general.size_label": _sizeLabel = text; break;
+                        case "general.quantized_by": _quantizedBy = text; break;
                         default: _chatTemplate = text; break;
                     }
                     continue;
@@ -344,7 +346,8 @@ internal static class GgufHeaderParser
             Get(".block_count"), Get(".attention.head_count"), Get(".attention.head_count_kv"),
             Get(".embedding_length"), Get(".attention.key_length"), Get(".attention.value_length"),
             _chatTemplate, _tensorCount,
-            _sizeLabel, Get(".expert_count"), Get(".expert_used_count"), _tensors, Get(PerLayerInput), Get(".full_attention_interval"));
+            _sizeLabel, Get(".expert_count"), Get(".expert_used_count"), _tensors, Get(PerLayerInput), Get(".full_attention_interval"),
+            _quantizedBy);
 
         private long? Get(string suffix) =>
             _arch is not null && _ints.TryGetValue(_arch + suffix, out var v) ? v : null;

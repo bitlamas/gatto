@@ -48,7 +48,8 @@ internal sealed record ModelFacts(
     string? LocalPath = null,
     string? FilesHere = null,
     HaveMark Have = HaveMark.None,
-    string? HaveId = null);
+    string? HaveId = null,
+    string? Publisher = null);   //who published a local file, sanitized by its producer, null when nothing on disk says
 
 //the pane draws one model's facts, keyed by the cursor. every line states a fact, and only the footer's fewer params = faster speaks for the column
 internal static class Pane
@@ -127,6 +128,9 @@ internal static class Pane
             ? PaintedRow.Of(PathTail(dir, width, g), RunInk.Dim)
             : PaintedRow.Of($"by {r.RowOffer?.Org}", RunInk.Dim));
 
+        //who published the file, only when its profile or its header says
+        if (f.Publisher is { Length: > 0 } by) rows.Add(PaintedRow.Of(TermText.TruncateCells($"by {by}", width, g), RunInk.Dim));
+
         //what the user already has: the pane's first fact, since it is about the user rather than about the model
         if (f.Have != HaveMark.None) rows.Add(HaveRow(r, f, width, g));
 
@@ -136,6 +140,9 @@ internal static class Pane
             rows.Add(new PaintedRow([
                 new Run("context up to ", RunInk.Plain),
                 new Run(ctx.ToString("N0", System.Globalization.CultureInfo.InvariantCulture), RunInk.Accent)]));
+
+        //vision is said only when a projector was found for the file, since its absence on disk says nothing about the model
+        if (r.Vision) rows.Add(new PaintedRow([new Run($"{g.Vision} vision {g.Dot} ", RunInk.Dim), new Run("can see images")]));
 
         rows.Add(new PaintedRow(Reads(r, f, g)));
 
@@ -472,7 +479,8 @@ internal static class Pane
             PaintedRow.Of(""),
             PaintedRow.Of(string.Concat(Enumerable.Repeat(g.Rule, Math.Max(1, width))), RunInk.Dim),
             f.LocalPath is not null
-                ? new PaintedRow([new Run("  "), new Run(Name(r), RunInk.Bright)])
+                ? new PaintedRow([new Run("  "), new Run(Name(r), RunInk.Bright),
+                    .. f.Publisher is { Length: > 0 } by ? [new Run($"  {g.Dot}  by {by}", RunInk.Dim)] : (IReadOnlyList<Run>)[]])
                 : new PaintedRow([
                     new Run("  "),
                     new Run(Name(r), RunInk.Bright),
@@ -492,8 +500,8 @@ internal static class Pane
             facts2.Add(new Run(SearchRow.Ctx(ctx), RunInk.Accent));
             lead = false;
         }
-        //a local row says nothing about vision, its files carry no reading of it
-        if (f.LocalPath is null)
+        //a local row says vision only when a projector was found, and never text only, its files carry no reading of that
+        if (f.LocalPath is null || r.Vision)
         {
             facts2.Add(new Run((lead ? "" : $" {g.Dot} ") + (r.Vision ? $"{g.Vision} vision" : "text only"), RunInk.Dim));
             lead = false;

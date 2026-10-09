@@ -24,7 +24,7 @@ internal static class WriteSetApply
             //derive the id here and pass it on Id, so the scaffold doesn't derive a second id for the same model
             var modelIdForFolder = wantsModel.Id
                 ?? Gatto.Core.Models.ModelId.Derive(
-                    Gatto.Core.Models.GgufReader.Read(wantsModel.GgufPath), wantsModel.GgufPath);
+                    Gatto.Core.Models.GgufReader.Read(wantsModel.GgufPath), wantsModel.GgufPath, wantsModel.Source?.RepoId);
 
             var moved = MoveModel(wantsModel.GgufPath,
                 Gatto.Core.Acquire.ModelLocation.ForModelIn(dest, modelIdForFolder), writes.Projector);

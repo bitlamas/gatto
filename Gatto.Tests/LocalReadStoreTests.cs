@@ -128,4 +128,30 @@ public class LocalReadStoreTests : IDisposable
         Assert.Null(cold.ChatTemplate);
         Assert.Equal(cold, warm);
     }
+
+    //who quantized the file is read from the header and kept, so a warm run still names the local row's publisher
+    [Fact]
+    public void THE_QUANTIZER_IS_READ_COLD_AND_KEPT_WARM()
+    {
+        var path = Path.Combine(Models, "q-Q4_K_M.gguf");
+        Directory.CreateDirectory(Models);
+        File.WriteAllBytes(path, GgufTestBytes.SyntheticHeader(kv =>
+        {
+            kv.Str("general.architecture", "qwen3");
+            kv.Str("general.quantized_by", "unsloth");
+            kv.U32("qwen3.context_length", 4096);
+        }));
+        var disk = new LocalReadStore(Home);
+
+        Assert.Equal("unsloth", Assert.Single(Scan(disk)).Header!.QuantizedBy);
+        Garble(path);
+        Assert.Equal("unsloth", Assert.Single(Scan(disk)).Header!.QuantizedBy);
+    }
+
+    //an entry kept before the quantizer was read has no such field, so the store reads from a folder of its own and never mistakes absent for none
+    [Fact]
+    public void THE_STORE_KEEPS_ITS_ENTRIES_IN_A_FOLDER_THAT_KNOWS_THE_QUANTIZER()
+    {
+        Assert.Equal("local-reads-2", LocalReadStore.Folder);
+    }
 }

@@ -11,6 +11,9 @@ internal sealed record ScanResult(
     IReadOnlyList<Gatto.Core.Acquire.FoundModel> Found,
     IReadOnlyList<string> Roots);
 
+//what an added model's profile recorded, which a local row reads for its publisher and its vision
+internal sealed record AddedFacts(string? RepoId, bool HasProjector);
+
 //everything the wizard learns about the world, behind the one seam the tests fake. a probe never writes, and each segment asks its question before it renders
 internal interface ISetupProbes
 {
@@ -160,6 +163,12 @@ internal interface ISetupProbes
 
     //the active file name for a model id, read from the profile's ActiveFile.Of. null drops the row, and the Hub row is null on adoption and discovery paths
     string? ActiveFileFor(string modelId) => null;
+
+    //what a model's profile recorded: the repo it was fetched from and whether it names a projector. null when the profile will not load
+    AddedFacts? Added(string modelId) => null;
+
+    //true when a projector, by its file name, sits in the folder beside this file. no header is read, since the local shelf asks it of every row
+    bool ProjectorBeside(string ggufPath) => false;
 
     //the active GGUF's path and size in one read, so the row cannot describe another file. the folder comes from this path, and verified is never claimed
     (string Path, long Bytes)? ActiveModelFile(string modelId) => null;

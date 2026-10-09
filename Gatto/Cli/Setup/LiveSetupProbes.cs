@@ -415,6 +415,30 @@ internal sealed class LiveSetupProbes(string homePath, Gatto.Terminal.GlyphSet g
         }
     }
 
+    //the repo and projector the profile recorded, from the same Model.Load the other reads use, null when it will not load
+    public AddedFacts? Added(string modelId)
+    {
+        try
+        {
+            var profile = Model.Load(System.IO.Path.Combine(homePath, "models"), modelId).Profile;
+            return new AddedFacts(profile.Source?.RepoId, profile.MmProj is { Length: > 0 });
+        }
+        catch (Exception) { return null; }
+    }
+
+    //the name rule alone, the header pass ProjectorFor falls back to would read every sibling of every row
+    public bool ProjectorBeside(string ggufPath)
+    {
+        try
+        {
+            var dir = System.IO.Path.GetDirectoryName(ggufPath);
+            return dir is { Length: > 0 } && Directory.Exists(dir)
+                && Directory.EnumerateFiles(dir, "*.gguf").Any(p =>
+                    !string.Equals(p, ggufPath, StringComparison.OrdinalIgnoreCase) && ModelDiscovery.IsProjector(p, header: null));
+        }
+        catch (Exception) { return false; }
+    }
+
     //reads the file name from the profile the writes already produced, so the check runs against the model on disk
     public string? ActiveFileFor(string modelId)
     {
@@ -920,9 +944,8 @@ internal sealed class LiveSetupProbes(string homePath, Gatto.Terminal.GlyphSet g
         var encoder = Gatto.Core.Acquire.ProjectorPick.Best(row.RowProjectors);
         if (encoder is not null && !Gatto.Core.Acquire.HubFetch.CanVerify(encoder)) return null;
 
-        //take the id from the repo through the same slug rule the scan uses, so the fetch's folder and the scan's id agree
-        var id = Gatto.Core.Models.ModelId.Slug(
-            Gatto.Cli.Setup.SetupFlow.ModelDisplayName(file.RepoId));
+        //take the id from the repo through the rule the scaffold uses, so the fetch's folder and the model's id are one name
+        var id = Gatto.Core.Models.ModelId.FromRepo(file.RepoId);
         return new(file.RepoId, id,
             ModelLocation.ForModel(homePath, SafeWeightsDir(), id) + Path.DirectorySeparatorChar,
             weights, encoder);

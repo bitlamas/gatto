@@ -49,7 +49,7 @@ public static class ModelScaffold
         if (id is not null) ValidateId(id);
 
         var md = GgufReader.Read(resolved);
-        id ??= DeriveId(md, resolved);
+        id ??= DeriveId(md, resolved, source?.RepoId);
 
         var dir = Path.Combine(modelsDir, id);
         if (Directory.Exists(dir))
@@ -171,14 +171,14 @@ public static class ModelScaffold
     }
 
     //the id this file would take when another file already holds it, null when the id is free or the same file has it
-    public static string? CollidingModel(string modelsDir, string ggufPath)
+    public static string? CollidingModel(string modelsDir, string ggufPath, string? repoId = null)
     {
         string resolved;
         try { resolved = ResolveShardOne(Path.GetFullPath(ggufPath)); }
         catch (Exception) { return null; }
 
         string wanted;
-        try { wanted = DeriveId(GgufReader.Read(resolved), resolved); }
+        try { wanted = DeriveId(GgufReader.Read(resolved), resolved, repoId); }
         catch (Exception) { return null; }     //an unreadable file is the scaffold's error to raise, so this returns null
 
         if (!Directory.Exists(Path.Combine(modelsDir, wanted))) return null;
@@ -199,7 +199,7 @@ public static class ModelScaffold
     public static (IdClash Kind, string? Id) ClashFor(
         string modelsDir, string ggufPath, string? incomingRepoId)
     {
-        if (CollidingModel(modelsDir, ggufPath) is not { } id) return (IdClash.Free, null);
+        if (CollidingModel(modelsDir, ggufPath, incomingRepoId) is not { } id) return (IdClash.Free, null);
 
         string? existingRepo;
         //an unloadable holder is its own answer, since a null repo would fold it into cannot-tell and offer an option that always fails
@@ -312,6 +312,6 @@ public static class ModelScaffold
     private static void ValidateId(string id) => Gatto.Core.Models.ModelId.Validate(id);
 
     //the one derivation, shared with the move site in Cli, since two derivations would be two ids for one model
-    private static string DeriveId(GgufMetadata md, string path) =>
-        Gatto.Core.Models.ModelId.Derive(md, path);
+    private static string DeriveId(GgufMetadata md, string path, string? repoId) =>
+        Gatto.Core.Models.ModelId.Derive(md, path, repoId);
 }
