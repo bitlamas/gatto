@@ -334,7 +334,7 @@ internal sealed class TuiWizardSurface : IWizardSurface, IDisposable
         //a new screen is a new wait, so a probe that answers at once draws no purr from an earlier slow one
         var whole = ScreenPainter.Paint(screen, Width, _version, _build, _glyphs, out var spot,
             screen.Command ?? _command);
-        var next = Fit(whole, RowsAvailable);
+        var next = WithHoverBand(Fit(whole, RowsAvailable));
 
         lock (_writeGate)
         {
@@ -484,6 +484,15 @@ internal sealed class TuiWizardSurface : IWizardSurface, IDisposable
                     ring.Focus(wt.Area!.Value);
                     foreach (var k in Notches(m.WheelDelta)) synthetic.Enqueue(k);
                 }
+                return (null, null);
+            }
+            if (m.Kind == MouseKind.Move)
+            {
+                var over = Hover(hits, m);
+                //an option row under the pointer is the cursor, so Enter answers the row the pointer rests on. a row in another area leaves the focus alone
+                if (!footerOnly && over is { Kind: HitKind.OptionRow } o && (o.Area is null || o.Area == ring.Current)
+                    && !ShelfControls.IsFolderDoor(c, o.Index))
+                    cursor = o.Index;
                 return (null, null);
             }
             if (Pressed(m, hits, cursor) is not { } tag) return (null, null);
@@ -904,6 +913,8 @@ internal sealed class TuiWizardSurface : IWizardSurface, IDisposable
         HitMap hits;
         lock (_writeGate) hits = _lastHits;
         if (hits.Width != Width || hits.Height != _surface.Height) return null;
+        //a typed screen's hover bands a footer word only, so a pointer never pulls the keys out of the door
+        if (m.Kind == MouseKind.Move) { Hover(hits, m); return null; }
         if (Pressed(m, hits, ring.Current == Region.List && offer is not null ? 0 : -1) is not { } tag) return null;
         switch (tag.Kind)
         {
@@ -1001,12 +1012,60 @@ internal sealed class TuiWizardSurface : IWizardSurface, IDisposable
             budget = ArmWait(left);
         }
 
-        var clock = _clock?.Invoke(isWatch) ?? new ConsolePollClock(_input);
+        var clock = _clock?.Invoke(isWatch) ?? new ConsolePollClock(Ready);
         return clock.WaitForKey(budget) ? (false, NextEvent()) : (false, null);
     }
 
-    //one read for every loop: a key goes down the key paths, a mouse event to the hit test
-    private InputEvent NextEvent() => _input.Read();
+    //one read for every loop: a move that changed the hover first, then a key down the key paths or a mouse event to the hit test
+    private InputEvent NextEvent()
+    {
+        if (_hoverMove is not { } move) return _input.Read();
+        _hoverMove = null;
+        return move;
+    }
+
+    //a wait ends on a key, a press or a wheel as before, or on a pointer that came to rest on another hover target. a move inside one target wakes nothing
+    private bool Ready()
+    {
+        if (_input.TakeLatestMove() is { } move)
+        {
+            HitMap hits;
+            lock (_writeGate) hits = _lastHits;
+            if (!Equals(HoverAt(hits, move), _hovering)) { _hoverMove = move; return true; }
+        }
+        return _input.EventAvailable;
+    }
+
+    //the move a wait woke on, handed to the next read so the loop acts on it
+    private MouseEvent? _hoverMove;
+
+    //what the pointer rests on, as the hover sees it: an option row by index or a footer word by key, nothing else
+    private (HitKind Kind, int Index, string? Key)? _hovering;
+
+    //the footer word on the band, read by every paint, null while the pointer rests on no word
+    private string? _hoverKey;
+
+    private static (HitKind Kind, int Index, string? Key)? HoverAt(HitMap hits, MouseEvent m) =>
+        hits.At(m.X, m.Y)?.Tag is { Kind: HitKind.OptionRow or HitKind.FooterKey } t ? (t.Kind, t.Index, t.Key) : null;
+
+    //records where the pointer rests and bands the footer word under it, returning the tag a caller may act on
+    private HitTag? Hover(HitMap hits, MouseEvent m)
+    {
+        _hovering = HoverAt(hits, m);
+        var tag = hits.At(m.X, m.Y)?.Tag;
+        _hoverKey = tag is { Kind: HitKind.FooterKey, Key: { } word } ? word : null;
+        return _hovering is null ? null : tag;
+    }
+
+    //the footer word under the pointer goes on the band, found by the key the runs carry for a press, so the band and the press can't name different words
+    private IReadOnlyList<PaintedRow> WithHoverBand(IReadOnlyList<PaintedRow> rows)
+    {
+        if (_hoverKey is not { } word || rows.Count == 0) return rows;
+        var footer = rows[^1];
+        if (!footer.Runs.Any(r => r.Tag is string k && k == word)) return rows;
+        return [.. rows.Take(rows.Count - 1),
+            new PaintedRow([.. footer.Runs.Select(r => r.Tag is string k && k == word ? r with { Band = true } : r)], footer.Fit)];
+    }
 
     private readonly int _doubleClickMs;
 
@@ -1025,6 +1084,9 @@ internal sealed class TuiWizardSurface : IWizardSurface, IDisposable
         _mouseScreen = screen;
         _lastPress = null;
         _wheelLeft = 0;
+        _hovering = null;
+        _hoverKey = null;
+        _hoverMove = null;
     }
 
     private string? _mouseScreen;
@@ -1071,7 +1133,7 @@ internal sealed class TuiWizardSurface : IWizardSurface, IDisposable
     private bool KeyOrResize()
     {
         if (!_surface.ReportsResize) return true;
-        var poll = _clock?.Invoke(false) ?? new ConsolePollClock(_input);
+        var poll = _clock?.Invoke(false) ?? new ConsolePollClock(Ready);
         while (!poll.WaitForKey(ResizePoll))
             if (Width != _paintedWidth || _surface.Height != _paintedHeight) return false;
         return true;
@@ -1567,7 +1629,7 @@ internal sealed class TuiWizardSurface : IWizardSurface, IDisposable
             : null,
         Keys: KeysFor(_glyphs, c, ring, width),
         //what sits right of the keys: a screen's own sentence, which is drawn whole or not at all, or the shelf's marks
-        Legend: c.Legend is { Length: > 0 } said ? new Legend(LegendKind.Sentence, said)
+        Legend: c.Legend is { Length: > 0 } said ? new Legend(said)
             //a shelf that fetched nothing draws no legend either, since there are no marks to explain, while an empty search keeps one
             : c.Shelf is { NothingFetched: false, Loading: false } lv ? FitMarks.LegendFor(lv.Shape, _glyphs) : null,
         //the armed sentence belongs to the screen: leaving setup costs nothing, and a stopped fetch prices what has landed. either chord names the same price

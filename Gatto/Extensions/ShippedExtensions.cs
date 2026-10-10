@@ -102,6 +102,8 @@ public static class ShippedExtensions
         "71f381baac1c5a2ee2a377eb308aa431efecd92393af0123a20e5a48da3fb5bf",
         //ask_user.csx before its width alias named the terminal library, which an installed copy can no longer compile against
         "b07b989999757448219958fa71d5d913abb97340daef614812aa6fd7e7e8203a",
+        //ask_user.csx while it refused a header over 32 chars
+        "f8a8110df3bbc9dd4535cee47d75c70a1899815e64ee1b87334a84505efdeb6b",
     };
 
     //hashes of superseded shipped revisions, an unmodified copy that matches one is safely overwritten by the current text

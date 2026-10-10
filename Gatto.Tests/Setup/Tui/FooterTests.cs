@@ -28,7 +28,7 @@ public class FooterTests
     public void The_legend_rides_right_aligned_behind_an_ascii_pipe()
     {
         //the legend is right-aligned and keeps the margin, so it sits flush to the frame's right edge
-        var row = Footer.Compose(100, Shelf, new Legend(LegendKind.Marks, Marks));
+        var row = Footer.Compose(100, Shelf, new Legend(Marks));
         Assert.EndsWith("| " + Marks, row, StringComparison.Ordinal);
         Assert.Equal(Margins.Inside(100), Gatto.Terminal.UnicodeWidth.Of(row));
     }
@@ -37,7 +37,7 @@ public class FooterTests
     [Fact]
     public void A_SENTENCE_legend_that_does_not_fit_DROPS_rather_than_ellipsing()
     {
-        var row = Footer.Compose(60, Shelf, new Legend(LegendKind.Sentence, Sentence));
+        var row = Footer.Compose(60, Shelf, new Legend(Sentence));
         Assert.DoesNotContain("…", row, StringComparison.Ordinal);
         Assert.DoesNotContain("|", row, StringComparison.Ordinal);
         Assert.Equal(Footer.Compose(60, Shelf), row);
@@ -47,7 +47,7 @@ public class FooterTests
     public void A_MARK_legend_drops_entirely_below_the_floor()
     {
         //a mark legend that does not fit drops whole, the row stays the keys row alone
-        var row = Footer.Compose(70, Shelf, new Legend(LegendKind.Marks, Marks));
+        var row = Footer.Compose(70, Shelf, new Legend(Marks));
         Assert.Equal(Footer.Compose(70, Shelf), row);
     }
 
@@ -70,7 +70,7 @@ public class FooterTests
         for (var w = floor; w <= 120; w++)
         {
             foreach (var leg in new Legend?[]
-                { null, new Legend(LegendKind.Marks, Marks), new Legend(LegendKind.Sentence, Sentence) })
+                { null, new Legend(Marks), new Legend(Sentence) })
             {
                 var row = Footer.Compose(w, keys, leg);
                 Assert.DoesNotContain('\n', row);
@@ -85,7 +85,7 @@ public class FooterTests
     [Fact]
     public void AND_THE_TRIM_LETS_THE_IN_SESSION_LEGEND_RENDER_AT_100()
     {
-        var row = Footer.Compose(100, InSession, new Legend(LegendKind.Sentence, "fewer params = faster"));
+        var row = Footer.Compose(100, InSession, new Legend("fewer params = faster"));
 
         Assert.Contains("fewer params = faster", row, StringComparison.Ordinal);
         Assert.True(Gatto.Terminal.UnicodeWidth.Of(row) <= 100,
@@ -121,7 +121,7 @@ public class FooterTests
         var partial = new List<string>();
         for (var w = 60; w <= 140; w++)
         {
-            var row = Footer.Compose(w, Shelf, new Legend(LegendKind.Marks, Marks));
+            var row = Footer.Compose(w, Shelf, new Legend(Marks));
             if (row.Contains('…')) truncated.Add($"{w}: {row.TrimEnd()}");
             if (row.Contains('|') && !row.Contains(Marks, StringComparison.Ordinal))
                 partial.Add($"{w}: {row.TrimEnd()}");
@@ -139,7 +139,7 @@ public class FooterTests
     [Fact]
     public void A_MARK_LEGEND_THAT_FITS_IS_STILL_DRAWN()
     {
-        var row = Footer.Compose(120, Shelf, new Legend(LegendKind.Marks, Marks));
+        var row = Footer.Compose(120, Shelf, new Legend(Marks));
 
         Assert.EndsWith("| " + Marks, row, StringComparison.Ordinal);
     }

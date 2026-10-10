@@ -33,7 +33,7 @@ public sealed class CheckpointGate(
         //armed with no terminal to ask through fails closed, --yes governs the permission gate only and must not stand in for --auto
         if (prompter is null)
             throw new InvalidOperationException(
-                "checkpoint armed and no interactive terminal — pass --auto to run commits unattended");
+                "checkpoint armed and no interactive terminal — pass --auto, and --yes or a standing grant for the command, to run commits unattended");
 
         var request = new PermissionRequest("checkpoint", command + "\n" + statusOutput, GrantOffer: null);
         //deny and cancel both refuse, a withdrawn question grants nothing the way a refusal does

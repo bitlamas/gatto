@@ -3,16 +3,8 @@ namespace Gatto.Terminal;
 //one key and what it does, words only. the shed rank says when a key gives up, 0 for never, a rank because the arrows key comes from the glyph table
 public readonly record struct FooterKey(string Key, string Verb, int Shed = 0);
 
-//what sits right of the keys. the footer draws both kinds the same way, whole or not at all
-public enum LegendKind
-{
-    //glyphs with meanings, the GPU, RAM and too-big marks
-    Marks,
-    //a sentence, kept whole or dropped entirely, since an ellipsed half of it says nothing and still costs the room
-    Sentence,
-}
-
-public readonly record struct Legend(LegendKind Kind, string Text);
+//what sits right of the keys, marks or a sentence, drawn whole or not at all since an ellipsed half says nothing and still costs the room
+public readonly record struct Legend(string Text);
 
 //the footer is one row, always, so a hint key sheds instead of wrapping. the separator is an ASCII bar, the idiom the REPL footer already uses
 public static class Footer

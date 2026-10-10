@@ -24,7 +24,12 @@ public static class AgentDefinitions
             byName[def.Name] = def;
 
         foreach (var def in LoadDir(projectAgentsDir, builtinToolNames, diagnostic))
-            byName[def.Name] = def;   //the project loop runs last, so a project file wins
+        {
+            //the project loop runs last, so a project file wins, and says so since opening a project must not swap an agent unseen
+            if (byName.ContainsKey(def.Name))
+                diagnostic($"agent '{def.Name}' at {Path.Combine(projectAgentsDir, def.Name + ".md")} overrides the home agent of the same name");
+            byName[def.Name] = def;
+        }
 
         return byName.Values.OrderBy(d => d.Name, StringComparer.Ordinal).ToList();
     }

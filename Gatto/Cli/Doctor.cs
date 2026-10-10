@@ -143,9 +143,8 @@ public sealed class Doctor(
         }
         else if (localModel is null)
         {
-            return new CheckResult(false,
-                "server reachable: no local.base_url and no defaults.local.model to derive a port from " + g.Dot + " " +
-                "run: set defaults.local.model in gatto.json, or set an explicit \"base_url\" on the \"local\" endpoint");
+            //no address and no model to take a port from is a home before setup, so setup is the remedy and not a gatto.json edit
+            return new CheckResult(false, "server reachable: no model is set up " + g.Dot + " run: gatto setup");
         }
         else if (!loadedModels.TryGetValue(localModel, out var active) || active.Model is null)
         {

@@ -629,6 +629,14 @@ internal sealed class LiveSetupProbes(string homePath, Gatto.Terminal.GlyphSet g
         Gatto.Roles.ModelScaffold.ModelForHubRow(
             System.IO.Path.Combine(homePath, "models"), repoId, ggufFileName);
 
+    //the address a launch would talk to, the endpoint's base_url or else the default model's own port, null when neither reads
+    private string? DefaultEndpointUrl(GattoConfig config, Gatto.Core.Client.EndpointConfig ep)
+    {
+        if (ep.BaseUrl is { Length: > 0 } url) return url;
+        if (config.DefaultModel is not { } id) return null;
+        return $"http://127.0.0.1:{Model.Load(System.IO.Path.Combine(homePath, "models"), id).Profile.Port}";
+    }
+
     //asks the same Model.MatchesLoaded test the picker uses, answers null on any doubt, and starts no server to do it
     public string? LoadedModelId()
     {
@@ -637,7 +645,7 @@ internal sealed class LiveSetupProbes(string homePath, Gatto.Terminal.GlyphSet g
             var config = GattoConfig.Load(homePath);
             var endpointName = config.DefaultEndpoint ?? "local";
             if (!config.Endpoints.TryGetValue(endpointName, out var ep)) return null;
-            if (ep.BaseUrl is not { Length: > 0 } baseUrl) return null;
+            if (DefaultEndpointUrl(config, ep) is not { } baseUrl) return null;
 
             using var http = new HttpClient { Timeout = Timeout.InfiniteTimeSpan };
             using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(2));
@@ -667,7 +675,7 @@ internal sealed class LiveSetupProbes(string homePath, Gatto.Terminal.GlyphSet g
             var config = GattoConfig.Load(homePath);
             var endpointName = config.DefaultEndpoint ?? "local";
             if (!config.Endpoints.TryGetValue(endpointName, out var ep)) return null;
-            if (ep.BaseUrl is not { Length: > 0 } baseUrl) return null;
+            if (DefaultEndpointUrl(config, ep) is not { } baseUrl) return null;
 
             using var http = new HttpClient { Timeout = Timeout.InfiniteTimeSpan };
             using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(2));

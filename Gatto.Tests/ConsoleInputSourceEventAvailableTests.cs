@@ -47,6 +47,33 @@ public class ConsoleInputSourceEventAvailableTests
         Assert.True(src.EventAvailable);
     }
 
+    //a hover reads where the pointer rests now, and taking it leaves the key behind the moves for the next read
+    [Fact]
+    public void THE_MOVE_AHEAD_OF_A_KEY_IS_TAKEN_AND_THE_KEY_STAYS()
+    {
+        var src = new ConsoleInputSource(new BatchConsoleReader(
+            [BatchConsoleReader.Key('a'), BatchConsoleReader.Move(1, 1), BatchConsoleReader.Move(5, 2), BatchConsoleReader.Key('k')]));
+        src.Read();   //the key ahead, so the collapsed move and the key wait
+
+        var latest = src.TakeLatestMove();
+
+        Assert.Equal((5, 2), (latest!.X, latest.Y));
+        Assert.Null(src.TakeLatestMove());
+        Assert.Equal('k', ((KeyEvent)src.Read()).Key.KeyChar);
+    }
+
+    //a key pressed before the pointer crossed to another row acts on the row it was pressed on, so a move behind it is never taken first
+    [Fact]
+    public void A_MOVE_BEHIND_A_KEY_IS_NEVER_TAKEN_BEFORE_IT()
+    {
+        var src = new ConsoleInputSource(new BatchConsoleReader(
+            [BatchConsoleReader.Move(1, 1), BatchConsoleReader.Move(5, 2), BatchConsoleReader.Key('k'), BatchConsoleReader.Move(9, 3)]));
+        src.Read();   //the first batch's held move flushes before the key, so the read takes it and the rest wait
+
+        Assert.Null(src.TakeLatestMove());
+        Assert.Equal('k', ((KeyEvent)src.Read()).Key.KeyChar);
+    }
+
     [Fact]
     public void A_WHEEL_IS_AN_EVENT()
     {

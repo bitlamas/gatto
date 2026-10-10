@@ -34,11 +34,11 @@ internal static class FitMarks
     //whether the shelf has a runs column at all. only a discrete card splits on the card from system memory, so elsewhere the column is decoration
     public static bool HasRunsColumn(MachineShape shape) => shape == MachineShape.Discrete;
 
-    //what sits right of the footer's keys. a marks legend may ellipse, a sentence one is whole or nothing, and fewer params = faster speaks for the column
+    //what sits right of the footer's keys: the runs marks on a discrete card, elsewhere fewer params = faster speaks for the column
     public static Legend LegendFor(MachineShape shape, GlyphSet? glyphs) =>
         HasRunsColumn(shape)
-            ? new Legend(LegendKind.Marks, string.Join($" {(glyphs ?? GlyphSet.Unicode).Dot} ",
+            ? new Legend(string.Join($" {(glyphs ?? GlyphSet.Unicode).Dot} ",
                 new[] { FitRegime.FitsGpu, FitRegime.FitsRamOnly }
                     .Select(f => Of(f, shape, glyphs).Text)))
-            : new Legend(LegendKind.Sentence, "fewer params = faster");
+            : new Legend("fewer params = faster");
 }

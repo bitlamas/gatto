@@ -102,15 +102,15 @@ public class MachineTests
 
     //both HasRunsColumn and LegendFor key on Discrete, so the Discrete row is what proves the other three shapes get a sentence
     [Theory]
-    [InlineData((int)MachineShape.UnifiedWithShare, (int)LegendKind.Sentence, false)]
-    [InlineData((int)MachineShape.UnifiedNoShare, (int)LegendKind.Sentence, false)]
-    [InlineData((int)MachineShape.CpuOnly, (int)LegendKind.Sentence, false)]
-    [InlineData((int)MachineShape.Discrete, (int)LegendKind.Marks, true)]
+    [InlineData((int)MachineShape.UnifiedWithShare, false)]
+    [InlineData((int)MachineShape.UnifiedNoShare, false)]
+    [InlineData((int)MachineShape.CpuOnly, false)]
+    [InlineData((int)MachineShape.Discrete, true)]
     public void THE_SHELF_READS_DISCRETE_VERSUS_NOT_AND_A_DYNAMIC_SHARE_IS_NOT_DISCRETE(
-        int shape, int kind, bool runsColumn)
+        int shape, bool runsColumn)
     {
         Assert.Equal(runsColumn, FitMarks.HasRunsColumn((MachineShape)shape));
-        Assert.Equal((LegendKind)kind, FitMarks.LegendFor((MachineShape)shape, null).Kind);
+        Assert.Equal(!runsColumn, FitMarks.LegendFor((MachineShape)shape, null).Text == "fewer params = faster");
     }
 
     //every heap in 64 MiB steps through the real flow, no row may say about 0 GB (WholeGb rounds)

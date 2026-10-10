@@ -9,6 +9,8 @@ public interface IInputSource
     bool EventAvailable => KeyDownAvailable;
     //drops queued mouse events and keeps keys, a source that queues nothing has nothing to drop
     void DropMouse() { }
+    //takes the newest waiting move and drops the older ones, for a screen that answers a hover. a source that queues nothing has none
+    MouseEvent? TakeLatestMove() => null;
 }
 
 //wraps a plain key source for the pump. each ReadKey becomes a key event, no mouse can pass through

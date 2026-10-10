@@ -281,6 +281,24 @@ public sealed class ShippedExtensionsTests : IDisposable
         Assert.Equal(current, File.ReadAllText(Full("extensions/ask_user.csx")));
     }
 
+    //the copy v0.5.3 installed refuses a header over 32 chars, so an untouched one must upgrade in place
+    [Fact]
+    public void An_untouched_pre_long_header_ask_user_is_upgraded_in_place_by_the_real_bytes()
+    {
+        var previous = File.ReadAllText(Path.Combine(
+            Census.SourceTree.RepoRoot(), "Gatto.Tests", "Fixtures", "ask_user-pre-long-header.csx"));
+        var current = ShippedExtensions.Files["extensions/ask_user.csx"];
+        Assert.NotEqual(previous, current);
+
+        Directory.CreateDirectory(Full("extensions"));
+        File.WriteAllText(Full("extensions/ask_user.csx"), previous);
+
+        ShippedExtensions.EnsureWritten(
+            _home, One("extensions/ask_user.csx", current), ShippedExtensions.HistoricalHashes.ToHashSet());
+
+        Assert.Equal(current, File.ReadAllText(Full("extensions/ask_user.csx")));
+    }
+
     //no current canonical's hash may sit in the historical set, or pristine files would be rewritten forever
     [Fact]
     public void HistoricalHashes_NeverContainACurrentCanonical()

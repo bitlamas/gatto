@@ -237,7 +237,7 @@ public class ConfigTests : IDisposable
         var cfg = GattoConfig.Load(_home);
         Assert.Equal("local", cfg.DefaultEndpoint);
         Assert.Null(cfg.DefaultModel);
-        Assert.Equal("http://127.0.0.1:1235", cfg.Endpoints["local"].BaseUrl);
+        Assert.Null(cfg.Endpoints["local"].BaseUrl);   //no seeded address, so the model's own port decides until the user writes one
     }
 
     [Theory]

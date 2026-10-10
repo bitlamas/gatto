@@ -89,6 +89,19 @@ public sealed class ConsoleInputSource(IConsoleInputReader reader) : IInputSourc
         }
     }
 
+    //the pointer's newest position without blocking, so a hover can follow it while the wait itself still ignores moves. only the moves ahead of the first other event, so a key pressed before the pointer crossed acts first
+    public MouseEvent? TakeLatestMove()
+    {
+        DrainWithoutBlocking(WaitRounds);
+        MouseEvent? latest = null;
+        while (_pending.TryPeek(out var e) && e is MouseEvent { Kind: MouseKind.Move } m)
+        {
+            _pending.Dequeue();
+            latest = m;
+        }
+        return latest;
+    }
+
     //keys survive a screen change as type-ahead, a press on the old screen must not reach the new one
     public void DropMouse()
     {

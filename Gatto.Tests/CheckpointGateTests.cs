@@ -285,7 +285,7 @@ public sealed class CheckpointGateTests
         var (_, result) = obs.Results.Single();
         Assert.True(result.IsError);
         Assert.Equal(
-            "blocked: checkpoint armed and no interactive terminal — pass --auto to run commits unattended",
+            "blocked: checkpoint armed and no interactive terminal — pass --auto, and --yes or a standing grant for the command, to run commits unattended",
             result.Text);
         Assert.False(spy.Executed);
     }

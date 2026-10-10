@@ -46,8 +46,8 @@ Gatto.Register(
             if (q.ValueKind != JsonValueKind.Object || !q.TryGetProperty("header", out var hd) || hd.ValueKind != JsonValueKind.String)
                 throw new ArgumentException("missing required parameter: header");
             var header = hd.GetString()!;
-            if (header.Length == 0)
-                throw new ArgumentException("header must not be empty");
+            if (header.Length is 0 or > 32)
+                throw new ArgumentException($"header '{header}' must be 1-32 chars");
             if (!q.TryGetProperty("options", out var opts) || opts.ValueKind != JsonValueKind.Array)
                 throw new ArgumentException("each question needs options");
             //each entry is either a bare string or an object {label, description?, recommended?}.

@@ -7,12 +7,12 @@ public static class GattoHome
             ? h
             : Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".gatto");
 
-    //no default_model, so a fresh home is unconfigured rather than wrongly configured, and $schema is first so a reader finds it on line one
+    //no default_model and no local base_url, so a fresh home is unconfigured and each model's own port decides, and $schema is first so a reader finds it on line one
     private const string StarterConfig = """
         {
           "$schema": "./gatto.schema.json",
           "endpoints": {
-            "local": { "base_url": "http://127.0.0.1:1235" }
+            "local": {}
           },
           "default_endpoint": "local"
         }

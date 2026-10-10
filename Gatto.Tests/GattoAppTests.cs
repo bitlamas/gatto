@@ -163,6 +163,42 @@ public class GattoAppTests : IDisposable
         Assert.Equal(0.6, server.LastRequestBody!.Value.GetProperty("temperature").GetDouble(), 3);
     }
 
+    //a local endpoint with no base_url talks to the port serve starts the model on, which is how a fresh home reads
+    [Fact]
+    public async Task Launch_LocalWithoutBaseUrl_ReachesTheModelsOwnPort()
+    {
+        await using var server = new FakeOpenAiServer();
+        UseHome();
+        WriteConfig("""{"endpoints":{"local":{}},"default_endpoint":"local"}""");
+        WriteModel("test-model", port: new Uri(server.BaseUrl).Port);
+        WriteRole("generalist", "{\"model\":\"test-model\"}");
+        server.Enqueue(Completion("ok"));
+
+        Console.SetOut(new StringWriter());
+        var exit = await GattoApp.RunAsync(new[] { "-p", "hi" });
+
+        Assert.Equal(0, exit);
+        Assert.NotNull(server.LastRequestBody);
+    }
+
+    //an explicit base_url is the user's choice of a proxy or another machine, so the model's port never replaces it
+    [Fact]
+    public async Task Launch_ExplicitLocalBaseUrl_WinsOverTheModelsPort()
+    {
+        await using var server = new FakeOpenAiServer();
+        UseHome();
+        WriteConfig($$$"""{"endpoints":{"local":{"base_url":"{{{server.BaseUrl}}}"}},"default_endpoint":"local"}""");
+        WriteModel("test-model", port: 1);
+        WriteRole("generalist", "{\"model\":\"test-model\"}");
+        server.Enqueue(Completion("ok"));
+
+        Console.SetOut(new StringWriter());
+        var exit = await GattoApp.RunAsync(new[] { "-p", "hi" });
+
+        Assert.Equal(0, exit);
+        Assert.NotNull(server.LastRequestBody);
+    }
+
     //a model folder applies on any endpoint: its append and sampling reach the request, while its port never replaces the endpoint's base url
     [Fact]
     public async Task Launch_ModelFolderOnANonLocalEndpoint_SuppliesItsModelParts_AndTheEndpointStillServes()
@@ -636,6 +672,7 @@ public class GattoAppTests : IDisposable
     {
         //the same run must prove the line was emitted before it proves the line is absent from the prefix. a negative about a line that never existed proves nothing.
         await using var server = new FakeOpenAiServer();
+        using var probeRoom = GattoApp.ProbeDeadlineScope(TimeSpan.FromSeconds(30));   //the assertions read the probe's answer, so the suite's load must not turn them into a race
         UseHome();
         //name the endpoint something other than local, which takes the model branch. the stored window is smaller, so a min defect shows
         WriteConfig($$$"""
@@ -1493,6 +1530,7 @@ public class GattoAppTests : IDisposable
     {
         //a template naming both switches makes the sniff answer Toggle, so the map must win. this row drives launch, the switch site has its own test
         await using var server = new FakeOpenAiServer();
+        using var probeRoom = GattoApp.ProbeDeadlineScope(TimeSpan.FromSeconds(30));   //the assertions read the probe's answer, so the suite's load must not turn them into a race
         var port = new Uri(server.BaseUrl).Port;
         UseHome();
         WriteConfig("""{"endpoints":{"local":{}},"default_endpoint":"local"}""");
@@ -1639,6 +1677,7 @@ public class GattoAppTests : IDisposable
     {
         //a non-local endpoint has no model profile, so a typed /effort is saved in the endpoint's entry under the model
         await using var server = new FakeOpenAiServer();
+        using var probeRoom = GattoApp.ProbeDeadlineScope(TimeSpan.FromSeconds(30));   //the assertions read the probe's answer, so the suite's load must not turn them into a race
         UseHome();
         //two on-levels plus none make this a genuine multi-level map, so the capability reads Levels rather than the binary toggle
         WriteConfig(
@@ -1760,6 +1799,7 @@ public class GattoAppTests : IDisposable
     {
         //with no map the capability comes from the template sniff alone. the toggle works every session, so its default must be persistable too.
         await using var server = new FakeOpenAiServer();
+        using var probeRoom = GattoApp.ProbeDeadlineScope(TimeSpan.FromSeconds(30));   //the assertions read the probe's answer, so the suite's load must not turn them into a race
         var port = new Uri(server.BaseUrl).Port;
         UseHome();
         WriteConfig("""{"endpoints":{"local":{}},"default_endpoint":"local","default_model":"qwen36-model"}""");
@@ -1783,6 +1823,7 @@ public class GattoAppTests : IDisposable
     {
         //the max sentinel passes a check that only asks whether the value is none. a fresh launch sends the flag from the persisted default alone
         await using var server = new FakeOpenAiServer();
+        using var probeRoom = GattoApp.ProbeDeadlineScope(TimeSpan.FromSeconds(30));   //the assertions read the probe's answer, so the suite's load must not turn them into a race
         var port = new Uri(server.BaseUrl).Port;
         UseHome();
         WriteConfig("""{"endpoints":{"local":{}},"default_endpoint":"local","default_model":"qwen36-model"}""");
@@ -1827,6 +1868,7 @@ public class GattoAppTests : IDisposable
     public async Task Effort_OnAnAlwaysOnModel_Refuses()
     {
         await using var server = new FakeOpenAiServer();
+        using var probeRoom = GattoApp.ProbeDeadlineScope(TimeSpan.FromSeconds(30));   //the assertions read the probe's answer, so the suite's load must not turn them into a race
         var port = new Uri(server.BaseUrl).Port;
         UseHome();
         WriteConfig("""{"endpoints":{"local":{}},"default_endpoint":"local","default_model":"always-thinks"}""");
@@ -1849,6 +1891,7 @@ public class GattoAppTests : IDisposable
     {
         //a switch into a multi-level map must recompute the capability. otherwise the toggle path overwrites the fresh map body next turn
         await using var server = new FakeOpenAiServer();
+        using var probeRoom = GattoApp.ProbeDeadlineScope(TimeSpan.FromSeconds(30));   //the assertions read the probe's answer, so the suite's load must not turn them into a race
         var port = new Uri(server.BaseUrl).Port;
         UseHome();
         WriteConfig("""{"endpoints":{"local":{}},"default_endpoint":"local","default_model":"plain-model"}""");
@@ -2352,6 +2395,7 @@ public class GattoAppTests : IDisposable
     public async Task OneShot_TakesTheSmallerWindowOfTheServerHoldingItsModel(bool ours, int nCtx, string? line)
     {
         await using var server = new FakeOpenAiServer();
+        using var probeRoom = GattoApp.ProbeDeadlineScope(TimeSpan.FromSeconds(30));   //the assertions read the probe's answer, so the suite's load must not turn them into a race
         UseHome();
         var port = new Uri(server.BaseUrl).Port;
         WriteConfig($$$"""{"endpoints":{"local":{"base_url":"{{{server.BaseUrl}}}"}},"default_endpoint":"local"}""");
@@ -2382,6 +2426,7 @@ public class GattoAppTests : IDisposable
     {
         //a server whose /props says nothing usable leaves the profile's window and the run goes on
         await using var server = new FakeOpenAiServer();
+        using var probeRoom = GattoApp.ProbeDeadlineScope(TimeSpan.FromSeconds(30));   //the assertions read the probe's answer, so the suite's load must not turn them into a race
         UseHome();
         var port = new Uri(server.BaseUrl).Port;
         WriteConfig($$$"""{"endpoints":{"local":{"base_url":"{{{server.BaseUrl}}}"}},"default_endpoint":"local"}""");
@@ -2423,6 +2468,7 @@ public class GattoAppTests : IDisposable
     public async Task DashM_WHILE_ANOTHER_MODEL_SERVES_REFUSES_AND_NEVER_ATTACHES()
     {
         await using var server = new FakeOpenAiServer();
+        using var probeRoom = GattoApp.ProbeDeadlineScope(TimeSpan.FromSeconds(30));   //the assertions read the probe's answer, so the suite's load must not turn them into a race
         UseHome();
         WriteConfig($$$"""
             {"endpoints":{"local":{"base_url":"{{{server.BaseUrl}}}"}},
@@ -2455,6 +2501,7 @@ public class GattoAppTests : IDisposable
     public async Task DashM_WHILE_THAT_SAME_MODEL_SERVES_ATTACHES()
     {
         await using var server = new FakeOpenAiServer();
+        using var probeRoom = GattoApp.ProbeDeadlineScope(TimeSpan.FromSeconds(30));   //the assertions read the probe's answer, so the suite's load must not turn them into a race
         UseHome();
         WriteConfig($$$"""
             {"endpoints":{"local":{"base_url":"{{{server.BaseUrl}}}"}},
@@ -2483,6 +2530,7 @@ public class GattoAppTests : IDisposable
     public async Task NO_DASH_M_OPENS_ON_WHATEVER_IS_SERVING()
     {
         await using var server = new FakeOpenAiServer();
+        using var probeRoom = GattoApp.ProbeDeadlineScope(TimeSpan.FromSeconds(30));   //the assertions read the probe's answer, so the suite's load must not turn them into a race
         UseHome();
         WriteConfig($$$"""
             {"endpoints":{"local":{"base_url":"{{{server.BaseUrl}}}"}},
@@ -2515,6 +2563,7 @@ public class GattoAppTests : IDisposable
     public async Task A_QUIT_STOPS_THE_SERVER_ONLY_WITH_STOP_SERVER_ON_EXIT(bool key, bool serverUp)
     {
         await using var server = new FakeOpenAiServer();
+        using var probeRoom = GattoApp.ProbeDeadlineScope(TimeSpan.FromSeconds(30));   //the assertions read the probe's answer, so the suite's load must not turn them into a race
         UseHome();
         var flag = key ? "true" : "false";
         WriteConfig($$$"""
@@ -2588,6 +2637,7 @@ public class GattoAppTests : IDisposable
     public async Task A_CONNECT_SESSION_STOPS_NOTHING_WITH_STOP_SERVER_ON_EXIT()
     {
         await using var server = new FakeOpenAiServer();
+        using var probeRoom = GattoApp.ProbeDeadlineScope(TimeSpan.FromSeconds(30));   //the assertions read the probe's answer, so the suite's load must not turn them into a race
         UseHome();
         WriteConfig($$$"""
             {"endpoints":{"cloudy":{"base_url":"{{{server.BaseUrl}}}","context":32768}},
@@ -2611,6 +2661,7 @@ public class GattoAppTests : IDisposable
     public async Task THE_REUSE_LINE_PRICES_THE_WHOLE_SHARD_SET()
     {
         await using var server = new FakeOpenAiServer();
+        using var probeRoom = GattoApp.ProbeDeadlineScope(TimeSpan.FromSeconds(30));   //the assertions read the probe's answer, so the suite's load must not turn them into a race
         UseHome();
 
         var weights = Directory.CreateDirectory(Path.Combine(_home, "weights")).FullName;

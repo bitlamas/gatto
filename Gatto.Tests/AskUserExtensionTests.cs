@@ -346,7 +346,6 @@ public sealed class AskUserExtensionTests : IDisposable
     [Theory]
     [InlineData("""{"questions":[]}""", "1-4 questions")]
     [InlineData("""{"questions":[{"question":"q","header":"H","options":["only-one"],"multi_select":false}]}""", "2-4 options")]
-    [InlineData("""{"questions":[{"question":"q","header":"this header is far too long to fit the cap","options":["a","b"],"multi_select":false}]}""", "32")]
     [InlineData("""{"questions":[{"question":"q","header":"H","options":["a","a"],"multi_select":false}]}""", "duplicate")]
     [InlineData("""{"questions":[{"question":"q","header":"H","options":["a",5],"multi_select":false}]}""", "non-string option")]
     [InlineData("""{"questions":[{"question":"q","header":"H","options":["a",null],"multi_select":false}]}""", "non-string option")]
@@ -361,7 +360,7 @@ public sealed class AskUserExtensionTests : IDisposable
     }
 
     [Fact]
-    public async Task Empty_string_header_yields_length_message_not_missing_param()
+    public async Task Empty_string_header_yields_empty_message_not_missing_param()
     {
         var prompter = new ScriptedPrompter(_ => Array.Empty<AskAnswer>());
         var (tool, _) = LoadAskUser(Canonical, prompter);
@@ -371,8 +370,25 @@ public sealed class AskUserExtensionTests : IDisposable
 
         var ex = await Assert.ThrowsAnyAsync<Exception>(
             () => tool.ExecuteAsync(Args(argsJson), new FakeCtx(), default));
-        Assert.Contains("must be 1-32 chars", ex.Message);
+        Assert.Contains("header must not be empty", ex.Message);
         Assert.DoesNotContain("missing required parameter", ex.Message);
+    }
+
+    [Fact]
+    public async Task A_LONG_HEADER_reaches_the_panel_and_the_model_WHOLE()
+    {
+        //the panel flows and wraps a long header, so a rejection only cost a small model its turn
+        const string header = "Database migration strategy for the users table";
+        var prompter = new ScriptedPrompter(qs => new[] { new AskAnswer(qs[0].Header, new[] { "expand" }) });
+        var (tool, _) = LoadAskUser(Canonical, prompter);
+
+        var r = await tool.ExecuteAsync(Args($$"""
+            {"questions":[{"question":"q","header":"{{header}}","options":["expand","contract"]}]}
+            """), new FakeCtx(), default);
+
+        Assert.False(r.IsError);
+        Assert.Equal(header, prompter.Seen![0].Header);
+        Assert.Equal(header, JsonDocument.Parse(r.Text).RootElement[0].GetProperty("header").GetString());
     }
 
     [Fact]

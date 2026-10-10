@@ -335,7 +335,7 @@ public class DoctorTests : IDisposable
         await NewDoctor(HealthyClient()).RunAsync(_home, _cwd, output, CancellationToken.None);
 
         var serverLine = Line(output, "server reachable");
-        Assert.Contains("no local.base_url and no defaults.local.model", serverLine);
+        Assert.Contains("no model is set up", serverLine);
         Assert.DoesNotContain("remote-model", serverLine);
     }
 
@@ -359,8 +359,8 @@ public class DoctorTests : IDisposable
         Assert.Equal(1, exit);   //the server check fails here, since there is nothing to probe and no model to derive a port from
         var serverLine = Line(output, "server reachable");
         Assert.StartsWith("✗", serverLine);
-        Assert.Contains("no local.base_url and no defaults.local.model", serverLine);
-        Assert.Contains("run:", serverLine);
+        //a fresh home has no model and no address, so the line hands over to setup instead of a gatto.json edit
+        Assert.Contains("server reachable: no model is set up · run: gatto setup", serverLine);
 
         var modelsLine = Line(output, "models:");
         Assert.StartsWith("✓", modelsLine);

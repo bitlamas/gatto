@@ -11,8 +11,8 @@ public class NoTestReachesTheLiveServerTests
         ("BadgeServerIdentityTests.cs", "CannedHandler intercepts every request before any socket work"),
         ("ConfigSchemaBreadcrumbTests.cs", "no HttpClient, no GattoApp.RunAsync, no ServeProbe — config-shape assertions only"),
         ("ConfigTests.cs", "no HttpClient, no GattoApp.RunAsync, no ServeProbe — config-shape assertions only"),
-        ("Copy/CorpusDriver.cs", "the exact starter config GattoHome.EnsureInitialized would auto-scaffold in the home's " +
-            "absence, written explicitly only to also pin glyphs; the connection attempt fails fast since nothing " +
+        ("Copy/CorpusDriver.cs", "a starter-shaped config with an explicit local base_url, " +
+            "written explicitly only to also pin glyphs; the connection attempt fails fast since nothing " +
             "listens, which is what every SERVE_STATUS_NOT_SERVING/SERVE_STOP_NOTHING_TO_STOP golden asserts"),
         ("DoctorTests.cs", "FakeHandler intercepts every request before any socket work"),
         ("GattoAppTests.cs", "the six remaining uses all exit or reroute before the launch-time probe: " +

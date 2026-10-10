@@ -13,7 +13,8 @@ public class OpenAiCompatPropsTests
         //a stub for GET /props goes in PropsResponse, Enqueue serves chat-completion bodies
         await using var server = new FakeOpenAiServer();
         server.PropsResponse = new FakeResponse(Body: """{"default_generation_settings":{"n_ctx":32768}}""");
-        var client = new OpenAiCompatClient(new HttpClient(), "local", new EndpointConfig(server.BaseUrl));
+        var client = new OpenAiCompatClient(new HttpClient(), "local", new EndpointConfig(server.BaseUrl))
+            { ProbeDeadline = TimeSpan.FromSeconds(30) };   //the assertion reads the answer, so the suite's load must not turn it into a race
         Assert.Equal(32768, await client.TryGetContextLengthAsync());
     }
 

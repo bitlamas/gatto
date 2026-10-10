@@ -79,7 +79,8 @@ public class OpenAiCompatClientTests
             PropsResponse = new FakeResponse(Body: """{"default_generation_settings":{"n_ctx":4096}}"""),
         };
         var client = new OpenAiCompatClient(
-            new HttpClient(), "local", new EndpointConfig(s.BaseUrl, ApiKey: "s3cr3t-value"));
+            new HttpClient(), "local", new EndpointConfig(s.BaseUrl, ApiKey: "s3cr3t-value"))
+            { ProbeDeadline = TimeSpan.FromSeconds(30) };   //the assertion reads the answer, so the suite's load must not turn it into a race
 
         Assert.Equal(4096, await client.TryGetContextLengthAsync());
         Assert.Equal("Bearer s3cr3t-value", s.LastAuthorization);

@@ -87,6 +87,21 @@ public static class GattoApp
     //the null ctx is the production path, and only the outermost return holds a fatal exit open so it can be read
     public static async Task<int> RunAsync(string[] argv) => FatalPause.Hold(await RunAsync(argv, null));
 
+    //a test's launch probe deadline, carried in its own async flow so a parallel test never sees it, and null in production
+    private static readonly AsyncLocal<TimeSpan?> ProbeDeadlineOverride = new();
+
+    //gives a fake server the room the suite's load can take, for as long as the returned scope lives
+    internal static IDisposable ProbeDeadlineScope(TimeSpan deadline)
+    {
+        ProbeDeadlineOverride.Value = deadline;
+        return new ProbeDeadlineReset();
+    }
+
+    private sealed class ProbeDeadlineReset : IDisposable
+    {
+        public void Dispose() => ProbeDeadlineOverride.Value = null;
+    }
+
     //internal, so the harness's ctx never joins the public surface, and no default argument, which would make one-argument calls ambiguous
     internal static async Task<int> RunAsync(string[] argv, CommandContext? ctx)
     {
@@ -578,10 +593,11 @@ public static class GattoApp
         //every request on this client feeds the footer's cost and quota, run_agent children included since they share it
         var usageMeter = new UsageMeter(endpoint.Quota);
         client.OnUsage = u => _ = usageMeter.Record(u);
-        //a separate client for the probes, untimed like every client, and each probe holds a 2 second deadline of its own
-        var probeHttp = new HttpClient(new SocketsHttpHandler { ConnectTimeout = TimeSpan.FromSeconds(2) })
+        //each probe holds a 2 second deadline of its own unless a test scoped a longer one
+        var probeDeadline = ProbeDeadlineOverride.Value ?? TimeSpan.FromSeconds(2);
+        //a separate client for the probes, untimed like every client, its connect bounded by the same deadline
+        var probeHttp = new HttpClient(new SocketsHttpHandler { ConnectTimeout = probeDeadline })
             { Timeout = Timeout.InfiniteTimeSpan };
-        var probeDeadline = TimeSpan.FromSeconds(2);
         //the model's window on a local endpoint, the endpoint's on a cloud one, and no enforcement when neither is configured
         var contextBudget = ServingFor(ServedHere(), model, endpoint, launchBaseUrl).Window;
         //cross-check /props at every launch and let the live answer win in both directions (it does not run on the endpoint gatto serves)

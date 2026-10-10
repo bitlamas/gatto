@@ -24,8 +24,8 @@ public class ShippedTreeTests
                 ("7ad55072464af5ef199d658fd67b912b65117aadec600bc2aa1de2cbdefb1651",
                  1834, "64d20df4a701df17d8ba2bb5df96f11d95ea55889ea2ccc86b37ea2484ee2ba1"),
             ["extensions/ask_user.csx"] =
-                ("f8a8110df3bbc9dd4535cee47d75c70a1899815e64ee1b87334a84505efdeb6b",
-                 6866, "a47f03a16e3965851cda990a2a2474510f39a89111e056e3a68e8d5deccd9bd2"),
+                ("9ee8205f69c0d04e4c813296350407cde6da00368eedf8aea571c57eb68c3256",
+                 6845, "e1f51f086f53ce4f39cebfdc2d9ad057010d5f8a66d50a020ed61076199f1c7b"),
             ["extensions/web_search.csx"] =
                 ("4c9acb8c8681dc592a8451d92fb6988736f43c0fcca8b98859fca03792ab500f",
                  11835, "6a80e1c43e24a6d660dde9fbe040bf5cbd07a805dbbae50943f27a16d6d7a516"),

@@ -112,6 +112,22 @@ public sealed class AgentDefinitionTests : IDisposable
     }
 
     [Fact]
+    public void A_PROJECT_OVERRIDE_is_announced_never_silent()
+    {
+        //opening a project can swap the agent the user wrote at home, so the swap is said at launch with the file that made it
+        WriteHome("tester", HappyPath);
+        WriteProject("tester", HappyPath);
+        WriteProject("other", HappyPath);
+        var diagnostics = new List<string>();
+
+        Load(diagnostics);
+
+        var said = Assert.Single(diagnostics);
+        Assert.Equal(
+            $"agent 'tester' at {Path.Combine(_project, "tester.md")} overrides the home agent of the same name", said);
+    }
+
+    [Fact]
     public void Distinct_names_from_home_and_project_both_survive()
     {
         WriteHome("alpha", HappyPath);

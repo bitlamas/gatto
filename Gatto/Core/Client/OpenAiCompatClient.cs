@@ -17,6 +17,9 @@ public sealed class OpenAiCompatClient : IChatClient, Gatto.Core.Loop.ITokenCoun
     private readonly string? downHint;
     private readonly bool returnProgress;
 
+    //the deadline of each /props and counting probe, 2 s unless a test gives its fake server the room the suite's load takes
+    internal TimeSpan ProbeDeadline { get; init; } = TimeSpan.FromSeconds(2);
+
     //demands a resolved BaseUrl, and downHint replaces the advice for an endpoint gatto built itself (the status branches keep the server's own words)
     public OpenAiCompatClient(HttpClient http, string endpointName, EndpointConfig endpoint,
         IWireLog? wireLog = null, string? downHint = null, bool returnProgress = false)
@@ -252,13 +255,13 @@ public sealed class OpenAiCompatClient : IChatClient, Gatto.Core.Loop.ITokenCoun
             JsonSerializer.Serialize(new { content = text, add_special = false, parse_special = false }),
             root => root.TryGetProperty("tokens", out var t) && t.ValueKind == JsonValueKind.Array ? t.GetArrayLength() : null, ct);
 
-    //one counting call under the probes' 2 second deadline, so a /context can never hang on a server that does not answer
+    //one counting call under the probe deadline, so a /context can never hang on a server that does not answer
     private async Task<int?> CountAsync(string path, string body, Func<JsonElement, int?> read, CancellationToken ct)
     {
         try
         {
             using var cts = CancellationTokenSource.CreateLinkedTokenSource(ct);
-            cts.CancelAfter(TimeSpan.FromSeconds(2));
+            cts.CancelAfter(ProbeDeadline);
             using var msg = new HttpRequestMessage(HttpMethod.Post, $"{baseUrl.TrimEnd('/')}{path}")
             {
                 Content = new StringContent(body, Encoding.UTF8, "application/json"),
@@ -279,7 +282,7 @@ public sealed class OpenAiCompatClient : IChatClient, Gatto.Core.Loop.ITokenCoun
         try
         {
             using var cts = CancellationTokenSource.CreateLinkedTokenSource(ct);
-            cts.CancelAfter(TimeSpan.FromSeconds(2));
+            cts.CancelAfter(ProbeDeadline);
             //authorize this probe too, llama-server's --api-key middleware guards /props and a 401 would read as unknown
             using var probe = new HttpRequestMessage(HttpMethod.Get, $"{baseUrl.TrimEnd('/')}/props");
             await AuthorizeAsync(probe, cts.Token);
