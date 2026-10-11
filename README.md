@@ -20,7 +20,7 @@ gatto is a terminal-based LLM harness built with local models in mind. Even if y
 - pick a model that fits your hardware
 - test that model, to make sure it can use gatto's tools
 
-From there gatto gives the model real hands: running commands, searching the web, reading and writing files. You get a field engineer living in your terminal, working through your projects with you. Even if your PC is on the older side, gatto tries to steer good behavior with small models.
+From there gatto gives the model real hands: running commands, searching the web, reading and writing files. You get a field engineer living in your terminal, working through your projects with you. Even if your PC is on the older side, gatto makes the most of it: it fits the model to your card and keeps a long session inside the context window.
 
 Private by default. A large language model (LLM) is a file on your own hard drive. Everything you type and every file gatto opens with a local model stays on your machine. No account, no subscription, no telemetry of any kind.
 
