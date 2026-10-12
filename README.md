@@ -44,7 +44,7 @@ Then:
 gatto            # the REPL, generalist role
 gatto coder      # or a role by name
 gatto model      # add a model
-gatto doctor     # read-only health checks; paste its output into any issue
+gatto doctor     # read-only health checks, plus one request to GitHub for the latest release; paste its output into any issue
 gatto uninstall  # when you don't want to play with gatto anymore
 ```
 
