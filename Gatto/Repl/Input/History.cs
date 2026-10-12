@@ -7,6 +7,7 @@ namespace Gatto.Repl.Input;
 public sealed class History
 {
     private const int Cap = 500;
+    private static readonly UTF8Encoding NoBom = new(encoderShouldEmitUTF8Identifier: false);   //the stock UTF-8 encoding writes a BOM
     private readonly string _path;
     private readonly List<string> _entries = new();
     private int _walk = -1;            //the index into _entries during history navigation, -1 at rest
@@ -40,7 +41,7 @@ public sealed class History
         try
         {
             Directory.CreateDirectory(Path.GetDirectoryName(_path)!);
-            File.WriteAllLines(_path, _entries.Select(e => JsonSerializer.Serialize(e)), Encoding.UTF8);
+            File.WriteAllLines(_path, _entries.Select(e => JsonSerializer.Serialize(e)), NoBom);
         }
         catch (Exception) { }          //a failed save loses history, which is acceptable
     }

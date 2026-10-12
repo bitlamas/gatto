@@ -727,8 +727,9 @@ public static class Status
             http, TimeSpan.FromSeconds(1), TimeSpan.FromSeconds(1));
         //this report is plain text, so the surface takes no theme
         var glyphs = CommandBanner.GlyphsFor(home);
+        var elsewhere = config?.DefaultEndpoint is { } d && d != "local" ? d : null;
         await manager.StatusAsync(
-            new ServeLines(new CliSurface(output, null, glyphs), glyphs), ct).ConfigureAwait(false);
+            new ServeLines(new CliSurface(output, null, glyphs), glyphs, elsewhere: elsewhere), ct).ConfigureAwait(false);
 
         var sessions = new SessionStore(home, cwd);
         output.WriteLine($"sessions for this project: {sessions.CountForCwd()}");

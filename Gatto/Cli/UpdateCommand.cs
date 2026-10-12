@@ -19,11 +19,17 @@ internal static class UpdateCommand
         try
         {
             var code = await GattoPhaseAsync(ctx, ct, site, acts, ask).ConfigureAwait(false);
-            //this process still holds the previous pin after it replaced gatto, so the engine phase belongs to the next run
+            //this process keeps the previous engine pin, the installed gatto runs the engine phase
             if (code == Updated)
             {
-                ctx.Surface().Say("run gatto update again to bring the engine to the release the new gatto is tested with.");
-                return 0;
+                if ((acts ?? UpdateActs.Production).RunInstalled is not { } run) return 0;
+                var dir = (site ?? UpdateSite.Probe()).InstallDir;
+                try { return await run(dir, ct).ConfigureAwait(false); }
+                catch (System.ComponentModel.Win32Exception ex)
+                {
+                    ctx.Surface().Say($"couldn't start the new gatto at {dir} for the engine phase: {ex.Message}");
+                    return 1;
+                }
             }
             return code != 0 ? code
                 : EngineUpdate.Run(ctx, ctx.Surface(), CommandBanner.GlyphsFor(ctx.Home), engineSite, engineActs, engineAsk);

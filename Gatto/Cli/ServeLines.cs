@@ -7,7 +7,7 @@ namespace Gatto.Cli;
 internal sealed record StartWatch(Action<TimeSpan> Draw, Action Finish, string? Size = null);
 
 //every word a serve run prints is composed here (the manager reports facts, this layer picks the words and inks)
-internal sealed class ServeLines(CliSurface cli, GlyphSet glyphs, StartWatch? watch = null)
+internal sealed class ServeLines(CliSurface cli, GlyphSet glyphs, StartWatch? watch = null, string? elsewhere = null)   //elsewhere names a default endpoint gatto runs no server for
     : IServeListener
 {
     //a committed row takes the live line down first (the live line ends with no newline, so the row would print over it)
@@ -104,6 +104,12 @@ internal sealed class ServeLines(CliSurface cli, GlyphSet glyphs, StartWatch? wa
 
     public void NotServingOnStatus()
     {
+        //someone else's server, so gatto serve start is no remedy
+        if (elsewhere is { } name)
+        {
+            Row(Happened("not serving"), Sep, Happened($"gatto runs no server for the default endpoint '{name}'"));
+            return;
+        }
         Row(Happened("not serving"));
         Row(Happened("run "), CliSurface.Command("gatto serve start [model]"),
             Happened(" to launch one."));

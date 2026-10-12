@@ -67,7 +67,8 @@ internal sealed record UpdateActs(
     Func<HttpClient, ReleaseAsset, string, IProgress<(long Done, long Total)>?, CancellationToken, Task<string>> Download,
     Func<string, string?, CancellationToken, Task<string?>> Verify,
     Func<string, string, string?> Extract,
-    Func<string, string, string?> Apply)
+    Func<string, string, string?> Apply,
+    Func<string, CancellationToken, Task<int>>? RunInstalled = null)   //runs gatto update from the install folder and returns its exit code, null runs nothing
 {
     public static UpdateActs Production { get; } = new(
         UpdateCheck.FetchAsync,
@@ -77,5 +78,21 @@ internal sealed record UpdateActs(
         //a lambda rather than the method group, so gatto's own update keeps its own releases page by saying so
         (zip, sha, ct) => UpdateDownload.VerifyAsync(zip, sha, ct),
         UpdateDownload.ExtractExe,
-        SelfInstall.Apply);
+        SelfInstall.Apply,
+        RunInstalledUpdate);
+
+    //the new gatto on this console and home, so its questions reach the user who typed the command
+    private static async Task<int> RunInstalledUpdate(string installDir, CancellationToken ct)
+    {
+        using var p = System.Diagnostics.Process.Start(
+            new System.Diagnostics.ProcessStartInfo(SelfInstall.ExeIn(installDir), "update") { UseShellExecute = false });
+        if (p is null) return 1;
+        try { await p.WaitForExitAsync(ct).ConfigureAwait(false); }
+        catch (OperationCanceledException)
+        {
+            p.Kill(entireProcessTree: true);   //the user's cancel bounds the child, and its own children go with it
+            return 1;
+        }
+        return p.ExitCode;
+    }
 }

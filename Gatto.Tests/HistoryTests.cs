@@ -55,6 +55,16 @@ public class HistoryTests : IDisposable
         Assert.Equal(new[] { "good", "also good" }, h.Entries);
     }
 
+    //a BOM is three bytes no other gatto file carries
+    [Fact]
+    public void A_saved_history_starts_with_its_first_entry_and_no_bom()
+    {
+        var h = new History(PathOf());
+        h.Record("a");
+        var bytes = File.ReadAllBytes(PathOf());
+        Assert.Equal((byte)'"', bytes[0]);
+    }
+
     [Fact]
     public void MissingFile_IsEmpty()
     {

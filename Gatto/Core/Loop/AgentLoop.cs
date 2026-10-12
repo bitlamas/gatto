@@ -150,7 +150,7 @@ public sealed class AgentLoop(
             var shaped = ShapeRequest();
 
             //the proactive trigger at the round top, counted on the uncut conversation, so a threshold at or above the elision line still fires
-            if (armed && autoCompactAt is double th
+            if (armed && compaction is { } compactor && autoCompactAt is double th
                 && budgetTokens is int win and > 0
                 && usageState is { LastPromptTokens: not null }
                 && (int)ContextBudget.Counts(Uncut(), overhead, usageState.Ratio) is var used
@@ -159,7 +159,7 @@ public sealed class AgentLoop(
                 //announce before the await, so the wait is explained while it happens. quote the same figure the trigger acted on, or the line names a different percentage
                 observer.OnWarning(
                     $"auto-compacting at {(int)Math.Round(100.0 * used / win)}% — summarizing the session, this can take a while");
-                var rebuilt = await compaction.CompactAsync(CompactionReason.Proactive, userMessage, observer, ct);
+                var rebuilt = await compactor.CompactAsync(CompactionReason.Proactive, userMessage, observer, ct);
                 if (rebuilt is not null)
                 {
                     convo.ReplaceAll(rebuilt.SystemText, rebuilt.Messages, rebuilt.Baseline);

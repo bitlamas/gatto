@@ -49,6 +49,23 @@ public class StatusTests : IDisposable
         Assert.Contains("endpoint: acme (not in gatto.json, an extension may contribute it)", output.ToString());
     }
 
+    //the connect road's home: the server is the user's, so gatto serve start is not the remedy
+    [Fact]
+    public async Task A_default_endpoint_gatto_does_not_serve_gets_no_serve_start_hint()
+    {
+        File.WriteAllText(Path.Combine(_home, "gatto.json"), """
+            {"endpoints":{"local":{},"server":{"base_url":"http://127.0.0.1:1235"}},"default_endpoint":"server"}
+            """);
+        var output = new StringWriter();
+
+        await Status.RunAsync(_home, _cwd, output, new HttpClient(new FakeHandler()), CancellationToken.None);
+
+        var text = output.ToString();
+        Assert.Contains("not serving", text);
+        Assert.Contains("gatto runs no server for the default endpoint 'server'", text);   //the separator between them is the home's glyph set
+        Assert.DoesNotContain("gatto serve start", text);
+    }
+
     [Fact]
     public async Task WithConfig_ShowsEndpointModelAndNotServing()
     {

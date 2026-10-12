@@ -19,6 +19,7 @@ public class ProcessStartCensusTests
     private static readonly Dictionary<string, int> Pins = new(StringComparer.Ordinal)
     {
         ["Gatto/Cli/GattoApp.cs"] = 2,
+        ["Gatto/Cli/UpdateSeam.cs"] = 1,
         ["Gatto/Core/Hardware/HardwareProbe.cs"] = 1,
         ["Gatto/Core/Tools/LlamaServerProbe.cs"] = 1,
         ["Gatto/Core/Tools/ShellTool.cs"] = 1,

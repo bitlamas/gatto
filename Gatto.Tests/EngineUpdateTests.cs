@@ -312,13 +312,14 @@ public sealed class EngineUpdateTests : IDisposable
         Assert.Equal(Landed, ConfiguredServer());
     }
 
-    private Task<int> Command(string latest, Fakes f, int? gattoAnswer = 0, string installed = "0.4.1")
+    private Task<int> Command(string latest, Fakes f, int? gattoAnswer = 0, string installed = "0.4.1",
+        Func<string, CancellationToken, Task<int>>? runInstalled = null)
     {
         var release = new Release(new UpdateState(DateTimeOffset.UnixEpoch, latest, false),
             [new ReleaseAsset("gatto-0.4.2-win-x64.zip", "https://example.invalid/z", "ab12", 38_000_000)], "https://example.invalid/notes");
         var gattoActs = new UpdateActs((_, _, _) => Task.FromResult<Release?>(release),
             (_, _, _, _, _) => Task.FromResult(Path.Combine("dl", "gatto.zip")),
-            (_, _, _) => Task.FromResult<string?>(null), (_, _) => null, (_, _) => null);
+            (_, _, _) => Task.FromResult<string?>(null), (_, _) => null, (_, _) => null, runInstalled ?? ((_, _) => Task.FromResult(0)));
         var acts = f.Acts();
         return UpdateCommand.RunAsync(new CommandContext(_out, _home, true, Theme: null), CancellationToken.None,
             new UpdateSite(@"C:\Programs\gatto", true, installed, [], false), gattoActs, _ => gattoAnswer,
@@ -363,19 +364,21 @@ public sealed class EngineUpdateTests : IDisposable
         Assert.Equal(Landed, ConfiguredServer());
     }
 
-    //the process that replaced gatto still holds the previous pin, so it leaves the engine to the next run and says so
+    //the old process keeps the previous pin, so the installed gatto runs the engine phase
     [Fact]
-    public async Task THE_ENGINE_PHASE_WAITS_FOR_THE_NEXT_RUN_AFTER_GATTO_WAS_REPLACED()
+    public async Task THE_REPLACED_GATTO_RUNS_THE_ENGINE_PHASE_AND_THE_OLD_ONE_TOUCHES_NO_ENGINE()
     {
         var before = Snapshot();
         var f = new Fakes(this);
+        var ran = new List<string>();
 
-        Assert.Equal(0, await Command("v0.4.2", f));
+        Assert.Equal(3, await Command("v0.4.2", f, runInstalled: (dir, _) => { ran.Add(dir); return Task.FromResult(3); }));
 
+        Assert.Equal(new[] { @"C:\Programs\gatto" }, ran);
         Assert.Equal(0, _asks);
         Assert.Equal(0, f.Offers);
         Assert.Equal(before, Snapshot());
-        Assert.Contains("run gatto update again", Output);
+        Assert.DoesNotContain("run gatto update again", Output);
     }
 
     private string Lines => Output.Replace("\r\n", "\n");
