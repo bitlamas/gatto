@@ -141,6 +141,11 @@ public sealed class Doctor(
         {
             url = localEp.BaseUrl;
         }
+        else if (localModel is null && config.DefaultEndpoint != "local")
+        {
+            //the starter's empty local entry beside a default elsewhere is a home that never set up a local model, so setup is not the remedy
+            return new CheckResult(true, $"server reachable: skipped {g.Dot} no local model set up, the default endpoint is '{config.DefaultEndpoint}'");
+        }
         else if (localModel is null)
         {
             //no address and no model to take a port from is a home before setup, so setup is the remedy and not a gatto.json edit

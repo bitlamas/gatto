@@ -335,8 +335,25 @@ public class DoctorTests : IDisposable
         await NewDoctor(HealthyClient()).RunAsync(_home, _cwd, output, CancellationToken.None);
 
         var serverLine = Line(output, "server reachable");
-        Assert.Contains("no model is set up", serverLine);
+        Assert.StartsWith("✓", serverLine);
+        Assert.Contains("skipped", serverLine);
         Assert.DoesNotContain("remote-model", serverLine);
+    }
+
+    //the home the connect road of setup writes: the starter's empty local entry beside the server it connected to
+    [Fact]
+    public async Task A_connect_road_home_skips_the_local_server_check_and_does_not_send_the_user_to_setup()
+    {
+        File.WriteAllText(Path.Combine(_home, "gatto.json"), """
+            {"endpoints":{"local":{},"server":{"base_url":"http://127.0.0.1:1235","context":131072}},"default_endpoint":"server","defaults":{"server":{"model":"some-model.gguf"}},"glyphs":"unicode"}
+            """);
+
+        var output = new StringWriter();
+        await NewDoctor(HealthyClient()).RunAsync(_home, _cwd, output, CancellationToken.None);
+
+        var serverLine = Line(output, "server reachable");
+        Assert.Equal("✓ server reachable: skipped · no local model set up, the default endpoint is 'server'", serverLine.TrimEnd('\r'));
+        Assert.DoesNotContain("gatto setup", serverLine);
     }
 
     [Fact]
