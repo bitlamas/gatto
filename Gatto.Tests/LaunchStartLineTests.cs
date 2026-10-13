@@ -29,7 +29,7 @@ public sealed class LaunchStartLineTests : IDisposable
     private static Model ModelOn(int port) => new(
         "test-model",
         new ModelProfile([new ModelFile("m.gguf", null, true)], port, 8192, null, null, null, null, null, Array.Empty<string>()),
-        null, null, null);
+        null, null);
 
     private ServeManager Manager(Proc proc, Func<int, ServeManager.IServeProcess?> lookup)
     {

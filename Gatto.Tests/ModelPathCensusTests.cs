@@ -61,7 +61,7 @@ public class ModelPathCensusTests
         var model = new Model("m",
             new ModelProfile([new ModelFile(@"C:\weights\ours.gguf", "Q4_K_M", true)],
                 1235, 4096, null, null, null, null, null, []),
-            null, null, null);
+            null, null);
 
         //three fixtures, one for each answer: they agree, they disagree, and the server reports nothing
         var same = new LoadedModel(@"C:\weights\ours.gguf", null);

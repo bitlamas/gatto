@@ -27,7 +27,7 @@ public sealed class PermissionGate(
 
     //only tools that never mutate anything, and the names must match the registry's lowercase snake_case exactly
     private static readonly HashSet<string> ReadClass =
-        new(StringComparer.Ordinal) { "read_file", "glob", "grep", "task_restate", "recall_memory" };
+        new(StringComparer.Ordinal) { "read_file", "glob", "grep", "recall_memory" };
 
     //writers whose whole write surface is bounded by construction, the bar for any tool added here
     private static readonly HashSet<string> BoundedWriteClass =

@@ -109,19 +109,19 @@ public class ServeManagerTests : IDisposable
     private static Model ModelOn(int port) => new(
         "test-model",
         new ModelProfile([new ModelFile("m.gguf", null, true)], port, 8192, null, null, null, null, null, Array.Empty<string>()),
-        null, null, null);
+        null, null);
 
     //the same, with an optional model-scoped server binary override.
     private static Model ModelWithServer(int port, string? llamaServer) => new(
         "test-model",
         new ModelProfile([new ModelFile("m.gguf", null, true)], port, 8192, null, null, null, null, null, Array.Empty<string>(), null, llamaServer),
-        null, null, null);
+        null, null);
 
     private static Model KeyedModel(int port, string apiKey) => new(
         "test-model",
         new ModelProfile([new ModelFile("m.gguf", null, true)], port, 8192, null, null, null, null, null, Array.Empty<string>(),
             null, null, ApiKey: apiKey),
-        null, null, null);
+        null, null);
 
     private void WriteServeJson(int pid, string model, int port) =>
         File.WriteAllText(ServeJson,

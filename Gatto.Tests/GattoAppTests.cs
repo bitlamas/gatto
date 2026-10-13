@@ -821,56 +821,31 @@ public class GattoAppTests : IDisposable
         Assert.Contains(Gatto.Core.Loop.Permissions.PermissionGate.HomeWrite, toolMsg.GetProperty("content").GetString());
     }
 
+    //a role file written by an older gatto may still name the grounding gate, and it must add no tool and no text to a result
     [Fact]
-    public async Task RoleSwitch_ToGroundingRole_ArmsTheNudge_ForTheVeryNextDeliverable()
+    public async Task A_role_naming_the_retired_grounding_gate_adds_no_tool_and_no_reminder()
     {
         await using var server = new FakeOpenAiServer();
         UseHome();
         WriteConfig($$$"""{"endpoints":{"local":{"base_url":"{{{server.BaseUrl}}}"}},"default_endpoint":"local"}""");
         WriteModel("test-model", port: 1235);
-        WriteRole("generalist", "{\"model\":\"test-model\"}");                          //the launch role names no gate, so a later nudge can only come from /role
-        WriteRole("oracle", "{\"model\":\"test-model\",\"gates\":[\"grounding\"]}");      //this role arms the grounding gate.
-
-        //the model calls write_file with no prior task_restate, so a nudge back proves /role armed a gate the launch never built
-        server.Enqueue(ToolCallThenStop("c1", "write_file", "{\"path\":\"a.txt\",\"content\":\"x\"}"));
-        server.Enqueue(Completion("done"));
-
-        Console.SetIn(new StringReader("/role oracle\nwrite the file\n/quit\n"));
-        var stdout = new StringWriter();
-        Console.SetOut(stdout);
-        var exit = await GattoApp.RunAsync(new[] { "--yes" });   //the flag --yes clears the permission gate, so only the grounding gate can answer here
-
-        Assert.Equal(0, exit);
-        var messages = server.LastRequestBody!.Value.GetProperty("messages").EnumerateArray().ToList();
-        var toolMsg = messages.Single(m => m.GetProperty("role").GetString() == "tool");
-        Assert.Contains(
-            "[grounding gate] You have not passed task_restate yet.",
-            toolMsg.GetProperty("content").GetString());
-    }
-
-    [Fact]
-    public async Task RoleSwitch_ToNonGroundingRole_DisarmsTheNudge()
-    {
-        await using var server = new FakeOpenAiServer();
-        UseHome();
-        WriteConfig($$$"""{"endpoints":{"local":{"base_url":"{{{server.BaseUrl}}}"}},"default_endpoint":"local"}""");
-        WriteModel("test-model", port: 1235);
-        WriteRole("generalist", "{\"model\":\"test-model\"}");
         WriteRole("oracle", "{\"model\":\"test-model\",\"gates\":[\"grounding\"]}");
 
         server.Enqueue(ToolCallThenStop("c1", "write_file", "{\"path\":\"a.txt\",\"content\":\"x\"}"));
         server.Enqueue(Completion("done"));
 
-        //the nudge must fall silent after a switch back to a role with no gate. a gate left armed after a role change is the symmetric defect
-        Console.SetIn(new StringReader("/role generalist\nwrite the file\n/quit\n"));
+        Console.SetIn(new StringReader("write the file\n/quit\n"));
         var stdout = new StringWriter();
         Console.SetOut(stdout);
         var exit = await GattoApp.RunAsync(new[] { "oracle", "--yes" });
 
         Assert.Equal(0, exit);
-        var messages = server.LastRequestBody!.Value.GetProperty("messages").EnumerateArray().ToList();
-        var toolMsg = messages.Single(m => m.GetProperty("role").GetString() == "tool");
-        Assert.DoesNotContain("[grounding gate]", toolMsg.GetProperty("content").GetString());
+        var body = server.LastRequestBody!.Value;
+        var toolMsg = body.GetProperty("messages").EnumerateArray().Single(m => m.GetProperty("role").GetString() == "tool");
+        Assert.DoesNotContain("task_restate", toolMsg.GetProperty("content").GetString());
+        var names = body.GetProperty("tools").EnumerateArray().Select(t => t.GetProperty("function").GetProperty("name").GetString()).ToList();
+        Assert.Contains("write_file", names);   //the list is the real one, so the absence below is not an empty read
+        Assert.DoesNotContain("task_restate", names);
     }
 
     [Fact]

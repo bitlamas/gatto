@@ -401,7 +401,7 @@ public sealed class EditBlockTests
         Assert.True(restored.Refused);
     }
 
-    //a result hook that appends a paragraph to a refusal, as the grounding nudge does, leaves the refusal readable on restore
+    //a result hook that appends a paragraph to a refusal leaves the refusal readable on restore
     [Fact]
     public void A_refusal_with_an_appended_paragraph_still_reads_as_refused()
     {

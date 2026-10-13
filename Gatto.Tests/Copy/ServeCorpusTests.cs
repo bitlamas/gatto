@@ -201,7 +201,7 @@ public class ServeCorpusTests : IDisposable
         CorpusFacts.ModelId,
         new ModelProfile([new ModelFile("m.gguf", null, true)], CorpusFacts.Port, 8192,
             null, null, null, null, null, Array.Empty<string>(), null, llamaServer),
-        null, null, null);
+        null, null);
 
     [Theory]
     [InlineData(CorpusMode.Dark)]

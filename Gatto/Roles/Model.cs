@@ -71,7 +71,7 @@ public sealed record ModelProfile(
 }
 
 //a model directory: its serving profile plus the signal files an audition leaves behind, and a fresh model has none of them
-public sealed record Model(string Id, ModelProfile Profile, string? SystemAppend, JsonElement? Repair, Nudges? Nudges)
+public sealed record Model(string Id, ModelProfile Profile, string? SystemAppend, JsonElement? Repair)
 {
     //gatto's own path to the weights, the one name for it, so it can't be confused with the loaded path the server reports
     public string ActivePath => Profile.ActivePath;
@@ -122,28 +122,9 @@ public sealed record Model(string Id, ModelProfile Profile, string? SystemAppend
             }
         }
 
-        Nudges? nudges = null;
-        var nudgesPath = Path.Combine(dir, "nudges.json");
-        if (File.Exists(nudgesPath))
-        {
-            try
-            {
-                using var doc = JsonDocument.Parse(File.ReadAllText(nudgesPath));
-                nudges = Nudges.Parse(doc.RootElement);
-            }
-            catch (JsonException ex)
-            {
-                throw new GattoConfigException($"model '{id}' nudges.json at {nudgesPath} is not valid JSON: {ex.Message}");
-            }
-            catch (GattoConfigException ex)
-            {
-                throw new GattoConfigException($"model '{id}' nudges.json at {nudgesPath}: {ex.Message}");
-            }
-        }
-
         //scorecard.json is deliberately not read here, its presence means nothing to the loader
 
-        return new Model(id, profile, systemAppend, repair, nudges);
+        return new Model(id, profile, systemAppend, repair);
     }
 
     private static ModelProfile LoadProfile(string path, string id)

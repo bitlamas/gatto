@@ -223,15 +223,14 @@ public sealed class CitationGateTests
     }
 
     [Fact]
-    public void Shipped_oracle_role_parses_with_both_gates()
+    public void Shipped_oracle_role_parses_with_the_citation_gate()
     {
         var dir = Directory.CreateTempSubdirectory("gatto-cite-role-").FullName;
         try
         {
             ShippedExtensions.EnsureWritten(dir);
             var role = RoleFile.Load(Path.Combine(dir, "roles"), "oracle");
-            Assert.Contains("grounding", role.Gates);
-            Assert.Contains("citations", role.Gates);
+            Assert.Equal(new[] { "citations" }, role.Gates);
         }
         finally { Directory.Delete(dir, recursive: true); }
     }

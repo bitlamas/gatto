@@ -17,7 +17,7 @@ public class QuantSwitchSeamTests : IDisposable
             new ModelProfile(
                 [new ModelFile(Q4, "Q4_K_M", active == Q4), new ModelFile(Q6, "Q6_K", active == Q6)],
                 1235, 4096, null, null, null, null, null, []),
-            null, null, null);
+            null, null);
 
     //the chip must not warn here, the user chose this state and was told about it
     [Fact]

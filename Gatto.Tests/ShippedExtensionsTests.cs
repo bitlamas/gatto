@@ -176,9 +176,9 @@ public sealed class ShippedExtensionsTests : IDisposable
         Assert.Contains("\n", coder.Append!);
 
         var oracle = RoleFile.Load(RolesDir, "oracle");
-        Assert.Equal(new[] { "grounding", "citations" }, oracle.Gates);
+        Assert.Equal(new[] { "citations" }, oracle.Gates);
         //the oracle append keeps its line breaks and its Windows path through the JSON read
-        Assert.Contains("task_restate", oracle.Append!);
+        Assert.DoesNotContain("task_restate", oracle.Append!);
         Assert.Contains("\n", oracle.Append!);
         Assert.Contains(@"docs\specs\", oracle.Append!);
         Assert.Contains("one at a time", oracle.Append!);
@@ -297,6 +297,24 @@ public sealed class ShippedExtensionsTests : IDisposable
             _home, One("extensions/ask_user.csx", current), ShippedExtensions.HistoricalHashes.ToHashSet());
 
         Assert.Equal(current, File.ReadAllText(Full("extensions/ask_user.csx")));
+    }
+
+    //the oracle.json earlier releases installed arms a gate that no longer exists, so an untouched one must upgrade in place
+    [Fact]
+    public void An_untouched_pre_cut_oracle_role_is_upgraded_in_place_by_the_real_bytes()
+    {
+        var previous = File.ReadAllText(Path.Combine(
+            Census.SourceTree.RepoRoot(), "Gatto.Tests", "Fixtures", "oracle-pre-nudge-cut.json"));
+        var current = ShippedExtensions.Files["roles/oracle.json"];
+        Assert.NotEqual(previous, current);
+
+        Directory.CreateDirectory(Full("roles"));
+        File.WriteAllText(Full("roles/oracle.json"), previous);
+
+        ShippedExtensions.EnsureWritten(
+            _home, One("roles/oracle.json", current), ShippedExtensions.HistoricalHashes.ToHashSet());
+
+        Assert.Equal(current, File.ReadAllText(Full("roles/oracle.json")));
     }
 
     //no current canonical's hash may sit in the historical set, or pristine files would be rewritten forever

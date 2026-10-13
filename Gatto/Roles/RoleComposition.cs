@@ -4,7 +4,7 @@ using Gatto.Core;
 
 namespace Gatto.Roles;
 
-//what composing a role, its model, the nudges and the context files gives the caller: the system prompt and the settings for the request
+//what composing a role, its model and the context files gives the caller: the system prompt and the settings for the request
 public sealed record Composition(
     IReadOnlySet<string> Gates,
     string SystemText,
@@ -19,7 +19,7 @@ public sealed record Composition(
     //the same text split by source, so /context can count each part
     IReadOnlyList<Gatto.Core.Loop.ContextPartText>? SystemParts = null);
 
-//role x model x nudges x context files, pure and total so /role and /compact can recompose through it
+//role x model x context files, pure and total so /role and /compact can recompose through it
 public static class RoleComposition
 {
     //the first block of every system prompt, naming the OS and the shell so a model that assumes Linux doesn't reach for ls. don't reword without a gate
@@ -70,10 +70,8 @@ public static class RoleComposition
         //the level saved for a model with no profile, a cloud model, read after the profile so a local model's order is unchanged
         ThinkingLevel? savedEffort = null)
     {
-        //the gates are the role's and the model's, merged case-insensitively
+        //the gates are the role's, matched case-insensitively
         var gates = new HashSet<string>(role.Gates, StringComparer.OrdinalIgnoreCase);
-        if (model?.Nudges?.Gates is { } modelGates)
-            foreach (var g in modelGates) gates.Add(g);
 
         //the date is passed in by the caller so Compose stays pure, formatted in ISO order with the invariant culture
         var dateLine = date is { } d
@@ -105,7 +103,7 @@ public static class RoleComposition
         var labelled = new (string Label, string? Detail, string? Text)[]
             {
                 ("system prompt", null, BasePrompt), ("system prompt", null, memoryNudge ? MemoryNudge : null), ("system prompt", null, envLine),
-                ("model folder", null, model?.SystemAppend), ("role", role.Name, role.Append), ("model folder", null, model?.Nudges?.Append),
+                ("model folder", null, model?.SystemAppend), ("role", role.Name, role.Append),
                 ("extension policy", null, policyBlock),
             }
             .Where(p => !string.IsNullOrWhiteSpace(p.Text))
@@ -119,9 +117,8 @@ public static class RoleComposition
             .Select(g => new Gatto.Core.Loop.ContextPartText(g.Key, Gatto.Core.Loop.ContextGroup.Prefix, string.Join("\n\n", g.Select(p => p.Text)), g.First().Detail))
             .ToList();
 
-        //the role's request wins, then an effort saved for a non-local endpoint, then the model's own default_effort, then Medium, all capped by the nudge cap
-        var requested = role.ThinkingRequested ?? savedEffort ?? model?.Profile.DefaultEffort ?? ThinkingLevel.Medium;
-        var effective = Thinking.Min(requested, model?.Nudges?.ThinkingCap ?? ThinkingLevel.Max);
+        //the role's request wins, then an effort saved for a non-local endpoint, then the model's own default_effort, then Medium
+        var effective = role.ThinkingRequested ?? savedEffort ?? model?.Profile.DefaultEffort ?? ThinkingLevel.Medium;
 
         //the model map wins, the endpoint map is the cloud path. a prompt_suffix goes on the user message, since the request body can't express it
         var map = model?.Profile.Thinking ?? endpointThinkingMap;
@@ -146,7 +143,7 @@ public static class RoleComposition
                 contextFiles.Select(f => new Gatto.Core.Loop.ContextFileMark(f.Path, Gatto.Core.Loop.BaselineMarks.Sha256Hex(f.Content))).ToList(),
                 policyOrdered.Select(p => new Gatto.Core.Loop.PolicyMark(p.Extension, p.Line)).ToList(),
                 Gatto.Core.Loop.BaselineMarks.Sha256Hex(role.Append ?? ""),
-                Gatto.Core.Loop.BaselineMarks.Sha256Hex((model?.SystemAppend ?? "") + "\n" + (model?.Nudges?.Append ?? ""))),
+                Gatto.Core.Loop.BaselineMarks.Sha256Hex(model?.SystemAppend ?? "")),
             systemParts);
     }
 }

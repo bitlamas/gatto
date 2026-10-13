@@ -27,8 +27,6 @@ public static class Thinking
         };
     }
 
-    public static ThinkingLevel Min(ThinkingLevel a, ThinkingLevel b) => a < b ? a : b;
-
     //the single on-level of a binary thinking map, null when it's missing, multi-level, or has no on-level (bad keys are skipped, ResolveMap reports them)
     public static ThinkingLevel? BinaryOnLevel(IReadOnlyDictionary<string, JsonElement?>? map)
     {

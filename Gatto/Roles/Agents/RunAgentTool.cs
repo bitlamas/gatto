@@ -15,7 +15,6 @@ public sealed class RunAgentTool : ITool
     private readonly Func<AgentDefinition, (ToolRegistry Tools, HookBus Hooks)> _subagentWiring;
     private readonly IChatClient _client;
     private readonly Func<(string Model, JsonElement? Sampling, JsonElement? Body)> _requestSettings;
-    private readonly string _nudgeAppend;
     private readonly IToolContext _parentCtx;
     private readonly Action<string>? _progress;
     //handed in, Roles can't reach the glyph table (one table, chosen once at launch)
@@ -28,7 +27,6 @@ public sealed class RunAgentTool : ITool
         Func<AgentDefinition, (ToolRegistry Tools, HookBus Hooks)> subagentWiring,
         IChatClient client,
         Func<(string Model, JsonElement? Sampling, JsonElement? Body)> requestSettings,
-        string nudgeAppend,
         IToolContext parentCtx,
         Action<string>? progress = null,
         int? contextBudget = null,
@@ -40,7 +38,6 @@ public sealed class RunAgentTool : ITool
         _subagentWiring = subagentWiring;
         _client = client;
         _requestSettings = requestSettings;
-        _nudgeAppend = nudgeAppend;
         _parentCtx = parentCtx;
         _progress = progress;
         _marks = marks ?? EngineMarks.Unicode;
@@ -85,9 +82,9 @@ public sealed class RunAgentTool : ITool
             throw new ArgumentException(
                 $"no agent named '{agentName}' — available: {string.Join(", ", defs.Select(d => d.Name))}");
 
-        //the sub-agent starts from its own prompt plus the model's nudge and no parent history, sharing the parent's tool context
+        //the sub-agent starts from its own prompt and no parent history, sharing the parent's tool context
         var (subTools, subHooks) = _subagentWiring(def);
-        var convo = new Conversation(ComposeSystemPrompt(def.SystemPrompt, _nudgeAppend));
+        var convo = new Conversation(def.SystemPrompt);
         var (model, sampling, body) = _requestSettings();
 
         //the client's StreamAsync runs once per round, so this counts turns exactly and is where the progress line fires
@@ -126,10 +123,6 @@ public sealed class RunAgentTool : ITool
 
     internal static string GlossOf(string name, long rounds, TimeSpan elapsed, EngineMarks marks) =>
         $"{name} {marks.Dot} {Plural.Of(rounds, "turn")} {marks.Dot} {ElapsedText.Of(elapsed)}";
-
-    //the agent's own prompt plus the model's nudge append, joined with a blank line, an empty nudge adds nothing
-    private static string ComposeSystemPrompt(string body, string nudgeAppend) =>
-        string.IsNullOrWhiteSpace(nudgeAppend) ? body : body + "\n\n" + nudgeAppend;
 
     //keeps only the last round's text, a round ending in tool calls has its text cleared
     private sealed class FinalTextObserver : ITurnObserver

@@ -106,22 +106,6 @@ public sealed class PermissionGateTests : IDisposable
         Assert.False(obs.Results.Single().Item2.IsError);
     }
 
-    //reads the brief like read_file, so it belongs to the read class
-    [Fact]
-    public async Task TaskRestate_is_read_class_and_runs_without_prompt_or_grant()
-    {
-        var store = PermissionStore.Load(_root, _root, out _);
-        var hooks = GateOn(store, prompter: null, autoYes: false);   //with no prompter a mutating tool would throw, lacking consent.
-        var spy = new SpyTool("task_restate");
-        var (loop, client, convo, obs) = LoopWith(hooks, spy);
-        EnqueueOneCall(client, "task_restate", "{\"brief_file\":\"b.md\"}");
-
-        await loop.RunTurnAsync(convo, "go", obs, default);
-
-        Assert.True(spy.Executed);
-        Assert.False(obs.Results.Single().Item2.IsError);
-    }
-
     [Fact]
     public async Task Deny_blocks_with_exact_text_and_tool_never_runs()
     {

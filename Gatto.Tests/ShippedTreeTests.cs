@@ -36,8 +36,8 @@ public class ShippedTreeTests
                 ("35b5efcf8469f21bcafcdafd6412e52606f56ec02036d2f9b65d60dbcfc5bf84",
                  3, "ca3d163bab055381827226140568f3bef7eaac187cebd76878e0b63e9e442356"),
             ["roles/oracle.json"] =
-                ("ce9dff2a6ebe3e50b299dc43d0de4275cb996e0e2027d6fbcb04b8f279fb0d87",
-                 1258, "be55d3a122040f2206970f17fe38a9496b1342d7787f772c2af437ecdef3114a"),
+                ("64e52929395e5c7636eb08525680200b9f6127e8b16415e6d4c5a3c0ca5818b1",
+                 837, "299100ac0d5a6d0c78d5677e96770d48943bff7b6967681867573c3d23de34de"),
         };
 
     [Fact]

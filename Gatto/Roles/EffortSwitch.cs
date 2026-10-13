@@ -1,18 +1,13 @@
 namespace Gatto.Roles;
 
-//resolves /effort: parse the level, clamp it to the model's cap, and say when the cap lowered it
+//resolves /effort: parse the level and name it
 public static class EffortSwitch
 {
-    public static (ThinkingLevel Effective, string LevelName, string Message) Resolve(
-        string levelArg, ThinkingLevel cap, string? modelId)
+    public static (ThinkingLevel Effective, string LevelName, string Message) Resolve(string levelArg)
     {
-        var requested = Thinking.Parse(levelArg);   //junk throws GattoConfigException, the caller catches it
-        var effective = Thinking.Min(requested, cap);
+        var effective = Thinking.Parse(levelArg);   //junk throws GattoConfigException, the caller catches it
         var name = Name(effective);
-        var message = effective < requested
-            ? $"effort: {name} — requested {Name(requested)}, capped by model{(modelId is null ? "" : $" '{modelId}'")}"
-            : $"effort: {name}";
-        return (effective, name, message);
+        return (effective, name, $"effort: {name}");
     }
 
     public static string Name(ThinkingLevel l) => l.ToString().ToLowerInvariant();

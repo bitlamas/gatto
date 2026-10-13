@@ -6,26 +6,17 @@ namespace Gatto.Tests;
 public class EffortSwitchTests
 {
     [Fact]
-    public void Uncapped_ResolvesVerbatim()
+    public void Resolves_the_level_verbatim()
     {
-        var (eff, name, msg) = EffortSwitch.Resolve("xhigh", ThinkingLevel.Max, null);
+        var (eff, name, msg) = EffortSwitch.Resolve("xhigh");
         Assert.Equal(ThinkingLevel.XHigh, eff);
         Assert.Equal("xhigh", name);
         Assert.Equal("effort: xhigh", msg);
     }
 
     [Fact]
-    public void CapBites_AndSaysSo()
-    {
-        var (eff, name, msg) = EffortSwitch.Resolve("max", ThinkingLevel.High, "qwen3.6-35b");
-        Assert.Equal(ThinkingLevel.High, eff);
-        Assert.Equal("high", name);
-        Assert.Equal("effort: high — requested max, capped by model 'qwen3.6-35b'", msg);
-    }
-
-    [Fact]
     public void JunkLevel_Throws() =>
-        Assert.Throws<GattoConfigException>(() => EffortSwitch.Resolve("turbo", ThinkingLevel.Max, null));
+        Assert.Throws<GattoConfigException>(() => EffortSwitch.Resolve("turbo"));
 
     //these cases cover /effort on a Toggle-only model, which has no thinking levels
     [Theory]

@@ -131,7 +131,7 @@ public sealed class SessionBaselineTests
         Assert.Equal(new[] { new ContextFileMark(@"C:\proj\GATTO.md", BaselineMarks.Sha256Hex("context text")) }, c.Sources.ContextFiles);
         Assert.Equal(new[] { new PolicyMark("alpha", "alpha line"), new PolicyMark("zeta", "zeta line") }, c.Sources.Policy);
         Assert.Equal(BaselineMarks.Sha256Hex(role.Append ?? ""), c.Sources.RoleAppendSha256);
-        Assert.Equal(BaselineMarks.Sha256Hex("\n"), c.Sources.ModelAppendSha256);
+        Assert.Equal(BaselineMarks.Sha256Hex(""), c.Sources.ModelAppendSha256);
         var bare = Gatto.Roles.RoleComposition.Compose(role, null, Array.Empty<(string, string)>(), null, cwd: null);
         Assert.Null(bare.Sources.Date);
         Assert.Null(bare.Sources.Memory);

@@ -153,7 +153,7 @@ public class ReplWildTests : IDisposable
         var repl = new Gatto.Repl.Repl(
             loop, convo, "generalist", "m", null, client, null, null, _root,
             () => Composed.Text("sys"), () => null, _ => new RoleSwitchResult(false, "", null, null, "unused"),
-            null, wild, on => store.SetWild(on, persist: true));
+            wild, on => store.SetWild(on, persist: true));
 
         var sw = new StringWriter();
         Console.SetOut(sw);

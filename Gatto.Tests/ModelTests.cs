@@ -47,7 +47,6 @@ public class ModelTests : IDisposable
             """);
         File.WriteAllText(Path.Combine(_modelsDir, "qwen3.6-35b", "system-append.md"), "model discipline text");
         File.WriteAllText(Path.Combine(_modelsDir, "qwen3.6-35b", "repair.json"), """{ "pattern": "retry" }""");
-        File.WriteAllText(Path.Combine(_modelsDir, "qwen3.6-35b", "nudges.json"), """{ "append": "nudge text" }""");
 
         var model = Model.Load(_modelsDir, "qwen3.6-35b");
 
@@ -70,8 +69,6 @@ public class ModelTests : IDisposable
         Assert.Equal("model discipline text", model.SystemAppend);
         Assert.NotNull(model.Repair);
         Assert.Equal("retry", model.Repair!.Value.GetProperty("pattern").GetString());
-        Assert.NotNull(model.Nudges);
-        Assert.Equal("nudge text", model.Nudges!.Append);
     }
 
     [Fact]
@@ -460,7 +457,6 @@ public class ModelTests : IDisposable
         Assert.Null(model.Profile.DefaultEffort);
         Assert.Null(model.SystemAppend);
         Assert.Null(model.Repair);
-        Assert.Null(model.Nudges);
     }
 
     [Fact]
@@ -650,14 +646,13 @@ public class ModelTests : IDisposable
     }
 
     [Fact]
-    public void Load_absent_nudges_repair_scorecard_is_valid()
+    public void Load_absent_repair_scorecard_is_valid()
     {
         WriteProfile("p", """{ "files": [{ "path": "m.gguf", "active": true }], "port": 1234, "context": 4096 }""");
-        //nudges.json, repair.json and scorecard.json are optional, loading must not throw when they are missing
+        //repair.json and scorecard.json are optional, loading must not throw when they are missing
 
         var model = Model.Load(_modelsDir, "p");
 
-        Assert.Null(model.Nudges);
         Assert.Null(model.Repair);
     }
 
@@ -784,30 +779,18 @@ public class ModelTests : IDisposable
         Assert.Contains("extra_args", ex.Message);
     }
 
+    //a nudges.json left by an older gatto sits inert, so even a broken one never stops a load or reaches the prompt
     [Fact]
-    public void Load_rejects_invalid_nudges_json()
+    public void Load_never_reads_a_leftover_nudges_json()
     {
         WriteProfile("p", """{ "files": [{ "path": "m.gguf", "active": true }], "port": 1234, "context": 4096 }""");
-        var nudgesPath = Path.Combine(_modelsDir, "p", "nudges.json");
-        File.WriteAllText(nudgesPath, "{ not json");
+        File.WriteAllText(Path.Combine(_modelsDir, "p", "nudges.json"), """{ "append": "NUDGE-MARK", "thinking_cap": "low" } not json""");
 
-        var ex = Assert.Throws<GattoConfigException>(() => Model.Load(_modelsDir, "p"));
-        Assert.Contains("nudges.json", ex.Message);
-        Assert.Contains(nudgesPath, ex.Message);
-    }
+        var model = Model.Load(_modelsDir, "p");
+        var c = RoleComposition.Compose(new RoleFile("r", "p", null, [], false, null, ThinkingLevel.High), model, [], null, cwd: null);
 
-    [Fact]
-    public void Load_rejects_nudges_with_unknown_key_naming_model_and_path()
-    {
-        WriteProfile("p", """{ "files": [{ "path": "m.gguf", "active": true }], "port": 1234, "context": 4096 }""");
-        var nudgesPath = Path.Combine(_modelsDir, "p", "nudges.json");
-        File.WriteAllText(nudgesPath, """{ "gate": "grounding" }""");   //the json parses, only the key name is wrong
-
-        var ex = Assert.Throws<GattoConfigException>(() => Model.Load(_modelsDir, "p"));
-
-        Assert.Contains("p", ex.Message);
-        Assert.Contains(nudgesPath, ex.Message);
-        Assert.Contains("gate", ex.Message);   //the message names the model and path and keeps the text Nudges.Parse produced
+        Assert.DoesNotContain("NUDGE-MARK", c.SystemText, StringComparison.Ordinal);
+        Assert.Equal(ThinkingLevel.High, c.Thinking);
     }
 
     [Fact]
@@ -924,7 +907,7 @@ public class ModelTests : IDisposable
     private static Model ModelWith(string modelPath) => new(
         "test",
         new ModelProfile([new ModelFile(modelPath, null, true)], 1235, 4096, null, null, null, null, null, Array.Empty<string>()),
-        null, null, null);
+        null, null);
 
     [Fact]
     public void AutoServe_IS_TRISTATE_and_absent_means_never_asked()

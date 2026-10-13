@@ -64,7 +64,7 @@ public sealed class RunAgentToolTests : IDisposable
 
     private RunAgentTool Build(
         IChatClient client, PermissionGate gate,
-        IReadOnlyList<AgentDefinition>? defs = null, string nudgeAppend = "",
+        IReadOnlyList<AgentDefinition>? defs = null,
         IReadOnlyDictionary<string, Func<ITool>>? catalog = null, Action<ToolRegistry>? capture = null,
         int? contextBudget = null)
         => new(
@@ -72,7 +72,6 @@ public sealed class RunAgentToolTests : IDisposable
             subagentWiring: Wiring(gate, catalog, capture),
             client: client,
             requestSettings: () => ("m", (JsonElement?)null, (JsonElement?)null),
-            nudgeAppend: nudgeAppend,
             parentCtx: new TestToolContext(_dir),
             progress: null,
             contextBudget: contextBudget);
@@ -253,22 +252,22 @@ public sealed class RunAgentToolTests : IDisposable
         Assert.Contains("- beta: the second", tool.Description);
     }
 
-    //a subagent's prompt is body plus nudge and nothing else. the nudge is a literal here, so the launch wiring half needs its own test
+    //a subagent's prompt is its definition's body and nothing else
     [Fact]
-    public async Task SystemPrompt_IsBodyPlusNudgeAppend_AndNothingElse()
+    public async Task SystemPrompt_IsTheBody_AndNothingElse()
     {
         await using var server = new FakeOpenAiServer();
         server.Enqueue(new FakeResponse(Frames: TextRound("done")));
         var client = new OpenAiCompatClient(new HttpClient(), "local", new EndpointConfig(server.BaseUrl));
         var tool = Build(client, FreshGate(new RecordingPermPrompter()),
-            defs: new[] { Def(prompt: "You are helper.") }, nudgeAppend: "PACK NUDGE");
+            defs: new[] { Def(prompt: "You are helper.") });
 
         await tool.ExecuteAsync(Args("helper", "the task"), new TestToolContext(_dir), default);
 
         var messages = server.LastRequestBody!.Value.GetProperty("messages").EnumerateArray().ToList();
         var systems = messages.Where(m => m.GetProperty("role").GetString() == "system").ToList();
         var system = Assert.Single(systems);
-        Assert.Equal("You are helper.\n\nPACK NUDGE", system.GetProperty("content").GetString());
+        Assert.Equal("You are helper.", system.GetProperty("content").GetString());
         //the subagent request has no role append and no context blocks.
         Assert.Contains(messages, m => m.GetProperty("role").GetString() == "user"
             && m.GetProperty("content").GetString() == "the task");

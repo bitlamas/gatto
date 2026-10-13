@@ -31,9 +31,6 @@ public class ThinkingLevelTests
         Assert.Contains("xhigh", ex.Message);
     }
 
-    [Fact]
-    public void Min_Orders() => Assert.Equal(ThinkingLevel.Low, Thinking.Min(ThinkingLevel.Max, ThinkingLevel.Low));
-
     //one non-none entry makes the map a binary toggle and gives back that level. more than one on-level, none at all, or no map gives null.
     [Fact]
     public void BinaryOnLevel_Mistral_none_high_is_High()

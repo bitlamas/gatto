@@ -90,7 +90,7 @@ public sealed class Repl(
     AgentLoop loop, Conversation convo, string roleName, string modelName,
     SessionStore? sessions, IChatClient client, int? configContext, int? contextBudget, string cwd,
     Func<ComposedSystem> recomposeSystem, Func<bool?> toggleAuto, Func<string, RoleSwitchResult> switchRole,
-    Action? resetGrounding = null, WildState? wild = null, Action<bool>? persistWild = null,
+    WildState? wild = null, Action<bool>? persistWild = null,
     HookBus? hooks = null, ThemeMode themeMode = ThemeMode.Dark,
     Action<string>?[]? subagentProgressSink = null, string? resumedFrom = null, ReasoningMode reasoning = ReasoningMode.Collapsed,
     string? thinkingName = null,
@@ -501,7 +501,6 @@ public sealed class Repl(
         convo = fresh;
         _offered = false;   //a fresh session may cross 85% again
         loop.ResetAutoCompact();   //the user's own compaction worked, so the automatic one may run again
-        resetGrounding?.Invoke();   //a fresh session has no checked restatement, so grounding must be re-armed
         _usageState.Clear();   //the old reading describes a conversation that no longer exists
         ctx?.RecordUsedTokens(null);   //clears the context figure too, there is none on the plain path
         return true;
@@ -527,7 +526,6 @@ public sealed class Repl(
         var (result, stripped) = Compactor.RebuildMidTurn(summary, convo, currentUserPrompt, observer, sessions, recomposeSystem, _glyphs.Dot);
         _lastCompactSummary = stripped;                       //the rich loop shows it as the new session's lead, as after /compact
         _offered = false;                                     //a fresh session may cross 85% again
-        resetGrounding?.Invoke();                             //a fresh session has no checked restatement, so grounding must be re-armed
         _usageState.Clear();                                  //cleared so a re-fire needs fresh over-threshold evidence
         return result;
     }
@@ -1398,7 +1396,6 @@ public sealed class Repl(
                 convo = new Conversation(composed.Text, baseline: composed.Baseline);
                 sessions?.StartNew();                  //the next save starts a new session file and leaves the old transcript alone
                 _offered = false;                      //a fresh session, so the 85% offer can fire again
-                resetGrounding?.Invoke();              //a fresh session re-arms grounding, so it restates again
                 _usageState.Clear();                   //the old usage reading describes the conversation that just ended
                 loop.ResetStripWarning();              //a fresh session reports its own first leak
                 loop.ResetAutoCompact();               //a fresh session may auto-compact again
@@ -2543,7 +2540,6 @@ public sealed class Repl(
                     convo = fresh;
                     sessions?.StartNew();
                     _offered = false;                      //a fresh session, so the 85% offer may fire again
-                    resetGrounding?.Invoke();              //a fresh session, so grounding is re-armed and restates again
                     _usageState.Clear();                   //the old reading describes a conversation that is gone
                     loop.ResetStripWarning();              //a fresh session reports its own first leak
                     loop.ResetAutoCompact();               //a fresh session may auto-compact again

@@ -39,39 +39,22 @@ public class RoleCompositionTests
     private static Model Pk(
         string? systemAppend = null,
         JsonElement? repair = null,
-        Nudges? nudges = null,
         JsonElement? profileSampling = null,
         IReadOnlyDictionary<string, JsonElement?>? profileThinking = null,
         ThinkingLevel? profileDefaultEffort = null)
-        => new("p", Profile(profileSampling, profileThinking, profileDefaultEffort), systemAppend, repair, nudges);
+        => new("p", Profile(profileSampling, profileThinking, profileDefaultEffort), systemAppend, repair);
 
     private static readonly IReadOnlyList<(string Path, string Content)> NoContext =
         Array.Empty<(string, string)>();
 
     [Fact]
-    public void Gates_union_of_role_and_model_nudges()
+    public void Gates_match_case_insensitively()
     {
-        var role = Role(gates: new[] { "grounding" });
-        var model = Pk(nudges: new Nudges(new[] { "commit" }, null, null));
-
-        var c = RoleComposition.Compose(role, model, NoContext, null, cwd: null);
-
-        Assert.Equal(2, c.Gates.Count);
-        Assert.Contains("grounding", c.Gates);
-        Assert.Contains("commit", c.Gates);
-    }
-
-    [Fact]
-    public void Gates_dedupe_case_insensitively()
-    {
-        var role = Role(gates: new[] { "Grounding" });
-        var model = Pk(nudges: new Nudges(new[] { "grounding" }, null, null));
-
-        var c = RoleComposition.Compose(role, model, NoContext, null, cwd: null);
+        var c = RoleComposition.Compose(Role(gates: new[] { "Citations" }), Pk(), NoContext, null, cwd: null);
 
         Assert.Single(c.Gates);
-        Assert.Contains("grounding", c.Gates);   //membership checks are case-insensitive.
-        Assert.Contains("GROUNDING", c.Gates);
+        Assert.Contains("citations", c.Gates);   //membership checks are case-insensitive.
+        Assert.Contains("CITATIONS", c.Gates);
     }
 
     [Fact]
@@ -84,16 +67,16 @@ public class RoleCompositionTests
     [Fact]
     public void Gates_no_model_uses_role_only()
     {
-        var c = RoleComposition.Compose(Role(gates: new[] { "grounding" }), null, NoContext, null, cwd: null);
+        var c = RoleComposition.Compose(Role(gates: new[] { "citations" }), null, NoContext, null, cwd: null);
         Assert.Single(c.Gates);
-        Assert.Contains("grounding", c.Gates);
+        Assert.Contains("citations", c.Gates);
     }
 
     [Fact]
     public void SystemText_full_composition_exact_string()
     {
         var role = Role(append: "ROLE");
-        var model = Pk(systemAppend: "SYSAPPEND", nudges: new Nudges(Array.Empty<string>(), "NUDGE", null));
+        var model = Pk(systemAppend: "SYSAPPEND");
         var ctxPath = @"C:\proj\AGENTS.md";
         var ctx = new[] { (ctxPath, "ground rules") };
 
@@ -101,23 +84,22 @@ public class RoleCompositionTests
 
         var expected = RoleComposition.BasePrompt
             + "\n\nModel: p."
-            + "\n\nSYSAPPEND\n\nROLE\n\nNUDGE"
+            + "\n\nSYSAPPEND\n\nROLE"
             + "\n\n## Context: " + ctxPath + "\nground rules";
         Assert.Equal(expected, c.SystemText);
     }
 
     [Fact]
-    public void SystemText_append_order_is_model_role_nudge()
+    public void SystemText_append_order_is_model_then_role()
     {
         var role = Role(append: "ROLE");
-        var model = Pk(systemAppend: "SYSAPPEND", nudges: new Nudges(Array.Empty<string>(), "NUDGE", null));
+        var model = Pk(systemAppend: "SYSAPPEND");
 
         var c = RoleComposition.Compose(role, model, NoContext, null, cwd: null);
 
         var iModel = c.SystemText.IndexOf("SYSAPPEND", StringComparison.Ordinal);
         var iRole = c.SystemText.IndexOf("ROLE", StringComparison.Ordinal);
-        var iNudge = c.SystemText.IndexOf("NUDGE", StringComparison.Ordinal);
-        Assert.True(iModel < iRole && iRole < iNudge);
+        Assert.True(iModel >= 0 && iModel < iRole);
     }
 
     [Fact]
@@ -130,8 +112,8 @@ public class RoleCompositionTests
     [Fact]
     public void SystemText_skips_whitespace_only_parts()
     {
-        var role = Role(append: "   ");
-        var model = Pk(systemAppend: "\n\t ", nudges: new Nudges(Array.Empty<string>(), "REAL", null));
+        var role = Role(append: "REAL");
+        var model = Pk(systemAppend: "\n\t ");
 
         var c = RoleComposition.Compose(role, model, NoContext, null, cwd: null);
 
@@ -228,7 +210,7 @@ public class RoleCompositionTests
     [Fact]
     public void THE_STANZA_NAMES_THE_MODEL_BY_ITS_PROFILE_ID()
     {
-        var model = new Model("qwen3.8-flash-next-q4-k-xl-dn4", Pk().Profile, null, null, null);
+        var model = new Model("qwen3.8-flash-next-q4-k-xl-dn4", Pk().Profile, null, null);
         var c = RoleComposition.Compose(Role(), model, NoContext, null, cwd: @"C:\proj", date: new DateTime(2026, 3, 4));
         Assert.Contains("Today's date: 2026-03-04.\nModel: qwen3.8-flash-next-q4-k-xl-dn4.\nWorking directory: C:\\proj.", c.SystemText, StringComparison.Ordinal);
     }
@@ -272,23 +254,9 @@ public class RoleCompositionTests
     }
 
     [Fact]
-    public void Thinking_min_applies_the_cap()
+    public void Thinking_with_a_model_uses_role_request()
     {
-        var role = Role(thinking: ThinkingLevel.High);
-        var model = Pk(nudges: new Nudges(Array.Empty<string>(), null, ThinkingLevel.Low));
-
-        var c = RoleComposition.Compose(role, model, NoContext, null, cwd: null);
-
-        Assert.Equal(ThinkingLevel.Low, c.Thinking);
-    }
-
-    [Fact]
-    public void Thinking_no_cap_uses_role_request()
-    {
-        var role = Role(thinking: ThinkingLevel.High);
-        var model = Pk(nudges: new Nudges(Array.Empty<string>(), null, null));   //the model sets no cap.
-
-        var c = RoleComposition.Compose(role, model, NoContext, null, cwd: null);
+        var c = RoleComposition.Compose(Role(thinking: ThinkingLevel.High), Pk(), NoContext, null, cwd: null);
 
         Assert.Equal(ThinkingLevel.High, c.Thinking);
     }
@@ -298,17 +266,6 @@ public class RoleCompositionTests
     {
         var c = RoleComposition.Compose(Role(thinking: ThinkingLevel.XHigh), null, NoContext, null, cwd: null);
         Assert.Equal(ThinkingLevel.XHigh, c.Thinking);
-    }
-
-    [Fact]
-    public void Thinking_role_below_cap_keeps_role()
-    {
-        var role = Role(thinking: ThinkingLevel.Low);
-        var model = Pk(nudges: new Nudges(Array.Empty<string>(), null, ThinkingLevel.High));
-
-        var c = RoleComposition.Compose(role, model, NoContext, null, cwd: null);
-
-        Assert.Equal(ThinkingLevel.Low, c.Thinking);
     }
 
     [Fact]
@@ -418,20 +375,6 @@ public class RoleCompositionTests
     public void ThinkingBody_null_when_no_map_anywhere()
     {
         var c = RoleComposition.Compose(Role(thinking: ThinkingLevel.High), Pk(), NoContext, null, cwd: null);
-        Assert.Null(c.ThinkingBody);
-    }
-
-    [Fact]
-    public void ThinkingBody_uses_capped_level_not_requested_level()
-    {
-        //the body must resolve at the capped level rather than the requested one
-        var model = Pk(
-            profileThinking: Map(("high", """{ "reasoning_effort": "high" }"""), ("none", null)),
-            nudges: new Nudges(Array.Empty<string>(), null, ThinkingLevel.None));
-        var role = Role(thinking: ThinkingLevel.High);
-
-        var c = RoleComposition.Compose(role, model, NoContext, null, cwd: null);
-
         Assert.Null(c.ThinkingBody);
     }
 
@@ -650,7 +593,7 @@ public class RoleCompositionTests
     {
         //a golden literal pins the exact text (two live calls would drift together)
         var role = Role(append: "ROLE");
-        var model = Pk(systemAppend: "SYSAPPEND", nudges: new Nudges(Array.Empty<string>(), "NUDGE", null));
+        var model = Pk(systemAppend: "SYSAPPEND");
         var ctx = new[] { (@"C:\proj\GATTO.md", "rules") };
 
         var c = RoleComposition.Compose(role, model, ctx, null, cwd: @"C:\proj", date: new DateTime(2026, 3, 4));
@@ -662,7 +605,7 @@ public class RoleCompositionTests
             + "When you are unsure, say so and say why; never present a guess as a fact.\n"
             + "Be direct and warm; no flattery, no filler praise, no apologizing for existing."
             + "\n\nToday's date: 2026-03-04.\nModel: p.\nWorking directory: C:\\proj."
-            + "\n\nSYSAPPEND\n\nROLE\n\nNUDGE"
+            + "\n\nSYSAPPEND\n\nROLE"
             + "\n\n## Context: C:\\proj\\GATTO.md\nrules";
         Assert.Equal(golden, c.SystemText);
     }
@@ -705,19 +648,19 @@ public class RoleCompositionTests
     }
 
     [Fact]
-    public void The_block_sits_after_the_nudge_append_and_before_the_first_context_file()
+    public void The_block_sits_after_the_role_append_and_before_the_first_context_file()
     {
         var text = RoleComposition.Compose(
-            Role(), Pk(nudges: new Nudges(Array.Empty<string>(), "NUDGE-MARK", null)),
+            Role(append: "ROLE-MARK"), Pk(),
             new[] { (@"C:\p\GATTO.md", "PROJECT-MARK") }, null, cwd: @"C:\p",
             policyLines: new[] { ("ask_user", "POLICY-MARK") }).SystemText;
 
-        var nudge = text.IndexOf("NUDGE-MARK", StringComparison.Ordinal);
+        var role = text.IndexOf("ROLE-MARK", StringComparison.Ordinal);
         var policy = text.IndexOf("POLICY-MARK", StringComparison.Ordinal);
         var context = text.IndexOf("## Context:", StringComparison.Ordinal);
 
-        Assert.True(nudge >= 0 && policy >= 0 && context >= 0);
-        Assert.True(nudge < policy, "policy follows the model's nudge append");
+        Assert.True(role >= 0 && policy >= 0 && context >= 0);
+        Assert.True(role < policy, "policy follows the role's append");
         Assert.True(policy < context, "policy precedes every context file, so the user keeps the last word");
     }
 

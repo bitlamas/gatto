@@ -94,6 +94,8 @@ public static class ShippedExtensions
         "41f74b3baf05beb65aa1bc2638668eb1410b27e22f5584785c525372fdb6384a",
         //oracle.json rev O2
         "ccc0c9353b6e9e5dfa4552126e3d6bdb0f96c13cf3a75a0ef90a1ad0c8d5f20a",
+        //oracle.json rev O3, the last one that armed the restatement gate
+        "ce9dff2a6ebe3e50b299dc43d0de4275cb996e0e2027d6fbcb04b8f279fb0d87",
         //shipped .csx revisions from before the public-comment pass start here, ask_user.csx first
         "d9674d68295a1b9296b196e5d169267064318f0e10615b76de41342df2d8e39b",
         //web_search.csx, the revision before the public-comment pass

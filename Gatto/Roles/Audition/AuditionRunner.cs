@@ -316,7 +316,7 @@ internal static class AuditionRunner
             model.Profile.Source?.RepoId);
     }
 
-    //the effort a plain launch of this model asks for, its own default or medium. the model's nudges are left out, a nudged run would measure the nudge
+    //the effort a plain launch of this model asks for, its own default or medium
     private static ThinkingLevel EffortFor(Model model) => model.Profile.DefaultEffort ?? ThinkingLevel.Medium;
 
     //the thinking state actually sent, the level the model's map landed on, or the template default when the model has no map

@@ -290,7 +290,7 @@ public static class GattoApp
         var reservedTools = new List<string>
         {
             new ReadFileTool().Name, new WriteFileTool().Name, new EditFileTool().Name,
-            new GlobTool().Name, new GrepTool().Name, new ShellTool().Name, "task_restate",
+            new GlobTool().Name, new GrepTool().Name, new ShellTool().Name,
         };
         if (memoryOn) reservedTools.AddRange(new[] { "memory_write", "recall_memory" });
         var loadedExtensions = ExtensionHost.Survivors(
@@ -561,12 +561,6 @@ public static class GattoApp
         var wildForbiddenBy = ProjectFileConfig.EffectiveWildAllowed(cwd, out var forbiddingFile) ? null : forbiddingFile;
         var wildState = new WildState { On = permissions.Wild && wildForbiddenBy is null, ForbiddenBy = wildForbiddenBy };
 
-        //always built and wired, since HookBus has no unregister, and Armed follows the current role so a /role into grounding still nudges
-        var groundingGate = new GroundingGate { Armed = comp.Gates.Contains("grounding") };
-        tools.Register(groundingGate.RestateTool);   //task_restate grounds the session on a 50% match against the brief, and IsAvailable hides it from a role that is not armed
-        hooks.OnToolResult(groundingGate.NudgeToolResultAsync);   //a soft nudge on write and edit results while ungrounded, it never blocks a tool call
-        Action resetGrounding = groundingGate.Reset;
-
         //the session's own /auto, which survives a /role, and only toggleAuto changes it
         var autoOff = args.Auto;
         var checkpointApproval = new CheckpointApproval();   //a single-use latch, so the permission gate passes the one shell call the checkpoint approved and no later one
@@ -777,7 +771,7 @@ public static class GattoApp
             catch (Exception) { return null; }
         })
         { Armed = comp.Gates.Contains("citations") };
-        hooks.OnToolResult(citationGate.OnToolResultAsync);   //always registered and after the grounding nudge, so it sees the nudged result and a /role can still arm it
+        hooks.OnToolResult(citationGate.OnToolResultAsync);   //always registered, so a /role can still arm it
 
         //run_agent: a definition may only name the six core built-ins, so a sub-agent's registry can never hold run_agent, ask_user or an extension tool
         var agentDefs = AgentDefinitions.LoadAll(
@@ -792,7 +786,6 @@ public static class GattoApp
             subagentWiring: SubagentWiring.Build(gate, diag: warn.Warn),   //a fresh registry per agent over the shared gate, which tags each of its prompts with the agent's name
             client: client,
             requestSettings: () => (modelString, comp.Sampling, comp.ThinkingBody),
-            nudgeAppend: model?.Nudges?.Append ?? "",
             parentCtx: toolCtx,
             progress: m => subagentProgress[0]?.Invoke(m),
             contextBudget: contextBudget,
@@ -917,8 +910,6 @@ public static class GattoApp
 
             //the session's own auto setting wins, /role must not re-arm checkpoints the user turned off
             checkpointGate.Enabled = comp.Checkpoints && !autoOff;
-            groundingGate.Armed = comp.Gates.Contains("grounding");
-            if (groundingGate.Armed) groundingGate.Reset();   //rearmed for the new role, its freshly composed prompt must be restated
             //armed for the new role, the ledger has been recording upstream all along so a switch never starts blind
             citationGate.Armed = comp.Gates.Contains("citations");
 
@@ -1173,8 +1164,7 @@ public static class GattoApp
                     return new EffortResult(true, toggled, toggleMessage, ThinkingOf(comp));
                 }
 
-                var cap = model?.Nudges?.ThinkingCap ?? ThinkingLevel.Max;
-                var (effective, name, message) = EffortSwitch.Resolve(levelArg, cap, model?.Id);
+                var (effective, name, message) = EffortSwitch.Resolve(levelArg);
                 var map = model?.Profile.Thinking ?? endpoint.Thinking;
 
                 //nothing is ever sent with no map, so the level name stays null and the footer chip hidden
@@ -1275,12 +1265,8 @@ public static class GattoApp
             Environment.SetEnvironmentVariable("GATTO_EFFORT", EffortSwitch.Name(comp.Thinking));
         }
 
-        //the model's own instructions as the composition joins them, for the note that says they changed
-        string? ModelAppendText()
-        {
-            var parts = new[] { model?.SystemAppend, model?.Nudges?.Append }.Where(p => !string.IsNullOrWhiteSpace(p)).ToList();
-            return parts.Count == 0 ? null : string.Join("\n\n", parts);
-        }
+        //the model's own instructions as the composition holds them, for the note that says they changed
+        string? ModelAppendText() => string.IsNullOrWhiteSpace(model?.SystemAppend) ? null : model.SystemAppend;
 
         ResumeDecision? resumeDecision = null;
         ResumeDelta? resumeDelta = null;
@@ -1413,7 +1399,7 @@ public static class GattoApp
         var unlistedRemote = !ServedHere() && endpoint.Models is not { Count: > 0 };
 
         //the hint reads the same two locals as the reuse line, so the two sentences cannot disagree about what is loaded
-        var repl = new Gatto.Repl.Repl(loop, convo, role.Name, modelString, sessions, client, endpoint.Context, contextBudget, cwd, recomposeSystem, toggleAuto, switchRole, resetGrounding, wildState, on => permissions.SetWild(on, persist: true), hooks, themeMode, subagentProgress, resumedFrom: resumedFrom, reasoning: config.ReasoningMode, thinkingName: initialThinkingName, setEffort: setEffort, listEfforts: listEfforts, glyphs: glyphs, purrSet: Gatto.Repl.Render.PurrFrames.RandomFromPool, versionLine: CommandBanner.DottedVersion(Gatto.Core.GattoVersion.String, Gatto.Core.GattoVersion.Build ?? "", CommandBanner.IsDevBuild(), glyphs), pump: pump, chrome: chrome, switchModel: switchModel, setDefault: id => ModelSwitch.Persist(home, endpointName, id),   //the role name as ResolveRole cased it from disk, which the banner and the status line key on
+        var repl = new Gatto.Repl.Repl(loop, convo, role.Name, modelString, sessions, client, endpoint.Context, contextBudget, cwd, recomposeSystem, toggleAuto, switchRole, wildState, on => permissions.SetWild(on, persist: true), hooks, themeMode, subagentProgress, resumedFrom: resumedFrom, reasoning: config.ReasoningMode, thinkingName: initialThinkingName, setEffort: setEffort, listEfforts: listEfforts, glyphs: glyphs, purrSet: Gatto.Repl.Render.PurrFrames.RandomFromPool, versionLine: CommandBanner.DottedVersion(Gatto.Core.GattoVersion.String, Gatto.Core.GattoVersion.Build ?? "", CommandBanner.IsDevBuild(), glyphs), pump: pump, chrome: chrome, switchModel: switchModel, setDefault: id => ModelSwitch.Persist(home, endpointName, id),   //the role name as ResolveRole cased it from disk, which the banner and the status line key on
                     launchServing: launchServing, probeServing: probeServing, listModels: unlistedRemote ? null : listModels, picker: replPicker, slotsReader: slotsReader, warn: warn, altScreen: config.AltScreen, dumpOnExit: config.DumpOnExit, thinkingIsToggle: thinkCap == ThinkCapability.Toggle, thinkingIsUnavailable: ThinkingUnavailable(), mouseEnabled: config.Mouse && config.AltScreen && pump is not null, wheelLines: config.WheelLines, copyOnSelect: config.CopyOnSelect, resumedPath: continuePath, resumeLine: resumeLine,
             modelMarkLegend: !ServedHere() ? "current" : "weights loaded",
             //read at the moment a connection is lost, through the current model, so a /model switch is followed
