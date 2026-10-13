@@ -261,8 +261,11 @@ public static class GattoApp
         //declared here so both closures below see the filled list, and it must be read through the variable rather than captured
         var policyLines = new List<(string Extension, string Line)>();
 
+        //the lines said after the banner, the sink's own only when the alt screen will cover what stderr printed
+        var launchWarnings = new List<string>();
+        var carryWarnings = args.Prompt is null && Gatto.Repl.Repl.RichFace(TermCaps.Detect(), config.AltScreen);
         //stderr until the rich loop rebinds it to a ♯ system line, so a mid-session diagnostic never corrupts the alt-screen frame
-        var warn = new Gatto.Core.WarningSink(m => Console.Error.WriteLine($"! {m}"));
+        var warn = new Gatto.Core.WarningSink(LaunchSink(launchWarnings, carryWarnings));
         var staleDefaultWarned = new HashSet<string>(StringComparer.Ordinal);   //a stale default is said once per process, since /role and the policy pass resolve again
         //null until the prompters are built below, so an extension that asks at load time gets the no-interactive-input error
         IUserPrompter? prompter = null;
@@ -737,8 +740,9 @@ public static class GattoApp
 
         //extension commit
 
+        var commands = new Gatto.Core.Commands.CommandRegistry();
         //every extension that committed, in discovery order, and a tool-less one is a legal load with no tool row
-        var (committedExt, committedExtensions) = ExtensionHost.Commit(loadedExtensions, tools, hooks, extDiag);
+        var (committedExt, committedExtensions) = ExtensionHost.Commit(loadedExtensions, tools, hooks, commands, Gatto.Repl.SlashCommands.All.Select(c => c.Name), extDiag);
         //the early pass should have skipped it already, and a launch must not run on the endpoint of an extension that did not commit
         if (endpointOwner.TryGetValue(endpointName, out var owner) && !committedExtensions.Any(e => e.Name == owner))
         {
@@ -1362,9 +1366,9 @@ public static class GattoApp
             }
         }
 
-        //stdout is not byte-pure here, so the notice goes before the Repl banner
+        //said after the banner with the launch warnings, a line written before it is under the alt screen
         if (WildNotice(permissions, wildState) is { } wildNotice)
-            Console.WriteLine(wildState.On ? $"{wildNotice} {glyphs.Dot} /wild to turn off" : wildNotice);
+            launchWarnings.Add(wildState.On ? $"{wildNotice} {glyphs.Dot} /wild to turn off" : wildNotice);
 
         //the one helper /role and /model also read, so a rebuild matches the launch footer
         string? initialThinkingName = ThinkingFooterName();
@@ -1406,7 +1410,7 @@ public static class GattoApp
             serverGone: () => model is { } served
                 ? ServeLines.GoneLine(new ServeManager(home, ServerBinaryFor(served, config)).Dead(served.Profile.Port), glyphs)
                 : null,
-                    autoCompact: config.AutoCompact, permissions: permissions, listTools: listTools, listPolicy: listPolicy, memoryWarning: launchRes.MemoryTruncatedLines > 0 ? MemoryTruncationWarning(launchRes.MemoryTruncatedLines) : null, cloudNotice: cloudNotice, cloud: cloud, readUsage: usageMeter.Read, onUsageChanged: repaint => usageMeter.Changed = repaint,piggyback: piggyback, turnAbort: turnAbort,
+                    autoCompact: config.AutoCompact, permissions: permissions, listTools: listTools, listPolicy: listPolicy, commands: commands, memoryWarning: launchRes.MemoryTruncatedLines > 0 ? MemoryTruncationWarning(launchRes.MemoryTruncatedLines) : null, cloudNotice: cloudNotice, launchWarnings: launchWarnings, cloud: cloud, readUsage: usageMeter.Read, onUsageChanged: repaint => usageMeter.Changed = repaint,piggyback: piggyback, turnAbort: turnAbort,
             //a session with no model talks to a server gatto does not manage, so the notice says that instead of offering a model fix
             unmanagedNotice: !ServedHere() && endpoint.Models is not { Count: > 0 } && !cloud ? UnmanagedSession.ModelUnavailable(launchBaseUrl) : null,
             cloudSwitchHint: unlistedRemote && cloud ? CloudSwitchHint(endpointName) : null,
@@ -1493,6 +1497,13 @@ public static class GattoApp
         TurnOutcome.Cancelled => "cancelled",
         TurnOutcome.Truncated => r.Truncation == TruncationKind.Stream ? "truncated_stream" : "truncated_length",
         _ => r.FinishReason == "length" ? "truncated_length" : "completed",
+    };
+
+    //the launch sink: stderr always, and the carried list too when the face will say the line again after the banner
+    internal static Action<string> LaunchSink(List<string> carried, bool carry) => m =>
+    {
+        Console.Error.WriteLine($"! {m}");
+        if (carry) carried.Add(m);
     };
 
     //the launch line about wild mode: on and where it is stored, or off because a project's .gatto.json forbids what the home says. null when wild is plainly off

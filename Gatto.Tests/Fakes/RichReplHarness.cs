@@ -131,7 +131,13 @@ public sealed class RichReplHarness
         //what /context counts, absent unless a test hands it in, as a session without it reports the figures unavailable
         Func<ContextUsageState, ContextInputs>? contextInputs = null,
         //the hooks the loop runs and the handle a prompt draws through, absent unless a test wires a real prompter, as the interactive entry does
-        HookBus? hooks = null, Gatto.Repl.Render.ChromeHandle? chrome = null)
+        HookBus? hooks = null, Gatto.Repl.Render.ChromeHandle? chrome = null,
+        //the commands extensions registered, absent unless a test hands a registry in, as a home with no extension has none
+        Gatto.Core.Commands.CommandRegistry? commands = null,
+        //the warnings the launch raised before the banner, absent unless a test hands them in, as a clean launch raises none
+        IReadOnlyList<string>? launchWarnings = null,
+        //the clipboard Alt+V reads, absent unless a test pastes, as the real one would read this machine's clipboard
+        Gatto.Terminal.IClipboardImageNative? clipboardImages = null)
     {
         Surface = new VtScreenSurface(width, height);
         _tap = new TappedSurface(Surface);
@@ -169,7 +175,10 @@ public sealed class RichReplHarness
             resumedPath: resumedPath,
             resumeLine: resumeLine,
             contextInputs: contextInputs,
-            chrome: chrome);
+            chrome: chrome,
+            commands: commands,
+            launchWarnings: launchWarnings,
+            clipboardImageSource: clipboardImages);
     }
 
     //answers the attach-count question without a terminal. set it to a function of the SelectSpec, and null keeps the real widget.

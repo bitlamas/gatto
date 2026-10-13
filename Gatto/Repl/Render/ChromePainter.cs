@@ -361,8 +361,9 @@ public sealed class ChromePainter
     //a window marks its hidden rows only when a row is left between the two marks for the caret
     internal const int MarkedWindowRows = 3;
 
-    //the dim edge row of a window that hides rows, counting the row it covers
-    private string HiddenMark(string arrow, int hidden) => _theme.Paint($"{GutterWrap.Hang}{arrow} {hidden} more", Theme.Dim);
+    //the dim edge row of a window that hides rows, counting the row it covers. an answer names its key, a prompt's keys are its own
+    private string HiddenMark(string arrow, int hidden, string? key = null) =>
+        _theme.Paint($"{GutterWrap.Hang}{arrow} {hidden} more" + (key is null ? "" : $" {_glyphs.Dot} {key} or wheel"), Theme.Dim);
 
     //a mark never covers the caret's row, the window moves one more row instead, and a caret outside the window leaves it where it is
     private static int ClearOfMarks(int top, int caret, int total, int rows)
@@ -535,8 +536,8 @@ public sealed class ChromePainter
             var window = tall.Skip(drop).Take(panelAllowed).ToList();
             if (window.Count >= MarkedWindowRows)
             {
-                if (drop > 0) window[0] = HiddenMark(_glyphs.Up, drop + 1);
-                if (drop + window.Count < tall.Count) window[^1] = HiddenMark(_glyphs.Down, tall.Count - drop - window.Count + 1);
+                if (drop > 0) window[0] = HiddenMark(_glyphs.Up, drop + 1, State.PanelInfo ? "PgUp" : null);
+                if (drop + window.Count < tall.Count) window[^1] = HiddenMark(_glyphs.Down, tall.Count - drop - window.Count + 1, State.PanelInfo ? "PgDn" : null);
             }
             panel = window;
             if (panelCaret is { } pc)

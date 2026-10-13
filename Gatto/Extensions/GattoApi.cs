@@ -19,16 +19,21 @@ public sealed class StagedRegistrations
     //the endpoints the extension contributes, by the name -e takes
     public IReadOnlyList<(string Name, EndpointConfig Config)> Endpoints { get; }
 
+    //the slash commands the extension registers, committed in this order and refused one at a time on a collision
+    public IReadOnlyList<(string Name, string Args, string Summary, Func<string, CancellationToken, Task<string>> Handler)> Commands { get; }
+
     public StagedRegistrations(
         IReadOnlyList<(ITool Tool, bool ReadClass)> tools,
         IReadOnlyList<(string Evt, Func<HookPayload, Task> Handler)> hooks,
         string? policy,
-        IReadOnlyList<(string Name, EndpointConfig Config)>? endpoints = null)
+        IReadOnlyList<(string Name, EndpointConfig Config)>? endpoints = null,
+        IReadOnlyList<(string Name, string Args, string Summary, Func<string, CancellationToken, Task<string>> Handler)>? commands = null)
     {
         Tools = tools;
         Hooks = hooks;
         Policy = policy;
         Endpoints = endpoints ?? Array.Empty<(string, EndpointConfig)>();
+        Commands = commands ?? Array.Empty<(string, string, string, Func<string, CancellationToken, Task<string>>)>();
     }
 }
 
@@ -36,7 +41,7 @@ public sealed class StagedRegistrations
 public sealed class GattoApi
 {
     //bump on any additive change to this surface, the extension cache hash includes the version so a host upgrade recompiles every .csx
-    public const string HostApiVersion = "5";
+    public const string HostApiVersion = "6";
 
     private static readonly Regex NameRx = new("^[a-z0-9_]+$", RegexOptions.Compiled);
     private static readonly string[] ValidEvents = { "tool_call", "tool_result", "message_end", "session_summary" };
@@ -49,6 +54,7 @@ public sealed class GattoApi
     private List<(string Evt, Func<HookPayload, Task> Handler)> _hooks = new();
     private string? _policy;
     private List<(string Name, EndpointConfig Config)> _endpoints = new();
+    private List<(string Name, string Args, string Summary, Func<string, CancellationToken, Task<string>> Handler)> _commands = new();
 
     public string Home { get; }
     public string Cwd { get; }
@@ -164,6 +170,18 @@ public sealed class GattoApi
             Models: models?.ToList())));
     }
 
+    //stage a slash command. the name rule is checked now so a bad name fails at load, the collision check waits for commit where the other files are known
+    public void Command(string name, string args, string summary, Func<string, CancellationToken, Task<string>> handler)
+    {
+        if (name is null || !Gatto.Core.Commands.CommandNames.IsRegistrable(name))
+            throw new InvalidOperationException($"command name '{name}' must be a slash and lowercase ASCII letters");
+        if (string.IsNullOrWhiteSpace(summary))
+            throw new InvalidOperationException($"command '{name}' summary must not be empty");
+        if (handler is null)
+            throw new InvalidOperationException($"command '{name}' handler must not be null");
+        _commands.Add((name, args?.Trim() ?? "", summary.Trim(), handler));
+    }
+
     //start a fresh empty stage for a new extension load, whatever was staged before is dropped
     public void BeginExtension(string name)
     {
@@ -172,16 +190,18 @@ public sealed class GattoApi
         _hooks = new();
         _policy = null;
         _endpoints = new();
+        _commands = new();
     }
 
     //hand back the stage and clear it, so the next load starts empty
     public StagedRegistrations TakeStaged()
     {
-        var staged = new StagedRegistrations(_tools, _hooks, _policy, _endpoints);
+        var staged = new StagedRegistrations(_tools, _hooks, _policy, _endpoints, _commands);
         _tools = new();
         _hooks = new();
         _policy = null;
         _endpoints = new();
+        _commands = new();
         return staged;
     }
 

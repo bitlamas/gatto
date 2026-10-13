@@ -8,6 +8,7 @@ using Gatto.Tests.Fakes;
 namespace Gatto.Tests;
 
 //at rest /context runs through the queue like any command and its screen goes into the transcript
+[Collection("e2e")]
 public class ContextSlashTests : IDisposable
 {
     private readonly TextReader _in = Console.In;

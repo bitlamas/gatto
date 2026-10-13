@@ -139,9 +139,13 @@ public sealed class Repl(
     Func<IReadOnlyList<ToolInfo>>? listTools = null,
     //each committed extension's one line of standing policy, shown under /tools beneath its tools. a closure beside listTools, and null leaves the policy rows out
     Func<IReadOnlyList<(string Extension, string Line)>>? listPolicy = null,
+    //the commands extensions registered, read beside the built-ins at every site that names a command. null means none registered
+    Gatto.Core.Commands.CommandRegistry? commands = null,
     //the finished sentence for an over-budget memory index, printed once after the banner. a later re-truncation goes through the warn sink instead
     string? memoryWarning = null,
     string? cloudNotice = null,   //said once per home, the first time a session runs on a cloud endpoint
+    //the launch lines in arrival order, said after the banner: the sink's warnings on the rich face only, the wild notice on both. null says none
+    IReadOnlyList<string>? launchWarnings = null,
     bool cloud = false,           //the footer's mark before the model, fixed for the session since the endpoint is
     //the provider's summed cost and latest quota, read at each footer rebuild, and null shows neither
     Func<(decimal? Cost, Gatto.Core.Client.QuotaReading? Quota)>? readUsage = null,
@@ -178,7 +182,9 @@ public sealed class Repl(
     //what /context counts, built by the caller from the composition and the tools since Repl cannot see the role. null leaves /context unavailable
     Func<ContextUsageState, ContextInputs>? contextInputs = null,
     //llama-server's counting routes for the exact path, null for an endpoint that has none
-    ITokenCounter? tokenCounter = null)
+    ITokenCounter? tokenCounter = null,
+    //the clipboard Alt+V reads images from, injectable so a test can paste. null uses the real one
+    Gatto.Terminal.IClipboardImageNative? clipboardImageSource = null)
 {
     //the /context rows at a width, built from what the last request sent, so the composer thread may build them mid-turn
     internal async Task<IReadOnlyList<ContextReport.Row>?> ContextRowsAsync(int width, Theme theme, CancellationToken ct) =>
@@ -190,7 +196,7 @@ public sealed class Repl(
 
     internal const string ContextUnavailable = "context figures are unavailable in this session";
 
-    //the keys of an open info panel: the page keys scroll it, Enter closes it, any other key closes it and goes on to the composer
+    //the keys of an open info panel: the page keys and the bare arrows scroll it, Enter closes it, any other key closes it and goes on to the composer
     internal static Func<ConsoleKeyInfo, KeyDisposition> BuildInfoPanelSink(ChromePainter painter, object gate) => k =>
     {
         lock (gate) { if (!painter.State.PanelInfo) return KeyDisposition.PassThrough; }
@@ -198,6 +204,8 @@ public sealed class Repl(
         {
             case ConsoleKey.PageUp: painter.ScrollPanel(InfoPanelPage); return KeyDisposition.Consumed;
             case ConsoleKey.PageDown: painter.ScrollPanel(-InfoPanelPage); return KeyDisposition.Consumed;
+            case ConsoleKey.UpArrow when k.Modifiers == 0: painter.ScrollPanel(1); return KeyDisposition.Consumed;
+            case ConsoleKey.DownArrow when k.Modifiers == 0: painter.ScrollPanel(-1); return KeyDisposition.Consumed;
             case ConsoleKey.Enter: painter.CloseInfoPanel(); return KeyDisposition.Consumed;   //consumed, so an empty composer is never submitted
         }
         //a copy chord is the cancel sink's, it already looked and passed it on
@@ -244,7 +252,8 @@ public sealed class Repl(
     {
         if (trimmed == "/help")
         {
-            var help = (SlashCommands.RenderRich(s.Theme) + "\n\n" + Shortcuts.RenderRich(s.Theme, glyphs: _glyphs)).Split('\n');
+            var known = KnownCommands();
+            var help = (SlashCommands.RenderRich(s.Theme, known) + "\n\n" + Shortcuts.RenderRich(s.Theme, glyphs: _glyphs, known)).Split('\n');
             return _ => [.. help.Select(r => "  " + r)];
         }
         if (trimmed == "/tools")
@@ -258,6 +267,32 @@ public sealed class Repl(
 
     //the prompters' bridge to the chrome, armed when the painter and renderer come up, cleared at teardown, so a prompt renders inline until then
     private readonly ChromeHandle? _chrome = chrome;
+
+    private readonly Gatto.Core.Commands.CommandRegistry _commands = commands ?? new Gatto.Core.Commands.CommandRegistry();
+
+    //a copy, so a warning raised while the rows print cannot change the list under the loop
+    private string[] LaunchWarningsNow() => launchWarnings is null ? [] : [.. launchWarnings];
+
+    //built-ins first, then the registered rows in commit order. every site that reads the command table reads this, so none can disagree
+    internal IReadOnlyList<SlashCommands.Cmd> KnownCommands() =>
+        [.. SlashCommands.All, .. _commands.Rows.Select(r => new SlashCommands.Cmd(r.Name, r.Args, r.Summary, Source: r.SourceFile))];
+
+    //a registered handler's text, one row per line and each line sanitised, since it is an extension's code. a throw becomes its message alone
+    private async Task<IReadOnlyList<string>> RunRegisteredAsync(Gatto.Core.Commands.CommandRow row, string arg, CancellationToken appCt)
+    {
+        string text;
+        try { text = await row.Handler(arg, appCt) ?? ""; }
+        catch (Exception ex) { text = ex.Message; }
+        return [.. text.Split('\n').Select(TermText.Sanitize)];
+    }
+
+    //the registered row a trimmed line names, with its argument text, or null when the first token is not a registered name
+    private (Gatto.Core.Commands.CommandRow Row, string Arg)? MatchRegistered(string trimmed)
+    {
+        if (_commands.TryGet(FirstToken(trimmed), out var row) && TryMatchCommand(trimmed, row.Name, out var arg))
+            return (row, arg);
+        return null;
+    }
 
     //the run's glyph set, resolved once at launch and handed in so every painter speaks one set of marks
     private readonly Gatto.Terminal.GlyphSet _glyphs = glyphs ?? Gatto.Terminal.GlyphSet.Unicode;
@@ -1272,6 +1307,9 @@ public sealed class Repl(
     //whether this console draws the rich renderer, GattoApp picks its permission prompter with the same test, so the two call sites must not drift
     public static bool IsRichTerminal() => TermCaps.Detect().Rich;
 
+    //the face a session runs, GattoApp asks it too, since only the rich face covers what stderr printed before the banner
+    public static bool RichFace(TermCaps caps, bool altScreen) => caps.Rich && altScreen;
+
     //repaint a restored transcript through the renderer channels, sending each tool call and its result as a pair, and change nothing
     public static void ReplayTranscript(
         IReadOnlyList<ChatMessage> messages, ITurnObserver observer, Action<string> echoUser)
@@ -1319,7 +1357,7 @@ public sealed class Repl(
 
         var caps = TermCaps.Detect();
         //a rich TTY still takes the plain renderer when the user turns the alt screen off
-        return caps.Rich && altScreen
+        return RichFace(caps, altScreen)
             ? await RunRichAsync(caps, appCt)
             : await RunPlainAsync(appCt);
     }
@@ -1335,6 +1373,7 @@ public sealed class Repl(
         //the same system line the rich path commits, printed literally here, plain has no renderer to hang the marker on
         if (memoryWarning is not null) Console.WriteLine($"{_glyphs.Sharp} " + memoryWarning);
         if (cloudNotice is not null) Console.WriteLine($"{_glyphs.Sharp} " + cloudNotice);
+        foreach (var w in LaunchWarningsNow()) Console.WriteLine($"{_glyphs.Sharp} " + TermText.Sanitize(w));   //an extension's error text reaches this list, so strip it like OnWarning does
 
         var renderer = new PlainRenderer(reasoning, _glyphs);
         //the resumedFrom flag on its own still prints the marker, a compact-then-quit session has no turns to replay
@@ -1375,7 +1414,7 @@ public sealed class Repl(
             if (line.Trim().Length == 0) continue;
 
             //both faces call this gate before the command chain and before the send, so a mistyped command is refused in one place
-            var gate = GateSlash(line);
+            var gate = GateSlash(line, KnownCommands());
             if (gate.Refused)
             {
                 Console.WriteLine(gate.Refusal);
@@ -1387,7 +1426,7 @@ public sealed class Repl(
             if (trimmedLine == "/quit") break;
             if (trimmedLine == "/help")
             {
-                Console.WriteLine(SlashCommands.RenderPlain());
+                Console.WriteLine(SlashCommands.RenderPlain(KnownCommands()));
                 continue;
             }
             if (trimmedLine == "/new")
@@ -1433,6 +1472,12 @@ public sealed class Repl(
                 //sanitizing drops newlines, so split the rows first, and the listing re-emits stored grant text from model-authored arguments
                 foreach (var l in HandlePermissions(permArg).Split('\n'))
                     Console.WriteLine(TermText.Sanitize(l));
+                continue;
+            }
+            if (MatchRegistered(trimmedLine) is { } reg)
+            {
+                foreach (var row in await RunRegisteredAsync(reg.Row, reg.Arg, appCt))
+                    Console.WriteLine(row);
                 continue;
             }
             if (trimmedLine == "/compact")
@@ -1583,7 +1628,7 @@ public sealed class Repl(
         });
         //the focus sink registers below, after s.Refresh is set, it must call s.Refresh() so the footer hint follows focus at once
         var history = new History(Path.Combine(GattoHome.Resolve(), "history.txt"));
-        var editor = new LineEditor(keys.Composer, history, () => surface.Width);
+        var editor = new LineEditor(keys.Composer, history, () => surface.Width, KnownCommands);
         //the count question is armed here, and its standing yes lives with the grants in the home, so a project folder can't bring one
         _attachManyGranted = () => permissions?.AttachMany == true;
         _grantAttachMany = () =>
@@ -1605,7 +1650,7 @@ public sealed class Repl(
         var status = new StatusInfo(cwd, modelName, roleName, ctx,
             Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), Wild: wild?.On == true,
             Thinking: thinkingName, Serving: serving, ThinkingToggle: thinkingToggle, Cloud: cloud);
-        var frame = new InputFrame(surface, theme, roleName, status, _glyphs);
+        var frame = new InputFrame(surface, theme, roleName, status, _glyphs, KnownCommands);
         var focusTaught = false;   //the one-shot teaser for the first collapsed reasoning block, set once it has fired
 
         //feeds the ctx estimate and rebuilds the status frame, and the painter is retargeted here so it never composes against a stale one
@@ -1631,7 +1676,7 @@ public sealed class Repl(
                 ChordHint = LivePasteHint() ?? chords.Hint,
                 Quota = usage.Quota, Cost = usage.Cost,
             };
-            frame = new InputFrame(surface, theme, roleName, status, _glyphs);
+            frame = new InputFrame(surface, theme, roleName, status, _glyphs, KnownCommands);
             //the retarget takes the gate too, the ticker repaints from its own thread while this runs on the dispatcher's
             lock (gate) { painter.Frame = frame; painter.RoleForTint = roleName; }
         }
@@ -1758,6 +1803,8 @@ public sealed class Repl(
         //the memory-truncation notice, a system row right after the banner and above any resumed transcript
         if (memoryWarning is not null) renderer.CommitSystem(memoryWarning);
         if (cloudNotice is not null) renderer.CommitSystem(cloudNotice);
+        //the list as it stands now, a warning raised between here and the route below still reaches stderr alone
+        foreach (var w in LaunchWarningsNow()) renderer.CommitSystem(w);
 
         //fire on resumedFrom alone, a compact-then-quit session has no chat turns even though its context was loaded
         if (resumedFrom is not null)
@@ -1932,7 +1979,7 @@ public sealed class Repl(
         s.OnDegraded = () => { degraded = true; s.RestoreMouseMode?.Invoke(); };
         s.Renderer.OnDegraded = s.OnDegraded;
         //the Alt+V key pastes an image and names Ctrl+V when there is nothing to paste, Ctrl+V itself belongs to the terminal
-        var clipboardImages = new Win32ClipboardImageNative();
+        var clipboardImages = clipboardImageSource ?? new Win32ClipboardImageNative();
         _clipboardImages = clipboardImages;   //the footer's Alt+V hint reads this field too
         //this runs on the editor thread mid-turn, so never read convo here, dedupe and caps happen at submit
         editor.OnPasteImage = () =>
@@ -2059,22 +2106,28 @@ public sealed class Repl(
                     }
                     rejected = null;
                     if (text.Trim().Length == 0) continue;
+                    var typed = text;
+                    //the placeholders beside a command seed the next Read here, where no restore can race the reseed
+                    string? carry = null;
+                    if (CommandAmongPlaceholders(text, KnownCommands()) is { } split) (text, carry) = split;
                     //a command that only reads answers at once while a turn runs, drawn where the composer was, and never waits in the queue
                     if (BypassNow(text, s) is { } answer)
                     {
                         lock (s.Gate) { if (!stopped) RedrawLocked(idleView); }
                         //the counts are awaited off this thread, so the composer keeps reading keys while a server answers
                         _ = OpenInfoPanelAsync(answer, s, () => stopped);
+                        rejected = carry;
                         continue;
                     }
                     if (queue.TryEnqueue(text))
                     {
                         //one repaint clears the composer and shows the new queued row
                         lock (s.Gate) { PublishQueueLocked(); RedrawLocked(idleView); }
+                        rejected = carry;
                     }
                     else
                     {
-                        rejected = text;            //handed back to the next Read, which reseeds the composer
+                        rejected = typed;           //handed back to the next Read as typed, which reseeds the composer
                         //cap hit, beep and keep the text, guarded by stopped so no bell is written into an erased chrome
                         lock (s.Gate) { if (!stopped) s.Surface.Write("\a"); }
                     }
@@ -2150,7 +2203,8 @@ public sealed class Repl(
     //this bracket starts and stops the purr, the body cannot end it early. the renderer is a Func, a /role swap mid-turn must still close the current turn
     internal static async Task<bool> DispatchBracketAsync(
         object gate, ChromePainter painter, ChromeTicker ticker, Func<StreamRenderer> renderer,
-        IReadOnlyList<string> queued, IReadOnlyList<string> userLines, string kaomoji, Func<Task<bool>> body,
+        IReadOnlyList<string> queued, IReadOnlyList<string> userLines, string kaomoji,
+        IReadOnlyList<SlashCommands.Cmd> known, Func<Task<bool>> body,
         long promptEstimate = 0, Func<Render.PurrFrames>? purrSet = null, string? classifyAs = null)
     {
         lock (gate)
@@ -2159,7 +2213,7 @@ public sealed class Repl(
             renderer().CommitUser(userLines);      //the ❯ echo becomes scrollback
             renderer().BeginTurn();
             //only a submission that reaches the model purrs. classify the typed text, a typed //help reaches the model while the echo reads /help
-            if (SlashCommands.ReachesModel(classifyAs ?? string.Join("\n", userLines)))
+            if (SlashCommands.ReachesModel(classifyAs ?? string.Join("\n", userLines), known))
                 //the purr is drawn once per turn, the accordion must not change word mid-breath. the chooser is injected, a session without one draws the same frames
                 ticker.StartTurn(kaomoji, promptEstimate,
                     purrSet is null ? Render.PurrFrames.Full : purrSet());
@@ -2249,12 +2303,22 @@ public sealed class Repl(
         public Func<bool>? ComposerEmpty;
     }
 
+    //a line of image placeholders and one command, in any order, is that command, and the placeholders go back to the composer as typed. null for any other line, a // escape included
+    internal static (string Command, string Carry)? CommandAmongPlaceholders(string text, IReadOnlyList<SlashCommands.Cmd> known)
+    {
+        var (held, rest) = ImageAttach.SplitPlaceholders(text);
+        if (held.Count == 0 || rest.Trim().Length == 0) return null;
+        var gate = GateSlash(rest, known);
+        if (gate.Literal || !(gate.Refused || IsSlashCommand(rest, known))) return null;
+        return (rest.Trim(), string.Concat(held.Select(p => p + " ")));
+    }
+
     //takes the attach decision above the turn bracket, a refusal from inside the body comes after the echo and the purr
     private async Task<bool> DispatchLinearAsync(string input, RichState s, DispatchQueue queue, CancellationToken appCt)
     {
         //refuses an unknown command above the bracket, and clears the composer instead of handing the text back since a restore races the composer's own paint
         var submitted = input;   //what was typed, the bracket classifies this rather than the stripped text
-        var gate = GateSlash(input);
+        var gate = GateSlash(input, KnownCommands());
         if (gate.Refused)
         {
             s.Renderer.CommitSystem(gate.Refusal!);
@@ -2264,7 +2328,7 @@ public sealed class Repl(
 
         var attach = AttachDecision.None;
         //the one place attachments are acquired, and the literal flag keeps a //help message on this arm since the stripped text reads as a command
-        if (gate.Literal || !IsSlashCommand(input))
+        if (gate.Literal || !IsSlashCommand(input, KnownCommands()))
         {
             attach = PrepareAttachments(input, s);
             if (attach.Refused)
@@ -2282,18 +2346,18 @@ public sealed class Repl(
             }
         }
         return await DispatchBracketAsync(s.Gate, s.Painter, s.Ticker, () => s.Renderer,
-            queue.Texts(), input.Split('\n'), Cats.Face(_glyphs),
+            queue.Texts(), input.Split('\n'), Cats.Face(_glyphs), KnownCommands(),
             () => DispatchLinearBodyAsync(input, s, attach, appCt, gate.Literal),
             //what the model is about to re-read, measured before the turn appends anything
             promptEstimate: ScaledPromptEstimate(ContextBudget.Estimate(convo.Messages), _usageState.Ratio),
             purrSet: purrSet, classifyAs: submitted);
     }
 
-    //single-sourced from SlashCommands.All with the matcher the dispatch chain uses, so this and the chain cannot disagree about what is a command
-    internal static bool IsSlashCommand(string input)
+    //single-sourced from the known rows with the matcher the dispatch chain uses, so this and the chain cannot disagree about what is a command
+    internal static bool IsSlashCommand(string input, IReadOnlyList<SlashCommands.Cmd> known)
     {
         var trimmed = input.Trim();
-        foreach (var cmd in SlashCommands.All)
+        foreach (var cmd in known)
             if (TryMatchCommand(trimmed, cmd.Name, out _)) return true;
         return false;
     }
@@ -2305,7 +2369,7 @@ public sealed class Repl(
     }
 
     //the gate every submitted line passes, a // escape loses one slash and the refusal reads the first token against the declared names
-    internal static SlashGate GateSlash(string input)
+    internal static SlashGate GateSlash(string input, IReadOnlyList<SlashCommands.Cmd> known)
     {
         var trimmed = input.Trim();
 
@@ -2313,7 +2377,7 @@ public sealed class Repl(
             return new SlashGate(trimmed[1..], Literal: true, null);
 
         var token = FirstToken(trimmed);
-        return IsCommandShaped(token) && !IsDeclaredCommand(token)
+        return Gatto.Core.Commands.CommandNames.IsShaped(token) && !IsDeclaredCommand(token, known)
             ? new SlashGate(input, false, UnknownCommandLine(token))
             : new SlashGate(input, false, null);
     }
@@ -2329,18 +2393,9 @@ public sealed class Repl(
         return trimmed;
     }
 
-    //only a bare /word of letters reads as a command, a digit, an inner slash or punctuation means the user is writing prose
-    private static bool IsCommandShaped(string token)
+    private static bool IsDeclaredCommand(string token, IReadOnlyList<SlashCommands.Cmd> known)
     {
-        if (token.Length < 2 || token[0] != '/') return false;
-        for (var i = 1; i < token.Length; i++)
-            if (!char.IsAsciiLetter(token[i])) return false;
-        return true;
-    }
-
-    private static bool IsDeclaredCommand(string token)
-    {
-        foreach (var cmd in SlashCommands.All)
+        foreach (var cmd in known)
             if (string.Equals(cmd.Name, token, StringComparison.Ordinal)) return true;
         return false;
     }
@@ -2523,7 +2578,7 @@ public sealed class Repl(
         if (trimmed == "/help")
         {
             //the help block lists the commands you type and then the keys you press, gutter rows with no ♯ marker
-            s.Renderer.CommitPlain(SlashCommands.RenderRich(s.Theme) + "\n\n" + Shortcuts.RenderRich(s.Theme, glyphs: _glyphs));
+            s.Renderer.CommitPlain(SlashCommands.RenderRich(s.Theme, KnownCommands()) + "\n\n" + Shortcuts.RenderRich(s.Theme, glyphs: _glyphs, KnownCommands()));
             return false;
         }
         if (trimmed == "/new")
@@ -2569,6 +2624,13 @@ public sealed class Repl(
             //one ♯ row per line again, the listing has a row per grant plus the wild row
             foreach (var line in HandlePermissions(permArg).Split('\n'))
                 s.Renderer.CommitSystem(line);
+            return false;
+        }
+        if (MatchRegistered(trimmed) is { } reg)
+        {
+            //one ♯ row per line, as /wild commits its lines
+            foreach (var row in await RunRegisteredAsync(reg.Row, reg.Arg, appCt))
+                s.Renderer.CommitSystem(row);
             return false;
         }
         if (trimmed == "/context")

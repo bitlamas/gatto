@@ -143,13 +143,15 @@ public static class ExtensionHost
         return failures;
     }
 
-    //a name collision skips the whole extension, and the policy line belongs to a committed extension even with no tools
+    //a tool name collision skips the whole extension, a command collision refuses that one command, and the policy line belongs to a committed extension even with no tools
     public static (IReadOnlyList<(LoadedExtension Extension, string Name, bool ReadClass)> Tools,
                    IReadOnlyList<LoadedExtension> Extensions) Commit(
-        IReadOnlyList<LoadedExtension> loaded, ToolRegistry tools, HookBus hooks, Action<string> diagnostic)
+        IReadOnlyList<LoadedExtension> loaded, ToolRegistry tools, HookBus hooks,
+        Gatto.Core.Commands.CommandRegistry commands, IEnumerable<string> reservedCommands, Action<string> diagnostic)
     {
         var committed = new List<(LoadedExtension, string, bool)>();
         var committedExtensions = new List<LoadedExtension>();
+        var reserved = new HashSet<string>(reservedCommands, StringComparer.Ordinal);
         foreach (var ext in loaded)
         {
             var staged = ext.Registrations;
@@ -185,6 +187,15 @@ public static class ExtensionHost
             }
             foreach (var (evt, handler) in staged.Hooks)
                 hooks.On(MapEvent(evt), handler);   //tool_result maps to the observe-only hook event, OnToolResult is never wired
+
+            //a command collision refuses that one row and names the file, the rest of the extension stands. built-in wins, first file wins
+            var file = Path.GetFileName(ext.Source.EntryPath);
+            foreach (var (name, args, summary, handler) in staged.Commands)
+            {
+                if (reserved.Contains(name)) { diagnostic($"{file}: {name} is gatto's"); continue; }
+                if (commands.TryGet(name, out var taken)) { diagnostic($"{file}: {name} is taken by {taken.SourceFile}"); continue; }
+                commands.Add(new Gatto.Core.Commands.CommandRow(name, args, summary, handler, file));
+            }
         }
         return (committed, committedExtensions);
     }

@@ -30,8 +30,11 @@ public sealed record FrameLayout(
 
 //the framed typing area: top rule with its role label, editor rows, bottom rule, status line. composes layout only, ChromePainter writes every byte
 public sealed class InputFrame(ITermSurface surface, Theme theme, string role, StatusInfo status,
-    GlyphSet? glyphs)
+    GlyphSet? glyphs, Func<IReadOnlyList<SlashCommands.Cmd>>? knownCommands = null)
 {
+    //the rows the ghost completes from, the same source the editor's Tab reads. null is the built-in table, for a frame with no session behind it
+    private readonly Func<IReadOnlyList<SlashCommands.Cmd>> _known = knownCommands ?? (() => SlashCommands.All);
+
     //the run's glyph set, handed down from the session (two painters resolving it themselves could disagree about the host)
     private readonly GlyphSet _glyphs = glyphs ?? GlyphSet.Unicode;
 
@@ -119,7 +122,7 @@ public sealed class InputFrame(ITermSurface surface, Theme theme, string role, S
         var (selEndRow, selEndCell) = hasSelection ? layout.PositionToCell(view.SelEnd!.Value.Line, view.SelEnd!.Value.Col) : (0, 0);
 
         //the ghost comes from the same function Tab calls, so the hint and what Tab types can't disagree. index 0, a Tab leaves the whole command name in the buffer
-        var completion = CommandHint.For(lines, view.CursorLine, view.CursorCol);
+        var completion = CommandHint.For(lines, view.CursorLine, view.CursorCol, _known());
         var ghost = completion.Any ? completion.Hint(0) : "";
 
         //tag each editor row as a continuation or a logical head right in the loop that already knows it. a continuation row's 2-space hang counts as chrome

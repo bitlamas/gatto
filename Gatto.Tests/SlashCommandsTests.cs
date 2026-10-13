@@ -2,6 +2,7 @@
 using System.Linq;
 using System.Text.RegularExpressions;
 using Gatto.Core.Client;
+using Gatto.Core.Commands;
 using Gatto.Core.Loop;
 using Gatto.Core.Loop.Permissions;
 using Gatto.Core.Tools;
@@ -72,9 +73,60 @@ public class SlashCommandsTests
     }
 
     [Fact]
+    public async Task PLAIN_LOOP_DISPATCHES_A_REGISTERED_COMMAND_ONE_LINE_PER_WRITE_AND_LISTS_IT_IN_HELP()
+    {
+        var client = new FakeChatClient();
+        var loop = new AgentLoop(client, new ToolRegistry(), new HookBus(), new TestToolContext(Path.GetTempPath()), "m");
+        var convo = new Conversation("sys");
+        var commands = new CommandRegistry();
+        commands.Add(new CommandRow("/undo", "[n|path]", "list snapshots for this folder, or restore one",
+            (arg, _) => Task.FromResult($"one {arg}\ntwo"), "undo.csx"));
+        var repl = new Gatto.Repl.Repl(
+            loop, convo, "generalist", "m", null, client, null, null, Path.GetTempPath(),
+            () => Composed.Text("sys"), () => null, _ => new RoleSwitchResult(false, "", null, null, "unused"),
+            commands: commands);
+
+        var origIn = Console.In;
+        var origOut = Console.Out;
+        var sw = new StringWriter();
+        try
+        {
+            Console.SetOut(sw);
+            Console.SetIn(new StringReader("/undo 3\n/help\n/quit\n"));
+            await repl.RunAsync(CancellationToken.None);
+        }
+        finally
+        {
+            Console.SetOut(origOut);
+            Console.SetIn(origIn);
+        }
+
+        //the loop writes its > prompt before each read and redirected stdin is not echoed, so the first row of an answer shares the prompt's line
+        var lines = sw.ToString().Split('\n').Select(l => l.TrimEnd('\r')).Select(l => l.StartsWith("> ", StringComparison.Ordinal) ? l[2..] : l).ToList();
+        Assert.Contains("one 3", lines);
+        Assert.Contains("two", lines);
+        Assert.Contains(lines, l => l.StartsWith("/undo [n|path]", StringComparison.Ordinal) && l.EndsWith("undo.csx", StringComparison.Ordinal));
+        Assert.Empty(client.Requests);
+    }
+
+    [Fact]
+    public void A_REGISTERED_ROW_RENDERS_AFTER_THE_BUILT_INS_WITH_ITS_FILE_DIM_AT_THE_END()
+    {
+        var rows = new List<SlashCommands.Cmd>(SlashCommands.All)
+            { new("/undo", "[n|path]", "list snapshots for this folder, or restore one", Source: "undo.csx") };
+        var plain = SlashCommands.RenderPlain(rows).Split('\n');
+        Assert.EndsWith("list snapshots for this folder, or restore one  undo.csx", plain[^1]);
+        Assert.StartsWith("/undo [n|path]", plain[^1]);
+        var theme = new Theme(new TermCaps(Rich: true, TrueColor: true), ThemeMode.Dark);
+        var rich = SlashCommands.RenderRich(theme, rows).Split('\n')[^1];
+        Assert.Contains(theme.Paint("undo.csx", Theme.Dim), rich, StringComparison.Ordinal);
+        Assert.Equal(TermText.StripAnsiForWidth(rich), plain[^1]);
+    }
+
+    [Fact]
     public void RenderPlain_IsByteWisePure_NoAnsiEscapes()
     {
-        var s = SlashCommands.RenderPlain();
+        var s = SlashCommands.RenderPlain(Gatto.Repl.SlashCommands.All);
         var esc = s.IndexOf((char)0x1b);
         Assert.True(esc < 0, $"ESC found at {esc}: {string.Join(",", s.Select(c => (int)c))}");
     }
@@ -82,7 +134,7 @@ public class SlashCommandsTests
     [Fact]
     public void RenderPlain_AlignsSummaryColumnByCellWidth_AcrossAllRows()
     {
-        var lines = SlashCommands.RenderPlain().Split('\n');
+        var lines = SlashCommands.RenderPlain(Gatto.Repl.SlashCommands.All).Split('\n');
         Assert.Equal(SlashCommands.All.Count, lines.Length);
 
         var prefixLengths = lines.Zip(SlashCommands.All, (l, c) =>
@@ -105,7 +157,7 @@ public class SlashCommandsTests
     {
         var theme = new Theme(new TermCaps(Rich: true, TrueColor: true));
 
-        var rendered = SlashCommands.RenderRich(theme);
+        var rendered = SlashCommands.RenderRich(theme, Gatto.Repl.SlashCommands.All);
 
         foreach (var c in SlashCommands.All)
         {
@@ -120,8 +172,8 @@ public class SlashCommandsTests
     {
         var theme = new Theme(new TermCaps(Rich: true, TrueColor: true));
 
-        var stripped = Regex.Replace(SlashCommands.RenderRich(theme), "\x1b\\[[0-9;]*m", "");
+        var stripped = Regex.Replace(SlashCommands.RenderRich(theme, Gatto.Repl.SlashCommands.All), "\x1b\\[[0-9;]*m", "");
 
-        Assert.Equal(SlashCommands.RenderPlain(), stripped);
+        Assert.Equal(SlashCommands.RenderPlain(Gatto.Repl.SlashCommands.All), stripped);
     }
 }

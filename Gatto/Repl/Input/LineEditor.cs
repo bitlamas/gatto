@@ -7,8 +7,12 @@ public sealed record EditorView(IReadOnlyList<string> Lines, int CursorLine, int
     (int Line, int Col)? SelStart = null, (int Line, int Col)? SelEnd = null);
 
 //multiline editing and history over a redraw callback, with width making up/down move by display row of a wrapped line
-public sealed class LineEditor(IComposerSource input, History history, Func<int>? width = null)
+public sealed class LineEditor(IComposerSource input, History history, Func<int>? width = null,
+    Func<IReadOnlyList<SlashCommands.Cmd>>? knownCommands = null)
 {
+    //the rows Tab completes from, read at each press so a command registered at launch is there. null is the built-in table, for an editor with no session behind it
+    private readonly Func<IReadOnlyList<SlashCommands.Cmd>> _known = knownCommands ?? (() => SlashCommands.All);
+
     private const int MaxConsecutiveReadFailures = 100;
 
     private List<string> _lines = new() { "" };
@@ -315,14 +319,14 @@ public sealed class LineEditor(IComposerSource input, History history, Func<int>
             case ConsoleKey.Tab when k.Modifiers == 0:
                 if (_completionToken is null)
                 {
-                    var fresh = CommandHint.For(_lines, _line, _col);
+                    var fresh = CommandHint.For(_lines, _line, _col, _known());
                     if (!fresh.Any) return null;      //no candidates, so Tab stays the no-op it has always been
                     _completionToken = fresh.Token;
                     _completionCycle = 0;
                 }
                 else _completionCycle++;
 
-                var cycle = CommandHint.For(new[] { _completionToken }, 0, _completionToken.Length);
+                var cycle = CommandHint.For(new[] { _completionToken }, 0, _completionToken.Length, _known());
                 if (!cycle.Any) { _completionToken = null; return null; }
                 _lines[_line] = cycle.Completion(_completionCycle);
                 _col = _lines[_line].Length;

@@ -6,14 +6,14 @@ namespace Gatto.Repl;
 //the one place a command's name, args and summary are declared, with the dispatch owning the behaviour and a guard pinning the two
 public static class SlashCommands
 {
-    //the flag says whether a command can reach the model, and the purr hangs off it. it is read from the raw input before /init and /remember rewrite themselves
-    public sealed record Cmd(string Name, string Args, string Summary, bool ReachesModel = false, bool BypassesQueue = false);
+    //the flag says whether a command can reach the model, and the purr hangs off it. it is read from the raw input before /init and /remember rewrite themselves. source names the file that registered a row, null for a built-in
+    public sealed record Cmd(string Name, string Args, string Summary, bool ReachesModel = false, bool BypassesQueue = false, string? Source = null);
 
-    //a non-command reaches the model, a command only when its row says so
-    public static bool ReachesModel(string input)
+    //a non-command reaches the model, a command only when its row says so, and a registered row never does
+    public static bool ReachesModel(string input, IReadOnlyList<Cmd> known)
     {
         var trimmed = input.Trim();
-        foreach (var cmd in All)
+        foreach (var cmd in known)
             if (Repl.TryMatchCommand(trimmed, cmd.Name, out _)) return cmd.ReachesModel;
         //default true so ordinary text purrs, and a command missing its row shows a spinner rather than going silent
         return true;
@@ -60,32 +60,34 @@ public static class SlashCommands
     private static string Left(Cmd c) => (c.Name + " " + c.Args).TrimEnd();
 
     //the widest name-and-args column plus two spaces, shared with the shortcuts table so /help prints as one grid
-    internal static int ColumnWidth() => All.Max(c => UnicodeWidth.Of(Left(c))) + 2;
+    internal static int ColumnWidth(IReadOnlyList<Cmd> rows) => rows.Max(c => UnicodeWidth.Of(Left(c))) + 2;
 
-    //no ANSI, one row per line, padded by cell width and with no trailing newline
-    public static string RenderPlain()
+    //no ANSI, one row per line, padded by cell width and with no trailing newline. a registered row ends with its file after two spaces
+    public static string RenderPlain(IReadOnlyList<Cmd> rows)
     {
-        var col = ColumnWidth();
+        var col = ColumnWidth(rows);
         var sb = new StringBuilder();
-        for (var i = 0; i < All.Count; i++)
+        for (var i = 0; i < rows.Count; i++)
         {
-            var left = Left(All[i]);
-            sb.Append(left).Append(' ', col - UnicodeWidth.Of(left)).Append(All[i].Summary);
-            if (i < All.Count - 1) sb.Append('\n');
+            var left = Left(rows[i]);
+            sb.Append(left).Append(' ', col - UnicodeWidth.Of(left)).Append(rows[i].Summary);
+            if (rows[i].Source is { } src) sb.Append("  ").Append(src);
+            if (i < rows.Count - 1) sb.Append('\n');
         }
         return sb.ToString();
     }
 
-    //the name and args take the accent, and the padding is measured against the unpainted text so the columns match the plain table
-    public static string RenderRich(Theme theme)
+    //the name and args take the accent, the file goes dim, and the padding is measured against the unpainted text so the columns match the plain table
+    public static string RenderRich(Theme theme, IReadOnlyList<Cmd> rows)
     {
-        var col = ColumnWidth();
+        var col = ColumnWidth(rows);
         var sb = new StringBuilder();
-        for (var i = 0; i < All.Count; i++)
+        for (var i = 0; i < rows.Count; i++)
         {
-            var left = Left(All[i]);
-            sb.Append(theme.Paint(left, Theme.Accent)).Append(' ', col - UnicodeWidth.Of(left)).Append(All[i].Summary);
-            if (i < All.Count - 1) sb.Append('\n');
+            var left = Left(rows[i]);
+            sb.Append(theme.Paint(left, Theme.Accent)).Append(' ', col - UnicodeWidth.Of(left)).Append(rows[i].Summary);
+            if (rows[i].Source is { } src) sb.Append("  ").Append(theme.Paint(src, Theme.Dim));
+            if (i < rows.Count - 1) sb.Append('\n');
         }
         return sb.ToString();
     }

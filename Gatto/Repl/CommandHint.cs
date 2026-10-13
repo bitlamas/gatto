@@ -30,8 +30,8 @@ public static class CommandHint
 {
     private static readonly CommandCompletion None = new("", Array.Empty<SlashCommands.Cmd>());
 
-    //what completes the buffer, only while the composer is typing the command name, and a bare / offers the whole table
-    public static CommandCompletion For(IReadOnlyList<string>? lines, int cursorLine, int cursorCol)
+    //what completes the buffer, only while the composer is typing the command name, and a bare / offers the whole table. the rows are the caller's, built-ins and registered alike
+    public static CommandCompletion For(IReadOnlyList<string>? lines, int cursorLine, int cursorCol, IReadOnlyList<SlashCommands.Cmd> known)
     {
         if (lines is not { Count: 1 }) return None;
         var line = lines[0];
@@ -40,7 +40,7 @@ public static class CommandHint
 
         //there is deliberately no "past the name" check, no command name contains whitespace so the loop already answers nothing
         var hits = new List<SlashCommands.Cmd>();
-        foreach (var cmd in SlashCommands.All)
+        foreach (var cmd in known)
             if (cmd.Name.StartsWith(line, StringComparison.Ordinal)) hits.Add(cmd);
         return hits.Count == 0 ? None : new CommandCompletion(line, hits);
     }

@@ -39,7 +39,7 @@ public class GattoApiTests
     }
 
     [Fact]
-    public void HostApiVersion_IsFive() => Assert.Equal("5", GattoApi.HostApiVersion);
+    public void HostApiVersion_IsSix() => Assert.Equal("6", GattoApi.HostApiVersion);
 
     [Fact]
     public void Config_section_reaches_scripts_and_defaults_to_null()

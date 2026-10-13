@@ -53,7 +53,7 @@ public class InfoPanelTests
         };
     }
 
-    private static ConsoleKeyInfo K(char c, ConsoleKey key = ConsoleKey.NoName, bool ctrl = false) => new(c, key, false, false, ctrl);
+    private static ConsoleKeyInfo K(char c, ConsoleKey key = ConsoleKey.NoName, bool ctrl = false, bool shift = false) => new(c, key, shift, false, ctrl);
 
     [Fact]
     public void Enter_closes_the_panel_and_is_consumed_so_nothing_is_submitted()
@@ -142,5 +142,68 @@ public class InfoPanelTests
 
         var rows = p.ComposeChromeBlock(80, 30).Rows.Where(r => r.Region == ChromeRegion.Prompt).ToList();
         Assert.Equal("  row 0", rows[0].Visible.TrimEnd());
+    }
+
+    private static List<string> PanelRows(ChromePainter p) =>
+        [.. p.ComposeChromeBlock(80, 30).Rows.Where(r => r.Region == ChromeRegion.Prompt).Select(r => r.Visible.Trim())];
+
+    //the panel opens at its top, and the first PageDown from there moves it
+    [Fact]
+    public void PageDown_moves_a_panel_that_opened_at_its_top()
+    {
+        var p = Painter();
+        var sink = Gatto.Repl.Repl.BuildInfoPanelSink(p, new object());
+        p.SetInfoPanel((_, _) => [.. Enumerable.Range(0, 60).Select(i => $"  row {i}")]);
+
+        sink(K('\0', ConsoleKey.PageDown));
+
+        var rows = PanelRows(p);
+        Assert.StartsWith("↑ 11 more", rows[0], StringComparison.Ordinal);
+        Assert.DoesNotContain("row 0", rows);
+    }
+
+    [Fact]
+    public void The_arrows_scroll_the_panel_one_row_and_are_consumed()
+    {
+        var p = Painter();
+        var sink = Gatto.Repl.Repl.BuildInfoPanelSink(p, new object());
+        p.SetInfoPanel((_, _) => [.. Enumerable.Range(0, 60).Select(i => $"  row {i}")]);
+
+        Assert.Equal(KeyDisposition.Consumed, sink(K('\0', ConsoleKey.DownArrow)));
+        Assert.True(p.State.PanelInfo);
+        Assert.StartsWith("↑ 2 more", PanelRows(p)[0], StringComparison.Ordinal);
+
+        Assert.Equal(KeyDisposition.Consumed, sink(K('\0', ConsoleKey.UpArrow)));
+        Assert.Equal("row 0", PanelRows(p)[0]);
+    }
+
+    //a modified arrow keeps its own role, Ctrl moves the transcript focus and Shift the composer, so it closes the answer and goes on
+    [Theory]
+    [InlineData(ConsoleKey.UpArrow, true, false)]
+    [InlineData(ConsoleKey.DownArrow, true, false)]
+    [InlineData(ConsoleKey.UpArrow, false, true)]
+    [InlineData(ConsoleKey.DownArrow, false, true)]
+    public void A_modified_arrow_closes_the_panel_and_passes_through(ConsoleKey key, bool ctrl, bool shift)
+    {
+        var p = Painter();
+        var sink = Gatto.Repl.Repl.BuildInfoPanelSink(p, new object());
+        p.SetInfoPanel((_, _) => [.. Enumerable.Range(0, 60).Select(i => $"  row {i}")]);
+
+        Assert.Equal(KeyDisposition.PassThrough, sink(K('\0', key, ctrl: ctrl, shift: shift)));
+        Assert.False(p.State.PanelUp);
+    }
+
+    //the marks name the keys that move the answer, a prompt's marks do not since its keys are its own
+    [Fact]
+    public void An_info_panels_marks_name_the_page_key_and_the_wheel()
+    {
+        var p = Painter();
+        var sink = Gatto.Repl.Repl.BuildInfoPanelSink(p, new object());
+        p.SetInfoPanel((_, _) => [.. Enumerable.Range(0, 60).Select(i => $"  row {i}")]);
+        sink(K('\0', ConsoleKey.DownArrow));
+
+        var rows = PanelRows(p);
+        Assert.Equal("↑ 2 more · PgUp or wheel", rows[0]);
+        Assert.Matches(@"^↓ \d+ more · PgDn or wheel$", rows[^1]);
     }
 }

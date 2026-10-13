@@ -172,6 +172,10 @@ public static class ImageAttach
     private static readonly System.Text.RegularExpressions.Regex PlaceholderPattern =
         new(@"\[Image #(\d+)\]", System.Text.RegularExpressions.RegexOptions.Compiled);
 
+    //the placeholders in the order typed, and the text with them taken out
+    public static (IReadOnlyList<string> Placeholders, string Remainder) SplitPlaceholders(string text) =>
+        ([.. PlaceholderPattern.Matches(text).Select(m => m.Value)], PlaceholderPattern.Replace(text, ""));
+
     //the pasted images whose placeholders still appear in the text, in the order they appear (delete [Image #2] and only image 2 is detached)
     public static IReadOnlyList<ImageRef> ReferencedIn(string text, IReadOnlyDictionary<int, ImageRef> pasted)
     {

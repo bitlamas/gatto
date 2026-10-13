@@ -1,5 +1,6 @@
 using System.Net;
 using System.Text.Json;
+using Gatto.Core.Commands;
 using Gatto.Core.Loop;
 using Gatto.Core.Tools;
 using Gatto.Core.Web;
@@ -64,15 +65,101 @@ public sealed class ExtensionHostTests : IClassFixture<RoslynWarmupFixture>, IDi
 
     private void WriteFile(string name, string body) => File.WriteAllText(Path.Combine(_dir, name), body);
 
-    //commit into a registry that already holds a built-in, so the tool-name collision case is reachable.
+    //commit into a registry that already holds a built-in, so the tool-name collision case is reachable, and into a command registry with /help reserved
     private void Register(IReadOnlyList<LoadedExtension> loaded, out ToolRegistry tools, out HookBus hooks, out List<string> diags)
+        => Register(loaded, out tools, out hooks, out _, out diags);
+
+    private void Register(IReadOnlyList<LoadedExtension> loaded, out ToolRegistry tools, out HookBus hooks,
+        out CommandRegistry commands, out List<string> diags)
     {
         tools = new ToolRegistry();
         tools.Register(new ShellTool());   //register a built-in so a name collision can happen.
         hooks = new HookBus();
+        commands = new CommandRegistry();
         diags = new List<string>();
         var localDiags = diags;
-        ExtensionHost.Commit(loaded, tools, hooks, m => localDiags.Add(m));
+        ExtensionHost.Commit(loaded, tools, hooks, commands, ["/help"], m => localDiags.Add(m));
+    }
+
+    [Fact]
+    public async Task A_COMMAND_REGISTERS_AND_ITS_HANDLER_RUNS_WITH_THE_ARGUMENT_TEXT()
+    {
+        WriteFile("undo.csx", """
+            Gatto.Command("/undo", "[n|path]", "list snapshots", (arg, ct) => Task.FromResult("got " + arg));
+            """);
+        var loaded = ExtensionHost.LoadAll(_dir, NewApi(), _ => { });
+        Register(loaded, out _, out _, out var commands, out var diags);
+        Assert.Empty(diags);
+        Assert.True(commands.TryGet("/undo", out var row));
+        Assert.Equal("[n|path]", row.Args);
+        Assert.Equal("list snapshots", row.Summary);
+        Assert.Equal("undo.csx", row.SourceFile);
+        Assert.Equal("got 2", await row.Handler("2", CancellationToken.None));
+    }
+
+    [Fact]
+    public void A_BUILT_IN_NAME_IS_REFUSED_NAMING_THE_FILE_AND_THE_TOOLS_STILL_LOAD()
+    {
+        WriteFile("mine.csx", """
+            Gatto.Command("/help", "", "mine", (arg, ct) => Task.FromResult(""));
+            Gatto.Register("mine_tool", "a tool", "{\"type\":\"object\"}", (a, c, t) => Task.FromResult(new ToolResult("ok")));
+            """);
+        var loaded = ExtensionHost.LoadAll(_dir, NewApi(), _ => { });
+        Register(loaded, out var tools, out _, out var commands, out var diags);
+        Assert.Equal(["mine.csx: /help is gatto's"], diags);
+        Assert.False(commands.TryGet("/help", out _));
+        Assert.NotNull(tools.Get("mine_tool"));
+    }
+
+    [Fact]
+    public void THE_SECOND_FILE_TO_REGISTER_A_NAME_IS_REFUSED_IN_FILE_NAME_ORDER()
+    {
+        WriteFile("b.csx", """Gatto.Command("/undo", "", "b", (arg, ct) => Task.FromResult("b"));""");
+        WriteFile("a.csx", """Gatto.Command("/undo", "", "a", (arg, ct) => Task.FromResult("a"));""");
+        var loaded = ExtensionHost.LoadAll(_dir, NewApi(), _ => { });
+        Register(loaded, out _, out _, out var commands, out var diags);
+        Assert.Equal(["b.csx: /undo is taken by a.csx"], diags);
+        Assert.True(commands.TryGet("/undo", out var row));
+        Assert.Equal("a.csx", row.SourceFile);
+    }
+
+    [Theory]
+    [InlineData("/Undo")]
+    [InlineData("/undo2")]
+    [InlineData("undo")]
+    public void AN_UPPERCASE_OR_DIGIT_BEARING_NAME_FAILS_THE_LOAD(string name)
+    {
+        WriteFile("bad.csx", $$"""Gatto.Command("{{name}}", "", "x", (arg, ct) => Task.FromResult(""));""");
+        var diags = new List<string>();
+        var loaded = ExtensionHost.LoadAll(_dir, NewApi(), diags.Add);
+        Assert.Empty(loaded);
+        Assert.Contains(diags, d => d.Contains("command name", StringComparison.Ordinal) && d.Contains(name, StringComparison.Ordinal));
+    }
+
+    [Theory]
+    [InlineData("""Gatto.Command("/x", "", "  ", (arg, ct) => Task.FromResult(""));""", "summary")]
+    [InlineData("""Gatto.Command("/x", "", "s", null);""", "handler")]
+    public void AN_EMPTY_SUMMARY_OR_A_NULL_HANDLER_FAILS_THE_LOAD_NAMING_THE_COMMAND(string body, string what)
+    {
+        WriteFile("bad.csx", body);
+        var diags = new List<string>();
+        var loaded = ExtensionHost.LoadAll(_dir, NewApi(), diags.Add);
+        Assert.Empty(loaded);
+        Assert.Contains(diags, d => d.Contains("'/x'", StringComparison.Ordinal) && d.Contains(what, StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public void ONE_FILE_REGISTERING_A_NAME_TWICE_KEEPS_THE_FIRST_AND_NAMES_ITSELF()
+    {
+        WriteFile("x.csx", """
+            Gatto.Command("/undo", "", "first", (arg, ct) => Task.FromResult("1"));
+            Gatto.Command("/undo", "", "second", (arg, ct) => Task.FromResult("2"));
+            """);
+        var loaded = ExtensionHost.LoadAll(_dir, NewApi(), _ => { });
+        Register(loaded, out _, out _, out var commands, out var diags);
+        Assert.Equal(["x.csx: /undo is taken by x.csx"], diags);
+        Assert.True(commands.TryGet("/undo", out var row));
+        Assert.Equal("first", row.Summary);
     }
 
     [Fact]
@@ -159,7 +246,7 @@ public sealed class ExtensionHostTests : IClassFixture<RoslynWarmupFixture>, IDi
 
         var tools = new ToolRegistry();
         var diags = new List<string>();
-        var (committed, _) = ExtensionHost.Commit(loaded, tools, new HookBus(), diags.Add);
+        var (committed, _) = ExtensionHost.Commit(loaded, tools, new HookBus(), new CommandRegistry(), Array.Empty<string>(), diags.Add);
 
         Assert.Single(committed);                       //only one extension commits, zzz loses the name collision
         Assert.Equal("aaa", committed[0].Extension.Name);
@@ -281,7 +368,7 @@ public sealed class ExtensionHostTests : IClassFixture<RoslynWarmupFixture>, IDi
         var loaded = ExtensionHost.LoadAll(_dir, api, _ => { });
         var tools = new ToolRegistry();
         var hooks = new HookBus();
-        ExtensionHost.Commit(loaded, tools, hooks, _ => { });
+        ExtensionHost.Commit(loaded, tools, hooks, new CommandRegistry(), Array.Empty<string>(), _ => { });
 
         await hooks.EmitMessageEndAsync(new HookPayload(AssistantText: "done"));
         Assert.True(File.Exists(marker));
@@ -440,7 +527,7 @@ public sealed class ExtensionHostTests : IClassFixture<RoslynWarmupFixture>, IDi
         WriteFile("skillish.csx", """Gatto.Policy("always restate the task before starting it");""");
         var loaded = ExtensionHost.LoadAll(_dir, NewApi(), _ => { });
 
-        var (tools, extensions) = ExtensionHost.Commit(loaded, new ToolRegistry(), new HookBus(), _ => { });
+        var (tools, extensions) = ExtensionHost.Commit(loaded, new ToolRegistry(), new HookBus(), new CommandRegistry(), Array.Empty<string>(), _ => { });
 
         Assert.Empty(tools);
         Assert.Single(extensions);
@@ -460,7 +547,7 @@ public sealed class ExtensionHostTests : IClassFixture<RoslynWarmupFixture>, IDi
 
         var registry = new ToolRegistry();
         registry.Register(new ShellTool());         //register a built-in so the extension collides on its name.
-        var (_, extensions) = ExtensionHost.Commit(loaded, registry, new HookBus(), _ => { });
+        var (_, extensions) = ExtensionHost.Commit(loaded, registry, new HookBus(), new CommandRegistry(), Array.Empty<string>(), _ => { });
 
         Assert.Empty(extensions);                   //a skipped extension must leave no policy line.
     }
@@ -479,7 +566,7 @@ public sealed class ExtensionHostTests : IClassFixture<RoslynWarmupFixture>, IDi
         Assert.Empty(loaded);                       //the load failed, so nothing remains to commit.
         Assert.Contains(diags, d => d.Contains("die after the line"));
 
-        var (_, extensions) = ExtensionHost.Commit(loaded, new ToolRegistry(), new HookBus(), _ => { });
+        var (_, extensions) = ExtensionHost.Commit(loaded, new ToolRegistry(), new HookBus(), new CommandRegistry(), Array.Empty<string>(), _ => { });
         Assert.Empty(extensions);
     }
 
@@ -488,7 +575,7 @@ public sealed class ExtensionHostTests : IClassFixture<RoslynWarmupFixture>, IDi
     {
         var loaded = new[] { Staged("zeta", "z line"), Staged("alpha", "a line") };
 
-        var (_, extensions) = ExtensionHost.Commit(loaded, new ToolRegistry(), new HookBus(), _ => { });
+        var (_, extensions) = ExtensionHost.Commit(loaded, new ToolRegistry(), new HookBus(), new CommandRegistry(), Array.Empty<string>(), _ => { });
 
         Assert.Equal(new[] { "zeta", "alpha" }, extensions.Select(e => e.Name).ToArray());
     }

@@ -22,15 +22,15 @@ public static class Shortcuts
     ];
 
     //the key column is at least as wide as the command table's, so /help reads as one grid. it's measured in cells, since a key name may hold arrows
-    private static int ColumnWidth(GlyphSet g) =>
-        Math.Max(SlashCommands.ColumnWidth(), AllOf(g).Max(s => UnicodeWidth.Of(s.Keys)) + 2);
+    private static int ColumnWidth(GlyphSet g, IReadOnlyList<SlashCommands.Cmd> commands) =>
+        Math.Max(SlashCommands.ColumnWidth(commands), AllOf(g).Max(s => UnicodeWidth.Of(s.Keys)) + 2);
 
     //all dim, one aligned row per shortcut under a heading, with no trailing newline since the caller joins it onto the command table
-    public static string RenderRich(Theme theme, GlyphSet? glyphs)
+    public static string RenderRich(Theme theme, GlyphSet? glyphs, IReadOnlyList<SlashCommands.Cmd> commands)
     {
         //resolve the glyph set once, so the column and the rows measured against it come from the same set
         var g = glyphs ?? GlyphSet.Unicode;
-        var col = ColumnWidth(g);
+        var col = ColumnWidth(g, commands);
         var sb = new StringBuilder();
         sb.Append(theme.Paint("shortcuts", Theme.Dim)).Append('\n');
         foreach (var s in AllOf(g))

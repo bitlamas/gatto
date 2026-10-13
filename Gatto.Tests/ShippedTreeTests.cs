@@ -4,7 +4,7 @@ using Gatto.Extensions;
 
 namespace Gatto.Tests;
 
-//the nine shipped files are real files under Gatto/Shipped, and these pins hold their exact bytes
+//the ten shipped files are real files under Gatto/Shipped, and these pins hold their exact bytes
 public class ShippedTreeTests
 {
     //the vetted hash folds newlines, so the byte and sha columns are what catch a line-ending change
@@ -29,6 +29,9 @@ public class ShippedTreeTests
             ["extensions/web_search.csx"] =
                 ("4c9acb8c8681dc592a8451d92fb6988736f43c0fcca8b98859fca03792ab500f",
                  11835, "6a80e1c43e24a6d660dde9fbe040bf5cbd07a805dbbae50943f27a16d6d7a516"),
+            ["extensions/undo.csx"] =
+                ("091278e7e57e17bf2bf307db403f934d1c16a3e41ff29fb0f28e95eeb5d7052d",
+                 28553, "64d46147ea999c4584c9bc149ebfcf6f11ee61cdd70617689ee708e1da916c09"),
             ["roles/coder.json"] =
                 ("64b94c93cca7ab9581c7ab6b73bfc6d9168a9f8b7e54cc6999961629177fffee",
                  848, "84571b1538f535289b5c216ebc7236264f9208bab950b3ecf6649b28a43d4607"),

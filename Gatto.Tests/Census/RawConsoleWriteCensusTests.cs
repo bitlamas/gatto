@@ -29,7 +29,7 @@ public class RawConsoleWriteCensusTests
     ];
 
     //lower the pin in the same commit that migrates writes, an old floor hides the next one. an injected TextWriter isn't seen here, only a live check sees it
-    private const int RawWritesToday = 8;
+    private const int RawWritesToday = 7;
 
     //only stdout is in scope. stderr holds diagnostics and is plain by contract, so one known notice there is invisible here
     private static readonly Regex RawWrite = new(@"\bConsole\s*\.\s*(Out\s*\.\s*)?Write(Line)?\s*\(", RegexOptions.Compiled);

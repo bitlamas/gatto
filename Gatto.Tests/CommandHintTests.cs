@@ -9,7 +9,22 @@ namespace Gatto.Tests;
 public class CommandHintTests
 {
     private static CommandCompletion At(string line) =>
-        CommandHint.For(new List<string> { line }, 0, line.Length);
+        CommandHint.For(new List<string> { line }, 0, line.Length, SlashCommands.All);
+
+    private static IReadOnlyList<SlashCommands.Cmd> WithUndo() =>
+        [.. SlashCommands.All, new SlashCommands.Cmd("/undo", "[n|path]", "list snapshots for this folder, or restore one", Source: "undo.csx")];
+
+    [Fact]
+    public void A_REGISTERED_ROW_GHOSTS_AND_A_BARE_SLASH_OFFERS_IT_AFTER_THE_BUILT_INS()
+    {
+        var c = CommandHint.For(new List<string> { "/u" }, 0, 2, WithUndo());
+        Assert.Equal("ndo [n|path]", c.Hint(0));
+        Assert.Equal("/undo", c.Completion(0));
+        var all = CommandHint.For(new List<string> { "/" }, 0, 1, WithUndo());
+        Assert.Equal(SlashCommands.All.Count + 1, all.Candidates.Count);
+        Assert.Equal("/undo", all.Candidates[^1].Name);
+        Assert.False(CommandHint.For(new List<string> { "/u" }, 0, 2, SlashCommands.All).Any);   //without the registration nothing completes
+    }
 
     [Fact]
     public void Every_command_completes_from_a_prefix_that_is_unique()
@@ -105,16 +120,16 @@ public class CommandHintTests
     [Fact]
     public void Nothing_answers_when_the_cursor_is_not_at_the_end()
     {
-        Assert.False(CommandHint.For(new List<string> { "/model" }, 0, 3).Any);
-        Assert.False(CommandHint.For(new List<string> { "/model" }, 0, 0).Any);
+        Assert.False(CommandHint.For(new List<string> { "/model" }, 0, 3, SlashCommands.All).Any);
+        Assert.False(CommandHint.For(new List<string> { "/model" }, 0, 0, SlashCommands.All).Any);
     }
 
     //only a one-line buffer completes, since a multi-line buffer is a message
     [Fact]
     public void Nothing_answers_for_a_multi_line_buffer()
     {
-        Assert.False(CommandHint.For(new List<string> { "/help", "more" }, 0, 5).Any);
-        Assert.False(CommandHint.For(new List<string> { "/help", "more" }, 1, 4).Any);
-        Assert.False(CommandHint.For(null, 0, 0).Any);
+        Assert.False(CommandHint.For(new List<string> { "/help", "more" }, 0, 5, SlashCommands.All).Any);
+        Assert.False(CommandHint.For(new List<string> { "/help", "more" }, 1, 4, SlashCommands.All).Any);
+        Assert.False(CommandHint.For(null, 0, 0, SlashCommands.All).Any);
     }
 }

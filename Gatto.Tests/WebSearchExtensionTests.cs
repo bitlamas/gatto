@@ -2,6 +2,7 @@ using System.Net;
 using System.Text;
 using System.Text.Json;
 using Gatto.Core.Client;
+using Gatto.Core.Commands;
 using Gatto.Core.Loop;
 using Gatto.Core.Loop.Permissions;
 using Gatto.Core.Tools;
@@ -109,7 +110,7 @@ public sealed class WebSearchExtensionTests : IDisposable
 
         var tools = new ToolRegistry();
         var hooks = new HookBus();
-        var (committed, _) = ExtensionHost.Commit(loaded, tools, hooks, diags.Add);
+        var (committed, _) = ExtensionHost.Commit(loaded, tools, hooks, new CommandRegistry(), Array.Empty<string>(), diags.Add);
         Assert.Empty(diags);
 
         var search = tools.Get("web_search");

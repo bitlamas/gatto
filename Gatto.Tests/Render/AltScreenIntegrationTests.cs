@@ -140,6 +140,22 @@ public sealed class AltScreenIntegrationTests
     }
 
     [Fact]
+    public void A_wheel_notch_over_an_open_info_panel_scrolls_the_panel()
+    {
+        var (_, p, s) = Wire(60, 20);
+        p.SetInfoPanel((_, _) => [.. Enumerable.Range(0, 60).Select(i => $"  row {i}")]);
+        var y = System.Array.FindIndex(s.Viewport.ToArray(), row => row.Trim() == "row 0");
+        Assert.True(y >= 0, string.Join("\n", s.Viewport));
+
+        p.Mouse.Handle(new MouseEvent(4, y, MouseKind.Wheel, MouseButton.None, -120, 0), p.Width, p.ViewportRows());
+        p.Repaint();
+
+        Assert.DoesNotContain(s.Viewport, row => row.Trim() == "row 0");
+        Assert.Contains(s.Viewport, row => row.Contains("↑ 4 more", StringComparison.Ordinal));
+        Assert.True(p.State.PanelInfo);
+    }
+
+    [Fact]
     public void Expanded_tool_output_appears_in_the_frame()
     {
         var (r, p, s) = Wire(60, 20);

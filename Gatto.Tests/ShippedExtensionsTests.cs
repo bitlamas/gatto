@@ -142,11 +142,12 @@ public sealed class ShippedExtensionsTests : IDisposable
         //the real Files overload writes each shipped script verbatim and records it in the manifest
         Assert.True(ShippedExtensions.Files.ContainsKey("extensions/ask_user.csx"));
         Assert.True(ShippedExtensions.Files.ContainsKey("extensions/web_search.csx"));
+        Assert.True(ShippedExtensions.Files.ContainsKey("extensions/undo.csx"));
         Assert.False(ShippedExtensions.Files.ContainsKey("extensions/journal.csx"));   //no journal script ships any more
 
         ShippedExtensions.EnsureWritten(_home);   //the overload GattoApp calls, so the real shipped files are the ones written
 
-        foreach (var rel in new[] { "extensions/ask_user.csx", "extensions/web_search.csx" })
+        foreach (var rel in new[] { "extensions/ask_user.csx", "extensions/web_search.csx", "extensions/undo.csx" })
         {
             var written = Full(rel);
             Assert.True(File.Exists(written));

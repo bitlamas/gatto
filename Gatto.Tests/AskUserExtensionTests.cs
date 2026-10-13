@@ -1,5 +1,6 @@
 using System.Text.Json;
 using Gatto.Core.Client;
+using Gatto.Core.Commands;
 using Gatto.Core.Loop;
 using Gatto.Core.Loop.Permissions;
 using Gatto.Core.Tools;
@@ -87,7 +88,7 @@ public sealed class AskUserExtensionTests : IDisposable
 
         var tools = new ToolRegistry();
         var hooks = new HookBus();
-        ExtensionHost.Commit(loaded, tools, hooks, diags.Add);
+        ExtensionHost.Commit(loaded, tools, hooks, new CommandRegistry(), Array.Empty<string>(), diags.Add);
         Assert.Empty(diags);
 
         var tool = tools.Get("ask_user");
