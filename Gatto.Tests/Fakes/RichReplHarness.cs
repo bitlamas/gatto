@@ -35,15 +35,25 @@ public sealed class ScriptedKeySource : IKeySource
         }
     }
 
+    //set by Close, after which every read throws, so the pump stops and the composer read it feeds ends with it
+    private bool _closed;
+
     public ConsoleKeyInfo ReadKey()
     {
         lock (_lock)
         {
             //the 5-ms wait is only a re-check interval, since the predicate is the gate. blocking on an empty script is deliberate, since a sentinel spins the composer.
-            while (_awaitingSample || _keys.Count == 0) Monitor.Wait(_lock, 5);
+            while (!_closed && (_awaitingSample || _keys.Count == 0)) Monitor.Wait(_lock, 5);
+            if (_closed) throw new InvalidOperationException("the key script is closed");
             _awaitingSample = true;
             return _keys.Dequeue();
         }
+    }
+
+    //ends the script once the run is over. a pump left blocked here holds its thread, and the composer read behind it a pool thread, for the rest of the test run
+    public void Close()
+    {
+        lock (_lock) { _closed = true; Monitor.PulseAll(_lock); }
     }
 
     //one keystroke with no Enter behind it, for a key that is not a line
@@ -197,7 +207,9 @@ public sealed class RichReplHarness
     public async Task<int> RunAsync(int timeoutMs = 15000)
     {
         using var cts = new CancellationTokenSource(timeoutMs);
-        var exit = await _repl.RunRichAsync(new TermCaps(Rich: true, TrueColor: true), cts.Token);
+        int exit;
+        try { exit = await _repl.RunRichAsync(new TermCaps(Rich: true, TrueColor: true), cts.Token); }
+        finally { Keys.Close(); }
         if (cts.IsCancellationRequested)
             throw new TimeoutException(
                 $"the rich loop did not exit within {timeoutMs}ms — the script never reached a quitting "
@@ -232,7 +244,8 @@ public sealed class RichReplHarness
             await Task.Delay(5);
         var timedOut = !until();
         cts.Cancel();
-        await run;
+        try { await run; }
+        finally { Keys.Close(); }
         if (timedOut)
             throw new TimeoutException(
                 $"the condition never held within {timeoutMs}ms. Final frame:\n{ScreenText()}");
