@@ -100,6 +100,28 @@ public class RoleFileTests : IDisposable
         Assert.Null(role.Model);
         Assert.Null(role.Endpoint);
         Assert.Null(role.Append);
+        Assert.False(role.Raw);
+    }
+
+    [Fact]
+    public void RAW_ROUND_TRIPS()
+    {
+        Write("raw", """{ "raw": true }""");
+        Write("cooked", """{ "raw": false }""");
+
+        Assert.True(RoleFile.Load(_rolesDir, "raw").Raw);
+        Assert.False(RoleFile.Load(_rolesDir, "cooked").Raw);
+    }
+
+    [Fact]
+    public void A_WRONG_TYPED_RAW_FAILS_WITH_THE_KEY()
+    {
+        Write("bad", """{ "raw": "yes" }""");
+
+        var ex = Assert.Throws<GattoConfigException>(() => RoleFile.Load(_rolesDir, "bad"));
+
+        Assert.Contains("\"raw\"", ex.Message);
+        Assert.Contains("must be true or false", ex.Message);
     }
 
     [Fact]

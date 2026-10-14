@@ -101,7 +101,8 @@ public static class RoleComposition
         //fixed order, empty parts skipped. the date sits before any model/role text so model and role keep the last word. each block keeps the source /context names it by
         var labelled = new (string Label, string? Detail, string? Text)[]
             {
-                ("system prompt", null, BasePrompt), ("system prompt", null, memoryNudge ? MemoryNudge : null), ("system prompt", null, envLine),
+                //a raw role leaves out the three blocks gatto writes on its own, and every block the user or a file supplies stays
+                ("system prompt", null, role.Raw ? null : BasePrompt), ("system prompt", null, memoryNudge && !role.Raw ? MemoryNudge : null), ("system prompt", null, role.Raw ? null : envLine),
                 ("model folder", null, model?.SystemAppend), ("role", role.Name, role.Append),
                 ("extension policy", null, policyBlock),
             }
@@ -136,7 +137,7 @@ public static class RoleComposition
             thinkingSuffix,
             model?.Repair is not null,
             new Gatto.Core.Loop.BaselineSources(
-                date?.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture),
+                role.Raw ? null : date?.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture),   //a raw text holds no date, so a resume must not tell the model one
                 memoryIndex,
                 contextFiles.Select(f => new Gatto.Core.Loop.ContextFileMark(f.Path, Gatto.Core.Loop.BaselineMarks.Sha256Hex(f.Content))).ToList(),
                 policyOrdered.Select(p => new Gatto.Core.Loop.PolicyMark(p.Extension, p.Line)).ToList(),

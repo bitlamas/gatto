@@ -619,7 +619,7 @@ public class GattoAppTests : IDisposable
         var text = GattoApp.HelpText(new[] { "coder", "generalist", "oracle" }, "coder");
         Assert.Contains("roles:    coder (default) | generalist | oracle", text);
         Assert.DoesNotContain("{roles}", text);
-        Assert.Contains("roles:    generalist (default) | coder | oracle | <any ~/.gatto/roles/*.json>", GattoApp.HelpText(Array.Empty<string>(), "generalist"));
+        Assert.Contains("roles:    generalist (default) | coder | oracle | raw | <any ~\\.gatto\\roles\\*.json>", GattoApp.HelpText(Array.Empty<string>(), "generalist"));
     }
 
     //the connect flow must leave a home whose next launch resolves a model. writing an endpoint alone would leave the setup screen's promise false

@@ -608,6 +608,18 @@ public class OpenAiCompatClientTests
         Assert.Equal("user", messages[0].GetProperty("role").GetString());
     }
 
+    [Fact]
+    public async Task AN_EMPTY_SYSTEM_MESSAGE_IS_OMITTED_FROM_THE_REQUEST_BODY()
+    {
+        await using var s = new FakeOpenAiServer();
+        s.Enqueue(new FakeResponse(Frames: new[] { Chunk("{}", finish: "stop"), "data: [DONE]\n\n" }));
+
+        await Collect(Client(s), new ChatRequest("m", new[] { new ChatMessage("system", ""), new ChatMessage("user", "hi") }));
+
+        var messages = s.LastRequestBody!.Value.GetProperty("messages").EnumerateArray().ToList();
+        Assert.Equal("user", Assert.Single(messages).GetProperty("role").GetString());
+    }
+
     //a model whose chat template cannot carry tools fails every turn the same way, so the message names the model and says so instead of quoting the parser
     [Fact]
     public async Task A_template_that_cannot_carry_tools_names_the_model()

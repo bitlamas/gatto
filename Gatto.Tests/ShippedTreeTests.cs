@@ -4,7 +4,7 @@ using Gatto.Extensions;
 
 namespace Gatto.Tests;
 
-//the ten shipped files are real files under Gatto/Shipped, and these pins hold their exact bytes
+//the eleven shipped files are real files under Gatto/Shipped, and these pins hold their exact bytes
 public class ShippedTreeTests
 {
     //the vetted hash folds newlines, so the byte and sha columns are what catch a line-ending change
@@ -41,7 +41,23 @@ public class ShippedTreeTests
             ["roles/oracle.json"] =
                 ("64e52929395e5c7636eb08525680200b9f6127e8b16415e6d4c5a3c0ca5818b1",
                  837, "299100ac0d5a6d0c78d5677e96770d48943bff7b6967681867573c3d23de34de"),
+            ["roles/raw.json"] =
+                ("ca3121440f2b159c3e9f633dfc675995e470e11c1831b7b921e6b640090b4c41",
+                 16, "02cf45d5dc440c228801dcf7378a19136ed3e7315a6fd291ff34bff644d957ee"),
         };
+
+    [Fact]
+    public void RAW_JSON_IS_ONE_KEY_AND_A_FINAL_LF_AND_LOADS_RAW()
+    {
+        Assert.Equal("{ \"raw\": true }\n", ShippedExtensions.Files["roles/raw.json"]);
+        var dir = Directory.CreateTempSubdirectory("gatto-raw-").FullName;
+        try
+        {
+            File.WriteAllText(Path.Combine(dir, "raw.json"), ShippedExtensions.Files["roles/raw.json"]);
+            Assert.True(Gatto.Roles.RoleFile.Load(dir, "raw").Raw);
+        }
+        finally { Directory.Delete(dir, recursive: true); }
+    }
 
     [Fact]
     public void SHIPPED_KEYS_ARE_EXACTLY_THESE()

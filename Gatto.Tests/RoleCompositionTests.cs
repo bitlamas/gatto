@@ -24,9 +24,10 @@ public class RoleCompositionTests
 
     private static RoleFile Role(
         IReadOnlyList<string>? gates = null,
+        bool raw = false,
         string? append = null,
         ThinkingLevel? thinking = ThinkingLevel.Medium)
-        => new("r", "p", null, gates ?? Array.Empty<string>(), append, thinking);
+        => new("r", "p", null, gates ?? Array.Empty<string>(), raw, append, thinking);
 
     private static ModelProfile Profile(
         JsonElement? sampling = null,
@@ -45,6 +46,66 @@ public class RoleCompositionTests
 
     private static readonly IReadOnlyList<(string Path, string Content)> NoContext =
         Array.Empty<(string, string)>();
+
+    //every source gatto composes, so a raw role and its twin differ only where raw acts. the nudge keeps the environment line third
+    private static Composition Full(bool raw) => RoleComposition.Compose(
+        Role(gates: new[] { "citations" }, raw: raw, append: "ROLE APPEND", thinking: ThinkingLevel.High),
+        Pk(systemAppend: "MODEL APPEND", profileSampling: Json("""{"temperature":0.3}"""),
+            profileThinking: Map(("high", """{"reasoning":true}"""))),
+        new[] { (@"C:\p\GATTO.md", "CONTEXT BODY") }, null, cwd: @"C:\p",
+        date: new DateTime(2026, 1, 2), memoryIndex: "- MEMORY FACT", memoryNudge: true,
+        policyLines: new[] { ("ask_user", "POLICY LINE") });
+
+    [Fact]
+    public void A_RAW_ROLE_DROPS_THE_THREE_PARTS_GATTO_WRITES_AND_KEEPS_THE_REST()
+    {
+        var raw = Full(raw: true).SystemText;
+        var plain = Full(raw: false).SystemText;
+
+        var blocks = plain.Split("\n\n");
+        Assert.Equal(RoleComposition.BasePrompt, blocks[0]);
+        Assert.Equal(RoleComposition.MemoryNudge, blocks[1]);
+        Assert.StartsWith("Today's date:", blocks[2], StringComparison.Ordinal);
+        Assert.Equal(string.Join("\n\n", blocks.Skip(3)), raw);
+        foreach (var kept in new[] { "MODEL APPEND", "ROLE APPEND", "POLICY LINE", "CONTEXT BODY", "MEMORY FACT" })
+            Assert.Contains(kept, raw, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void THE_SYSTEM_PROMPT_PART_IS_ABSENT_FROM_THE_PARTS_UNDER_RAW()
+    {
+        var labels = Full(raw: true).SystemParts!.Select(p => p.Label).ToList();
+
+        Assert.Equal(new[] { "model folder", "role", "extension policy", "context files", "memory index" }, labels);
+        Assert.Equal("system prompt", Full(raw: false).SystemParts![0].Label);
+    }
+
+    //a resume tells the model the date changed only when the date was in the text, so a raw baseline records none
+    [Fact]
+    public void A_RAW_ROLE_RECORDS_NO_DATE_SO_A_RESUME_NEVER_WRITES_ONE()
+    {
+        Assert.Null(Full(raw: true).Sources.Date);
+        Assert.Equal("2026-01-02", Full(raw: false).Sources.Date);
+
+        Composition On(DateTime day) => RoleComposition.Compose(Role(raw: true), Pk(), NoContext, null, cwd: @"C:\p", date: day);
+        var delta = Gatto.Core.Home.ResumePlan.Delta(On(new DateTime(2026, 1, 2)).Sources, On(new DateTime(2026, 1, 3)).Sources);
+        Assert.Null(delta.Date);
+    }
+
+    [Fact]
+    public void THINKING_GATES_AND_SAMPLING_RESOLVE_THE_SAME_UNDER_RAW()
+    {
+        var raw = Full(raw: true);
+        var plain = Full(raw: false);
+
+        Assert.Equal(plain.Thinking, raw.Thinking);
+        Assert.Equal(plain.Gates, raw.Gates);
+        Assert.Equal(plain.Sampling?.GetRawText(), raw.Sampling?.GetRawText());
+        Assert.Equal(plain.ThinkingBody?.GetRawText(), raw.ThinkingBody?.GetRawText());
+        Assert.Equal(plain.ThinkingSuffix, raw.ThinkingSuffix);
+        Assert.NotNull(raw.Sampling);
+        Assert.NotNull(raw.ThinkingBody);
+    }
 
     [Fact]
     public void Gates_match_case_insensitively()

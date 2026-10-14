@@ -403,6 +403,9 @@ public sealed class OpenAiCompatClient : IChatClient, Gatto.Core.Loop.ITokenCoun
                 //skip an assistant message with no content and no tool calls, llama.cpp 400s it on replay and the session stays wedged
                 if (m.Role == "assistant" && m.Content is null && m.ToolCalls is not { Count: > 0 })
                     continue;
+                //skip an empty system message, a raw role with no source keeps the record and no model was measured on an empty system turn
+                if (m.Role == "system" && string.IsNullOrEmpty(m.Content))
+                    continue;
                 //one message, one writer
                 RequestJson.WriteMessage(w, m, images, onImageUnavailable);
             }

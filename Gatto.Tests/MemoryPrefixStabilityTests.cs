@@ -18,7 +18,7 @@ public class MemoryPrefixStabilityTests : IDisposable
     public void Dispose() => Directory.Delete(_root, recursive: true);
 
     private static RoleFile Role() =>
-        new("r", "p", null, Array.Empty<string>(), null, ThinkingLevel.Medium);
+        new("r", "p", null, Array.Empty<string>(), false, null, ThinkingLevel.Medium);
 
     private void SeedIndex(string text) =>
         MemoryDir.Write(MemoryDir.FindProjectRoot(_root), "seeded", text);

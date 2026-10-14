@@ -94,12 +94,12 @@ public static class GattoApp
         return HelpText(roles, configured ?? "generalist");
     }
 
-    //every role on disk, the default first and marked, and a home with no roles folder yet reads the three shipped names
+    //every role on disk, the default first and marked, and a home with no roles folder yet reads the four shipped names
     internal static string HelpText(IReadOnlyList<string> roles, string defaultRole)
     {
-        var names = roles.Count > 0 ? roles : new[] { "generalist", "coder", "oracle" };
+        var names = roles.Count > 0 ? roles : new[] { "generalist", "coder", "oracle", "raw" };
         var line = string.Join(" | ", names.OrderBy(r => r == defaultRole ? 0 : 1).Select(r => r == defaultRole ? r + " (default)" : r));
-        if (roles.Count == 0) line += " | <any ~/.gatto/roles/*.json>";
+        if (roles.Count == 0) line += " | <any ~\\.gatto\\roles\\*.json>";
         return Help.Replace("{roles}", line, StringComparison.Ordinal);
     }
 

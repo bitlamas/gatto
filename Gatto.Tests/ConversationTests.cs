@@ -23,6 +23,16 @@ public class ConversationTests
         Assert.Equal(older, c2.Messages[0].Ts!.Value.ToUniversalTime());
     }
 
+    //the system record carries the baseline and the session identity, so an empty composed text still makes one and only null makes none
+    [Fact]
+    public void AN_EMPTY_SYSTEM_TEXT_MAKES_A_RECORD_AND_NULL_MAKES_NONE()
+    {
+        var empty = new Conversation("");
+        Assert.Equal("system", Assert.Single(empty.Messages).Role);
+        Assert.Equal("", empty.Messages[0].Content);
+        Assert.Empty(new Conversation(null).Messages);
+    }
+
     [Fact]
     public void AddAssistant_and_AddToolResult_stamp_the_current_gatto_role()
     {

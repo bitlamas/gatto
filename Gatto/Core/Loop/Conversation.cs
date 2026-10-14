@@ -13,7 +13,8 @@ public sealed class Conversation
     public Conversation(string? systemPrompt, Func<DateTime>? now = null, SessionBaseline? baseline = null)
     {
         _now = now ?? (() => DateTime.UtcNow);
-        if (systemPrompt is { Length: > 0 })
+        //the record carries the baseline and the session identity, so an empty composed text still gets one. null is a load whose record comes from the file
+        if (systemPrompt is not null)
             _messages.Add(new ChatMessage("system", systemPrompt, Ts: _now()));
         Baseline = baseline;
     }
