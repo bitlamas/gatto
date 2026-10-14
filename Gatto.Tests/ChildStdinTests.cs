@@ -39,18 +39,7 @@ public sealed class ChildStdinTests : IDisposable
         Assert.Equal("exit 7", r.Gloss);
     }
 
-    [Fact]
-    public void A_read_only_shell_child_that_reads_stdin_gets_EOF()
-    {
-        string result;
-        using (new StdinThatNeverEnds())
-            result = GattoApp.RunReadOnlyShell("$line = [Console]::In.ReadLine(); Write-Output 'read done'", _dir);
-
-        Assert.DoesNotContain("timed out", result);
-        Assert.Contains("read done", result);
-    }
-
-    //the child inherits the fixture's stdin and is still reading. if the fixture stopped reaching the child, this test goes red and the read tests above would pass
+    //the child inherits the fixture's stdin and is still reading. if the fixture stopped reaching the child, this test goes red and the read test above would pass
     [Fact]
     public async Task A_child_that_inherits_the_fixture_stdin_is_still_reading()
     {

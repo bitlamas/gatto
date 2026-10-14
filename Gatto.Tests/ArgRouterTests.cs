@@ -69,20 +69,25 @@ public class ArgRouterTests
     }
 
     [Fact]
-    public void Yes_and_auto_flags_parse()
+    public void Yes_flag_parses()
     {
-        var p = ArgRouter.Parse(new[] { "coder", "--yes", "--auto", "-p", "go" });
+        var p = ArgRouter.Parse(new[] { "coder", "--yes", "-p", "go" });
         Assert.True(p.Yes);
-        Assert.True(p.Auto);
         Assert.Equal("go", p.Prompt);
     }
 
     [Fact]
-    public void Yes_and_auto_default_false()
+    public void Yes_defaults_false()
     {
         var p = ArgRouter.Parse(new[] { "coder", "-p", "go" });
         Assert.False(p.Yes);
-        Assert.False(p.Auto);
+    }
+
+    [Fact]
+    public void AUTO_IS_AN_UNKNOWN_OPTION()
+    {
+        var ex = Assert.Throws<ArgumentException>(() => ArgRouter.Parse(new[] { "--auto" }));
+        Assert.Equal("unknown option: --auto", ex.Message);
     }
 
     [Theory]

@@ -7,7 +7,7 @@ namespace Gatto.Core.Loop.Permissions;
 
 //fail closed on the tool_call hook, a blocked call throws and the tool's ExecuteAsync never runs
 public sealed class PermissionGate(
-    PermissionStore store, IPermissionPrompter? prompter, bool autoYes, CheckpointApproval? approval = null,
+    PermissionStore store, IPermissionPrompter? prompter, bool autoYes,
     WildState? wild = null, string? home = null)
 {
     //the working folder and the project's write grants, and gatto's own folder when the caller names it
@@ -57,13 +57,6 @@ public sealed class PermissionGate(
             return Task.CompletedTask;                                   //1. read-class or bounded-write, both pass without asking
         if (autoYes || wild?.On == true) return Task.CompletedTask;     //2. the --yes flag or wild mode, both pass
 
-        //2b. the call the user already approved at the CheckpointGate pause, cleared on the first match so it can't leak
-        if (approval?.Call is not null && ReferenceEquals(approval.Call, payload.Call))
-        {
-            approval.Call = null;
-            return Task.CompletedTask;
-        }
-
         var c = Classify(call);
 
         var granted = c.Kind switch                                     //3. a matching standing grant from the store
@@ -79,7 +72,7 @@ public sealed class PermissionGate(
             throw new InvalidOperationException(
                 "no interactive terminal to grant permission (use --yes, or grant it with Yes, always allow in an interactive session)");
 
-        //5. ask, stamped with the subagent label, through AskWithReason whose default forwards to Ask with no reason. a call that cannot run is refused first
+        //5. ask, stamped with the subagent label, through AskWithReason. a call that cannot run is refused first
         if (Unrunnable(call) is { } why) throw new CannotApplyException(why);
         var decision = prompter.AskWithReason(WithView(c) with { Agent = AgentLabel });
         switch (decision.Answer)

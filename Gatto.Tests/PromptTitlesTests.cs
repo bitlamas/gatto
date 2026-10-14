@@ -281,14 +281,14 @@ public class PromptTitlesTests
         Assert.Equal(new[] { "{\"x\":1}" }, detail);
     }
 
-    //checkpoint is not worded specially, so it must take the generic path with the tool name as the title.
+    //a tool that is not worded specially and offers no scope takes the generic path with the tool name as the title
     [Fact]
-    public void Checkpoint_TakesTheGenericShape_TitledByTool()
+    public void A_REQUEST_WITH_NO_OFFER_TAKES_THE_GENERIC_SHAPE_TITLED_BY_TOOL()
     {
         var (title, question, detail) = For(new PermissionRequest(
-            "checkpoint", "M  a.cs\n?? b.cs", null));
+            "frobnicate", "M  a.cs\n?? b.cs", null));
 
-        Assert.Equal("checkpoint", title);
+        Assert.Equal("frobnicate", title);
         Assert.Equal("Do you want to proceed?", question);
         Assert.Equal(new[] { "M  a.cs", "?? b.cs" }, detail);
     }

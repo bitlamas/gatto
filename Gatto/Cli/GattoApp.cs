@@ -81,7 +81,7 @@ public static class GattoApp
         usage: gatto [role|command] [options]
           roles:    {roles}
           commands: setup | serve start [model] [--detach] | serve stop|status | doctor | status | audition | model new [gguf] [id] | update | uninstall
-          options:  -m <model>  -p <prompt>  -e <endpoint>  --effort <level>  --continue[ <id>]  --yes  --auto  --version  -h
+          options:  -m <model>  -p <prompt>  -e <endpoint>  --effort <level>  --continue[ <id>]  --yes  --version  -h
         """;
 
     //the roles line is read from the home at print time, so the help never names a default the config overrode or a role that is not on disk
@@ -581,20 +581,11 @@ public static class GattoApp
         var permissions = PermissionStore.Load(home, cwd, out var permWarning);   //a corrupt permissions file loads as no grants, so every mutating tool prompts, with a warning
         if (permWarning is not null) Console.Error.WriteLine($"! {permWarning}");
 
-        //one shared switch that auto-allows every permission and skips the checkpoint, seeded from the folder's grant or gatto.json's wild unless a .gatto.json up the path forbids it
+        //one shared switch that auto-allows every permission, seeded from the folder's grant or gatto.json's wild unless a .gatto.json up the path forbids it
         var wildForbiddenBy = ProjectFileConfig.EffectiveWildAllowed(cwd, out var forbiddingFile) ? null : forbiddingFile;
         var wildState = new WildState { On = (permissions.Wild || config.Wild) && wildForbiddenBy is null, ForbiddenBy = wildForbiddenBy };
 
-        //the session's own /auto, which survives a /role, and only toggleAuto changes it
-        var autoOff = args.Auto;
-        var checkpointApproval = new CheckpointApproval();   //a single-use latch, so the permission gate passes the one shell call the checkpoint approved and no later one
-        var checkpointGate = new CheckpointGate(permPrompter, cmd => RunReadOnlyShell(cmd, cwd), checkpointApproval, wild: wildState)
-        {
-            Enabled = comp.Checkpoints && !autoOff,   //the current role and the session's /auto decide it, and --yes never stands in for --auto
-        };
-        hooks.On(HookEvent.ToolCall, checkpointGate.CheckAsync);   //registered before the permission gate, since tool_call handlers run in order and the checkpoint pauses first
-
-        var gate = new PermissionGate(permissions, permPrompter, autoYes: args.Yes, approval: checkpointApproval, wild: wildState, home: home);
+        var gate = new PermissionGate(permissions, permPrompter, autoYes: args.Yes, wild: wildState, home: home);
         hooks.On(HookEvent.ToolCall, gate.CheckAsync);
         //the wire log is read once here from GATTO_DEBUG_WIRE and never in the request path, so off costs a null field
         var wireLog = WireLog.FromFlag(
@@ -892,15 +883,6 @@ public static class GattoApp
             return new ComposedSystem(lastComposedSystem, NextBaseline(composed.Sources));
         };
 
-        //a closure so Repl never references Gatto.Roles, and null means the current role has no checkpoints to toggle
-        Func<bool?> toggleAuto = () =>
-        {
-            if (!comp.Checkpoints) return null;   //flipping autoOff here would arm a checkpoint early for the next role that wants one
-            autoOff = !autoOff;   //the shared flag, so every later /role reads the same session intent
-            checkpointGate.Enabled = comp.Checkpoints && !autoOff;
-            return checkpointGate.Enabled;
-        };
-
         //re-runs the launch precedence and mutates the launch locals in place, so recomposeSystem sees the new role at the next /new
         Func<string, RoleSwitchResult> switchRole = requestedName =>
         {
@@ -933,8 +915,6 @@ public static class GattoApp
                 warn.Warn(MemoryTruncationWarning(res.MemoryTruncatedLines));
             loop.UpdateOverrides(modelString, comp.Sampling, comp.ThinkingBody, comp.ThinkingSuffix);
 
-            //the session's own auto setting wins, /role must not re-arm checkpoints the user turned off
-            checkpointGate.Enabled = comp.Checkpoints && !autoOff;
             //armed for the new role, the ledger has been recording upstream all along so a switch never starts blind
             citationGate.Armed = comp.Gates.Contains("citations");
 
@@ -1424,7 +1404,7 @@ public static class GattoApp
         var unlistedRemote = !ServedHere() && endpoint.Models is not { Count: > 0 };
 
         //the hint reads the same two locals as the reuse line, so the two sentences cannot disagree about what is loaded
-        var repl = new Gatto.Repl.Repl(loop, convo, role.Name, modelString, sessions, client, endpoint.Context, contextBudget, cwd, recomposeSystem, toggleAuto, switchRole, wildState, on => permissions.SetWild(on, persist: true), hooks, themeMode, subagentProgress, resumedFrom: resumedFrom, reasoning: config.ReasoningMode, thinkingName: initialThinkingName, setEffort: setEffort, listEfforts: listEfforts, glyphs: glyphs, purrSet: Gatto.Repl.Render.PurrFrames.RandomFromPool, versionLine: CommandBanner.DottedVersion(Gatto.Core.GattoVersion.String, Gatto.Core.GattoVersion.Build ?? "", CommandBanner.IsDevBuild(), glyphs), pump: pump, chrome: chrome, switchModel: switchModel, setDefault: id => ModelSwitch.Persist(home, endpointName, id),   //the role name as ResolveRole cased it from disk, which the banner and the status line key on
+        var repl = new Gatto.Repl.Repl(loop, convo, role.Name, modelString, sessions, client, endpoint.Context, contextBudget, cwd, recomposeSystem, switchRole, wildState, on => permissions.SetWild(on, persist: true), hooks, themeMode, subagentProgress, resumedFrom: resumedFrom, reasoning: config.ReasoningMode, thinkingName: initialThinkingName, setEffort: setEffort, listEfforts: listEfforts, glyphs: glyphs, purrSet: Gatto.Repl.Render.PurrFrames.RandomFromPool, versionLine: CommandBanner.DottedVersion(Gatto.Core.GattoVersion.String, Gatto.Core.GattoVersion.Build ?? "", CommandBanner.IsDevBuild(), glyphs), pump: pump, chrome: chrome, switchModel: switchModel, setDefault: id => ModelSwitch.Persist(home, endpointName, id),   //the role name as ResolveRole cased it from disk, which the banner and the status line key on
                     launchServing: launchServing, probeServing: probeServing, listModels: unlistedRemote ? null : listModels, picker: replPicker, slotsReader: slotsReader, warn: warn, altScreen: config.AltScreen, dumpOnExit: config.DumpOnExit, thinkingIsToggle: thinkCap == ThinkCapability.Toggle, thinkingIsUnavailable: ThinkingUnavailable(), mouseEnabled: config.Mouse && config.AltScreen && pump is not null, wheelLines: config.WheelLines, copyOnSelect: config.CopyOnSelect, resumedPath: continuePath, resumeLine: resumeLine,
             modelMarkLegend: !ServedHere() ? "current" : "weights loaded",
             //read at the moment a connection is lost, through the current model, so a /model switch is followed
@@ -2138,64 +2118,6 @@ public static class GattoApp
         ctx.Surface().Close();   //the frame's closing row, paired with the header above it
         return code;
     }
-
-    //blocks for the synchronous gate and drains both streams at once so neither pipe fills. a timeout kills it and returns a placeholder rather than throwing
-    internal static string RunReadOnlyShell(string command, string cwd)   //internal as a test seam
-    {
-        var psi = ReadOnlyShellStartInfo(command, cwd);
-        using var proc = Process.Start(psi) ?? throw new InvalidOperationException($"failed to start {psi.FileName}");
-        //closing stdin here gives a command that reads it an EOF at once
-        proc.StandardInput.Close();
-        var stdoutTask = proc.StandardOutput.ReadToEndAsync();
-        var stderrTask = proc.StandardError.ReadToEndAsync();
-
-        if (!proc.WaitForExit(10_000))
-        {
-            try { proc.Kill(entireProcessTree: true); } catch { } //a failed kill still returns the placeholder
-            return "(git status timed out)";
-        }
-
-        //a child holding the inherited stdout handle would block the drains, so the bound covers them. a truncated git status is worse than none, so it fails closed
-        if (!Task.WaitAll(new Task[] { stdoutTask, stderrTask }, 5_000))
-        {
-            try { proc.Kill(entireProcessTree: true); } catch { } //a failed kill still returns the placeholder
-            return "(git status unavailable: a child process still holds the output pipe)";
-        }
-
-        var stdout = stdoutTask.GetAwaiter().GetResult();
-        var stderr = stderrTask.GetAwaiter().GetResult();
-        if (proc.ExitCode != 0)
-            throw new InvalidOperationException(
-                string.IsNullOrWhiteSpace(stderr) ? $"'{command}' exited {proc.ExitCode}" : stderr.Trim());
-        return stdout.TrimEnd();
-    }
-
-    //the start info of RunReadOnlyShell, in a place a test can read without spawning. stdin is redirected and closed by the caller, so a reader gets an EOF at once
-    internal static ProcessStartInfo ReadOnlyShellStartInfo(string command, string cwd)
-    {
-        var exe = "powershell.exe";
-        foreach (var dir in (Environment.GetEnvironmentVariable("PATH") ?? "").Split(Path.PathSeparator))
-            if (dir.Length > 0 && File.Exists(Path.Combine(dir.Trim(), "pwsh.exe"))) { exe = "pwsh.exe"; break; }
-
-        var psi = new ProcessStartInfo
-        {
-            FileName = exe,
-            WorkingDirectory = cwd,
-            RedirectStandardInput = true,
-            RedirectStandardOutput = true,
-            RedirectStandardError = true,
-            UseShellExecute = false,
-            CreateNoWindow = true,
-        };
-        //pin the read encoding, PS 5.1 would mangle non-ASCII output
-        Gatto.Core.Tools.PowerShellUtf8.PinReadEncoding(psi);
-        psi.ArgumentList.Add("-NoProfile");
-        psi.ArgumentList.Add("-NonInteractive");
-        psi.ArgumentList.Add("-Command");
-        psi.ArgumentList.Add(Gatto.Core.Tools.PowerShellUtf8.WithPrelude(command));
-        return psi;
-    }
-
 
     //whether gatto serves this endpoint and whose window sizes the session: a folder's port, auto_serve and context count only on the endpoint gatto serves
     internal static (bool GattoServes, int? Window) ServingFor(bool servedHere, Gatto.Roles.Model? model,

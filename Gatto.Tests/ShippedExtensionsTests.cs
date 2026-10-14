@@ -170,7 +170,6 @@ public sealed class ShippedExtensionsTests : IDisposable
         Assert.True(File.Exists(Full("roles/oracle.json")));
 
         var coder = RoleFile.Load(RolesDir, "coder");
-        Assert.False(coder.Checkpoints);   //no shipped role arms the commit pause, a user turns it on in their own role file
         //the coder append comes back as a real multi-line string
         Assert.Contains("report what changed", coder.Append!);
         Assert.DoesNotContain("commit", coder.Append!);   //a commit is the project's choice, the shipped role asks for none

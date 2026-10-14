@@ -25,6 +25,14 @@ public class SafeCommandTests
     }
 
     [Fact]
+    public void THE_WILD_LINES_NAME_THE_PROMPTS_ALONE()
+    {
+        Assert.Equal("wild mode on — permission prompts are OFF for this session  " + Gatto.Terminal.GlyphSet.Unicode.Wild,
+            Gatto.Repl.Repl.WildLine(true, Gatto.Terminal.GlyphSet.Unicode));
+        Assert.Equal("wild mode off — permission prompts are back on", Gatto.Repl.Repl.WildLine(false, null));
+    }
+
+    [Fact]
     public async Task SAFE_WHEN_WILD_IS_OFF_SAYS_SO_AND_CHANGES_NOTHING()
     {
         var wild = new WildState { On = true };
@@ -34,19 +42,6 @@ public class SafeCommandTests
 
         Assert.True(h.Saw("wild mode is off"), h.Written());
         Assert.False(wild.On);
-    }
-
-    [Fact]
-    public async Task SAFE_LEAVES_THE_CHECKPOINT_TOGGLE_ALONE()
-    {
-        var calls = 0;
-        var wild = new WildState { On = true };
-        var h = new RichReplHarness(Path.GetTempPath(), wild: wild, toggleAuto: () => { calls++; return true; });
-        h.Keys.Line("/safe").Line("/quit");
-        await h.RunAsync();
-
-        Assert.False(wild.On);
-        Assert.Equal(0, calls);
     }
 
     [Fact]

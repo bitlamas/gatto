@@ -26,6 +26,16 @@ public class RoleFileTests : IDisposable
     }
 
     [Fact]
+    public void A_CHECKPOINTS_KEY_IS_UNKNOWN()
+    {
+        Write("bad", """{ "checkpoints": true }""");
+
+        var ex = Assert.Throws<GattoConfigException>(() => RoleFile.Load(_rolesDir, "bad"));
+
+        Assert.Equal("unknown key in role 'bad': checkpoints", ex.Message);
+    }
+
+    [Fact]
     public void ONE_MODEL_KEY_RESOLVES_ON_BOTH_ENDPOINT_KINDS_THROUGH_ONE_RESOLVER()
     {
         //one key and one resolver serve both endpoint kinds (the kind changes only the meaning of the resolved string)
@@ -52,7 +62,6 @@ public class RoleFileTests : IDisposable
               "model": "qwen3.6-35b",
               "endpoint": "local",
               "gates": ["grounding"],
-              "checkpoints": true,
               "append": "discipline text",
               "thinking": "high",
               "sampling": { "temperature": 0.3 }
@@ -65,7 +74,6 @@ public class RoleFileTests : IDisposable
         Assert.Equal("qwen3.6-35b", role.Model);
         Assert.Equal("local", role.Endpoint);
         Assert.Equal(new[] { "grounding" }, role.Gates);
-        Assert.True(role.Checkpoints);
         Assert.Equal("discipline text", role.Append);
         Assert.Equal(ThinkingLevel.High, role.ThinkingRequested);
     }
@@ -91,7 +99,6 @@ public class RoleFileTests : IDisposable
         Assert.Empty(role.Gates);
         Assert.Null(role.Model);
         Assert.Null(role.Endpoint);
-        Assert.False(role.Checkpoints);
         Assert.Null(role.Append);
     }
 
@@ -173,14 +180,6 @@ public class RoleFileTests : IDisposable
         Write("bad", """{ "gates": [1] }""");
         var ex = Assert.Throws<GattoConfigException>(() => RoleFile.Load(_rolesDir, "bad"));
         Assert.Contains("gates", ex.Message);
-    }
-
-    [Fact]
-    public void Load_rejects_wrong_typed_checkpoints()
-    {
-        Write("bad", """{ "checkpoints": "yes" }""");
-        var ex = Assert.Throws<GattoConfigException>(() => RoleFile.Load(_rolesDir, "bad"));
-        Assert.Contains("checkpoints", ex.Message);
     }
 
     [Fact]

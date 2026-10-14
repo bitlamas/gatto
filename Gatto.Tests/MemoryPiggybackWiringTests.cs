@@ -77,7 +77,6 @@ public sealed class MemoryPiggybackWiringTests : IDisposable
         var repl = new Gatto.Repl.Repl(
             loop, convo, "generalist", "m", sessions, client, null, 1000, _cwd,
             () => Composed.Text(recomposed),
-            () => (bool?)null,
             _ => new RoleSwitchResult(false, "", null, null, "unused"),
             hooks: hooks, piggyback: seam);
 

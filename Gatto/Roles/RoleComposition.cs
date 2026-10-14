@@ -13,7 +13,6 @@ public sealed record Composition(
     JsonElement? ThinkingBody,
     string? ThinkingSuffix,
     bool RepairArmed,
-    bool Checkpoints,
     //the values the text was composed from, so a resume can say what changed without composing again
     Gatto.Core.Loop.BaselineSources Sources,
     //the same text split by source, so /context can count each part
@@ -136,7 +135,6 @@ public static class RoleComposition
             thinkingBody,
             thinkingSuffix,
             model?.Repair is not null,
-            role.Checkpoints,
             new Gatto.Core.Loop.BaselineSources(
                 date?.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture),
                 memoryIndex,

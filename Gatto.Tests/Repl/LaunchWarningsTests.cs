@@ -40,7 +40,7 @@ public class LaunchWarningsTests : IDisposable
         var loop = new AgentLoop(client, new ToolRegistry(), new HookBus(), new TestToolContext(Path.GetTempPath()), "m");
         var repl = new Gatto.Repl.Repl(
             loop, new Conversation("sys"), "generalist", "m", null, client, null, null, Path.GetTempPath(),
-            () => Composed.Text("sys"), () => null, _ => new RoleSwitchResult(false, "", null, null, "unused"),
+            () => Composed.Text("sys"), _ => new RoleSwitchResult(false, "", null, null, "unused"),
             memoryWarning: memoryWarning, launchWarnings: launchWarnings);
 
         var sw = new StringWriter();

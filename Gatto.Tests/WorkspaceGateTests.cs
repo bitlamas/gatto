@@ -16,7 +16,7 @@ public sealed class WorkspaceGateTests : IDisposable
     //answers yes to everything, so a refusal can only come from the boundary
     private sealed class YesPrompter : IPermissionPrompter
     {
-        public PermissionAnswer Ask(PermissionRequest request) => PermissionAnswer.Once;
+        public PermissionDecision AskWithReason(PermissionRequest request) => new(PermissionAnswer.Once);
     }
 
     private PermissionGate Gate(bool autoYes, PermissionStore? store = null, WildState? wild = null, string? root = null) =>

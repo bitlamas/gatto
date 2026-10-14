@@ -140,7 +140,7 @@ public class ContextCountTests
     [Fact]
     public void The_composition_splits_its_system_text_by_source()
     {
-        var role = new Gatto.Roles.RoleFile("coder", null, null, Array.Empty<string>(), false, "role words", Gatto.Roles.ThinkingLevel.Medium);
+        var role = new Gatto.Roles.RoleFile("coder", null, null, Array.Empty<string>(), "role words", Gatto.Roles.ThinkingLevel.Medium);
         var c = Gatto.Roles.RoleComposition.Compose(role, null, [("a.md", "alpha"), ("b.md", "beta")], null, cwd: null,
             memoryIndex: "- a fact");
 

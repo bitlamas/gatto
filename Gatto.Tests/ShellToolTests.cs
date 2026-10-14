@@ -162,13 +162,10 @@ public class ShellToolTests : IDisposable
         Assert.DoesNotContain("OutputEncoding", r.Text, StringComparison.Ordinal);
     }
 
-    //both spawn sites read the one prelude, so a fix at one reaches the other
     [Fact]
-    public void The_read_only_shell_carries_the_same_prelude_as_the_shell_tool()
+    public void THE_SHELL_PRELUDE_SETS_THE_INPUT_ENCODING()
     {
         var tool = ShellTool.StartInfo("x", Path.GetTempPath()).ArgumentList[^1];
-        var readOnly = Gatto.Cli.GattoApp.ReadOnlyShellStartInfo("x", Path.GetTempPath()).ArgumentList[^1];
-        Assert.Equal(tool, readOnly);
         //the assignment, not the bare words (a comment keeps those). only a real console shows it took effect
         Assert.Contains("[Console]::InputEncoding = $__e;", tool, StringComparison.Ordinal);
     }

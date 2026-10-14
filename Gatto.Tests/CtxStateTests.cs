@@ -99,7 +99,7 @@ public class CtxStateTests
         //the fixture replays the reported state: a large tool result appended mid-turn.
         convo.AddToolResult("call_1", new ToolResult(new string('x', 70_000)));
 
-        //the trigger's figure is the same expression the loop's checkpoint evaluates.
+        //the trigger's figure is the same expression the compactor evaluates.
         var trigger = ContextBudget.UsedTokens(convo, usage);
         Assert.NotNull(trigger);
         Assert.True(trigger >= autoCompactAt * budget, "precondition: this state must fire the trigger");

@@ -29,7 +29,7 @@ public class ContextSlashTests : IDisposable
         var client = new FakeChatClient();
         var loop = new AgentLoop(client, new ToolRegistry(), new HookBus(), new TestToolContext(Path.GetTempPath()), "m");
         return new Gatto.Repl.Repl(loop, new Conversation("sys"), "generalist", "m", null, client, null, 65_536, Path.GetTempPath(),
-            () => Composed.Text("sys"), () => null, _ => new RoleSwitchResult(false, "", null, null, "unused"),
+            () => Composed.Text("sys"), _ => new RoleSwitchResult(false, "", null, null, "unused"),
             contextInputs: inputs);
     }
 

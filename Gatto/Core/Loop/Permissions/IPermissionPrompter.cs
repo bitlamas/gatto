@@ -31,8 +31,5 @@ public sealed record PermissionDecision(PermissionAnswer Answer, string? Reason 
 //a caller hands a request to this and acts on the answer, deliberately synchronous since a prompt is a blocking question
 public interface IPermissionPrompter
 {
-    PermissionAnswer Ask(PermissionRequest request);
-
-    //defaults to Ask with no reason, so an implementer that only defines Ask keeps its bare deny message
-    PermissionDecision AskWithReason(PermissionRequest request) => new(Ask(request));
+    PermissionDecision AskWithReason(PermissionRequest request);
 }

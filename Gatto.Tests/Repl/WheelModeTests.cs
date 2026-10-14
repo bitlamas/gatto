@@ -33,7 +33,7 @@ public class WheelModeTests : IDisposable
         var client = new FakeChatClient();
         var loop = new AgentLoop(client, new ToolRegistry(), new HookBus(), new TestToolContext(_cwd), "m");
         var repl = new Gatto.Repl.Repl(loop, new Conversation("sys"), "generalist", "m", null, client, null, null, _cwd,
-            () => Composed.Text("sys"), () => null, _ => new RoleSwitchResult(false, "", null, null, "unused"), altScreen: false);
+            () => Composed.Text("sys"), _ => new RoleSwitchResult(false, "", null, null, "unused"), altScreen: false);
         var input = Console.In;
         var output = Console.Out;
         var sw = new StringWriter();

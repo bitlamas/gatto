@@ -49,7 +49,7 @@ public sealed class EditPromptTests : IDisposable
         var prompter = new RichPermissionPrompter(surface, th,
             new Probe(n => { if (n == 0) live = painter.State.PanelRows; }, new[] { new ConsoleKeyInfo('1', ConsoleKey.D1, false, false, false) }),
             pump: null, chrome: new ChromeHandle { Painter = painter, Renderer = renderer });
-        prompter.Ask(request);
+        prompter.AskWithReason(request);
         var raw = live!.ToList();
         var plain = raw.Select(r => TermText.StripAnsiForWidth(r).TrimEnd()).ToList();
         var rules = plain.Select((p, i) => (p, i)).Where(t => t.p.Length == width && t.p.Distinct().Count() == 1).Select(t => t.i).ToList();
@@ -194,7 +194,7 @@ public sealed class EditPromptTests : IDisposable
                 }
             }, new[] { new ConsoleKeyInfo('1', ConsoleKey.D1, false, false, false) }),
             pump: null, chrome: new ChromeHandle { Painter = painter, Renderer = renderer });
-        prompter.Ask(request);
+        prompter.AskWithReason(request);
         return screens;
     }
 
@@ -362,7 +362,7 @@ public sealed class EditPromptTests : IDisposable
     private sealed class Capture : IPermissionPrompter
     {
         public List<PermissionRequest> Requests { get; } = new();
-        public PermissionAnswer Ask(PermissionRequest request) { Requests.Add(request); return PermissionAnswer.Once; }
+        public PermissionDecision AskWithReason(PermissionRequest request) { Requests.Add(request); return new(PermissionAnswer.Once); }
     }
 
     private (PermissionGate Gate, Capture Prompter, List<string> Reads) Gate(bool grant = false)
@@ -498,7 +498,7 @@ public sealed class EditPlainSurfacesTests
     {
         var bare = new PermissionRequest("edit_file", @"C:\proj\a.cs (10 bytes)", @"C:\proj");
         var full = bare with { EditOld = "old a", EditNew = "new a", View = new EditView(3, "", "", new[] { "x" }, new[] { "y" }) };
-        Assert.Equal(Capture(() => new PlainPermissionPrompter().Ask(bare), "1\n"), Capture(() => new PlainPermissionPrompter().Ask(full), "1\n"));
+        Assert.Equal(Capture(() => new PlainPermissionPrompter().AskWithReason(bare), "1\n"), Capture(() => new PlainPermissionPrompter().AskWithReason(full), "1\n"));
     }
 
     //the plain prompter names an overwrite with the rich prompt's words
@@ -506,9 +506,9 @@ public sealed class EditPlainSurfacesTests
     public void The_plain_prompter_says_overwrite()
     {
         var request = new PermissionRequest("write_file", @"C:\proj\a.cs (+2 lines)", @"C:\proj", Existing: new ExistingFile(40, 900));
-        var text = Capture(() => new PlainPermissionPrompter().Ask(request), "1\n");
+        var text = Capture(() => new PlainPermissionPrompter().AskWithReason(request), "1\n");
         Assert.Contains("  Overwrite file, replaces 40 lines", text, StringComparison.Ordinal);
-        Assert.DoesNotContain("Overwrite", Capture(() => new PlainPermissionPrompter().Ask(request with { Existing = null }), "1\n"), StringComparison.Ordinal);
+        Assert.DoesNotContain("Overwrite", Capture(() => new PlainPermissionPrompter().AskWithReason(request with { Existing = null }), "1\n"), StringComparison.Ordinal);
     }
 
     [Fact]

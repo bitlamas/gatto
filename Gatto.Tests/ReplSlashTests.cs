@@ -153,7 +153,7 @@ public class ReplWildTests : IDisposable
         var convo = new Conversation("sys");
         var repl = new Gatto.Repl.Repl(
             loop, convo, "generalist", "m", null, client, null, null, _root,
-            () => Composed.Text("sys"), () => null, _ => new RoleSwitchResult(false, "", null, null, "unused"),
+            () => Composed.Text("sys"), _ => new RoleSwitchResult(false, "", null, null, "unused"),
             wild, on => store.SetWild(on, persist: true));
 
         var sw = new StringWriter();
@@ -172,7 +172,7 @@ public class ReplWildTests : IDisposable
         var called = false;
         var repl = new Gatto.Repl.Repl(
             loop, new Conversation("sys"), "generalist", "m", null, client, null, null, _root,
-            () => Composed.Text("sys"), () => null, _ => { called = true; return new RoleSwitchResult(true, "x", "x", "x", null); });
+            () => Composed.Text("sys"), _ => { called = true; return new RoleSwitchResult(true, "x", "x", "x", null); });
 
         var sw = new StringWriter();
         Console.SetOut(sw);
@@ -305,7 +305,7 @@ public class ReplPermissionsTests : IDisposable
         var convo = new Conversation("sys");
         var repl = new Gatto.Repl.Repl(
             loop, convo, "generalist", "m", null, client, null, null, _root,
-            () => Composed.Text("sys"), () => null, _ => new RoleSwitchResult(false, "", null, null, "unused"),
+            () => Composed.Text("sys"), _ => new RoleSwitchResult(false, "", null, null, "unused"),
             permissions: store);
 
         var sw = new StringWriter();
@@ -652,7 +652,7 @@ public class ReplRememberTests : IDisposable
         var convo = new Conversation("sys");
         var repl = new Gatto.Repl.Repl(
             loop, convo, "generalist", "m", null, client, null, null, Path.GetTempPath(),
-            () => Composed.Text("sys"), () => null, _ => new RoleSwitchResult(false, "", null, null, "unused"));
+            () => Composed.Text("sys"), _ => new RoleSwitchResult(false, "", null, null, "unused"));
 
         var sw = new StringWriter();
         Console.SetOut(sw);
@@ -739,7 +739,7 @@ public class ReplModelSlashTests : IDisposable
         convo ??= new Conversation("sys");
         return new Gatto.Repl.Repl(
             loop, convo, "generalist", modelName, null, client, null, null, Path.GetTempPath(),
-            () => Composed.Text("sys"), () => null, _ => new RoleSwitchResult(false, "", null, null, "unused"),
+            () => Composed.Text("sys"), _ => new RoleSwitchResult(false, "", null, null, "unused"),
             switchModel: switchModel, listModels: listModels, picker: picker,
             unmanagedNotice: unmanagedNotice, setDefault: setDefault,
             modelMarkLegend: modelMarkLegend);
@@ -1229,7 +1229,7 @@ public class ReplToolsTests : IDisposable
         var loop = new AgentLoop(client, new ToolRegistry(), new HookBus(), new TestToolContext(_root), "m");
         var repl = new Gatto.Repl.Repl(
             loop, new Conversation("sys"), "generalist", "m", null, client, null, null, _root,
-            () => Composed.Text("sys"), () => null, _ => new RoleSwitchResult(false, "", null, null, "unused"),
+            () => Composed.Text("sys"), _ => new RoleSwitchResult(false, "", null, null, "unused"),
             listTools: listTools, listPolicy: listPolicy);
 
         var sw = new StringWriter();
@@ -1358,7 +1358,7 @@ public class ReplEffortSlashTests : IDisposable
         convo ??= new Conversation("sys");
         return new Gatto.Repl.Repl(
             loop, convo, "generalist", "qwen3.6-35b", null, client, null, null, Path.GetTempPath(),
-            () => Composed.Text("sys"), () => null, _ => new RoleSwitchResult(false, "", null, null, "unused"),
+            () => Composed.Text("sys"), _ => new RoleSwitchResult(false, "", null, null, "unused"),
             thinkingName: thinkingName, setEffort: setEffort, listEfforts: listEfforts, picker: picker);
     }
 

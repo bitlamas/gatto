@@ -17,7 +17,7 @@ public class SlashCommandsTests
 {
     //the name-set test pins SlashCommands.All to this list and can't see the Repl dispatch, so a branch with no row here goes unnoticed
     private static readonly string[] CanonicalNames =
-        ["/help", "/new", "/role", "/model", "/effort", "/compact", "/auto", "/remember",
+        ["/help", "/new", "/role", "/model", "/effort", "/compact", "/remember",
          "/wild", "/safe", "/permissions", "/tools", "/context", "/init", "/quit"];
 
     [Fact]
@@ -27,7 +27,9 @@ public class SlashCommandsTests
         var safe = Array.FindIndex(lines, l => l.TrimStart().StartsWith("/safe ", StringComparison.Ordinal));
         Assert.True(safe > 0, string.Join("\n", lines));
         Assert.StartsWith("/wild ", lines[safe - 1].TrimStart(), StringComparison.Ordinal);
-        Assert.EndsWith("prompts and checkpoints back on", lines[safe].TrimEnd(), StringComparison.Ordinal);
+        Assert.EndsWith("no prompts (" + Gatto.Terminal.WildKeys.KeyName + " toggles)", lines[safe - 1].TrimEnd(), StringComparison.Ordinal);
+        Assert.EndsWith("prompts back on", lines[safe].TrimEnd(), StringComparison.Ordinal);
+        Assert.DoesNotContain("checkpoint", string.Join("\n", lines), StringComparison.Ordinal);
     }
 
     [Fact]
@@ -60,7 +62,7 @@ public class SlashCommandsTests
         var convo = new Conversation("sys");
         var repl = new Gatto.Repl.Repl(
             loop, convo, "generalist", "m", null, client, null, null, Path.GetTempPath(),
-            () => Composed.Text("sys"), () => null, _ => new RoleSwitchResult(false, "", null, null, "unused"));
+            () => Composed.Text("sys"), _ => new RoleSwitchResult(false, "", null, null, "unused"));
 
         var origIn = Console.In;
         var origOut = Console.Out;
@@ -93,7 +95,7 @@ public class SlashCommandsTests
             (arg, _) => Task.FromResult($"one {arg}\ntwo"), "undo.csx"));
         var repl = new Gatto.Repl.Repl(
             loop, convo, "generalist", "m", null, client, null, null, Path.GetTempPath(),
-            () => Composed.Text("sys"), () => null, _ => new RoleSwitchResult(false, "", null, null, "unused"),
+            () => Composed.Text("sys"), _ => new RoleSwitchResult(false, "", null, null, "unused"),
             commands: commands);
 
         var origIn = Console.In;

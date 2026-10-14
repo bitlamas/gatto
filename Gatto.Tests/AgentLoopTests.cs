@@ -1185,7 +1185,7 @@ public class AgentLoopTests
     [Fact]
     public async Task LargeToolResult_TriggersNextRoundCheckpoint()
     {
-        //a huge run_agent result only crosses the threshold at the next usage reading, which fires the checkpoint
+        //a huge run_agent result only crosses the threshold at the next usage reading, which fires the compaction
         var usage = new ContextUsageState();
         var handler = new FakeCompactionHandler(new CompactionResult("s2", new[] { new ChatMessage("user", "u") }, null));
         var client = new FakeChatClient();

@@ -11,7 +11,7 @@ namespace Gatto.Tests;
 file sealed class CountingPrompter : IPermissionPrompter
 {
     public int CallCount { get; private set; }
-    public PermissionAnswer Ask(PermissionRequest request) { CallCount++; return PermissionAnswer.Once; }
+    public PermissionDecision AskWithReason(PermissionRequest request) { CallCount++; return new(PermissionAnswer.Once); }
 }
 
 //a tool refuses an argument name its schema does not declare, before any prompt and before it runs, and the error names what it takes

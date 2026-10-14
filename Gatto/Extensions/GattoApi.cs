@@ -7,7 +7,7 @@ using Gatto.Core.Web;
 
 namespace Gatto.Extensions;
 
-//tools and hooks staged by one extension load and committed only after the whole script runs clean. a read-class tool skips the checkpoint and permission gate
+//tools and hooks staged by one extension load and committed only after the whole script runs clean. a read-class tool skips the permission gate
 public sealed class StagedRegistrations
 {
     public IReadOnlyList<(ITool Tool, bool ReadClass)> Tools { get; }

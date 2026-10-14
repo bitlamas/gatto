@@ -787,7 +787,7 @@ public class ModelTests : IDisposable
         File.WriteAllText(Path.Combine(_modelsDir, "p", "nudges.json"), """{ "append": "NUDGE-MARK", "thinking_cap": "low" } not json""");
 
         var model = Model.Load(_modelsDir, "p");
-        var c = RoleComposition.Compose(new RoleFile("r", "p", null, [], false, null, ThinkingLevel.High), model, [], null, cwd: null);
+        var c = RoleComposition.Compose(new RoleFile("r", "p", null, [], null, ThinkingLevel.High), model, [], null, cwd: null);
 
         Assert.DoesNotContain("NUDGE-MARK", c.SystemText, StringComparison.Ordinal);
         Assert.Equal(ThinkingLevel.High, c.Thinking);

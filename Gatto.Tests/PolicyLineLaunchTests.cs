@@ -303,11 +303,11 @@ public class PolicyLineLaunchTests : IDisposable
         return n;
     }
 
-    //two locals read the other composition fields by value, so a policy line must leave them alone
+    //the launch reads other composition fields before the recompose, so a policy line must leave them alone
     [Fact]
     public void A_policy_line_changes_the_system_text_and_nothing_else_the_launch_already_read()
     {
-        var role = new RoleFile("r", "p", null, new[] { "grounding" }, true, null, ThinkingLevel.Medium);
+        var role = new RoleFile("r", "p", null, new[] { "grounding" }, null, ThinkingLevel.Medium);
 
         var without = RoleComposition.Compose(role, null, Array.Empty<(string, string)>(), null, cwd: @"C:\p");
         var with = RoleComposition.Compose(role, null, Array.Empty<(string, string)>(), null, cwd: @"C:\p",
@@ -315,7 +315,6 @@ public class PolicyLineLaunchTests : IDisposable
 
         Assert.NotEqual(without.SystemText, with.SystemText);          //the policy block must change the system text.
         Assert.Equal(without.Gates, with.Gates);                       //the gates field must not change with the block.
-        Assert.Equal(without.Checkpoints, with.Checkpoints);           //the checkpoints field must not change either.
         Assert.Equal(without.Thinking, with.Thinking);
         Assert.Equal(without.RepairArmed, with.RepairArmed);
     }

@@ -76,9 +76,6 @@ public sealed class RichPermissionPrompter(
     //the notice for a reason the model receives none of (all control characters, or the cap inside leading spaces), don't reuse the truncation text
     internal const string NothingReachedModel = "(none of that reached the model)";
 
-    //no reason is read on this path, CheckpointGate is the only caller and discards it
-    public PermissionAnswer Ask(PermissionRequest request) => AskCore(request, offerReasonOnDeny: false).Answer;
-
     //a Deny is followed by one optional line that steers the model. deny_reason is read at construction, so being asked stays a session preference
     public PermissionDecision AskWithReason(PermissionRequest request) => AskCore(request, offerReasonOnDeny: denyReason);
 
@@ -231,9 +228,6 @@ public sealed class RichPermissionPrompter(
 //numbered menu on Console.ReadLine, no esc bytes so -p output stays byte-pure. a closed stdin denies instead of throwing
 public sealed class PlainPermissionPrompter(bool denyReason = false) : IPermissionPrompter
 {
-    //no reason is read on this path, CheckpointGate is the only caller and discards it
-    public PermissionAnswer Ask(PermissionRequest request) => AskCore(request, offerReasonOnDeny: false).Answer;
-
     //same menu and parsing, a Deny reads one optional line that PrepareReason strips and caps before the model sees it. deny_reason is read at construction, both prompters honour the same switch
     public PermissionDecision AskWithReason(PermissionRequest request) => AskCore(request, offerReasonOnDeny: denyReason);
 

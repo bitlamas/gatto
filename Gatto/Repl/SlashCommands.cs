@@ -43,13 +43,12 @@ public static class SlashCommands
         new("/effort", "[level]", "show or set thinking effort"),
         //the summary is written by the model, so this command reaches it
         new("/compact", "", "summarize + shrink context", ReachesModel: true),
-        new("/auto", "", "toggle checkpoint auto-approve"),
         //the input becomes an ordinary prompt, so the command falls through to a real turn and reaches the model
         new("/remember", "<text>", "bank a note to project memory, in the model's own words",
             ReachesModel: true),
         //the key name comes from WildKeys, so /help can't drift from the real keymap
-        new("/wild", "[always|never]", "no prompts, no checkpoints (" + Gatto.Terminal.WildKeys.KeyName + " toggles)"),
-        new("/safe", "", "prompts and checkpoints back on"),
+        new("/wild", "[always|never]", "no prompts (" + Gatto.Terminal.WildKeys.KeyName + " toggles)"),
+        new("/safe", "", "prompts back on"),
         new("/permissions", "[all|revoke <n>]", "review + revoke standing permission grants"),
         new("/tools", "", "list the tools armed this session", BypassesQueue: true),
         new("/context", "", "show what fills the context window", BypassesQueue: true),

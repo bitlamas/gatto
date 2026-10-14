@@ -179,7 +179,7 @@
     "wild": {
       "type": "boolean",
       "default": false,
-      "description": "start every session from this home in wild mode: no permission prompts, no checkpoints. a project's .gatto.json with \"wild\": false still forbids it. /safe turns it off for one session."
+      "description": "start every session from this home in wild mode: no permission prompts. a project's .gatto.json with \"wild\": false still forbids it. /safe turns it off for one session."
     },
     "mouse": {
       "type": "boolean",

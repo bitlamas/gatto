@@ -118,7 +118,7 @@ public sealed class ResumeLinePlainTests : IDisposable
         var client = new FakeChatClient();
         var loop = new AgentLoop(client, new Gatto.Core.Tools.ToolRegistry(), new HookBus(), new TestToolContext(Path.GetTempPath()), "m");
         var repl = new Gatto.Repl.Repl(loop, new Conversation("sys"), "generalist", "m", null, client, null, null, Path.GetTempPath(),
-            () => Composed.Text("sys"), () => null, _ => new Gatto.Repl.RoleSwitchResult(false, "", null, null, "unused"),
+            () => Composed.Text("sys"), _ => new Gatto.Repl.RoleSwitchResult(false, "", null, null, "unused"),
             resumedFrom: "a session", resumeLine: resumeLine);
         var sw = new StringWriter();
         Console.SetOut(sw);

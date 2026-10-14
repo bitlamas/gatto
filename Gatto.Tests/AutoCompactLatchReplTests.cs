@@ -21,7 +21,7 @@ public sealed class AutoCompactLatchReplTests
             budgetTokens: 65_536);
         var repl = new Gatto.Repl.Repl(
             loop, new Conversation("sys"), "generalist", "m", null, client, null, 65_536, Path.GetTempPath(),
-            () => Composed.Text("sys"), () => null, _ => new RoleSwitchResult(false, "", null, null, "unused"),
+            () => Composed.Text("sys"), _ => new RoleSwitchResult(false, "", null, null, "unused"),
             autoCompact: 0.8);
         var priorIn = Console.In;
         var priorOut = Console.Out;

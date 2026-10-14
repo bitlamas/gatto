@@ -9,14 +9,13 @@ public sealed record RoleFile(
     string? Model,
     string? Endpoint,
     IReadOnlyList<string> Gates,
-    bool Checkpoints,
     string? Append,
     //null when the role file has no thinking key, since the default depends on the model, which the loader never sees
     ThinkingLevel? ThinkingRequested)
 {
     //one key for the model, and the endpoint kind decides what it means. sampling belongs to the model now, so a role's sampling key is accepted and never read
     private static readonly string[] Keys =
-        { "model", "endpoint", "gates", "checkpoints", "append", "thinking", "sampling" };
+        { "model", "endpoint", "gates", "append", "thinking", "sampling" };
 
     public static RoleFile Load(string rolesDir, string name)
     {
@@ -55,14 +54,6 @@ public sealed record RoleFile(
             }
         }
 
-        var checkpoints = false;
-        if (root.TryGetProperty("checkpoints", out var cp))
-        {
-            if (cp.ValueKind is not (JsonValueKind.True or JsonValueKind.False))
-                throw new GattoConfigException($"role '{name}' has a \"checkpoints\" with the wrong type — must be true or false");
-            checkpoints = cp.GetBoolean();
-        }
-
         var append = GetOptionalString(root, name, "append");
 
         //null leaves the choice to Compose, since the default depends on the model and the loader cannot see it
@@ -74,7 +65,7 @@ public sealed record RoleFile(
             thinking = Thinking.Parse(th.GetString());
         }
 
-        return new RoleFile(name, model, endpoint, gates, checkpoints, append, thinking);
+        return new RoleFile(name, model, endpoint, gates, append, thinking);
     }
 
     //the override wins, then the role's own model, then gatto.json's default_model, shared so the launch and doctor agree

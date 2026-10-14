@@ -24,10 +24,9 @@ public class RoleCompositionTests
 
     private static RoleFile Role(
         IReadOnlyList<string>? gates = null,
-        bool checkpoints = false,
         string? append = null,
         ThinkingLevel? thinking = ThinkingLevel.Medium)
-        => new("r", "p", null, gates ?? Array.Empty<string>(), checkpoints, append, thinking);
+        => new("r", "p", null, gates ?? Array.Empty<string>(), append, thinking);
 
     private static ModelProfile Profile(
         JsonElement? sampling = null,
@@ -459,13 +458,6 @@ public class RoleCompositionTests
     public void RepairArmed_false_when_no_model()
     {
         Assert.False(RoleComposition.Compose(Role(), null, NoContext, null, cwd: null).RepairArmed);
-    }
-
-    [Fact]
-    public void Checkpoints_mirror_role_checkpoints()
-    {
-        Assert.True(RoleComposition.Compose(Role(checkpoints: true), null, NoContext, null, cwd: null).Checkpoints);
-        Assert.False(RoleComposition.Compose(Role(checkpoints: false), null, NoContext, null, cwd: null).Checkpoints);
     }
 
     [Fact]

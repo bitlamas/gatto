@@ -1,6 +1,6 @@
 namespace Gatto.Core.Loop.Permissions;
 
-//the one session switch that auto-allows every permission and skips the commit checkpoint, kept separate from --yes and --auto
+//the one session switch that auto-allows every permission, kept separate from --yes
 public sealed class WildState
 {
     public bool On { get; set; }

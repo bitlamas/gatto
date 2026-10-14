@@ -30,7 +30,7 @@ public sealed class SessionIdentityReplTests : IDisposable
         var sessions = new SessionStore(_home, _cwd);
         var repl = new Gatto.Repl.Repl(
             loop, new Conversation("sys"), "generalist", "m", sessions, client, null, 65_536, _cwd,
-            () => Composed.Text("sys"), () => null, _ => new RoleSwitchResult(false, "", null, null, "unused"));
+            () => Composed.Text("sys"), _ => new RoleSwitchResult(false, "", null, null, "unused"));
         var priorIn = Console.In;
         var priorOut = Console.Out;
         Console.SetIn(new StringReader("hi\n/new\nagain\n/quit\n"));

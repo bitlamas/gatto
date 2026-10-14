@@ -587,14 +587,15 @@ public class GattoAppTests : IDisposable
     }
 
     [Fact]
-    public async Task Help_MentionsAutoFlag()
+    public async Task HELP_NAMES_NO_AUTO_FLAG()
     {
         var stdout = new StringWriter();
         Console.SetOut(stdout);
         var exit = await GattoApp.RunAsync(new[] { "-h" });
 
         Assert.Equal(0, exit);
-        Assert.Contains("--auto", stdout.ToString());
+        Assert.DoesNotContain("--auto", stdout.ToString());
+        Assert.Contains("--yes", stdout.ToString());
     }
 
     //the help text is the first thing a stranger reads, so it can't use an internal word such as harness. a real line is checked too, so an empty text can't pass
@@ -925,61 +926,6 @@ public class GattoAppTests : IDisposable
         var names = body.GetProperty("tools").EnumerateArray().Select(t => t.GetProperty("function").GetProperty("name").GetString()).ToList();
         Assert.Contains("write_file", names);   //the list is the real one, so the absence below is not an empty read
         Assert.DoesNotContain("task_restate", names);
-    }
-
-    [Fact]
-    public async Task RoleSwitch_ToCheckpointRole_ArmsThePause_ForTheNextCommit()
-    {
-        await using var server = new FakeOpenAiServer();
-        UseHome();
-        WriteConfig($$$"""{"endpoints":{"local":{"base_url":"{{{server.BaseUrl}}}"}},"default_endpoint":"local"}""");
-        WriteModel("test-model", port: 1235);
-        WriteRole("generalist", "{\"model\":\"test-model\"}");                              //the launch role asks for no checkpoint, so a later pause can only come from /role
-        WriteRole("coder", "{\"model\":\"test-model\",\"checkpoints\":true}");              //this role asks for checkpoints.
-
-        server.Enqueue(ToolCallThenStop("c1", "shell", "{\"command\":\"git commit -m x\"}"));
-        server.Enqueue(Completion("done"));
-
-        //the digit 1 answers the checkpoint's own pause once. the flag --yes clears the permission gate for the same call, so only the checkpoint prompt reaches the wire
-        Console.SetIn(new StringReader("/role coder\ncommit please\n1\n/quit\n"));
-        var stdout = new StringWriter();
-        Console.SetOut(stdout);
-        var exit = await GattoApp.RunAsync(new[] { "--yes" });
-
-        Assert.Equal(0, exit);
-        Assert.Contains("[permission] checkpoint", stdout.ToString());   //this line is the proof the checkpoint pause happened
-    }
-
-    [Fact]
-    public async Task Launch_Auto_ThenRoleSwitchToCheckpointRole_StaysDisabled_ThenAutoReenables()
-    {
-        //a role switch must not silently undo the auto-off state set by the flag. the role wants checkpoints, yet the first commit does not pause until /auto turns it on
-        await using var server = new FakeOpenAiServer();
-        UseHome();
-        WriteConfig($$$"""{"endpoints":{"local":{"base_url":"{{{server.BaseUrl}}}"}},"default_endpoint":"local"}""");
-        WriteModel("test-model", port: 1235);
-        WriteRole("generalist", "{\"model\":\"test-model\"}");
-        WriteRole("coder", "{\"model\":\"test-model\",\"checkpoints\":true}");
-
-        server.Enqueue(ToolCallThenStop("c1", "shell", "{\"command\":\"git commit -m x1\"}"));
-        server.Enqueue(Completion("done1"));
-        server.Enqueue(ToolCallThenStop("c2", "shell", "{\"command\":\"git commit -m x2\"}"));
-        server.Enqueue(Completion("done2"));
-
-        //queue no answer for the first commit, since the checkpoint must not pause there. the answer for the second commit comes after /auto re-enables the pause
-        Console.SetIn(new StringReader("/role coder\ncommit one\n/auto\ncommit two\n1\n/quit\n"));
-        var stdout = new StringWriter();
-        Console.SetOut(stdout);
-        var exit = await GattoApp.RunAsync(new[] { "--auto", "--yes" });
-
-        Assert.Equal(0, exit);
-        var output = stdout.ToString();
-        var firstPause = output.IndexOf("[permission] checkpoint", StringComparison.Ordinal);
-        var autoLine = output.IndexOf("checkpoints on", StringComparison.Ordinal);   //this line marks where /auto turned the pause back on
-        Assert.True(autoLine >= 0, "expected /auto's confirmation line");
-        //the only checkpoint pause in the transcript comes after /auto re-enables it, so the first commit did not pause
-        Assert.True(firstPause > autoLine,
-            $"checkpoint paused before /auto re-enabled it (or never paused at all): {output}");
     }
 
     [Fact]

@@ -32,7 +32,7 @@ public class ServingMismatchLineTests : IDisposable
         var repl = new Gatto.Repl.Repl(
             loop, new Conversation("sys"), "generalist", armed, null, client, null, null,
             Path.GetTempPath(),
-            () => Composed.Text("sys"), () => null, _ => new RoleSwitchResult(false, "", null, null, "unused"),
+            () => Composed.Text("sys"), _ => new RoleSwitchResult(false, "", null, null, "unused"),
             probeServing: () => new ServingProbe(serving[0], null,
                 MismatchIsOnTheShelf: onTheShelf));
         return (repl, serving);

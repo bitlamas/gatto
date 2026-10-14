@@ -132,7 +132,7 @@ public class PlainGateWalkTests : System.IDisposable
         var loop = new AgentLoop(client, new ToolRegistry(), new HookBus(),
             new TestToolContext(System.IO.Path.GetTempPath()), "m");
         var repl = new Gatto.Repl.Repl(loop, new Conversation("sys"), "generalist", "gemma-4-26b", null, client, null, null,
-            System.IO.Path.GetTempPath(), () => Composed.Text("sys"), () => null,
+            System.IO.Path.GetTempPath(), () => Composed.Text("sys"),
             _ => new RoleSwitchResult(false, "", null, null, "unused"));
         return (repl, client);
     }

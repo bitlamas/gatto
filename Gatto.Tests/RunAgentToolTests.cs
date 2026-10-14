@@ -13,10 +13,10 @@ file sealed class RecordingPermPrompter(params PermissionAnswer[] answers) : IPe
 {
     private readonly Queue<PermissionAnswer> _answers = new(answers);
     public List<PermissionRequest> Requests { get; } = new();
-    public PermissionAnswer Ask(PermissionRequest request)
+    public PermissionDecision AskWithReason(PermissionRequest request)
     {
         Requests.Add(request);
-        return _answers.Count > 0 ? _answers.Dequeue() : PermissionAnswer.Deny;
+        return new(_answers.Count > 0 ? _answers.Dequeue() : PermissionAnswer.Deny);
     }
 }
 

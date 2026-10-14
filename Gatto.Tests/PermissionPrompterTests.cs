@@ -31,7 +31,7 @@ public class RichPermissionPrompterTests
             : throw new InvalidOperationException("test scripted too few keys");
     }
 
-    //runs a probe before each ReadKey, the only way to see live panel state from a synchronous Ask
+    //runs a probe before each ReadKey, the only way to see live panel state from a synchronous prompt
     private sealed class ProbingScriptedKeys(Action<int> probeBeforeRead, IEnumerable<ConsoleKeyInfo> keys) : IKeySource
     {
         private readonly Queue<ConsoleKeyInfo> _q = new(keys);
@@ -79,9 +79,6 @@ public class RichPermissionPrompterTests
     private static readonly PermissionRequest WriteRequest =
         new("write_file", @"C:\proj\sub\a.txt (+2 lines)", @"C:\proj",
             PreviewLines: new[] { "one", "two" }, PreviewTotalLines: 2);
-
-    private static readonly PermissionRequest CheckpointRequest =
-        new("checkpoint", "M  a.cs\n?? b.cs", null);
 
     //display only, the stored grant and the gate match stay absolute. the option row and the gloss both read FormatOffer, so they can't drift
 
@@ -164,7 +161,7 @@ public class RichPermissionPrompterTests
     public void Enter_ConfirmsTheCursor_WhichStartsOnYes()
     {
         var (s, p, h) = Armed();
-        Assert.Equal(PermissionAnswer.Once, Prompter(s, h, keys: Enter).Ask(ShellRequest));
+        Assert.Equal(PermissionAnswer.Once, Prompter(s, h, keys: Enter).AskWithReason(ShellRequest).Answer);
         Assert.Empty(Scrollback(p));
     }
 
@@ -178,7 +175,7 @@ public class RichPermissionPrompterTests
             new ProbingScriptedKeys(n => { if (n == 0) live = p.State.PanelRows; }, new[] { Digit('2') }),
             pump: null, chrome: h);
 
-        Assert.Equal(PermissionAnswer.Always, prompter.Ask(ShellRequest));
+        Assert.Equal(PermissionAnswer.Always, prompter.AskWithReason(ShellRequest).Answer);
         Assert.Contains(Plain(live), row => row == "  2. Yes, always allow \"git status\" on this project");
         Assert.Empty(Scrollback(p));
     }
@@ -193,7 +190,7 @@ public class RichPermissionPrompterTests
             new ProbingScriptedKeys(n => { if (n == 0) live = p.State.PanelRows; }, new[] { Digit('2') }),
             pump: null, chrome: h);
 
-        Assert.Equal(PermissionAnswer.Deny, prompter.Ask(NoOfferRequest));
+        Assert.Equal(PermissionAnswer.Deny, prompter.AskWithReason(NoOfferRequest).Answer);
         var rows = Plain(live);
         Assert.Contains(rows, row => row == "❯ 1. Yes");
         Assert.Contains(rows, row => row == "  2. No");
@@ -315,7 +312,7 @@ public class RichPermissionPrompterTests
     {
         var (s, p, h) = Armed();
         Assert.Equal(PermissionAnswer.Deny,
-            Prompter(s, h, keys: new[] { Down, Down, Enter }).Ask(ShellRequest));
+            Prompter(s, h, keys: new[] { Down, Down, Enter }).AskWithReason(ShellRequest).Answer);
     }
 
     //runs the live render path, prompt then result, so the result text never becomes a transcript row
@@ -453,7 +450,7 @@ public class RichPermissionPrompterTests
             new ProbingScriptedKeys(_ => panelSeen |= p.State.PanelUp, new[] { Digit('1') }),
             pump: null, chrome: h);
 
-        prompter.Ask(ShellRequest);
+        prompter.AskWithReason(ShellRequest);
 
         Assert.True(panelSeen, "the prompt never reached ChromeState.PanelRows");
         Assert.Null(p.State.PanelRows);
@@ -469,7 +466,7 @@ public class RichPermissionPrompterTests
             new ProbingScriptedKeys(n => { if (n == 0) live = p.State.PanelRows; }, new[] { Digit('1') }),
             pump: null, chrome: h);
 
-        prompter.Ask(WriteRequest);
+        prompter.AskWithReason(WriteRequest);
 
         //the expected title keeps the full path, shortening reads the process working directory and the runner's one differs
         var rows = Plain(live);
@@ -499,16 +496,16 @@ public class RichPermissionPrompterTests
             new ProbingScriptedKeys(n => { if (n == 0) live = p.State.PanelRows; }, new[] { Digit('1') }),
             pump: null, chrome: h);
 
-        prompter.Ask(ShellRequest with { Agent = "code-reviewer" });
+        prompter.AskWithReason(ShellRequest with { Agent = "code-reviewer" });
 
         var rows = Plain(live);
         Assert.Equal("  [code-reviewer]", rows[0]);
         Assert.Equal("  shell command", rows[1]);
     }
 
-    //a checkpoint request offers no scope, so it takes the generic path and the no-reason arm (CheckpointGate calls Ask)
+    //a request that offers no scope still renders on the new panel, its detail one row per line
     [Fact]
-    public void Checkpoint_PromptRendersOnNewPanel()
+    public void A_REQUEST_WITH_NO_OFFER_RENDERS_ON_A_NEW_PANEL()
     {
         var (s, p, h) = Armed();
         IReadOnlyList<string>? live = null;
@@ -516,11 +513,11 @@ public class RichPermissionPrompterTests
             new ProbingScriptedKeys(n => { if (n == 0) live = p.State.PanelRows; }, new[] { Digit('1') }),
             pump: null, chrome: h);
 
-        Assert.Equal(PermissionAnswer.Once, prompter.Ask(CheckpointRequest));
+        Assert.Equal(PermissionAnswer.Once, prompter.AskWithReason(new PermissionRequest("shell", "M  a.cs\n?? b.cs", null)).Answer);
 
         var rows = Plain(live);
         Assert.NotEmpty(rows);
-        Assert.Equal("  checkpoint", rows[0]);
+        Assert.Equal("  shell command", rows[0]);
         Assert.Contains(rows, row => row == "  Do you want to proceed?");
         Assert.Contains(rows, row => row == "  M  a.cs");
         Assert.Contains(rows, row => row == "  ?? b.cs");
@@ -533,7 +530,7 @@ public class RichPermissionPrompterTests
         var (s, p, h) = Armed();
         var prompter = new RichPermissionPrompter(s, T, new ThrowingKeys(), pump: null, chrome: h);
 
-        Assert.Throws<InvalidOperationException>(() => prompter.Ask(ShellRequest));
+        Assert.Throws<InvalidOperationException>(() => prompter.AskWithReason(ShellRequest));
         Assert.Null(p.State.PanelRows);
     }
 
@@ -547,7 +544,7 @@ public class RichPermissionPrompterTests
 
         var prompter = new RichPermissionPrompter(s, T, new ScriptedKeys(new[] { Digit('1') }),
             pump: null, chrome: h);
-        Assert.Equal(PermissionAnswer.Once, prompter.Ask(ShellRequest));
+        Assert.Equal(PermissionAnswer.Once, prompter.AskWithReason(ShellRequest).Answer);
 
         Assert.Contains(InlineRows(s), row => row == "  shell command");
         Assert.Contains(InlineRows(s), row => row == "❯ 1. Yes");
@@ -558,7 +555,7 @@ public class RichPermissionPrompterTests
     public void Unarmed_RendersTheWidgetBlockInline()
     {
         var (s, prompter) = Build(Digit('3'));
-        Assert.Equal(PermissionAnswer.Deny, prompter.Ask(ShellRequest));
+        Assert.Equal(PermissionAnswer.Deny, prompter.AskWithReason(ShellRequest).Answer);
 
         var rows = InlineRows(s);
         Assert.Contains(rows, row => row == "  shell command");
@@ -576,7 +573,7 @@ public class RichPermissionPrompterTests
             new ProbingScriptedKeys(n => { if (n == 0) live = p.State.PanelRows; }, new[] { Digit('1') }),
             pump: null, chrome: h);
 
-        prompter.Ask(new PermissionRequest("shell", "x", Esc + "[31mrm"));
+        prompter.AskWithReason(new PermissionRequest("shell", "x", Esc + "[31mrm"));
 
         var joined = string.Join("\n", live ?? Array.Empty<string>());
         Assert.DoesNotContain(Esc + "[31m", joined, StringComparison.Ordinal);   //the injected escape must not reach the panel as a live sequence.
@@ -592,7 +589,7 @@ public class RichPermissionPrompterTests
             new ProbingScriptedKeys(n => { if (n == 0) live = p.State.PanelRows; }, new[] { Digit('1') }),
             pump: null, chrome: h);
 
-        prompter.Ask(new PermissionRequest("shell", "x", "rm\n  allow? forged"));
+        prompter.AskWithReason(new PermissionRequest("shell", "x", "rm\n  allow? forged"));
 
         //stripping the newline stops a forged row, so the whole offer stays on one option row.
         Assert.Single(Plain(live), row => row.Contains("always allow", StringComparison.Ordinal));
@@ -608,7 +605,7 @@ public class RichPermissionPrompterTests
             new ProbingScriptedKeys(n => { if (n == 0) live = p.State.PanelRows; }, new[] { Digit('1') }),
             pump: null, chrome: h);
 
-        prompter.Ask(new PermissionRequest(Esc + "[31mevil", "a" + Esc + "[0m\rforged", null));
+        prompter.AskWithReason(new PermissionRequest(Esc + "[31mevil", "a" + Esc + "[0m\rforged", null));
 
         //the ESC[0m run is the theme's own reset, request-supplied escapes must not survive and both injections show as inert text
         var joined = string.Join("\n", live ?? Array.Empty<string>());
@@ -628,7 +625,7 @@ public class RichPermissionPrompterTests
             new ProbingScriptedKeys(n => { if (n == 0) live = p.State.PanelRows; }, new[] { Digit('1') }),
             pump: null, chrome: h);
 
-        prompter.Ask(WriteRequest with
+        prompter.AskWithReason(WriteRequest with
         {
             PreviewLines = new[] { "hello\r", Esc + "[5mblink" },
             PreviewTotalLines = 2,
@@ -654,7 +651,7 @@ public class RichPermissionPrompterTests
             new ProbingScriptedKeys(n => { if (n == 0) live = p.State.PanelRows; }, new[] { Digit('1') }),
             pump: null, chrome: h);
 
-        prompter.Ask(new PermissionRequest("shell", command, "python"));
+        prompter.AskWithReason(new PermissionRequest("shell", command, "python"));
 
         var rows = Plain(live);
         Assert.DoesNotContain(rows, row => row.Contains('…'));   //an ellipsis in a row would mean the widget or the binding cut the command.
@@ -677,7 +674,7 @@ public class RichPermissionPrompterTests
             new ProbingScriptedKeys(n => { if (n == 0) live = p.State.PanelRows; }, new[] { Digit('1') }),
             pump: null, chrome: h);
 
-        prompter.Ask(new PermissionRequest("run_agent", summary, null));
+        prompter.AskWithReason(new PermissionRequest("run_agent", summary, null));
 
         var rows = Plain(live);
         Assert.Contains(rows, row => row == "  ⋯ +5 lines ⋯");
@@ -698,7 +695,7 @@ public class RichPermissionPrompterTests
         var prompter = new RichPermissionPrompter(surface, T, keys);
 
         Assert.Equal(PermissionAnswer.Once,
-            prompter.Ask(new PermissionRequest("shell", command, "python")));
+            prompter.AskWithReason(new PermissionRequest("shell", command, "python")).Answer);
 
         var up = System.Text.RegularExpressions.Regex.Match(surface.Text, Esc + @"\[(\d+)A");
         Assert.True(up.Success, "no in-place repaint fired");
@@ -790,14 +787,6 @@ public class RichPermissionPrompterTests
         var (s, p, h) = Armed();
         Assert.Equal(PermissionAnswer.Deny,
             Prompter(s, h, keys: Digit('3')).AskWithReason(ShellRequest).Answer);
-    }
-
-    //the Ask path never reaches the reason step, whatever the switch says, and CheckpointGate discards a reason anyway
-    [Fact]
-    public void Ask_StillDeniesWithZeroExtraKeystrokes_EvenWithDenyReasonOn()
-    {
-        var (s, p, h) = Armed();
-        Assert.Equal(PermissionAnswer.Deny, Prompter(s, h, denyReason: true, keys: Digit('3')).Ask(ShellRequest));
     }
 
     //unarmed there is no panel, so the reason line reads from the surface inline.
@@ -1114,7 +1103,7 @@ public class RichPermissionPrompterTests
             new ProbingScriptedKeys(n => { if (n == 0) live = p.State.PanelRows; }, new[] { Digit('1') }),
             pump: null, chrome: h, denyReason: false, webSearchProvider: "tavily");
 
-        prompter.Ask(new PermissionRequest("web_search", """{"query":"gatto","count":3}""",
+        prompter.AskWithReason(new PermissionRequest("web_search", """{"query":"gatto","count":3}""",
             "web_search"));
 
         Assert.Equal("  Web search using tavily", Plain(live)[0]);
@@ -1597,20 +1586,6 @@ public class RichPermissionPrompterTests
         Assert.Null(Record.Exception(handle.RequestAbort));
     }
 
-    //the abort must work on every entry point, and CheckpointGate enters through Ask, so esc there must abort the turn too
-    [Fact]
-    public void Ask_EscAbortsTheTurn_JustLikeAskWithReason()
-    {
-        using var cts = new CancellationTokenSource();
-        var abort = new TurnAbortHandle { Current = () => cts };
-        var (s, _, h) = Armed();
-        var prompter = new RichPermissionPrompter(s, T, new ScriptedKeys(new[] { EscKey }),
-            pump: null, chrome: h, denyReason: false, webSearchProvider: null, abort: abort);
-
-        Assert.Equal(PermissionAnswer.Cancel, prompter.Ask(CheckpointRequest));
-        Assert.True(cts.IsCancellationRequested);
-    }
-
     //with a pump the prompt holds focus for its whole life, so type-ahead cannot answer it and its keys cannot leak into the composer
     [Fact]
     public void WithPump_AnswersViaFocus_TypeAheadSurvivesInComposer()
@@ -1627,7 +1602,7 @@ public class RichPermissionPrompterTests
         //the prompt and the polling thread write this surface at once, so it needs a synchronized builder.
         var surface = new SyncSurface();
         var prompter = new RichPermissionPrompter(surface, new Theme(TermCaps.Plain), new NeverKeys(), pump);
-        var ask = Task.Run(() => prompter.Ask(ShellRequest));
+        var ask = Task.Run(() => prompter.AskWithReason(ShellRequest).Answer);
         //wait for the render, it comes after focus is pushed, so the prompt scope is on top before any key can reach the composer
         var renderSw = System.Diagnostics.Stopwatch.StartNew();
         while (!surface.Text.Contains("Do you want to proceed?", StringComparison.Ordinal)
@@ -1705,7 +1680,7 @@ public class PlainPermissionPrompterTests : IDisposable
         var sw = new StringWriter();
         Console.SetOut(sw);
         Console.SetIn(new StringReader(input));
-        var answer = new PlainPermissionPrompter().Ask(request);
+        var answer = new PlainPermissionPrompter().AskWithReason(request).Answer;
         return (sw.ToString(), answer);
     }
 
@@ -1873,16 +1848,6 @@ public class PlainPermissionPrompterTests : IDisposable
         var (output, decision) = RunWithReason(ShellRequest, "1\n");
         Assert.Equal(PermissionAnswer.Once, decision.Answer);
         Assert.Null(decision.Reason);
-        Assert.DoesNotContain("reason", output);
-    }
-
-    [Fact]
-    public void Ask_StillDeniesWithNoReasonPrompt_UnaffectedByAskWithReason()
-    {
-        //the Ask path must stay unchanged, a bare 0 resolves Deny and reads nothing further
-        var (output, answer) = Run(ShellRequest, "0\n");
-        Assert.Equal(PermissionAnswer.Deny, answer);
-        Assert.Contains("denied", output);
         Assert.DoesNotContain("reason", output);
     }
 

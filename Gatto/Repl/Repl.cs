@@ -89,7 +89,7 @@ internal sealed class DispatchQueue(int cap)
 public sealed class Repl(
     AgentLoop loop, Conversation convo, string roleName, string modelName,
     SessionStore? sessions, IChatClient client, int? configContext, int? contextBudget, string cwd,
-    Func<ComposedSystem> recomposeSystem, Func<bool?> toggleAuto, Func<string, RoleSwitchResult> switchRole,
+    Func<ComposedSystem> recomposeSystem, Func<string, RoleSwitchResult> switchRole,
     WildState? wild = null, Action<bool>? persistWild = null,
     HookBus? hooks = null, ThemeMode themeMode = ThemeMode.Dark,
     Action<string>?[]? subagentProgressSink = null, string? resumedFrom = null, ReasoningMode reasoning = ReasoningMode.Collapsed,
@@ -642,16 +642,6 @@ public sealed class Repl(
         MaybeWarnContextFit(renderer);
     }
 
-    //the line the /auto handlers print after the toggle, null when the role never armed checkpoints and there is nothing to toggle
-
-    //the lines below are bare sentences, no parentheses, the rich loop commits each as a warning row
-    internal static string AutoLine(bool? checkpointsEnabledAfterToggle) => checkpointsEnabledAfterToggle switch
-    {
-        null => "no checkpoints armed for this role — /auto has no effect",
-        true => "checkpoints on — git commit pauses for review",
-        false => "auto mode on — git commit checkpoints are skipped for this session",
-    };
-
     //the state line /wild prints, plain text with no combining marks so the width math stays exact
 
     //matches a trimmed line against a bare slash command or that command plus an argument, both loops parse every command through here
@@ -673,8 +663,8 @@ public sealed class Repl(
     }
 
     internal static string WildLine(bool on, Gatto.Terminal.GlyphSet? glyphs) => on
-        ? $"wild mode on — permission prompts and checkpoints are OFF for this session  {(glyphs ?? Gatto.Terminal.GlyphSet.Unicode).Wild}"
-        : "wild mode off — permission prompts and checkpoints are back on";
+        ? $"wild mode on — permission prompts are OFF for this session  {(glyphs ?? Gatto.Terminal.GlyphSet.Unicode).Wild}"
+        : "wild mode off — permission prompts are back on";
 
     internal const string WildUsage =
         "usage: /wild [always|never] — toggle wild mode; always/never also persists for this project";
@@ -710,7 +700,7 @@ public sealed class Repl(
         }
     }
 
-    //the exact inverse of a bare /wild that turned wild on, for this session only, and the checkpoint follows the role and /auto as before
+    //the exact inverse of a bare /wild that turned wild on, for this session only
     private string HandleSafe()
     {
         if (wild is null) return "wild mode is unavailable in this session";
@@ -1464,11 +1454,6 @@ public sealed class Repl(
                 Console.WriteLine(NewConversationLine);
                 continue;
             }
-            if (trimmedLine == "/auto")
-            {
-                Console.WriteLine(AutoLine(toggleAuto()));
-                continue;
-            }
             if (TryMatchCommand(trimmedLine, "/wild", out var wildArg))
             {
                 Console.WriteLine(HandleWild(wildArg));
@@ -1684,7 +1669,7 @@ public sealed class Repl(
         //feeds the ctx estimate and rebuilds the status frame, and the painter is retargeted here so it never composes against a stale one
         void RefreshStatus()
         {
-            //the one context figure, the same expression the auto-compact checkpoint evaluates, and it must precede the estimate fallback
+            //the one context figure, the same expression the compactor evaluates, and it must precede the estimate fallback
             ctx.RecordUsedTokens(ContextBudget.UsedTokens(convo, _usageState));
             ctx.RecordEstimate(ContextBudget.Estimate(convo.Messages), contextBudget);
             //the Alt+V hint appears while the clipboard holds an image, takes precedence over the focus hint, and the check is safe on every refresh
@@ -2632,11 +2617,6 @@ public sealed class Repl(
                 s.Painter.Model, s.Renderer, BannerItem(s.Theme, roleName, modelName, versionLine, s.Glyphs),
                 NewConversationLine, carry);
             s.Painter.Repaint();
-            return false;
-        }
-        if (trimmed == "/auto")
-        {
-            s.Renderer.CommitSystem(AutoLine(toggleAuto()));
             return false;
         }
         if (TryMatchCommand(trimmed, "/wild", out var wildArg))

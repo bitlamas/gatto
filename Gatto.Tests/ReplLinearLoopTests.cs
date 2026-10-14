@@ -419,7 +419,6 @@ public class ReplLinearLoopTests
                  {
                      Gatto.Repl.Repl.NewConversationLine,
                      Gatto.Repl.Repl.WildUsage, Gatto.Repl.Repl.RoleLine("coder"),
-                     Gatto.Repl.Repl.AutoLine(true), Gatto.Repl.Repl.AutoLine(false), Gatto.Repl.Repl.AutoLine(null),
                      Gatto.Repl.Repl.WildLine(true, glyphs: GlyphSet.Unicode), Gatto.Repl.Repl.WildLine(false, glyphs: GlyphSet.Unicode),
                  })
         {
@@ -558,7 +557,7 @@ public class ReplProbeSeamTests : IDisposable
         return new Gatto.Repl.Repl(
             loop, convo ?? new Conversation("sys"), "generalist", modelName, null, client, null, contextBudget,
             Path.GetTempPath(),
-            () => Composed.Text("sys"), () => null, _ => new RoleSwitchResult(false, "", null, null, "unused"),
+            () => Composed.Text("sys"), _ => new RoleSwitchResult(false, "", null, null, "unused"),
             launchServing: launchServing, probeServing: probeServing);
     }
 

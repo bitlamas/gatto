@@ -140,7 +140,6 @@ public sealed class RichReplHarness
         Gatto.Terminal.IClipboardImageNative? clipboardImages = null,
         //the wild state and its seams, passed straight through as the interactive entry passes them, absent as a session with no wild state
         Gatto.Core.Loop.Permissions.WildState? wild = null, Action<bool>? persistWild = null, Func<bool>? wildPersisted = null, bool wildFromHome = false,
-        Func<bool?>? toggleAuto = null,
         //the home's default role and the /role seam, absent as a session that names its role and has no roles to switch to
         string? defaultRole = null, Func<string, RoleSwitchResult>? switchRole = null)
     {
@@ -158,7 +157,6 @@ public sealed class RichReplHarness
             permissions: permissions,
             //the closure is assigned after construction so it can see the harness. a test sets it to make the recompose warn or count calls.
             recomposeSystem: () => Composed.Text(Recompose?.Invoke() ?? systemPrompt),
-            toggleAuto: toggleAuto ?? (() => null),
             wild: wild, persistWild: persistWild, wildPersisted: wildPersisted, wildFromHome: wildFromHome,
             switchRole: switchRole ?? (_ => new RoleSwitchResult(false, "", null, null, "no roles in the harness")),
             defaultRole: defaultRole,

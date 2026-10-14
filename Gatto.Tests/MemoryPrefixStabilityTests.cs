@@ -18,7 +18,7 @@ public class MemoryPrefixStabilityTests : IDisposable
     public void Dispose() => Directory.Delete(_root, recursive: true);
 
     private static RoleFile Role() =>
-        new("r", "p", null, Array.Empty<string>(), false, null, ThinkingLevel.Medium);
+        new("r", "p", null, Array.Empty<string>(), null, ThinkingLevel.Medium);
 
     private void SeedIndex(string text) =>
         MemoryDir.Write(MemoryDir.FindProjectRoot(_root), "seeded", text);
@@ -95,7 +95,7 @@ public class MemoryLaunchWarningTests : IDisposable
         var loop = new AgentLoop(client, new ToolRegistry(), new HookBus(), new TestToolContext(Path.GetTempPath()), "m");
         var repl = new Gatto.Repl.Repl(
             loop, new Conversation("sys"), "generalist", "m", null, client, null, null, Path.GetTempPath(),
-            () => Composed.Text("sys"), () => null, _ => new RoleSwitchResult(false, "", null, null, "unused"),
+            () => Composed.Text("sys"), _ => new RoleSwitchResult(false, "", null, null, "unused"),
             memoryWarning: memoryWarning);
 
         var sw = new StringWriter();

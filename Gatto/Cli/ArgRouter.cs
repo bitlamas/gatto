@@ -1,7 +1,7 @@
 namespace Gatto.Cli;
 
 public sealed record ParsedArgs(
-    string Command, string? Role, string? Model, string? Prompt, bool Continue, bool Yes, bool Auto,
+    string Command, string? Role, string? Model, string? Prompt, bool Continue, bool Yes,
     string? Subcommand = null, string? Target = null, bool Detach = false,
     //the id resumes that one session, null just resumes the latest for the folder (trailing so existing ParsedArgs calls still compile)
     string? ContinueId = null,
@@ -27,7 +27,6 @@ public static class ArgRouter
         Gatto.Roles.ThinkingLevel? effort = null;
         var cont = false;
         var yes = false;
-        var auto = false;
 
         var i = 0;
         if (argv.Length > 0 && !argv[0].StartsWith('-'))
@@ -78,20 +77,17 @@ public static class ArgRouter
                 case "--yes":
                     yes = true;
                     break;
-                case "--auto":   //parsed here so ParsedArgs grows once
-                    auto = true;
-                    break;
                 case "-h" or "--help":
-                    return new ParsedArgs("help", role, null, null, false, false, false);
+                    return new ParsedArgs("help", role, null, null, false, false);
                 case "--version":
-                    return new ParsedArgs("version", role, null, null, false, false, false);
+                    return new ParsedArgs("version", role, null, null, false, false);
                 default:
                     throw new ArgumentException($"unknown option: {argv[i]}");
             }
         }
         if (effort is not null && prompt is null)
             throw new ArgumentException("--effort works only with -p. in the REPL, /effort sets the level");
-        return new ParsedArgs(command, role, model, prompt, cont, yes, auto, ContinueId: continueId, Endpoint: endpoint, Effort: effort);
+        return new ParsedArgs(command, role, model, prompt, cont, yes, ContinueId: continueId, Endpoint: endpoint, Effort: effort);
     }
 
     //the prompt of -p=... or --prompt=..., null for any other argument
@@ -104,7 +100,7 @@ public static class ArgRouter
     private static ParsedArgs ParseReserved(string[] argv, string? role)
     {
         //asking for help must never run the command, a dropped flag once started a full audition
-        if (argv.Any(a => a is "-h" or "--help")) return new ParsedArgs("help", role, null, null, false, false, false);
+        if (argv.Any(a => a is "-h" or "--help")) return new ParsedArgs("help", role, null, null, false, false);
 
         var command = argv[0];
         string? sub = argv.Length > 1 && !argv[1].StartsWith('-') ? argv[1] : null;
@@ -129,6 +125,6 @@ public static class ArgRouter
         //audition reads its first bare token as the target rather than a subcommand, so shift it out of sub here
         if (command == "audition") { target = sub; sub = null; }
 
-        return new ParsedArgs(command, role, null, null, false, false, false, sub, target, Detach: detach, Json: json);
+        return new ParsedArgs(command, role, null, null, false, false, sub, target, Detach: detach, Json: json);
     }
 }

@@ -14,10 +14,10 @@ file sealed class FakePrompter(params PermissionAnswer[] answers) : IPermissionP
     public List<PermissionRequest> Requests { get; } = new();
     public int CallCount => Requests.Count;
 
-    public PermissionAnswer Ask(PermissionRequest request)
+    public PermissionDecision AskWithReason(PermissionRequest request)
     {
         Requests.Add(request);
-        return _answers.Count > 0 ? _answers.Dequeue() : PermissionAnswer.Deny;
+        return new(_answers.Count > 0 ? _answers.Dequeue() : PermissionAnswer.Deny);
     }
 }
 
@@ -25,7 +25,6 @@ file sealed class FakePrompter(params PermissionAnswer[] answers) : IPermissionP
 file sealed class FakeReasonPrompter(PermissionDecision decision) : IPermissionPrompter
 {
     public int CallCount { get; private set; }
-    public PermissionAnswer Ask(PermissionRequest request) => decision.Answer;   //the gate never calls this once AskWithReason exists
     public PermissionDecision AskWithReason(PermissionRequest request)
     {
         CallCount++;
@@ -33,10 +32,9 @@ file sealed class FakeReasonPrompter(PermissionDecision decision) : IPermissionP
     }
 }
 
-//a prompter with only Ask, so the seam's default AskWithReason must forward to it
-file sealed class AskOnlyPrompter(PermissionAnswer answer) : IPermissionPrompter
+file sealed class NoReasonPrompter(PermissionAnswer answer) : IPermissionPrompter
 {
-    public PermissionAnswer Ask(PermissionRequest request) => answer;
+    public PermissionDecision AskWithReason(PermissionRequest request) => new(answer);
 }
 
 //a tool that records whether it ran, so a blocked call must leave Executed false
@@ -372,43 +370,6 @@ public sealed class PermissionGateTests : IDisposable
     }
 
     [Fact]
-    public async Task Approval_latch_is_reference_keyed_a_distinct_equal_call_does_not_ride_it()
-    {
-        var store = PermissionStore.Load(_root, _root, out _);
-        var callA = new ToolCall("c1", "shell", "{\"command\":\"git commit -m x\"}");
-        var approval = new CheckpointApproval { Call = callA };      //the approval holds the exact object A
-        var prompter = new FakePrompter(PermissionAnswer.Deny);
-        var gate = new PermissionGate(store, prompter, autoYes: false, approval: approval);
-
-        //call B is a separate instance with the same field values as A
-        var callB = new ToolCall("c1", "shell", "{\"command\":\"git commit -m x\"}");
-        Assert.Equal(callA, callB);
-        Assert.False(ReferenceEquals(callA, callB));
-
-        var ex = await Assert.ThrowsAsync<InvalidOperationException>(() =>
-            gate.CheckAsync(new HookPayload(Call: callB)));
-
-        Assert.Equal(PermissionGate.DenyNudge, ex.Message);                //call B prompted and denied instead of using A's latch.
-        Assert.Equal(1, prompter.CallCount);
-        Assert.Same(callA, approval.Call);
-    }
-
-    [Fact]
-    public async Task Approval_with_no_pending_call_is_inert_shell_still_prompts()
-    {
-        var store = PermissionStore.Load(_root, _root, out _);
-        var approval = new CheckpointApproval();                     //no pending call, so the approval cannot satisfy anything.
-        var prompter = new FakePrompter(PermissionAnswer.Deny);
-        var gate = new PermissionGate(store, prompter, autoYes: false, approval: approval);
-
-        var ex = await Assert.ThrowsAsync<InvalidOperationException>(() =>
-            gate.CheckAsync(new HookPayload(Call: new ToolCall("c1", "shell", "{\"command\":\"git status\"}"))));
-
-        Assert.Equal(PermissionGate.DenyNudge, ex.Message);
-        Assert.Equal(1, prompter.CallCount);
-    }
-
-    [Fact]
     public void ChainedShellCommand_offers_no_always_grant()
     {
         var req = CaptureRequest("shell", "{\"command\":\"git status; git log\"}");
@@ -522,7 +483,7 @@ public sealed class PermissionGateTests : IDisposable
     public async Task Deny_with_no_reason_throws_exactly_the_bare_message()
     {
         var store = PermissionStore.Load(_root, _root, out _);
-        var prompter = new AskOnlyPrompter(PermissionAnswer.Deny);   //this prompter implements only Ask, so the seam's default must forward
+        var prompter = new NoReasonPrompter(PermissionAnswer.Deny);   //a deny with no reason, so the message is the bare nudge
         var gate = new PermissionGate(store, prompter, autoYes: false);
 
         var ex = await Assert.ThrowsAsync<InvalidOperationException>(() =>
@@ -739,7 +700,7 @@ public sealed class PermissionGateTests : IDisposable
         var wild = new WildState();
         var store = PermissionStore.Load(_root, _root, out _);
         var prompter = new FakePrompter(PermissionAnswer.Deny);
-        var gate = new PermissionGate(store, prompter, autoYes: false, approval: null, wild: wild);
+        var gate = new PermissionGate(store, prompter, autoYes: false, wild: wild);
         var call = new ToolCall("c1", "shell", "{\"command\":\"del something.txt\"}");
 
         wild.On = true;
