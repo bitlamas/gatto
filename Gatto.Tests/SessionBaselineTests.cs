@@ -53,7 +53,7 @@ public sealed class SessionBaselineTests
     public void A_role_switch_hands_the_conversation_its_baseline()
     {
         var convo = new Conversation("s", baseline: Baseline(1));
-        Gatto.Repl.Repl.ApplyRoleSwitch(convo, _ => new Gatto.Repl.RoleSwitchResult(true, "coder", "test-model", "coder system", null, null, Baseline(2)), "coder");
+        Gatto.Repl.Repl.ApplyRoleSwitch(convo, _ => new Gatto.Repl.RoleSwitchResult(true, "coder", "test-model", "coder system", null, null, Baseline(2)), "coder", "generalist");
         Assert.Equal(("coder system", 2), (convo.Messages[0].Content, convo.Baseline!.Seq));
     }
 

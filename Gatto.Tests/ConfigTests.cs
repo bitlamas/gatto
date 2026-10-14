@@ -309,6 +309,47 @@ public class ConfigTests : IDisposable
     }
 
     [Fact]
+    public void DEFAULT_ROLE_AND_WILD_LOAD_AND_DEFAULT_TO_NULL_AND_FALSE()
+    {
+        Directory.CreateDirectory(_home);
+        File.WriteAllText(Path.Combine(_home, "gatto.json"),
+            """{"endpoints":{"local":{"base_url":"http://x"}},"default_endpoint":"local"}""");
+        var bare = GattoConfig.Load(_home);
+        Assert.Null(bare.DefaultRole);
+        Assert.False(bare.Wild);
+        File.WriteAllText(Path.Combine(_home, "gatto.json"),
+            """{"endpoints":{"local":{"base_url":"http://x"}},"default_endpoint":"local","default_role":"coder","wild":true}""");
+        var set = GattoConfig.Load(_home);
+        Assert.Equal("coder", set.DefaultRole);
+        Assert.True(set.Wild);
+    }
+
+    [Fact]
+    public void A_NULL_DEFAULT_ROLE_LOADS_AS_ABSENT_AND_A_PADDED_ONE_IS_TRIMMED()
+    {
+        Directory.CreateDirectory(_home);
+        File.WriteAllText(Path.Combine(_home, "gatto.json"),
+            """{"endpoints":{"local":{"base_url":"http://x"}},"default_endpoint":"local","default_role":null}""");
+        Assert.Null(GattoConfig.Load(_home).DefaultRole);
+        File.WriteAllText(Path.Combine(_home, "gatto.json"),
+            """{"endpoints":{"local":{"base_url":"http://x"}},"default_endpoint":"local","default_role":" coder "}""");
+        Assert.Equal("coder", GattoConfig.Load(_home).DefaultRole);
+    }
+
+    [Theory]
+    [InlineData("\"default_role\":7", "default_role")]
+    [InlineData("\"default_role\":\"\"", "default_role")]
+    [InlineData("\"wild\":\"yes\"", "wild")]
+    public void DEFAULT_ROLE_AND_WILD_OF_THE_WRONG_TYPE_ARE_REFUSED_BY_NAME(string fragment, string key)
+    {
+        Directory.CreateDirectory(_home);
+        File.WriteAllText(Path.Combine(_home, "gatto.json"),
+            """{"endpoints":{"local":{"base_url":"http://x"}},"default_endpoint":"local",""" + fragment + "}");
+        var ex = Assert.Throws<GattoConfigException>(() => GattoConfig.Load(_home));
+        Assert.Contains(key, ex.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void Load_rejects_altScreen_of_the_wrong_type()
     {
         Directory.CreateDirectory(_home);

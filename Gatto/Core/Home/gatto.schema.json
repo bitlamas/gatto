@@ -172,6 +172,15 @@
       "default": false,
       "description": "stop llama-server when you leave gatto with /quit or with Ctrl+C. closing the window does not stop it. leave this off when two gatto windows use one server, because the first window to quit stops the server for both."
     },
+    "default_role": {
+      "type": ["string", "null"],
+      "description": "the role a bare gatto runs. absent means generalist. the name must be a file under roles\\."
+    },
+    "wild": {
+      "type": "boolean",
+      "default": false,
+      "description": "start every session from this home in wild mode: no permission prompts, no checkpoints. a project's .gatto.json with \"wild\": false still forbids it. /safe turns it off for one session."
+    },
     "mouse": {
       "type": "boolean",
       "default": true,

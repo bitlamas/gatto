@@ -88,6 +88,40 @@ public class InputFrameTests
         Assert.Contains("gatto · coder", visible);       //the label uses a spaced middle dot, matching the status line.
     }
 
+    [Theory]
+    [InlineData(20)]
+    [InlineData(40)]
+    [InlineData(80)]
+    [InlineData(120)]
+    [InlineData(121)]
+    public void THE_TOP_RULE_FILLS_THE_WIDTH_WITH_A_NULL_ROLE(int width)
+    {
+        var visible = StripSgr(InputFrame.BuildTopRule(null, width, T));
+        Assert.Equal(width, UnicodeWidth.Of(visible));
+        Assert.EndsWith(" gatto ──", visible, StringComparison.Ordinal);
+        Assert.DoesNotContain("·", visible, StringComparison.Ordinal);
+    }
+
+    [Theory]
+    [InlineData(null, false, " gatto ──")]
+    [InlineData(null, true, " gatto · wild ──")]
+    [InlineData("coder", false, " gatto · coder ──")]
+    [InlineData("coder", true, " gatto · coder · wild ──")]
+    public void THE_FOUR_LABELS(string? role, bool wild, string tail)
+    {
+        Assert.EndsWith(tail, InputFrame.BuildTopRuleVisible(role, 60, T, wild: wild), StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void A_NULL_ROLE_PAINTS_NO_ROLE_TINT()
+    {
+        var rule = InputFrame.BuildTopRule(null, 60, T);
+        Assert.DoesNotContain(Ansi.Fg(Theme.RoleCoder, true), rule, StringComparison.Ordinal);
+        Assert.DoesNotContain(Ansi.Fg(Theme.RoleOracle, true), rule, StringComparison.Ordinal);
+        //the bold brand word runs straight into the closing rule, so no separator or role paint sits between them
+        Assert.EndsWith(T.Paint("gatto", Theme.Accent, bold: true) + " " + T.Paint("──", Theme.Rule), rule, StringComparison.Ordinal);
+    }
+
     [Fact]   //an armed hint takes the label's slot and adds no row
     public void An_armed_hint_replaces_the_role_label_on_the_top_rule()
     {

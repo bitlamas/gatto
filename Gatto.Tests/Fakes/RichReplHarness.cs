@@ -137,7 +137,12 @@ public sealed class RichReplHarness
         //the warnings the launch raised before the banner, absent unless a test hands them in, as a clean launch raises none
         IReadOnlyList<string>? launchWarnings = null,
         //the clipboard Alt+V reads, absent unless a test pastes, as the real one would read this machine's clipboard
-        Gatto.Terminal.IClipboardImageNative? clipboardImages = null)
+        Gatto.Terminal.IClipboardImageNative? clipboardImages = null,
+        //the wild state and its seams, passed straight through as the interactive entry passes them, absent as a session with no wild state
+        Gatto.Core.Loop.Permissions.WildState? wild = null, Action<bool>? persistWild = null, Func<bool>? wildPersisted = null, bool wildFromHome = false,
+        Func<bool?>? toggleAuto = null,
+        //the home's default role and the /role seam, absent as a session that names its role and has no roles to switch to
+        string? defaultRole = null, Func<string, RoleSwitchResult>? switchRole = null)
     {
         Surface = new VtScreenSurface(width, height);
         _tap = new TappedSurface(Surface);
@@ -153,8 +158,10 @@ public sealed class RichReplHarness
             permissions: permissions,
             //the closure is assigned after construction so it can see the harness. a test sets it to make the recompose warn or count calls.
             recomposeSystem: () => Composed.Text(Recompose?.Invoke() ?? systemPrompt),
-            toggleAuto: () => null,
-            switchRole: _ => new RoleSwitchResult(false, "", null, null, "no roles in the harness"),
+            toggleAuto: toggleAuto ?? (() => null),
+            wild: wild, persistWild: persistWild, wildPersisted: wildPersisted, wildFromHome: wildFromHome,
+            switchRole: switchRole ?? (_ => new RoleSwitchResult(false, "", null, null, "no roles in the harness")),
+            defaultRole: defaultRole,
             pump: Pump = new InputPump(new KeyInputSource(keySource ?? Keys)),
             warn: Warn,
             mouseEnabled: mouseEnabled,
@@ -211,6 +218,9 @@ public sealed class RichReplHarness
 
     //everything the session wrote, in order and without ansi, for a test that asks what came after what
     public string Written() => _tap.Text();
+
+    //the model the session believes it runs, which the banner row would hide since it keeps the launch name
+    public string ModelName => _repl.ModelNameForTest;
 
     //everything the session wrote with its escapes, for a test of the terminal modes it set
     public string RawWritten() => _tap.Raw();

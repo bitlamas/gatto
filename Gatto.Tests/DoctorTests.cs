@@ -408,6 +408,61 @@ public class DoctorTests : IDisposable
     }
 
     [Fact]
+    public async Task A_DEFAULT_ROLE_NAMING_NO_FILE_FAILS_THE_ROLES_LINE()
+    {
+        WriteGreenHome();
+        SetDefaultRole("ghost");
+        var doctor = NewDoctor(HealthyClient());
+        var output = new StringWriter();
+
+        var exit = await doctor.RunAsync(_home, _cwd, output, CancellationToken.None);
+
+        Assert.Equal(1, exit);
+        var line = Line(output, "roles:");
+        Assert.StartsWith("✗", line);
+        Assert.Contains("default_role names 'ghost'", line, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task A_DEFAULT_ROLE_WITH_ITS_FILE_IS_NAMED_ON_THE_GREEN_LINE()
+    {
+        WriteGreenHome();
+        SetDefaultRole("coder");
+        File.WriteAllText(Path.Combine(_home, "roles", "coder.json"), """{"model":"test-model"}""");
+        var doctor = NewDoctor(HealthyClient());
+        var output = new StringWriter();
+
+        var exit = await doctor.RunAsync(_home, _cwd, output, CancellationToken.None);
+
+        Assert.Equal(0, exit);
+        var line = Line(output, "roles:");
+        Assert.StartsWith("✓", line);
+        Assert.EndsWith("default_role is coder", line.TrimEnd(), StringComparison.Ordinal);
+    }
+
+    //the launch resolves a name against the files ignoring case, so the doctor must pass what the launch runs
+    [Fact]
+    public async Task A_DEFAULT_ROLE_CASED_UNLIKE_ITS_FILE_STAYS_GREEN()
+    {
+        WriteGreenHome();
+        SetDefaultRole("Coder");
+        File.WriteAllText(Path.Combine(_home, "roles", "coder.json"), """{"model":"test-model"}""");
+        var doctor = NewDoctor(HealthyClient());
+        var output = new StringWriter();
+
+        var exit = await doctor.RunAsync(_home, _cwd, output, CancellationToken.None);
+
+        Assert.Equal(0, exit);
+        Assert.StartsWith("✓", Line(output, "roles:"));
+    }
+
+    private void SetDefaultRole(string name)
+    {
+        var path = Path.Combine(_home, "gatto.json");
+        File.WriteAllText(path, File.ReadAllText(path).Replace("\"default_endpoint\": \"local\",", $"\"default_endpoint\": \"local\", \"default_role\": \"{name}\","));
+    }
+
+    [Fact]
     public async Task Check4_TheEmptyRolesFixNAMES_THE_HOME_BEING_CHECKED_not_the_default_one()
     {
         //the fix sentence must name the home under check. otherwise a second install is sent to edit a file it is not using

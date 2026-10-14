@@ -389,8 +389,13 @@ public sealed class Doctor(
             }
         }
 
+        //the key names the role a bare launch runs, and a name with no file would refuse every bare launch
+        if (config.DefaultRole is { } dr && !names.Contains(dr, StringComparer.OrdinalIgnoreCase))
+            problems.Add($"default_role names '{dr}', and no roles\\{dr}.json exists");
+
         return problems.Count == 0
-            ? new CheckResult(true, $"roles: {names.Count} role(s) under {rolesDir} all valid")
+            ? new CheckResult(true, $"roles: {names.Count} role(s) under {rolesDir} all valid"
+                + (config.DefaultRole is { } named ? $" {g.Dot} default_role is {named}" : ""))
             : new CheckResult(false, $"roles: {string.Join("; ", problems)} " + g.Dot + $" fix the listed role file(s) under {rolesDir}");
     }
 

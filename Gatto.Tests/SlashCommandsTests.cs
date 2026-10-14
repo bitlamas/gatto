@@ -18,7 +18,17 @@ public class SlashCommandsTests
     //the name-set test pins SlashCommands.All to this list and can't see the Repl dispatch, so a branch with no row here goes unnoticed
     private static readonly string[] CanonicalNames =
         ["/help", "/new", "/role", "/model", "/effort", "/compact", "/auto", "/remember",
-         "/wild", "/permissions", "/tools", "/context", "/init", "/quit"];
+         "/wild", "/safe", "/permissions", "/tools", "/context", "/init", "/quit"];
+
+    [Fact]
+    public void THE_SAFE_ROW_FOLLOWS_WILD_IN_THE_PLAIN_RENDER()
+    {
+        var lines = SlashCommands.RenderPlain(SlashCommands.All).Split('\n');
+        var safe = Array.FindIndex(lines, l => l.TrimStart().StartsWith("/safe ", StringComparison.Ordinal));
+        Assert.True(safe > 0, string.Join("\n", lines));
+        Assert.StartsWith("/wild ", lines[safe - 1].TrimStart(), StringComparison.Ordinal);
+        Assert.EndsWith("prompts and checkpoints back on", lines[safe].TrimEnd(), StringComparison.Ordinal);
+    }
 
     [Fact]
     public void All_NameSet_MatchesCanonicalPinnedSet()

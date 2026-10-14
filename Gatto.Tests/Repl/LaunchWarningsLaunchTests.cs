@@ -40,17 +40,17 @@ public class LaunchWarningsLaunchTests : IDisposable
         try { Directory.Delete(_cwd, true); } catch { }
     }
 
-    private async Task<(string Out, string Err)> LaunchPlain(FakeOpenAiServer server)
+    private async Task<(string Out, string Err)> LaunchPlain(FakeOpenAiServer server, string stdin = "/quit\n", string configExtra = "")
     {
         File.WriteAllText(Path.Combine(_home, "gatto.json"),
-            $$$"""{"endpoints":{"local":{"base_url":"{{{server.BaseUrl}}}"}},"default_endpoint":"local","default_model":"test-m"}""");
+            $$$"""{"endpoints":{"local":{"base_url":"{{{server.BaseUrl}}}"}},"default_endpoint":"local","default_model":"test-m"{{{configExtra}}}}""");
         Environment.SetEnvironmentVariable("GATTO_HOME", _home);
         Environment.CurrentDirectory = _cwd;
         var stdout = new StringWriter();
         var stderr = new StringWriter();
         Console.SetOut(stdout);
         Console.SetError(stderr);
-        Console.SetIn(new StringReader("/quit\n"));
+        Console.SetIn(new StringReader(stdin));
 
         Assert.Equal(0, await GattoApp.RunAsync(Array.Empty<string>()));
         return (stdout.ToString(), stderr.ToString());
@@ -69,7 +69,43 @@ public class LaunchWarningsLaunchTests : IDisposable
         var at = stdout.IndexOf(Notice, StringComparison.Ordinal);
         Assert.True(at > stdout.IndexOf(Banner, StringComparison.Ordinal) && stdout.IndexOf(Banner, StringComparison.Ordinal) >= 0, stdout);
         Assert.Equal(at, stdout.LastIndexOf(Notice, StringComparison.Ordinal));
-        Assert.Matches(@"(?m)^\S wild mode: ON for this project, stored in your gatto home \S /wild to turn off\r?$", stdout);
+        Assert.Matches(@"(?m)^\S wild mode: ON for this project, stored in your gatto home \S /safe to turn off\r?$", stdout);
+    }
+
+    [Fact]
+    public async Task A_HOME_WIDE_WILD_LAUNCHES_WILD_AND_NEVER_SAYS_THE_NEXT_LAUNCH_IS_WILD_AGAIN()
+    {
+        await using var server = new FakeOpenAiServer();
+
+        var (stdout, _) = await LaunchPlain(server, "/wild never\n/quit\n", ",\"wild\":true");
+
+        Assert.Matches(@"(?m)^\S wild mode: ON, gatto.json sets ""wild"": true \S /safe to turn off\r?$", stdout);
+        Assert.Contains("wild mode off for this session, gatto.json sets \"wild\": true, so it is on again next launch", stdout, StringComparison.Ordinal);
+    }
+
+    //the off notice under a project veto names the file and nothing to turn off, since wild is already off
+    [Fact]
+    public async Task THE_VETO_NOTICE_CARRIES_NO_WAY_OFF()
+    {
+        await using var server = new FakeOpenAiServer();
+        File.WriteAllText(Path.Combine(_cwd, ".gatto.json"), "{\"wild\": false}");
+
+        var (stdout, _) = await LaunchPlain(server, configExtra: ",\"wild\":true");
+
+        Assert.Matches(@"(?m)^\S wild mode: off, .* sets ""wild"": false for this project\r?$", stdout);
+        Assert.DoesNotContain("/safe to turn off", stdout, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task WILD_NEVER_ON_A_GRANTED_FOLDER_SAYS_THE_GRANT_IS_REMOVED()
+    {
+        await using var server = new FakeOpenAiServer();
+        PermissionStore.Load(_home, _cwd, out _).SetWild(true, persist: true);
+
+        var (stdout, _) = await LaunchPlain(server, "/wild never\n/quit\n");
+
+        Assert.Contains("persistence removed from your gatto home", stdout, StringComparison.Ordinal);
+        Assert.False(PermissionStore.Load(_home, _cwd, out _).Wild);
     }
 
     //stderr already shows the line on the plain face, so a second copy after the banner would only repeat it

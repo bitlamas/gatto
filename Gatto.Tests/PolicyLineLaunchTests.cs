@@ -277,13 +277,23 @@ public class PolicyLineLaunchTests : IDisposable
         var planted = SourceTree.CodeOnly(
             File.ReadAllText(Path.Combine(SourceTree.RepoRoot(), "Gatto", "Cli", "GattoApp.cs"))
             //write the added call out in full, since one built from the constant only proves the counter finds a copy of its own text
-            + "\nclass PlantedThirdResolution { RoleResolution M() => ResolveRole(args.Role); }\n");
+            + "\nclass PlantedThirdResolution { RoleResolution M() => ResolveRole(launchRole); }\n");
 
         Assert.Equal(3, Occurrences(planted, ResolveMarker));
     }
 
+    //the plain loop draws no rule, so no launch can see the default role reach the Repl, and the source is what is counted
+    [Fact]
+    public void THE_REPL_IS_HANDED_THE_HOME_DEFAULT_ROLE_ONCE()
+    {
+        var code = SourceTree.WithoutComments(
+            File.ReadAllText(Path.Combine(SourceTree.RepoRoot(), "Gatto", "Cli", "GattoApp.cs")));
+
+        Assert.Equal(1, Occurrences(code, "defaultRole: config.DefaultRole ?? \"generalist\""));
+    }
+
     //match the marker by its argument, so a differently written assignment still counts and the /role path stays out
-    private const string ResolveMarker = "ResolveRole(args.Role)";
+    private const string ResolveMarker = "ResolveRole(launchRole)";
 
     private static int Occurrences(string haystack, string needle)
     {

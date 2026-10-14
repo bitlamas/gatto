@@ -184,8 +184,16 @@ public sealed class Repl(
     //llama-server's counting routes for the exact path, null for an endpoint that has none
     ITokenCounter? tokenCounter = null,
     //the clipboard Alt+V reads images from, injectable so a test can paste. null uses the real one
-    Gatto.Terminal.IClipboardImageNative? clipboardImageSource = null)
+    Gatto.Terminal.IClipboardImageNative? clipboardImageSource = null,
+    //gatto.json turns wild on for every launch, so /wild never can end this session's wild and not the next launch's
+    bool wildFromHome = false,
+    Func<bool>? wildPersisted = null,   //whether the home holds a wild grant for this folder, read before /wild never clears it
+    //the role a bare launch runs from this home, and the rule names a role only when it is not this one. null names every role
+    string? defaultRole = null)
 {
+    //the name the top rule shows, null when the running role is the default, compared as the launch resolves a name against the files
+    private string? DisplayRole() => string.Equals(roleName, defaultRole, StringComparison.OrdinalIgnoreCase) ? null : roleName;
+
     //the /context rows at a width, built from what the last request sent, so the composer thread may build them mid-turn
     internal async Task<IReadOnlyList<ContextReport.Row>?> ContextRowsAsync(int width, Theme theme, CancellationToken ct) =>
         await ContextFiguresAsync(ct) is { } figures ? ContextReport.Rows(figures, width, theme, _glyphs) : null;
@@ -415,10 +423,11 @@ public sealed class Repl(
         "Bank the following to project memory with memory_write, choosing a slug for it (reuse an " +
         "existing slug if this revises a fact already there), stated compactly in your own words: " + text;
 
-    //the shared /role body, an empty arg is a usage error and the caller must keep its own roleName and modelName in sync
-    public static RoleSwitchResult ApplyRoleSwitch(Conversation convo, Func<string, RoleSwitchResult> switchRole, string arg)
+    //the shared /role body, and the caller must keep its own roleName and modelName in sync. a null ModelName on success is a bare /role
+    public static RoleSwitchResult ApplyRoleSwitch(Conversation convo, Func<string, RoleSwitchResult> switchRole, string arg, string current)
     {
-        if (arg.Length == 0) return new RoleSwitchResult(false, "", null, null, "usage: /role <name>");
+        //a bare /role names the running role and switches nothing
+        if (arg.Length == 0) return new RoleSwitchResult(true, current, null, null, null);
         var result = switchRole(arg);
         if (result.Success) { convo.ReplaceSystem(result.SystemText!, result.Baseline); convo.SetGattoRole(result.RoleName); }
         return result;
@@ -689,11 +698,25 @@ public sealed class Repl(
                 return WildLine(true, _glyphs) + "\npersisted for this project in your gatto home — /wild never removes it";
             case "never":
                 wild.On = false;
+                var hadGrant = wildPersisted?.Invoke() == true;   //read before the persist below clears the grant
                 persistWild?.Invoke(false);
-                return WildLine(false, _glyphs) + "\npersistence removed from your gatto home";
+                //the next-launch row only where gatto.json's wild would really start the next launch, a project veto keeps it off
+                return (wildFromHome && wild.ForbiddenBy is null
+                        ? "wild mode off for this session, gatto.json sets \"wild\": true, so it is on again next launch"
+                        : WildLine(false, _glyphs))
+                    + (hadGrant ? "\npersistence removed from your gatto home" : "");
             default:
                 return WildUsage;
         }
+    }
+
+    //the exact inverse of a bare /wild that turned wild on, for this session only, and the checkpoint follows the role and /auto as before
+    private string HandleSafe()
+    {
+        if (wild is null) return "wild mode is unavailable in this session";
+        if (!wild.On) return "wild mode is off";
+        wild.On = false;
+        return WildLine(false, _glyphs);
     }
 
     //the prefill's denominator, the chars÷4 estimate lifted by the ratio the server measured
@@ -857,9 +880,9 @@ public sealed class Repl(
             rows);
     }
 
-    //every grant numbered off the same ordering RevokeAt consumes, plus the wild row at the end
+    //every grant numbered off the same ordering RevokeAt consumes, plus the wild row at the end, which says the session's state when there is one
     private static string RenderPermissionsList(PermissionStore store, bool all = false,
-        Gatto.Terminal.GlyphSet? glyphs = null)
+        Gatto.Terminal.GlyphSet? glyphs = null, bool? wildOn = null)
     {
         var entries = store.ListEntries();
         var sb = new StringBuilder();
@@ -877,7 +900,7 @@ public sealed class Repl(
                 sb.Append(($"{(glyphs ?? Gatto.Terminal.GlyphSet.Unicode).Ellipsis} ")).Append((entries.Count - shown).ToString(System.Globalization.CultureInfo.InvariantCulture))
                     .Append(" more — /permissions all").Append('\n');
         }
-        sb.Append(WildRow(store.Wild));
+        sb.Append(WildRow(wildOn ?? store.Wild));
         if (entries.Count > 0) sb.Append('\n').Append(PermissionsHint);
         return sb.ToString();
     }
@@ -886,9 +909,9 @@ public sealed class Repl(
     private string HandlePermissions(string arg)
     {
         if (permissions is null) return PermissionsUnavailable;
-        if (arg.Length == 0) return RenderPermissionsList(permissions, glyphs: _glyphs);
+        if (arg.Length == 0) return RenderPermissionsList(permissions, glyphs: _glyphs, wildOn: wild?.On);
         if (string.Equals(arg, "all", StringComparison.Ordinal))
-            return RenderPermissionsList(permissions, all: true, glyphs: _glyphs);
+            return RenderPermissionsList(permissions, all: true, glyphs: _glyphs, wildOn: wild?.On);
 
         var parts = arg.Split((char[]?)null, 2, StringSplitOptions.RemoveEmptyEntries);
         if (parts.Length != 2 || !string.Equals(parts[0], "revoke", StringComparison.Ordinal))
@@ -1451,6 +1474,11 @@ public sealed class Repl(
                 Console.WriteLine(HandleWild(wildArg));
                 continue;
             }
+            if (trimmedLine == "/safe")
+            {
+                Console.WriteLine(HandleSafe());
+                continue;
+            }
             if (trimmedLine == "/context")
             {
                 var width = 80;
@@ -1496,8 +1524,8 @@ public sealed class Repl(
             if (trimmedLine == "/role" || trimmedLine.StartsWith("/role ", StringComparison.Ordinal))
             {
                 var arg = trimmedLine.Length > 5 ? trimmedLine[5..].Trim() : "";
-                var result = ApplyRoleSwitch(convo, switchRole, arg);
-                if (result.Success)
+                var result = ApplyRoleSwitch(convo, switchRole, arg, roleName);
+                if (result.Success && result.ModelName is not null)
                 {
                     roleName = result.RoleName;
                     modelName = result.ModelName!;
@@ -1650,7 +1678,7 @@ public sealed class Repl(
         var status = new StatusInfo(cwd, modelName, roleName, ctx,
             Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), Wild: wild?.On == true,
             Thinking: thinkingName, Serving: serving, ThinkingToggle: thinkingToggle, Cloud: cloud);
-        var frame = new InputFrame(surface, theme, roleName, status, _glyphs, KnownCommands);
+        var frame = new InputFrame(surface, theme, DisplayRole(), status, _glyphs, KnownCommands);
         var focusTaught = false;   //the one-shot teaser for the first collapsed reasoning block, set once it has fired
 
         //feeds the ctx estimate and rebuilds the status frame, and the painter is retargeted here so it never composes against a stale one
@@ -1676,7 +1704,7 @@ public sealed class Repl(
                 ChordHint = LivePasteHint() ?? chords.Hint,
                 Quota = usage.Quota, Cost = usage.Cost,
             };
-            frame = new InputFrame(surface, theme, roleName, status, _glyphs, KnownCommands);
+            frame = new InputFrame(surface, theme, DisplayRole(), status, _glyphs, KnownCommands);
             //the retarget takes the gate too, the ticker repaints from its own thread while this runs on the dispatcher's
             lock (gate) { painter.Frame = frame; painter.RoleForTint = roleName; }
         }
@@ -2619,6 +2647,12 @@ public sealed class Repl(
             s.Refresh();                                   //the wild toggle changed, the footer chip must follow
             return false;
         }
+        if (trimmed == "/safe")
+        {
+            s.Renderer.CommitSystem(HandleSafe());
+            s.Refresh();
+            return false;
+        }
         if (TryMatchCommand(trimmed, "/permissions", out var permArg))
         {
             //one ♯ row per line again, the listing has a row per grant plus the wild row
@@ -2679,8 +2713,13 @@ public sealed class Repl(
         if (trimmed == "/role" || trimmed.StartsWith("/role ", StringComparison.Ordinal))
         {
             var arg = trimmed.Length > 5 ? trimmed[5..].Trim() : "";
-            var result = ApplyRoleSwitch(convo, switchRole, arg);
-            if (result.Success)
+            var result = ApplyRoleSwitch(convo, switchRole, arg, roleName);
+            //a bare /role says the running role and touches nothing, since its result carries no model to rebuild with
+            if (result.Success && result.ModelName is null)
+            {
+                s.Renderer.CommitSystem(RoleLine(roleName));
+            }
+            else if (result.Success)
             {
                 roleName = result.RoleName;
                 modelName = result.ModelName!;

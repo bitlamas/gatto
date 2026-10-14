@@ -28,8 +28,8 @@ public sealed record FrameLayout(
     int CursorRegionRow = 0,       //the caret's composer region row, counted over every row, emitted or not
     IReadOnlyList<int>? MarkRows = null);   //the editor rows drawn as a hidden-rows mark, which stand for no line a press could land on
 
-//the framed typing area: top rule with its role label, editor rows, bottom rule, status line. composes layout only, ChromePainter writes every byte
-public sealed class InputFrame(ITermSurface surface, Theme theme, string role, StatusInfo status,
+//the framed typing area: top rule with its role label, null on the default role, editor rows, bottom rule, status line. composes layout only, ChromePainter writes every byte
+public sealed class InputFrame(ITermSurface surface, Theme theme, string? role, StatusInfo status,
     GlyphSet? glyphs, Func<IReadOnlyList<SlashCommands.Cmd>>? knownCommands = null)
 {
     //the rows the ghost completes from, the same source the editor's Tab reads. null is the built-in table, for a frame with no session behind it
@@ -205,12 +205,12 @@ public sealed class InputFrame(ITermSurface surface, Theme theme, string role, S
             framed ? layout : null, EditorWindowTop: windowTop, CursorRegionRow: cursorRegionRow, MarkRows: markRows);
     }
 
-    public static string BuildTopRule(string role, int width, Theme theme, bool wild = false, string? hint = null,
+    public static string BuildTopRule(string? role, int width, Theme theme, bool wild = false, string? hint = null,
         GlyphSet? glyphs = null) =>
         TopRuleCore(role, wild, width, theme, hint, glyphs).rendered;
 
     //the ANSI-free half of TopRuleCore, so a test can measure the top rule's width
-    public static string BuildTopRuleVisible(string role, int width, Theme theme, bool wild = false, string? hint = null,
+    public static string BuildTopRuleVisible(string? role, int width, Theme theme, bool wild = false, string? hint = null,
         GlyphSet? glyphs = null) =>
         TopRuleCore(role, wild, width, theme, hint, glyphs).visible;
 
@@ -226,12 +226,12 @@ public sealed class InputFrame(ITermSurface surface, Theme theme, string role, S
     private static string RuleOf(GlyphSet g, int n) => string.Concat(Enumerable.Repeat(g.Rule, n));
 
     //one place builds the top rule. the live hint borrows the label slot so the chrome block keeps its height, and a wide label truncates rather than wrapping
-    private static (string rendered, string visible) TopRuleCore(string role, bool wild, int width, Theme theme,
+    private static (string rendered, string visible) TopRuleCore(string? role, bool wild, int width, Theme theme,
         string? hint = null, GlyphSet? glyphs = null)
     {
         var g = glyphs ?? GlyphSet.Unicode;
         var sep = SepOf(g);
-        var labelVisible = hint ?? (wild ? "gatto" + sep + role + sep + "wild" : "gatto" + sep + role);
+        var labelVisible = hint ?? ("gatto" + (role is null ? "" : sep + role) + (wild ? sep + "wild" : ""));
         //the 4 cells of overhead: two spaces around the label and the 2-cell closing rule
         var dashes = width - UnicodeWidth.Of(labelVisible) - 4;
         if (dashes < 0) dashes = 0;
@@ -239,8 +239,7 @@ public sealed class InputFrame(ITermSurface surface, Theme theme, string role, S
         var labelRendered = hint is not null
             ? theme.Paint(hint, Theme.Accent)
             : theme.Paint("gatto", Theme.Accent, bold: true)
-                + theme.Paint(sep, Theme.Dim)
-                + theme.Paint(role, theme.RoleTint(role))
+                + (role is null ? "" : theme.Paint(sep, Theme.Dim) + theme.Paint(role, theme.RoleTint(role)))
                 + (wild ? theme.Paint(sep, Theme.Dim) + theme.Paint("wild", Theme.Err) : "");
         var rendered = theme.Paint(dashStr, Theme.Rule) + " " + labelRendered + " " + theme.Paint(RuleOf(g, 2), Theme.Rule);
         var visible = dashStr + " " + labelVisible + " " + RuleOf(g, 2);

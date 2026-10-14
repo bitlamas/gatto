@@ -1,7 +1,7 @@
 namespace Gatto.Cli;
 
 public sealed record ParsedArgs(
-    string Command, string Role, string? Model, string? Prompt, bool Continue, bool Yes, bool Auto,
+    string Command, string? Role, string? Model, string? Prompt, bool Continue, bool Yes, bool Auto,
     string? Subcommand = null, string? Target = null, bool Detach = false,
     //the id resumes that one session, null just resumes the latest for the folder (trailing so existing ParsedArgs calls still compile)
     string? ContinueId = null,
@@ -21,7 +21,8 @@ public static class ArgRouter
     public static ParsedArgs Parse(string[] argv)
     {
         var command = "launch";
-        var role = "generalist";
+        //null when no bare word was typed, the launch resolves it against gatto.json
+        string? role = null;
         string? model = null, prompt = null, continueId = null, endpoint = null;
         Gatto.Roles.ThinkingLevel? effort = null;
         var cont = false;
@@ -100,7 +101,7 @@ public static class ArgRouter
         : null;
 
     //a reserved command takes a bare subcommand and one bare target. only serve checks its subcommand, and a bare gatto serve means status
-    private static ParsedArgs ParseReserved(string[] argv, string role)
+    private static ParsedArgs ParseReserved(string[] argv, string? role)
     {
         //asking for help must never run the command, a dropped flag once started a full audition
         if (argv.Any(a => a is "-h" or "--help")) return new ParsedArgs("help", role, null, null, false, false, false);

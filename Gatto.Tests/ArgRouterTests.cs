@@ -5,11 +5,19 @@ namespace Gatto.Tests;
 public class ArgRouterTests
 {
     [Fact]
-    public void Bare_gatto_is_generalist_launch()
+    public void BARE_GATTO_LEAVES_THE_ROLE_FOR_GATTO_JSON()
     {
         var p = ArgRouter.Parse(Array.Empty<string>());
         Assert.Equal("launch", p.Command);
-        Assert.Equal("generalist", p.Role);
+        Assert.Null(p.Role);
+    }
+
+    [Theory]
+    [InlineData("-h")]
+    [InlineData("--version")]
+    public void HELP_AND_VERSION_RETURN_A_NULL_ROLE(string flag)
+    {
+        Assert.Null(ArgRouter.Parse(new[] { flag }).Role);
     }
 
     [Fact]
@@ -48,7 +56,7 @@ public class ArgRouterTests
     {
         var a = ArgRouter.Parse(new[] { Gatto.Core.Hardware.HardwareProbe.ChildWord });
         Assert.Equal(Gatto.Core.Hardware.HardwareProbe.ChildWord, a.Command);
-        Assert.Equal("generalist", a.Role);
+        Assert.Null(a.Role);
     }
 
     //roles are user-editable files, so a bare unknown token parses as a role name rather than a usage error

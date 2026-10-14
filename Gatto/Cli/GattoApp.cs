@@ -79,10 +79,29 @@ public static class GattoApp
     internal const string Help = """
         gatto, a terminal assistant that runs AI models on your own computer
         usage: gatto [role|command] [options]
-          roles:    generalist (default) | coder | oracle | <any ~/.gatto/roles/*.json>
+          roles:    {roles}
           commands: setup | serve start [model] [--detach] | serve stop|status | doctor | status | audition | model new [gguf] [id] | update | uninstall
           options:  -m <model>  -p <prompt>  -e <endpoint>  --effort <level>  --continue[ <id>]  --yes  --auto  --version  -h
         """;
+
+    //the roles line is read from the home at print time, so the help never names a default the config overrode or a role that is not on disk
+    internal static string HelpFor(string home)
+    {
+        var roles = RoleFile.ListNames(Path.Combine(home, "roles"));
+        string? configured = null;
+        try { configured = GattoConfig.Load(home).DefaultRole; }
+        catch (GattoConfigException) { }   //a home with no config still gets its help, and the launch reports the config error itself
+        return HelpText(roles, configured ?? "generalist");
+    }
+
+    //every role on disk, the default first and marked, and a home with no roles folder yet reads the three shipped names
+    internal static string HelpText(IReadOnlyList<string> roles, string defaultRole)
+    {
+        var names = roles.Count > 0 ? roles : new[] { "generalist", "coder", "oracle" };
+        var line = string.Join(" | ", names.OrderBy(r => r == defaultRole ? 0 : 1).Select(r => r == defaultRole ? r + " (default)" : r));
+        if (roles.Count == 0) line += " | <any ~/.gatto/roles/*.json>";
+        return Help.Replace("{roles}", line, StringComparison.Ordinal);
+    }
 
     //the null ctx is the production path, and only the outermost return holds a fatal exit open so it can be read
     public static async Task<int> RunAsync(string[] argv) => FatalPause.Hold(await RunAsync(argv, null));
@@ -158,11 +177,11 @@ public static class GattoApp
         catch (ArgumentException ex)
         {
             Console.Error.WriteLine(ex.Message);
-            Console.Error.WriteLine(Help);
+            Console.Error.WriteLine(HelpFor(ctx?.Home ?? GattoHome.Resolve()));
             return 2;
         }
 
-        if (args.Command == "help") { Console.WriteLine(Help); return 0; }
+        if (args.Command == "help") { Console.WriteLine(HelpFor(ctx?.Home ?? GattoHome.Resolve())); return 0; }
         //the version line takes the context's stamp, so a golden can pin it without going red on every commit
         if (args.Command == "version")
         {
@@ -431,8 +450,10 @@ public static class GattoApp
             return new RoleResolution(role, model, endpoint, endpointName, modelString, comp, memory.TruncatedLines);
         }
 
+        //the bare launch runs the home's default_role, generalist when the key is absent
+        var launchRole = args.Role ?? config.DefaultRole ?? "generalist";
         RoleResolution launchRes;
-        try { launchRes = ResolveRole(args.Role); }
+        try { launchRes = ResolveRole(launchRole); }
         catch (GattoConfigException ex) { Console.Error.WriteLine(ex.Message); return 2; }
         //a session continues on the endpoint it was recorded on, checked before anything starts. a record with no endpoint is from before the field and gets no check
         if (args.Continue && (continueById ?? sessions.LatestPathForCwd()) is { } recordedPath
@@ -560,9 +581,9 @@ public static class GattoApp
         var permissions = PermissionStore.Load(home, cwd, out var permWarning);   //a corrupt permissions file loads as no grants, so every mutating tool prompts, with a warning
         if (permWarning is not null) Console.Error.WriteLine($"! {permWarning}");
 
-        //one shared switch that auto-allows every permission and skips the checkpoint, seeded from the home's wild key unless a .gatto.json up the path forbids it
+        //one shared switch that auto-allows every permission and skips the checkpoint, seeded from the folder's grant or gatto.json's wild unless a .gatto.json up the path forbids it
         var wildForbiddenBy = ProjectFileConfig.EffectiveWildAllowed(cwd, out var forbiddingFile) ? null : forbiddingFile;
-        var wildState = new WildState { On = permissions.Wild && wildForbiddenBy is null, ForbiddenBy = wildForbiddenBy };
+        var wildState = new WildState { On = (permissions.Wild || config.Wild) && wildForbiddenBy is null, ForbiddenBy = wildForbiddenBy };
 
         //the session's own /auto, which survives a /role, and only toggleAuto changes it
         var autoOff = args.Auto;
@@ -758,7 +779,7 @@ public static class GattoApp
         if (policyLines.Count > 0)
         {
             //both locals hold a composed value from before the extensions loaded, so both are reassigned here
-            launchRes = ResolveRole(args.Role);
+            launchRes = ResolveRole(launchRole);
             comp = launchRes.Comp;
             lastComposedSystem = comp.SystemText;
             lastComposedSources = comp.Sources;
@@ -1328,7 +1349,7 @@ public static class GattoApp
         if (args.Prompt is not null)   //the -p one-shot path
         {
             //stderr only, the -p contract keeps stdout for model text
-            if (WildNotice(permissions, wildState) is { } wildLine) Console.Error.WriteLine(wildLine);
+            if (WildNotice(permissions, wildState, config.Wild) is { } wildLine) Console.Error.WriteLine(wildLine);
             using var oneShotCts = new CancellationTokenSource();
             ConsoleCancelEventHandler cancelHandler = (_, e) =>
             {
@@ -1367,8 +1388,8 @@ public static class GattoApp
         }
 
         //said after the banner with the launch warnings, a line written before it is under the alt screen
-        if (WildNotice(permissions, wildState) is { } wildNotice)
-            launchWarnings.Add(wildState.On ? $"{wildNotice} {glyphs.Dot} /wild to turn off" : wildNotice);
+        if (WildNotice(permissions, wildState, config.Wild) is { } wildNotice)
+            launchWarnings.Add(wildState.On ? $"{wildNotice} {glyphs.Dot} /safe to turn off" : wildNotice);
 
         //the one helper /role and /model also read, so a rebuild matches the launch footer
         string? initialThinkingName = ThinkingFooterName();
@@ -1416,6 +1437,8 @@ public static class GattoApp
             cloudSwitchHint: unlistedRemote && cloud ? CloudSwitchHint(endpointName) : null,
             unmanagedVisionNotice: !ServedHere() ? UnmanagedSession.VisionUnavailable(launchBaseUrl) : null,
             deafWatch: deafWatch,
+            wildFromHome: config.Wild, wildPersisted: () => permissions.Wild,
+            defaultRole: config.DefaultRole ?? "generalist",
             //read when /context asks, so a /role or /model since is followed. the shape is the loop's last request, its tools split by origin
             contextInputs: usage =>
             {
@@ -1506,10 +1529,11 @@ public static class GattoApp
         if (carry) carried.Add(m);
     };
 
-    //the launch line about wild mode: on and where it is stored, or off because a project's .gatto.json forbids what the home says. null when wild is plainly off
-    internal static string? WildNotice(PermissionStore permissions, WildState wild) =>
-        wild.On ? "wild mode: ON for this project, stored in your gatto home"
-        : permissions.Wild && wild.ForbiddenBy is { } by ? $"wild mode: off, {TermText.Sanitize(by)} sets \"wild\": false for this project"
+    //the launch line about wild mode: on and which source turned it on, or off because a project's .gatto.json forbids what the home says. null when wild is plainly off
+    internal static string? WildNotice(PermissionStore permissions, WildState wild, bool wildFromHome) =>
+        wild.On && !permissions.Wild && wildFromHome ? "wild mode: ON, gatto.json sets \"wild\": true"
+        : wild.On ? "wild mode: ON for this project, stored in your gatto home"
+        : (permissions.Wild || wildFromHome) && wild.ForbiddenBy is { } by ? $"wild mode: off, {TermText.Sanitize(by)} sets \"wild\": false for this project"
         : null;
 
     //call it after sessions.Save, since CurrentPath is null before the first save, and a connection failure exits 1 with no line at all

@@ -76,7 +76,10 @@ public sealed record GattoConfig(
     //tri-state, where null means never asked so no network happens, and it ships with its TopKeys entry and writer or the reader refuses it
     bool? UpdateCheck = null,
     //true stops the server this home started when the user quits, so the first window to quit stops it for the others
-    bool StopServerOnExit = false)
+    bool StopServerOnExit = false,
+    //the role a bare launch runs and wild for every launch from this home, both optional so hand-built instances stay terse
+    string? DefaultRole = null,
+    bool Wild = false)
 {
     //never null: Load resolves the section or its default, and the nullable field keeps test instances terse
     public SearchConfig Search => SearchOrNull ?? SearchConfig.Default;
@@ -99,7 +102,7 @@ public sealed record GattoConfig(
 
     //the one statement of what gatto.json accepts, asserted against the schema in both directions, so a key added here needs a schema entry
     internal static readonly string[] TopKeys =
-        { "$schema", "endpoints", "default_endpoint", "default_model", "defaults", "llama_server", "context_files", "theme", "glyphs", "reasoning", "regions", "search", "weights_root", "think", "alt_screen", "dump_on_exit", "stop_server_on_exit", "mouse", "wheel_lines", "copy_on_select", "auto_compact", "deny_reason", "memory", "update_check", "extensions" };
+        { "$schema", "endpoints", "default_endpoint", "default_model", "defaults", "llama_server", "context_files", "theme", "glyphs", "reasoning", "regions", "search", "weights_root", "think", "alt_screen", "dump_on_exit", "stop_server_on_exit", "mouse", "wheel_lines", "copy_on_select", "auto_compact", "deny_reason", "memory", "update_check", "extensions", "default_role", "wild" };
     internal static readonly string[] ValidThemes = { "dark", "light", "auto" };
     //the same three-value shape as theme: auto asks the host, the two names answer for it
     internal static readonly string[] ValidGlyphs = { "auto", "unicode", "ascii" };
@@ -447,6 +450,25 @@ public sealed record GattoConfig(
             stopServerOnExit = ssoe.GetBoolean();
         }
 
+        //the role a bare launch runs, absent means generalist, and the launch refuses a name with no file
+        string? defaultRole = null;
+        if (root.TryGetProperty("default_role", out var dr2))
+        {
+            if (dr2.ValueKind == JsonValueKind.Null) defaultRole = null;
+            else if (dr2.ValueKind != JsonValueKind.String || string.IsNullOrWhiteSpace(dr2.GetString()))
+                throw new GattoConfigException("gatto.json has a \"default_role\" with the wrong type — must be a role name");
+            else defaultRole = dr2.GetString()!.Trim();
+        }
+
+        //wild for every launch from this home, and a .gatto.json up the path still forbids it
+        var wildDefault = false;
+        if (root.TryGetProperty("wild", out var wd))
+        {
+            if (wd.ValueKind is not (JsonValueKind.True or JsonValueKind.False))
+                throw new GattoConfigException("gatto.json has a \"wild\" with the wrong type — must be a boolean");
+            wildDefault = wd.GetBoolean();
+        }
+
         //mouse capture and the lines per wheel notch, with no cross-validation: mouse true and alt_screen false is a silent no-mouse
         var mouse = true;
         if (root.TryGetProperty("mouse", out var ms))
@@ -526,7 +548,7 @@ public sealed record GattoConfig(
             }
         }
 
-        return new GattoConfig(endpoints, defaultEp, defaults, llamaServer, contextCompat, contextHome, theme, glyphs, reasoning, search, weightsDir, think, altScreen, dumpOnExit, mouse, wheelLines, copyOnSelect, autoCompact, denyReason, memoryEnabled, memoryIndexBudget, updateCheck, stopServerOnExit)
+        return new GattoConfig(endpoints, defaultEp, defaults, llamaServer, contextCompat, contextHome, theme, glyphs, reasoning, search, weightsDir, think, altScreen, dumpOnExit, mouse, wheelLines, copyOnSelect, autoCompact, denyReason, memoryEnabled, memoryIndexBudget, updateCheck, stopServerOnExit, defaultRole, wildDefault)
         { Raw = root };
     }
 

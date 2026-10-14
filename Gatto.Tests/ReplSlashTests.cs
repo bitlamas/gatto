@@ -21,7 +21,7 @@ public class ReplSlashTests
                 ? new RoleSwitchResult(true, "coder", "qwen3.6-coder", "new coder system prompt", null)
                 : throw new InvalidOperationException("unexpected role in test");
 
-        var result = Gatto.Repl.Repl.ApplyRoleSwitch(convo, fakeSwitch, "coder");
+        var result = Gatto.Repl.Repl.ApplyRoleSwitch(convo, fakeSwitch, "coder", "generalist");
 
         Assert.True(result.Success);
         Assert.Equal("coder", result.RoleName);
@@ -38,7 +38,7 @@ public class ReplSlashTests
         Func<string, RoleSwitchResult> fakeSwitch = name =>
             new RoleSwitchResult(true, "coder", "qwen3.6-coder", "new coder system prompt", null);
 
-        var result = Gatto.Repl.Repl.ApplyRoleSwitch(convo, fakeSwitch, "coder");
+        var result = Gatto.Repl.Repl.ApplyRoleSwitch(convo, fakeSwitch, "coder", "generalist");
 
         Assert.True(result.Success);
         Assert.Equal("coder", convo.GattoRole);
@@ -54,7 +54,7 @@ public class ReplSlashTests
             new RoleSwitchResult(false, "", null, null,
                 "unknown role 'nosuch' — available roles: coder, generalist, oracle");
 
-        var result = Gatto.Repl.Repl.ApplyRoleSwitch(convo, fakeSwitch, "nosuch");
+        var result = Gatto.Repl.Repl.ApplyRoleSwitch(convo, fakeSwitch, "nosuch", "generalist");
 
         Assert.False(result.Success);
         Assert.Equal("unknown role 'nosuch' — available roles: coder, generalist, oracle", result.Message);
@@ -71,7 +71,7 @@ public class ReplSlashTests
             new RoleSwitchResult(false, "", null, null,
                 "role 'cloud-role' targets a cloud endpoint: \"model\" is required and \"model\" must be absent (got model='x', model=none)");
 
-        var result = Gatto.Repl.Repl.ApplyRoleSwitch(convo, fakeSwitch, "cloud-role");
+        var result = Gatto.Repl.Repl.ApplyRoleSwitch(convo, fakeSwitch, "cloud-role", "generalist");
 
         Assert.False(result.Success);
         Assert.Contains("targets a cloud endpoint", result.Message);
@@ -80,16 +80,17 @@ public class ReplSlashTests
     }
 
     [Fact]
-    public void ApplyRoleSwitch_EmptyArg_UsageMessage_NeverCallsSwitchRole()
+    public void A_BARE_ROLE_SUCCEEDS_WITH_THE_CURRENT_NAME_A_NULL_MODEL_AND_NO_SWITCH()
     {
         var convo = new Conversation("old system prompt");
         var called = false;
         Func<string, RoleSwitchResult> fakeSwitch = _ => { called = true; return new RoleSwitchResult(true, "x", "m", "s", null); };
 
-        var result = Gatto.Repl.Repl.ApplyRoleSwitch(convo, fakeSwitch, "");
+        var result = Gatto.Repl.Repl.ApplyRoleSwitch(convo, fakeSwitch, "", "coder");
 
-        Assert.False(result.Success);
-        Assert.Equal("usage: /role <name>", result.Message);
+        Assert.True(result.Success);
+        Assert.Equal("coder", result.RoleName);
+        Assert.Null(result.ModelName);
         Assert.False(called);
         Assert.Equal("old system prompt", convo.Messages[0].Content);
     }
@@ -161,6 +162,40 @@ public class ReplWildTests : IDisposable
         repl.RunAsync(CancellationToken.None).GetAwaiter().GetResult();
         Console.SetOut(_origOut);
         return (sw.ToString(), wild);
+    }
+
+    [Fact]
+    public async Task A_BARE_ROLE_ON_THE_PLAIN_LOOP_NAMES_THE_ROLE_AND_KEEPS_THE_MODEL()
+    {
+        var client = new FakeChatClient();
+        var loop = new AgentLoop(client, new ToolRegistry(), new HookBus(), new TestToolContext(_root), "m");
+        var called = false;
+        var repl = new Gatto.Repl.Repl(
+            loop, new Conversation("sys"), "generalist", "m", null, client, null, null, _root,
+            () => Composed.Text("sys"), () => null, _ => { called = true; return new RoleSwitchResult(true, "x", "x", "x", null); });
+
+        var sw = new StringWriter();
+        Console.SetOut(sw);
+        Console.SetIn(new StringReader("/role\n/quit\n"));
+        await repl.RunAsync(CancellationToken.None);
+        Console.SetOut(_origOut);
+
+        Assert.Contains("role: generalist", sw.ToString(), StringComparison.Ordinal);
+        Assert.False(called);
+        Assert.Equal("m", repl.ModelNameForTest);
+    }
+
+    [Fact]
+    public void SAFE_ON_THE_PLAIN_LOOP_TURNS_WILD_OFF_AND_WRITES_NOTHING()
+    {
+        var store = PermissionStore.Load(_root, _root, out _);
+        var wild = new WildState { On = true };
+
+        var (output, w) = RunWild("/safe\n/quit\n", wild, store);
+
+        Assert.Contains(Gatto.Repl.Repl.WildLine(false, null), output, StringComparison.Ordinal);
+        Assert.False(w.On);
+        Assert.False(File.Exists(PermissionsPath));
     }
 
     [Fact]

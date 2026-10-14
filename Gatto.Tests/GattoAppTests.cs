@@ -181,6 +181,75 @@ public class GattoAppTests : IDisposable
         Assert.NotNull(server.LastRequestBody);
     }
 
+    [Theory]
+    [InlineData(false, true, true, false, "wild mode: ON, gatto.json sets \"wild\": true")]
+    [InlineData(true, false, true, false, "wild mode: ON for this project, stored in your gatto home")]
+    [InlineData(true, true, true, false, "wild mode: ON for this project, stored in your gatto home")]
+    [InlineData(false, true, false, true, "wild mode: off, F sets \"wild\": false for this project")]
+    [InlineData(false, false, false, false, null)]
+    public void THE_WILD_NOTICE_NAMES_THE_SOURCE_THAT_TURNED_IT_ON(bool grant, bool fromHome, bool on, bool forbidden, string? expected)
+    {
+        var permissions = PermissionStore.Load(_home, _cwd, out _);
+        if (grant) permissions.SetWild(true, persist: true);
+        var wild = new WildState { On = on, ForbiddenBy = forbidden ? "F" : null };
+        Assert.Equal(expected, GattoApp.WildNotice(permissions, wild, fromHome));
+    }
+
+    [Fact]
+    public async Task A_BARE_LAUNCH_RUNS_THE_DEFAULT_ROLE_OF_GATTO_JSON()
+    {
+        await using var server = new FakeOpenAiServer();
+        UseHome();
+        WriteConfig($$$"""{"endpoints":{"local":{"base_url":"{{{server.BaseUrl}}}"}},"default_endpoint":"local","default_role":"coder"}""");
+        WriteModel("test-model", port: 1235);
+        WriteRole("generalist", "{\"model\":\"test-model\"}");
+        WriteRole("coder", "{\"model\":\"test-model\",\"append\":\"the coder marker\"}");
+        server.Enqueue(Completion("ok"));
+
+        Console.SetOut(new StringWriter());
+        var exit = await GattoApp.RunAsync(new[] { "-p", "hi" });
+
+        Assert.Equal(0, exit);
+        Assert.Contains("the coder marker", server.LastRequestBody!.Value.GetProperty("messages")[0].GetProperty("content").GetString());
+    }
+
+    [Fact]
+    public async Task A_TYPED_ROLE_BEATS_THE_DEFAULT_ROLE_OF_GATTO_JSON()
+    {
+        await using var server = new FakeOpenAiServer();
+        UseHome();
+        WriteConfig($$$"""{"endpoints":{"local":{"base_url":"{{{server.BaseUrl}}}"}},"default_endpoint":"local","default_role":"coder"}""");
+        WriteModel("test-model", port: 1235);
+        WriteRole("generalist", "{\"model\":\"test-model\"}");
+        WriteRole("coder", "{\"model\":\"test-model\",\"append\":\"the coder marker\"}");
+        server.Enqueue(Completion("ok"));
+
+        Console.SetOut(new StringWriter());
+        var exit = await GattoApp.RunAsync(new[] { "generalist", "-p", "hi" });
+
+        Assert.Equal(0, exit);
+        Assert.DoesNotContain("the coder marker", server.LastRequestBody!.Value.GetProperty("messages")[0].GetProperty("content").GetString());
+    }
+
+    [Fact]
+    public async Task A_DEFAULT_ROLE_WITH_NO_FILE_EXITS_2_AND_LISTS_THE_ROLES()
+    {
+        await using var server = new FakeOpenAiServer();
+        UseHome();
+        WriteConfig($$$"""{"endpoints":{"local":{"base_url":"{{{server.BaseUrl}}}"}},"default_endpoint":"local","default_role":"ghost"}""");
+        WriteModel("test-model", port: 1235);
+        WriteRole("generalist", "{\"model\":\"test-model\"}");
+
+        var output = new StringWriter();
+        Console.SetOut(output);
+        Console.SetError(output);
+        var exit = await GattoApp.RunAsync(new[] { "-p", "hi" });
+
+        Assert.Equal(2, exit);
+        Assert.Contains("ghost", output.ToString(), StringComparison.Ordinal);
+        Assert.Contains("generalist", output.ToString(), StringComparison.Ordinal);
+    }
+
     //an explicit base_url is the user's choice of a proxy or another machine, so the model's port never replaces it
     [Fact]
     public async Task Launch_ExplicitLocalBaseUrl_WinsOverTheModelsPort()
@@ -540,6 +609,16 @@ public class GattoAppTests : IDisposable
         Assert.Equal(0, exit);
         Assert.DoesNotContain("harness", help, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("a terminal assistant that runs AI models on your own computer", help);
+    }
+
+    //the roles line reads the home, so the default the config names comes first and marked, and a role not on disk is never listed
+    [Fact]
+    public void HelpText_MARKS_THE_CONFIGURED_DEFAULT_and_lists_the_roles_on_disk()
+    {
+        var text = GattoApp.HelpText(new[] { "coder", "generalist", "oracle" }, "coder");
+        Assert.Contains("roles:    coder (default) | generalist | oracle", text);
+        Assert.DoesNotContain("{roles}", text);
+        Assert.Contains("roles:    generalist (default) | coder | oracle | <any ~/.gatto/roles/*.json>", GattoApp.HelpText(Array.Empty<string>(), "generalist"));
     }
 
     //the connect flow must leave a home whose next launch resolves a model. writing an endpoint alone would leave the setup screen's promise false
