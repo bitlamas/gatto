@@ -48,7 +48,9 @@ public static class ContextCount
 
         if (counter is not null)
         {
-            var messages = inputs.Shape.LastSent ?? (IReadOnlyList<ChatMessage>)[new ChatMessage("system", inputs.SystemText)];
+            //a template can refuse a request with no user turn, so an empty one stands in for the wrapper the first message will have
+            var messages = inputs.Shape.LastSent
+                ?? (IReadOnlyList<ChatMessage>)[new ChatMessage("system", inputs.SystemText), new ChatMessage("user", "")];
             var request = new ChatRequest(inputs.Model, messages, inputs.Shape.Tools,
                 inputs.Shape.SamplingOverrides, inputs.Shape.BodyOverrides);
             if (await counter.CountInputTokensAsync(request, ct) is int total)

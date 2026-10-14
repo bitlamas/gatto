@@ -29,9 +29,12 @@ public class HubTraceTests
         }
         finally { HubTrace.Target = null; }
 
-        //other tests may write while the target is set, so only this model's lines are read
-        var lines = File.ReadAllLines(file).Select(l => l.Split('\t')).Where(f => f[2].Contains(Model)).ToList();
-        File.Delete(file);
+        //other tests may write while the target is set, so only this model's lines are read, through a share a write still in flight can finish under
+        string text;
+        using (var reader = new StreamReader(new FileStream(file, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete)))
+            text = reader.ReadToEnd();
+        try { File.Delete(file); } catch (IOException) { }
+        var lines = text.Split('\n', StringSplitOptions.RemoveEmptyEntries).Select(l => l.Split('\t')).Where(f => f[2].Contains(Model)).ToList();
         Assert.All(lines, f => Assert.Equal(6, f.Length));
         Assert.Contains(lines, f => f is ["conversions", "net", ..]);
         Assert.Single(lines, f => f is ["tree", "net", ..]);

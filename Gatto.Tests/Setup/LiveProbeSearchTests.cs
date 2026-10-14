@@ -17,7 +17,12 @@ public sealed class LiveProbeSearchTests : IDisposable
     private LiveSetupProbes Probes(FakeShelfHub hub) =>
         new(_home, GlyphSet.Unicode, TextWriter.Null,
             readHardware: () => new ProbeOutcome(new HardwareSnapshot(32UL << 30, 32UL << 30, GpuKind.Discrete, 8UL << 30, "0x1002"), "fixture"),
-            hubHandler: hub);
+            hubHandler: hub, hubClock: new Clock(DateTimeOffset.UnixEpoch));   //a still clock, so the window reads the seconds the Hub named however long the run takes
+
+    private sealed class Clock(DateTimeOffset now) : TimeProvider
+    {
+        public override DateTimeOffset GetUtcNow() => now;
+    }
 
     private static FakeShelfHub Ladder()
     {

@@ -462,6 +462,7 @@ public class GattoAppTests : IDisposable
 
         var stderr = new StringWriter();
         Console.SetError(stderr);
+        using var probeRoom = GattoApp.ProbeDeadlineScope(TimeSpan.FromMilliseconds(100));   //nothing listens on this port and windows retries a refused connect for 2 s, so the probes give up at once
         var exit = await GattoApp.RunAsync(new[] { "-p", "hi" });
 
         var msg = stderr.ToString();
@@ -810,12 +811,13 @@ public class GattoAppTests : IDisposable
         //the lookup ignores case, so the banner must report the name on disk. the banner prints before any turn, so no server exchange is needed
         UseHome();
         WriteConfig("""{"endpoints":{"local":{"base_url":"http://127.0.0.1:1"}},"default_endpoint":"local","glyphs":"unicode"}""");
-        WriteModel("test-model", port: 1235);
+        WriteModel("test-model", port: 65501);
         WriteRole("coder", "{\"model\":\"test-model\"}");
 
         Console.SetIn(new StringReader("/quit\n"));
         var stdout = new StringWriter();
         Console.SetOut(stdout);
+        using var probeRoom = GattoApp.ProbeDeadlineScope(TimeSpan.FromMilliseconds(100));   //nothing listens on this port and windows retries a refused connect for 2 s, so the probes give up at once
         var exit = await GattoApp.RunAsync(new[] { "CODER" });
 
         Assert.Equal(0, exit);
@@ -942,6 +944,7 @@ public class GattoAppTests : IDisposable
         Console.SetIn(new StringReader("/role coder\n/quit\n"));
         var stdout = new StringWriter();
         Console.SetOut(stdout);
+        using var probeRoom = GattoApp.ProbeDeadlineScope(TimeSpan.FromMilliseconds(100));   //nothing listens on this port and windows retries a refused connect for 2 s, so the probes give up at once
         var exit = await GattoApp.RunAsync(Array.Empty<string>());
 
         Assert.Equal(0, exit);
@@ -965,6 +968,7 @@ public class GattoAppTests : IDisposable
         Console.SetIn(new StringReader("/role coder\n/quit\n"));
         var stdout = new StringWriter();
         Console.SetOut(stdout);
+        using var probeRoom = GattoApp.ProbeDeadlineScope(TimeSpan.FromMilliseconds(100));   //nothing listens on this port and windows retries a refused connect for 2 s, so the probes give up at once
         var exit = await GattoApp.RunAsync(Array.Empty<string>());
 
         Assert.Equal(0, exit);
@@ -989,6 +993,7 @@ public class GattoAppTests : IDisposable
         Console.SetIn(new StringReader("/role clouder\n/quit\n"));
         var stdout = new StringWriter();
         Console.SetOut(stdout);
+        using var probeRoom = GattoApp.ProbeDeadlineScope(TimeSpan.FromMilliseconds(100));   //nothing listens on this port and windows retries a refused connect for 2 s, so the probes give up at once
         var exit = await GattoApp.RunAsync(Array.Empty<string>());
 
         Assert.Equal(0, exit);   //exit 0 means the REPL ran to /quit, so no null-reference error hit the backstop, which would exit 1
@@ -1307,6 +1312,7 @@ public class GattoAppTests : IDisposable
         Console.SetIn(new StringReader("/model gemma-model\n/role coder\n/quit\n"));
         var stdout = new StringWriter();
         Console.SetOut(stdout);
+        using var probeRoom = GattoApp.ProbeDeadlineScope(TimeSpan.FromMilliseconds(100));   //nothing listens on this port and windows retries a refused connect for 2 s, so the probes give up at once
         var exit = await GattoApp.RunAsync(Array.Empty<string>());
 
         Assert.Equal(0, exit);
@@ -1330,6 +1336,7 @@ public class GattoAppTests : IDisposable
         Console.SetIn(new StringReader("/role pinned-role\n/quit\n"));
         var stdout = new StringWriter();
         Console.SetOut(stdout);
+        using var probeRoom = GattoApp.ProbeDeadlineScope(TimeSpan.FromMilliseconds(100));   //nothing listens on this port and windows retries a refused connect for 2 s, so the probes give up at once
         var exit = await GattoApp.RunAsync(Array.Empty<string>());
 
         Assert.Equal(0, exit);
@@ -1354,6 +1361,7 @@ public class GattoAppTests : IDisposable
         Console.SetIn(new StringReader("/model gemma-model\n/role pinned-role\n/quit\n"));
         var stdout = new StringWriter();
         Console.SetOut(stdout);
+        using var probeRoom = GattoApp.ProbeDeadlineScope(TimeSpan.FromMilliseconds(100));   //nothing listens on this port and windows retries a refused connect for 2 s, so the probes give up at once
         var exit = await GattoApp.RunAsync(Array.Empty<string>());
 
         Assert.Equal(0, exit);
@@ -1377,6 +1385,7 @@ public class GattoAppTests : IDisposable
         Console.SetIn(new StringReader("/model gemma-4-26b\n/role coder\n/quit\n"));
         var stdout = new StringWriter();
         Console.SetOut(stdout);
+        using var probeRoom = GattoApp.ProbeDeadlineScope(TimeSpan.FromMilliseconds(100));   //nothing listens on this port and windows retries a refused connect for 2 s, so the probes give up at once
         var exit = await GattoApp.RunAsync(new[] { "-m", "qwen3.6-27b" });
 
         Assert.Equal(0, exit);
@@ -1403,6 +1412,7 @@ public class GattoAppTests : IDisposable
         Console.SetIn(new StringReader("/model plain-model\n/effort\n/quit\n"));
         var stdout = new StringWriter();
         Console.SetOut(stdout);
+        using var probeRoom = GattoApp.ProbeDeadlineScope(TimeSpan.FromMilliseconds(100));   //nothing listens on this port and windows retries a refused connect for 2 s, so the probes give up at once
         var exit = await GattoApp.RunAsync(Array.Empty<string>());
 
         Assert.Equal(0, exit);
@@ -1426,6 +1436,7 @@ public class GattoAppTests : IDisposable
         Console.SetIn(new StringReader("/model thinky-model\n/effort\n/quit\n"));
         var stdout = new StringWriter();
         Console.SetOut(stdout);
+        using var probeRoom = GattoApp.ProbeDeadlineScope(TimeSpan.FromMilliseconds(100));   //nothing listens on this port and windows retries a refused connect for 2 s, so the probes give up at once
         var exit = await GattoApp.RunAsync(Array.Empty<string>());
 
         Assert.Equal(0, exit);
@@ -1495,6 +1506,7 @@ public class GattoAppTests : IDisposable
         Console.SetIn(new StringReader("/model levels-model\n/effort medium\n/quit\n"));
         var stdout = new StringWriter();
         Console.SetOut(stdout);
+        using var probeRoom = GattoApp.ProbeDeadlineScope(TimeSpan.FromMilliseconds(100));   //nothing listens on this port and windows retries a refused connect for 2 s, so the probes give up at once
         var exit = await GattoApp.RunAsync(Array.Empty<string>());
 
         Assert.Equal(0, exit);
@@ -1516,6 +1528,7 @@ public class GattoAppTests : IDisposable
         Console.SetIn(new StringReader("/effort none\n/effort high\n/quit\n"));
         var stdout = new StringWriter();
         Console.SetOut(stdout);
+        using var probeRoom = GattoApp.ProbeDeadlineScope(TimeSpan.FromMilliseconds(100));   //nothing listens on this port and windows retries a refused connect for 2 s, so the probes give up at once
         var exit = await GattoApp.RunAsync(Array.Empty<string>());
 
         Assert.Equal(0, exit);
@@ -1603,6 +1616,7 @@ public class GattoAppTests : IDisposable
         Console.SetIn(new StringReader("/effort low\n/effort\n/quit\n"));
         var stdout = new StringWriter();
         Console.SetOut(stdout);
+        using var probeRoom = GattoApp.ProbeDeadlineScope(TimeSpan.FromMilliseconds(100));   //nothing listens on this port and windows retries a refused connect for 2 s, so the probes give up at once
         var exit = await GattoApp.RunAsync(Array.Empty<string>());
 
         Assert.Equal(0, exit);
@@ -1625,6 +1639,7 @@ public class GattoAppTests : IDisposable
         Console.SetIn(new StringReader("/effort xhigh\n/quit\n"));
         var stdout = new StringWriter();
         Console.SetOut(stdout);
+        using var probeRoom = GattoApp.ProbeDeadlineScope(TimeSpan.FromMilliseconds(100));   //nothing listens on this port and windows retries a refused connect for 2 s, so the probes give up at once
         var exit = await GattoApp.RunAsync(Array.Empty<string>());
 
         Assert.Equal(0, exit);
@@ -1644,6 +1659,7 @@ public class GattoAppTests : IDisposable
         Console.SetIn(new StringReader("/effort high\n/quit\n"));
         var stdout = new StringWriter();
         Console.SetOut(stdout);
+        using var probeRoom = GattoApp.ProbeDeadlineScope(TimeSpan.FromMilliseconds(100));   //nothing listens on this port and windows retries a refused connect for 2 s, so the probes give up at once
         var exit = await GattoApp.RunAsync(Array.Empty<string>());
 
         Assert.Equal(0, exit);
@@ -1715,6 +1731,7 @@ public class GattoAppTests : IDisposable
         Console.SetIn(new StringReader("/effort on\n/quit\n"));
         var stdout = new StringWriter();
         Console.SetOut(stdout);
+        using var probeRoom = GattoApp.ProbeDeadlineScope(TimeSpan.FromMilliseconds(100));   //nothing listens on this port and windows retries a refused connect for 2 s, so the probes give up at once
         var exit = await GattoApp.RunAsync(Array.Empty<string>());
 
         Assert.Equal(0, exit);
@@ -1736,6 +1753,7 @@ public class GattoAppTests : IDisposable
         Console.SetIn(new StringReader("/effort none\n/quit\n"));
         var stdout = new StringWriter();
         Console.SetOut(stdout);
+        using var probeRoom = GattoApp.ProbeDeadlineScope(TimeSpan.FromMilliseconds(100));   //nothing listens on this port and windows retries a refused connect for 2 s, so the probes give up at once
         var exit = await GattoApp.RunAsync(Array.Empty<string>());
 
         Assert.Equal(0, exit);
@@ -1783,6 +1801,7 @@ public class GattoAppTests : IDisposable
         Console.SetIn(new StringReader("/model model-b\n/effort\n/quit\n"));
         var stdout = new StringWriter();
         Console.SetOut(stdout);
+        using var probeRoom = GattoApp.ProbeDeadlineScope(TimeSpan.FromMilliseconds(100));   //nothing listens on this port and windows retries a refused connect for 2 s, so the probes give up at once
         var exit = await GattoApp.RunAsync(Array.Empty<string>());
 
         Assert.Equal(0, exit);
@@ -1855,6 +1874,7 @@ public class GattoAppTests : IDisposable
         Console.SetIn(new StringReader("/effort high\n/quit\n"));
         var stdout = new StringWriter();
         Console.SetOut(stdout);
+        using var probeRoom = GattoApp.ProbeDeadlineScope(TimeSpan.FromMilliseconds(100));   //nothing listens on this port and windows retries a refused connect for 2 s, so the probes give up at once
         var exit = await GattoApp.RunAsync(Array.Empty<string>());
 
         Assert.Equal(0, exit);

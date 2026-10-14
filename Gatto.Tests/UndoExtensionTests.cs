@@ -8,9 +8,23 @@ using Gatto.Extensions;
 
 namespace Gatto.Tests;
 
+//one extensions folder for the whole class, so the first load compiles and every later one runs the cached dll
+public sealed class UndoScriptFolder : IDisposable
+{
+    public string Path { get; } = Directory.CreateTempSubdirectory("gatto-undo-ext-").FullName;
+
+    public UndoScriptFolder() =>
+        File.WriteAllText(System.IO.Path.Combine(Path, "undo.csx"), ShippedExtensions.Files["extensions/undo.csx"]);
+
+    public void Dispose()
+    {
+        try { Directory.Delete(Path, recursive: true); } catch { }
+    }
+}
+
 //the shipped undo script through the real host and bus, with the home and the working folder in temp. roslyn compiles once per class
 [Collection("e2e")]
-public sealed class UndoExtensionTests : IClassFixture<RoslynWarmupFixture>, IDisposable
+public sealed class UndoExtensionTests(UndoScriptFolder script) : IClassFixture<RoslynWarmupFixture>, IClassFixture<UndoScriptFolder>, IDisposable
 {
     private readonly string _home = Directory.CreateTempSubdirectory("gatto-undo-home-").FullName;
     private readonly string _cwd = Directory.CreateTempSubdirectory("gatto-undo-cwd-").FullName;
@@ -22,14 +36,11 @@ public sealed class UndoExtensionTests : IClassFixture<RoslynWarmupFixture>, IDi
         try { Directory.Delete(_cwd, recursive: true); } catch { }
     }
 
-    //the shipped bytes, written into a temp extensions folder and loaded as a user's home would load them
+    //the shipped bytes from the class's shared folder, loaded against this test's own home
     internal (HookBus Hooks, CommandRegistry Commands) Load()
     {
-        var ext = Path.Combine(_home, "extensions");
-        Directory.CreateDirectory(ext);
-        File.WriteAllText(Path.Combine(ext, "undo.csx"), ShippedExtensions.Files["extensions/undo.csx"]);
         var (api, _, _) = ExtensionHost.BuildApi(_home, _cwd, () => null, () => null, _log.Add);
-        var loaded = ExtensionHost.LoadAll(ext, api, _log.Add);
+        var loaded = ExtensionHost.LoadAll(script.Path, api, _log.Add);
         Assert.Single(loaded);
         var hooks = new HookBus();
         var commands = new CommandRegistry();

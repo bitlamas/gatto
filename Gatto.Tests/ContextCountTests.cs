@@ -80,6 +80,7 @@ public class ContextCountTests
         Assert.Equal(900, f.Total);
     }
 
+    //a template can refuse a request with no user turn, so the count carries an empty one, the wrapper the first message will have
     [Fact]
     public async Task Before_the_first_request_the_report_is_the_system_and_the_tools_only()
     {
@@ -87,10 +88,11 @@ public class ContextCountTests
         var f = await ContextCount.BuildAsync(Inputs(null), counter, CancellationToken.None);
 
         Assert.True(f.BeforeFirstRequest);
+        Assert.True(f.Exact);
         Assert.DoesNotContain(f.Parts, p => p.Group != ContextGroup.Prefix);
-        var only = Assert.Single(counter.Counted!.Messages);
-        Assert.Equal("system", only.Role);
-        Assert.Equal("sys text", only.Content);
+        Assert.Collection(counter.Counted!.Messages,
+            m => { Assert.Equal("system", m.Role); Assert.Equal("sys text", m.Content); },
+            m => { Assert.Equal("user", m.Role); Assert.Equal("", m.Content); });
     }
 
     //a cloud server reports the cached part of the prompt in its usage, and llama-server's timings win where both are present

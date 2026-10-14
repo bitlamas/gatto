@@ -21,7 +21,9 @@ internal sealed class LiveSetupProbes(string homePath, Gatto.Terminal.GlyphSet g
     //a server start in progress, said to the face's purr and not to the notes, so it never reaches the scrollback
     Action? working = null,
     //the shelf's Hub requests go through this handler, null keeps the network, and a test hands a fake Hub here
-    HttpMessageHandler? hubHandler = null)
+    HttpMessageHandler? hubHandler = null,
+    //the clock the Hub's rate window counts down on, null keeps the system's, and a test holds it still
+    TimeProvider? hubClock = null)
     : ISetupProbes, IDisposable
 {
     private readonly Gatto.Terminal.GlyphSet _glyphs = glyphs;
@@ -548,7 +550,7 @@ internal sealed class LiveSetupProbes(string homePath, Gatto.Terminal.GlyphSet g
             _hubHttp ??= hubHandler is null
                 ? new HttpClient { Timeout = Timeout.InfiniteTimeSpan }
                 : new HttpClient(hubHandler, disposeHandler: false) { Timeout = Timeout.InfiniteTimeSpan };
-            return _hub ??= new HubClient(_hubHttp);
+            return _hub ??= new HubClient(_hubHttp, hubClock);
         }
     }
 
