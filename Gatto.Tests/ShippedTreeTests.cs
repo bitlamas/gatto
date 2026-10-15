@@ -11,18 +11,6 @@ public class ShippedTreeTests
     private static readonly Dictionary<string, (string VettedHash, int Bytes, string Sha)> Pins =
         new(StringComparer.Ordinal)
         {
-            ["agents/code-review.md"] =
-                ("9500c6ebf14651674359fd8ea4d06d26761e3b46cdb46387daa8917d09b2c147",
-                 1825, "b055390364d8ae9dfb815e0d9ce958dcaa996010be56b1808603a708dfcdbf3e"),
-            ["agents/plan-review.md"] =
-                ("35824a507af47ca8a176dc559fb63c90c85284bd45f8fbd35d0f1e60ff917d48",
-                 1817, "449a0421d832c3e0579e456d541e7872b182f415e9c61b0b7b3d4811c493be63"),
-            ["agents/security-review.md"] =
-                ("01cef7e62a4a1fadc7b4f2e31b3ff9481343b389406688543b722f85fbeca0b5",
-                 1943, "794e1a9c65f49087996854f5f9395e0a69e9e64fd66bb78ba9da69a2e4d3cd1f"),
-            ["agents/spec-review.md"] =
-                ("7ad55072464af5ef199d658fd67b912b65117aadec600bc2aa1de2cbdefb1651",
-                 1834, "64d20df4a701df17d8ba2bb5df96f11d95ea55889ea2ccc86b37ea2484ee2ba1"),
             ["extensions/ask_user.csx"] =
                 ("9ee8205f69c0d04e4c813296350407cde6da00368eedf8aea571c57eb68c3256",
                  6845, "e1f51f086f53ce4f39cebfdc2d9ad057010d5f8a66d50a020ed61076199f1c7b"),
@@ -32,6 +20,9 @@ public class ShippedTreeTests
             ["extensions/undo.csx"] =
                 ("091278e7e57e17bf2bf307db403f934d1c16a3e41ff29fb0f28e95eeb5d7052d",
                  28553, "64d46147ea999c4584c9bc149ebfcf6f11ee61cdd70617689ee708e1da916c09"),
+            ["roles/code-review.json"] =
+                ("42c2308c6198e0be8cc37a41be06c23619921d0a260900d211453933db6b1f0c",
+                 1869, "d15ce43a36d45e526ac0a2d3154a1e22b9f7f06aaa5aabbc374138cc025347e4"),
             ["roles/coder.json"] =
                 ("64b94c93cca7ab9581c7ab6b73bfc6d9168a9f8b7e54cc6999961629177fffee",
                  848, "84571b1538f535289b5c216ebc7236264f9208bab950b3ecf6649b28a43d4607"),
@@ -41,9 +32,18 @@ public class ShippedTreeTests
             ["roles/oracle.json"] =
                 ("64e52929395e5c7636eb08525680200b9f6127e8b16415e6d4c5a3c0ca5818b1",
                  837, "299100ac0d5a6d0c78d5677e96770d48943bff7b6967681867573c3d23de34de"),
+            ["roles/plan-review.json"] =
+                ("c617f614f92238341dc40b96c16b0ea41e9f0fad87a3a0f409a1f1e69e9d3226",
+                 1863, "ad5ad394b82ab8b949bd1dd0bf2c3ed00806af6e37ea35b3d7495ad944d043fd"),
             ["roles/raw.json"] =
                 ("ca3121440f2b159c3e9f633dfc675995e470e11c1831b7b921e6b640090b4c41",
                  16, "02cf45d5dc440c228801dcf7378a19136ed3e7315a6fd291ff34bff644d957ee"),
+            ["roles/security-review.json"] =
+                ("e191359930f9c3b70a411b7903304dbe638140a69a9c8da57dabe3d410470ec5",
+                 1989, "48fad8d22daac8ea7d824424173d2b0c2b1ddddea0b3e6e00a2eb80d42ae143d"),
+            ["roles/spec-review.json"] =
+                ("a1ed37a556b3361dbe8306532c07d5181a179f61a0ed08e6de21b0a8f161c7c0",
+                 1884, "ac92bc0135abdedc6649cd8ba3a5dc06bec5062e7f64c36ec119ee72759a3830"),
         };
 
     [Fact]
@@ -55,6 +55,33 @@ public class ShippedTreeTests
         {
             File.WriteAllText(Path.Combine(dir, "raw.json"), ShippedExtensions.Files["roles/raw.json"]);
             Assert.True(Gatto.Roles.RoleFile.Load(dir, "raw").Raw);
+        }
+        finally { Directory.Delete(dir, recursive: true); }
+    }
+
+    //each body hash is of the old agent file's text after its frontmatter, trimmed, so the move changed no word a reviewer reads
+    [Theory]
+    [InlineData("code-review", "Reviews code changes for correctness, simplicity, idiom, and test hygiene.",
+        "4208a5aabd425c74a52412e01d5dbe04de0414e8766618d3292db31b65a8bfa8")]
+    [InlineData("plan-review", "Reviews implementation plans against their spec for coverage, verifiability, and safe sequencing.",
+        "4c8debdba24d1184bfcbdedf3e806b06f417525df6fc839ac3053d1f658365b3")]
+    [InlineData("security-review", "Reviews code and config for security risk — OWASP-style, least privilege, fail-secure.",
+        "12b9a4254d829a228cfbc7f6d09c140b39ec950e1306523fffd3ef3253fe2d4b")]
+    [InlineData("spec-review", "Reviews specs and design docs for completeness, consistency, testability, and unambiguity.",
+        "384a13597ea452e0ffd308383b9c29abcefbf22842d8a8b605087e3b9034d6b2")]
+    public void THE_SHIPPED_REVIEWERS_LOAD_AS_RAW_CALLABLES(string name, string description, string bodySha)
+    {
+        var dir = Directory.CreateTempSubdirectory("gatto-reviewer-").FullName;
+        try
+        {
+            File.WriteAllText(Path.Combine(dir, $"{name}.json"), ShippedExtensions.Files[$"roles/{name}.json"]);
+            var role = Gatto.Roles.RoleFile.Load(dir, name);
+
+            Assert.True(role.Raw);
+            Assert.Equal(new[] { "read_file", "glob", "grep" }, role.Tools);
+            Assert.Equal(10, role.Turns);
+            Assert.Equal(description, role.Description);
+            Assert.Equal(bodySha, Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(role.Append!))).ToLowerInvariant());
         }
         finally { Directory.Delete(dir, recursive: true); }
     }

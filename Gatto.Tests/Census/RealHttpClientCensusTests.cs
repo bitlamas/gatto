@@ -33,7 +33,7 @@ public class RealHttpClientCensusTests
         ["Gatto.Tests/OpenAiCompatUsageTests.cs"] = new(5, "each client targets the `BaseUrl` of a fake server on a port the test bound"),
         ["Gatto.Tests/PermissionPrompterTests.cs"] = new(1, "the client targets the `BaseUrl` of a fake server on a port the test bound"),
         ["Gatto.Tests/RoundPersistenceTests.cs"] = new(4, "each client targets the `BaseUrl` of a fake server on a port the test bound"),
-        ["Gatto.Tests/RunAgentToolTests.cs"] = new(9, "each client targets the `BaseUrl` of a fake server on a port the test bound"),
+        ["Gatto.Tests/RunAgentToolTests.cs"] = new(13, "each client targets the `BaseUrl` of a fake server on a port the test bound"),
         ["Gatto.Tests/SessionBaselineTests.cs"] = new(1, "the client targets the `BaseUrl` of a fake server on a port the test bound"),
         ["Gatto.Tests/ServeManagerTests.cs"] = new(1, "health polls reach only fake server ports. port 1235 appears only in records, foreground starts and starts refused before the spawn, none of which polls"),
         ["Gatto.Tests/Setup/HeldServerRestoreTests.cs"] = new(1, "the held port is a fake server's port or 41888, where nothing of this project listens"),

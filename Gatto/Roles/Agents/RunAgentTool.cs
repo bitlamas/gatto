@@ -8,13 +8,17 @@ using Gatto.Core.Tools;
 
 namespace Gatto.Roles.Agents;
 
-//runs a named sub-agent in a fresh loop sharing only the parent's permission gate, its registry holds no run_agent so it can't nest
+//runs a named role in a fresh loop sharing only the parent's permission gate, its registry holds no run_agent so it can't nest
 public sealed class RunAgentTool : ITool
 {
-    private readonly Func<IReadOnlyList<AgentDefinition>> _definitions;
-    private readonly Func<AgentDefinition, (ToolRegistry Tools, HookBus Hooks)> _subagentWiring;
+    private readonly Func<IReadOnlyList<RoleFile>> _roles;
+    //null when the role may run here, else the sentence the model reads, since the checks need launch state this tool cannot see
+    private readonly Func<RoleFile, string?> _refuseRole;
+    //the child's prefix and the model string its requests carry, the caller's unless the role names a model
+    private readonly Func<RoleFile, (Composition Comp, string ModelString)> _composeChild;
+    private readonly Func<RoleFile, (ToolRegistry Tools, HookBus Hooks)> _subagentWiring;
     private readonly IChatClient _client;
-    private readonly Func<(string Model, JsonElement? Sampling, JsonElement? Body)> _requestSettings;
+    private readonly Func<(string Model, JsonElement? Sampling, JsonElement? Body, string? Suffix)> _requestSettings;
     private readonly IToolContext _parentCtx;
     private readonly Action<string>? _progress;
     //handed in, Roles can't reach the glyph table (one table, chosen once at launch)
@@ -23,10 +27,12 @@ public sealed class RunAgentTool : ITool
     private int? _contextBudget;
 
     public RunAgentTool(
-        Func<IReadOnlyList<AgentDefinition>> definitions,
-        Func<AgentDefinition, (ToolRegistry Tools, HookBus Hooks)> subagentWiring,
+        Func<IReadOnlyList<RoleFile>> roles,
+        Func<RoleFile, string?> refuseRole,
+        Func<RoleFile, (Composition Comp, string ModelString)> composeChild,
+        Func<RoleFile, (ToolRegistry Tools, HookBus Hooks)> subagentWiring,
         IChatClient client,
-        Func<(string Model, JsonElement? Sampling, JsonElement? Body)> requestSettings,
+        Func<(string Model, JsonElement? Sampling, JsonElement? Body, string? Suffix)> requestSettings,
         IToolContext parentCtx,
         Action<string>? progress = null,
         int? contextBudget = null,
@@ -34,7 +40,9 @@ public sealed class RunAgentTool : ITool
         EngineMarks? marks = null)
     {
         _reasoningHistory = reasoningHistory;
-        _definitions = definitions;
+        _roles = roles;
+        _refuseRole = refuseRole;
+        _composeChild = composeChild;
         _subagentWiring = subagentWiring;
         _client = client;
         _requestSettings = requestSettings;
@@ -42,12 +50,6 @@ public sealed class RunAgentTool : ITool
         _progress = progress;
         _marks = marks ?? EngineMarks.Unicode;
         _contextBudget = contextBudget;
-
-        //the description lists the agents as they were at construction, one "- name: description" line each
-        var sb = new StringBuilder("Run a named subagent on a task. Available agents:\n");
-        foreach (var d in definitions())
-            sb.Append("- ").Append(d.Name).Append(": ").Append(d.Description).Append('\n');
-        Description = sb.ToString().TrimEnd('\n');
     }
 
     //the seam /model uses to set a new context budget
@@ -61,44 +63,62 @@ public sealed class RunAgentTool : ITool
     internal int? ContextBudgetForTest => _contextBudget;
 
     public string Name => "run_agent";
-    public string Description { get; }
+    //read on every request, so a list that a /role reloads reaches the next one, and between two /role calls the text never moves
+    public string Description
+    {
+        get
+        {
+            var sb = new StringBuilder("Run a named role on a task. Available roles:");
+            foreach (var r in _roles())
+            {
+                sb.Append("\n- ").Append(r.Name);
+                if (!string.IsNullOrEmpty(r.Description)) sb.Append(": ").Append(r.Description);
+            }
+            return sb.ToString();
+        }
+    }
 
-    //true only when at least one agent exists, an empty agents folder offers no run_agent to the model
-    public bool IsAvailable => _definitions().Count > 0;
+    //true only when at least one role loads, an empty roles folder offers no run_agent to the model
+    public bool IsAvailable => _roles().Count > 0;
 
     public JsonElement ParametersSchema => ToolArgs.Schema("""
-        {"type":"object","properties":{"agent":{"type":"string"},"task":{"type":"string"}},"required":["agent","task"]}
+        {"type":"object","properties":{"role":{"type":"string"},"task":{"type":"string"}},"required":["role","task"]}
         """);
 
     public async Task<ToolResult> ExecuteAsync(JsonElement args, IToolContext ctx, CancellationToken ct)
     {
-        var agentName = ToolArgs.RequiredString(args, "agent");
+        var roleName = ToolArgs.RequiredString(args, "role");
         var task = ToolArgs.RequiredString(args, "task");
 
-        var defs = _definitions();
-        var def = defs.FirstOrDefault(d => d.Name == agentName);
-        if (def is null)
+        var roles = _roles();
+        var role = roles.FirstOrDefault(r => r.Name == roleName);
+        if (role is null)
             //throw here, the loop turns it into an error result with exactly this message
             throw new ArgumentException(
-                $"no agent named '{agentName}' — available: {string.Join(", ", defs.Select(d => d.Name))}");
+                $"no role named '{roleName}' — available: {string.Join(", ", roles.Select(r => r.Name))}");
+        if (_refuseRole(role) is { } why) throw new InvalidOperationException(why);
 
-        //the sub-agent starts from its own prompt and no parent history, sharing the parent's tool context
-        var (subTools, subHooks) = _subagentWiring(def);
-        var convo = new Conversation(def.SystemPrompt);
-        var (model, sampling, body) = _requestSettings();
+        //the child starts from its own composition and no parent history, sharing the parent's tool context
+        var (comp, model) = _composeChild(role);
+        var (subTools, subHooks) = _subagentWiring(role);
+        var convo = new Conversation(comp.SystemText);
+        var (callerModel, sampling, body, suffix) = _requestSettings();
+        //a role that asks for a level, or runs another model, gets the composition's settings, else the caller's, which follow /effort, the toggle and a resume
+        if (role.ThinkingRequested is not null || !string.Equals(model, callerModel, StringComparison.OrdinalIgnoreCase))
+            (sampling, body, suffix) = (comp.Sampling, comp.ThinkingBody, comp.ThinkingSuffix);
 
         //the client's StreamAsync runs once per round, so this counts turns exactly and is where the progress line fires
         var rounds = 0;
         var countingClient = new RoundCountingClient(_client, () =>
         {
             rounds++;
-            _progress?.Invoke($"{def.Name} {_marks.Dot} turn {rounds}");
+            _progress?.Invoke($"{role.Name} {_marks.Dot} turn {rounds}");
         });
 
         //the parent's context budget flows down, so a file-heavy sub-agent gets the same tool-result elision as the main loop
         var subLoop = new AgentLoop(
             countingClient, subTools, subHooks, _parentCtx, model,
-            samplingOverrides: sampling, bodyOverrides: body, budgetTokens: _contextBudget, maxRounds: def.MaxTurns,
+            samplingOverrides: sampling, bodyOverrides: body, budgetTokens: _contextBudget, maxRounds: role.Turns, promptSuffix: suffix,
             reasoningHistory: _reasoningHistory);
 
         var observer = new FinalTextObserver();
@@ -110,12 +130,12 @@ public sealed class RunAgentTool : ITool
         var (text, stripped) = ControlTokens.Strip(observer.FinalText);
         if (result.Outcome == TurnOutcome.Truncated)
             //a spent turn budget returns the partial work, and the round count tells the cap apart from a dropped stream
-            text = rounds >= def.MaxTurns
-                ? $"[run_agent: turn limit ({def.MaxTurns}) reached — partial result]\n" + text
+            text = rounds >= role.Turns
+                ? $"[run_agent: turn limit ({role.Turns}) reached — partial result]\n" + text
                 : "[run_agent: response truncated — partial result]\n" + text;
 
         //one round is the common case, a question needing no tool call finishes that way
-        var gloss = GlossOf(def.Name, rounds, sw.Elapsed, _marks);
+        var gloss = GlossOf(role.Name, rounds, sw.Elapsed, _marks);
         //the warning row never shows for a sub-agent, so the gloss line is the only place a strip count can appear
         if (stripped > 0) gloss += $" {_marks.Dot} stripped {stripped}";
         return new ToolResult(text, Gloss: gloss);

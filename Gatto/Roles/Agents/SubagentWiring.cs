@@ -19,23 +19,23 @@ public static class SubagentWiring
     };
 
     //builds the wiring closure RunAgentTool takes, the catalog defaults to the six built-ins and a test can pass its own
-    public static Func<AgentDefinition, (ToolRegistry Tools, HookBus Hooks)> Build(
+    public static Func<RoleFile, (ToolRegistry Tools, HookBus Hooks)> Build(
         PermissionGate gate, IReadOnlyDictionary<string, Func<ITool>>? catalog = null,
         Action<string>? diag = null)
     {
         var builtins = catalog ?? Builtins();
         //route hook errors through the diag sink, a raw stderr write mid-turn corrupts the alt-screen frame
         var warn = diag ?? (m => Console.Error.WriteLine($"! {m}"));
-        return def =>
+        return role =>
         {
             var subTools = new ToolRegistry();
-            foreach (var name in def.Tools)
+            foreach (var name in role.Tools ?? builtins.Keys)
                 if (builtins.TryGetValue(name, out var make)) subTools.Register(make());
             var subHooks = new HookBus();
             subHooks.OnHandlerError += (evt, ex) => warn($"hook error ({evt}): {ex.Message}");
             subHooks.On(HookEvent.ToolCall, async payload =>
             {
-                gate.AgentLabel = def.Name;
+                gate.AgentLabel = role.Name;
                 try { await gate.CheckAsync(payload); }
                 finally { gate.AgentLabel = null; }
             });

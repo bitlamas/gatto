@@ -125,6 +125,159 @@ public class RoleFileTests : IDisposable
     }
 
     [Fact]
+    public void THE_CALLABLE_KEYS_ROUND_TRIP()
+    {
+        Write("callee", """{ "description": "d", "tools": ["read_file", "grep"], "turns": 3, "context_files": false }""");
+
+        var role = RoleFile.Load(_rolesDir, "callee");
+
+        Assert.Equal("d", role.Description);
+        Assert.Equal(new[] { "read_file", "grep" }, role.Tools);
+        Assert.Equal(3, role.Turns);
+        Assert.False(role.ContextFiles);
+    }
+
+    [Fact]
+    public void A_BARE_ROLE_HAS_THE_CALLABLE_DEFAULTS()
+    {
+        Write("bare", "{}");
+
+        var role = RoleFile.Load(_rolesDir, "bare");
+
+        Assert.Null(role.Description);
+        Assert.Null(role.Tools);
+        Assert.Equal(10, role.Turns);
+        Assert.True(role.ContextFiles);
+    }
+
+    [Fact]
+    public void AN_EMPTY_TOOLS_ARRAY_LOADS_AS_NONE()
+    {
+        Write("mute", """{ "tools": [] }""");
+
+        var role = RoleFile.Load(_rolesDir, "mute");
+
+        Assert.NotNull(role.Tools);
+        Assert.Empty(role.Tools!);
+    }
+
+    [Fact]
+    public void A_TOOLS_VALUE_THAT_IS_NOT_AN_ARRAY_IS_REFUSED()
+    {
+        Write("bad", """{ "tools": "grep" }""");
+
+        var ex = Assert.Throws<GattoConfigException>(() => RoleFile.Load(_rolesDir, "bad"));
+
+        Assert.Contains("'bad'", ex.Message);
+        Assert.Contains("\"tools\" of \"grep\"", ex.Message);
+    }
+
+    [Fact]
+    public void A_NULL_DESCRIPTION_LOADS_AS_UNSET()
+    {
+        Write("quiet", """{ "description": null }""");
+
+        Assert.Null(RoleFile.Load(_rolesDir, "quiet").Description);
+    }
+
+    [Fact]
+    public void A_SEVENTH_TOOL_NAME_IS_REFUSED()
+    {
+        Write("bad", """{ "tools": ["read_file", "frobnicate"] }""");
+
+        var ex = Assert.Throws<GattoConfigException>(() => RoleFile.Load(_rolesDir, "bad"));
+
+        Assert.Contains("'bad'", ex.Message);
+        Assert.Contains("\"tools\"", ex.Message);
+        Assert.Contains("frobnicate", ex.Message);
+        foreach (var allowed in new[] { "read_file", "write_file", "edit_file", "glob", "grep", "shell" })
+            Assert.Contains(allowed, ex.Message);
+    }
+
+    [Fact]
+    public void RUN_AGENT_IN_TOOLS_IS_REFUSED()
+    {
+        Write("bad", """{ "tools": ["run_agent"] }""");
+
+        var ex = Assert.Throws<GattoConfigException>(() => RoleFile.Load(_rolesDir, "bad"));
+
+        Assert.Contains("'bad'", ex.Message);
+        Assert.Contains("\"tools\"", ex.Message);
+        Assert.Contains("run_agent", ex.Message);
+    }
+
+    [Fact]
+    public void A_DUPLICATE_TOOL_IS_REFUSED()
+    {
+        Write("bad", """{ "tools": ["grep", "grep"] }""");
+
+        var ex = Assert.Throws<GattoConfigException>(() => RoleFile.Load(_rolesDir, "bad"));
+
+        Assert.Contains("'bad'", ex.Message);
+        Assert.Contains("\"tools\"", ex.Message);
+        Assert.Contains("twice", ex.Message);
+        Assert.Contains("grep", ex.Message);
+    }
+
+    [Fact]
+    public void TURNS_ZERO_IS_REFUSED()
+    {
+        Write("bad", """{ "turns": 0 }""");
+
+        var ex = Assert.Throws<GattoConfigException>(() => RoleFile.Load(_rolesDir, "bad"));
+
+        Assert.Contains("'bad'", ex.Message);
+        Assert.Contains("\"turns\" of 0", ex.Message);
+    }
+
+    [Theory]
+    [InlineData("\"ten\"")]
+    [InlineData("1.5")]
+    public void TURNS_NOT_AN_INTEGER_IS_REFUSED(string value)
+    {
+        Write("bad", $$"""{ "turns": {{value}} }""");
+
+        var ex = Assert.Throws<GattoConfigException>(() => RoleFile.Load(_rolesDir, "bad"));
+
+        Assert.Contains("'bad'", ex.Message);
+        Assert.Contains($"\"turns\" of {value}", ex.Message);
+    }
+
+    [Fact]
+    public void A_WRONG_TYPED_DESCRIPTION_IS_REFUSED()
+    {
+        Write("bad", """{ "description": 3 }""");
+
+        var ex = Assert.Throws<GattoConfigException>(() => RoleFile.Load(_rolesDir, "bad"));
+
+        Assert.Contains("'bad'", ex.Message);
+        Assert.Contains("\"description\" of 3", ex.Message);
+    }
+
+    [Fact]
+    public void A_WRONG_TYPED_CONTEXT_FILES_IS_REFUSED()
+    {
+        Write("bad", """{ "context_files": "no" }""");
+
+        var ex = Assert.Throws<GattoConfigException>(() => RoleFile.Load(_rolesDir, "bad"));
+
+        Assert.Contains("'bad'", ex.Message);
+        Assert.Contains("\"context_files\" of \"no\"", ex.Message);
+    }
+
+    [Fact]
+    public void A_MULTILINE_DESCRIPTION_IS_REFUSED()
+    {
+        //the tool lists each description on one line
+        Write("bad", """{ "description": "one\ntwo" }""");
+
+        var ex = Assert.Throws<GattoConfigException>(() => RoleFile.Load(_rolesDir, "bad"));
+
+        Assert.Contains("'bad'", ex.Message);
+        Assert.Contains("\"description\" of \"one\\ntwo\"", ex.Message);
+    }
+
+    [Fact]
     public void Load_accepts_empty_gates_array()
     {
         Write("bare", """{ "gates": [] }""");

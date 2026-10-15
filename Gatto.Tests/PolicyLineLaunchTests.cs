@@ -29,17 +29,9 @@ public class PolicyLineLaunchTests : IDisposable
         File.WriteAllText(Path.Combine(modelDir, "profile.json"),
             "{\"files\":[{\"path\":\"m.gguf\",\"active\":true}],\"port\":1235,\"context\":8192}");
 
-        //this agent file makes the sub-agent seam reachable from a real launch.
-        var agentsDir = Path.Combine(_home, "agents");
-        Directory.CreateDirectory(agentsDir);
-        File.WriteAllText(Path.Combine(agentsDir, "helper.md"), """
-            ---
-            description: helps with things
-            tools: read_file
-            max_turns: 3
-            ---
-            You are helper.
-            """);
+        //this role file makes the run_agent seam reachable from a real launch.
+        File.WriteAllText(Path.Combine(rolesDir, "helper.json"),
+            "{\"description\":\"helps with things\",\"tools\":[\"shell\"],\"turns\":3,\"append\":\"You are helper.\"}");
     }
 
     public void Dispose()
@@ -165,7 +157,7 @@ public class PolicyLineLaunchTests : IDisposable
 
     private static string[] RunAgentToolCallRound() => new[]
     {
-        Chunk("{\"tool_calls\":[{\"index\":0,\"id\":\"t1\",\"function\":{\"name\":\"run_agent\",\"arguments\":\"{\\\"agent\\\":\\\"helper\\\",\\\"task\\\":\\\"go\\\"}\"}}]}"),
+        Chunk("{\"tool_calls\":[{\"index\":0,\"id\":\"t1\",\"function\":{\"name\":\"run_agent\",\"arguments\":\"{\\\"role\\\":\\\"helper\\\",\\\"task\\\":\\\"go\\\"}\"}}]}"),
         Chunk("{}", "tool_calls"), "data: [DONE]\n\n",
     };
 
@@ -307,7 +299,7 @@ public class PolicyLineLaunchTests : IDisposable
     [Fact]
     public void A_policy_line_changes_the_system_text_and_nothing_else_the_launch_already_read()
     {
-        var role = new RoleFile("r", "p", null, new[] { "grounding" }, false, null, ThinkingLevel.Medium);
+        var role = new RoleFile("r", "p", null, new[] { "grounding" }, false, null, ThinkingLevel.Medium, null, null, 10, true);
 
         var without = RoleComposition.Compose(role, null, Array.Empty<(string, string)>(), null, cwd: @"C:\p");
         var with = RoleComposition.Compose(role, null, Array.Empty<(string, string)>(), null, cwd: @"C:\p",

@@ -362,7 +362,12 @@ public static class GattoApp
                     : $"unknown role '{roleArg}'. No role files found in {rolesDir}");
             //the role name takes the on-disk casing here, since the checks below are ordinal and gatto ORACLE must report oracle
             roleArg = available.First(n => string.Equals(n, roleArg, StringComparison.OrdinalIgnoreCase));
-            var role = RoleFile.Load(rolesDir, roleArg);
+            return ResolveLoaded(RoleFile.Load(rolesDir, roleArg));
+        }
+
+        //the resolution of a role already in hand, so run_agent can check a merged role that was never a file
+        RoleResolution ResolveLoaded(RoleFile role)
+        {
             //the --effort flag wins over the role's own thinking, like -e wins over its endpoint
             if (args.Effort is { } flagEffort) role = role with { ThinkingRequested = flagEffort };
 
@@ -450,11 +455,47 @@ public static class GattoApp
             return new RoleResolution(role, model, endpoint, endpointName, modelString, comp, memory.TruncatedLines);
         }
 
+        //the role files run_agent may call, one warning per file that fails to load, since a broken file is never a dead launch
+        IReadOnlyList<RoleFile> LoadRoleFiles(string? warned = null)
+        {
+            var loaded = new List<RoleFile>();
+            foreach (var name in RoleFile.ListNames(rolesDir))
+            {
+                try { loaded.Add(RoleFile.Load(rolesDir, name)); }
+                catch (GattoConfigException ex)
+                {
+                    if (!string.Equals(name, warned, StringComparison.OrdinalIgnoreCase)) warn.Warn(ex.Message);
+                }
+            }
+            return loaded;
+        }
+
         //the bare launch runs the home's default_role, generalist when the key is absent
         var launchRole = args.Role ?? config.DefaultRole ?? "generalist";
+        //a launched role whose file exists and fails to load runs default_role, else generalist, while an unknown name still exits 2
+        string? brokenName = null, brokenMessage = null;
+        if (RoleFile.ListNames(rolesDir).FirstOrDefault(n => string.Equals(n, launchRole, StringComparison.OrdinalIgnoreCase)) is { } onDisk)
+        {
+            try { RoleFile.Load(rolesDir, onDisk); }
+            catch (GattoConfigException ex)
+            {
+                var fallback = config.DefaultRole is { } dr && !string.Equals(dr, onDisk, StringComparison.OrdinalIgnoreCase) ? dr : "generalist";
+                if (string.Equals(fallback, onDisk, StringComparison.OrdinalIgnoreCase)) { Console.Error.WriteLine(ex.Message); return 2; }
+                (brokenName, brokenMessage, launchRole) = (onDisk, ex.Message, fallback);
+            }
+        }
         RoleResolution launchRes;
         try { launchRes = ResolveRole(launchRole); }
-        catch (GattoConfigException ex) { Console.Error.WriteLine(ex.Message); return 2; }
+        catch (GattoConfigException ex)
+        {
+            //a fallback that fails too leaves nothing to run, so both messages go out
+            if (brokenMessage is not null) Console.Error.WriteLine(brokenMessage);
+            Console.Error.WriteLine(ex.Message);
+            return 2;
+        }
+        if (brokenMessage is not null) warn.Warn(brokenMessage + $", running {launchRole} instead");
+        //read here and at each /role, so a file added mid-session reaches run_agent at the next /role
+        var roleFiles = LoadRoleFiles(brokenName);
         //a session continues on the endpoint it was recorded on, checked before anything starts. a record with no endpoint is from before the field and gets no check
         if (args.Continue && (continueById ?? sessions.LatestPathForCwd()) is { } recordedPath
             && SessionStore.LoadBaseline(recordedPath)?.Endpoint is { } recordedEndpoint
@@ -789,19 +830,50 @@ public static class GattoApp
         { Armed = comp.Gates.Contains("citations") };
         hooks.OnToolResult(citationGate.OnToolResultAsync);   //always registered, so a /role can still arm it
 
-        //run_agent: a definition may only name the six core built-ins, so a sub-agent's registry can never hold run_agent, ask_user or an extension tool
-        var agentDefs = AgentDefinitions.LoadAll(
-            Path.Combine(home, "agents"),
-            Path.Combine(cwd, ".gatto", "agents"),
-            SubagentWiring.Builtins().Keys.ToHashSet(StringComparer.Ordinal),
-            m => warn.Warn($"agent: {m}"));
         //a one-slot holder the Repl fills once its renderer exists, and on -p it stays empty so stdout stays byte-pure
         var subagentProgress = new Action<string>?[1];
-        var runAgent = new RunAgentTool(
-            definitions: () => agentDefs,
-            subagentWiring: SubagentWiring.Build(gate, diag: warn.Warn),   //a fresh registry per agent over the shared gate, which tags each of its prompts with the agent's name
+        var runAgent = new RunAgentTool(   //a role may only name the six core built-ins, so a child's registry can never hold run_agent, ask_user or an extension tool
+            roles: () => roleFiles,
+            //the checks /role makes, on the called role merged with the one this session runs, so the child never falls back
+            refuseRole: called =>
+            {
+                var merged = RoleMerge.ForChild(called, role);
+                //another endpoint is refused by name before its model resolves, since the merge hands it the caller's model and that refusal would name the wrong thing
+                var wanted = launchEndpoint ?? merged.Endpoint ?? config.DefaultEndpoint;
+                if (endpoints.TryGetValue(wanted, out var wantedEp) && wantedEp.BaseUrl is not null   //a local endpoint with no base_url takes the model's port, which only the full resolution knows
+                    && !string.Equals(wantedEp.BaseUrl, launchBaseUrl, StringComparison.OrdinalIgnoreCase))
+                    return $"role '{called.Name}' wants endpoint '{wanted}', this session is on '{endpointName}'";
+                RoleResolution res;
+                try { res = ResolveLoaded(merged); }
+                catch (GattoConfigException ex) { return ex.Message; }
+                //the model first, since on local with no base_url each model has its own port and another model also differs in URL
+                if (endpointName == "local" && !string.Equals(res.Model?.Id, model?.Id, StringComparison.OrdinalIgnoreCase))
+                    return $"role '{called.Name}' wants model '{res.ModelString}', this session serves '{modelString}'";
+                if (!string.Equals(res.Endpoint.BaseUrl, launchBaseUrl, StringComparison.OrdinalIgnoreCase))
+                    return $"role '{called.Name}' wants endpoint '{res.EndpointName}', this session is on '{endpointName}'";
+                return null;
+            },
+            //a child is a fresh conversation, so the context files read at its call move no prefix the caller holds. no extension tool reaches it, so no policy line does
+            composeChild: called =>
+            {
+                var merged = RoleMerge.ForChild(called, role);
+                if (args.Effort is { } flagEffort) merged = merged with { ThinkingRequested = flagEffort };
+                var files = merged.ContextFiles
+                    ? ContextFiles.Collect(cwd, config.ContextCompat, config.ContextHome ? Path.Combine(home, "GATTO.md") : null)
+                    : Array.Empty<(string Path, string Content)>();
+                if (called.Model is null)
+                    return (RoleComposition.Compose(merged, model, files, endpoint.Thinking, cwd: cwd, date: DateTime.Now,
+                        memoryIndex: null, memoryNudge: false, policyLines: null,
+                        savedEffort: endpointName == "local" ? null : SavedCloudEffort(config, endpointName, modelString)), modelString);
+                //refuseRole resolved the same merged role before this runs, so a throw here is a file changed in between and the loop reports it
+                var res = ResolveLoaded(called.ThinkingRequested is null ? merged with { ThinkingRequested = comp.Thinking } : merged);   //another model with no level of its own takes the session's, and --effort still wins inside
+                return (RoleComposition.Compose(res.Role, res.Model, files, res.Endpoint.Thinking, cwd: cwd, date: DateTime.Now,
+                    memoryIndex: null, memoryNudge: false, policyLines: null,
+                    savedEffort: res.EndpointName == "local" ? null : SavedCloudEffort(config, res.EndpointName, res.ModelString)), res.ModelString);
+            },
+            subagentWiring: SubagentWiring.Build(gate, diag: warn.Warn),   //a fresh registry per call over the shared gate, which tags each of its prompts with the role's name
             client: client,
-            requestSettings: () => (modelString, comp.Sampling, comp.ThinkingBody),
+            requestSettings: () => (modelString, comp.Sampling, comp.ThinkingBody, comp.ThinkingSuffix),
             parentCtx: toolCtx,
             progress: m => subagentProgress[0]?.Invoke(m),
             contextBudget: contextBudget,
@@ -908,6 +980,7 @@ public static class GattoApp
 
             role = res.Role; model = res.Model; endpoint = res.Endpoint;
             endpointName = res.EndpointName; modelString = res.ModelString; comp = res.Comp;
+            roleFiles = LoadRoleFiles();   //only on a switch that commits, since run_agent's description rides every request and a refused switch must move no prefix
             lastComposedSystem = comp.SystemText;   //updated here, the degrade target must follow the newly armed role
             lastComposedSources = comp.Sources;
             //the newly armed model may have a tighter memory.index_budget, so warn here rather than stay silent

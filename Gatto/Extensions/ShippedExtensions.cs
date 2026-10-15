@@ -3,7 +3,7 @@ using System.Text;
 
 namespace Gatto.Extensions;
 
-//the extensions, agent files and role files gatto ships, written once each so a user edit survives and a deleted file stays deleted
+//the extensions and role files gatto ships, written once each so a user edit survives and a deleted file stays deleted
 public static class ShippedExtensions
 {
     //the files under Gatto\Shipped, and the rule each one keeps
@@ -12,7 +12,7 @@ public static class ShippedExtensions
 
     //the shipped web_search.csx registers its two tools with no readClass, so they still prompt, a DDG bot-check page throws rather than reading as no results
 
-    //each agents/*.md body is a whole reviewer prompt with nothing factored out, so editing one never changes another
+    //each reviewer role's append is a whole reviewer prompt with nothing factored out, so editing one never changes another
 
     //the roles/*.json append values hold escaped newlines and backslashes that load back as newlines and paths, so leave the escapes alone
 

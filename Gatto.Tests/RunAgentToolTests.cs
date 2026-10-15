@@ -3,6 +3,7 @@ using Gatto.Core.Client;
 using Gatto.Core.Loop;
 using Gatto.Core.Loop.Permissions;
 using Gatto.Core.Tools;
+using Gatto.Roles;
 using Gatto.Roles.Agents;
 using Gatto.Tests.Fakes;
 
@@ -35,22 +36,28 @@ public sealed class RunAgentToolTests : IDisposable
     private readonly string _dir = Directory.CreateTempSubdirectory("gatto-runagent-").FullName;
     public void Dispose() => Directory.Delete(_dir, recursive: true);
 
-    private static AgentDefinition Def(
-        string name = "helper", string desc = "helps with things",
-        IReadOnlyList<string>? tools = null, int maxTurns = 5, string prompt = "You are helper.")
-        => new(name, desc, tools ?? new[] { "read_file" }, maxTurns, prompt);
+    private static RoleFile Role(
+        string name = "helper", string? description = "helps with things",
+        IReadOnlyList<string>? tools = null, int turns = 5, string append = "You are helper.",
+        bool raw = false, ThinkingLevel? thinking = null, bool contextFiles = true)
+        => new(name, null, null, Array.Empty<string>(), raw, append, thinking, description,
+            tools ?? new[] { "read_file" }, turns, contextFiles);
+
+    //the child's prefix as GattoApp composes it, minus the launch state: no model, no context files, no memory
+    private static Composition Compose(RoleFile role) =>
+        RoleComposition.Compose(role, null, Array.Empty<(string, string)>(), null, cwd: null);
 
     //use the real SubagentWiring.Build here, a hand-built copy could pass while the production wiring differs
-    private static Func<AgentDefinition, (ToolRegistry, HookBus)> Wiring(
+    private static Func<RoleFile, (ToolRegistry, HookBus)> Wiring(
         PermissionGate gate,
         IReadOnlyDictionary<string, Func<ITool>>? catalog = null,
         Action<ToolRegistry>? capture = null)
     {
         var build = SubagentWiring.Build(gate, catalog);
         if (capture is null) return build;
-        return def =>
+        return role =>
         {
-            var built = build(def);
+            var built = build(role);
             capture(built.Item1);
             return built;
         };
@@ -64,20 +71,31 @@ public sealed class RunAgentToolTests : IDisposable
 
     private RunAgentTool Build(
         IChatClient client, PermissionGate gate,
-        IReadOnlyList<AgentDefinition>? defs = null,
+        IReadOnlyList<RoleFile>? roles = null,
         IReadOnlyDictionary<string, Func<ITool>>? catalog = null, Action<ToolRegistry>? capture = null,
-        int? contextBudget = null)
+        int? contextBudget = null,
+        Func<RoleFile, string?>? refuseRole = null,
+        Func<RoleFile, Composition>? composeChild = null,
+        Func<(string, JsonElement?, JsonElement?, string?)>? requestSettings = null)
         => new(
-            definitions: () => defs ?? new[] { Def() },
+            roles: () => roles ?? new[] { Role() },
+            refuseRole: refuseRole ?? (_ => null),
+            composeChild: r => ((composeChild ?? Compose)(r), r.Model ?? "m"),
             subagentWiring: Wiring(gate, catalog, capture),
             client: client,
-            requestSettings: () => ("m", (JsonElement?)null, (JsonElement?)null),
+            requestSettings: requestSettings ?? (() => ("m", (JsonElement?)null, (JsonElement?)null, (string?)null)),
             parentCtx: new TestToolContext(_dir),
             progress: null,
             contextBudget: contextBudget);
 
-    private static JsonElement Args(string agent, string task) =>
-        JsonSerializer.SerializeToElement(new { agent, task });
+    private static JsonElement Args(string role, string task) =>
+        JsonSerializer.SerializeToElement(new { role, task });
+
+    private static JsonElement Json(string s)
+    {
+        using var doc = JsonDocument.Parse(s);
+        return doc.RootElement.Clone();
+    }
 
     //builds one SSE frame in the shape the real client parses.
     private static string Chunk(string deltaJson, string? finish = null) =>
@@ -93,6 +111,10 @@ public sealed class RunAgentToolTests : IDisposable
     {
         Chunk($"{{\"content\":\"{text}\"}}"), Chunk("{}", "stop"), "data: [DONE]\n\n",
     };
+
+    private static string SystemText(JsonElement body) =>
+        Assert.Single(body.GetProperty("messages").EnumerateArray(), m => m.GetProperty("role").GetString() == "system")
+            .GetProperty("content").GetString()!;
 
     [Fact]
     public async Task Happy_TwoRounds_ResultIsFinalTextVerbatim_WithGloss()
@@ -130,19 +152,20 @@ public sealed class RunAgentToolTests : IDisposable
     }
 
     [Fact]
-    public async Task MaxTurnsOne_ModelKeepsCallingTools_ReturnsTruncationNotice_NotError()
+    public async Task TURNS_IS_THE_CHILDS_ROUND_CAP()
     {
         await using var server = new FakeOpenAiServer();
         server.Enqueue(new FakeResponse(Frames: ToolCallRound("read_file")));
         //only one round is enqueued, so the cap must stop the loop before a second request goes out
         var client = new OpenAiCompatClient(new HttpClient(), "local", new EndpointConfig(server.BaseUrl));
         var tool = Build(client, FreshGate(new RecordingPermPrompter()),
-            defs: new[] { Def(maxTurns: 1) });
+            roles: new[] { Role(turns: 1) });
 
         var result = await tool.ExecuteAsync(Args("helper", "loop forever"), new TestToolContext(_dir), default);
 
         Assert.False(result.IsError);   //the turn cap returns a partial result rather than an error
         Assert.StartsWith("[run_agent: turn limit (1) reached — partial result]\n", result.Text);
+        Assert.Equal(1, server.RequestCount);
     }
 
     [Fact]
@@ -152,7 +175,7 @@ public sealed class RunAgentToolTests : IDisposable
         //a stream with no finish reason reports as truncated, and that holds even with four rounds of budget left
         server.Enqueue(new FakeResponse(Frames: new[] { Chunk("{\"content\":\"partial\"}") }));
         var client = new OpenAiCompatClient(new HttpClient(), "local", new EndpointConfig(server.BaseUrl));
-        var tool = Build(client, FreshGate(new RecordingPermPrompter()), defs: new[] { Def(maxTurns: 5) });
+        var tool = Build(client, FreshGate(new RecordingPermPrompter()), roles: new[] { Role(turns: 5) });
 
         var result = await tool.ExecuteAsync(Args("helper", "go"), new TestToolContext(_dir), default);
 
@@ -162,16 +185,16 @@ public sealed class RunAgentToolTests : IDisposable
     }
 
     [Fact]
-    public async Task UnknownAgent_BecomesIsErrorWithExactMessage()
+    public async Task AN_UNKNOWN_ROLE_NAMES_THE_LIST()
     {
         //the real loop turns the throw into an error result holding the message.
         var mainClient = new FakeChatClient();
         var reg = new ToolRegistry();
-        reg.Register(Build(mainClient, FreshGate(new RecordingPermPrompter()), defs: new[] { Def() }));
+        reg.Register(Build(mainClient, FreshGate(new RecordingPermPrompter()),
+            roles: new[] { Role(name: "alpha"), Role(name: "beta") }));
         var loop = new AgentLoop(mainClient, reg, new HookBus(), new TestToolContext(_dir), "m");
         mainClient.EnqueueTurn(
-            new StreamEvent.ToolCallReady(new ToolCall("c1", "run_agent",
-                "{\"agent\":\"ghost\",\"task\":\"x\"}")),
+            new StreamEvent.ToolCallReady(new ToolCall("c1", "run_agent", "{\"role\":\"x\",\"task\":\"t\"}")),
             new StreamEvent.Finished("tool_calls", null));
         mainClient.EnqueueTurn(new StreamEvent.Finished("stop", null));
         var obs = new RecordingObserver();
@@ -180,33 +203,72 @@ public sealed class RunAgentToolTests : IDisposable
 
         var (_, result) = obs.Results.Single();
         Assert.True(result.IsError);
-        Assert.Equal("no agent named 'ghost' — available: helper", result.Text);
+        Assert.Equal("no role named 'x' — available: alpha, beta", result.Text);
     }
 
     [Fact]
-    public async Task SubagentRegistry_LacksRunAgentAndAskUser()
+    public async Task A_REFUSED_ROLE_THROWS_THE_CLOSURES_SENTENCE()
+    {
+        await using var child = new FakeOpenAiServer();
+        var childClient = new OpenAiCompatClient(new HttpClient(), "local", new EndpointConfig(child.BaseUrl));
+        const string why = "role 'helper' wants model 'other', this session serves 'm'";
+        var mainClient = new FakeChatClient();
+        var reg = new ToolRegistry();
+        reg.Register(Build(childClient, FreshGate(new RecordingPermPrompter()), refuseRole: _ => why));
+        var loop = new AgentLoop(mainClient, reg, new HookBus(), new TestToolContext(_dir), "m");
+        mainClient.EnqueueTurn(
+            new StreamEvent.ToolCallReady(new ToolCall("c1", "run_agent", "{\"role\":\"helper\",\"task\":\"t\"}")),
+            new StreamEvent.Finished("tool_calls", null));
+        mainClient.EnqueueTurn(new StreamEvent.Finished("stop", null));
+        var obs = new RecordingObserver();
+
+        await loop.RunTurnAsync(new Conversation(null), "go", obs, default);
+
+        var (_, result) = obs.Results.Single();
+        Assert.True(result.IsError);
+        Assert.Equal(why, result.Text);
+        Assert.Equal(0, child.RequestCount);
+    }
+
+    [Fact]
+    public async Task THE_CHILD_REGISTRY_LACKS_RUN_AGENT_AND_ASK_USER()
     {
         await using var server = new FakeOpenAiServer();
         server.Enqueue(new FakeResponse(Frames: TextRound("done")));
         var client = new OpenAiCompatClient(new HttpClient(), "local", new EndpointConfig(server.BaseUrl));
         ToolRegistry? captured = null;
-        //the definition must request the forbidden names by name. otherwise the null assertions pass even when the filter does nothing.
+        //the role must request the forbidden names by name. otherwise the null assertions pass even when the filter does nothing.
         var tool = Build(client, FreshGate(new RecordingPermPrompter()),
-            defs: new[] { Def(tools: new[] { "read_file", "run_agent", "ask_user", "some_extension_tool" }) },
+            roles: new[] { Role(tools: new[] { "read_file", "run_agent", "ask_user", "some_extension_tool" }) },
             capture: r => captured = r);
 
         await tool.ExecuteAsync(Args("helper", "go"), new TestToolContext(_dir), default);
 
         Assert.NotNull(captured);
-        Assert.Null(captured!.Get("run_agent"));          //a subagent must not receive run_agent
-        Assert.Null(captured.Get("ask_user"));            //a subagent must not receive ask_user
-        //the wiring has its own allowlist, an extension tool named in the definition must still not reach a subagent
+        Assert.Null(captured!.Get("run_agent"));          //a child must not receive run_agent
+        Assert.Null(captured.Get("ask_user"));            //a child must not receive ask_user
+        //the wiring has its own allowlist, an extension tool named in the role must still not reach a child
         Assert.Null(captured.Get("some_extension_tool"));
         Assert.NotNull(captured.Get("read_file"));        //read_file must come through here, or the null asserts would pass on a filter that drops everything
     }
 
     [Fact]
-    public async Task MutatingSubagentCall_ReachesSharedGate_WithAgentLabel()
+    public void TOOLS_UNSET_ARMS_THE_SIX_AND_AN_EMPTY_LIST_ARMS_NONE()
+    {
+        var build = SubagentWiring.Build(FreshGate(null));
+
+        var (unset, _) = build(Role() with { Tools = null });
+        var (none, _) = build(Role(tools: Array.Empty<string>()));
+        var (one, _) = build(Role(tools: new[] { "grep" }));
+
+        Assert.Equal(new[] { "edit_file", "glob", "grep", "read_file", "shell", "write_file" },
+            unset.Specs().Select(s => s.Name).OrderBy(n => n, StringComparer.Ordinal));
+        Assert.Empty(none.Specs());
+        Assert.Equal(new[] { "grep" }, one.Specs().Select(s => s.Name));
+    }
+
+    [Fact]
+    public async Task A_MUTATING_CALL_REACHES_THE_SHARED_GATE_WITH_THE_ROLE_LABEL()
     {
         await using var server = new FakeOpenAiServer();
         server.Enqueue(new FakeResponse(Frames: ToolCallRound("mutate")));
@@ -215,12 +277,12 @@ public sealed class RunAgentToolTests : IDisposable
         var prompter = new RecordingPermPrompter(PermissionAnswer.Once);
         var gate = FreshGate(prompter);
         var catalog = new Dictionary<string, Func<ITool>>(StringComparer.Ordinal) { ["mutate"] = () => new MutatingTool() };
-        var tool = Build(client, gate, defs: new[] { Def(tools: new[] { "mutate" }) }, catalog: catalog);
+        var tool = Build(client, gate, roles: new[] { Role(tools: new[] { "mutate" }) }, catalog: catalog);
 
         await tool.ExecuteAsync(Args("helper", "go"), new TestToolContext(_dir), default);
 
         var req = Assert.Single(prompter.Requests);
-        Assert.Equal("helper", req.Agent);        //the gate must stamp the subagent's name onto the request.
+        Assert.Equal("helper", req.Agent);        //the gate must stamp the role's name onto the request.
         Assert.Equal("mutate", req.Tool);
     }
 
@@ -235,42 +297,116 @@ public sealed class RunAgentToolTests : IDisposable
     }
 
     [Fact]
-    public void IsAvailable_False_WithZeroDefinitions()
+    public void IS_AVAILABLE_FOLLOWS_THE_ROLES_FOLDER()
     {
-        var tool = Build(new FakeChatClient(), FreshGate(null), defs: Array.Empty<AgentDefinition>());
-        Assert.False(tool.IsAvailable);
+        Assert.False(Build(new FakeChatClient(), FreshGate(null), roles: Array.Empty<RoleFile>()).IsAvailable);
+        Assert.True(Build(new FakeChatClient(), FreshGate(null), roles: new[] { Role() }).IsAvailable);
     }
 
     [Fact]
-    public void IsAvailable_True_WithDefinitions_AndDescriptionListsThem()
+    public void THE_DESCRIPTION_LISTS_ROLES_WITH_AND_WITHOUT_A_DESCRIPTION()
     {
-        var tool = Build(new FakeChatClient(), FreshGate(null),
-            defs: new[] { Def(name: "alpha", desc: "the first"), Def(name: "beta", desc: "the second") });
-        Assert.True(tool.IsAvailable);
-        Assert.Contains("Run a named subagent on a task. Available agents:", tool.Description);
-        Assert.Contains("- alpha: the first", tool.Description);
-        Assert.Contains("- beta: the second", tool.Description);
+        //passed out of order, the tool keeps the order it is handed
+        var tool = Build(new FakeChatClient(), FreshGate(null), roles: new[]
+        {
+            Role(name: "beta", description: null), Role(name: "alpha", description: "does alpha"), Role(name: "gamma", description: ""),
+        });
+
+        Assert.Equal("Run a named role on a task. Available roles:\n- beta\n- alpha: does alpha\n- gamma", tool.Description);
     }
 
-    //a subagent's prompt is its definition's body and nothing else
     [Fact]
-    public async Task SystemPrompt_IsTheBody_AndNothingElse()
+    public void THE_ARGUMENT_IS_ROLE()
+    {
+        var schema = Build(new FakeChatClient(), FreshGate(null)).ParametersSchema;
+
+        Assert.Equal(new[] { "role", "task" }, schema.GetProperty("required").EnumerateArray().Select(e => e.GetString()));
+        Assert.False(schema.GetProperty("properties").TryGetProperty("agent", out _));
+    }
+
+    [Fact]
+    public async Task THE_CHILD_PREFIX_IS_THE_COMPOSITION()
+    {
+        await using var server = new FakeOpenAiServer();
+        server.Enqueue(new FakeResponse(Frames: TextRound("done")));
+        var client = new OpenAiCompatClient(new HttpClient(), "local", new EndpointConfig(server.BaseUrl));
+        var callerFiles = new[] { (@"C:\p\GATTO.md", "CALLER CONTEXT") };
+        Composition ComposeWithFiles(RoleFile r) => RoleComposition.Compose(
+            RoleMerge.ForChild(r, Role(name: "caller", append: "CALLER APPEND")), null,
+            r.ContextFiles ? callerFiles : Array.Empty<(string, string)>(), null, cwd: null);
+        var tool = Build(client, FreshGate(new RecordingPermPrompter()), composeChild: ComposeWithFiles);
+
+        await tool.ExecuteAsync(Args("helper", "the task"), new TestToolContext(_dir), default);
+
+        var system = SystemText(server.LastRequestBody!.Value);
+        Assert.Equal(ComposeWithFiles(Role()).SystemText, system);
+        Assert.Contains("CALLER CONTEXT", system, StringComparison.Ordinal);
+        Assert.Contains("You are helper.", system, StringComparison.Ordinal);
+        Assert.DoesNotContain("CALLER APPEND", system, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task CONTEXT_FILES_FALSE_KEEPS_THE_CALLERS_FILES_OUT()
+    {
+        await using var server = new FakeOpenAiServer();
+        server.Enqueue(new FakeResponse(Frames: TextRound("done")));
+        var client = new OpenAiCompatClient(new HttpClient(), "local", new EndpointConfig(server.BaseUrl));
+        var callerFiles = new[] { (@"C:\p\GATTO.md", "CALLER CONTEXT") };
+        var tool = Build(client, FreshGate(new RecordingPermPrompter()), roles: new[] { Role(contextFiles: false) },
+            composeChild: r => RoleComposition.Compose(r, null,
+                r.ContextFiles ? callerFiles : Array.Empty<(string, string)>(), null, cwd: null));
+
+        await tool.ExecuteAsync(Args("helper", "the task"), new TestToolContext(_dir), default);
+
+        Assert.DoesNotContain("CALLER CONTEXT", SystemText(server.LastRequestBody!.Value), StringComparison.Ordinal);
+    }
+
+    //a raw child's prefix is its append and nothing gatto writes
+    [Fact]
+    public async Task A_RAW_CALLABLE_PREFIX_IS_THE_APPEND_PLUS_THE_USER_PARTS()
     {
         await using var server = new FakeOpenAiServer();
         server.Enqueue(new FakeResponse(Frames: TextRound("done")));
         var client = new OpenAiCompatClient(new HttpClient(), "local", new EndpointConfig(server.BaseUrl));
         var tool = Build(client, FreshGate(new RecordingPermPrompter()),
-            defs: new[] { Def(prompt: "You are helper.") });
+            roles: new[] { Role(raw: true, append: "You are helper.") });
 
         await tool.ExecuteAsync(Args("helper", "the task"), new TestToolContext(_dir), default);
 
         var messages = server.LastRequestBody!.Value.GetProperty("messages").EnumerateArray().ToList();
-        var systems = messages.Where(m => m.GetProperty("role").GetString() == "system").ToList();
-        var system = Assert.Single(systems);
-        Assert.Equal("You are helper.", system.GetProperty("content").GetString());
-        //the subagent request has no role append and no context blocks.
+        Assert.Equal("You are helper.", SystemText(server.LastRequestBody!.Value));
         Assert.Contains(messages, m => m.GetProperty("role").GetString() == "user"
             && m.GetProperty("content").GetString() == "the task");
+    }
+
+    [Fact]
+    public async Task A_CALLED_ROLES_THINKING_REACHES_THE_CHILD_REQUEST()
+    {
+        //a map whose bodies name their level, so the request says which one it carries
+        var map = new Dictionary<string, JsonElement?>
+        {
+            ["low"] = Json("""{"marker":"low","prompt_suffix":"/low"}"""), ["medium"] = Json("""{"marker":"medium"}"""),
+        };
+        async Task<(string? Marker, string? Task)> MarkerFor(RoleFile role)
+        {
+            await using var server = new FakeOpenAiServer();
+            server.Enqueue(new FakeResponse(Frames: TextRound("done")));
+            var client = new OpenAiCompatClient(new HttpClient(), "local", new EndpointConfig(server.BaseUrl));
+            var tool = Build(client, FreshGate(new RecordingPermPrompter()), roles: new[] { role },
+                composeChild: r => RoleComposition.Compose(r, null, Array.Empty<(string, string)>(), map, cwd: null),
+                requestSettings: () => ("m", null, Json("""{"marker":"caller"}"""), "/caller"));
+            await tool.ExecuteAsync(Args(role.Name, "t"), new TestToolContext(_dir), default);
+            var body = server.RequestBodies[0];
+            var user = body.GetProperty("messages").EnumerateArray().Single(m => m.GetProperty("role").GetString() == "user");
+            return (body.GetProperty("marker").GetString(), user.GetProperty("content").GetString());
+        }
+
+        //the suffix rides the child's user message as the main loop sends it, the role's with the role's body and the caller's with the caller's
+        Assert.Equal(("low", "t /low"), await MarkerFor(Role(thinking: ThinkingLevel.Low)));
+        Assert.Equal(("caller", "t /caller"), await MarkerFor(Role(thinking: null)));
+        //a role pinning the model the session already runs follows the session's level, which may live only in memory after a resume
+        Assert.Equal(("caller", "t /caller"), await MarkerFor(Role(thinking: null) with { Model = "m" }));
+        Assert.Equal(("medium", "t"), await MarkerFor(Role(thinking: null) with { Model = "other" }));
     }
 
     [Fact]

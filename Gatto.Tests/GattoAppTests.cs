@@ -2720,4 +2720,453 @@ public class GattoAppTests : IDisposable
         Assert.DoesNotContain("<0.1 GB", text, StringComparison.Ordinal);
     }
 
+    //a scripted round in which the parent calls run_agent on one role
+    private static FakeResponse RunAgentCall(string roleName)
+    {
+        var arguments = JsonSerializer.Serialize(JsonSerializer.Serialize(new { role = roleName, task = "go" }));
+        return new(Frames: new[]
+        {
+            $"data: {{\"choices\":[{{\"index\":0,\"delta\":{{\"tool_calls\":[{{\"index\":0,\"id\":\"t1\",\"function\":{{\"name\":\"run_agent\",\"arguments\":{arguments}}}}}]}},\"finish_reason\":null}}]}}\n\n",
+            "data: {\"choices\":[{\"index\":0,\"delta\":{},\"finish_reason\":\"tool_calls\"}]}\n\n",
+            "data: [DONE]\n\n",
+        });
+    }
+
+    private static string SystemOf(JsonElement body) =>
+        body.GetProperty("messages").EnumerateArray()
+            .First(m => m.GetProperty("role").GetString() == "system").GetProperty("content").GetString()!;
+
+    private static string LastToolResultOf(JsonElement body) =>
+        body.GetProperty("messages").EnumerateArray()
+            .Last(m => m.GetProperty("role").GetString() == "tool").GetProperty("content").GetString()!;
+
+    private static string RunAgentDescriptionOf(JsonElement body) =>
+        body.GetProperty("tools").EnumerateArray()
+            .Select(t => t.GetProperty("function"))
+            .Single(f => f.GetProperty("name").GetString() == "run_agent").GetProperty("description").GetString()!;
+
+    [Fact]
+    public async Task A_ROLE_WANTING_ANOTHER_MODEL_IS_REFUSED_WITH_THE_CHILDS_SENTENCE()
+    {
+        await using var server = new FakeOpenAiServer();
+        UseHome();
+        WriteConfig($$$"""{"endpoints":{"local":{"base_url":"{{{server.BaseUrl}}}"}},"default_endpoint":"local"}""");
+        WriteModel("test-model", port: 1235);
+        WriteModel("other-model", port: 1235);
+        WriteRole("generalist", "{\"model\":\"test-model\"}");
+        WriteRole("other", "{\"model\":\"other-model\"}");
+        server.Enqueue(RunAgentCall("other"));
+        server.Enqueue(Completion("done"));
+
+        Console.SetOut(new StringWriter());
+        Assert.Equal(0, await GattoApp.RunAsync(new[] { "--yes", "-p", "hi" }));
+
+        Assert.Equal(2, server.RequestCount);   //the parent twice and no child
+        Assert.Equal("role 'other' wants model 'other-model', this session serves 'test-model'",
+            LastToolResultOf(server.RequestBodies[1]));
+    }
+
+    [Fact]
+    public async Task A_ROLE_WANTING_ANOTHER_ENDPOINT_IS_REFUSED_WITH_THE_CHILDS_SENTENCE()
+    {
+        await using var server = new FakeOpenAiServer();
+        UseHome();
+        //the role names no model and cloudy lists none the caller runs, so a model resolved before the endpoint check would be refused with the wrong sentence
+        WriteConfig($$$"""
+            {"endpoints":{"local":{"base_url":"{{{server.BaseUrl}}}"},"cloudy":{"base_url":"http://127.0.0.1:9","models":["c-model"]}},
+             "default_endpoint":"local"}
+            """);
+        WriteModel("test-model", port: 1235);
+        WriteRole("generalist", "{\"model\":\"test-model\"}");
+        WriteRole("other", "{\"endpoint\":\"cloudy\"}");
+        server.Enqueue(RunAgentCall("other"));
+        server.Enqueue(Completion("done"));
+
+        Console.SetOut(new StringWriter());
+        Assert.Equal(0, await GattoApp.RunAsync(new[] { "--yes", "-p", "hi" }));
+
+        Assert.Equal(2, server.RequestCount);
+        Assert.Equal("role 'other' wants endpoint 'cloudy', this session is on 'local'",
+            LastToolResultOf(server.RequestBodies[1]));
+    }
+
+    //a local endpoint with no base_url gives each model its own port, so another model differs in URL too, and the sentence must name the model
+    [Fact]
+    public async Task ANOTHER_LOCAL_MODEL_ON_ITS_OWN_PORT_IS_REFUSED_WITH_THE_MODEL_SENTENCE()
+    {
+        await using var server = new FakeOpenAiServer();
+        UseHome();
+        WriteConfig("""{"endpoints":{"local":{}},"default_endpoint":"local"}""");
+        WriteModel("test-model", port: new Uri(server.BaseUrl).Port);
+        WriteModel("other-model", port: 1);
+        WriteRole("generalist", "{\"model\":\"test-model\"}");
+        WriteRole("other", "{\"model\":\"other-model\"}");
+        server.Enqueue(RunAgentCall("other"));
+        server.Enqueue(Completion("done"));
+
+        Console.SetOut(new StringWriter());
+        Assert.Equal(0, await GattoApp.RunAsync(new[] { "--yes", "-p", "hi" }));
+
+        Assert.Equal(2, server.RequestCount);
+        Assert.Equal("role 'other' wants model 'other-model', this session serves 'test-model'",
+            LastToolResultOf(server.RequestBodies[1]));
+    }
+
+    //a local endpoint with no base_url reaches the model's port, so the early endpoint check must not compare its null against the session's URL
+    [Fact]
+    public async Task A_ROLE_NAMING_THE_SESSIONS_OWN_ENDPOINT_RUNS_WHEN_IT_HAS_NO_BASE_URL()
+    {
+        await using var server = new FakeOpenAiServer();
+        UseHome();
+        WriteConfig("""{"endpoints":{"local":{}},"default_endpoint":"local"}""");
+        WriteModel("test-model", port: new Uri(server.BaseUrl).Port);
+        WriteRole("generalist", "{\"model\":\"test-model\"}");
+        WriteRole("helper", "{\"endpoint\":\"local\"}");
+        server.Enqueue(RunAgentCall("helper"));
+        server.Enqueue(Completion("child done"));
+        server.Enqueue(Completion("done"));
+
+        Console.SetOut(new StringWriter());
+        Assert.Equal(0, await GattoApp.RunAsync(new[] { "--yes", "-p", "hi" }));
+
+        Assert.Equal(3, server.RequestCount);
+        Assert.Equal("child done", LastToolResultOf(server.RequestBodies[2]));
+    }
+
+    //a cloud endpoint serves every listed model on one URL, so a role naming another listed model runs on it instead of silently taking the caller's
+    [Fact]
+    public async Task A_CALLED_ROLES_MODEL_REACHES_THE_CHILD_REQUEST_ON_A_CLOUD_ENDPOINT()
+    {
+        await using var server = new FakeOpenAiServer();
+        UseHome();
+        WriteConfig($$$"""
+            {"endpoints":{"local":{"base_url":"http://127.0.0.1:1235"},"cloudy":{"base_url":"{{{server.BaseUrl}}}","models":["a-model","b-model"]}},
+             "default_endpoint":"cloudy"}
+            """);
+        WriteModel("a-model", port: 1235);
+        WriteModel("b-model", port: 1235);
+        WriteRole("generalist", "{\"endpoint\":\"cloudy\",\"model\":\"a-model\"}");
+        WriteRole("cheap", "{\"model\":\"b-model\"}");
+        server.Enqueue(RunAgentCall("cheap"));
+        server.Enqueue(Completion("child done"));
+        server.Enqueue(Completion("done"));
+
+        Console.SetOut(new StringWriter());
+        Assert.Equal(0, await GattoApp.RunAsync(new[] { "--yes", "-p", "hi" }));
+
+        Assert.Equal(3, server.RequestCount);
+        Assert.Equal("a-model", server.RequestBodies[0].GetProperty("model").GetString());
+        Assert.Equal("b-model", server.RequestBodies[1].GetProperty("model").GetString());
+        Assert.Contains("Model: b-model.", SystemOf(server.RequestBodies[1]), StringComparison.Ordinal);
+        Assert.DoesNotContain("a-model", SystemOf(server.RequestBodies[1]), StringComparison.Ordinal);
+        Assert.Equal("a-model", server.RequestBodies[2].GetProperty("model").GetString());
+    }
+
+    //the map has no medium, so a child resolving b-model's own default lands on low, and only the session's level puts high on the wire
+    [Fact]
+    public async Task A_ROLE_ON_ANOTHER_MODEL_TAKES_THE_CALLERS_LEVEL()
+    {
+        await using var server = new FakeOpenAiServer();
+        UseHome();
+        WriteConfig($$$$$$"""
+            {"endpoints":{"local":{"base_url":"http://127.0.0.1:1235"},
+              "cloudy":{"base_url":"{{{{{{server.BaseUrl}}}}}}","models":["a-model","b-model"],"thinking":{
+                "none":{"reasoning":{"effort":"none"}},
+                "low":{"reasoning":{"effort":"low"}},
+                "high":{"reasoning":{"effort":"high"}}}}},
+             "default_endpoint":"cloudy"}
+            """);
+        WriteModel("a-model", port: 1235);
+        WriteModel("b-model", port: 1235);
+        WriteRole("generalist", "{\"endpoint\":\"cloudy\",\"model\":\"a-model\"}");
+        WriteRole("cheap", "{\"model\":\"b-model\"}");
+        server.Enqueue(RunAgentCall("cheap"));
+        server.Enqueue(Completion("child done"));
+        server.Enqueue(Completion("done"));
+        Console.SetIn(new SteppedReader(("/effort high", null), ("go", null), ("/quit", null)));
+        Console.SetOut(new StringWriter());
+
+        Assert.Equal(0, await GattoApp.RunAsync(new[] { "--yes" }));
+
+        Assert.Equal(3, server.RequestCount);
+        Assert.Equal("high", server.RequestBodies[0].GetProperty("reasoning").GetProperty("effort").GetString());
+        Assert.Equal("b-model", server.RequestBodies[1].GetProperty("model").GetString());
+        Assert.Equal("high", server.RequestBodies[1].GetProperty("reasoning").GetProperty("effort").GetString());
+    }
+
+    //once the profile forgets the level, a resumed session holds it alone, so a child that read its body from disk would send another one
+    [Theory]
+    [InlineData("{}")]
+    [InlineData("{\"model\":\"qwen38-model\"}")]
+    public async Task A_CHILD_ON_THE_SESSIONS_OWN_MODEL_SENDS_THE_RESUMED_LEVEL(string helper)
+    {
+        await using var server = new FakeOpenAiServer();
+        var port = new Uri(server.BaseUrl).Port;
+        UseHome();
+        WriteConfig("""{"endpoints":{"local":{}},"default_endpoint":"local"}""");
+        WriteModel("qwen38-model", port: port, profileExtra: Qwen38ThinkingMap);
+        WriteRole("generalist", "{\"model\":\"qwen38-model\"}");
+        WriteRole("helper", helper);
+        server.Enqueue(Completion("first"));
+        Console.SetIn(new StringReader("/effort xhigh\nhi\n/quit\n"));
+        Console.SetOut(new StringWriter());
+        Assert.Equal(0, await GattoApp.RunAsync(Array.Empty<string>()));
+
+        WriteModel("qwen38-model", port: port, profileExtra: Qwen38ThinkingMap);   //the persisted default_effort goes, the session record keeps xhigh
+        server.Enqueue(RunAgentCall("helper"));
+        server.Enqueue(Completion("child done"));
+        server.Enqueue(Completion("done"));
+        Console.SetIn(new StringReader("go\n/quit\n"));
+        Assert.Equal(0, await GattoApp.RunAsync(new[] { "--yes", "--continue" }));
+
+        var bodies = server.RequestBodies;
+        string? EffortOf(JsonElement body) =>
+            body.GetProperty("chat_template_kwargs").GetProperty("reasoning_effort").GetString();
+        Assert.Equal(4, bodies.Count);
+        Assert.Equal("xhigh", EffortOf(bodies[1]));   //the resumed parent
+        Assert.Equal("xhigh", EffortOf(bodies[2]));   //the child
+    }
+
+    [Fact]
+    public async Task A_PROJECTS_AGENTS_FOLDER_IS_NOT_READ()
+    {
+        await using var server = new FakeOpenAiServer();
+        UseHome();
+        WriteConfig($$$"""{"endpoints":{"local":{"base_url":"{{{server.BaseUrl}}}"}},"default_endpoint":"local"}""");
+        WriteModel("test-model", port: 1235);
+        WriteRole("generalist", "{\"model\":\"test-model\"}");
+        var projectAgents = Path.Combine(_cwd, ".gatto", "agents");
+        Directory.CreateDirectory(projectAgents);
+        File.WriteAllText(Path.Combine(projectAgents, "x.md"), "---\ndescription: a project agent\n---\nYou are x.\n");
+        server.Enqueue(Completion("ok"));
+
+        Console.SetOut(new StringWriter());
+        var stderr = new StringWriter();
+        Console.SetError(stderr);
+        Assert.Equal(0, await GattoApp.RunAsync(new[] { "-p", "hi" }));
+
+        var description = RunAgentDescriptionOf(server.RequestBodies[0]);
+        Assert.Contains("- generalist", description, StringComparison.Ordinal);
+        Assert.DoesNotContain("- x", description, StringComparison.Ordinal);
+        Assert.DoesNotContain("x.md", stderr.ToString(), StringComparison.Ordinal);
+        Assert.DoesNotContain(Path.Combine(".gatto", "agents"), stderr.ToString(), StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task A_ROLE_ADDED_MID_SESSION_APPEARS_AFTER_A_ROLE_SWITCH()
+    {
+        await using var server = new FakeOpenAiServer();
+        UseHome();
+        WriteConfig($$$"""{"endpoints":{"local":{"base_url":"{{{server.BaseUrl}}}"}},"default_endpoint":"local"}""");
+        WriteModel("test-model", port: 1235);
+        WriteRole("generalist", "{\"model\":\"test-model\"}");
+        server.Enqueue(Completion("one"));
+        server.Enqueue(Completion("two"));
+        server.Enqueue(Completion("three"));
+        //the file lands before the second turn, so the second request shows the list is read at /role and not at every call
+        Console.SetIn(new SteppedReader(
+            ("first", null),
+            ("second", () => WriteRole("added", "{\"description\":\"added later\"}")),
+            ("/role generalist", null),
+            ("third", null),
+            ("/quit", null)));
+        Console.SetOut(new StringWriter());
+        Assert.Equal(0, await GattoApp.RunAsync(Array.Empty<string>()));
+
+        Assert.Equal(3, server.RequestCount);
+        Assert.DoesNotContain("- added", RunAgentDescriptionOf(server.RequestBodies[0]), StringComparison.Ordinal);
+        Assert.DoesNotContain("- added", RunAgentDescriptionOf(server.RequestBodies[1]), StringComparison.Ordinal);
+        Assert.Contains("- added: added later", RunAgentDescriptionOf(server.RequestBodies[2]), StringComparison.Ordinal);
+    }
+
+    //the description rides every request, so a /role that is refused after it resolves must leave the list where it was
+    [Fact]
+    public async Task A_REFUSED_ROLE_SWITCH_LEAVES_THE_ROLE_LIST_AS_IT_WAS()
+    {
+        await using var server = new FakeOpenAiServer();
+        UseHome();
+        WriteConfig($$$"""{"endpoints":{"local":{"base_url":"{{{server.BaseUrl}}}"}},"default_endpoint":"local"}""");
+        WriteModel("test-model", port: 1235);
+        WriteModel("other-model", port: 1235);
+        WriteRole("generalist", "{\"model\":\"test-model\"}");
+        WriteRole("other", "{\"model\":\"other-model\"}");
+        server.Enqueue(Completion("one"));
+        server.Enqueue(Completion("two"));
+        Console.SetIn(new SteppedReader(
+            ("first", () => WriteRole("added", "{\"description\":\"added later\"}")),
+            ("/role other", null),
+            ("second", null),
+            ("/quit", null)));
+        var stdout = new StringWriter();
+        Console.SetOut(stdout);
+        Assert.Equal(0, await GattoApp.RunAsync(Array.Empty<string>()));
+
+        Assert.Contains("uses model 'other-model'", stdout.ToString(), StringComparison.Ordinal);   //the switch was refused
+        Assert.Equal(2, server.RequestCount);
+        Assert.DoesNotContain("- added", RunAgentDescriptionOf(server.RequestBodies[1]), StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task A_BROKEN_FILE_WRITTEN_MID_SESSION_WARNS_AT_THE_NEXT_ROLE_SWITCH()
+    {
+        await using var server = new FakeOpenAiServer();
+        UseHome();
+        WriteConfig($$$"""{"endpoints":{"local":{"base_url":"{{{server.BaseUrl}}}"}},"default_endpoint":"local"}""");
+        WriteModel("test-model", port: 1235);
+        WriteRole("generalist", "{\"model\":\"test-model\"}");
+        server.Enqueue(Completion("one"));
+        Console.SetIn(new SteppedReader(
+            ("/role generalist", () => WriteRole("broken", "{ \"turns\": 0 }")),
+            ("first", null),
+            ("/quit", null)));
+        Console.SetOut(new StringWriter());
+        var stderr = new StringWriter();
+        Console.SetError(stderr);
+        Assert.Equal(0, await GattoApp.RunAsync(Array.Empty<string>()));
+
+        var warning = Assert.Single(stderr.ToString().Split('\n'), l => l.Contains("broken", StringComparison.Ordinal));
+        Assert.Contains("\"turns\"", warning, StringComparison.Ordinal);
+        Assert.DoesNotContain("broken", RunAgentDescriptionOf(server.RequestBodies[0]), StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task A_BROKEN_ROLE_FILE_IS_SKIPPED_WITH_A_WARNING()
+    {
+        await using var server = new FakeOpenAiServer();
+        UseHome();
+        WriteConfig($$$"""{"endpoints":{"local":{"base_url":"{{{server.BaseUrl}}}"}},"default_endpoint":"local"}""");
+        WriteModel("test-model", port: 1235);
+        WriteRole("generalist", "{\"model\":\"test-model\"}");
+        WriteRole("broken", "{ \"turns\": 0 }");
+        server.Enqueue(Completion("ok"));
+
+        Console.SetOut(new StringWriter());
+        var stderr = new StringWriter();
+        Console.SetError(stderr);
+        Assert.Equal(0, await GattoApp.RunAsync(new[] { "-p", "hello" }));
+
+        var warning = Assert.Single(stderr.ToString().Split('\n'), l => l.Contains("broken", StringComparison.Ordinal));
+        Assert.Contains("\"turns\"", warning, StringComparison.Ordinal);
+        var description = RunAgentDescriptionOf(server.RequestBodies[0]);
+        Assert.Contains("- generalist", description, StringComparison.Ordinal);
+        Assert.DoesNotContain("broken", description, StringComparison.Ordinal);
+    }
+
+    [Theory]
+    [InlineData(null, "generalist")]
+    [InlineData("coder", "coder")]
+    public async Task A_BROKEN_LAUNCHED_ROLE_RUNS_THE_FALLBACK(string? defaultRole, string fallback)
+    {
+        await using var server = new FakeOpenAiServer();
+        UseHome();
+        var defaultKey = defaultRole is null ? "" : $",\"default_role\":\"{defaultRole}\"";
+        WriteConfig($$$"""{"endpoints":{"local":{"base_url":"{{{server.BaseUrl}}}"}},"default_endpoint":"local"{{{defaultKey}}}}""");
+        WriteModel("test-model", port: 1235);
+        WriteRole("generalist", "{\"model\":\"test-model\",\"append\":\"the generalist marker\"}");
+        WriteRole("coder", "{\"model\":\"test-model\",\"append\":\"the coder marker\"}");
+        WriteRole("broken", "{ \"turns\": 0 }");
+        server.Enqueue(Completion("ok"));
+
+        Console.SetOut(new StringWriter());
+        var stderr = new StringWriter();
+        Console.SetError(stderr);
+        Assert.Equal(0, await GattoApp.RunAsync(new[] { "broken", "-p", "hello" }));
+
+        var warning = Assert.Single(stderr.ToString().Split('\n'), l => l.Contains("broken", StringComparison.Ordinal));
+        Assert.EndsWith($", running {fallback} instead", warning.TrimEnd('\r'), StringComparison.Ordinal);
+        Assert.Contains($"the {fallback} marker", SystemOf(server.RequestBodies[0]), StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task A_BROKEN_DEFAULT_ROLE_RUNS_GENERALIST()
+    {
+        await using var server = new FakeOpenAiServer();
+        UseHome();
+        WriteConfig($$$"""{"endpoints":{"local":{"base_url":"{{{server.BaseUrl}}}"}},"default_endpoint":"local","default_role":"broken"}""");
+        WriteModel("test-model", port: 1235);
+        WriteRole("generalist", "{\"model\":\"test-model\",\"append\":\"the generalist marker\"}");
+        WriteRole("broken", "{ \"turns\": 0 }");
+        server.Enqueue(Completion("ok"));
+
+        Console.SetOut(new StringWriter());
+        var stderr = new StringWriter();
+        Console.SetError(stderr);
+        Assert.Equal(0, await GattoApp.RunAsync(new[] { "-p", "hello" }));
+
+        var warning = Assert.Single(stderr.ToString().Split('\n'), l => l.Contains("broken", StringComparison.Ordinal));
+        Assert.EndsWith(", running generalist instead", warning.TrimEnd('\r'), StringComparison.Ordinal);
+        Assert.Contains("the generalist marker", SystemOf(server.RequestBodies[0]), StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task A_BROKEN_FALLBACK_EXITS_2()
+    {
+        UseHome();
+        WriteConfig("""{"endpoints":{"local":{"base_url":"http://127.0.0.1:1235"}},"default_endpoint":"local"}""");
+        WriteModel("test-model", port: 1235);
+        WriteRole("generalist", "{ \"turns\": \"ten\" }");
+        WriteRole("broken", "{ \"turns\": 0 }");
+
+        Console.SetOut(new StringWriter());
+        var stderr = new StringWriter();
+        Console.SetError(stderr);
+        Assert.Equal(2, await GattoApp.RunAsync(new[] { "broken", "-p", "hello" }));
+
+        var text = stderr.ToString();
+        Assert.Contains("role 'broken' has a \"turns\" of 0", text, StringComparison.Ordinal);
+        Assert.Contains("role 'generalist' has a \"turns\" of \"ten\"", text, StringComparison.Ordinal);
+    }
+
+    //the parent's request carries memory and the context files, a child carries no memory and the files only while its role allows them
+    [Fact]
+    public async Task THE_REAL_LAUNCH_CHILD_CARRIES_NO_MEMORY_AND_FOLLOWS_CONTEXT_FILES()
+    {
+        await using var server = new FakeOpenAiServer();
+        UseHome();
+        WriteConfig($$$"""{"endpoints":{"local":{"base_url":"{{{server.BaseUrl}}}"}},"default_endpoint":"local"}""");
+        WriteModel("test-model", port: 1235);
+        WriteRole("generalist", "{\"model\":\"test-model\"}");
+        WriteRole("withfiles", "{\"append\":\"you read files\"}");
+        WriteRole("nofiles", "{\"context_files\":false}");
+        WriteMemoryFacts("- the memory marker");
+        File.WriteAllText(Path.Combine(_cwd, "GATTO.md"), "the context marker");
+        server.Enqueue(RunAgentCall("withfiles"));
+        server.Enqueue(Completion("child one"));
+        server.Enqueue(RunAgentCall("nofiles"));
+        server.Enqueue(Completion("child two"));
+        server.Enqueue(Completion("done"));
+
+        Console.SetOut(new StringWriter());
+        Assert.Equal(0, await GattoApp.RunAsync(new[] { "--yes", "-p", "hi" }));
+
+        Assert.Equal(5, server.RequestCount);
+        var parent = SystemOf(server.RequestBodies[0]);
+        var withFiles = SystemOf(server.RequestBodies[1]);
+        var noFiles = SystemOf(server.RequestBodies[3]);
+        Assert.Contains("the memory marker", parent, StringComparison.Ordinal);
+        Assert.Contains(RoleComposition.MemoryNudge, parent, StringComparison.Ordinal);
+        Assert.Contains("the context marker", parent, StringComparison.Ordinal);
+        foreach (var child in new[] { withFiles, noFiles })
+        {
+            Assert.DoesNotContain("## Memory", child, StringComparison.Ordinal);
+            Assert.DoesNotContain(RoleComposition.MemoryNudge, child, StringComparison.Ordinal);
+        }
+        Assert.Contains("you read files", withFiles, StringComparison.Ordinal);
+        Assert.Contains("the context marker", withFiles, StringComparison.Ordinal);
+        Assert.DoesNotContain("the context marker", noFiles, StringComparison.Ordinal);
+    }
+}
+
+//hands the REPL one line per read and runs an action before a chosen line, so a test can change the disk mid-session
+file sealed class SteppedReader(params (string Line, Action? Before)[] lines) : TextReader
+{
+    private int _next;
+
+    public override string? ReadLine()
+    {
+        if (_next >= lines.Length) return null;
+        var (line, before) = lines[_next++];
+        before?.Invoke();
+        return line;
+    }
 }

@@ -1,5 +1,6 @@
 using System.Text.Json;
 using Gatto.Core.Home;
+using Gatto.Roles.Agents;
 
 namespace Gatto.Roles;
 
@@ -12,11 +13,22 @@ public sealed record RoleFile(
     bool Raw,
     string? Append,
     //null when the role file has no thinking key, since the default depends on the model, which the loader never sees
-    ThinkingLevel? ThinkingRequested)
+    ThinkingLevel? ThinkingRequested,
+    string? Description,
+    //null arms the six built-ins when the role is called, an empty list arms none
+    IReadOnlyList<string>? Tools,
+    int Turns,
+    bool ContextFiles)
 {
+    public const int DefaultTurns = 10;
+
     //one key for the model, and the endpoint kind decides what it means. sampling belongs to the model now, so a role's sampling key is accepted and never read
     private static readonly string[] Keys =
-        { "model", "endpoint", "gates", "raw", "append", "thinking", "sampling" };
+        { "model", "endpoint", "gates", "raw", "append", "thinking", "sampling", "description", "tools", "turns", "context_files" };
+
+    //copied once, since Builtins allocates its factories on every call and builds no tool
+    private static readonly HashSet<string> CallableTools = new(SubagentWiring.Builtins().Keys, StringComparer.Ordinal);
+    private static readonly string CallableToolList = string.Join(", ", SubagentWiring.Builtins().Keys);
 
     public static RoleFile Load(string rolesDir, string name)
     {
@@ -74,7 +86,48 @@ public sealed record RoleFile(
             thinking = Thinking.Parse(th.GetString());
         }
 
-        return new RoleFile(name, model, endpoint, gates, raw, append, thinking);
+        string? description = null;
+        if (root.TryGetProperty("description", out var de) && de.ValueKind != JsonValueKind.Null)
+        {
+            if (de.ValueKind != JsonValueKind.String)
+                throw new GattoConfigException($"role '{name}' has a \"description\" of {de.GetRawText()}; must be a string");
+            description = de.GetString()!;
+            if (description.Contains('\n') || description.Contains('\r'))
+                throw new GattoConfigException($"role '{name}' has a \"description\" of {de.GetRawText()}; must be one line");
+        }
+
+        List<string>? tools = null;
+        if (root.TryGetProperty("tools", out var tl))
+        {
+            if (tl.ValueKind != JsonValueKind.Array)
+                throw new GattoConfigException($"role '{name}' has a \"tools\" of {tl.GetRawText()}; must be an array of {CallableToolList}");
+            tools = new List<string>();
+            foreach (var item in tl.EnumerateArray())
+            {
+                if (item.ValueKind != JsonValueKind.String || !CallableTools.Contains(item.GetString()!))
+                    throw new GattoConfigException($"role '{name}' has {item.GetRawText()} in \"tools\"; must be one of {CallableToolList}");
+                if (tools.Contains(item.GetString()!))
+                    throw new GattoConfigException($"role '{name}' has {item.GetRawText()} twice in \"tools\"");
+                tools.Add(item.GetString()!);
+            }
+        }
+
+        var turns = DefaultTurns;
+        if (root.TryGetProperty("turns", out var tu))
+        {
+            if (tu.ValueKind != JsonValueKind.Number || !tu.TryGetInt32(out turns) || turns < 1)
+                throw new GattoConfigException($"role '{name}' has a \"turns\" of {tu.GetRawText()}; must be a whole number of 1 or more");
+        }
+
+        var contextFiles = true;
+        if (root.TryGetProperty("context_files", out var cf))
+        {
+            if (cf.ValueKind is not (JsonValueKind.True or JsonValueKind.False))
+                throw new GattoConfigException($"role '{name}' has a \"context_files\" of {cf.GetRawText()}; must be true or false");
+            contextFiles = cf.GetBoolean();
+        }
+
+        return new RoleFile(name, model, endpoint, gates, raw, append, thinking, description, tools, turns, contextFiles);
     }
 
     //the override wins, then the role's own model, then gatto.json's default_model, shared so the launch and doctor agree

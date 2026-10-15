@@ -27,7 +27,7 @@ public class RoleCompositionTests
         bool raw = false,
         string? append = null,
         ThinkingLevel? thinking = ThinkingLevel.Medium)
-        => new("r", "p", null, gates ?? Array.Empty<string>(), raw, append, thinking);
+        => new("r", "p", null, gates ?? Array.Empty<string>(), raw, append, thinking, null, null, 10, true);
 
     private static ModelProfile Profile(
         JsonElement? sampling = null,
@@ -105,6 +105,54 @@ public class RoleCompositionTests
         Assert.Equal(plain.ThinkingSuffix, raw.ThinkingSuffix);
         Assert.NotNull(raw.Sampling);
         Assert.NotNull(raw.ThinkingBody);
+    }
+
+    //the arguments a called role composes with: the caller's model and context files, no memory, and no policy line since no extension tool reaches a child
+    private static Composition Child(bool raw, IReadOnlyList<(string Path, string Content)> contextFiles)
+    {
+        var caller = Role(append: "CALLER APPEND");
+        var called = new RoleFile("callee", null, null, Array.Empty<string>(), raw, "CALLEE APPEND", null, null, null, 10, true);
+        return RoleComposition.Compose(
+            Gatto.Roles.Agents.RoleMerge.ForChild(called, caller),
+            Pk(systemAppend: "MODEL APPEND"),
+            contextFiles, null, cwd: @"C:\p",
+            date: new DateTime(2026, 1, 2), memoryIndex: null, memoryNudge: false,
+            policyLines: null);
+    }
+
+    private static readonly IReadOnlyList<(string Path, string Content)> CallerContext =
+        new[] { (@"C:\p\GATTO.md", "CONTEXT BODY") };
+
+    [Fact]
+    public void A_CHILD_COMPOSES_WITH_NO_MEMORY_AND_THE_CALLERS_PARTS()
+    {
+        var c = Child(raw: false, CallerContext);
+
+        Assert.Equal(new[] { "system prompt", "model folder", "role", "context files" },
+            c.SystemParts!.Select(p => p.Label).ToArray());
+        Assert.DoesNotContain(RoleComposition.MemoryNudge, c.SystemText, StringComparison.Ordinal);
+        Assert.DoesNotContain("CALLER APPEND", c.SystemText, StringComparison.Ordinal);
+        Assert.Contains("CALLEE APPEND", c.SystemText, StringComparison.Ordinal);
+        Assert.Contains("CONTEXT BODY", c.SystemText, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void A_RAW_CHILD_IS_ITS_APPEND_PLUS_THE_USER_PARTS()
+    {
+        var c = Child(raw: true, CallerContext);
+
+        Assert.Equal(
+            string.Join("\n\n", "MODEL APPEND", "CALLEE APPEND", "## Context: C:\\p\\GATTO.md\nCONTEXT BODY"),
+            c.SystemText);
+    }
+
+    [Fact]
+    public void AN_EMPTY_CONTEXT_LIST_COMPOSES_WITHOUT_THE_PART()
+    {
+        var c = Child(raw: false, NoContext);
+
+        Assert.DoesNotContain("context files", c.SystemParts!.Select(p => p.Label));
+        Assert.DoesNotContain("CONTEXT BODY", c.SystemText, StringComparison.Ordinal);
     }
 
     [Fact]

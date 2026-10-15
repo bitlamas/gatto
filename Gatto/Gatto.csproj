@@ -50,7 +50,7 @@
          deliberately NOT under Shipped\, whose glob would give it manifest semantics: a deletion that
          sticks and a user edit that survives. this file is overwritten whenever it differs. -->
     <EmbeddedResource Include="Core\Home\gatto.schema.json" />
-    <!-- the shipped tree: extensions, agents and roles as files. LogicalName gives them
+    <!-- the shipped tree: extensions and roles as files. LogicalName gives them
          the shipped/ prefix the loader strips, and the logical name MIXES separators, which is
          why the loader normalises them. a file dropped in this folder becomes a shipped default
          in every user home, which SHIPPED_KEYS_ARE_EXACTLY_THESE makes deliberate. -->

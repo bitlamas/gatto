@@ -853,10 +853,9 @@ public class EndToEndTests : IDisposable
     {
         await using var server = new FakeOpenAiServer();
         Configure(server);
-        var agents = Path.Combine(_home, "agents");
-        Directory.CreateDirectory(agents);
-        File.WriteAllText(Path.Combine(agents, "helper.md"), "---\ndescription: runs one command\ntools: shell\nmax_turns: 3\n---\nYou are helper.\n");
-        server.Enqueue(Calls("run_agent", new { agent = "helper", task = "report the session" }));
+        File.WriteAllText(Path.Combine(_home, "roles", "helper.json"),
+            "{\"description\":\"runs one command\",\"tools\":[\"shell\"],\"turns\":3,\"append\":\"You are helper.\"}");
+        server.Enqueue(Calls("run_agent", new { role = "helper", task = "report the session" }));
         server.Enqueue(Calls("shell", new { command = EchoSession }));
         server.Enqueue(Says("the helper is done"));
         server.Enqueue(Says("done"));

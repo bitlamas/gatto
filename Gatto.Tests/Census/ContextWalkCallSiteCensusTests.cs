@@ -29,27 +29,27 @@ public class ContextWalkCallSiteCensusTests
     }
 
     [Fact]
-    public void THE_WALK_HAS_EXACTLY_FOUR_PRODUCTION_CALL_SITES()
+    public void THE_WALK_HAS_EXACTLY_FIVE_PRODUCTION_CALL_SITES()
     {
         var sites = Sites();
         var total = sites.Sum(s => s.Count);
 
-        //the three calls in GattoApp serve launch, the recompose and /role. the doctor check runs the same call rather than a second copy of the logic
-        Assert.Equal(4, total);
+        //the four calls in GattoApp serve launch and /role, the recompose, /model and a run_agent child. the doctor check runs the same call rather than a second copy of the logic
+        Assert.Equal(5, total);
         Assert.Equal(
-            new[] { ("Doctor.cs", 1), ("GattoApp.cs", 3) },
+            new[] { ("Doctor.cs", 1), ("GattoApp.cs", 4) },
             sites.OrderBy(s => s.File, StringComparer.Ordinal).ToArray());
     }
 
-    //a count is evidence only after the pattern moves when the source does. add a fifth call to the text before CodeOnly runs, so it takes the real path.
+    //a count is evidence only after the pattern moves when the source does. add a sixth call to the text before CodeOnly runs, so it takes the real path.
     [Fact]
-    public void THE_CENSUS_CAN_SEE_A_FIFTH_CALL_SITE()
+    public void THE_CENSUS_CAN_SEE_A_SIXTH_CALL_SITE()
     {
         var planted = Sites(text => text.Contains("class GattoApp", StringComparison.Ordinal)
-            ? text + "\nclass PlantedFifthSite { void M(string cwd) { var _ = "
+            ? text + "\nclass PlantedSixthSite { void M(string cwd) { var _ = "
                    + Call + "cwd, false, null); } }\n"
             : text);
 
-        Assert.Equal(5, planted.Sum(s => s.Count));
+        Assert.Equal(6, planted.Sum(s => s.Count));
     }
 }
