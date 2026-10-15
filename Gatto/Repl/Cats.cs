@@ -3,38 +3,19 @@ namespace Gatto.Repl;
 
 public static class Cats
 {
-    //the launch banner cat, one body for all roles (the coder's eyes, the oracle's hat, six lines) and one ASCII cat
-    public static string For(string role, GlyphSet? glyphs) =>
+    //the launch banner cat: the role file's rows when it carries a cat, else the default body, and the glyph set's own cat outside Unicode
+    public static string For(IReadOnlyList<string>? cat, GlyphSet? glyphs) =>
         (glyphs ?? GlyphSet.Unicode) is { } g && !ReferenceEquals(g, GlyphSet.Unicode)
             ? string.Join('\n', g.Cat)
-            : ForUnicode(role);
+            : cat is not null ? string.Join('\n', cat) : Default;
 
-    private static string ForUnicode(string role) => role switch
-    {
-        //visor eyes, the coder is the one with shades at the terminal
-        "coder" => """
-              /l、
-            （▀､▀ ７
-              l  ~ヽ
-              じしf_,)ノ
-            """,
-        //the pointed hat replaces the ear line, so the face sits on the same row as the other roles
-        "oracle" => """
-                ▲
-               ╱☆╲
-              ⌒‾‾‾⌒
-            （＾､＾７
-              l  ~ヽ
-              じしf_,)ノ
-            """,
-        //the caret face has no space before the ７ and the coder's does, deliberate, don't tidy it into symmetry
-        _ => """
-              /l、
-            （＾､＾７
-              l  ~ヽ
-              じしf_,)ノ
-            """,
-    };
+    //the caret face has no space before the ７ where a visor face does, deliberate, don't tidy it into symmetry
+    private const string Default = """
+          /l、
+        （＾､＾７
+          l  ~ヽ
+          じしf_,)ノ
+        """;
 
     //the one-line face for chrome rows, For is a multi-line banner, and one face serves every role in both sets
     public static string Face(GlyphSet? glyphs) => (glyphs ?? GlyphSet.Unicode).Face;

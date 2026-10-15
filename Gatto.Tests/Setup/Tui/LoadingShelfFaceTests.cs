@@ -83,7 +83,7 @@ public class LoadingShelfFaceTests
     private static WizardScreen.Choice Starting() => new WizardScreen.Choice(
         SetupFlow.ShelfLoadingKey, null, [], BodyRows: [new WizardRow(Wait)], Watching: true)
     {
-        Hero = [.. Gatto.Repl.Cats.For("", Gatto.Terminal.GlyphSet.Unicode).Split('\n').Select(l => "  " + l.TrimEnd('\r'))],
+        Hero = [.. Gatto.Repl.Cats.For(null, Gatto.Terminal.GlyphSet.Unicode).Split('\n').Select(l => "  " + l.TrimEnd('\r'))],
         Starting = true,
     };
 

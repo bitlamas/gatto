@@ -24,14 +24,14 @@ public class ShippedTreeTests
                 ("42c2308c6198e0be8cc37a41be06c23619921d0a260900d211453933db6b1f0c",
                  1869, "d15ce43a36d45e526ac0a2d3154a1e22b9f7f06aaa5aabbc374138cc025347e4"),
             ["roles/coder.json"] =
-                ("64b94c93cca7ab9581c7ab6b73bfc6d9168a9f8b7e54cc6999961629177fffee",
-                 848, "84571b1538f535289b5c216ebc7236264f9208bab950b3ecf6649b28a43d4607"),
+                ("2d6ced6fbea38159984c627faa6d2aed0bfa4ec10a3f30c157da6ed471646694",
+                 969, "a505da69211d96b79079a95cdd578b0228f2bdcec7b5dba064821c0c575e1a36"),
             ["roles/generalist.json"] =
                 ("35b5efcf8469f21bcafcdafd6412e52606f56ec02036d2f9b65d60dbcfc5bf84",
                  3, "ca3d163bab055381827226140568f3bef7eaac187cebd76878e0b63e9e442356"),
             ["roles/oracle.json"] =
-                ("64e52929395e5c7636eb08525680200b9f6127e8b16415e6d4c5a3c0ca5818b1",
-                 837, "299100ac0d5a6d0c78d5677e96770d48943bff7b6967681867573c3d23de34de"),
+                ("0668a903f1072318ca5532da6089bcc537e2f64ffc8e27113f54e86318ced431",
+                 993, "f0b9ec7b7b84baee9640036974791c2d9ae27daa13b9c1116f49c24cb76149e2"),
             ["roles/plan-review.json"] =
                 ("c617f614f92238341dc40b96c16b0ea41e9f0fad87a3a0f409a1f1e69e9d3226",
                  1863, "ad5ad394b82ab8b949bd1dd0bf2c3ed00806af6e37ea35b3d7495ad944d043fd"),
@@ -84,6 +84,23 @@ public class ShippedTreeTests
             Assert.Equal(bodySha, Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(role.Append!))).ToLowerInvariant());
         }
         finally { Directory.Delete(dir, recursive: true); }
+    }
+
+    [Fact]
+    public void THE_SHIPPED_SITTERS_CARRY_THEIR_DRESS()
+    {
+        var coder = ShippedRoleFiles.Load("coder");
+        var oracle = ShippedRoleFiles.Load("oracle");
+
+        Assert.Equal(("#4BBECD", "#0E7C86", 4), (coder.Tint, coder.TintLight, coder.Cat!.Count));
+        Assert.Equal(("#B88AAF", "#834E8F", 6), (oracle.Tint, oracle.TintLight, oracle.Cat!.Count));
+        foreach (var bare in new[] { "generalist", "raw" })
+        {
+            var role = ShippedRoleFiles.Load(bare);
+            Assert.Null(role.Cat);
+            Assert.Null(role.Tint);
+            Assert.Null(role.TintLight);
+        }
     }
 
     [Fact]

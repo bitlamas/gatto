@@ -340,7 +340,7 @@ public class RenderedWalkDumpTests : IDisposable
     }
 
     //the start-up screen is the one in-session frame that draws the cat, so a frame is told apart by the drawing and never by the header under test
-    private static readonly string CatLine = Gatto.Repl.Cats.For("", Gatto.Terminal.GlyphSet.Unicode).Split('\n')
+    private static readonly string CatLine = Gatto.Repl.Cats.For(null, Gatto.Terminal.GlyphSet.Unicode).Split('\n')
         .Select(l => l.TrimEnd('\r').Trim()).OrderByDescending(l => l.Length).First();
 
     private static bool IsStartUp(string frame) => frame.Contains(CatLine, StringComparison.Ordinal);

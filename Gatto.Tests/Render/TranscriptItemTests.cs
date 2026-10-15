@@ -6,7 +6,16 @@ namespace Gatto.Tests.Render;
 
 public sealed class TranscriptItemTests
 {
-    private static readonly Theme T = new(new TermCaps(true, true));
+    private static readonly RgbColor CoderTeal = Theme.ParseTint("#4BBECD");
+
+    //told once here and never again, so the tests that run in parallel share a theme whose coder reads the file's teal
+    private static readonly Theme T = Tell(new Theme(new TermCaps(true, true)), "coder", CoderTeal);
+
+    private static Theme Tell(Theme theme, string role, RgbColor tint)
+    {
+        theme.SetRoleTint(role, tint, null);
+        return theme;
+    }
 
     //a row is self-contained when no styling stays active at its end, so a clipped item inherits no colour from a clipped-off predecessor
     private static bool SgrSelfContained(string row)
@@ -142,7 +151,7 @@ public sealed class TranscriptItemTests
         Assert.DoesNotContain(ItemRender.ProseMarkerOf(glyphs: GlyphSet.Unicode), tool, StringComparison.Ordinal);
 
         Assert.NotEqual(ItemRender.ToolMarkerOf(glyphs: GlyphSet.Unicode), ItemRender.ProseMarkerOf(glyphs: GlyphSet.Unicode));
-        var tint = Ansi.Fg(T.RoleTint("coder"), T.TrueColor);
+        var tint = Ansi.Fg(CoderTeal, T.TrueColor);
         Assert.StartsWith(tint, prose, StringComparison.Ordinal);
         Assert.StartsWith(tint, tool, StringComparison.Ordinal);
     }
@@ -336,9 +345,11 @@ public sealed class TranscriptItemTests
     [Fact]
     public void Assistant_output_bold_and_headings_follow_the_role_tint()
     {
-        var oracle = new AssistantBlockItem(new[] { "# Title", "a **strong** word" }, "oracle").Render(60, T, glyphs: GlyphSet.Unicode);
+        var told = new Theme(new TermCaps(true, true));
+        told.SetRoleTint("oracle", Theme.ParseTint("#B88AAF"), null);
+        var oracle = new AssistantBlockItem(new[] { "# Title", "a **strong** word" }, "oracle").Render(60, told, glyphs: GlyphSet.Unicode);
         var joined = string.Concat(oracle);
-        Assert.Contains(Ansi.Fg(T.Map(Theme.RoleOracle), T.TrueColor), joined, StringComparison.Ordinal);
+        Assert.Contains(Ansi.Fg(told.Map(Theme.ParseTint("#B88AAF")), told.TrueColor), joined, StringComparison.Ordinal);
         Assert.DoesNotContain(Ansi.Fg(T.Map(Theme.Accent), T.TrueColor), joined, StringComparison.Ordinal);
         Assert.All(oracle, r => Assert.True(SgrSelfContained(r)));
 
@@ -351,9 +362,11 @@ public sealed class TranscriptItemTests
     public void User_echo_bold_stays_legacy_bright_not_role_tinted()
     {
         //the role tint applies to output only, a user message keeps the legacy bright foreground
-        var rows = string.Concat(new UserEchoItem(new[] { "my **strong** word" }).Render(60, T, glyphs: GlyphSet.Unicode));
-        Assert.DoesNotContain(Ansi.Fg(T.Map(Theme.RoleOracle), T.TrueColor), rows, StringComparison.Ordinal);
-        Assert.DoesNotContain(Ansi.Fg(T.Map(Theme.RoleCoder), T.TrueColor), rows, StringComparison.Ordinal);
+        var told = new Theme(new TermCaps(true, true));
+        told.SetRoleTint("oracle", Theme.ParseTint("#B88AAF"), null);
+        var rows = string.Concat(new UserEchoItem(new[] { "my **strong** word" }).Render(60, told, glyphs: GlyphSet.Unicode));
+        Assert.DoesNotContain(Ansi.Fg(told.Map(Theme.ParseTint("#B88AAF")), told.TrueColor), rows, StringComparison.Ordinal);
+        Assert.DoesNotContain(Ansi.Fg(told.Map(Theme.ParseTint("#4BBECD")), told.TrueColor), rows, StringComparison.Ordinal);
     }
 
     [Fact]

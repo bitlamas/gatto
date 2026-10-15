@@ -19,8 +19,7 @@ public sealed class Theme(TermCaps caps, ThemeMode mode = ThemeMode.Dark)
     public static readonly RgbColor Ok           = new(0x97, 0xCA, 0x72, 113);
     public static readonly RgbColor Err          = new(0xEC, 0x60, 0x6B, 203);
     public static readonly RgbColor Warn         = new(0xF0, 0xC3, 0x70, 215);
-    public static readonly RgbColor RoleCoder    = new(0x4B, 0xBE, 0xCD, 74);
-    public static readonly RgbColor RoleOracle   = new(0xB8, 0x8A, 0xAF, 139);
+    public static readonly RgbColor Command      = new(0x4B, 0xBE, 0xCD, 74);    //the command ink of the CLI surfaces, the teal the shipped coder also wears
     public static readonly RgbColor CodeInlineFg = new(0xDC, 0x9A, 0x5B, 173);
     public static readonly RgbColor CodeBlockFg  = new(0xC9, 0xCD, 0xC4, 251);
     public static readonly RgbColor CodeBlockBg  = new(0x15, 0x15, 0x15, 233);
@@ -56,8 +55,7 @@ public sealed class Theme(TermCaps caps, ThemeMode mode = ThemeMode.Dark)
     public static readonly RgbColor OkLight           = new(0x2E, 0x7D, 0x32, 28);    //the ok green, about 5.1:1 on white
     public static readonly RgbColor ErrLight          = new(0xC6, 0x28, 0x28, 160);   //the error red, about 5.6:1 on white
     public static readonly RgbColor WarnLight         = new(0x94, 0x6A, 0x00, 136);   //warn amber, about 4.9:1 on white
-    public static readonly RgbColor RoleCoderLight    = new(0x0E, 0x7C, 0x86, 30);    //the coder role teal, about 5.0:1 on white
-    public static readonly RgbColor RoleOracleLight   = new(0x83, 0x4E, 0x8F, 91);    //the oracle role mauve, about 6.1:1 on white
+    public static readonly RgbColor CommandLight      = new(0x0E, 0x7C, 0x86, 30);    //the command teal, about 5.0:1 on white
     public static readonly RgbColor CodeInlineFgLight = new(0x9A, 0x3E, 0x00, 130);   //inline code text, about 6.9:1 on the light chip
     public static readonly RgbColor CodeBlockFgLight  = new(0x24, 0x29, 0x2E, 235);   //ink on the code paper
     public static readonly RgbColor CodeBlockBgLight  = new(0xF0, 0xF0, 0xF0, 255);   //the code block's paper colour
@@ -94,8 +92,7 @@ public sealed class Theme(TermCaps caps, ThemeMode mode = ThemeMode.Dark)
         [Ok]           = OkLight,
         [Err]          = ErrLight,
         [Warn]         = WarnLight,
-        [RoleCoder]    = RoleCoderLight,
-        [RoleOracle]   = RoleOracleLight,
+        [Command]      = CommandLight,
         [CodeInlineFg] = CodeInlineFgLight,
         [CodeBlockFg]  = CodeBlockFgLight,
         [CodeBlockBg]  = CodeBlockBgLight,
@@ -129,12 +126,35 @@ public sealed class Theme(TermCaps caps, ThemeMode mode = ThemeMode.Dark)
     public RgbColor Map(RgbColor c) =>
         mode == ThemeMode.Light && LightMap.TryGetValue(c, out var l) ? l : c;
 
-    public RgbColor RoleTint(string role) => role switch
+    //one reference, so a repaint on the chrome timer reads a name and its colours together
+    private sealed record TintState(string Role, RgbColor Dark, RgbColor? Light);
+    private TintState? _tint;
+
+    //told at launch and at each role switch, the surfaces pass a role name and read its colours here
+    public void SetRoleTint(string role, RgbColor dark, RgbColor? light) =>
+        _tint = new TintState(role, dark, light);
+
+    //keyed by name, so a block painted for an earlier role reads the accent
+    public RgbColor RoleTint(string role) =>
+        _tint is { } t && role == t.Role ? (mode == ThemeMode.Light ? t.Light ?? t.Dark : t.Dark) : Accent;
+
+    //a role file's #rrggbb with its nearest 256-colour index, the loader having refused any other shape
+    public static RgbColor ParseTint(string hex)
     {
-        "coder" => RoleCoder,
-        "oracle" => RoleOracle,
-        _ => Accent,
-    };
+        if (hex.Length != 7 || hex[0] != '#') throw new FormatException($"not a #rrggbb colour: {hex}");
+        var r = int.Parse(hex.AsSpan(1, 2), NumberStyles.AllowHexSpecifier, CultureInfo.InvariantCulture);
+        var g = int.Parse(hex.AsSpan(3, 2), NumberStyles.AllowHexSpecifier, CultureInfo.InvariantCulture);
+        var b = int.Parse(hex.AsSpan(5, 2), NumberStyles.AllowHexSpecifier, CultureInfo.InvariantCulture);
+        return new RgbColor((byte)r, (byte)g, (byte)b, Nearest256(r, g, b));
+    }
+
+    //the WCAG contrast ratio of two colours, the lighter luminance on top, 1 to 21
+    public static double ContrastRatio(RgbColor fg, RgbColor ground)
+    {
+        var a = RelativeLuminance(fg.R / 255.0, fg.G / 255.0, fg.B / 255.0);
+        var b = RelativeLuminance(ground.R / 255.0, ground.G / 255.0, ground.B / 255.0);
+        return (Math.Max(a, b) + 0.05) / (Math.Min(a, b) + 0.05);
+    }
 
     public string Paint(string s, RgbColor fg, bool bold = false, bool italic = false) =>
         Ansi.Fg(Map(fg), caps.TrueColor) + (bold ? Ansi.Bold : "") + (italic ? Ansi.Italic : "") + s + Ansi.Reset;

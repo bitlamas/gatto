@@ -14,7 +14,16 @@ namespace Gatto.Tests;
 //the renderer only commits finished lines and repaints the tail, so every assertion here reads the replayed screen or the byte stream
 public class StreamRendererTests
 {
-    private static readonly Theme T = new(new TermCaps(true, true));
+    private static readonly RgbColor CoderTeal = Theme.ParseTint("#4BBECD");
+
+    //told once here and never again, so the tests that run in parallel share a theme whose coder reads the file's teal
+    private static readonly Theme T = Tell(new Theme(new TermCaps(true, true)), "coder", CoderTeal);
+
+    private static Theme Tell(Theme theme, string role, RgbColor tint)
+    {
+        theme.SetRoleTint(role, tint, null);
+        return theme;
+    }
 
     private static StatusInfo Status(string role) =>
         new(@"C:\proj", "qwen", role, new CtxState(), @"C:\Users\x");
@@ -266,8 +275,8 @@ public class StreamRendererTests
         var rows = Rows(p).Where(x => x.Length > 0).ToArray();
         Assert.True(rows.Length > 8, $"expected a >8-row paragraph, got {rows.Length}");
         Assert.Contains(Ansi.Bold, s.Text, StringComparison.Ordinal);
-        Assert.Contains(Ansi.Fg(T.ChipColor(T.Map(T.RoleTint("coder"))), T.TrueColor), s.Text, StringComparison.Ordinal);   //the chip colour comes from the role accent
-        Assert.DoesNotContain("48;", ChipRun(s.Text, Ansi.Fg(T.ChipColor(T.Map(T.RoleTint("coder"))), T.TrueColor)), StringComparison.Ordinal);   //the chip run carries no background colour
+        Assert.Contains(Ansi.Fg(T.ChipColor(T.Map(CoderTeal)), T.TrueColor), s.Text, StringComparison.Ordinal);   //the chip colour comes from the role accent
+        Assert.DoesNotContain("48;", ChipRun(s.Text, Ansi.Fg(T.ChipColor(T.Map(CoderTeal)), T.TrueColor)), StringComparison.Ordinal);   //the chip run carries no background colour
         var visible = string.Join("\n", Rows(p));
         Assert.DoesNotContain("**bold**", visible, StringComparison.Ordinal);   //no raw markdown on the screen
         Assert.Single(Regex.Matches(visible, "bold"));                          //the word is drawn exactly once
@@ -472,7 +481,7 @@ public class StreamRendererTests
         r.OnToolResult(new ToolCall("i", "read_file", """{"path":"a.cs"}"""),
             new ToolResult("ok", Gloss: "1 line"));
 
-        Assert.Contains(T.Paint(ItemRender.ToolMarkerOf(glyphs: GlyphSet.Unicode), T.RoleTint("coder")), s.Text, StringComparison.Ordinal);
+        Assert.Contains(T.Paint(ItemRender.ToolMarkerOf(glyphs: GlyphSet.Unicode), CoderTeal), s.Text, StringComparison.Ordinal);
     }
 
     //an answered prompt is a moment: its outcome shows as one mark on the tool's result row, and it never reaches the transcript
@@ -565,7 +574,7 @@ public class StreamRendererTests
         Assert.DoesNotContain(rows, row => row.Contains("declined", StringComparison.Ordinal));
         //the ● paints with Err rather than the coder role tint, so assert on the raw bytes (Rows() strips the paint)
         Assert.StartsWith(T.Paint(ItemRender.ToolMarkerOf(glyphs: GlyphSet.Unicode), Theme.Err), RawRows(p)[bullet], StringComparison.Ordinal);
-        Assert.DoesNotContain(T.Paint(ItemRender.ToolMarkerOf(glyphs: GlyphSet.Unicode), T.RoleTint("coder")), RawRows(p)[bullet], StringComparison.Ordinal);
+        Assert.DoesNotContain(T.Paint(ItemRender.ToolMarkerOf(glyphs: GlyphSet.Unicode), CoderTeal), RawRows(p)[bullet], StringComparison.Ordinal);
     }
 
     //esc withdrew the question rather than answering it, so the row says cancelled
@@ -600,7 +609,7 @@ public class StreamRendererTests
         var bullet = RowOf(rows, "○ write_file");
         Assert.Equal("  ⎿ ✓ 12 lines · ~0 tok", rows[bullet + 1]);           //the normal result row
         Assert.Equal(@"  auto-approved on this project: ~\proj\*", rows[bullet + 2]);
-        Assert.StartsWith(T.Paint(ItemRender.ToolMarkerOf(glyphs: GlyphSet.Unicode), T.RoleTint("coder")), RawRows(p)[bullet], StringComparison.Ordinal);
+        Assert.StartsWith(T.Paint(ItemRender.ToolMarkerOf(glyphs: GlyphSet.Unicode), CoderTeal), RawRows(p)[bullet], StringComparison.Ordinal);
         Assert.Contains(T.Paint(@"auto-approved on this project: ~\proj\*", Theme.Dim),
             RawRows(p)[bullet + 2], StringComparison.Ordinal);
     }
@@ -655,7 +664,7 @@ public class StreamRendererTests
         var rows = Rows(p);
         var glob = RowOf(rows, "○ glob");
         Assert.Equal("  ⎿ ✓ 1 match · click to expand · ~0 tok", rows[glob + 1]);
-        Assert.StartsWith(T.Paint(ItemRender.ToolMarkerOf(glyphs: GlyphSet.Unicode), T.RoleTint("coder")), RawRows(p)[glob], StringComparison.Ordinal);
+        Assert.StartsWith(T.Paint(ItemRender.ToolMarkerOf(glyphs: GlyphSet.Unicode), CoderTeal), RawRows(p)[glob], StringComparison.Ordinal);
         Assert.Single(rows, row => row == "  ⎿ ✗ denied");
     }
 
@@ -676,7 +685,7 @@ public class StreamRendererTests
         var rows = Rows(p);
         var glob = RowOf(rows, "○ glob");
         Assert.Equal("  ⎿ ✓ 1 match · click to expand · ~0 tok", rows[glob + 1]);
-        Assert.StartsWith(T.Paint(ItemRender.ToolMarkerOf(glyphs: GlyphSet.Unicode), T.RoleTint("coder")), RawRows(p)[glob], StringComparison.Ordinal);
+        Assert.StartsWith(T.Paint(ItemRender.ToolMarkerOf(glyphs: GlyphSet.Unicode), CoderTeal), RawRows(p)[glob], StringComparison.Ordinal);
     }
 
     //a turn aborted mid-tool never sends OnToolResult, so EndTurn commits the stranded call as cancelled, and the buffered decision reaches the commit seam only

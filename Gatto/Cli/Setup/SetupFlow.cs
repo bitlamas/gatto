@@ -871,7 +871,7 @@ internal sealed class SetupFlow(ISetupProbes probes)
 
     //the cat rows come from Cats.For, the one home for the drawing. the glyph set is a parameter, or a value computed too early draws the Unicode cat
     private static string[] CatOf(Gatto.Terminal.GlyphSet g) =>
-        [.. Gatto.Repl.Cats.For("", g).Split('\n').Select(l => Gutter + l.TrimEnd('\r'))];
+        [.. Gatto.Repl.Cats.For(null, g).Split('\n').Select(l => Gutter + l.TrimEnd('\r'))];
 
     //a two-space gutter for hero rows (the cat is pre-composed, without it it sits two cells left of the rows below)
     private const string Gutter = "  ";

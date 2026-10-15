@@ -108,7 +108,7 @@ public class AsciiReplFrameTests
     [Fact]
     public void THE_BANNER_DRAWS_THE_ASCII_CAT_UNDER_THE_ASCII_SET()
     {
-        var rows = Gatto.Repl.Repl.BannerItem(Plain, "coder", "qwen3.6-35b", "v0.5.0", GlyphSet.Ascii)
+        var rows = Gatto.Repl.Repl.BannerItem(Plain, "coder", ShippedRoleFiles.Load("coder").Cat, "qwen3.6-35b", "v0.5.0", GlyphSet.Ascii)
             .Render(100, Plain, glyphs: GlyphSet.Unicode);
 
         foreach (var row in rows) NoOwnedMark("a banner row", row);
@@ -123,9 +123,9 @@ public class AsciiReplFrameTests
     [Fact]
     public void AND_THE_UNICODE_BANNER_STILL_DRAWS_THE_ROLE_CAT()
     {
-        var coder = string.Join("\n", Gatto.Repl.Repl.BannerItem(Plain, "coder", "m", "v", GlyphSet.Unicode)
+        var coder = string.Join("\n", Gatto.Repl.Repl.BannerItem(Plain, "coder", ShippedRoleFiles.Load("coder").Cat, "m", "v", GlyphSet.Unicode)
             .Render(100, Plain, glyphs: GlyphSet.Unicode));
-        var oracle = string.Join("\n", Gatto.Repl.Repl.BannerItem(Plain, "oracle", "m", "v", GlyphSet.Unicode)
+        var oracle = string.Join("\n", Gatto.Repl.Repl.BannerItem(Plain, "oracle", ShippedRoleFiles.Load("oracle").Cat, "m", "v", GlyphSet.Unicode)
             .Render(100, Plain, glyphs: GlyphSet.Unicode));
 
         Assert.NotEqual(coder, oracle);

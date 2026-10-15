@@ -151,7 +151,9 @@ public sealed class RichReplHarness
         //the wild state and its seams, passed straight through as the interactive entry passes them, absent as a session with no wild state
         Gatto.Core.Loop.Permissions.WildState? wild = null, Action<bool>? persistWild = null, Func<bool>? wildPersisted = null, bool wildFromHome = false,
         //the home's default role and the /role seam, absent as a session that names its role and has no roles to switch to
-        string? defaultRole = null, Func<string, RoleSwitchResult>? switchRole = null)
+        string? defaultRole = null, Func<string, RoleSwitchResult>? switchRole = null,
+        //the launched role and its file's colours and rows, the generalist with none as a bare launch from a fresh home
+        string roleName = "generalist", (RgbColor Dark, RgbColor? Light)? roleTint = null, IReadOnlyList<string>? roleCat = null)
     {
         Surface = new VtScreenSurface(width, height);
         _tap = new TappedSurface(Surface);
@@ -162,7 +164,7 @@ public sealed class RichReplHarness
             new TestToolContext(cwd), "test-model");
 
         _repl = new Gatto.Repl.Repl(
-            loop, Convo, roleName: "generalist", modelName: "test-model",
+            loop, Convo, roleName: roleName, modelName: "test-model",
             sessions: null, client: Client, configContext: 8192, contextBudget: contextBudget, cwd: cwd,
             permissions: permissions,
             //the closure is assigned after construction so it can see the harness. a test sets it to make the recompose warn or count calls.
@@ -193,7 +195,8 @@ public sealed class RichReplHarness
             chrome: chrome,
             commands: commands,
             launchWarnings: launchWarnings,
-            clipboardImageSource: clipboardImages);
+            clipboardImageSource: clipboardImages,
+            roleTint: roleTint, roleCat: roleCat);
     }
 
     //answers the attach-count question without a terminal. set it to a function of the SelectSpec, and null keeps the real widget.

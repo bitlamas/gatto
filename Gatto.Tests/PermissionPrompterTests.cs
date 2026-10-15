@@ -50,7 +50,16 @@ public class RichPermissionPrompterTests
         public ConsoleKeyInfo ReadKey() => throw new InvalidOperationException("pump died");
     }
 
-    private static readonly Theme T = new(new TermCaps(true, true));
+    private static readonly RgbColor CoderTeal = Theme.ParseTint("#4BBECD");
+
+    //told once here and never again, so the tests that run in parallel share a theme whose coder reads the file's teal
+    private static readonly Theme T = Tell(new Theme(new TermCaps(true, true)), "coder", CoderTeal);
+
+    private static Theme Tell(Theme theme, string role, RgbColor tint)
+    {
+        theme.SetRoleTint(role, tint, null);
+        return theme;
+    }
     private static readonly char Esc = Convert.ToChar(0x1B);
 
     private static ConsoleKeyInfo K(char c) => new(c, ConsoleKey.Spacebar, false, false, false);
@@ -411,7 +420,9 @@ public class RichPermissionPrompterTests
         Assert.DoesNotContain(rows, row => row.Contains("auto-approved", StringComparison.Ordinal));
         //the tint comes from the model's role that ToolBlockItem stamps, which differs from the renderer's role here
         var raw = p.Model.Items.SelectMany(i => i.Render(p.Width, T, glyphs: GlyphSet.Unicode)).ToArray();
-        Assert.StartsWith(T.Paint(ItemRender.ToolMarkerOf(glyphs: GlyphSet.Unicode), T.RoleTint(p.Model.Role)), raw[0], StringComparison.Ordinal);
+        Assert.Equal("generalist", p.Model.Role);
+        Assert.StartsWith(T.Paint(ItemRender.ToolMarkerOf(glyphs: GlyphSet.Unicode), Theme.Accent), raw[0], StringComparison.Ordinal);
+        Assert.DoesNotContain(T.Paint(ItemRender.ToolMarkerOf(glyphs: GlyphSet.Unicode), CoderTeal), raw[0], StringComparison.Ordinal);
         Assert.DoesNotContain(T.Paint(ItemRender.ToolMarkerOf(glyphs: GlyphSet.Unicode), Theme.Err), raw[0], StringComparison.Ordinal);
     }
 

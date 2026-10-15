@@ -11,6 +11,14 @@ public class InputFrameTests
 {
     private static readonly Theme T = new(new TermCaps(true, true));
 
+    //a theme told one role's tint, built per test since a told theme holds state
+    private static Theme Told(string role, string hex)
+    {
+        var theme = new Theme(new TermCaps(true, true));
+        theme.SetRoleTint(role, Theme.ParseTint(hex), null);
+        return theme;
+    }
+
     private static StatusInfo Status(int? window = null, int used = 0)
     {
         var ctx = new CtxState { ContextWindow = window };
@@ -68,10 +76,11 @@ public class InputFrameTests
     [Fact]
     public void TopRule_LabelRightAligned()
     {
-        var rule = InputFrame.BuildTopRule("coder", width: 40, T);
-        Assert.Contains(T.Paint("gatto", Theme.Accent, bold: true), rule);
-        Assert.Contains(T.Paint("coder", Theme.RoleCoder), rule);
-        Assert.EndsWith(T.Paint("──", Theme.Rule), rule);
+        var told = Told("coder", "#4BBECD");
+        var rule = InputFrame.BuildTopRule("coder", width: 40, told);
+        Assert.Contains(told.Paint("gatto", Theme.Accent, bold: true), rule);
+        Assert.Contains(told.Paint("coder", Theme.ParseTint("#4BBECD")), rule);
+        Assert.EndsWith(told.Paint("──", Theme.Rule), rule);
     }
 
     [Theory]
@@ -115,11 +124,12 @@ public class InputFrameTests
     [Fact]
     public void A_NULL_ROLE_PAINTS_NO_ROLE_TINT()
     {
-        var rule = InputFrame.BuildTopRule(null, 60, T);
-        Assert.DoesNotContain(Ansi.Fg(Theme.RoleCoder, true), rule, StringComparison.Ordinal);
-        Assert.DoesNotContain(Ansi.Fg(Theme.RoleOracle, true), rule, StringComparison.Ordinal);
+        var told = Told("coder", "#4BBECD");
+        var rule = InputFrame.BuildTopRule(null, 60, told);
+        Assert.DoesNotContain(Ansi.Fg(Theme.ParseTint("#4BBECD"), true), rule, StringComparison.Ordinal);
+        Assert.DoesNotContain(Ansi.Fg(Theme.ParseTint("#B88AAF"), true), rule, StringComparison.Ordinal);
         //the bold brand word runs straight into the closing rule, so no separator or role paint sits between them
-        Assert.EndsWith(T.Paint("gatto", Theme.Accent, bold: true) + " " + T.Paint("──", Theme.Rule), rule, StringComparison.Ordinal);
+        Assert.EndsWith(told.Paint("gatto", Theme.Accent, bold: true) + " " + told.Paint("──", Theme.Rule), rule, StringComparison.Ordinal);
     }
 
     [Fact]   //an armed hint takes the label's slot and adds no row
@@ -157,13 +167,16 @@ public class InputFrameTests
     public void A_null_hint_renders_the_rule_exactly_as_before()
     {
         //a null hint renders the rule as the call with no hint does, so the default has to stay null
-        var rule = InputFrame.BuildTopRule("coder", 80, T, wild: true, hint: null);
+        var told = Told("coder", "#4BBECD");
+        var rule = InputFrame.BuildTopRule("coder", 80, told, wild: true, hint: null);
         var visible = StripSgr(rule);
         Assert.Contains("gatto · coder · wild", visible);
-        Assert.Contains(T.Paint("gatto", Theme.Accent, bold: true), rule);
-        Assert.Contains(T.Paint("coder", T.RoleTint("coder")), rule);
-        Assert.Contains(T.Paint("wild", Theme.Err), rule);
-        Assert.Equal(InputFrame.BuildTopRule("coder", 80, T, wild: true), rule);
+        Assert.Contains(told.Paint("gatto", Theme.Accent, bold: true), rule);
+        Assert.Contains(told.Paint("coder", Theme.ParseTint("#4BBECD")), rule);
+        Assert.Contains(told.Paint("wild", Theme.Err), rule);
+        Assert.Equal(InputFrame.BuildTopRule("coder", 80, told, wild: true), rule);
+        //the same rule on a theme never told paints the coder in the accent, so the colour above came from the telling
+        Assert.DoesNotContain(Ansi.Fg(Theme.ParseTint("#4BBECD"), true), InputFrame.BuildTopRule("coder", 80, T, wild: true), StringComparison.Ordinal);
     }
 
     [Fact]

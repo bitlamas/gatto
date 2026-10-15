@@ -28,7 +28,7 @@ public class ServedModelNameTests
     [Fact]
     public void The_banner_names_a_gguf_path_by_its_file_name()
     {
-        var rows = string.Join("\n", Gatto.Repl.Repl.BannerItem(T, "coder", @"C:\models\Qwen-9B.gguf", "v1", GlyphSet.Unicode)
+        var rows = string.Join("\n", Gatto.Repl.Repl.BannerItem(T, "coder", null, @"C:\models\Qwen-9B.gguf", "v1", GlyphSet.Unicode)
             .Render(120, T, GlyphSet.Unicode));
         Assert.Contains("Qwen-9B", rows, StringComparison.Ordinal);
         Assert.DoesNotContain(".gguf", rows, StringComparison.Ordinal);

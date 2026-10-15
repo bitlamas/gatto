@@ -49,7 +49,7 @@ public class CommandBannerTests
         //the banner must render the shared Cats art. a second copy of the ascii art is forbidden.
         var text = Render(null, "doctor");
 
-        foreach (var line in Cats.For("generalist", glyphs: GlyphSet.Unicode).Split('\n'))
+        foreach (var line in Cats.For(null, glyphs: GlyphSet.Unicode).Split('\n'))
             Assert.Contains(line.TrimEnd('\r'), text, StringComparison.Ordinal);
     }
 
@@ -173,7 +173,7 @@ public class CommandBannerTests
     [Fact]
     public void THE_ONE_LINER_DRAWS_NO_CAT_AND_THE_BANNER_STILL_DOES()
     {
-        var earLine = Cats.For("generalist", glyphs: GlyphSet.Unicode).Split('\n')[0].TrimEnd('\r');
+        var earLine = Cats.For(null, glyphs: GlyphSet.Unicode).Split('\n')[0].TrimEnd('\r');
 
         Assert.DoesNotContain(earLine, Header(null, "doctor", GlyphSet.Unicode), StringComparison.Ordinal);
         Assert.Contains(earLine, Render(null, "doctor"), StringComparison.Ordinal);

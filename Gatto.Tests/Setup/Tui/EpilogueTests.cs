@@ -271,7 +271,7 @@ public class EpilogueTests
             var header = new StringWriter();
             Gatto.Cli.CommandBanner.WriteHeader(header, theme, "model", GlyphSet.Unicode, Stamp);
             Assert.Equal(header.ToString().Split(Environment.NewLine)[1], lines[0]);
-            Assert.Contains(theme.Paint("gatto model", Theme.RoleCoder), lines[2], StringComparison.Ordinal);
+            Assert.Contains(theme.Paint("gatto model", Theme.Command), lines[2], StringComparison.Ordinal);
             Assert.Equal("nothing added · gatto model whenever you're ready", TermText.StripAnsiForWidth(lines[2]));
         }
         finally { try { Directory.Delete(home, true); } catch (IOException) { } }

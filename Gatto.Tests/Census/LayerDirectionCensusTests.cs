@@ -9,12 +9,12 @@ public class LayerDirectionCensusTests
 {
     private static readonly string[] Layers = ["Cli", "Repl", "Roles", "Extensions", "Core", "Terminal"];
 
-    //the declared graph: repl, roles and extensions sit beside each other on core alone, and terminal sits under cli and repl naming no layer
+    //the declared graph: repl, roles and extensions sit beside each other on core alone, and terminal sits under cli, repl and roles naming no layer
     private static readonly HashSet<(string From, string To)> Allowed =
     [
         ("Cli", "Repl"), ("Cli", "Roles"), ("Cli", "Extensions"), ("Cli", "Core"),
         ("Repl", "Core"), ("Roles", "Core"), ("Extensions", "Core"),
-        ("Cli", "Terminal"), ("Repl", "Terminal"),
+        ("Cli", "Terminal"), ("Repl", "Terminal"), ("Roles", "Terminal"),
     ];
 
     //namespaces that hold only generated types and the entry point, so their types sit in no layer
@@ -228,7 +228,7 @@ public class LayerDirectionCensusTests
 
         var forbidden = Layers.SelectMany(a => Layers.Select(b => (From: a, To: b)))
             .Where(p => p.From != p.To && !Allowed.Contains(p)).ToList();
-        Assert.Equal(21, forbidden.Count);
+        Assert.Equal(20, forbidden.Count);
 
         foreach (var (from, to) in forbidden)
         {

@@ -1,6 +1,7 @@
 using System.Text.Json;
 using Gatto.Core.Home;
 using Gatto.Roles;
+using Gatto.Terminal;
 
 namespace Gatto.Tests;
 
@@ -178,6 +179,179 @@ public class RoleFileTests : IDisposable
         Write("quiet", """{ "description": null }""");
 
         Assert.Null(RoleFile.Load(_rolesDir, "quiet").Description);
+    }
+
+    //the role file as JSON from a C# value, so a control character never sits in this source as an escape
+    private void WriteJson(string name, object value) => Write(name, JsonSerializer.Serialize(value));
+
+    private GattoConfigException Refused(string name) =>
+        Assert.Throws<GattoConfigException>(() => RoleFile.Load(_rolesDir, name));
+
+    [Fact]
+    public void A_LONE_SURROGATE_ESCAPE_FAILS_THE_LOAD_WITH_A_SENTENCE()
+    {
+        //the escape is written into the JSON text, a backslash and a u, never a character in this source
+        Write("bad", "{ \"append\": \"a" + "\\" + "ud800b\" }");
+
+        var ex = Refused("bad");
+
+        Assert.StartsWith("role 'bad' at ", ex.Message);
+        Assert.EndsWith(" holds text that is not valid UTF-16", ex.Message);
+    }
+
+    [Fact]
+    public void THE_DRESS_KEYS_ROUND_TRIP()
+    {
+        WriteJson("dressed", new Dictionary<string, object>
+        {
+            ["cat"] = new[] { "  /l、", "（＾､＾７" }, ["tint"] = "#4BBECD", ["tint_light"] = "#0E7C86",
+        });
+
+        var role = RoleFile.Load(_rolesDir, "dressed");
+
+        Assert.Equal(new[] { "  /l、", "（＾､＾７" }, role.Cat);
+        Assert.Equal("#4BBECD", role.Tint);
+        Assert.Equal("#0E7C86", role.TintLight);
+        Assert.Equal((Theme.ParseTint("#4BBECD"), Theme.ParseTint("#0E7C86")), role.ParsedTint());
+    }
+
+    [Fact]
+    public void A_TINT_ALONE_PARSES_WITH_NO_LIGHT_TWIN()
+    {
+        WriteJson("teal", new { tint = "#4BBECD" });
+
+        Assert.Equal((Theme.ParseTint("#4BBECD"), (RgbColor?)null), RoleFile.Load(_rolesDir, "teal").ParsedTint());
+    }
+
+    [Fact]
+    public void A_BARE_ROLE_HAS_NO_DRESS()
+    {
+        Write("bare", "{}");
+
+        var role = RoleFile.Load(_rolesDir, "bare");
+
+        Assert.Null(role.Cat);
+        Assert.Null(role.Tint);
+        Assert.Null(role.TintLight);
+        Assert.Null(role.ParsedTint());
+    }
+
+    [Fact]
+    public void A_CAT_OF_SEVEN_ROWS_IS_REFUSED()
+    {
+        WriteJson("bad", new { cat = Enumerable.Repeat("x", 7).ToArray() });
+
+        var ex = Refused("bad");
+
+        Assert.Equal("role 'bad' has a \"cat\" of 7 rows; must be 1 to 6", ex.Message);
+    }
+
+    [Fact]
+    public void AN_EMPTY_CAT_IS_REFUSED()
+    {
+        Write("bad", """{ "cat": [] }""");
+
+        Assert.Equal("role 'bad' has a \"cat\" of 0 rows; must be 1 to 6", Refused("bad").Message);
+    }
+
+    [Fact]
+    public void A_CAT_ROW_OF_SEVENTEEN_CELLS_IS_REFUSED()
+    {
+        //sixteen cells by display width, so eight fullwidth runes fit and nine do not
+        Write("wide", "{ \"cat\": [\"" + new string('＾', 9) + "\"] }");
+        WriteJson("eight", new { cat = new[] { new string('＾', 8) } });
+        WriteJson("ascii", new { cat = new[] { new string('x', 16), "ok" } });
+        WriteJson("long", new { cat = new[] { "ok", new string('x', 17) } });
+
+        Assert.Equal("role 'wide' has a \"cat\" row 0 of \"" + new string('＾', 9) + "\"; must be 1 to 16 cells with no control character",
+            Refused("wide").Message);
+        Assert.Contains("\"cat\" row 1", Refused("long").Message);
+        Assert.Single(RoleFile.Load(_rolesDir, "eight").Cat!);
+        Assert.Equal(2, RoleFile.Load(_rolesDir, "ascii").Cat!.Count);
+    }
+
+    [Fact]
+    public void AN_EMPTY_CAT_ROW_IS_REFUSED()
+    {
+        Write("bad", """{ "cat": ["ok", ""] }""");
+
+        var ex = Refused("bad");
+
+        Assert.Equal("role 'bad' has a \"cat\" row 1 of \"\"; must be 1 to 16 cells with no control character", ex.Message);
+    }
+
+    [Theory]
+    [InlineData(9)]
+    [InlineData(10)]
+    [InlineData(27)]
+    [InlineData(31)]
+    [InlineData(127)]
+    [InlineData(0x85)]
+    public void A_CAT_ROW_WITH_A_CONTROL_CHARACTER_IS_REFUSED(int code)
+    {
+        WriteJson("bad", new { cat = new[] { "a" + (char)code + "b" } });
+
+        var ex = Refused("bad");
+
+        Assert.Contains("'bad'", ex.Message);
+        Assert.Contains("\"cat\" row 0", ex.Message);
+        Assert.Contains("no control character", ex.Message);
+    }
+
+    [Theory]
+    [InlineData("""{ "cat": "x" }""", "role 'bad' has a \"cat\" of \"x\"; must be an array of 1 to 6 rows")]
+    [InlineData("""{ "cat": ["a", 1] }""", "role 'bad' has a \"cat\" row 1 of 1; must be 1 to 16 cells with no control character")]
+    public void A_CAT_THAT_IS_NOT_AN_ARRAY_OF_STRINGS_IS_REFUSED(string json, string message)
+    {
+        Write("bad", json);
+
+        Assert.Equal(message, Refused("bad").Message);
+    }
+
+    [Fact]
+    public void A_CAT_OF_ONE_ROW_AND_A_CAT_OF_SIX_LOAD()
+    {
+        WriteJson("one", new { cat = new[] { "a" } });
+        WriteJson("six", new { cat = new[] { "1", "2", "3", "4", "5", "6" } });
+
+        Assert.Equal(new[] { "a" }, RoleFile.Load(_rolesDir, "one").Cat);
+        Assert.Equal(new[] { "1", "2", "3", "4", "5", "6" }, RoleFile.Load(_rolesDir, "six").Cat);
+    }
+
+    //the value is the JSON text as a user writes it, so an escape stays an escape and the message shows it as written
+    [Theory]
+    [InlineData("4BBECD")]
+    [InlineData("#4BBEC")]
+    [InlineData("#4BBECDE")]
+    [InlineData("#GGGGGG")]
+    [InlineData("teal")]
+    [InlineData("#4BBECD\\n")]
+    [InlineData("it's")]
+    public void A_TINT_THAT_IS_NOT_HEX_IS_REFUSED(string value)
+    {
+        Write("bad", "{ \"tint\": \"" + value + "\" }");
+
+        Assert.Equal($"role 'bad' has a \"tint\" of \"{value}\"; must be #rrggbb", Refused("bad").Message);
+    }
+
+    [Fact]
+    public void A_TINT_LIGHT_FOLLOWS_THE_SAME_RULE()
+    {
+        WriteJson("bad", new { tint = "#4BBECD", tint_light = "teal" });
+
+        Assert.Equal("role 'bad' has a \"tint_light\" of \"teal\"; must be #rrggbb", Refused("bad").Message);
+    }
+
+    [Fact]
+    public void A_TINT_LIGHT_WITHOUT_A_TINT_LOADS()
+    {
+        WriteJson("half", new { tint_light = "#0e7c86" });
+
+        var role = RoleFile.Load(_rolesDir, "half");
+
+        Assert.Null(role.Tint);
+        Assert.Equal("#0e7c86", role.TintLight);
+        Assert.Null(role.ParsedTint());
     }
 
     [Fact]

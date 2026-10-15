@@ -90,12 +90,16 @@ public static class ShippedExtensions
         "f17c804ca2366a477389c8492655354f350f105d1c0065a6e066fc88ecfff709",
         //coder.json rev C, the last one that set a temperature
         "bf8418827f2d76f7a536db2dc4f5203d2ea321c02d77751c6c2ea975845a46a4",
+        //coder.json rev D, the last one without a cat and a tint
+        "64b94c93cca7ab9581c7ab6b73bfc6d9168a9f8b7e54cc6999961629177fffee",
         //oracle.json rev O1
         "41f74b3baf05beb65aa1bc2638668eb1410b27e22f5584785c525372fdb6384a",
         //oracle.json rev O2
         "ccc0c9353b6e9e5dfa4552126e3d6bdb0f96c13cf3a75a0ef90a1ad0c8d5f20a",
         //oracle.json rev O3, the last one that armed the restatement gate
         "ce9dff2a6ebe3e50b299dc43d0de4275cb996e0e2027d6fbcb04b8f279fb0d87",
+        //oracle.json rev O4, the last one without a cat and a tint
+        "64e52929395e5c7636eb08525680200b9f6127e8b16415e6d4c5a3c0ca5818b1",
         //shipped .csx revisions from before the public-comment pass start here, ask_user.csx first
         "d9674d68295a1b9296b196e5d169267064318f0e10615b76de41342df2d8e39b",
         //web_search.csx, the revision before the public-comment pass

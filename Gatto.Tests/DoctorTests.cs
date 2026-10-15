@@ -407,6 +407,68 @@ public class DoctorTests : IDisposable
         Assert.Contains("fix the listed role file", line);
     }
 
+    private void WriteRole(string name, string json)
+    {
+        Directory.CreateDirectory(Path.Combine(_home, "roles"));
+        File.WriteAllText(Path.Combine(_home, "roles", $"{name}.json"), json);
+    }
+
+    private static string[] TintLines(StringWriter output) =>
+        output.ToString().Split('\n').Select(l => l.TrimEnd('\r')).Where(l => l.Contains(" tint #", StringComparison.Ordinal)).ToArray();
+
+    [Fact]
+    public async Task A_DARK_TINT_GETS_ONE_INFO_LINE_PER_GROUND_IT_FAILS()
+    {
+        WriteGreenHome();
+        WriteRole("dim", """{ "tint": "#101010" }""");
+        WriteRole("pale", """{ "tint": "#F0F0F0" }""");
+        WriteRole("both", """{ "tint": "#101010", "tint_light": "#F0F0F0" }""");
+        WriteRole("edge", """{ "tint": "#747474" }""");
+        WriteRole("fine", """{ "tint": "#757575" }""");
+        WriteRole("teal", """{ "tint": "#0E7C86" }""");
+        var output = new StringWriter();
+
+        var exit = await NewDoctor(HealthyClient()).RunAsync(_home, _cwd, output, CancellationToken.None);
+
+        Assert.Equal(0, exit);
+        Assert.StartsWith("✓", Line(output, "roles:"));
+        Assert.Equal(new[]
+        {
+            "i roles: both tint #101010 reads at 1.1:1 on black",
+            "i roles: both tint #F0F0F0 reads at 1.1:1 on white",
+            "i roles: dim tint #101010 reads at 1.1:1 on black",
+            "i roles: edge tint #747474 reads at 4.4:1 on black",
+            "i roles: pale tint #F0F0F0 reads at 1.1:1 on white",
+            "i roles: teal tint #0E7C86 reads at 4.2:1 on black",
+        }, TintLines(output));
+    }
+
+    [Fact]
+    public async Task THE_SHIPPED_SITTERS_PRINT_NO_TINT_LINE()
+    {
+        WriteGreenHome();
+        WriteRole("coder", Gatto.Extensions.ShippedExtensions.Files["roles/coder.json"]);
+        WriteRole("oracle", Gatto.Extensions.ShippedExtensions.Files["roles/oracle.json"]);
+        var output = new StringWriter();
+
+        await NewDoctor(HealthyClient()).RunAsync(_home, _cwd, output, CancellationToken.None);
+
+        Assert.StartsWith("✓", Line(output, "roles:"));
+        Assert.Empty(TintLines(output));
+    }
+
+    [Fact]
+    public async Task A_ROLE_WITHOUT_A_TINT_PRINTS_NO_TINT_LINE()
+    {
+        WriteGreenHome();
+        WriteRole("plain", "{}");
+        var output = new StringWriter();
+
+        await NewDoctor(HealthyClient()).RunAsync(_home, _cwd, output, CancellationToken.None);
+
+        Assert.Empty(TintLines(output));
+    }
+
     [Fact]
     public async Task A_DEFAULT_ROLE_NAMING_NO_FILE_FAILS_THE_ROLES_LINE()
     {

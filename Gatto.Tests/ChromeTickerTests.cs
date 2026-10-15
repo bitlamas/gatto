@@ -44,7 +44,16 @@ file sealed class BlockingSlotsReader : ISlotsReader
 //one timer owns the purr row and the tool dot's blink for the whole turn, and only StartTurn and StopTurn start and stop it.
 public class ChromeTickerTests
 {
-    private static readonly Theme T = new(new TermCaps(true, true));
+    private static readonly RgbColor OracleMauve = Theme.ParseTint("#B88AAF");
+
+    //told once here and never again, so the tests that run in parallel share a theme whose oracle reads the file's mauve
+    private static readonly Theme T = Tell(new Theme(new TermCaps(true, true)), "oracle", OracleMauve);
+
+    private static Theme Tell(Theme theme, string role, RgbColor tint)
+    {
+        theme.SetRoleTint(role, tint, null);
+        return theme;
+    }
 
     private static (RecordingSurface Surface, ChromePainter Painter, object Gate) NewPainter(int width = 80, int height = 20)
     {
@@ -317,7 +326,7 @@ public class ChromeTickerTests
         painter.RoleForTint = "oracle";
         painter.State.PurrText = "(=^-^) purr 3s · ↓ 12";
         painter.Repaint();
-        Assert.Contains(Ansi.Fg(T.RoleTint("oracle"), true), surface.Text, StringComparison.Ordinal);
+        Assert.Contains(Ansi.Fg(OracleMauve, true), surface.Text, StringComparison.Ordinal);
     }
 
     [Fact]

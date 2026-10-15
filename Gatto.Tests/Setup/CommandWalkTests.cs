@@ -201,7 +201,7 @@ public class CommandWalkTests : IDisposable
         //read through the ansi stripper, the themed drive paints the identity line (a plain substring is absent from a screen that draws it perfectly).
         var rows = Rows(screen);
 
-        foreach (var line in Gatto.Repl.Cats.For("generalist", g).Split('\n'))
+        foreach (var line in Gatto.Repl.Cats.For(null, g).Split('\n'))
             Assert.Contains(rows, r => r.Contains(line.TrimEnd('\r'), StringComparison.Ordinal));
         Assert.Contains(rows,
             r => r.StartsWith($"gatto uninstall {g.Dot} v", StringComparison.Ordinal));
@@ -212,7 +212,7 @@ public class CommandWalkTests : IDisposable
     public void AND_THE_BANNER_MATCHER_FAILS_ON_A_SCREEN_WITHOUT_ONE()
     {
         var g = CommandBanner.GlyphsFor(_home);
-        var earLine = Gatto.Repl.Cats.For("generalist", g).Split('\n')[0].TrimEnd('\r');
+        var earLine = Gatto.Repl.Cats.For(null, g).Split('\n')[0].TrimEnd('\r');
 
         Assert.DoesNotContain(earLine, "Also remove your settings", StringComparison.Ordinal);
     }

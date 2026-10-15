@@ -317,6 +317,40 @@ public sealed class ShippedExtensionsTests : IDisposable
         Assert.Equal(current, File.ReadAllText(Full("roles/oracle.json")));
     }
 
+    //an untouched coder.json or oracle.json from before the cat and tint takes the new bytes at the next launch
+    [Theory]
+    [InlineData("coder", "coder-pre-dress.json")]
+    [InlineData("oracle", "oracle-pre-dress.json")]
+    public void AN_UNTOUCHED_SITTER_FROM_BEFORE_THE_DRESS_IS_UPGRADED_IN_PLACE(string role, string fixture)
+    {
+        var previous = File.ReadAllText(Path.Combine(Census.SourceTree.RepoRoot(), "Gatto.Tests", "Fixtures", fixture));
+        var current = ShippedExtensions.Files[$"roles/{role}.json"];
+        Assert.NotEqual(previous, current);
+
+        Directory.CreateDirectory(Full("roles"));
+        File.WriteAllText(Full($"roles/{role}.json"), previous);
+
+        ShippedExtensions.EnsureWritten(
+            _home, One($"roles/{role}.json", current), ShippedExtensions.HistoricalHashes.ToHashSet());
+
+        Assert.Equal(current, File.ReadAllText(Full($"roles/{role}.json")));
+    }
+
+    //an edited copy is the user's, so it keeps its edit and gains no cat
+    [Fact]
+    public void AN_EDITED_SITTER_FROM_BEFORE_THE_DRESS_KEEPS_ITS_EDIT()
+    {
+        var edited = File.ReadAllText(Path.Combine(Census.SourceTree.RepoRoot(), "Gatto.Tests", "Fixtures", "coder-pre-dress.json"))
+            .Replace("You are the coder.", "You are my coder.");
+        Directory.CreateDirectory(Full("roles"));
+        File.WriteAllText(Full("roles/coder.json"), edited);
+
+        ShippedExtensions.EnsureWritten(
+            _home, One("roles/coder.json", ShippedExtensions.Files["roles/coder.json"]), ShippedExtensions.HistoricalHashes.ToHashSet());
+
+        Assert.Equal(edited, File.ReadAllText(Full("roles/coder.json")));
+    }
+
     //no current canonical's hash may sit in the historical set, or pristine files would be rewritten forever
     [Fact]
     public void HistoricalHashes_NeverContainACurrentCanonical()

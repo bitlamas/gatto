@@ -592,6 +592,7 @@ public static class GattoApp
                 turnAbort = new TurnAbortHandle();
                 var promptSurface = new ConsoleSurface();
                 var theme = new Theme(TermCaps.Detect(), themeMode);
+                if (role.ParsedTint() is { } launchTint) theme.SetRoleTint(role.Name, launchTint.Dark, launchTint.Light);   //the prompters paint with this theme, told before their first row
                 launchTheme = theme;
                 //the first provider in the configured chain, named raw so the title matches the gloss on the result row
                 permPrompter = new RichPermissionPrompter(
@@ -993,8 +994,10 @@ public static class GattoApp
 
             //recompose overwrote the toggle body, so re-apply the session's on/off choice after a /role
             if (thinkCap == ThinkCapability.Toggle) ApplyToggle(thinkOn);
+            var switchedTint = role.ParsedTint();
+            launchTheme?.SetRoleTint(role.Name, switchedTint?.Dark ?? Theme.Accent, switchedTint?.Light);
             return new RoleSwitchResult(true, role.Name, modelString, comp.SystemText, null,
-                ThinkingFooterName(), NextBaseline(comp.Sources));
+                ThinkingFooterName(), NextBaseline(comp.Sources), switchedTint, role.Cat);
         };
 
         //set once setEffort exists below, so a switch on a listed endpoint can apply the new model's level through the same path
@@ -1492,6 +1495,7 @@ public static class GattoApp
             deafWatch: deafWatch,
             wildFromHome: config.Wild, wildPersisted: () => permissions.Wild,
             defaultRole: config.DefaultRole ?? "generalist",
+            roleTint: role.ParsedTint(), roleCat: role.Cat,
             //read when /context asks, so a /role or /model since is followed. the shape is the loop's last request, its tools split by origin
             contextInputs: usage =>
             {

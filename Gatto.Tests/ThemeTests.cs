@@ -53,9 +53,118 @@ public class ThemeTests
     public void Chip_NoPadding_TightToText() =>   //orange fg only, no bg band, no padding
         Assert.Equal("\x1b[38;2;220;154;91mx\x1b[0m", T.Chip("x"));
 
+    [Fact]
+    public void PARSE_TINT_READS_RRGGBB_AND_FINDS_THE_NEAREST_INDEX()
+    {
+        Assert.Equal(new RgbColor(0x4B, 0xBE, 0xCD, 74), Theme.ParseTint("#4BBECD"));
+        Assert.Equal(139, Theme.ParseTint("#B88AAF").Index256);
+        Assert.Equal(30, Theme.ParseTint("#0E7C86").Index256);
+        //the oracle's light twin is nearest index 96, cube level (2,1,2), where the constant it replaces carried 91, a flat purple
+        Assert.Equal(96, Theme.ParseTint("#834E8F").Index256);
+        Assert.Equal(Theme.ParseTint("#4BBECD"), Theme.ParseTint("#4bbecd"));
+    }
+
+    [Fact]
+    public void ROLE_TINT_IS_THE_FILES_COLOUR_FOR_THE_RUNNING_ROLE_AND_THE_ACCENT_FOR_ANY_OTHER()
+    {
+        var told = new Theme(new TermCaps(true, true));
+        told.SetRoleTint("coder", Theme.ParseTint("#4BBECD"), null);
+
+        Assert.Equal(Theme.ParseTint("#4BBECD"), told.RoleTint("coder"));
+        Assert.Equal(Theme.Accent, told.RoleTint("oracle"));
+        Assert.Equal(Theme.Accent, told.RoleTint("generalist"));
+        foreach (var name in new[] { "coder", "oracle", "generalist" })
+            Assert.Equal(Theme.Accent, new Theme(new TermCaps(true, true)).RoleTint(name));
+    }
+
     [Theory]
-    [InlineData("coder", 0x4B)] [InlineData("oracle", 0xB8)] [InlineData("generalist", 0xFF)] [InlineData("anything", 0xFF)]
-    public void RoleTint(string role, byte expectedR) => Assert.Equal(expectedR, T.RoleTint(role).R);
+    [InlineData("#4BBEC")]
+    [InlineData("4BBECD#")]
+    [InlineData("#GGGGGG")]
+    [InlineData("# 1 2 3")]
+    [InlineData("#4B BEC")]
+    [InlineData("# 1BECD")]
+    [InlineData("#4BBE C")]
+    [InlineData("#4 BECD")]
+    [InlineData("")]
+    public void PARSE_TINT_REFUSES_ANY_OTHER_SHAPE(string hex) =>
+        Assert.Throws<FormatException>(() => Theme.ParseTint(hex));
+
+    //a role switch tells the same theme again, and the last telling is the one it keeps
+    [Fact]
+    public void A_SECOND_TELLING_REPLACES_THE_FIRST()
+    {
+        var theme = new Theme(new TermCaps(true, true));
+        theme.SetRoleTint("coder", Theme.ParseTint("#4BBECD"), null);
+        theme.SetRoleTint("oracle", Theme.ParseTint("#B88AAF"), null);
+
+        Assert.Equal(Theme.Accent, theme.RoleTint("coder"));
+        Assert.Equal(Theme.ParseTint("#B88AAF"), theme.RoleTint("oracle"));
+
+        theme.SetRoleTint("oracle", Theme.Accent, null);
+        Assert.Equal(Theme.Accent, theme.RoleTint("oracle"));
+    }
+
+    [Fact]
+    public void LIGHT_MODE_TAKES_TINT_LIGHT_WHEN_SET_AND_TINT_OTHERWISE()
+    {
+        var dark = Theme.ParseTint("#B88AAF");
+        var light = Theme.ParseTint("#834E8F");
+        var withTwin = new Theme(new TermCaps(true, true), ThemeMode.Light);
+        withTwin.SetRoleTint("oracle", dark, light);
+        var alone = new Theme(new TermCaps(true, true), ThemeMode.Light);
+        alone.SetRoleTint("oracle", dark, null);
+        var darkTheme = new Theme(new TermCaps(true, true));
+        darkTheme.SetRoleTint("oracle", dark, light);
+
+        Assert.Equal(light, withTwin.RoleTint("oracle"));
+        Assert.Equal(dark, alone.RoleTint("oracle"));
+        Assert.Equal(dark, darkTheme.RoleTint("oracle"));
+    }
+
+    [Fact]
+    public void A_ROLE_TINT_SURVIVES_PAINT_UNMAPPED()
+    {
+        var light = new Theme(new TermCaps(true, true), ThemeMode.Light);
+        light.SetRoleTint("oracle", Theme.ParseTint("#B88AAF"), null);
+
+        Assert.Equal("\x1b[38;2;184;138;175mx\x1b[0m", light.Paint("x", light.RoleTint("oracle")));
+    }
+
+    //the one shipped collision with the light map: the command ink is the coder's teal, and its light twin is the coder's tint_light
+    [Fact]
+    public void THE_COMMAND_INK_IS_THE_CODERS_TEAL_AND_MAPS_TO_ITS_LIGHT_TWIN()
+    {
+        Assert.Equal(Theme.ParseTint("#4BBECD"), Theme.Command);
+        Assert.Equal(Theme.ParseTint("#0E7C86"), new Theme(new TermCaps(true, true), ThemeMode.Light).Map(Theme.Command));
+    }
+
+    [Fact]
+    public void THE_ORACLE_TINT_IS_NO_LIGHT_MAP_KEY()
+    {
+        var oracle = Theme.ParseTint("#B88AAF");
+        var statics = typeof(Theme).GetFields(System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Static)
+            .Where(f => f.FieldType == typeof(RgbColor))
+            .Select(f => (Name: f.Name, Colour: (RgbColor)f.GetValue(null)!))
+            .ToList();
+
+        Assert.NotEmpty(statics);
+        Assert.DoesNotContain(statics, s => s.Colour.R == oracle.R && s.Colour.G == oracle.G && s.Colour.B == oracle.B);
+    }
+
+    [Fact]
+    public void CONTRAST_RATIO_IS_WCAG()
+    {
+        var white = Theme.ParseTint("#FFFFFF");
+        var black = Theme.ParseTint("#000000");
+
+        Assert.Equal(21.0, Theme.ContrastRatio(white, black), 2);
+        Assert.Equal(21.0, Theme.ContrastRatio(black, white), 2);
+        Assert.Equal(1.0, Theme.ContrastRatio(Theme.Accent, Theme.Accent), 2);
+        Assert.True(Theme.ContrastRatio(Theme.ParseTint("#4BBECD"), black) > 4.5);
+        Assert.True(Theme.ContrastRatio(Theme.ParseTint("#0E7C86"), white) > 4.5);
+        Assert.True(Theme.ContrastRatio(Theme.ParseTint("#101010"), black) < 1.5);
+    }
 
     [Fact]
     public void TrueColor_ReflectsCaps()
@@ -88,7 +197,7 @@ public class ThemeTests
         Assert.Equal(def.Chip("x"), dark.Chip("x"));
         //an identity remap in dark mode for every canonical token
         foreach (var c in new[] { Theme.Accent, Theme.Bright, Theme.Dim, Theme.Ok, Theme.Err, Theme.Warn,
-                                  Theme.RoleCoder, Theme.RoleOracle, Theme.CodeInlineFg,
+                                  Theme.Command, Theme.CodeInlineFg,
                                   Theme.CodeBlockFg, Theme.CodeBlockBg, Theme.Rule, Theme.UserInputBg,
                                   Theme.DiffAddedBg, Theme.DiffRemovedBg, Theme.ContextPrefix, Theme.ContextReasoning, Theme.ContextPastLine })
             Assert.Equal(c, dark.Map(c));
@@ -99,7 +208,7 @@ public class ThemeTests
     {
         var light = new Theme(RichTrue, ThemeMode.Light);
         foreach (var c in new[] { Theme.Accent, Theme.Bright, Theme.Dim, Theme.Ok, Theme.Err, Theme.Warn,
-                                  Theme.RoleCoder, Theme.RoleOracle, Theme.CodeInlineFg,
+                                  Theme.Command, Theme.CodeInlineFg,
                                   Theme.CodeBlockFg, Theme.CodeBlockBg, Theme.Rule, Theme.UserInputBg,
                                   Theme.DiffAddedBg, Theme.DiffRemovedBg, Theme.ContextPrefix, Theme.ContextReasoning, Theme.ContextPastLine })
             Assert.NotEqual(c, light.Map(c));
@@ -183,18 +292,18 @@ public class ThemeTests
     private static bool IsGreyRamp(byte i) => i >= 232;   //indices 232 to 255 are the achromatic ramp in xterm-256
 
     [Theory]
-    [InlineData("generalist")]
-    [InlineData("coder")]
-    [InlineData("oracle")]
-    public void ChipColor_never_falls_into_the_greyscale_ramp_for_a_chromatic_role(string role)
+    [InlineData("#FFA64D")]
+    [InlineData("#4BBECD")]
+    [InlineData("#0E7C86")]
+    [InlineData("#B88AAF")]
+    [InlineData("#834E8F")]
+    [InlineData("#B25E00")]
+    public void ChipColor_never_falls_into_the_greyscale_ramp_for_a_chromatic_role(string hex)
     {
         //a chromatic role's chip must never resolve into the grey ramp, a muted mauve sits close enough for the RGB search to choose it
-        foreach (var theme in new[] { T, new Theme(new TermCaps(true, true), ThemeMode.Light) })
-        {
-            var chip = theme.ChipColor(theme.Map(theme.RoleTint(role)));
-            Assert.False(IsGreyRamp(chip.Index256),
-                $"{role}: chip #{chip.R:X2}{chip.G:X2}{chip.B:X2} resolved to grey-ramp index {chip.Index256}");
-        }
+        var chip = T.ChipColor(Theme.ParseTint(hex));
+        Assert.False(IsGreyRamp(chip.Index256),
+            $"{hex}: chip #{chip.R:X2}{chip.G:X2}{chip.B:X2} resolved to grey-ramp index {chip.Index256}");
     }
 
     [Fact]

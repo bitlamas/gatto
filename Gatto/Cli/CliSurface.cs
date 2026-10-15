@@ -68,7 +68,7 @@ internal sealed class CliSurface(TextWriter output, Theme? theme, Gatto.Terminal
         CliInk.Accent => Theme.Accent,
         CliInk.Dim => Theme.Dim,
         CliInk.Model => Theme.CodeInlineFg,
-        CliInk.Command => Theme.RoleCoder,
+        CliInk.Command => Theme.Command,
         //the Bright ink is the body colour (there is no Body), painting it keeps a row one sequence so an accent can't bleed in
         _ => Theme.Bright,
     };

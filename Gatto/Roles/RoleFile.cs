@@ -1,6 +1,8 @@
 using System.Text.Json;
+using System.Text.RegularExpressions;
 using Gatto.Core.Home;
 using Gatto.Roles.Agents;
+using Gatto.Terminal;
 
 namespace Gatto.Roles;
 
@@ -18,13 +20,20 @@ public sealed record RoleFile(
     //null arms the six built-ins when the role is called, an empty list arms none
     IReadOnlyList<string>? Tools,
     int Turns,
-    bool ContextFiles)
+    bool ContextFiles,
+    IReadOnlyList<string>? Cat,
+    string? Tint,
+    string? TintLight)
 {
     public const int DefaultTurns = 10;
 
+    //the file's colours parsed for the theme, null when it carries no tint, since a light colour alone tints nothing
+    public (RgbColor Dark, RgbColor? Light)? ParsedTint() =>
+        Tint is { } t ? (Theme.ParseTint(t), TintLight is { } l ? Theme.ParseTint(l) : null) : null;
+
     //one key for the model, and the endpoint kind decides what it means. sampling belongs to the model now, so a role's sampling key is accepted and never read
     private static readonly string[] Keys =
-        { "model", "endpoint", "gates", "raw", "append", "thinking", "sampling", "description", "tools", "turns", "context_files" };
+        { "model", "endpoint", "gates", "raw", "append", "thinking", "sampling", "description", "tools", "turns", "context_files", "cat", "tint", "tint_light" };
 
     //copied once, since Builtins allocates its factories on every call and builds no tool
     private static readonly HashSet<string> CallableTools = new(SubagentWiring.Builtins().Keys, StringComparer.Ordinal);
@@ -51,6 +60,13 @@ public sealed record RoleFile(
             if (!Keys.Contains(prop.Name))
                 throw new GattoConfigException($"unknown key in role '{name}': {prop.Name}");
 
+        //a lone surrogate escape parses as JSON and throws only when read, so it gets a load sentence too
+        try { return Read(root, name); }
+        catch (InvalidOperationException) { throw new GattoConfigException($"role '{name}' at {path} holds text that is not valid UTF-16"); }
+    }
+
+    private static RoleFile Read(JsonElement root, string name)
+    {
         var model = GetOptionalString(root, name, "model");
         var endpoint = GetOptionalString(root, name, "endpoint");
 
@@ -127,7 +143,28 @@ public sealed record RoleFile(
             contextFiles = cf.GetBoolean();
         }
 
-        return new RoleFile(name, model, endpoint, gates, raw, append, thinking, description, tools, turns, contextFiles);
+        List<string>? cat = null;
+        if (root.TryGetProperty("cat", out var ct))
+        {
+            if (ct.ValueKind != JsonValueKind.Array)
+                throw new GattoConfigException($"role '{name}' has a \"cat\" of {ct.GetRawText()}; must be an array of 1 to 6 rows");
+            var rows = ct.EnumerateArray().ToList();
+            if (rows.Count is < 1 or > 6)
+                throw new GattoConfigException($"role '{name}' has a \"cat\" of {rows.Count} rows; must be 1 to 6");
+            cat = new List<string>();
+            for (var i = 0; i < rows.Count; i++)
+            {
+                var row = rows[i].ValueKind == JsonValueKind.String ? rows[i].GetString()! : null;
+                if (row is null || UnicodeWidth.Of(row) is < 1 or > 16 || row.Any(char.IsControl))
+                    throw new GattoConfigException($"role '{name}' has a \"cat\" row {i} of {rows[i].GetRawText()}; must be 1 to 16 cells with no control character");
+                cat.Add(row);
+            }
+        }
+
+        var tint = GetTint(root, name, "tint");
+        var tintLight = GetTint(root, name, "tint_light");
+
+        return new RoleFile(name, model, endpoint, gates, raw, append, thinking, description, tools, turns, contextFiles, cat, tint, tintLight);
     }
 
     //the override wins, then the role's own model, then gatto.json's default_model, shared so the launch and doctor agree
@@ -144,6 +181,15 @@ public sealed record RoleFile(
             .Select(n => n!)
             .OrderBy(n => n, StringComparer.OrdinalIgnoreCase)
             .ToList();
+    }
+
+    //the hex the theme parses later, refused here so a bad colour fails the load with the file and the key
+    private static string? GetTint(JsonElement root, string roleName, string key)
+    {
+        var value = GetOptionalString(root, roleName, key);
+        if (value is not null && !Regex.IsMatch(value, @"^#[0-9A-Fa-f]{6}\z"))
+            throw new GattoConfigException($"role '{roleName}' has a \"{key}\" of {root.GetProperty(key).GetRawText()}; must be #rrggbb");
+        return value;
     }
 
     private static string? GetOptionalString(JsonElement root, string roleName, string key)

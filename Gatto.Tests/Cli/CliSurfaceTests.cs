@@ -106,7 +106,7 @@ public class CliSurfaceTests
     }
 
     [Fact]
-    public void A_COMMAND_TAKES_ROLECODER_where_a_painter_exists_and_stays_PLAIN_where_none_does()
+    public void A_COMMAND_TAKES_THE_COMMAND_INK_where_a_painter_exists_and_stays_PLAIN_where_none_does()
     {
         //a command a person can type takes one ink everywhere, with no quotes and no backticks. assert on the composed row, since the screen is the writer's half
         var theme = new Theme(new TermCaps(true, true));
@@ -122,7 +122,7 @@ public class CliSurfaceTests
         Assert.Equal(pw.ToString(), TermText.StripAnsiForWidth(rw.ToString()));
 
         //the assertion pins the exact colour, since a row painted wholly in the body colour also strips back to plain.
-        Assert.Contains(theme.Paint("gatto serve stop", Theme.RoleCoder), rw.ToString(), StringComparison.Ordinal);
+        Assert.Contains(theme.Paint("gatto serve stop", Theme.Command), rw.ToString(), StringComparison.Ordinal);
         Assert.DoesNotContain(theme.Paint("gatto serve stop", Theme.Accent), rw.ToString(), StringComparison.Ordinal);
         Assert.DoesNotContain(theme.Paint("gatto serve stop", Theme.Bright), rw.ToString(), StringComparison.Ordinal);
 

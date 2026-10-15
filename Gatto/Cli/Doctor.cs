@@ -1,3 +1,4 @@
+using System.Globalization;
 using System.Text.Json;
 using Gatto.Core.Home;
 using Gatto.Core.Memory;
@@ -87,6 +88,7 @@ public sealed class Doctor(
         if (CheckAutoCompactVeto(cwd, config, g) is { } acLine) results.Add(acLine);
         if (CheckRunningServer(loadedModels, g) is { } runLine) results.Add(runLine);
         if (CheckSingleServerConsistency(rolesDir, config, loadedModels, g) is { } oneLine) results.Add(oneLine);
+        results.AddRange(CheckTintContrast(rolesDir));
         //doctor checks for updates whatever update_check says, typing the command is the consent
         if (checkUpdate is not null)
             results.Add(await CheckUpdateAsync(checkUpdate, SelfInstall.IsInstalled(), ct).ConfigureAwait(false));
@@ -398,6 +400,33 @@ public sealed class Doctor(
                 + (config.DefaultRole is { } named ? $" {g.Dot} default_role is {named}" : ""))
             : new CheckResult(false, $"roles: {string.Join("; ", problems)} " + g.Dot + $" fix the listed role file(s) under {rolesDir}");
     }
+
+    //measured and never refused: one info line per role and ground its tint reads under 4.5:1 on, the light colour on white and the dark one on black
+    private static List<CheckResult> CheckTintContrast(string rolesDir)
+    {
+        var lines = new List<CheckResult>();
+        var black = Theme.ParseTint("#000000");
+        var white = Theme.ParseTint("#FFFFFF");
+        foreach (var name in RoleFile.ListNames(rolesDir))
+        {
+            RoleFile role;
+            try { role = RoleFile.Load(rolesDir, name); }
+            catch (GattoConfigException) { continue; }   //the roles check already names a file that does not load
+            if (role.Tint is not { } tint) continue;
+            var light = role.TintLight ?? tint;
+            var onBlack = Theme.ContrastRatio(Theme.ParseTint(tint), black);
+            var onWhite = Theme.ContrastRatio(Theme.ParseTint(light), white);
+            if (onBlack < 4.5)
+                lines.Add(new CheckResult(true, $"roles: {name} tint {tint} reads at {RatioText(onBlack)}:1 on black", Info: true));
+            if (onWhite < 4.5)
+                lines.Add(new CheckResult(true, $"roles: {name} tint {light} reads at {RatioText(onWhite)}:1 on white", Info: true));
+        }
+        return lines;
+    }
+
+    //floored to one decimal, so a colour flagged under 4.5 never prints as 4.5
+    private static string RatioText(double ratio) =>
+        (Math.Floor(ratio * 10) / 10).ToString("F1", CultureInfo.InvariantCulture);
 
     //extensions compile
 

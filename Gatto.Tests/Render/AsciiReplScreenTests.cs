@@ -16,7 +16,7 @@ public class AsciiReplScreenTests
     //every transcript item kind, each in a state that draws chrome. a bare ReasoningItem draws no mark, so the reasoning states are their own entries
     private static IReadOnlyList<(string Name, TranscriptItem Item)> Corpus() =>
     [
-        ("banner", Gatto.Repl.Repl.BannerItem(Plain, "generalist", "a-model", "gatto 0.5.0",
+        ("banner", Gatto.Repl.Repl.BannerItem(Plain, "generalist", null, "a-model", "gatto 0.5.0",
             GlyphSet.Ascii)),
         ("assistant", new AssistantBlockItem(["a line of prose", "", "- a bullet", "> a quote"],
             "generalist")),

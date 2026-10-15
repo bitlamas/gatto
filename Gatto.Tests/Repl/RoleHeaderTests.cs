@@ -1,4 +1,5 @@
 using Gatto.Repl;
+using Gatto.Terminal;
 using Gatto.Tests.Fakes;
 
 namespace Gatto.Tests.Repl;
@@ -73,6 +74,50 @@ public class RoleHeaderTests
         await h.RunAsync();
 
         Assert.EndsWith(" gatto ──", TopRule(h), StringComparison.Ordinal);
+    }
+
+    private static readonly string[] Visor = ["  /l、", "（▀､▀ ７", "  l  ~ヽ", "  じしf_,)ノ"];
+
+    //the switch hands down the coder file's teal and visor cat, as GattoApp does from the role file
+    private static RoleSwitchResult Coder(string name) =>
+        new(true, "coder", "test-model", "the coder marker", null, RoleTint: (Theme.ParseTint("#4BBECD"), null), RoleCat: Visor);
+
+    [Fact]
+    public async Task A_ROLE_SWITCH_PAINTS_THE_RULE_AND_THE_BANNER_IN_THE_FILES_TINT()
+    {
+        var tealCoder = Ansi.Fg(Theme.ParseTint("#4BBECD"), true) + "coder";
+
+        var still = new RichReplHarness(Path.GetTempPath(), defaultRole: "generalist", switchRole: Coder);
+        still.Keys.Line("/quit");
+        await still.RunAsync();
+        Assert.DoesNotContain(tealCoder, still.RawWritten(), StringComparison.Ordinal);
+        Assert.DoesNotContain("（▀､▀ ７", still.Written(), StringComparison.Ordinal);
+
+        var h = new RichReplHarness(Path.GetTempPath(), defaultRole: "generalist", switchRole: Coder);
+        h.Keys.Line("/role coder").Line("/new").Line("/quit");
+        await h.RunAsync();
+        Assert.Contains(tealCoder, h.RawWritten(), StringComparison.Ordinal);
+        Assert.Contains("（▀､▀ ７", h.Written(), StringComparison.Ordinal);
+    }
+
+    //gatto coder is the commonest launch, and its tint and cat reach the first paint with no /role
+    [Fact]
+    public async Task A_LAUNCHED_ROLE_PAINTS_ITS_FILES_TINT_AND_CAT_BEFORE_ANY_SWITCH()
+    {
+        var tealCoder = Ansi.Fg(Theme.ParseTint("#4BBECD"), true) + "coder";
+
+        var plain = new RichReplHarness(Path.GetTempPath(), defaultRole: "generalist", roleName: "coder");
+        plain.Keys.Line("/quit");
+        await plain.RunAsync();
+        Assert.DoesNotContain(tealCoder, plain.RawWritten(), StringComparison.Ordinal);
+        Assert.DoesNotContain("（▀､▀ ７", plain.Written(), StringComparison.Ordinal);
+
+        var h = new RichReplHarness(Path.GetTempPath(), defaultRole: "generalist", roleName: "coder",
+            roleTint: (Theme.ParseTint("#4BBECD"), null), roleCat: Visor);
+        h.Keys.Line("/quit");
+        await h.RunAsync();
+        Assert.Contains(tealCoder, h.RawWritten(), StringComparison.Ordinal);
+        Assert.Contains("（▀､▀ ７", h.Written(), StringComparison.Ordinal);
     }
 
     [Fact]

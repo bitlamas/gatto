@@ -16,7 +16,9 @@ namespace Gatto.Repl;
 
 //the result of a /role switch, holding the canonical name and model id. on failure Message holds the line to print and the session is unchanged
 public sealed record RoleSwitchResult(bool Success, string RoleName, string? ModelName, string? SystemText, string? Message,
-    string? ThinkingName = null, SessionBaseline? Baseline = null);
+    string? ThinkingName = null, SessionBaseline? Baseline = null,
+    //the new role's file colours and banner rows, null where the file carries none
+    (RgbColor Dark, RgbColor? Light)? RoleTint = null, IReadOnlyList<string>? RoleCat = null);
 
 //the outcome of a /model switch. the mismatch field names loaded weights only when they disagree, and the context field is the window the server allocated
 public sealed record ModelSwitchResult(
@@ -189,7 +191,10 @@ public sealed class Repl(
     bool wildFromHome = false,
     Func<bool>? wildPersisted = null,   //whether the home holds a wild grant for this folder, read before /wild never clears it
     //the role a bare launch runs from this home, and the rule names a role only when it is not this one. null names every role
-    string? defaultRole = null)
+    string? defaultRole = null,
+    //the running role's colours and banner rows, handed down so the Repl never reads a role file
+    (RgbColor Dark, RgbColor? Light)? roleTint = null,
+    IReadOnlyList<string>? roleCat = null)
 {
     //the name the top rule shows, null when the running role is the default, compared as the launch resolves a name against the files
     private string? DisplayRole() => string.Equals(roleName, defaultRole, StringComparison.OrdinalIgnoreCase) ? null : roleName;
@@ -1232,13 +1237,13 @@ public sealed class Repl(
     //transient and never serialized (it would stack on every resume), rebuilt on launch and /new, built here so the wording can't drift
 
     //internal for the test seam, a guard on the banner must render the banner rather than the cat on its own
-    internal static CommandEchoItem BannerItem(Theme theme, string roleName, string modelName, string? versionLine,
+    internal static CommandEchoItem BannerItem(Theme theme, string roleName, IReadOnlyList<string>? roleCat, string modelName, string? versionLine,
         Gatto.Terminal.GlyphSet? glyphs)
     {
         var g = glyphs ?? Gatto.Terminal.GlyphSet.Unicode;
         var rows = new List<string>();
         //the cat comes from the glyph set too, so it is a call rather than a literal. a legacy console can't draw it, and a census can't see the call
-        foreach (var catLine in Cats.For(roleName, g).Split('\n')) rows.Add(theme.Paint(catLine, Theme.Accent));
+        foreach (var catLine in Cats.For(roleCat, g).Split('\n')) rows.Add(theme.Paint(catLine, Theme.Accent));
         rows.Add("");   //blank row between the cat art and the info lines
         //the caller builds the version tail, Repl cannot see Gatto.Cli where the dev-build definition lives, so GattoApp resolves it once and passes the string down
         var ver = versionLine ?? ("v" + Gatto.Core.GattoVersion.String
@@ -1378,7 +1383,7 @@ public sealed class Repl(
     //plain loop
     private async Task<int> RunPlainAsync(CancellationToken appCt)
     {
-        Console.WriteLine(Cats.For(roleName, glyphs: _glyphs));
+        Console.WriteLine(Cats.For(roleCat, glyphs: _glyphs));
         //the plain banner joins with Dot, the same separator as every other row
         var sep = $" {_glyphs.Dot} ";
         Console.WriteLine($"gatto{sep}{roleName}{sep}{Gatto.Core.Models.ServedModelName.Display(modelName)}{sep}v{Gatto.Core.GattoVersion.String}");
@@ -1515,6 +1520,7 @@ public sealed class Repl(
                     roleName = result.RoleName;
                     modelName = result.ModelName!;
                     thinkingName = result.ThinkingName;   //null when the new role has no map, which hides the chip
+                    roleCat = result.RoleCat;
                 }
                 Console.WriteLine(result.Success ? RoleLine(roleName) : result.Message);
                 continue;
@@ -1582,6 +1588,7 @@ public sealed class Repl(
         keys.Start();
         var surface = termSurface ?? new ConsoleSurface();
         var theme = new Theme(caps, themeMode);
+        if (roleTint is { } launchTint) theme.SetRoleTint(roleName, launchTint.Dark, launchTint.Light);   //told before anything paints
         var ctx = new CtxState { ContextWindow = configContext ?? await client.TryGetContextLengthAsync(appCt) };
 
         //every OnUsage feeds CtxState.RecordUsage and adds to the running up and down totals the status line draws
@@ -1811,7 +1818,7 @@ public sealed class Repl(
         altScreen.Enter(TerminalTitle.For(roleName));
 
         //the banner is the transcript's first item
-        model.Append(BannerItem(theme, roleName, modelName, versionLine, _glyphs));
+        model.Append(BannerItem(theme, roleName, roleCat, modelName, versionLine, _glyphs));
 
         //the memory-truncation notice, a system row right after the banner and above any resumed transcript
         if (memoryWarning is not null) renderer.CommitSystem(memoryWarning);
@@ -2614,7 +2621,7 @@ public sealed class Repl(
                     s.Ctx?.RecordUsedTokens(null);         //the same for the context figure
                     s.Refresh();                           //a fresh conversation, so the ctx estimate resets too
                 },
-                s.Painter.Model, s.Renderer, BannerItem(s.Theme, roleName, modelName, versionLine, s.Glyphs),
+                s.Painter.Model, s.Renderer, BannerItem(s.Theme, roleName, roleCat, modelName, versionLine, s.Glyphs),
                 NewConversationLine, carry);
             s.Painter.Repaint();
             return false;
@@ -2704,7 +2711,11 @@ public sealed class Repl(
                 roleName = result.RoleName;
                 modelName = result.ModelName!;
                 thinkingName = result.ThinkingName;   //null when the new role has no map, the chip hides
-                //set the model's role so future assistant blocks are tinted, blocks already committed keep theirs
+                roleCat = result.RoleCat;
+                //a role without a tint takes the accent, so a switch away from a tinted role drops its colour
+                var tint = result.RoleTint ?? (Theme.Accent, null);
+                s.Theme.SetRoleTint(roleName, tint.Dark, tint.Light);
+                //future assistant blocks take the new role's tint, committed ones read the accent
                 s.Painter.Model.Role = roleName;
                 //the tab follows the role too, until the folder title is in
                 s.Painter.AltScreen.Retitle(TerminalTitle.For(roleName));

@@ -57,7 +57,7 @@ internal static class CommandBanner
         //a blank row before the art, or the cat sits right under the command the user typed. the REPL needs none because its banner opens a cleared screen
         output.WriteLine();
 
-        foreach (var line in Cats.For("generalist", glyphs).Split('\n'))   //the GENERALIST cat always: these commands run under no role, and a role tint would invent an affiliation the command does not have
+        foreach (var line in Cats.For(null, glyphs).Split('\n'))   //the default cat always, since these commands run under no role
         {
             var art = line.TrimEnd('\r');
             output.WriteLine(theme is null ? art : theme.Paint(art, Theme.Accent));
