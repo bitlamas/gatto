@@ -13,20 +13,21 @@ public sealed class WorkspaceGateTests : IDisposable
     private string Elsewhere => Directory.CreateDirectory(Path.Combine(_base, "elsewhere")).FullName;
     public void Dispose() { try { Directory.Delete(_base, recursive: true); } catch (IOException) { } }
 
-    //answers yes to everything, so a refusal can only come from the boundary
+    //answers yes to everything, so a refusal can only come from the boundary, and counts the asks
     private sealed class YesPrompter : IPermissionPrompter
     {
-        public PermissionDecision AskWithReason(PermissionRequest request) => new(PermissionAnswer.Once);
+        public int Asked { get; private set; }
+        public PermissionDecision AskWithReason(PermissionRequest request) { Asked++; return new(PermissionAnswer.Once); }
     }
 
-    private PermissionGate Gate(bool autoYes, PermissionStore? store = null, WildState? wild = null, string? root = null) =>
-        new(store ?? PermissionStore.InMemory(root ?? Project), new YesPrompter(), autoYes, wild: wild, home: Home);
+    private PermissionGate Gate(bool autoYes, PermissionStore? store = null, WildState? wild = null, string? root = null, YesPrompter? prompter = null) =>
+        new(store ?? PermissionStore.InMemory(root ?? Project), prompter ?? new YesPrompter(), autoYes, wild: wild, home: Home);
 
     private static Task Call(PermissionGate gate, string tool, object args) =>
         gate.CheckAsync(new HookPayload(Call: new ToolCall("c1", tool, System.Text.Json.JsonSerializer.Serialize(args))));
 
-    private const string HomeWords = "that path is in gatto's own folder, which no tool writes";
-    private const string ShellHomeWords = "that command names gatto's own folder, which no shell command may touch; read_file can read a file there";
+    private const string HomeWords = "that path is in gatto's own folder, which a tool writes only when the user says yes, and nobody is asked in this run";
+    private const string ShellHomeWords = "that command names gatto's own folder, which a command touches only when the user says yes, and nobody is asked in this run; read_file can read a file there";
     private const string OutsideWords = "that path is outside the working folder, and with --yes a tool works only inside it";
     private const string LeavesWords = "that command reaches outside the working folder, and with --yes a command works only inside it";
 
@@ -87,41 +88,40 @@ public sealed class WorkspaceGateTests : IDisposable
     }
 
     [Fact]
-    public async Task A_write_into_gattos_folder_is_refused_in_every_mode()
+    public async Task A_write_into_gattos_folder_is_refused_with_yes_and_asked_in_wild_mode_and_past_a_grant()
     {
         var target = new { path = Path.Combine(Home, "gatto.json"), content = "{}" };
-        foreach (var gate in new[]
-        {
-            Gate(autoYes: true),
-            Gate(autoYes: false, wild: new WildState { On = true }),
-            GrantedHome(),
-        })
-        {
-            var ex = await Assert.ThrowsAsync<InvalidOperationException>(() => Call(gate, "write_file", target));
-            Assert.Equal(HomeWords, ex.Message);
-            await Assert.ThrowsAsync<InvalidOperationException>(() =>
-                Call(gate, "edit_file", new { path = Path.Combine(Home, "gatto.json"), old_string = "a", new_string = "b" }));
-        }
-        //reading gatto's folder is no write, so outside --yes it passes
-        await Call(Gate(autoYes: false), "read_file", new { path = Path.Combine(Home, "gatto.json") });
-    }
+        var ex = await Assert.ThrowsAsync<InvalidOperationException>(() => Call(Gate(autoYes: true), "write_file", target));
+        Assert.Equal(HomeWords, ex.Message);
+        await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            Call(Gate(autoYes: true), "edit_file", new { path = Path.Combine(Home, "gatto.json"), old_string = "a", new_string = "b" }));
 
-    private PermissionGate GrantedHome()
-    {
+        var wild = new YesPrompter();
+        await Call(Gate(autoYes: false, wild: new WildState { On = true }, prompter: wild), "write_file", target);
+        Assert.Equal(1, wild.Asked);
+
+        var granted = new YesPrompter();
         var store = PermissionStore.InMemory(Project);
         store.GrantWriteDir(Home, persist: false);
-        return Gate(autoYes: false, store);
+        await Call(Gate(autoYes: false, store, prompter: granted), "write_file", target);
+        Assert.Equal(1, granted.Asked);
+
+        //reading gatto's folder is no write, so outside --yes it passes unasked
+        var reader = new YesPrompter();
+        await Call(Gate(autoYes: false, prompter: reader), "read_file", new { path = Path.Combine(Home, "gatto.json") });
+        Assert.Equal(0, reader.Asked);
     }
 
     [Fact]
-    public async Task A_command_naming_gattos_folder_is_refused_in_every_mode()
+    public async Task A_command_naming_gattos_folder_is_refused_with_yes_and_asked_without()
     {
-        foreach (var gate in new[] { Gate(autoYes: true), Gate(autoYes: false) })
-        {
-            var ex = await Assert.ThrowsAsync<InvalidOperationException>(() =>
-                Call(gate, "shell", new { command = "Set-Content ~\\.gatto\\gatto.json '{}'" }));
-            Assert.Equal(ShellHomeWords, ex.Message);
-        }
+        var command = $"Set-Content '{Path.Combine(Home, "gatto.json")}' '{{}}'";
+        var ex = await Assert.ThrowsAsync<InvalidOperationException>(() => Call(Gate(autoYes: true), "shell", new { command }));
+        Assert.Equal(ShellHomeWords, ex.Message);
+
+        var prompter = new YesPrompter();
+        await Call(Gate(autoYes: false, wild: new WildState { On = true }, prompter: prompter), "shell", new { command });
+        Assert.Equal(1, prompter.Asked);
     }
 
     [Fact]

@@ -18,8 +18,15 @@ internal static class ToolArgs
         args.TryGetProperty(name, out var v) && v.ValueKind == JsonValueKind.Number
             ? v.GetInt32() : null;
 
-    public static string Resolve(IToolContext ctx, string path) =>
-        Path.GetFullPath(Path.IsPathRooted(path) ? path : Path.Combine(ctx.Cwd, path));
+    public static string Resolve(IToolContext ctx, string path) => Resolve(ctx.Cwd, path);
+
+    //a leading ~ is the user's folder, as the shell reads it, so the tool and the permission gate both land where the model meant
+    public static string Resolve(string cwd, string path)
+    {
+        if (path == "~" || path.StartsWith("~\\", StringComparison.Ordinal) || path.StartsWith("~/", StringComparison.Ordinal))
+            path = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile) + path[1..];
+        return Path.GetFullPath(Path.IsPathRooted(path) ? path : Path.Combine(cwd, path));
+    }
 
     public static JsonElement Schema(string json) => JsonDocument.Parse(json).RootElement;
 

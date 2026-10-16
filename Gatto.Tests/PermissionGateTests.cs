@@ -54,7 +54,11 @@ file sealed class SpyTool(string name) : ITool
 public sealed class PermissionGateTests : IDisposable
 {
     private readonly string _root = Directory.CreateTempSubdirectory("gatto-gate-").FullName;
-    public void Dispose() => Directory.Delete(_root, recursive: true);
+    public void Dispose()
+    {
+        Directory.Delete(_root, recursive: true);
+        foreach (var home in _homes) Directory.Delete(home, recursive: true);
+    }
 
     private string PermsPath => PermissionStore.PathFor(_root, _root);
 
@@ -711,6 +715,145 @@ public sealed class PermissionGateTests : IDisposable
         await Assert.ThrowsAsync<InvalidOperationException>(
             () => gate.CheckAsync(new HookPayload(Call: call)));
         Assert.Equal(1, prompter.CallCount);
+    }
+
+    //gatto's own folder sits outside the working folder, as it does in use, and goes with the test
+    private (string Home, PermissionStore Store) HomeAndStore()
+    {
+        var home = Directory.CreateTempSubdirectory("gatto-home-").FullName;
+        _homes.Add(home);
+        return (home, PermissionStore.Load(_root, _root, out _));
+    }
+
+    private readonly List<string> _homes = new();
+
+    private static ToolCall WriteUnder(string home) =>
+        new("c1", "write_file", JsonSerializer.Serialize(new { path = Path.Combine(home, "models", "m", "profile.json"), content = "{}" }));
+
+    private static ToolCall ShellNaming(string home) =>
+        new("c1", "shell", JsonSerializer.Serialize(new { command = $"Get-FileHash '{Path.Combine(home, "gatto.json")}'" }));
+
+    [Fact]
+    public async Task A_WRITE_UNDER_THE_HOME_IS_ASKED_IN_WILD_MODE_AND_OFFERS_NO_ALWAYS()
+    {
+        var (home, store) = HomeAndStore();
+        var prompter = new FakePrompter(PermissionAnswer.Once);
+        var gate = new PermissionGate(store, prompter, autoYes: false, wild: new WildState { On = true }, home: home);
+
+        await gate.CheckAsync(new HookPayload(Call: WriteUnder(home)));
+
+        Assert.Equal(1, prompter.CallCount);
+        Assert.Null(prompter.Requests.Single().GrantOffer);
+    }
+
+    [Fact]
+    public async Task A_SHELL_COMMAND_NAMING_THE_HOME_IS_ASKED_IN_WILD_MODE_AND_OFFERS_NO_ALWAYS()
+    {
+        var (home, store) = HomeAndStore();
+        var prompter = new FakePrompter(PermissionAnswer.Once);
+        var gate = new PermissionGate(store, prompter, autoYes: false, wild: new WildState { On = true }, home: home);
+
+        await gate.CheckAsync(new HookPayload(Call: ShellNaming(home)));
+
+        Assert.Equal(1, prompter.CallCount);
+        Assert.Null(prompter.Requests.Single().GrantOffer);
+    }
+
+    //an always typed anyway keeps nothing, so the next call into the home is asked again
+    [Fact]
+    public async Task A_HOME_WRITE_IS_ASKED_AGAIN_ON_THE_NEXT_CALL_AND_ALWAYS_KEEPS_NO_GRANT()
+    {
+        var (home, store) = HomeAndStore();
+        var prompter = new FakePrompter(PermissionAnswer.Always, PermissionAnswer.Once);
+        var gate = new PermissionGate(store, prompter, autoYes: false, home: home);
+
+        await gate.CheckAsync(new HookPayload(Call: WriteUnder(home)));
+        await gate.CheckAsync(new HookPayload(Call: WriteUnder(home)));
+
+        Assert.Equal(2, prompter.CallCount);
+        Assert.False(store.AllowsWrite(Path.Combine(home, "models", "m", "profile.json")));
+    }
+
+    [Fact]
+    public async Task A_STANDING_GRANT_DOES_NOT_SKIP_THE_HOME_PROMPT()
+    {
+        var (home, store) = HomeAndStore();
+        store.GrantWriteDir(home, persist: false);
+        store.GrantShellPrefix("Get-FileHash", persist: false);
+        var prompter = new FakePrompter(PermissionAnswer.Once, PermissionAnswer.Once);
+        var gate = new PermissionGate(store, prompter, autoYes: false, home: home);
+
+        await gate.CheckAsync(new HookPayload(Call: WriteUnder(home)));
+        await gate.CheckAsync(new HookPayload(Call: ShellNaming(home)));
+
+        Assert.Equal(2, prompter.CallCount);
+    }
+
+    [Fact]
+    public async Task A_DENIED_HOME_WRITE_IS_REFUSED_WITH_THE_DENY_TEXT()
+    {
+        var (home, store) = HomeAndStore();
+        var gate = new PermissionGate(store, new FakePrompter(PermissionAnswer.Deny), autoYes: false, home: home);
+
+        var ex = await Assert.ThrowsAsync<InvalidOperationException>(() => gate.CheckAsync(new HookPayload(Call: WriteUnder(home))));
+
+        Assert.Equal(PermissionGate.DenyNudge, ex.Message);
+    }
+
+    [Fact]
+    public async Task UNDER_YES_A_HOME_WRITE_AND_A_COMMAND_NAMING_THE_HOME_ARE_REFUSED_WITHOUT_ASKING()
+    {
+        var (home, store) = HomeAndStore();
+        var prompter = new FakePrompter(PermissionAnswer.Once, PermissionAnswer.Once);
+        var gate = new PermissionGate(store, prompter, autoYes: true, home: home);
+
+        var write = await Assert.ThrowsAsync<InvalidOperationException>(() => gate.CheckAsync(new HookPayload(Call: WriteUnder(home))));
+        var shell = await Assert.ThrowsAsync<InvalidOperationException>(() => gate.CheckAsync(new HookPayload(Call: ShellNaming(home))));
+
+        Assert.Equal(PermissionGate.HomeWrite, write.Message);
+        Assert.Equal(PermissionGate.ShellNamesHome, shell.Message);
+        Assert.Equal(0, prompter.CallCount);
+    }
+
+    [Fact]
+    public async Task WITH_NO_TERMINAL_A_HOME_WRITE_IS_REFUSED_WITH_THE_HOME_LINE()
+    {
+        var (home, store) = HomeAndStore();
+        var gate = new PermissionGate(store, prompter: null, autoYes: false, home: home);
+
+        var ex = await Assert.ThrowsAsync<InvalidOperationException>(() => gate.CheckAsync(new HookPayload(Call: WriteUnder(home))));
+
+        Assert.Equal(PermissionGate.HomeWrite, ex.Message);
+    }
+
+    //the home is never created, the gate judges the path and asks before anything is written
+    [Fact]
+    public async Task A_WRITE_SPELLED_FROM_THE_TILDE_INTO_THE_HOME_IS_ASKED_IN_WILD_MODE()
+    {
+        var name = ".gatto-t-" + Guid.NewGuid().ToString("N")[..8];
+        var home = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), name);
+        var store = PermissionStore.Load(_root, _root, out _);
+        var prompter = new FakePrompter(PermissionAnswer.Deny);
+        var gate = new PermissionGate(store, prompter, autoYes: false, wild: new WildState { On = true }, home: home);
+        var call = new ToolCall("c1", "write_file", JsonSerializer.Serialize(new { path = $"~/{name}/zz.txt", content = "hi" }));
+
+        await Assert.ThrowsAsync<InvalidOperationException>(() => gate.CheckAsync(new HookPayload(Call: call)));
+
+        Assert.Equal(1, prompter.CallCount);
+        Assert.Contains(Path.Combine(home, "zz.txt"), prompter.Requests.Single().Summary);
+        Assert.False(Directory.Exists(home));
+    }
+
+    [Fact]
+    public async Task A_READ_UNDER_THE_HOME_IS_NOT_ASKED()
+    {
+        var (home, store) = HomeAndStore();
+        var prompter = new FakePrompter();
+        var gate = new PermissionGate(store, prompter, autoYes: false, home: home);
+
+        await gate.CheckAsync(new HookPayload(Call: new ToolCall("c1", "read_file", JsonSerializer.Serialize(new { path = Path.Combine(home, "gatto.json") }))));
+
+        Assert.Equal(0, prompter.CallCount);
     }
 
     [Fact]

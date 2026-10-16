@@ -14,8 +14,8 @@ public sealed class PermissionGate(
     private readonly WorkspaceBoundary _boundary = new(store.ProjectRoot, store.AllowsWrite, home);
 
     //what the model reads when step 0 refuses, each a fact about the folder so an honest model reports it rather than trying another road
-    internal const string HomeWrite = "that path is in gatto's own folder, which no tool writes";
-    internal const string ShellNamesHome = "that command names gatto's own folder, which no shell command may touch; read_file can read a file there";
+    internal const string HomeWrite = "that path is in gatto's own folder, which a tool writes only when the user says yes, and nobody is asked in this run";
+    internal const string ShellNamesHome = "that command names gatto's own folder, which a command touches only when the user says yes, and nobody is asked in this run; read_file can read a file there";
     internal const string OutsideFolder = "that path is outside the working folder, and with --yes a tool works only inside it";
     internal const string CommandLeaves = "that command reaches outside the working folder, and with --yes a command works only inside it";
 
@@ -51,15 +51,17 @@ public sealed class PermissionGate(
         var call = payload.Call;
         if (call is null) return Task.CompletedTask;
 
-        CheckBoundary(call);                                             //0. ahead of every pass below, so no grant, --yes or wild mode skips it
+        var home = CheckBoundary(call);                                  //0. ahead of every pass below, so no grant, --yes or wild mode skips it
 
         if (ReadClass.Contains(call.Name) || BoundedWriteClass.Contains(call.Name) || _instanceReadClass.Contains(call.Name))
             return Task.CompletedTask;                                   //1. read-class or bounded-write, both pass without asking
-        if (autoYes || wild?.On == true) return Task.CompletedTask;     //2. the --yes flag or wild mode, both pass
+        if (!home && (autoYes || wild?.On == true)) return Task.CompletedTask;     //2. the --yes flag or wild mode, both pass
 
         var c = Classify(call);
+        //a call into gatto's own folder is asked every time, so the prompt offers no always and a yes covers this call alone
+        if (home) c = c with { Request = c.Request with { GrantOffer = null } };
 
-        var granted = c.Kind switch                                     //3. a matching standing grant from the store
+        var granted = !home && c.Kind switch                            //3. a matching standing grant from the store
         {
             Kind.Shell => store.AllowsShell(c.Command!),
             Kind.Write => store.AllowsWrite(c.FullPath!),
@@ -145,8 +147,8 @@ public sealed class PermissionGate(
         else if (c.Kind == Kind.Opaque) store.GrantTool(c.Request.GrantOffer, persist: true);
     }
 
-    //no tool writes gatto's own folder in any mode, and with --yes the file tools and the shell stay in the working folder or a grant. a call that does not parse is left to the steps below
-    private void CheckBoundary(ToolCall call)
+    //true for a write or a command that reaches gatto's own folder, and with --yes the file tools and the shell stay in the working folder or a grant. a call that does not parse is left to the steps below
+    private bool CheckBoundary(ToolCall call)
     {
         JsonElement args;
         try
@@ -154,28 +156,33 @@ public sealed class PermissionGate(
             using var doc = JsonDocument.Parse(call.ArgumentsJson.Length > 0 ? call.ArgumentsJson : "{}");
             args = doc.RootElement.Clone();
         }
-        catch (JsonException) { return; }
+        catch (JsonException) { return false; }
 
         switch (call.Name)
         {
             case "write_file" or "edit_file" when TryGetString(args, "path", out var path):
                 var full = ResolvePath(path);
-                if (_boundary.InHome(full)) throw new InvalidOperationException(HomeWrite);
+                if (_boundary.InHome(full)) return AskedOrRefused(HomeWrite);
                 if (autoYes && !_boundary.Inside(full)) throw new InvalidOperationException(OutsideFolder);
-                return;
+                return false;
             case "read_file" when autoYes && TryGetString(args, "path", out var read):
                 if (!_boundary.Inside(ResolvePath(read))) throw new InvalidOperationException(OutsideFolder);
-                return;
+                return false;
             case "glob" or "grep" when autoYes:
                 if (!_boundary.Inside(ResolvePath(TryGetString(args, "root", out var root) ? root : ".")))
                     throw new InvalidOperationException(OutsideFolder);
-                return;
+                return false;
             case "shell" when TryGetString(args, "command", out var command):
-                if (_boundary.NamesHome(command)) throw new InvalidOperationException(ShellNamesHome);
+                if (_boundary.NamesHome(command)) return AskedOrRefused(ShellNamesHome);
                 if (autoYes && _boundary.Leaves(command)) throw new InvalidOperationException(CommandLeaves);
-                return;
+                return false;
         }
+        return false;
     }
+
+    //gatto's own folder is written only on a yes, so under --yes or with no terminal the call is refused here and never reaches a pass
+    private bool AskedOrRefused(string refusal) =>
+        autoYes || prompter is null ? throw new InvalidOperationException(refusal) : true;
 
     private Classified Classify(ToolCall call)
     {
@@ -284,8 +291,7 @@ public sealed class PermissionGate(
     private static Classified Opaque(string tool, string raw, bool offerGrant) =>
         new(Kind.Opaque, null, null, new PermissionRequest(tool, raw, offerGrant ? tool : null));
 
-    private string ResolvePath(string path) =>
-        Path.GetFullPath(Path.IsPathRooted(path) ? path : Path.Combine(store.ProjectRoot, path));
+    private string ResolvePath(string path) => ToolArgs.Resolve(store.ProjectRoot, path);
 
     //write_file is sized in lines of content, edit_file in UTF-8 bytes of new_string, and a missing size argument leaves the path alone
     private static string WriteSummary(string tool, string fullPath, JsonElement args)

@@ -3,10 +3,13 @@ using System.Text.RegularExpressions;
 namespace Gatto.Core.Loop.Permissions;
 
 //where a tool may reach: a file tool by its resolved path, a shell command only by its text, so the shell half is a screen and not a wall
-internal sealed partial class WorkspaceBoundary(string workingFolder, Func<string, bool> granted, string? home)
+internal sealed partial class WorkspaceBoundary(string workingFolder, Func<string, bool> granted, string? home, string? profile = null)
 {
     private readonly string _root = Terminate(Path.GetFullPath(workingFolder));
     private readonly string? _home = home is { Length: > 0 } h ? Terminate(Path.GetFullPath(h)) : null;
+
+    //this home as a shell spells it from the user's folder, ~\.gatto by default and ~\.gatto-b for a second home, null when the home sits elsewhere
+    private readonly Regex? _homeFromProfile = FromProfile(home, profile ?? Environment.GetFolderPath(Environment.SpecialFolder.UserProfile));
 
     //under the working folder or a folder the project granted, compared whole segments so a sibling with a longer name is outside
     public bool Inside(string fullPath) => Under(fullPath, _root) || granted(fullPath);
@@ -42,7 +45,15 @@ internal sealed partial class WorkspaceBoundary(string workingFolder, Func<strin
         if (_home is null) return false;
         var text = command.Replace('/', '\\');
         var full = Regex.Escape(_home[..^1]) + @"(\\|$|[\s""';)|])";
-        return Regex.IsMatch(text, full, RegexOptions.IgnoreCase) || HomeByName().IsMatch(text);
+        return Regex.IsMatch(text, full, RegexOptions.IgnoreCase) || _homeFromProfile?.IsMatch(text) == true || HomeVariable().IsMatch(text);
+    }
+
+    private static Regex? FromProfile(string? home, string profile)
+    {
+        if (home is not { Length: > 0 } || profile.Length == 0) return null;
+        var tail = Path.GetRelativePath(Path.GetFullPath(profile), Path.GetFullPath(home));
+        if (tail == "." || tail.StartsWith("..", StringComparison.Ordinal) || Path.IsPathRooted(tail)) return null;
+        return new Regex(@"(~|\$home|\$env:userprofile|%userprofile%)\\" + Regex.Escape(tail) + @"(\\|$|[\s""';)|])", RegexOptions.IgnoreCase);
     }
 
     private bool StartsWithRoot(string path)
@@ -72,7 +83,7 @@ internal sealed partial class WorkspaceBoundary(string workingFolder, Func<strin
     [GeneratedRegex(@"(?<![\w.\-])(\$\{env:gatto_(?!home(?![\w*?\[]))\w+(?![\w*?\[])\}|\$?env:\\?gatto_(?!home(?![\w*?\[]))\w+(?![\w*?\[]))|(?<![%\w])%gatto_(?!home%)\w+%|\[(system\.)?environment\]::getenvironmentvariable\(\s*(?<q>['""])gatto_(?!home\k<q>)\w+\k<q>\s*\)", RegexOptions.IgnoreCase)]
     private static partial Regex GattoReads();
 
-    //the shell names for gatto's folder: the user's home then .gatto, or the variable that points the home elsewhere
-    [GeneratedRegex(@"(~|\$home|\$env:userprofile|%userprofile%)\\\.gatto(\\|$|[\s""';)|])|\$env:gatto_home\b|%gatto_home%", RegexOptions.IgnoreCase)]
-    private static partial Regex HomeByName();
+    //the variable that points the home elsewhere, in both spellings
+    [GeneratedRegex(@"\$env:gatto_home\b|%gatto_home%", RegexOptions.IgnoreCase)]
+    private static partial Regex HomeVariable();
 }

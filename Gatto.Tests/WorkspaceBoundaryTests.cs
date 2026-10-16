@@ -7,11 +7,14 @@ public class WorkspaceBoundaryTests
 {
     private static readonly string Root = Path.Combine(Path.GetTempPath(), "gatto-ws-0f3a", "proj");
     private static readonly string Granted = Path.Combine(Path.GetTempPath(), "gatto-ws-0f3a", "shared");
-    private static readonly string Home = Path.Combine(Path.GetTempPath(), "gatto-ws-0f3a", "home", ".gatto");
+    private static readonly string Profile = Path.Combine(Path.GetTempPath(), "gatto-ws-0f3a", "home");
+    private static readonly string Home = Path.Combine(Profile, ".gatto");
 
-    private static WorkspaceBoundary Boundary => new(Root,
+    private static WorkspaceBoundary Boundary => BoundaryWith(Home);
+
+    private static WorkspaceBoundary BoundaryWith(string home) => new(Root,
         p => Path.GetFullPath(p).StartsWith(Granted + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase),
-        Home);
+        home, Profile);
 
     private static string Full(string path) => Path.GetFullPath(Path.IsPathRooted(path) ? path : Path.Combine(Root, path));
 
@@ -180,5 +183,31 @@ public class WorkspaceBoundaryTests
         Assert.False(Boundary.NamesHome("Get-ChildItem .gatto\\memory"));
         Assert.False(Boundary.NamesHome("cd gatto; ls"));
         Assert.False(Boundary.NamesHome("Get-Content ~\\.gatto-old\\gatto.json"));
+    }
+
+    //a second home under the user's folder is named by its own folder name, and the default one beside it belongs to another gatto
+    [Fact]
+    public void A_SECOND_HOME_IS_NAMED_BY_ITS_OWN_FOLDER_FROM_THE_USERS_FOLDER()
+    {
+        var dev = BoundaryWith(Path.Combine(Profile, ".gatto-b"));
+
+        Assert.True(dev.NamesHome("Test-Path \"~\\.gatto-b\\gatto.json\""));
+        Assert.True(dev.NamesHome("cat ~/.gatto-b/gatto.json"));
+        Assert.True(dev.NamesHome("dir $HOME\\.gatto-b"));
+        Assert.True(dev.NamesHome("type %USERPROFILE%\\.gatto-b\\gatto.json"));
+        Assert.False(dev.NamesHome("Get-Content ~\\.gatto\\gatto.json"));
+        Assert.False(dev.NamesHome("Get-Content ~\\.gatto-b-old\\gatto.json"));
+    }
+
+    //a home outside the user's folder has no tilde spelling, so only its full path and the variable name it
+    [Fact]
+    public void A_HOME_OUTSIDE_THE_USERS_FOLDER_IS_NAMED_IN_FULL_OR_BY_THE_VARIABLE()
+    {
+        var elsewhere = Path.Combine(Path.GetTempPath(), "gatto-ws-0f3a", "elsewhere", "gh");
+        var b = BoundaryWith(elsewhere);
+
+        Assert.True(b.NamesHome($"dir '{elsewhere}'"));
+        Assert.True(b.NamesHome("dir $env:GATTO_HOME"));
+        Assert.False(b.NamesHome("Get-Content ~\\.gatto\\gatto.json"));
     }
 }
