@@ -347,6 +347,31 @@ public sealed class UndoExtensionTests(UndoScriptFolder script) : IClassFixture<
         Assert.Contains(_log, l => l.Contains("unsnapshotted: outside folder", StringComparison.Ordinal));
     }
 
+    //the same path written again says nothing new, and another path outside still gets its line
+    [Fact]
+    public async Task A_PATH_OUTSIDE_THE_FOLDER_IS_LOGGED_ONCE_A_SESSION()
+    {
+        var (hooks, _) = Load();
+        var o = Path.Combine(_home, "o.txt");
+        var p = Path.Combine(_home, "p.txt");
+        foreach (var (id, path) in new[] { ("c1", o), ("c2", o.ToUpperInvariant()), ("c3", p), ("c4", o) })
+            await hooks.EmitToolCallAsync(new HookPayload(Call: Call(id, "write_file", Args(("path", path), ("content", "x")))));
+
+        Assert.Single(_log, l => l.Contains("outside folder", StringComparison.Ordinal) && l.EndsWith(o, StringComparison.OrdinalIgnoreCase));
+        Assert.Single(_log, l => l.Contains("outside folder", StringComparison.Ordinal) && l.EndsWith(p, StringComparison.Ordinal));
+    }
+
+    //a write the tool sends to the user's folder is outside the project, never a folder named ~ inside it
+    [Fact]
+    public async Task A_LEADING_TILDE_IS_THE_USERS_FOLDER_AND_OUTSIDE()
+    {
+        var (hooks, _) = Load();
+        await hooks.EmitToolCallAsync(new HookPayload(Call: Call("c1", "write_file", Args(("path", "~/gatto-undo-t/t.txt"), ("content", "x")))));
+
+        Assert.False(Directory.Exists(Path.Combine(_home, "undo")));
+        Assert.Contains(_log, l => l.Contains("outside folder: ~/gatto-undo-t/t.txt", StringComparison.Ordinal));
+    }
+
     private static async Task<string> Run(CommandRegistry commands, string arg)
     {
         Assert.True(commands.TryGet("/undo", out var row));

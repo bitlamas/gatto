@@ -22,9 +22,16 @@ var n = 0;
 //the n of each row a call wrote, held from its tool_call to its tool_result. the call id is the server's and may repeat, so it never reaches the disk
 var pending = new Dictionary<string, List<int>>(StringComparer.Ordinal);
 var sync = new object();
+//a path outside the folder is named once a session, a second write to it says nothing new
+var toldOutside = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
-//a full path under the working folder, compared whole segments
-Func<string, string> full = p => Path.GetFullPath(Path.IsPathRooted(p) ? p : Path.Combine(cwd, p));
+//a full path, a leading ~ the user's folder as gatto's file tools read it, and whether it is under the working folder, compared whole segments
+Func<string, string> full = p =>
+{
+    if (p == "~" || p.StartsWith("~\\", StringComparison.Ordinal) || p.StartsWith("~/", StringComparison.Ordinal))
+        p = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile) + p[1..];
+    return Path.GetFullPath(Path.IsPathRooted(p) ? p : Path.Combine(cwd, p));
+};
 Func<string, bool> inside = f =>
     f.Equals(cwd, StringComparison.OrdinalIgnoreCase)
     || f.StartsWith(cwd + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase);
@@ -70,7 +77,13 @@ Action<string, string, string> snapshot = (callId, tool, given) =>
     string f;
     try { f = full(given); }
     catch (Exception ex) { Gatto.Log($"undo: {given}: {ex.Message}"); return; }
-    if (!inside(f)) { Gatto.Log($"undo: unsnapshotted: outside folder: {given}"); return; }
+    if (!inside(f))
+    {
+        bool first;
+        lock (sync) first = toldOutside.Add(f);
+        if (first) Gatto.Log($"undo: unsnapshotted: outside folder: {given}");
+        return;
+    }
     if (Directory.Exists(f)) { Gatto.Log($"undo: unsnapshotted: directory: {given}"); return; }
     lock (sync)
     {
