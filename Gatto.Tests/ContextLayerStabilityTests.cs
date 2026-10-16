@@ -13,7 +13,7 @@ public class ContextLayerStabilityTests : IDisposable
     public void Dispose() { try { Directory.Delete(_tempDir, recursive: true); } catch { } }
 
     private static RoleFile Role() =>
-        new("r", "p", null, Array.Empty<string>(), false, null, ThinkingLevel.Medium, null, null, 10, true, null, null, null);
+        new("r", "p", null, Array.Empty<string>(), false, null, ThinkingLevel.Medium, null, null, 10, true, null, null, null, null);
 
     private (string Home, string Cwd) Fixture(string homeText, string projectText)
     {

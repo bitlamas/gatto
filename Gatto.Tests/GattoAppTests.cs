@@ -145,6 +145,235 @@ public class GattoAppTests : IDisposable
         Assert.True(body.GetProperty("chat_template_kwargs").GetProperty("enable_thinking").GetBoolean());
     }
 
+    private static readonly string[] SeatSix = { "read_file", "write_file", "edit_file", "glob", "grep", "shell" };
+
+    private async Task<FakeOpenAiServer> OneShotWithGeneralist(string roleJson)
+    {
+        var server = new FakeOpenAiServer();
+        UseHome();
+        WriteConfig($$$"""{"endpoints":{"local":{"base_url":"{{{server.BaseUrl}}}"}},"default_endpoint":"local"}""");
+        WriteModel("test-model", port: 1235);
+        WriteRole("generalist", roleJson);
+        server.Enqueue(Completion("ok"));
+        Console.SetOut(new StringWriter());
+        Assert.Equal(0, await GattoApp.RunAsync(new[] { "-p", "hi" }));
+        return server;
+    }
+
+    [Fact]
+    public async Task A_SEAT_WITH_AN_EMPTY_TOOLS_ARRAY_ARMS_NONE_OF_THE_SIX()
+    {
+        await using var server = await OneShotWithGeneralist("""{"model":"test-model","tools":[]}""");
+
+        var names = ToolNamesOf(server);
+        Assert.Empty(names.Intersect(SeatSix));
+        Assert.Contains("run_agent", names);
+    }
+
+    [Fact]
+    public async Task A_SEAT_WITH_THREE_TOOLS_ARMS_THOSE_THREE()
+    {
+        await using var server = await OneShotWithGeneralist("""{"model":"test-model","tools":["read_file","glob","grep"]}""");
+
+        Assert.Equal(new[] { "glob", "grep", "read_file" }, ToolNamesOf(server).Intersect(SeatSix).Order());
+    }
+
+    //the plain /tools rows open with two spaces and the tool's name, so the names are read off the rows and never off a description
+    private static IReadOnlyList<string> ListedTools(string section) =>
+        section.Split('\n').Where(l => l.StartsWith("  ", StringComparison.Ordinal))
+            .Select(l => l.TrimStart().Split(' ')[0]).ToList();
+
+    private async Task<string> SwitchInThePlainLoop(string script)
+    {
+        UseHome();
+        WriteConfig("""{"endpoints":{"local":{"base_url":"http://127.0.0.1:1"}},"default_endpoint":"local","glyphs":"unicode"}""");
+        WriteModel("test-model", port: 65501);
+        WriteRole("generalist", "{\"model\":\"test-model\"}");
+        WriteRole("narrow", "{\"model\":\"test-model\",\"tools\":[\"grep\"]}");
+
+        Console.SetIn(new StringReader(script));
+        var stdout = new StringWriter();
+        Console.SetOut(stdout);
+        using var probeRoom = GattoApp.ProbeDeadlineScope(TimeSpan.FromMilliseconds(100));   //nothing listens on this port, so the probes give up at once
+        Assert.Equal(0, await GattoApp.RunAsync(Array.Empty<string>()));
+        return stdout.ToString();
+    }
+
+    [Fact]
+    public async Task A_ROLE_SWITCH_REARMS_THE_SEATS_TOOLS()
+    {
+        var output = await SwitchInThePlainLoop("/tools\n/role narrow\n/tools\n/quit\n");
+
+        var cut = output.IndexOf("role: narrow", StringComparison.Ordinal);
+        Assert.True(cut > 0, output);
+        Assert.Contains("shell", ListedTools(output[..cut]));
+        var after = ListedTools(output[cut..]);
+        Assert.Contains("grep", after);
+        Assert.Empty(after.Intersect(new[] { "shell", "read_file", "write_file", "edit_file", "glob" }));
+    }
+
+    [Fact]
+    public async Task A_ROLE_SWITCH_BACK_REARMS_THE_SIX()
+    {
+        var output = await SwitchInThePlainLoop("/role narrow\n/role generalist\n/tools\n/quit\n");
+
+        var cut = output.IndexOf("role: generalist", StringComparison.Ordinal);
+        Assert.True(cut > 0, output);
+        Assert.Equal(SeatSix.Order(), ListedTools(output[cut..]).Intersect(SeatSix).Order());
+    }
+
+    //the listing cannot hold the order, so the two requests' manifests are compared as text
+    [Fact]
+    public async Task A_ROLE_SWITCH_BACK_RESTORES_THE_LAUNCH_MANIFEST_BYTE_FOR_BYTE()
+    {
+        await using var server = new FakeOpenAiServer();
+        UseHome();
+        WriteConfig($$$"""{"endpoints":{"local":{"base_url":"{{{server.BaseUrl}}}"}},"default_endpoint":"local","glyphs":"unicode"}""");
+        WriteModel("test-model", port: 1235);
+        WriteRole("generalist", "{\"model\":\"test-model\"}");
+        WriteRole("narrow", "{\"model\":\"test-model\",\"tools\":[\"grep\"]}");
+        server.Enqueue(Completion("one"));
+        server.Enqueue(Completion("two"));
+        Console.SetIn(new StringReader("first\n/role narrow\n/role generalist\nsecond\n/quit\n"));
+        Console.SetOut(new StringWriter());
+        Assert.Equal(0, await GattoApp.RunAsync(Array.Empty<string>()));
+
+        var bodies = server.RequestBodies;
+        Assert.Equal(2, bodies.Count);
+        Assert.Equal(bodies[0].GetProperty("tools").GetRawText(), bodies[1].GetProperty("tools").GetRawText());
+    }
+
+    [Fact]
+    public async Task A_COMMITTED_SWITCH_LEAVES_EVERY_OTHER_TOOL_IN_PLACE()
+    {
+        var output = await SwitchInThePlainLoop("/tools\n/role narrow\n/tools\n/quit\n");
+
+        var cut = output.IndexOf("role: narrow", StringComparison.Ordinal);
+        Assert.True(cut > 0, output);
+        var before = ListedTools(output[..cut]);
+        var after = ListedTools(output[cut..]);
+        foreach (var name in new[] { "run_agent", "ask_user", "recall_memory" })
+        {
+            Assert.Contains(name, before);
+            Assert.Contains(name, after);
+        }
+    }
+
+    [Fact]
+    public async Task A_REFUSED_SWITCH_LEAVES_THE_SEATS_TOOLS_WHERE_THEY_WERE()
+    {
+        WriteModel("other-model", port: 65501);
+        WriteRole("other", "{\"model\":\"other-model\",\"tools\":[\"grep\"]}");
+
+        var output = await SwitchInThePlainLoop("/role other\n/tools\n/quit\n");
+
+        Assert.Contains("uses model 'other-model'", output, StringComparison.Ordinal);
+        Assert.Equal(SeatSix.Order(), ListedTools(output).Intersect(SeatSix).Order());
+    }
+
+    [Fact]
+    public async Task THE_LAUNCH_OPENS_WITH_THE_ROLES_FIRST_MESSAGE_IN_THE_PLAIN_LOOP()
+    {
+        await using var server = new FakeOpenAiServer();
+        UseHome();
+        WriteConfig($$$"""{"endpoints":{"local":{"base_url":"{{{server.BaseUrl}}}"}},"default_endpoint":"local","glyphs":"unicode"}""");
+        WriteModel("test-model", port: 1235);
+        WriteRole("generalist", """{"model":"test-model","first_message":"Hello."}""");
+
+        Console.SetIn(new StringReader("/quit\n"));
+        var stdout = new StringWriter();
+        Console.SetOut(stdout);
+        Assert.Equal(0, await GattoApp.RunAsync(Array.Empty<string>()));
+
+        var output = stdout.ToString();
+        var banner = output.IndexOf("gatto " + Gatto.Terminal.GlyphSet.Unicode.Dot + " generalist", StringComparison.Ordinal);
+        Assert.True(banner >= 0, output);
+        Assert.Contains("Hello.", output[banner..], StringComparison.Ordinal);
+        Assert.Empty(server.RequestBodies);
+    }
+
+    private static IReadOnlyList<(string Role, string? Content)> MessagesOf(JsonElement body) =>
+        body.GetProperty("messages").EnumerateArray()
+            .Select(m => (m.GetProperty("role").GetString()!,
+                m.TryGetProperty("content", out var c) && c.ValueKind == JsonValueKind.String ? c.GetString() : null))
+            .ToList();
+
+    [Fact]
+    public async Task A_ONE_SHOT_CARRIES_THE_FIRST_MESSAGE_AS_HISTORY()
+    {
+        await using var server = await OneShotWithGeneralist("""{"model":"test-model","first_message":"Hello."}""");
+
+        var messages = MessagesOf(server.LastRequestBody!.Value);
+        Assert.Equal(["system", "assistant", "user"], messages.Select(m => m.Role));
+        Assert.Equal("Hello.", messages[1].Content);
+    }
+
+    [Fact]
+    public async Task A_RESUMED_SESSION_OPENS_NO_FIRST_MESSAGE()
+    {
+        await using var server = await OneShotWithGeneralist("""{"model":"test-model","first_message":"Hello."}""");
+        server.Enqueue(Completion("again ok"));
+
+        Assert.Equal(0, await GattoApp.RunAsync(new[] { "-p", "again", "--continue" }));
+
+        var assistants = MessagesOf(server.LastRequestBody!.Value)
+            .Select((m, i) => (m.Role, m.Content, Index: i)).Where(m => m.Role == "assistant" && m.Content == "Hello.").ToList();
+        Assert.Single(assistants);
+        Assert.Equal(1, assistants[0].Index);
+    }
+
+    private static int CountOf(string haystack, string needle)
+    {
+        var n = 0;
+        for (var i = haystack.IndexOf(needle, StringComparison.Ordinal); i >= 0; i = haystack.IndexOf(needle, i + needle.Length, StringComparison.Ordinal)) n++;
+        return n;
+    }
+
+    private async Task<string> PlainLoopWithOpening(string generalistJson, string script, bool withServer = false)
+    {
+        await using var server = new FakeOpenAiServer();
+        UseHome();
+        WriteConfig($$$"""{"endpoints":{"local":{"base_url":"{{{server.BaseUrl}}}"}},"default_endpoint":"local","glyphs":"unicode"}""");
+        WriteModel("test-model", port: 1235);
+        WriteRole("generalist", generalistJson);
+        WriteRole("sera", """{"model":"test-model","first_message":"I am Sera."}""");
+        if (withServer) server.Enqueue(Completion("ok"));
+        Console.SetIn(new StringReader(script));
+        var stdout = new StringWriter();
+        Console.SetOut(stdout);
+        Assert.Equal(0, await GattoApp.RunAsync(Array.Empty<string>()));
+        return stdout.ToString();
+    }
+
+    //the plain /new seeds, stamps and paints, so the opening is on screen below the line and every assistant record names the role
+    [Fact]
+    public async Task THE_PLAIN_LOOP_OPENS_AGAIN_AFTER_NEW_AND_AFTER_A_ROLE_SWITCH()
+    {
+        var output = await PlainLoopWithOpening("""{"model":"test-model","first_message":"Hello."}""", "/new\nhi\n/quit\n", withServer: true);
+
+        var line = output.IndexOf(Gatto.Repl.Repl.NewConversationLine, StringComparison.Ordinal);
+        Assert.True(line >= 0, output);
+        Assert.Contains("Hello.", output[line..], StringComparison.Ordinal);
+
+        var assistants = Directory.GetFiles(Path.Combine(_home, "sessions"), "*.jsonl")
+            .Where(f => !f.EndsWith(".ledger.jsonl", StringComparison.Ordinal))
+            .SelectMany(File.ReadLines)
+            .Select(l => JsonDocument.Parse(l).RootElement.Clone())
+            .Where(e => e.GetProperty("role").GetString() == "assistant").ToList();
+        Assert.True(assistants.Count >= 2, "the opening and the reply");
+        Assert.All(assistants, e => Assert.Equal("generalist", e.TryGetProperty("gatto_role", out var r) ? r.GetString() : null));
+    }
+
+    [Fact]
+    public async Task THE_LAUNCH_SWITCH_HANDS_THE_ROLES_FIRST_MESSAGE_TO_THE_REPL()
+    {
+        var output = await PlainLoopWithOpening("""{"model":"test-model"}""", "/role sera\n/new\n/quit\n");
+
+        var switched = output.IndexOf("role: sera", StringComparison.Ordinal);
+        Assert.True(switched >= 0, output);
+        Assert.Equal(2, CountOf(output[switched..], "I am Sera."));
+    }
+
     //sampling belongs to the model, so the profile's values go into the request, not only into a spawned server's argv
     [Fact]
     public async Task Launch_ProfileSampling_ReachesTheRequestBody()
@@ -877,6 +1106,8 @@ public class GattoAppTests : IDisposable
         using var counted = JsonDocument.Parse(server.InputTokensRaw!);
         Assert.Equal("system", counted.RootElement.GetProperty("messages")[0].GetProperty("role").GetString());
         Assert.True(counted.RootElement.GetProperty("tools").GetArrayLength() > 0);
+        Assert.Contains(counted.RootElement.GetProperty("tools").EnumerateArray(),
+            t => t.GetProperty("function").GetProperty("name").GetString() == "shell");
     }
 
     //under -p --yes a model once rewrote gatto.json and gatto would not start, now the write is refused and the file stays

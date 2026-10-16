@@ -59,7 +59,7 @@ public class ModelSwitchTests : IDisposable
     }
 
     private RoleFile MinimalRole()
-        => new("test", "qwen3.6-35b", null, Array.Empty<string>(), false, null, ThinkingLevel.Medium, null, null, 10, true, null, null, null);
+        => new("test", "qwen3.6-35b", null, Array.Empty<string>(), false, null, ThinkingLevel.Medium, null, null, 10, true, null, null, null, null);
 
     //deciding and persisting are separate steps, with the serving change between them. a write failure belongs to Persist, and the nothing-changed claim to Decide
 

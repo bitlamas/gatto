@@ -153,7 +153,8 @@ public sealed class RichReplHarness
         //the home's default role and the /role seam, absent as a session that names its role and has no roles to switch to
         string? defaultRole = null, Func<string, RoleSwitchResult>? switchRole = null,
         //the launched role and its file's colours and rows, the generalist with none as a bare launch from a fresh home
-        string roleName = "generalist", (RgbColor Dark, RgbColor? Light)? roleTint = null, IReadOnlyList<string>? roleCat = null)
+        string roleName = "generalist", (RgbColor Dark, RgbColor? Light)? roleTint = null, IReadOnlyList<string>? roleCat = null,
+        string? firstMessage = null)
     {
         Surface = new VtScreenSurface(width, height);
         _tap = new TappedSurface(Surface);
@@ -196,7 +197,7 @@ public sealed class RichReplHarness
             commands: commands,
             launchWarnings: launchWarnings,
             clipboardImageSource: clipboardImages,
-            roleTint: roleTint, roleCat: roleCat);
+            roleTint: roleTint, roleCat: roleCat, firstMessage: firstMessage);
     }
 
     //answers the attach-count question without a terminal. set it to a function of the SelectSpec, and null keeps the real widget.

@@ -41,7 +41,7 @@ public sealed class RunAgentToolTests : IDisposable
         IReadOnlyList<string>? tools = null, int turns = 5, string append = "You are helper.",
         bool raw = false, ThinkingLevel? thinking = null, bool contextFiles = true)
         => new(name, null, null, Array.Empty<string>(), raw, append, thinking, description,
-            tools ?? new[] { "read_file" }, turns, contextFiles, null, null, null);
+            tools ?? new[] { "read_file" }, turns, contextFiles, null, null, null, null);
 
     //the child's prefix as GattoApp composes it, minus the launch state: no model, no context files, no memory
     private static Composition Compose(RoleFile role) =>

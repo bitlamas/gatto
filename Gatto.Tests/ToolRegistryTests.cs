@@ -45,6 +45,46 @@ public class ToolRegistryTests
         Assert.Contains("shell", ex.Message);
     }
 
+    [Fact]
+    public void A_HIDDEN_TOOL_IS_NEITHER_LISTED_NOR_FOUND()
+    {
+        var reg = new ToolRegistry();
+        reg.Register(new StubTool("shell"));
+        reg.Register(new StubTool("grep"));
+
+        reg.Hide(["shell"]);
+
+        Assert.Null(reg.Get("shell"));
+        Assert.NotNull(reg.Get("grep"));
+        Assert.Equal(["grep"], reg.Specs().Select(s => s.Name));
+    }
+
+    [Fact]
+    public void HIDE_REPLACES_THE_SET_AND_KEEPS_THE_ORDER()
+    {
+        var reg = new ToolRegistry();
+        foreach (var n in new[] { "a", "b", "c", "d" }) reg.Register(new StubTool(n));
+
+        reg.Hide(["a", "c"]);
+        Assert.Equal(["b", "d"], reg.Specs().Select(s => s.Name));
+        reg.Hide(["d"]);
+        Assert.Equal(["a", "b", "c"], reg.Specs().Select(s => s.Name));
+        reg.Hide([]);
+        Assert.Equal(["a", "b", "c", "d"], reg.Specs().Select(s => s.Name));
+    }
+
+    [Fact]
+    public void A_HIDDEN_NAME_THAT_IS_NOT_REGISTERED_HIDES_NOTHING()
+    {
+        var reg = new ToolRegistry();
+        reg.Register(new StubTool("grep"));
+
+        reg.Hide(["shell"]);
+
+        Assert.Equal(["grep"], reg.Specs().Select(s => s.Name));
+        Assert.Null(reg.Get("shell"));
+    }
+
     [Theory]
     [InlineData("Bad-Name")]
     [InlineData("")]

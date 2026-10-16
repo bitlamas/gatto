@@ -543,6 +543,10 @@ public static class GattoApp
         tools.Register(new GlobTool());
         tools.Register(new GrepTool());
         tools.Register(new ShellTool());
+        //a role's tools key hides the six it does not name, so the loop and /tools read the one registry and the manifest keeps its order
+        void ArmSeatTools(RoleFile r) =>
+            tools.Hide(r.Tools is null ? [] : SubagentWiring.Builtins().Keys.Where(n => !r.Tools.Contains(n)));
+        ArmSeatTools(role);
         //the memory tools go on the main registry only, and subagents build their own list without them
         if (memoryOn)
         {
@@ -982,6 +986,7 @@ public static class GattoApp
             role = res.Role; model = res.Model; endpoint = res.Endpoint;
             endpointName = res.EndpointName; modelString = res.ModelString; comp = res.Comp;
             roleFiles = LoadRoleFiles();   //only on a switch that commits, since run_agent's description rides every request and a refused switch must move no prefix
+            ArmSeatTools(role);   //the manifest rides every request too, so only a committed switch may change it
             lastComposedSystem = comp.SystemText;   //updated here, the degrade target must follow the newly armed role
             lastComposedSources = comp.Sources;
             //the newly armed model may have a tighter memory.index_budget, so warn here rather than stay silent
@@ -997,7 +1002,7 @@ public static class GattoApp
             var switchedTint = role.ParsedTint();
             launchTheme?.SetRoleTint(role.Name, switchedTint?.Dark ?? Theme.Accent, switchedTint?.Light);
             return new RoleSwitchResult(true, role.Name, modelString, comp.SystemText, null,
-                ThinkingFooterName(), NextBaseline(comp.Sources), switchedTint, role.Cat);
+                ThinkingFooterName(), NextBaseline(comp.Sources), switchedTint, role.Cat, role.FirstMessage);
         };
 
         //set once setEffort exists below, so a switch on a listed endpoint can apply the new model's level through the same path
@@ -1423,6 +1428,7 @@ public static class GattoApp
                 oneShotArmedAt is null ? null
                     : new OneShotCompaction(client, modelString, loop, convo, contextBudget, oneShotUsage, sessions, recomposeSystem, glyphs.Dot),
                 oneShotUsage, oneShotArmedAt);
+            if (resumedFrom is null) Gatto.Repl.Repl.SeedFirstMessage(convo, role.FirstMessage);   //a resumed transcript already opened with it
             try
             {
                 var r = await loop.RunTurnAsync(convo, args.Prompt, new OneShotObserver(), oneShotCts.Token);
@@ -1495,7 +1501,7 @@ public static class GattoApp
             deafWatch: deafWatch,
             wildFromHome: config.Wild, wildPersisted: () => permissions.Wild,
             defaultRole: config.DefaultRole ?? "generalist",
-            roleTint: role.ParsedTint(), roleCat: role.Cat,
+            roleTint: role.ParsedTint(), roleCat: role.Cat, firstMessage: role.FirstMessage,
             //read when /context asks, so a /role or /model since is followed. the shape is the loop's last request, its tools split by origin
             contextInputs: usage =>
             {

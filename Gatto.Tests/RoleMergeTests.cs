@@ -17,7 +17,7 @@ public class RoleMergeTests
         IReadOnlyList<string>? tools = null,
         int turns = RoleFile.DefaultTurns,
         bool contextFiles = true)
-        => new(name, model, endpoint, gates ?? Array.Empty<string>(), raw, append, thinking, description, tools, turns, contextFiles, null, null, null);
+        => new(name, model, endpoint, gates ?? Array.Empty<string>(), raw, append, thinking, description, tools, turns, contextFiles, null, null, null, null);
 
     private static readonly RoleFile Caller = Role("caller", model: "caller-model", endpoint: "caller-endpoint",
         gates: new[] { "citations" }, append: "CALLER APPEND", thinking: ThinkingLevel.High,

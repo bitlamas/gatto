@@ -27,7 +27,7 @@ public class RoleCompositionTests
         bool raw = false,
         string? append = null,
         ThinkingLevel? thinking = ThinkingLevel.Medium)
-        => new("r", "p", null, gates ?? Array.Empty<string>(), raw, append, thinking, null, null, 10, true, null, null, null);
+        => new("r", "p", null, gates ?? Array.Empty<string>(), raw, append, thinking, null, null, 10, true, null, null, null, null);
 
     private static ModelProfile Profile(
         JsonElement? sampling = null,
@@ -111,7 +111,7 @@ public class RoleCompositionTests
     private static Composition Child(bool raw, IReadOnlyList<(string Path, string Content)> contextFiles)
     {
         var caller = Role(append: "CALLER APPEND");
-        var called = new RoleFile("callee", null, null, Array.Empty<string>(), raw, "CALLEE APPEND", null, null, null, 10, true, null, null, null);
+        var called = new RoleFile("callee", null, null, Array.Empty<string>(), raw, "CALLEE APPEND", null, null, null, 10, true, null, null, null, null);
         return RoleComposition.Compose(
             Gatto.Roles.Agents.RoleMerge.ForChild(called, caller),
             Pk(systemAppend: "MODEL APPEND"),

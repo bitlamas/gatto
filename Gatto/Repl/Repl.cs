@@ -18,7 +18,10 @@ namespace Gatto.Repl;
 public sealed record RoleSwitchResult(bool Success, string RoleName, string? ModelName, string? SystemText, string? Message,
     string? ThinkingName = null, SessionBaseline? Baseline = null,
     //the new role's file colours and banner rows, null where the file carries none
-    (RgbColor Dark, RgbColor? Light)? RoleTint = null, IReadOnlyList<string>? RoleCat = null);
+    (RgbColor Dark, RgbColor? Light)? RoleTint = null, IReadOnlyList<string>? RoleCat = null,
+    string? FirstMessage = null,
+    //set by ApplyRoleSwitch alone, true when the switch opened the conversation with the new role's first message
+    bool Opened = false);
 
 //the outcome of a /model switch. the mismatch field names loaded weights only when they disagree, and the context field is the window the server allocated
 public sealed record ModelSwitchResult(
@@ -194,7 +197,9 @@ public sealed class Repl(
     string? defaultRole = null,
     //the running role's colours and banner rows, handed down so the Repl never reads a role file
     (RgbColor Dark, RgbColor? Light)? roleTint = null,
-    IReadOnlyList<string>? roleCat = null)
+    IReadOnlyList<string>? roleCat = null,
+    //the running role's opening line, committed as history whenever a conversation opens empty
+    string? firstMessage = null)
 {
     //the name the top rule shows, null when the running role is the default, compared as the launch resolves a name against the files
     private string? DisplayRole() => string.Equals(roleName, defaultRole, StringComparison.OrdinalIgnoreCase) ? null : roleName;
@@ -434,8 +439,23 @@ public sealed class Repl(
         //a bare /role names the running role and switches nothing
         if (arg.Length == 0) return new RoleSwitchResult(true, current, null, null, null);
         var result = switchRole(arg);
-        if (result.Success) { convo.ReplaceSystem(result.SystemText!, result.Baseline); convo.SetGattoRole(result.RoleName); }
+        if (result.Success)
+        {
+            convo.ReplaceSystem(result.SystemText!, result.Baseline);
+            convo.SetGattoRole(result.RoleName);
+            //a conversation holding only an opening carried no request, so the role switched to opens it afresh
+            if (convo.Messages.Skip(1).All(m => m.Role == "assistant")) convo.TruncateTo(1);
+            return result with { Opened = SeedFirstMessage(convo, result.FirstMessage) };
+        }
         return result;
+    }
+
+    //the opening turn is committed as history, so the first request carries it and none is made for it
+    internal static bool SeedFirstMessage(Conversation convo, string? text)
+    {
+        if (text is null || convo.Messages.Any(m => m.Role != "system")) return false;
+        convo.AddAssistant(text);
+        return true;
     }
 
     //true when a budget is enforced, the estimate is at or above 85% of it, and the offer has not already fired
@@ -1403,6 +1423,8 @@ public sealed class Repl(
             ReplayTranscript(convo.Messages, renderer, u => Console.WriteLine("\n> " + u));
             Console.WriteLine();
         }
+        else if (SeedFirstMessage(convo, firstMessage))
+            ReplayTranscript(convo.Messages, renderer, u => Console.WriteLine("\n> " + u));
         //plain prints subagent progress as a bracketed line like its [tool] rows, and the sink is a one-slot holder filled once a renderer exists
         if (subagentProgressSink is { Length: > 0 })
             subagentProgressSink[0] = m => Console.WriteLine("[agent] " + m);
@@ -1451,12 +1473,15 @@ public sealed class Repl(
             {
                 var composed = recomposeSystem();              //recomposeSystem rereads the context files, so a reset picks up any edits
                 convo = new Conversation(composed.Text, baseline: composed.Baseline);
+                convo.SetGattoRole(roleName);          //every record after a reset carries the running role, as the launch's do
                 sessions?.StartNew();                  //the next save starts a new session file and leaves the old transcript alone
                 _offered = false;                      //a fresh session, so the 85% offer can fire again
                 _usageState.Clear();                   //the old usage reading describes the conversation that just ended
                 loop.ResetStripWarning();              //a fresh session reports its own first leak
                 loop.ResetAutoCompact();               //a fresh session may auto-compact again
                 Console.WriteLine(NewConversationLine);
+                if (SeedFirstMessage(convo, firstMessage))
+                    ReplayTranscript(convo.Messages, renderer, u => Console.WriteLine("\n> " + u));
                 continue;
             }
             if (TryMatchCommand(trimmedLine, "/wild", out var wildArg))
@@ -1521,8 +1546,11 @@ public sealed class Repl(
                     modelName = result.ModelName!;
                     thinkingName = result.ThinkingName;   //null when the new role has no map, which hides the chip
                     roleCat = result.RoleCat;
+                    firstMessage = result.FirstMessage;
                 }
                 Console.WriteLine(result.Success ? RoleLine(roleName) : result.Message);
+                if (result.Opened)   //the switch seeded the new role's opening, so it alone is painted
+                    ReplayTranscript(convo.Messages, renderer, u => Console.WriteLine("\n> " + u));
                 continue;
             }
             if (trimmedLine == "/model" || trimmedLine.StartsWith("/model ", StringComparison.Ordinal))
@@ -1850,6 +1878,11 @@ public sealed class Repl(
             model.Append(new CommandEchoItem(new[] { theme.Paint($"— resumed from {resumedFrom} —", Theme.Dim) }, null) { Transient = true });
             if (resumeLine is not null)
                 model.Append(new CommandEchoItem(Array.Empty<string>(), null) { Transient = true, DimText = resumeLine });
+        }
+        else if (SeedFirstMessage(convo, firstMessage))
+        {
+            ReplayTranscript(convo.Messages, renderer, u => renderer.CommitUser(u.Split('\n')));
+            renderer.EndTurn();
         }
         painter.Repaint();   //first paint, so the banner and empty composer are up before the loop starts
 
@@ -2612,6 +2645,7 @@ public sealed class Repl(
             RotateForNew(recomposeSystem, held,
                 adopt: fresh =>
                 {
+                    fresh.SetGattoRole(roleName);          //every record after a reset carries the running role, as the launch's do
                     convo = fresh;
                     sessions?.StartNew();
                     _offered = false;                      //a fresh session, so the 85% offer may fire again
@@ -2623,6 +2657,11 @@ public sealed class Repl(
                 },
                 s.Painter.Model, s.Renderer, BannerItem(s.Theme, roleName, roleCat, modelName, versionLine, s.Glyphs),
                 NewConversationLine, carry);
+            if (SeedFirstMessage(convo, firstMessage))
+            {
+                ReplayTranscript(convo.Messages, s.Renderer, u => s.Renderer.CommitUser(u.Split('\n')));
+                s.Renderer.EndTurn();
+            }
             s.Painter.Repaint();
             return false;
         }
@@ -2712,6 +2751,7 @@ public sealed class Repl(
                 modelName = result.ModelName!;
                 thinkingName = result.ThinkingName;   //null when the new role has no map, the chip hides
                 roleCat = result.RoleCat;
+                firstMessage = result.FirstMessage;
                 //a role without a tint takes the accent, so a switch away from a tinted role drops its colour
                 var tint = result.RoleTint ?? (Theme.Accent, null);
                 s.Theme.SetRoleTint(roleName, tint.Dark, tint.Light);
@@ -2732,6 +2772,12 @@ public sealed class Repl(
                 //re-point the chrome handle at the new renderer, a stale one would leave the prompters orphaned
                 if (_chrome is not null) { _chrome.Painter = s.Painter; _chrome.Renderer = s.Renderer; }
                 s.Renderer.CommitSystem(RoleLine(roleName));
+                //the switch seeded the new role's opening, painted through the rebuilt renderer in the new tint
+                if (result.Opened)
+                {
+                    ReplayTranscript(convo.Messages, s.Renderer, u => s.Renderer.CommitUser(u.Split('\n')));
+                    s.Renderer.EndTurn();
+                }
             }
             else
             {

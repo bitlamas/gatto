@@ -477,6 +477,69 @@ public class RoleFileTests : IDisposable
     }
 
     [Fact]
+    public void FIRST_MESSAGE_ROUND_TRIPS()
+    {
+        Write("sera", """{ "first_message": "Hello. What are we building?" }""");
+
+        Assert.Equal("Hello. What are we building?", RoleFile.Load(_rolesDir, "sera").FirstMessage);
+    }
+
+    [Fact]
+    public void A_BARE_ROLE_HAS_NO_FIRST_MESSAGE()
+    {
+        Write("bare", "{}");
+
+        Assert.Null(RoleFile.Load(_rolesDir, "bare").FirstMessage);
+    }
+
+    [Theory]
+    [InlineData("<|tool_calls_section_begin|>")]
+    [InlineData("<|tool_calls_section_end|>")]
+    [InlineData("<|tool_call_begin|>")]
+    [InlineData("<|tool_call_end|>")]
+    public void A_FIRST_MESSAGE_HOLDING_A_CONTROL_TOKEN_IS_REFUSED(string token)
+    {
+        Write("bad", JsonSerializer.Serialize(new Dictionary<string, string> { ["first_message"] = $"Hello {token} there." }));
+
+        var ex = Assert.Throws<GattoConfigException>(() => RoleFile.Load(_rolesDir, "bad"));
+
+        Assert.Equal("role 'bad' has a \"first_message\" holding a control token", ex.Message);
+    }
+
+    [Theory]
+    [InlineData("\"\"")]
+    [InlineData("\"   \"")]
+    public void AN_EMPTY_FIRST_MESSAGE_IS_REFUSED(string raw)
+    {
+        Write("bad", $$"""{ "first_message": {{raw}} }""");
+
+        var ex = Assert.Throws<GattoConfigException>(() => RoleFile.Load(_rolesDir, "bad"));
+
+        Assert.Equal($"role 'bad' has a \"first_message\" of {raw}; must be a non-empty string", ex.Message);
+    }
+
+    [Fact]
+    public void A_WRONG_TYPED_FIRST_MESSAGE_IS_REFUSED()
+    {
+        Write("bad", """{ "first_message": 1 }""");
+
+        var ex = Assert.Throws<GattoConfigException>(() => RoleFile.Load(_rolesDir, "bad"));
+
+        Assert.Equal("role 'bad' has a \"first_message\" with the wrong type — must be a string", ex.Message);
+    }
+
+    //the strip is an allowlist of four exact strings, so text that only looks like a token loads
+    [Theory]
+    [InlineData("<|tool_call|>")]
+    [InlineData("<| not a token |>")]
+    public void A_FIRST_MESSAGE_WITH_A_FAKE_TOKEN_LOADS(string text)
+    {
+        Write("ok", JsonSerializer.Serialize(new Dictionary<string, string> { ["first_message"] = text }));
+
+        Assert.Equal(text, RoleFile.Load(_rolesDir, "ok").FirstMessage);
+    }
+
+    [Fact]
     public void Load_missing_file_names_the_path()
     {
         var ex = Assert.Throws<GattoConfigException>(() => RoleFile.Load(_rolesDir, "nosuch"));

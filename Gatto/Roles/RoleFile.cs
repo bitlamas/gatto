@@ -1,5 +1,6 @@
 using System.Text.Json;
 using System.Text.RegularExpressions;
+using Gatto.Core;
 using Gatto.Core.Home;
 using Gatto.Roles.Agents;
 using Gatto.Terminal;
@@ -23,7 +24,9 @@ public sealed record RoleFile(
     bool ContextFiles,
     IReadOnlyList<string>? Cat,
     string? Tint,
-    string? TintLight)
+    string? TintLight,
+    //the opening line committed before the first request, refused when it holds a control token since a resume strips assistant records
+    string? FirstMessage)
 {
     public const int DefaultTurns = 10;
 
@@ -33,7 +36,7 @@ public sealed record RoleFile(
 
     //one key for the model, and the endpoint kind decides what it means. sampling belongs to the model now, so a role's sampling key is accepted and never read
     private static readonly string[] Keys =
-        { "model", "endpoint", "gates", "raw", "append", "thinking", "sampling", "description", "tools", "turns", "context_files", "cat", "tint", "tint_light" };
+        { "model", "endpoint", "gates", "raw", "append", "thinking", "sampling", "description", "tools", "turns", "context_files", "cat", "tint", "tint_light", "first_message" };
 
     //copied once, since Builtins allocates its factories on every call and builds no tool
     private static readonly HashSet<string> CallableTools = new(SubagentWiring.Builtins().Keys, StringComparer.Ordinal);
@@ -164,7 +167,13 @@ public sealed record RoleFile(
         var tint = GetTint(root, name, "tint");
         var tintLight = GetTint(root, name, "tint_light");
 
-        return new RoleFile(name, model, endpoint, gates, raw, append, thinking, description, tools, turns, contextFiles, cat, tint, tintLight);
+        var firstMessage = GetOptionalString(root, name, "first_message");
+        if (firstMessage is not null && string.IsNullOrWhiteSpace(firstMessage))
+            throw new GattoConfigException($"role '{name}' has a \"first_message\" of {root.GetProperty("first_message").GetRawText()}; must be a non-empty string");
+        if (firstMessage is not null && ControlTokens.Strip(firstMessage).Count > 0)
+            throw new GattoConfigException($"role '{name}' has a \"first_message\" holding a control token");
+
+        return new RoleFile(name, model, endpoint, gates, raw, append, thinking, description, tools, turns, contextFiles, cat, tint, tintLight, firstMessage);
     }
 
     //the override wins, then the role's own model, then gatto.json's default_model, shared so the launch and doctor agree
