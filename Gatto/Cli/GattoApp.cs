@@ -764,6 +764,8 @@ public static class GattoApp
                 loadingBytes is { } b ? SizeWords.Gb(b, approx: true) : null);
             if (serverAlreadyUp) servedBytes = loadingBytes;
         }
+        else if (autoServe is AutoServeAction.Hint && model is not null)   //a declined start still says so, or the session opens on a server that never answers
+            warn.Warn($"nothing is serving {model.Id}. gatto serve start {model.Id} when you want it.");
 
         //read after any start so -p and an auto-served launch both see the server, and only a server holding this model speaks for its window
         if (ServedHere() && model is not null && launchBaseUrl is not null && !cloud)

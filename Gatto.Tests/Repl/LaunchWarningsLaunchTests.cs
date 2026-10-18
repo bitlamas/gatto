@@ -108,6 +108,34 @@ public class LaunchWarningsLaunchTests : IDisposable
         Assert.False(PermissionStore.Load(_home, _cwd, out _).Wild);
     }
 
+    //auto_serve false vetoes the start, and the launch still names the model and the command instead of opening silent
+    [Fact]
+    public async Task A_DECLINED_AUTO_SERVE_WITH_NOTHING_SERVING_SAYS_SO_AT_LAUNCH()
+    {
+        var server = new FakeOpenAiServer();
+        await server.DisposeAsync();
+        File.WriteAllText(Path.Combine(_home, "models", "test-model", "profile.json"),
+            "{\"files\":[{\"path\":\"m.gguf\",\"active\":true}],\"port\":1235,\"context\":8192,\"auto_serve\":false}");
+
+        var (stdout, stderr) = await LaunchPlain(server);
+
+        Assert.Contains("nothing is serving test-model. gatto serve start test-model when you want it.", stdout + stderr, StringComparison.Ordinal);
+    }
+
+    //a server that answers /props is up, so there is nothing to hint
+    [Fact]
+    public async Task A_DECLINED_AUTO_SERVE_WITH_A_SERVER_ANSWERING_SAYS_NOTHING()
+    {
+        await using var server = new FakeOpenAiServer();
+        server.PropsResponse = new FakeResponse(Body: """{"model_path": "m.gguf"}""");
+        File.WriteAllText(Path.Combine(_home, "models", "test-model", "profile.json"),
+            "{\"files\":[{\"path\":\"m.gguf\",\"active\":true}],\"port\":1235,\"context\":8192,\"auto_serve\":false}");
+
+        var (stdout, stderr) = await LaunchPlain(server);
+
+        Assert.DoesNotContain("nothing is serving", stdout + stderr, StringComparison.Ordinal);
+    }
+
     //stderr already shows the line on the plain face, so a second copy after the banner would only repeat it
     [Fact]
     public async Task A_sink_warning_stays_on_stderr_alone_on_the_plain_face()
