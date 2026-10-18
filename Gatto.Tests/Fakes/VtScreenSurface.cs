@@ -7,6 +7,8 @@ namespace Gatto.Tests.Fakes;
 public sealed class VtScreenSurface : ITermSurface
 {
     private readonly List<string[]> _rows = new();
+    //a test resizes from its own thread while the painter writes from another, so both take this
+    private readonly object _gate = new();
     private int _row, _col;
     private bool _pendingWrap;
 
@@ -16,7 +18,7 @@ public sealed class VtScreenSurface : ITermSurface
     public bool AltScreen { get; private set; }
 
     //the visible rows, trimmed and copied, since the live buffer keeps changing
-    public IReadOnlyList<string> Viewport => ScreenRows().ToList();
+    public IReadOnlyList<string> Viewport { get { lock (_gate) return ScreenRows().ToList(); } }
 
     public VtScreenSurface(int width, int height)
     {
@@ -37,6 +39,11 @@ public sealed class VtScreenSurface : ITermSurface
 
     //a resize never reflows text like conpty does. width pads or truncates each row, and a smaller height drops top rows without counting them in Scrolled
     public void Resize(int width, int height)
+    {
+        lock (_gate) ResizeLocked(width, height);
+    }
+
+    private void ResizeLocked(int width, int height)
     {
         if (width != Width)
         {
@@ -129,6 +136,11 @@ public sealed class VtScreenSurface : ITermSurface
     }
 
     public void Write(string s)
+    {
+        lock (_gate) WriteLocked(s);
+    }
+
+    private void WriteLocked(string s)
     {
         var i = 0;
         while (i < s.Length)
