@@ -64,15 +64,15 @@ Get-FileHash .\gatto-*-win-x64.zip -Algorithm SHA256
 
 ## permissions
 
-By default, anything on gatto that runs a command or writes a file asks you first. `/wild` turns the prompts and the commit checkpoint off for the session, and **Shift+Tab** toggles it too; `/wild always` or `/wild never` makes it stick per project. `/tools` lists what the model can use this session.
+By default, anything on gatto that runs a command or writes a file asks you first. `/wild` turns the prompts off for the session, and **Shift+Tab** toggles it too; `/wild always` or `/wild never` makes it stick per project. `/tools` lists what the model can use this session.
 
 ## extensions
 
-An extension is a small C# script, a `.csx` file under `~\.gatto\extensions\`, compiled at launch and available to every project. `ask_user` and `web_search` ship this way. The shipped ones live in [gatto-extensions](https://github.com/bitlamas/gatto-extensions); writing your own is described at [gatto.computer/extensions/write](https://gatto.computer/extensions/write/). Still a work in progress.
+An extension is a small C# script, a `.csx` file under `~\.gatto\extensions\`, compiled at launch and available to every project. `ask_user`, `web_search`, `undo` and `cards` ship this way. The shipped ones live in [gatto-extensions](https://github.com/bitlamas/gatto-extensions); writing your own is described at [gatto.computer/extensions/write](https://gatto.computer/extensions/write/). Still a work in progress.
 
 ## roles
 
-A role is a seat for gatto: a small JSON file that can name a model, append a prompt, arm a check or two, and decide whether commits pause for you. gatto ships three roles: `generalist`, `coder` and `oracle`. You can add new roles, of course: drop `reviewer.json` into `~\.gatto\roles\` and `gatto reviewer` works. More at [gatto.computer/roles](https://gatto.computer/roles/). Also a work in progress.
+A role is a seat for gatto: a small JSON file that can name a model, append a prompt, arm a check or two, and give the model a cat and a colour. gatto ships eight roles: `generalist`, `coder`, `oracle`, `raw`, and four reviewers you can hand work to with `run_agent`. You can add new roles, of course: drop `reviewer.json` into `~\.gatto\roles\` and `gatto reviewer` works. More at [gatto.computer/roles](https://gatto.computer/roles/). Also a work in progress.
 
 ## llama.cpp serving
 
