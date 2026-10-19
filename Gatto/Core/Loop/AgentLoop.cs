@@ -337,6 +337,7 @@ public sealed class AgentLoop(
                 return new TurnResult(TurnOutcome.Cancelled, finishReason, null, round, lastWarning);
             }
 
+            var run = new ToolCallRun(tools, hooks, toolContext);
             for (var i = 0; i < calls.Count; i++)
             {
                 var call = calls[i];
@@ -346,22 +347,11 @@ public sealed class AgentLoop(
                 ToolResult result;
                 try
                 {
-                    //an argument name the tool does not declare fails here, before the gate can ask about a call that would run wrong
-                    if (UnknownArguments(call) is { } refused) throw new CannotApplyException(refused);
-                    await hooks.EmitToolCallAsync(new HookPayload(Call: call));  //a throwing handler blocks the call (fails closed)
-                    result = await ExecuteAsync(call, ct);
+                    result = await run.RunAsync(call, ct);
                 }
                 catch (OperationCanceledException) when (ct.IsCancellationRequested)
                 {
                     return CancelFrom(i);   //a cancel that lands mid-tool, Ctrl+C or esc
-                }
-                catch (CannotApplyException ex)
-                {
-                    result = new ToolResult(ex.Message, IsError: true);
-                }
-                catch (Exception ex)
-                {
-                    result = new ToolResult($"blocked: {ex.Message}", IsError: true);
                 }
                 //a tool_result hook may rewrite the result the model reads, a throwing handler leaves it unchanged
                 result = await hooks.EmitToolResultAsync(new HookPayload(Call: call, Result: result));
@@ -393,33 +383,5 @@ public sealed class AgentLoop(
                 _flushWarned = true;
             }
         }
-    }
-
-    //the refusal of a call naming an argument its tool's schema does not declare, null for an unknown tool or arguments that do not parse, which ExecuteAsync reports itself
-    private string? UnknownArguments(ToolCall call)
-    {
-        if (tools.Get(call.Name) is not { } tool) return null;
-        try
-        {
-            using var doc = JsonDocument.Parse(call.ArgumentsJson.Length > 0 ? call.ArgumentsJson : "{}");
-            return ToolArgumentNames.Refusal(call.Name, tool.ParametersSchema, doc.RootElement);
-        }
-        catch (JsonException) { return null; }
-    }
-
-    private async Task<ToolResult> ExecuteAsync(ToolCall call, CancellationToken ct)
-    {
-        var tool = tools.Get(call.Name);
-        if (tool is null) return new ToolResult($"unknown tool: {call.Name}", IsError: true);
-        JsonElement args;
-        try
-        {
-            using var doc = JsonDocument.Parse(call.ArgumentsJson.Length > 0 ? call.ArgumentsJson : "{}");
-            args = doc.RootElement.Clone();
-        }
-        catch (JsonException ex) { return new ToolResult(LoopErrors.MalformedArgumentsPrefix + ex.Message, IsError: true); }
-        try { return await tool.ExecuteAsync(args, toolContext, ct); }
-        catch (OperationCanceledException) when (ct.IsCancellationRequested) { throw; }
-        catch (Exception ex) { return new ToolResult(ex.Message, IsError: true); }
     }
 }
