@@ -21,6 +21,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\Gatto\Gatto.csproj" />
+    <ProjectReference Include="..\Gatto.Terminal.Tests\Gatto.Terminal.Tests.csproj" />
   </ItemGroup>
 
   <ItemGroup>

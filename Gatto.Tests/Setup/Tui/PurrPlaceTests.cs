@@ -1,6 +1,6 @@
 using Gatto.Cli.Setup.Tui;
 using Gatto.Repl.Render.Chrome;
-using Gatto.Tests.Fakes;
+using Gatto.Terminal.Tests.Fakes;
 using Gatto.Terminal;
 
 namespace Gatto.Tests.Setup.Tui;

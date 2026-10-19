@@ -5,7 +5,7 @@ using Gatto.Core.Acquire;
 using Gatto.Core.Hardware;
 using Gatto.Core.Models;
 using Gatto.Terminal;
-using Gatto.Tests.Fakes;
+using Gatto.Terminal.Tests.Fakes;
 
 namespace Gatto.Tests.Setup.Tui;
 

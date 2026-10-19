@@ -3,6 +3,7 @@ using Gatto.Cli.Setup.Shelves;
 using Gatto.Cli.Setup.Tui;
 using Gatto.Core.Models;
 using Gatto.Terminal;
+using Gatto.Terminal.Tests.Fakes;
 using Gatto.Tests.Fakes;
 
 namespace Gatto.Tests.Setup.Tui;

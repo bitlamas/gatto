@@ -201,7 +201,7 @@ public class UpdateCommandTests : IDisposable
         Assert.All(spec.Options, o => Assert.False(o.Recommended));
 
         //render it through the real widget, the flag is a claim about a frame and the frame is the oracle
-        var surface = new Gatto.Tests.Fakes.RecordingSurface();
+        var surface = new Gatto.Terminal.Tests.Fakes.RecordingSurface();
         new SelectPrompt(surface, new Theme(TermCaps.Plain),
             new ScriptedKeys([new('\0', ConsoleKey.Escape, false, false, false)])).Show(spec);
 

@@ -1,5 +1,6 @@
 using Gatto.Cli.Setup;
 using Gatto.Terminal;
+using Gatto.Terminal.Tests.Fakes;
 using Gatto.Tests.Fakes;
 
 namespace Gatto.Tests.Setup;

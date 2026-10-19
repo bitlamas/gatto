@@ -5,6 +5,7 @@ using Gatto.Core.Acquire;
 using Gatto.Core.Hardware;
 using Gatto.Core.Models;
 using Gatto.Terminal;
+using Gatto.Terminal.Tests.Fakes;
 using Gatto.Tests.Fakes;
 using Gatto.Tests.Setup;
 

@@ -1,7 +1,7 @@
 using Gatto.Cli.Setup;
 using Gatto.Cli.Setup.Tui;
 using Gatto.Terminal;
-using Gatto.Tests.Fakes;
+using Gatto.Terminal.Tests.Fakes;
 
 namespace Gatto.Tests.Setup.Tui;
 

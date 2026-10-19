@@ -1,5 +1,6 @@
 using Gatto.Cli.Setup;
 using Gatto.Cli.Setup.Tui;
+using Gatto.Terminal.Tests.Fakes;
 using Gatto.Tests.Fakes;
 using Gatto.Core.Hardware;
 using Gatto.Terminal;

@@ -215,8 +215,7 @@ public class ScreenReachabilityCensusTests
     public void EVERY_NAMED_BACKING_TEST_EXISTS()
     {
         //the check must match a declaration, a name in a comment is not a backing test. the pattern also accepts Task return types, async tests are legitimate citations
-        var corpus = string.Join("\n", Directory
-            .EnumerateFiles(Path.Combine(SourceTree.RepoRoot(), "Gatto.Tests"), "*.cs", SearchOption.AllDirectories)
+        var corpus = string.Join("\n", SourceTree.TestFiles()
             .Where(f => !Path.GetFileName(f).Equals("ScreenReachabilityCensusTests.cs", StringComparison.Ordinal))
             .Select(f => SourceTree.WithoutComments(File.ReadAllText(f))));
 

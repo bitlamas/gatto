@@ -3,6 +3,7 @@ using Gatto.Core.Session;
 using Gatto.Core.Tools;
 using Gatto.Repl;
 using Gatto.Terminal;
+using Gatto.Terminal.Tests.Fakes;
 using Gatto.Tests.Fakes;
 
 namespace Gatto.Tests.Repl;

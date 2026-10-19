@@ -103,7 +103,7 @@ public class SetupWiringCensusTests
     {
         var ascii = Gatto.Terminal.GlyphSet.Ascii;
         var theme = new Gatto.Terminal.Theme(new Gatto.Terminal.TermCaps(true, true));
-        var surface = new Gatto.Tests.Fakes.RecordingSurface { Width = 80 };
+        var surface = new Gatto.Terminal.Tests.Fakes.RecordingSurface { Width = 80 };
 
         Gatto.Cli.Setup.ISetupSurface[] faces =
         [

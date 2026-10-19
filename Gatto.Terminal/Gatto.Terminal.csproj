@@ -17,5 +17,6 @@
   </PropertyGroup>
   <ItemGroup>
     <InternalsVisibleTo Include="Gatto.Tests" />
+    <InternalsVisibleTo Include="Gatto.Terminal.Tests" />
   </ItemGroup>
 </Project>

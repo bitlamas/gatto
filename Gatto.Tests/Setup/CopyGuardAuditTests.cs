@@ -63,8 +63,7 @@ public class CopyGuardAuditTests
 
     //excluding this file from the corpus is load-bearing, its own list names every literal key, so a check satisfied by its own evidence can't fail.
     private static IReadOnlyList<string> TestSources() =>
-        [.. Directory
-            .EnumerateFiles(Path.Combine(RepoRoot(), "Gatto.Tests"), "*.cs", SearchOption.AllDirectories)
+        [.. Gatto.Tests.Census.SourceTree.TestFiles()
             .Where(f => !Path.GetFileName(f).Equals("CopyGuardAuditTests.cs", StringComparison.Ordinal))
             .Select(File.ReadAllText)];
 

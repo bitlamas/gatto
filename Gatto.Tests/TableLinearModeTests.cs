@@ -1,5 +1,5 @@
 using Gatto.Repl.Render.Chrome;
-using Gatto.Tests.Fakes;
+using Gatto.Terminal.Tests.Fakes;
 using Gatto.Core.Client;
 using Gatto.Repl.Input;
 using Gatto.Repl.Render;

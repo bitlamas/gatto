@@ -13,14 +13,6 @@ public class FixtureScreenKeyCensusTests
         @"new(\s+SetupScreen\.\w+)?\(\s*""([^""]+)""",
         RegexOptions.Compiled);
 
-    private static string Root()
-    {
-        var d = new DirectoryInfo(AppContext.BaseDirectory);
-        while (d is not null && !File.Exists(Path.Combine(d.FullName, "Gatto.sln"))) d = d.Parent;
-        Assert.True(d is not null, "could not find the repo root");
-        return d!.FullName;
-    }
-
     //the keys the flow can emit are its public const string values in the setup flow's parts
     private static HashSet<string> DeclaredKeys()
     {
@@ -33,13 +25,7 @@ public class FixtureScreenKeyCensusTests
     private static HashSet<string> OwnedPrefixes() =>
         [.. DeclaredKeys().Where(k => k.Contains('.')).Select(k => k[..k.IndexOf('.')])];
 
-    private static IEnumerable<string> TestSources()
-    {
-        var root = Path.Combine(Root(), "Gatto.Tests");
-        return Directory.EnumerateFiles(root, "*.cs", SearchOption.AllDirectories)
-            .Where(p => !p.Contains($"{Path.DirectorySeparatorChar}bin{Path.DirectorySeparatorChar}")
-                     && !p.Contains($"{Path.DirectorySeparatorChar}obj{Path.DirectorySeparatorChar}"));
-    }
+    private static IEnumerable<string> TestSources() => SourceTree.TestFiles();
 
     [Fact]
     public void NO_fixture_invents_a_screen_key_in_the_flows_namespace()

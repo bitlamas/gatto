@@ -2,7 +2,7 @@ using System.Text.RegularExpressions;
 using Gatto.Core.Hardware;
 using Gatto.Repl.Prompts;
 using Gatto.Terminal;
-using Gatto.Tests.Fakes;
+using Gatto.Terminal.Tests.Fakes;
 
 namespace Gatto.Tests.Setup;
 

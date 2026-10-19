@@ -44,8 +44,6 @@ public class NoTestReachesTheLiveServerTests
         return d!.FullName;
     }
 
-    private static string TestsSource() => Path.Combine(RepoRoot(), "Gatto.Tests");
-
     //the census and the known-match tests share this scan so they cannot drift apart. the scan excludes itself by filename
     private static string[] FindFilesNamingTheRealPort(string root, string? excludeFileName = null) =>
         [.. Directory.EnumerateFiles(root, "*.cs", SearchOption.AllDirectories)
@@ -57,7 +55,9 @@ public class NoTestReachesTheLiveServerTests
     [Fact]
     public void OnlyTheAllowlistedFilesNameTheRealPort()
     {
-        var actual = FindFilesNamingTheRealPort(TestsSource(), excludeFileName: "NoTestReachesTheLiveServerTests.cs");
+        var actual = Census.SourceTree.TestProjects
+            .SelectMany(p => FindFilesNamingTheRealPort(Path.Combine(RepoRoot(), p), excludeFileName: "NoTestReachesTheLiveServerTests.cs"))
+            .OrderBy(f => f, StringComparer.Ordinal).ToArray();
         var expected = Allowlist.Select(a => a.File).OrderBy(f => f, StringComparer.Ordinal).ToArray();
 
         Assert.Equal(expected, actual);

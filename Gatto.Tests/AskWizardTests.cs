@@ -5,7 +5,7 @@ using Gatto.Repl.Prompts;
 using Gatto.Repl.Render;
 using Gatto.Repl.Render.Chrome;
 using Gatto.Terminal;
-using Gatto.Tests.Fakes;
+using Gatto.Terminal.Tests.Fakes;
 
 namespace Gatto.Tests;
 

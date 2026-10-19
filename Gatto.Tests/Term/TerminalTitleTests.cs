@@ -3,6 +3,7 @@ using Gatto.Core.Client;
 using Gatto.Core.Tools;
 using Gatto.Repl;
 using Gatto.Terminal;
+using Gatto.Terminal.Tests.Fakes;
 using Gatto.Tests.Fakes;
 using Xunit;
 

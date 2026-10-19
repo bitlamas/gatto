@@ -1,6 +1,7 @@
 using Gatto.Cli.Setup;
 using Gatto.Cli.Setup.Shelves;
 using Gatto.Core.Hardware;
+using Gatto.Terminal.Tests.Fakes;
 using Gatto.Tests.Fakes;
 
 namespace Gatto.Tests.Setup.Tui;

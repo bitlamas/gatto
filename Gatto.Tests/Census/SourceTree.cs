@@ -27,6 +27,16 @@ internal static class SourceTree
             .Where(f => !HasFolderBelow(RepoRoot(), f, "obj", "bin"))
             .OrderBy(f => f, StringComparer.Ordinal)];
 
+    //every test project folder. a test folder missing here drops out of every census that reads test sources, and nothing fails
+    public static readonly IReadOnlyList<string> TestProjects = ["Gatto.Tests", "Gatto.Terminal.Tests"];
+
+    //the test source files of every test project, obj and bin skipped
+    public static IReadOnlyList<string> TestFiles() =>
+        [.. TestProjects
+            .SelectMany(p => Directory.EnumerateFiles(Path.Combine(RepoRoot(), p), "*.cs", SearchOption.AllDirectories))
+            .Where(f => !HasFolderBelow(RepoRoot(), f, "obj", "bin"))
+            .OrderBy(f => f, StringComparer.Ordinal)];
+
     //the launch file and the six command files its command methods went to, the set two censuses read
     public static IReadOnlyList<string> LaunchAndCommands() =>
         [.. new[] { "Cli/GattoApp.cs", "Cli/ServeCommand.cs", "Cli/Install/UninstallCommand.cs", "Cli/Diagnose/DoctorCommand.cs",

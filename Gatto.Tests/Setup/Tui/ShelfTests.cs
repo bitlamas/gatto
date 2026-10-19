@@ -6,6 +6,7 @@ using Gatto.Core.Hardware;
 using Gatto.Core.Models;
 using Gatto.Repl;
 using Gatto.Terminal;
+using Gatto.Terminal.Tests.Fakes;
 using Gatto.Tests.Fakes;
 
 namespace Gatto.Tests.Setup.Tui;

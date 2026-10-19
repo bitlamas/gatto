@@ -298,13 +298,8 @@ public class TypedDoorCensusTests
         var real = DoorScreensInSource();
         var offenders = new List<string>();
 
-        foreach (var path in Directory.EnumerateFiles(
-            Path.Combine(SourceTree.RepoRoot(), "Gatto.Tests"), "*.cs", SearchOption.AllDirectories))
+        foreach (var path in SourceTree.TestFiles())
         {
-            if (path.Contains($"{Path.DirectorySeparatorChar}bin{Path.DirectorySeparatorChar}", StringComparison.Ordinal)
-                || path.Contains($"{Path.DirectorySeparatorChar}obj{Path.DirectorySeparatorChar}", StringComparison.Ordinal))
-                continue;
-
             //this file is skipped, the fixtures inside it look like the defect. the scan would report its own evidence, but those fixtures build no screen
             if (Path.GetFileName(path) == "TypedDoorCensusTests.cs") continue;
 

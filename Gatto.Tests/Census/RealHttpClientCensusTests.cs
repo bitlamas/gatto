@@ -45,9 +45,8 @@ public class RealHttpClientCensusTests
     private static List<(string Rel, string Source)> TestTree()
     {
         var root = SourceTree.RepoRoot();
-        return [.. Directory.EnumerateFiles(Path.Combine(root, "Gatto.Tests"), "*.cs", SearchOption.AllDirectories)
+        return [.. SourceTree.TestFiles()
             .Select(f => Path.GetRelativePath(root, f).Replace('\\', '/'))
-            .Where(rel => !rel.Contains("/bin/") && !rel.Contains("/obj/"))
             .OrderBy(rel => rel, StringComparer.Ordinal)
             .Select(rel => (rel, SourceTree.Read(Path.Combine(root, rel))))];
     }

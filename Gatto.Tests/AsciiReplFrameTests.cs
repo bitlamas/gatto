@@ -1,7 +1,7 @@
 using Gatto.Core.Tools;
 using Gatto.Repl.Prompts;
 using Gatto.Repl.Render.Chrome;
-using Gatto.Tests.Fakes;
+using Gatto.Terminal.Tests.Fakes;
 using Gatto.Repl;
 using Gatto.Repl.Input;
 using Gatto.Repl.Render;

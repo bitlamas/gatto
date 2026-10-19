@@ -5,6 +5,7 @@ using Gatto.Core.Acquire;
 using Gatto.Core.Models;
 using Gatto.Repl.Render.Chrome;
 using Gatto.Terminal;
+using Gatto.Terminal.Tests.Fakes;
 using Gatto.Tests.Fakes;
 
 namespace Gatto.Tests.Setup;

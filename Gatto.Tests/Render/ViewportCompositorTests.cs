@@ -1,6 +1,6 @@
 using Gatto.Repl.Render;
 using Gatto.Terminal;
-using Gatto.Tests.Fakes;
+using Gatto.Terminal.Tests.Fakes;
 using Xunit;
 
 namespace Gatto.Tests.Render;

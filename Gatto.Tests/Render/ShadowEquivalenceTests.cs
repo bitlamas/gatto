@@ -4,7 +4,7 @@ using Gatto.Repl.Input;
 using Gatto.Repl.Render;
 using Gatto.Repl.Render.Chrome;
 using Gatto.Terminal;
-using Gatto.Tests.Fakes;
+using Gatto.Terminal.Tests.Fakes;
 using Xunit;
 
 namespace Gatto.Tests.Render;

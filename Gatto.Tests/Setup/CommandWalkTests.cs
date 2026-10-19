@@ -5,7 +5,7 @@ using Gatto.Cli.Diagnose;
 using Gatto.Cli.Install;
 using Gatto.Cli.Update;
 using Gatto.Terminal;
-using Gatto.Tests.Fakes;
+using Gatto.Terminal.Tests.Fakes;
 
 namespace Gatto.Tests.Setup;
 

@@ -48,7 +48,7 @@ public class InSessionShelfTests
     private static (TuiSetupSurface F, Func<IReadOnlyList<string>> Painted) Face(
         bool watching, params ConsoleKeyInfo[] keys)
     {
-        var s = new Gatto.Tests.Fakes.RecordingSurface { Width = 100 };
+        var s = new Gatto.Terminal.Tests.Fakes.RecordingSurface { Width = 100 };
         //the clock answers ready for every screen, since an armed chord's bounded wait needs it and the frozen nowMs would spin forever
         var f = new TuiSetupSurface(s, new Keys(keys), new Gatto.Terminal.Theme(
                 new Gatto.Terminal.TermCaps(true, true)), "0.5.0", "1a2b3c4", () => 0,
