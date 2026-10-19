@@ -561,7 +561,8 @@ public class LoadingShelfFlowTests
         foreach (var (_, frame) in loads)
         {
             Assert.Equal(1, Purrs(frame));
-            Assert.Contains(frame, r => r.Contains("Hugging Face") || r.Contains("looking"));
+            //a scan that lands before the serving probe answers leaves that probe's line, the last wait the shelf names
+            Assert.Contains(frame, r => r.Contains("Hugging Face") || r.Contains("looking") || r.Contains(ServingStep));
         }
         Assert.All(rig.PaintedFrames, f => Assert.True(Purrs(f) <= 1, string.Join(Environment.NewLine, f)));
         Assert.All(face.Between, b => Assert.True(Purrs(b.Frame) <= 1, string.Join(Environment.NewLine, b.Frame)));
