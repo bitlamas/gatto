@@ -2,7 +2,6 @@ using Gatto.Cli.Setup;
 using Gatto.Cli.Setup.Tui;
 using Gatto.Core.Acquire;
 using Gatto.Core.Models;
-using Gatto.Repl.Term;
 using Gatto.Tests.Fakes;
 
 namespace Gatto.Tests.Setup.Tui;

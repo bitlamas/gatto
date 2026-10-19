@@ -1,5 +1,5 @@
 using Gatto.Repl;
-using Gatto.Repl.Render;
+using Gatto.Repl.Render.Chrome;
 using Gatto.Terminal;
 
 namespace Gatto.Tests;
@@ -188,7 +188,7 @@ public class PurrPoolTests
     {
         const string Call = "PurrFrames.RandomFromPool";
 
-        Assert.Contains(Call, "purrSet: Gatto.Repl.Render.PurrFrames.RandomFromPool,", StringComparison.Ordinal);
+        Assert.Contains(Call, "purrSet: Gatto.Repl.Render.Chrome.PurrFrames.RandomFromPool,", StringComparison.Ordinal);
         Assert.DoesNotContain(Call, "purrSet: () => PurrFrames.Full", StringComparison.Ordinal);
 
         var root = Census.SourceTree.RepoRoot();

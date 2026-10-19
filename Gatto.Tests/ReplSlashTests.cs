@@ -6,6 +6,7 @@ using Gatto.Core.Loop.Permissions;
 using Gatto.Core.Session;
 using Gatto.Core.Tools;
 using Gatto.Repl;
+using Gatto.Repl.Prompts;
 using Gatto.Tests.Fakes;
 
 namespace Gatto.Tests;
@@ -105,27 +106,27 @@ public class ReplSlashTests
         var loop = new AgentLoop(client, reg, new HookBus(), new TestToolContext(Path.GetTempPath()), "m");
         var convo = new Conversation("sys");
 
-        await Gatto.Repl.Repl.RunTurnGuardedAsync(loop, convo, Gatto.Repl.InitPrompt.Text, new RecordingObserver(), null, default);
+        await Gatto.Repl.Repl.RunTurnGuardedAsync(loop, convo, Gatto.Repl.Prompts.InitPrompt.Text, new RecordingObserver(), null, default);
 
         //the compiled-in constant reaches the loop through the same path as a typed message.
         var sentMessages = client.Requests[0].Messages;
-        Assert.Contains(sentMessages, m => m.Role == "user" && m.Content == Gatto.Repl.InitPrompt.Text);
-        Assert.Contains(convo.Messages, m => m.Role == "user" && m.Content == Gatto.Repl.InitPrompt.Text);
+        Assert.Contains(sentMessages, m => m.Role == "user" && m.Content == Gatto.Repl.Prompts.InitPrompt.Text);
+        Assert.Contains(convo.Messages, m => m.Role == "user" && m.Content == Gatto.Repl.Prompts.InitPrompt.Text);
     }
 
     [Fact]
     public void InitPrompt_InterviewsWithAskUserAndWritesGattoMd()
     {
         //the brief must name the file it writes and the tool it interviews with
-        Assert.Contains("GATTO.md", Gatto.Repl.InitPrompt.Text);
-        Assert.Contains("ask_user", Gatto.Repl.InitPrompt.Text);
+        Assert.Contains("GATTO.md", Gatto.Repl.Prompts.InitPrompt.Text);
+        Assert.Contains("ask_user", Gatto.Repl.Prompts.InitPrompt.Text);
     }
 
     [Fact]
     public void InitPrompt_NamesNoRoleTool()
     {
         //roles change on their own schedule, a role tool named here would go stale
-        Assert.DoesNotContain("task_restate", Gatto.Repl.InitPrompt.Text);
+        Assert.DoesNotContain("task_restate", Gatto.Repl.Prompts.InitPrompt.Text);
     }
 }
 

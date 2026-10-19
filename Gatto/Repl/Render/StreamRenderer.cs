@@ -6,6 +6,8 @@ using Gatto.Core.Home;
 using Gatto.Core.Loop;
 using Gatto.Core.Tools;
 using Gatto.Repl.Input;
+using Gatto.Repl.Render.Chrome;
+using Gatto.Repl.Render.Syntax;
 using Gatto.Terminal;
 
 namespace Gatto.Repl.Render;
@@ -408,8 +410,8 @@ public sealed class StreamRenderer : ITurnObserver
 
     //a /context report drawn now at this width, its figures kept on the item so a repaint or a resumed session draws it at its own width
     public void CommitContext(ContextFigures figures) =>
-        CommitHung(Gatto.Repl.ContextReport.Unhung(figures, _surface.Width, _theme, _glyphs), figures,
-            () => _surface.Write(string.Join("\n", Gatto.Repl.ContextReport.Unhung(figures, _surface.Width, _theme, _glyphs)) + "\n"));
+        CommitHung(Gatto.Repl.Commands.ContextReport.Unhung(figures, _surface.Width, _theme, _glyphs), figures,
+            () => _surface.Write(string.Join("\n", Gatto.Repl.Commands.ContextReport.Unhung(figures, _surface.Width, _theme, _glyphs)) + "\n"));
 
     private void CommitHung(IReadOnlyList<string> lines, ContextFigures? context, Action degraded) => Guarded(
         () =>

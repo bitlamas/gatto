@@ -1,7 +1,6 @@
 using System.Collections.Concurrent;
 using Gatto.Core.Tools;
-using Gatto.Repl;
-using Gatto.Repl.Term;
+using Gatto.Repl.Prompts;
 using Gatto.Terminal;
 
 namespace Gatto.Tests;

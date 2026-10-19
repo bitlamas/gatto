@@ -1,6 +1,6 @@
 using System.Text;
 using System.Text.Json;
-using Gatto.Repl.Render;
+using Gatto.Repl.Render.Syntax;
 using Gatto.Terminal;
 using Gatto.Tests.Census;
 using Xunit;

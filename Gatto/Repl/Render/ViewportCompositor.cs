@@ -1,4 +1,5 @@
 using System.Text;
+using Gatto.Repl.Render.Pointer;
 using Gatto.Terminal;
 
 namespace Gatto.Repl.Render;

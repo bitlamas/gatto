@@ -7,7 +7,7 @@ namespace Gatto.Tests;
 //switching a quant while the model serves restarts its server and the conversation is read again, so the screen has to say so
 public class ModelQuantSwitchTests : IDisposable
 {
-    private static Gatto.Repl.WizardAsk Ask() => SwapConfirm.QuantSwitch("gemma-4-e4b-it", "Q6_K", "Q4_K_M");
+    private static Gatto.Repl.Prompts.WizardAsk Ask() => SwapConfirm.QuantSwitch("gemma-4-e4b-it", "Q6_K", "Q4_K_M");
 
     private readonly string _modelsDir = Directory.CreateTempSubdirectory("gatto-quant-").FullName;
     public void Dispose() { try { Directory.Delete(_modelsDir, true); } catch { } }

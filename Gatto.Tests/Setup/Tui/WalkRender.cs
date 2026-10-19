@@ -2,6 +2,7 @@ using Gatto.Cli.Setup;
 using Gatto.Cli.Setup.Tui;
 using Gatto.Core.Acquire;
 using Gatto.Repl;
+using Gatto.Repl.Prompts;
 using Gatto.Terminal;
 using Gatto.Tests.Fakes;
 
@@ -111,7 +112,7 @@ internal static class WalkRender
     //the check parameter names the check's moment, null off an audition. the fullPurr parameter drives another purr frame, and null keeps index 0
     public static Captured Watching(WizardScreen.Choice c, int width, FetchTick? tick,
         string key = "choice", IEnumerable<ConsoleKeyInfo>? script = null, Func<long>? nowMs = null,
-        CheckTick? check = null, Gatto.Repl.Render.PurrFrames? fullPurr = null)
+        CheckTick? check = null, Gatto.Repl.Render.Chrome.PurrFrames? fullPurr = null)
     {
         var surface = new RecordingSurface { Width = width };
         var pressing = script is not null;

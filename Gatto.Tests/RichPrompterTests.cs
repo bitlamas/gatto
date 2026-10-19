@@ -1,6 +1,6 @@
 using System.Collections.Concurrent;
 using Gatto.Core.Tools;
-using Gatto.Repl;
+using Gatto.Repl.Prompts;
 using Gatto.Tests.Fakes;
 using Gatto.Terminal;
 

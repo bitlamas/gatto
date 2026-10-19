@@ -110,7 +110,7 @@ public class CheckTests
     {
         var drawn = WalkRender.Watching(Live(new SetupFlow(Probes())), 100, tick: null,
             nowMs: Purring(), check: Moment,
-            fullPurr: Gatto.Repl.Render.PurrFrames.FromPool(1)).Rows;
+            fullPurr: Gatto.Repl.Render.Chrome.PurrFrames.FromPool(1)).Rows;
         var byDefault = WalkRender.Watching(Live(new SetupFlow(Probes())), 100, tick: null,
             nowMs: Purring(), check: Moment).Rows;
 

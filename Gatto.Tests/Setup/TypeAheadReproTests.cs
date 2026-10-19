@@ -1,6 +1,6 @@
 using System.Text.RegularExpressions;
 using Gatto.Core.Hardware;
-using Gatto.Repl;
+using Gatto.Repl.Prompts;
 using Gatto.Terminal;
 using Gatto.Tests.Fakes;
 

@@ -1,7 +1,7 @@
 using System.Globalization;
 using System.Text;
-using Gatto.Repl.Render;
-using Gatto.Repl.Term;
+using Gatto.Repl.Commands;
+using Gatto.Repl.Render.Chrome;
 using Gatto.Terminal;
 
 namespace Gatto.Repl.Input;
@@ -433,7 +433,7 @@ public sealed class InputFrame(ITermSurface surface, Theme theme, string? role, 
                 ? (n / 1000.0).ToString("0.0", CultureInfo.InvariantCulture) + "k"
                 : (n / 1_000_000.0).ToString("0.0", CultureInfo.InvariantCulture) + "M";
 
-    private static string AbbreviateHome(string cwd, string profile) => ItemRender.AbbreviateProfile(cwd, profile);
+    private static string AbbreviateHome(string cwd, string profile) => HomePath.AbbreviateProfile(cwd, profile);
 
     private static string HeadCells(string s, int cells)
     {

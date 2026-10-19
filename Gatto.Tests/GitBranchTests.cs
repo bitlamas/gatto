@@ -1,4 +1,5 @@
-using Gatto.Repl.Term;
+using Gatto.Repl.Render.Chrome;
+
 
 namespace Gatto.Tests;
 

@@ -82,15 +82,15 @@ public class AsciiSetRenderTests
     [Fact]
     public void EVERY_ROLE_DRAWS_AN_ASCII_CAT_AND_FACE_UNDER_THE_ASCII_SET()
     {
-        foreach (var line in Gatto.Repl.Cats.For(null, GlyphSet.Ascii).Split('\n'))
+        foreach (var line in Gatto.Repl.Render.Chrome.Cats.For(null, GlyphSet.Ascii).Split('\n'))
             AssertPureAscii("Cats.For(null)", line);
-        foreach (var line in Gatto.Repl.Cats.For(ShippedRoleFiles.Load("coder").Cat, GlyphSet.Ascii).Split('\n'))
+        foreach (var line in Gatto.Repl.Render.Chrome.Cats.For(ShippedRoleFiles.Load("coder").Cat, GlyphSet.Ascii).Split('\n'))
             AssertPureAscii("Cats.For(coder's cat)", line);
 
         //the face takes no role, so one string serves every role (a role must not reach a different face under the ASCII set)
-        AssertPureAscii("Cats.Face", Gatto.Repl.Cats.Face(GlyphSet.Ascii));
-        AssertPureAscii("Cats.WaitingOf", Gatto.Repl.Cats.WaitingOf(GlyphSet.Ascii));
-        AssertPureAscii("Cats.EmptyOf", Gatto.Repl.Cats.EmptyOf(GlyphSet.Ascii));
+        AssertPureAscii("Cats.Face", Gatto.Repl.Render.Chrome.Cats.Face(GlyphSet.Ascii));
+        AssertPureAscii("Cats.WaitingOf", Gatto.Repl.Render.Chrome.Cats.WaitingOf(GlyphSet.Ascii));
+        AssertPureAscii("Cats.EmptyOf", Gatto.Repl.Render.Chrome.Cats.EmptyOf(GlyphSet.Ascii));
 
         //the wild and header faces are fixed choices, held to the same pure-ascii bar as the cat
         AssertPureAscii("GlyphSet.Ascii.Wild", GlyphSet.Ascii.Wild);
@@ -101,8 +101,8 @@ public class AsciiSetRenderTests
     [Fact]
     public void AND_THE_UNICODE_SET_STILL_DRAWS_THE_ROLE_CATS()
     {
-        var coder = Gatto.Repl.Cats.For(ShippedRoleFiles.Load("coder").Cat, GlyphSet.Unicode);
-        var oracle = Gatto.Repl.Cats.For(ShippedRoleFiles.Load("oracle").Cat, GlyphSet.Unicode);
+        var coder = Gatto.Repl.Render.Chrome.Cats.For(ShippedRoleFiles.Load("coder").Cat, GlyphSet.Unicode);
+        var oracle = Gatto.Repl.Render.Chrome.Cats.For(ShippedRoleFiles.Load("oracle").Cat, GlyphSet.Unicode);
 
         Assert.NotEqual(coder, oracle);
         Assert.Contains('\u2580', coder);                       //the coder cat keeps its visor character.

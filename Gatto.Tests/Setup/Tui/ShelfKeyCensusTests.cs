@@ -18,7 +18,7 @@ public class ShelfKeyCensusTests
             : throw new InvalidOperationException("out of keys");
     }
 
-    private sealed class Ready : Gatto.Repl.IPollClock
+    private sealed class Ready : Gatto.Repl.Prompts.IPollClock
     {
         public bool WaitForKey(TimeSpan budget) => true;
         public long ElapsedMs => 0;

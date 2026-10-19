@@ -1,6 +1,6 @@
 using Gatto.Core.Acquire;
-using Gatto.Repl;
-using Gatto.Repl.Render;
+using Gatto.Repl.Prompts;
+using Gatto.Repl.Render.Chrome;
 using Gatto.Terminal;
 
 namespace Gatto.Cli.Setup;

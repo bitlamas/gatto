@@ -2,6 +2,7 @@ using System.Text;
 using Gatto.Core;
 using Gatto.Core.Tools;
 using Gatto.Repl.Input;
+using Gatto.Repl.Render.Syntax;
 using Gatto.Terminal;
 
 namespace Gatto.Repl.Render;
@@ -26,7 +27,7 @@ public static class ItemRender
 
     //the command text a shell block shows, paths relativized and the profile abbreviated, one transform for the live and the committed rows
     public static string ShellCommandText(string command, string? cwd = null, string? profile = null) =>
-        TermText.SanitizeProse(AbbreviateProfileEmbedded(RelativizeEmbedded(command, cwd ?? SafeCwd()), profile ?? SafeProfile()));
+        TermText.SanitizeProse(HomePath.AbbreviateProfileEmbedded(RelativizeEmbedded(command, cwd ?? SafeCwd()), profile ?? SafeProfile()));
 
     //the full input a tool block opens to show. only a shell command has one, and its line breaks survive
     public static string FullArgsOf(string tool, string argumentsJson, string? cwd = null, string? profile = null)
@@ -429,7 +430,7 @@ public static class ItemRender
                     i += 2;
                     continue;
                 }
-                if (ch == '"') return TermText.TruncateCells(AbbreviateProfile(Relativize(sb.ToString(), SafeCwd()), profile ?? SafeProfile()), ArgsPreviewCells, glyphs);
+                if (ch == '"') return TermText.TruncateCells(HomePath.AbbreviateProfile(Relativize(sb.ToString(), SafeCwd()), profile ?? SafeProfile()), ArgsPreviewCells, glyphs);
                 sb.Append(ch);
                 i++;
             }
@@ -482,10 +483,10 @@ public static class ItemRender
 
             var text = Scalar(prop.Value);
             if (text is null) continue;                      //an object or an array has no one-line form
-            if (PathKeys.Contains(prop.Name)) text = AbbreviateProfile(Relativize(text, cwd), profile);
+            if (PathKeys.Contains(prop.Name)) text = HomePath.AbbreviateProfile(Relativize(text, cwd), profile);
             //a command is free text with paths inside it, so it takes the embedded rule. this is display only, since the raw record is what runs
             else if (prop.Name.Equals("command", StringComparison.OrdinalIgnoreCase))
-                text = AbbreviateProfileEmbedded(RelativizeEmbedded(text, cwd), profile);
+                text = HomePath.AbbreviateProfileEmbedded(RelativizeEmbedded(text, cwd), profile);
             //a space at either end of a pattern is part of it, and only quotes show that after the space that follows the name
             else if (prop.Name.Equals("pattern", StringComparison.OrdinalIgnoreCase) && text.Length > 0
                 && (char.IsWhiteSpace(text[0]) || char.IsWhiteSpace(text[^1])))
@@ -557,65 +558,7 @@ public static class ItemRender
     }
 
     //the Relativize rule for text with paths inside it, where the root drops only where a path starts and a name follows
-    internal static string RelativizeEmbedded(string text, string cwd) => ReplaceEmbeddedRoot(text, cwd, null);
-
-    //a path under the profile reads from ~, and this runs after the working-directory rule so that rule wins first
-    internal static string AbbreviateProfile(string path, string profile)
-    {
-        var root = profile.TrimEnd('\\', '/');
-        if (root.Length == 0 || path.Length < root.Length || !SameRoot(path.AsSpan(0, root.Length), root)) return path;
-        if (path.Length == root.Length) return "~";
-        return path[root.Length] is '\\' or '/' ? "~" + path[root.Length..] : path;
-    }
-
-    internal static string AbbreviateProfileEmbedded(string text, string profile) => ReplaceEmbeddedRoot(text, profile, "~");
-
-    //a null replacement drops the root and its separator, and any other stands in for the root
-    private static string ReplaceEmbeddedRoot(string text, string root, string? replacement)
-    {
-        root = root.TrimEnd('\\', '/');
-        if (root.Length == 0) return text;   //a root of "" would strip every leading separator
-
-        var sb = new System.Text.StringBuilder(text.Length);
-        var i = 0;
-        while (i < text.Length)
-        {
-            var sep = i + root.Length;
-            var bounded = sep <= text.Length && (i == 0 || !IsPathNameChar(text[i - 1]));
-            var named = bounded && sep + 1 < text.Length && (text[sep] is '\\' or '/') && StartsPathName(text[sep + 1]);
-            var bare = bounded && replacement is not null && (sep == text.Length || EndsBareRoot(text[sep]));
-            if ((named || bare) && SameRoot(text.AsSpan(i, root.Length), root))
-            {
-                if (replacement is null) i = sep + 1;
-                else { sb.Append(replacement); i = sep; }
-                continue;
-            }
-            sb.Append(text[i++]);
-        }
-        return sb.ToString();
-    }
-
-    private static bool IsPathNameChar(char c) =>
-        char.IsLetterOrDigit(c) || c is '\\' or '/' or '.' or '_' or '-' or ':' or '?' or '~';
-
-    //a shell delimiter such as a pipe ends the root, so only a name character lets it drop
-    private static bool StartsPathName(char c) =>
-        char.IsLetterOrDigit(c) || c is '.' or '_' or '-' or '~' or '*' or '$' or '%' or '@';
-
-    //a root on its own ends at a space, a quote or a shell delimiter, so a sibling folder never reads as the profile
-    private static bool EndsBareRoot(char c) => c is ' ' or '\t' or '\r' or '\n' or '"' or '\'' or ';' or '|' or ')' or ',';
-
-    private static bool SameRoot(ReadOnlySpan<char> candidate, string root)
-    {
-        for (var k = 0; k < root.Length; k++)
-        {
-            bool same;
-            if (candidate[k] is '\\' or '/') same = root[k] is '\\' or '/';
-            else same = char.ToUpperInvariant(candidate[k]) == char.ToUpperInvariant(root[k]);
-            if (!same) return false;
-        }
-        return true;
-    }
+    internal static string RelativizeEmbedded(string text, string cwd) => HomePath.ReplaceEmbeddedRoot(text, cwd, null);
 
     //first visible line of a tool error with control characters stripped, skipping the --- stderr --- marker a silent command starts with
     internal static string ErrorPreview(string s)

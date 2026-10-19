@@ -1,6 +1,6 @@
 //passing the image cap asks instead of refusing. byte limits miss many small screenshots that add thousands of tokens to the permanent prefix.
 using Gatto.Core.Loop.Permissions;
-using Gatto.Repl;
+using Gatto.Repl.Prompts;
 
 namespace Gatto.Tests;
 

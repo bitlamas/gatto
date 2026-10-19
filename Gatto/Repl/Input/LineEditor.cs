@@ -1,3 +1,4 @@
+using Gatto.Repl.Commands;
 using Gatto.Terminal;
 
 namespace Gatto.Repl.Input;

@@ -4,6 +4,7 @@ using Gatto.Core.Loop;
 using Gatto.Core.Session;
 using Gatto.Core.Tools;
 using Gatto.Repl;
+using Gatto.Repl.Commands;
 using Gatto.Tests.Fakes;
 using Xunit;
 
@@ -12,7 +13,7 @@ namespace Gatto.Tests;
 //a mistyped command is refused instead of going to the model, and // escapes a leading slash. both faces call this decision, so it is tested here
 public class GateSlashTests
 {
-    private static Gatto.Repl.Repl.SlashGate G(string input) => Gatto.Repl.Repl.GateSlash(input, Gatto.Repl.SlashCommands.All);
+    private static Gatto.Repl.Repl.SlashGate G(string input) => Gatto.Repl.Repl.GateSlash(input, Gatto.Repl.Commands.SlashCommands.All);
 
     private static IReadOnlyList<SlashCommands.Cmd> WithUndo() =>
         [.. SlashCommands.All, new SlashCommands.Cmd("/undo", "[n|path]", "list snapshots for this folder, or restore one", Source: "undo.csx")];
@@ -81,7 +82,7 @@ public class GateSlashTests
     [Fact]
     public void A_multi_line_submit_beginning_with_a_real_command_is_not_refused()
     {
-        Assert.False(Gatto.Repl.Repl.IsSlashCommand("/help\nmore", Gatto.Repl.SlashCommands.All));   //a refusal must not be built on this predicate
+        Assert.False(Gatto.Repl.Repl.IsSlashCommand("/help\nmore", Gatto.Repl.Commands.SlashCommands.All));   //a refusal must not be built on this predicate
         Assert.False(G("/help\nmore").Refused);             //the gate never refuses a real command
     }
 
@@ -108,7 +109,7 @@ public class GateSlashTests
         var g = G("//help");
         Assert.True(g.Literal);
         Assert.Equal("/help", g.Text);
-        Assert.True(Gatto.Repl.Repl.IsSlashCommand(g.Text, Gatto.Repl.SlashCommands.All));   //the text matches a real command name, which the Literal flag has to keep off the chain
+        Assert.True(Gatto.Repl.Repl.IsSlashCommand(g.Text, Gatto.Repl.Commands.SlashCommands.All));   //the text matches a real command name, which the Literal flag has to keep off the chain
     }
 }
 

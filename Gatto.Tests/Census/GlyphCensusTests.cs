@@ -21,7 +21,7 @@ public class GlyphCensusTests
         ("Gatto/Roles/Serve/EngineMarks.cs","the table's second home, for Roles: it cannot reach "
             + "GlyphSet without the first Roles-to-Repl edge, so its Unicode fallback is the "
             + "same kind of literal GlyphSet.cs carries"),
-        ("Gatto/Repl/Cats.cs", "the Unicode set's ROLE data: the coder's and oracle's CATS, drawings "
+        ("Gatto/Repl/Render/Chrome/Cats.cs", "the Unicode set's ROLE data: the coder's and oracle's CATS, drawings "
             + "the table does not carry. Under the ASCII set they are unreachable - `For` returns "
             + "the table's one ruled cat for every role. ⚰ The role FACES left when every role took one face, so this "
             + "exemption covers the banner art alone"),

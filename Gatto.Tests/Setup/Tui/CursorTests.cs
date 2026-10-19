@@ -19,7 +19,7 @@ public class CursorTests
     }
 
     //a clock that always says a key is ready, since a test host has no console and the bounded waits would hang
-    private sealed class Ready : Gatto.Repl.IPollClock
+    private sealed class Ready : Gatto.Repl.Prompts.IPollClock
     {
         public bool WaitForKey(TimeSpan budget) => true;
         public long ElapsedMs => 0;

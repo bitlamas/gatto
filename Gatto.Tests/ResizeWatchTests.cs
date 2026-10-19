@@ -1,4 +1,4 @@
-using Gatto.Repl.Render;
+using Gatto.Repl.Render.Pointer;
 
 namespace Gatto.Tests;
 

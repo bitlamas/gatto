@@ -52,7 +52,7 @@ public class ChipFoundNothingTests
         Assert.NotNull(screen.Shelf);
         var painted = Painted(screen);
 
-        Assert.Contains(Gatto.Repl.Cats.EmptyOf(GlyphSet.Unicode), painted, StringComparison.Ordinal);
+        Assert.Contains(Gatto.Repl.Render.Chrome.Cats.EmptyOf(GlyphSet.Unicode), painted, StringComparison.Ordinal);
         Assert.Contains(
             $"No gemma model fits this machine's memory {GlyphSet.Unicode.Dot} a shows all",
             painted, StringComparison.Ordinal);
@@ -150,7 +150,7 @@ public class ChipFoundNothingTests
         })
         {
             var painted = PaintedIn(a, screen);
-            Assert.Contains(Gatto.Repl.Cats.EmptyOf(a), painted, StringComparison.Ordinal);
+            Assert.Contains(Gatto.Repl.Render.Chrome.Cats.EmptyOf(a), painted, StringComparison.Ordinal);
             Assert.Contains(sentence, painted, StringComparison.Ordinal);
             Assert.DoesNotContain(GlyphSet.Unicode.Dot, painted, StringComparison.Ordinal);
         }

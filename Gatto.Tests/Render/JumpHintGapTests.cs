@@ -1,4 +1,5 @@
 using Gatto.Repl.Render;
+using Gatto.Repl.Render.Pointer;
 using Gatto.Terminal;
 using Gatto.Tests.Fakes;
 

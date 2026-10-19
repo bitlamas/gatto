@@ -2,7 +2,7 @@ using Gatto.Core.Client;
 using Gatto.Core.Tools;
 using Gatto.Repl.Input;
 using Gatto.Repl.Render;
-using Gatto.Repl.Term;
+using Gatto.Repl.Render.Chrome;
 using Gatto.Terminal;
 using Gatto.Tests.Fakes;
 using Xunit;

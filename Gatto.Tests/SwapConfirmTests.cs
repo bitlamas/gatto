@@ -20,7 +20,7 @@ public class SwapConfirmTests : IDisposable
         return Model.Load(_modelsDir, id);
     }
 
-    private static string Body(Gatto.Repl.WizardAsk ask) =>
+    private static string Body(Gatto.Repl.Prompts.WizardAsk ask) =>
         string.Join(" ", (ask.BodyRows ?? []).Select(r => r.Text));
 
     [Fact]

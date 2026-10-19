@@ -1,6 +1,5 @@
 using Gatto.Cli.Setup;
-using Gatto.Repl;
-using Gatto.Repl.Render;
+using Gatto.Repl.Render.Chrome;
 using Gatto.Roles.Audition;
 using Gatto.Terminal;
 

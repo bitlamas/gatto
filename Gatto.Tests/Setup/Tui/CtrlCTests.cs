@@ -24,7 +24,7 @@ public class CtrlCTests
     private static ConsoleKeyInfo K(ConsoleKey k) => new('\0', k, false, false, false);
 
     //a watching screen needs a clock, or the test hangs on a console that is not there and looks like a slow machine. this one always reports a key waiting
-    private sealed class Ready : Gatto.Repl.IPollClock
+    private sealed class Ready : Gatto.Repl.Prompts.IPollClock
     {
         public bool WaitForKey(TimeSpan budget) => true;
         public long ElapsedMs => 0;
@@ -198,7 +198,7 @@ public class CtrlCTests
         Assert.True(budget!.Value < TimeSpan.FromMilliseconds(Gatto.Repl.Repl.CtrlCDoubleTapMs));
     }
 
-    private sealed class ExpiringClock(Action<TimeSpan> onWait) : Gatto.Repl.IPollClock
+    private sealed class ExpiringClock(Action<TimeSpan> onWait) : Gatto.Repl.Prompts.IPollClock
     {
         public bool WaitForKey(TimeSpan budget) { onWait(budget); return false; }
         public long ElapsedMs => 0;
@@ -251,7 +251,7 @@ public class CtrlCTests
         Assert.True(budgets[2] < Watch.Interval);
     }
 
-    private sealed class StepClock(Action<TimeSpan> onWait, Func<bool> arrives) : Gatto.Repl.IPollClock
+    private sealed class StepClock(Action<TimeSpan> onWait, Func<bool> arrives) : Gatto.Repl.Prompts.IPollClock
     {
         public bool WaitForKey(TimeSpan budget) { onWait(budget); return arrives(); }
         public long ElapsedMs => 0;

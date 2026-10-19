@@ -4,9 +4,10 @@ using Gatto.Core.Loop;
 using Gatto.Core.Session;
 using Gatto.Core.Tools;
 using Gatto.Repl;
+using Gatto.Repl.Commands;
 using Gatto.Repl.Input;
 using Gatto.Repl.Render;
-using Gatto.Repl.Term;
+using Gatto.Repl.Render.Chrome;
 using Gatto.Terminal;
 using Gatto.Tests.Fakes;
 
@@ -52,7 +53,7 @@ public class ReplLinearLoopTests
         await Gatto.Repl.Repl.DispatchBracketAsync(
             gate, painter, ticker, () => renderer,
             queued: Array.Empty<string>(), userLines: submission.Split('\n'), kaomoji: "(=^･ω･^=)",
-            known: Gatto.Repl.SlashCommands.All,
+            known: Gatto.Repl.Commands.SlashCommands.All,
             body: async () =>
             {
                 if (expectedFace is null)
@@ -120,7 +121,7 @@ public class ReplLinearLoopTests
         string input, bool expected)
     {
         //three slash commands do reach the model, so each row was read from its dispatch branch
-        Assert.Equal(expected, Gatto.Repl.SlashCommands.ReachesModel(input, Gatto.Repl.SlashCommands.All));
+        Assert.Equal(expected, Gatto.Repl.Commands.SlashCommands.ReachesModel(input, Gatto.Repl.Commands.SlashCommands.All));
     }
 
     [Fact]
@@ -129,7 +130,7 @@ public class ReplLinearLoopTests
         //a new command inherits false silently, so pinning the full set forces a deliberate choice
         Assert.Equal(
             ["/compact", "/init", "/remember"],
-            Gatto.Repl.SlashCommands.All.Where(c => c.ReachesModel).Select(c => c.Name).Order());
+            Gatto.Repl.Commands.SlashCommands.All.Where(c => c.ReachesModel).Select(c => c.Name).Order());
     }
 
     [Fact]
@@ -141,7 +142,7 @@ public class ReplLinearLoopTests
         var quit = await Gatto.Repl.Repl.DispatchBracketAsync(
             gate, painter, ticker, () => renderer,
             queued: Array.Empty<string>(), userLines: new[] { "run the tool" }, kaomoji: "(=^･ω･^=)",
-            known: Gatto.Repl.SlashCommands.All,
+            known: Gatto.Repl.Commands.SlashCommands.All,
             body: async () =>
             {
                 //nothing inside a turn may stop the purr, and the fake must set State.Tool or the ticker reads prefill
@@ -195,7 +196,7 @@ public class ReplLinearLoopTests
         await Gatto.Repl.Repl.DispatchBracketAsync(
             gate, painter, ticker, () => renderer,
             queued: new[] { "queued next" }, userLines: new[] { "hello there" }, kaomoji: "(=^･ω･^=)",
-            known: Gatto.Repl.SlashCommands.All,
+            known: Gatto.Repl.Commands.SlashCommands.All,
             body: () => Task.FromResult(false));
 
         Assert.Contains("❯ hello there", Visible(surface.Text), StringComparison.Ordinal);
@@ -210,7 +211,7 @@ public class ReplLinearLoopTests
         await Assert.ThrowsAsync<InvalidOperationException>(() =>
             Gatto.Repl.Repl.DispatchBracketAsync(gate, painter, ticker, () => renderer,
                 Array.Empty<string>(), new[] { "boom" }, "(=^･ω･^=)",
-                known: Gatto.Repl.SlashCommands.All,
+                known: Gatto.Repl.Commands.SlashCommands.All,
                 body: () => throw new InvalidOperationException("turn blew up")));
 
         lock (gate)
@@ -229,7 +230,7 @@ public class ReplLinearLoopTests
 
         await Gatto.Repl.Repl.DispatchBracketAsync(gate, painter, ticker, () => current,
             Array.Empty<string>(), new[] { "hi" }, "(=^･ω･^=)",
-            known: Gatto.Repl.SlashCommands.All,
+            known: Gatto.Repl.Commands.SlashCommands.All,
             body: () =>
             {
                 current = new StreamRenderer(painter, surface, T, "oracle", ticker, gate);
@@ -250,7 +251,7 @@ public class ReplLinearLoopTests
 
         await Gatto.Repl.Repl.DispatchBracketAsync(gate, painter, ticker, () => renderer,
             Array.Empty<string>(), new[] { "clean the build" }, "(=^･ω･^=)",
-            known: Gatto.Repl.SlashCommands.All,
+            known: Gatto.Repl.Commands.SlashCommands.All,
             body: () =>
             {
                 renderer.OnToolCallStart(new Gatto.Core.Client.ToolCall("i", "shell", """{"cmd":"rm -rf ./build"}"""));
@@ -448,7 +449,7 @@ public class ReplLinearLoopTests
     {
         var (surface, _, _, renderer, _) = Wire();
 
-        renderer.CommitPlain(SlashCommands.RenderRich(T, Gatto.Repl.SlashCommands.All));
+        renderer.CommitPlain(SlashCommands.RenderRich(T, Gatto.Repl.Commands.SlashCommands.All));
 
         var visible = Visible(surface.Text);
         Assert.Contains("/quit", visible, StringComparison.Ordinal);

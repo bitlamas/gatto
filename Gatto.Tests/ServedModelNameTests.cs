@@ -1,6 +1,5 @@
 using Gatto.Core.Models;
 using Gatto.Repl.Input;
-using Gatto.Repl.Term;
 using Gatto.Terminal;
 
 namespace Gatto.Tests;

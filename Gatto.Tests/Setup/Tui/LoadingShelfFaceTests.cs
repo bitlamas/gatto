@@ -42,7 +42,7 @@ public class LoadingShelfFaceTests
         var purr = frame.ToList().FindIndex(r => r.Contains(Step));
         Assert.True(local >= 0 && local < chips && chips < header && header < purr,
             string.Join(Environment.NewLine, frame));
-        Assert.Contains(Gatto.Repl.Cats.Face(Gatto.Terminal.GlyphSet.Unicode), frame[purr]);
+        Assert.Contains(Gatto.Repl.Render.Chrome.Cats.Face(Gatto.Terminal.GlyphSet.Unicode), frame[purr]);
         Assert.Contains(frame, r => r.Contains("search models…"));
         Assert.Contains("Esc", frame[^1]);
     }
@@ -77,13 +77,13 @@ public class LoadingShelfFaceTests
 
     private const string Wait = "please wait while gatto fetches the models from Hugging Face…";
 
-    private static readonly string Face = Gatto.Repl.Cats.Face(Gatto.Terminal.GlyphSet.Unicode);
+    private static readonly string Face = Gatto.Repl.Render.Chrome.Cats.Face(Gatto.Terminal.GlyphSet.Unicode);
 
     //the start-up screen as the flow builds it: the cat as hero rows, the one sentence, and the watch
     private static WizardScreen.Choice Starting() => new WizardScreen.Choice(
         SetupFlow.ShelfLoadingKey, null, [], BodyRows: [new WizardRow(Wait)], Watching: true)
     {
-        Hero = [.. Gatto.Repl.Cats.For(null, Gatto.Terminal.GlyphSet.Unicode).Split('\n').Select(l => "  " + l.TrimEnd('\r'))],
+        Hero = [.. Gatto.Repl.Render.Chrome.Cats.For(null, Gatto.Terminal.GlyphSet.Unicode).Split('\n').Select(l => "  " + l.TrimEnd('\r'))],
         Starting = true,
     };
 

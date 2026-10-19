@@ -1,5 +1,5 @@
 using Gatto.Cli;
-using Gatto.Repl;
+using Gatto.Repl.Render.Chrome;
 using Gatto.Terminal;
 
 namespace Gatto.Tests;

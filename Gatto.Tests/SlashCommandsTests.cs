@@ -8,6 +8,7 @@ using Gatto.Core.Loop.Permissions;
 using Gatto.Core.Session;
 using Gatto.Core.Tools;
 using Gatto.Repl;
+using Gatto.Repl.Commands;
 using Gatto.Terminal;
 using Gatto.Tests.Fakes;
 
@@ -139,7 +140,7 @@ public class SlashCommandsTests
     [Fact]
     public void RenderPlain_IsByteWisePure_NoAnsiEscapes()
     {
-        var s = SlashCommands.RenderPlain(Gatto.Repl.SlashCommands.All);
+        var s = SlashCommands.RenderPlain(Gatto.Repl.Commands.SlashCommands.All);
         var esc = s.IndexOf((char)0x1b);
         Assert.True(esc < 0, $"ESC found at {esc}: {string.Join(",", s.Select(c => (int)c))}");
     }
@@ -147,7 +148,7 @@ public class SlashCommandsTests
     [Fact]
     public void RenderPlain_AlignsSummaryColumnByCellWidth_AcrossAllRows()
     {
-        var lines = SlashCommands.RenderPlain(Gatto.Repl.SlashCommands.All).Split('\n');
+        var lines = SlashCommands.RenderPlain(Gatto.Repl.Commands.SlashCommands.All).Split('\n');
         Assert.Equal(SlashCommands.All.Count, lines.Length);
 
         var prefixLengths = lines.Zip(SlashCommands.All, (l, c) =>
@@ -170,7 +171,7 @@ public class SlashCommandsTests
     {
         var theme = new Theme(new TermCaps(Rich: true, TrueColor: true));
 
-        var rendered = SlashCommands.RenderRich(theme, Gatto.Repl.SlashCommands.All);
+        var rendered = SlashCommands.RenderRich(theme, Gatto.Repl.Commands.SlashCommands.All);
 
         foreach (var c in SlashCommands.All)
         {
@@ -185,8 +186,8 @@ public class SlashCommandsTests
     {
         var theme = new Theme(new TermCaps(Rich: true, TrueColor: true));
 
-        var stripped = Regex.Replace(SlashCommands.RenderRich(theme, Gatto.Repl.SlashCommands.All), "\x1b\\[[0-9;]*m", "");
+        var stripped = Regex.Replace(SlashCommands.RenderRich(theme, Gatto.Repl.Commands.SlashCommands.All), "\x1b\\[[0-9;]*m", "");
 
-        Assert.Equal(SlashCommands.RenderPlain(Gatto.Repl.SlashCommands.All), stripped);
+        Assert.Equal(SlashCommands.RenderPlain(Gatto.Repl.Commands.SlashCommands.All), stripped);
     }
 }

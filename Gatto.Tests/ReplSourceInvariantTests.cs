@@ -36,8 +36,8 @@ public class ReplSourceInvariantTests
             $"found only {dispatched.Count} dispatched slash commands in Repl.cs — the regex has "
             + "stopped matching the dispatch shape, so this guard is vacuous. Fix the pattern.");
 
-        var known = Gatto.Repl.SlashCommands.All.Select(c => c.Name)
-            .Concat(Gatto.Repl.SlashCommands.ExemptCommands)
+        var known = Gatto.Repl.Commands.SlashCommands.All.Select(c => c.Name)
+            .Concat(Gatto.Repl.Commands.SlashCommands.ExemptCommands)
             .ToHashSet(StringComparer.Ordinal);
 
         var orphans = dispatched.Where(c => !known.Contains(c)).ToList();
@@ -52,7 +52,7 @@ public class ReplSourceInvariantTests
     {
         //the exemption set stays empty, adding one has to be a deliberate decision
         Assert.DoesNotContain("\"/setup\"", ReplSource(), StringComparison.Ordinal);
-        Assert.Empty(Gatto.Repl.SlashCommands.ExemptCommands);
+        Assert.Empty(Gatto.Repl.Commands.SlashCommands.ExemptCommands);
     }
 
     [Fact]

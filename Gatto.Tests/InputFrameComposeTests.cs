@@ -1,5 +1,4 @@
 using Gatto.Repl.Input;
-using Gatto.Repl.Term;
 using Gatto.Terminal;
 using Gatto.Tests.Fakes;
 

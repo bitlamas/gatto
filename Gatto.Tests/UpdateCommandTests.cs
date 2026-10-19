@@ -1,6 +1,6 @@
 using System.IO.Compression;
 using Gatto.Cli;
-using Gatto.Repl;
+using Gatto.Repl.Prompts;
 using Gatto.Terminal;
 
 namespace Gatto.Tests;

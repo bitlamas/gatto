@@ -1,4 +1,4 @@
-using Gatto.Repl;
+using Gatto.Repl.Prompts;
 
 namespace Gatto.Cli;
 

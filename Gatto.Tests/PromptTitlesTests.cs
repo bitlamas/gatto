@@ -2,8 +2,8 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using Gatto.Core.Loop.Permissions;
-using Gatto.Repl;
 using Xunit;
+using Gatto.Repl.Prompts;
 
 namespace Gatto.Tests;
 

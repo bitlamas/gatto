@@ -2,7 +2,7 @@ using Gatto.Cli.Setup;
 using Gatto.Core.Acquire;
 using Gatto.Core.Hardware;
 using Gatto.Core.Models;
-using Gatto.Repl;
+using Gatto.Repl.Prompts;
 using Gatto.Terminal;
 
 namespace Gatto.Tests.Setup;

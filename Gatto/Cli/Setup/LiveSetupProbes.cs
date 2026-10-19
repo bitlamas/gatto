@@ -13,7 +13,7 @@ internal sealed class LiveSetupProbes(string homePath, Gatto.Terminal.GlyphSet g
     Func<ProbeOutcome>? readHardware = null, string? downloadsDir = null,
     Func<int, Gatto.Roles.Serve.ServeManager.IServeProcess?>? serverLookup = null,
     //null means pool index 0, GattoApp passes the real draw, and a test that builds a probe can't reach randomness
-    Func<Gatto.Repl.Render.PurrFrames>? purrSet = null,
+    Func<Gatto.Repl.Render.Chrome.PurrFrames>? purrSet = null,
     //the factory is what lets a test watch the manager's stop path, null keeps each site's own construction
     Func<Gatto.Roles.Serve.ServeManager>? managerFactory = null,
     //null keeps the runner's ten-minute budget, a test shortens it rather than letting its fake server die, which stops the double-start guard firing
@@ -817,7 +817,7 @@ internal sealed class LiveSetupProbes(string homePath, Gatto.Terminal.GlyphSet g
     //one row updating in place, and rich-ness passed in so /setup keeps to one committed line per task
     private AuditionTicker? AuditionNotes() =>
         notes is null ? null : new AuditionTicker(notes, rich, _glyphs,
-            frames: purrSet is null ? Gatto.Repl.Render.PurrFrames.Full : purrSet());
+            frames: purrSet is null ? Gatto.Repl.Render.Chrome.PurrFrames.Full : purrSet());
 
     //feeds both sinks from one run, and either side may be null without silencing the other
     internal static IProgress<Gatto.Roles.Audition.AuditionProgress> Both(

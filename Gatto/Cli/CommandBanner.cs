@@ -1,6 +1,6 @@
 using Gatto.Core;
 using Gatto.Core.Home;
-using Gatto.Repl;
+using Gatto.Repl.Render.Chrome;
 using Gatto.Terminal;
 
 namespace Gatto.Cli;

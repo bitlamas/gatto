@@ -16,7 +16,7 @@ public class InkTests
     }
 
     //every read here is an Escape, so the armed chord's wait is reached and the clock must answer at once
-    private sealed class Ready : Gatto.Repl.IPollClock
+    private sealed class Ready : Gatto.Repl.Prompts.IPollClock
     {
         public bool WaitForKey(TimeSpan budget) => true;
         public long ElapsedMs => 0;

@@ -4,7 +4,7 @@ using Gatto.Cli.Setup;
 using Gatto.Core.Acquire;
 using Gatto.Core.Home;
 using Gatto.Core.Tools;
-using Gatto.Repl;
+using Gatto.Repl.Prompts;
 using Gatto.Roles.Serve;
 using Gatto.Terminal;
 

@@ -1,5 +1,5 @@
-using Gatto.Repl;
 using Gatto.Repl.Input;
+using Gatto.Repl.Prompts;
 using Gatto.Terminal;
 
 namespace Gatto.Cli.Setup;

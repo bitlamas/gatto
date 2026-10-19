@@ -13,7 +13,8 @@ using Gatto.Core.Tools;
 using Gatto.Extensions;
 using Gatto.Repl;
 using Gatto.Repl.Input;
-using Gatto.Repl.Render;
+using Gatto.Repl.Prompts;
+using Gatto.Repl.Render.Chrome;
 using Gatto.Roles;
 using Gatto.Roles.Agents;
 using Gatto.Roles.Models;
@@ -164,11 +165,11 @@ public static class GattoApp
     }
 
     //the label half of a wizard answer, and null when the ask registers no control keys
-    private static string? Label(Gatto.Repl.WizardAnswer? a) => a?.Label;
+    private static string? Label(Gatto.Repl.Prompts.WizardAnswer? a) => a?.Label;
 
     //the ask a quant command uses, or null when the session cannot ask, in its own method so the conditional has a return type
-    private static Func<Gatto.Repl.WizardAsk, bool>? Confirming(Gatto.Core.Tools.IUserPrompter? prompter) =>
-        prompter is Gatto.Repl.IWizardPrompter asker
+    private static Func<Gatto.Repl.Prompts.WizardAsk, bool>? Confirming(Gatto.Core.Tools.IUserPrompter? prompter) =>
+        prompter is Gatto.Repl.Prompts.IWizardPrompter asker
             ? ask => SwapConfirm.Confirmed(Label(asker.AskOne(ask)))
             : null;
 
@@ -806,7 +807,7 @@ public static class GattoApp
 
         var commands = new Gatto.Core.Commands.CommandRegistry();
         //every extension that committed, in discovery order, and a tool-less one is a legal load with no tool row
-        var (committedExt, committedExtensions) = ExtensionHost.Commit(loadedExtensions, tools, hooks, commands, Gatto.Repl.SlashCommands.All.Select(c => c.Name), extDiag);
+        var (committedExt, committedExtensions) = ExtensionHost.Commit(loadedExtensions, tools, hooks, commands, Gatto.Repl.Commands.SlashCommands.All.Select(c => c.Name), extDiag);
         //the early pass should have skipped it already, and a launch must not run on the endpoint of an extension that did not commit
         if (endpointOwner.TryGetValue(endpointName, out var owner) && !committedExtensions.Any(e => e.Name == owner))
         {
@@ -1088,8 +1089,8 @@ public static class GattoApp
             var serveManager = new ServeManager(home, ServerBinaryFor(outgoing, config));
 
             //a delegate rather than the prompter, so the deed does not know which face answers (a driver can make it throw)
-            Func<Gatto.Repl.WizardAsk, string?>? deedAsk =
-                prompter is Gatto.Repl.IWizardPrompter deedAsker
+            Func<Gatto.Repl.Prompts.WizardAsk, string?>? deedAsk =
+                prompter is Gatto.Repl.Prompts.IWizardPrompter deedAsker
                     ? a => Label(deedAsker.AskOne(a))
                     : null;
 
@@ -1464,8 +1465,8 @@ public static class GattoApp
 
         //the same registry the loop advertises from, so /tools describes this session, and committedExt adds which script owns each tool
         var toolOrigins = committedExt.ToDictionary(c => c.Name, c => c.Extension.Name, StringComparer.Ordinal);
-        Func<IReadOnlyList<Gatto.Repl.ToolInfo>> listTools = () => tools.Specs()
-            .Select(s => new Gatto.Repl.ToolInfo(s.Name, s.Description, toolOrigins.GetValueOrDefault(s.Name)))
+        Func<IReadOnlyList<Gatto.Repl.Prompts.ToolInfo>> listTools = () => tools.Specs()
+            .Select(s => new Gatto.Repl.Prompts.ToolInfo(s.Name, s.Description, toolOrigins.GetValueOrDefault(s.Name)))
             .ToList();
         //the same list the prompt was composed from, so /tools cannot show a policy the model was never told
         var policyRows = policyLines.ToList();
@@ -1492,7 +1493,7 @@ public static class GattoApp
         var unlistedRemote = !ServedHere() && endpoint.Models is not { Count: > 0 };
 
         //the hint reads the same two locals as the reuse line, so the two sentences cannot disagree about what is loaded
-        var repl = new Gatto.Repl.Repl(loop, convo, role.Name, modelString, sessions, client, endpoint.Context, contextBudget, cwd, recomposeSystem, switchRole, wildState, on => permissions.SetWild(on, persist: true), hooks, themeMode, subagentProgress, resumedFrom: resumedFrom, reasoning: config.ReasoningMode, thinkingName: initialThinkingName, setEffort: setEffort, listEfforts: listEfforts, glyphs: glyphs, purrSet: Gatto.Repl.Render.PurrFrames.RandomFromPool, versionLine: CommandBanner.DottedVersion(Gatto.Core.GattoVersion.String, Gatto.Core.GattoVersion.Build ?? "", CommandBanner.IsDevBuild(), glyphs), pump: pump, chrome: chrome, switchModel: switchModel, setDefault: id => ModelSwitch.Persist(home, endpointName, id),   //the role name as ResolveRole cased it from disk, which the banner and the status line key on
+        var repl = new Gatto.Repl.Repl(loop, convo, role.Name, modelString, sessions, client, endpoint.Context, contextBudget, cwd, recomposeSystem, switchRole, wildState, on => permissions.SetWild(on, persist: true), hooks, themeMode, subagentProgress, resumedFrom: resumedFrom, reasoning: config.ReasoningMode, thinkingName: initialThinkingName, setEffort: setEffort, listEfforts: listEfforts, glyphs: glyphs, purrSet: Gatto.Repl.Render.Chrome.PurrFrames.RandomFromPool, versionLine: CommandBanner.DottedVersion(Gatto.Core.GattoVersion.String, Gatto.Core.GattoVersion.Build ?? "", CommandBanner.IsDevBuild(), glyphs), pump: pump, chrome: chrome, switchModel: switchModel, setDefault: id => ModelSwitch.Persist(home, endpointName, id),   //the role name as ResolveRole cased it from disk, which the banner and the status line key on
                     launchServing: launchServing, probeServing: probeServing, listModels: unlistedRemote ? null : listModels, picker: replPicker, slotsReader: slotsReader, warn: warn, altScreen: config.AltScreen, dumpOnExit: config.DumpOnExit, thinkingIsToggle: thinkCap == ThinkCapability.Toggle, thinkingIsUnavailable: ThinkingUnavailable(), mouseEnabled: config.Mouse && config.AltScreen && pump is not null, wheelLines: config.WheelLines, copyOnSelect: config.CopyOnSelect, resumedPath: continuePath, resumeLine: resumeLine,
             modelMarkLegend: !ServedHere() ? "current" : "weights loaded",
             //read at the moment a connection is lost, through the current model, so a /model switch is followed
@@ -1832,7 +1833,7 @@ public static class GattoApp
             pulse: () => new Gatto.Terminal.TimerPurrPulse(),
             glyphs: glyphs,
             //the purr is drawn once here from the pool, so nothing a test constructs can reach the draw
-            fullPurr: Gatto.Repl.Render.PurrFrames.RandomFromPool(),
+            fullPurr: Gatto.Repl.Render.Chrome.PurrFrames.RandomFromPool(),
             doubleClickMs: input.DoubleClickMs);
 
         //the wizard runs on the alt buffer and gives it back on every exit, WizardSession owns that lifecycle
@@ -1840,7 +1841,7 @@ public static class GattoApp
 
         //rich comes from the banner and the probes write into the face, so their lines reach the user at the epilogue
         var probes = new Setup.LiveSetupProbes(home, face.Glyphs, face.Notes,
-            purrSet: Gatto.Repl.Render.PurrFrames.RandomFromPool,
+            purrSet: Gatto.Repl.Render.Chrome.PurrFrames.RandomFromPool,
             rich: theme is not null,
             //these lines go to the console, Dispose runs after the record has printed
             afterWalk: Console.Out,

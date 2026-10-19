@@ -456,10 +456,10 @@ internal static class Shelf
         var g = glyphs ?? GlyphSet.Unicode;
         var ms = Math.Max(0, elapsedMs);
         return new PaintedRow([
-            new Run(Indent + Gatto.Repl.Cats.Face(g) + " "
-                + Gatto.Repl.Render.PurrFrames.Short.At(ms), RunInk.Accent),
+            new Run(Indent + Gatto.Repl.Render.Chrome.Cats.Face(g) + " "
+                + Gatto.Repl.Render.Chrome.PurrFrames.Short.At(ms), RunInk.Accent),
             new Run("   " + (step.Length > 0 ? $"{step} {g.Dot} " : "")
-                + Gatto.Repl.Render.ChromeTicker.FormatElapsed(ms), RunInk.Dim)]);
+                + Gatto.Repl.Render.Chrome.ChromeTicker.FormatElapsed(ms), RunInk.Dim)]);
     }
 
     //two columns with a divider between them, as many rows as the taller side has. the divider accents when the keys are in the pane

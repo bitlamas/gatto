@@ -1,5 +1,5 @@
-using Gatto.Repl.Render;
 using Xunit;
+using Gatto.Repl.Render.Pointer;
 
 namespace Gatto.Tests.Render;
 

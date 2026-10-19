@@ -37,7 +37,7 @@ public class SearchRowTests
     {
         var row = Row(fit);
         var view = new ShelfView([row], Discrete);
-        var headings = ShelfBinding.For(view, [new Gatto.Repl.SelectOption(row.RowFile!.RepoId)],
+        var headings = ShelfBinding.For(view, [new Gatto.Repl.Prompts.SelectOption(row.RowFile!.RepoId)],
             new Theme(TermCaps.Plain), glyphs: GlyphSet.Unicode).HeadingsAt(100);
         return string.Join(" · ", headings.Select(h => h.Text));
     }

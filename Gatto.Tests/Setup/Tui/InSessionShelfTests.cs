@@ -36,7 +36,7 @@ public class InSessionShelfTests
     }
 
     //a watching screen needs a clock, or the run hangs instead of failing
-    private sealed class Ready : Gatto.Repl.IPollClock
+    private sealed class Ready : Gatto.Repl.Prompts.IPollClock
     {
         public bool WaitForKey(TimeSpan budget) => true;
         public long ElapsedMs => 0;
@@ -109,7 +109,7 @@ public class InSessionShelfTests
         new(SetupFlow.SearchKey, "Which model should gatto start with?", [],
             Shelf: new ShelfView([], MachineShape.UnifiedWithShare,
                 Source: ShelfSource.Local,
-                Empty: ["", Gatto.Repl.Cats.EmptyOf(glyphs: GlyphSet.Unicode), "", "no models on this machine yet, gatto looked in:"]),
+                Empty: ["", Gatto.Repl.Render.Chrome.Cats.EmptyOf(glyphs: GlyphSet.Unicode), "", "no models on this machine yet, gatto looked in:"]),
             Door: "type a folder path…")
         { Strip = ShelfTests.Strip };
 

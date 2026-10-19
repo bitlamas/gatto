@@ -1,5 +1,4 @@
 using Gatto.Cli;
-using Gatto.Repl.Term;
 
 namespace Gatto.Tests.Copy;
 

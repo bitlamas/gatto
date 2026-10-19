@@ -1,6 +1,7 @@
 //the shortcuts table must keep its descriptions aligned, fit a narrow window and name only keys the keymap binds
 using System.Linq;
 using Gatto.Repl;
+using Gatto.Repl.Commands;
 using Gatto.Repl.Input;
 using Gatto.Terminal;
 
@@ -11,7 +12,7 @@ public class ShortcutsTests
     private static readonly Theme T = new(new TermCaps(true, true));
 
     private static string[] Rows() =>
-        Shortcuts.RenderRich(T, glyphs: GlyphSet.Unicode, Gatto.Repl.SlashCommands.All).Split('\n').Select(TermText.StripAnsiForWidth).ToArray();
+        Shortcuts.RenderRich(T, glyphs: GlyphSet.Unicode, Gatto.Repl.Commands.SlashCommands.All).Split('\n').Select(TermText.StripAnsiForWidth).ToArray();
 
     //the column is counted in cells, since a char count would misalign rows with arrows
     private static int DescriptionColumn(string row, IEnumerable<string> descriptions)
@@ -21,7 +22,7 @@ public class ShortcutsTests
     }
 
     private static string[] CommandRows() =>
-        SlashCommands.RenderRich(T, Gatto.Repl.SlashCommands.All).Split('\n').Select(TermText.StripAnsiForWidth).ToArray();
+        SlashCommands.RenderRich(T, Gatto.Repl.Commands.SlashCommands.All).Split('\n').Select(TermText.StripAnsiForWidth).ToArray();
 
     [Fact]
     public void The_descriptions_line_up_in_one_column()

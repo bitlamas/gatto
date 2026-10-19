@@ -1,5 +1,5 @@
 using Gatto.Cli.Setup;
-using Gatto.Repl;
+using Gatto.Repl.Prompts;
 using Gatto.Terminal;
 using Gatto.Tests.Fakes;
 

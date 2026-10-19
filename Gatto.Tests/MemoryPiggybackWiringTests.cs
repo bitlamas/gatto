@@ -174,7 +174,7 @@ public sealed class MemoryPiggybackWiringTests : IDisposable
     public async Task CompactedLine_reports_before_and_after_not_just_after()
     {
         var fx = NewFixture(SummaryWith("none"));
-        var ctx = new Gatto.Repl.Term.CtxState { ContextWindow = 262_144 };
+        var ctx = new Gatto.Repl.Input.CtxState { ContextWindow = 262_144 };
         ctx.RecordUsedTokens(35_750);                       //35,750 tokens of 262,144 is the 14% the footer showed before compaction.
 
         Assert.True(await fx.Repl.HandleCompactAsync(new RecordingObserver(), CancellationToken.None, ctx));

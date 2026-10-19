@@ -125,9 +125,9 @@ public class WizardWiringCensusTests
         public ConsoleKeyInfo ReadKey() => throw new InvalidOperationException("no key is scripted");
     }
 
-    private sealed class NoPrompter : Gatto.Repl.IWizardPrompter
+    private sealed class NoPrompter : Gatto.Repl.Prompts.IWizardPrompter
     {
-        public Gatto.Repl.WizardAnswer? AskOne(Gatto.Repl.WizardAsk ask) =>
+        public Gatto.Repl.Prompts.WizardAnswer? AskOne(Gatto.Repl.Prompts.WizardAsk ask) =>
             throw new InvalidOperationException("this face is only asked for its glyph set");
     }
 }

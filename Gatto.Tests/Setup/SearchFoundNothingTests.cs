@@ -3,6 +3,7 @@ using Gatto.Cli.Setup.Tui;
 using Gatto.Core.Acquire;
 using Gatto.Core.Models;
 using Gatto.Repl;
+using Gatto.Repl.Prompts;
 using Gatto.Terminal;
 using Gatto.Tests.Fakes;
 using Gatto.Tests.Setup.Tui;
@@ -67,7 +68,7 @@ public class SearchFoundNothingTests
         Assert.NotNull(screen.Door);
 
         var painted = Painted(screen);
-        Assert.Contains(Gatto.Repl.Cats.EmptyOf(GlyphSet.Unicode), painted, StringComparison.Ordinal);
+        Assert.Contains(Gatto.Repl.Render.Chrome.Cats.EmptyOf(GlyphSet.Unicode), painted, StringComparison.Ordinal);
         Assert.Contains("nothing on Hugging Face answers \"test\"", painted, StringComparison.Ordinal);
 
         //the sentence must name two ways forward, or the screen states a failure and offers nothing

@@ -1,7 +1,6 @@
 //this class lays out the top rule, the status line and the composed rows with their caret position, the painter draws them
 using System.Globalization;
 using Gatto.Repl.Input;
-using Gatto.Repl.Term;
 using Gatto.Terminal;
 using Gatto.Tests.Fakes;
 

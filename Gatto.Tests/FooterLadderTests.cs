@@ -1,7 +1,6 @@
 using System.Globalization;
 using Gatto.Core.Client;
 using Gatto.Repl.Input;
-using Gatto.Repl.Term;
 using Gatto.Terminal;
 using Gatto.Tests.Fakes;
 

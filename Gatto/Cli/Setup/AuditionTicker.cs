@@ -1,6 +1,6 @@
 using System.Diagnostics;
 using Gatto.Repl;
-using Gatto.Repl.Render;
+using Gatto.Repl.Render.Chrome;
 using Gatto.Roles.Audition;
 
 namespace Gatto.Cli.Setup;
@@ -19,14 +19,14 @@ internal sealed class AuditionTicker : IProgress<AuditionProgress>, IDisposable
     private const int FrameMs = 140;
 
     private readonly Gatto.Terminal.GlyphSet _glyphs;
-    private readonly Gatto.Repl.Render.PurrFrames _frames;
+    private readonly Gatto.Repl.Render.Chrome.PurrFrames _frames;
 
     //the purr this ticker uses, chosen once at construction. a null value keeps pool index 0, which every test gets
     public AuditionTicker(TextWriter output, bool rich, Gatto.Terminal.GlyphSet glyphs,
-        Func<int>? windowWidth = null, Gatto.Repl.Render.PurrFrames? frames = null)
+        Func<int>? windowWidth = null, Gatto.Repl.Render.Chrome.PurrFrames? frames = null)
     {
         _glyphs = glyphs;
-        _frames = frames ?? Gatto.Repl.Render.PurrFrames.Full;
+        _frames = frames ?? Gatto.Repl.Render.Chrome.PurrFrames.Full;
         _tick = new TickLine(output, rich, paint: null, windowWidth);
         //no timer in plain mode, since TickLine.Live does nothing there and the ticks would be wasted work
         if (rich) _timer = new Timer(_ => Repaint(), null, FrameMs, FrameMs);

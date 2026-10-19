@@ -1,5 +1,6 @@
 using System.Linq;
 using System.Text.RegularExpressions;
+using Gatto.Repl.Render.Syntax;
 using Gatto.Terminal;
 
 namespace Gatto.Repl.Render;

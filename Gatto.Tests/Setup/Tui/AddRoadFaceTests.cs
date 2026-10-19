@@ -21,7 +21,7 @@ public class AddRoadFaceTests
     }
 
     //the clock never advances, so WaitForKey must say the key is ready or the wait never ends
-    private sealed class Ready : Gatto.Repl.IPollClock
+    private sealed class Ready : Gatto.Repl.Prompts.IPollClock
     {
         public bool WaitForKey(TimeSpan budget) => true;
         public long ElapsedMs => 0;

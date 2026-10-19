@@ -8,7 +8,6 @@ using Gatto.Core.Home;
 using Gatto.Core.Loop.Permissions;
 using Gatto.Repl;
 using Gatto.Repl.Input;
-using Gatto.Repl.Term;
 using Gatto.Roles;
 using Gatto.Tests.Fakes;
 

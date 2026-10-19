@@ -1,7 +1,8 @@
 using System.Reflection;
 using Gatto.Cli.Setup;
 using Gatto.Cli.Setup.Tui;
-using Gatto.Repl;
+using Gatto.Repl.Prompts;
+using Gatto.Repl.Render.Chrome;
 using Gatto.Terminal;
 using Gatto.Tests.Fakes;
 

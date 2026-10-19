@@ -18,7 +18,7 @@ public class LiveShelfDoorTests
             : throw new InvalidOperationException("the face asked for a key the script does not have");
     }
 
-    private sealed class Ready : Gatto.Repl.IPollClock
+    private sealed class Ready : Gatto.Repl.Prompts.IPollClock
     {
         public bool WaitForKey(TimeSpan budget) => true;
         public long ElapsedMs => 0;

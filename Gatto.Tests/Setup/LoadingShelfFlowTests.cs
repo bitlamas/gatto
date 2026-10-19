@@ -60,7 +60,7 @@ public class LoadingShelfFlowTests
             Assert.False(hub.Returned);
             //the first frame is the start-up screen: the purr, the sentence and the step line, and Esc
             var first = rig.PaintedFrames[0];
-            Assert.Contains(first, r => r.Contains(Gatto.Repl.Cats.Face(Gatto.Terminal.GlyphSet.Unicode)));
+            Assert.Contains(first, r => r.Contains(Gatto.Repl.Render.Chrome.Cats.Face(Gatto.Terminal.GlyphSet.Unicode)));
             Assert.Contains(first, r => r.Contains("please wait while gatto fetches the models from Hugging Face"));
             Assert.Contains(first, r => r.Contains("> asking Hugging Face for"));
             Assert.DoesNotContain(first, r => Families.Load().Ladder.All(f => r.Contains(f)));
@@ -91,7 +91,7 @@ public class LoadingShelfFlowTests
             SetupRunner.Run(new SetupFlow(probes), face, homePath: null, modelSegmentOnly: true);
 
             Assert.False(read);
-            Assert.Contains(rig.PaintedFrames[0], r => r.Contains(Gatto.Repl.Cats.Face(Gatto.Terminal.GlyphSet.Unicode)));
+            Assert.Contains(rig.PaintedFrames[0], r => r.Contains(Gatto.Repl.Render.Chrome.Cats.Face(Gatto.Terminal.GlyphSet.Unicode)));
         }
         finally
         {
@@ -566,7 +566,7 @@ public class LoadingShelfFlowTests
     }
 
     private static int Purrs(IReadOnlyList<string> frame) =>
-        string.Join("\n", frame).Split(Gatto.Repl.Cats.Face(Gatto.Terminal.GlyphSet.Unicode)).Length - 1;
+        string.Join("\n", frame).Split(Gatto.Repl.Render.Chrome.Cats.Face(Gatto.Terminal.GlyphSet.Unicode)).Length - 1;
 
     //the TUI face with the pulse fired after each answer, keeping the frame each tick drew
     private sealed class Pulsing(Gatto.Cli.Setup.Tui.TuiWizardSurface inner, FakePulse pulse) : IWizardSurface

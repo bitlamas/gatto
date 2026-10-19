@@ -1,5 +1,6 @@
 using System.Reflection;
 using Gatto.Repl.Render;
+using Gatto.Repl.Render.Chrome;
 using Gatto.Terminal;
 using Gatto.Tests.Fakes;
 
@@ -45,7 +46,7 @@ public class AsciiReplScreenTests
     private static ChromeBlock Chrome(int width)
     {
         var g = GlyphSet.Ascii;
-        var purr = ChromeTicker.PurrHead(Gatto.Repl.Cats.Face(g), 4200,
+        var purr = ChromeTicker.PurrHead(Gatto.Repl.Render.Chrome.Cats.Face(g), 4200,
             PurrFrames.Short);
         var composer = $"{g.Prompt} a line being typed";
         var status = $"{g.Sharp} generalist {g.Dot} a-model {g.Dot} ctx 12%";

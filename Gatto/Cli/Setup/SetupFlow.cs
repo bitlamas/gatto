@@ -871,7 +871,7 @@ internal sealed class SetupFlow(ISetupProbes probes)
 
     //the cat rows come from Cats.For, the one home for the drawing. the glyph set is a parameter, or a value computed too early draws the Unicode cat
     private static string[] CatOf(Gatto.Terminal.GlyphSet g) =>
-        [.. Gatto.Repl.Cats.For(null, g).Split('\n').Select(l => Gutter + l.TrimEnd('\r'))];
+        [.. Gatto.Repl.Render.Chrome.Cats.For(null, g).Split('\n').Select(l => Gutter + l.TrimEnd('\r'))];
 
     //a two-space gutter for hero rows (the cat is pre-composed, without it it sits two cells left of the rows below)
     private const string Gutter = "  ";
@@ -3137,7 +3137,7 @@ internal sealed class SetupFlow(ISetupProbes probes)
     //reuse the shared family clause. no fit branch here, the local shelf never hides rows for price
     private IReadOnlyList<string> LocalChipEmptyRows(int hiddenByFamily) =>
     [
-        Gatto.Repl.Cats.EmptyOf(Glyphs),
+        Gatto.Repl.Render.Chrome.Cats.EmptyOf(Glyphs),
         "",
         FamilyEmptySentence(_localFamily, heldClause: null, pricedOut: false, hiddenByFamily),
     ];
@@ -3266,7 +3266,7 @@ internal sealed class SetupFlow(ISetupProbes probes)
     //this block renders inside the shelf so the chips row stays above the cat. reuse Shelf.HiddenClause, a second spelling would drift
     private IReadOnlyList<string> ChipEmptyRows() =>
     [
-        Gatto.Repl.Cats.EmptyOf(Glyphs),
+        Gatto.Repl.Render.Chrome.Cats.EmptyOf(Glyphs),
         "",
         ChipSentence(),
     ];
@@ -3297,7 +3297,7 @@ internal sealed class SetupFlow(ISetupProbes probes)
     private IReadOnlyList<string> NothingToShowRows() =>
     [
         "",
-        Gatto.Repl.Cats.EmptyOf(Glyphs),
+        Gatto.Repl.Render.Chrome.Cats.EmptyOf(Glyphs),
         "",
         "nothing to show on this shelf right now",
         $"another family might {Glyphs.Dot} d to search by name",
@@ -3309,7 +3309,7 @@ internal sealed class SetupFlow(ISetupProbes probes)
     private IReadOnlyList<string> SearchEmptyRows() =>
     [
         "",
-        Gatto.Repl.Cats.EmptyOf(Glyphs),
+        Gatto.Repl.Render.Chrome.Cats.EmptyOf(Glyphs),
         "",
         SearchSentence(),
         //the ways forward are things the door does, which is why it keeps the focus and the typed word
@@ -3368,7 +3368,7 @@ internal sealed class SetupFlow(ISetupProbes probes)
     //list the sweep's own roots, a re-derived list would describe a sweep nobody made
     private IReadOnlyList<string> EmptyLocalRows() =>
     [
-        Gatto.Repl.Cats.EmptyOf(Glyphs),
+        Gatto.Repl.Render.Chrome.Cats.EmptyOf(Glyphs),
         "",
         //a typed folder can be empty on a machine that has models
         _scanTyped is null

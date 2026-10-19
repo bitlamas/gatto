@@ -1,5 +1,5 @@
 using Gatto.Core.Acquire;
-using Gatto.Repl.Render;
+using Gatto.Repl.Render.Chrome;
 using Gatto.Terminal;
 
 namespace Gatto.Cli.Setup;
@@ -63,11 +63,11 @@ internal static class Widget
     //pick the frame set by how long the wait can run (a download can go for hours)
     internal static string Purr(long elapsedMs, PurrFrames frames,
         Gatto.Terminal.GlyphSet? glyphs) =>
-        ChromeTicker.PurrHead(Gatto.Repl.Cats.Face(glyphs), Math.Max(0, elapsedMs), frames);
+        ChromeTicker.PurrHead(Gatto.Repl.Render.Chrome.Cats.Face(glyphs), Math.Max(0, elapsedMs), frames);
 
     //the purr in the past tense, spelled by ChromeTicker.FormatElapsed like the REPL (no token tail, a download has no tokens)
     internal static string Settled(long elapsedMs, Gatto.Terminal.GlyphSet? glyphs) =>
-        Gatto.Repl.Cats.Face(glyphs) + " purred for "
+        Gatto.Repl.Render.Chrome.Cats.Face(glyphs) + " purred for "
         + ChromeTicker.FormatElapsed(Math.Max(0, elapsedMs));
 
 //on the drop screen the fetch has already stopped, so Esc only costs the bytes

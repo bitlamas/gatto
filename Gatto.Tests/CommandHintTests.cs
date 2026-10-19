@@ -1,7 +1,7 @@
 using System.Collections.Generic;
 using System.Linq;
-using Gatto.Repl;
 using Xunit;
+using Gatto.Repl.Commands;
 
 namespace Gatto.Tests;
 

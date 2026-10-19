@@ -8,9 +8,12 @@ using Gatto.Core.Loop.Permissions;
 using Gatto.Core.Memory;
 using Gatto.Core.Session;
 using Gatto.Core.Tools;
+using Gatto.Repl.Commands;
 using Gatto.Repl.Input;
+using Gatto.Repl.Prompts;
 using Gatto.Repl.Render;
-using Gatto.Repl.Term;
+using Gatto.Repl.Render.Chrome;
+using Gatto.Repl.Render.Pointer;
 using Gatto.Terminal;
 
 namespace Gatto.Repl;
@@ -172,7 +175,7 @@ public sealed class Repl(
     //the glyph set this run speaks, resolved once in Cli and handed down so two painters cannot disagree about the host. null means the Unicode set
     Gatto.Terminal.GlyphSet? glyphs = null,
     //the purr set this session draws each turn, null meaning pool index 0. the draw happens in GattoApp, so no golden depends on a coin toss
-    Func<Render.PurrFrames>? purrSet = null,
+    Func<Render.Chrome.PurrFrames>? purrSet = null,
     //the window title's deed, injectable so the title moment is testable without the real console. null keeps the alt screen's own default
     Gatto.Terminal.ITerminalTitle? terminalTitle = null,
     //null unless gatto reads the console itself, the only reader whose record count shows the tracer arriving
@@ -2259,7 +2262,7 @@ public sealed class Repl(
         object gate, ChromePainter painter, ChromeTicker ticker, Func<StreamRenderer> renderer,
         IReadOnlyList<string> queued, IReadOnlyList<string> userLines, string kaomoji,
         IReadOnlyList<SlashCommands.Cmd> known, Func<Task<bool>> body,
-        long promptEstimate = 0, Func<Render.PurrFrames>? purrSet = null, string? classifyAs = null)
+        long promptEstimate = 0, Func<Render.Chrome.PurrFrames>? purrSet = null, string? classifyAs = null)
     {
         lock (gate)
         {
@@ -2270,7 +2273,7 @@ public sealed class Repl(
             if (SlashCommands.ReachesModel(classifyAs ?? string.Join("\n", userLines), known))
                 //the purr is drawn once per turn, the accordion must not change word mid-breath. the chooser is injected, a session without one draws the same frames
                 ticker.StartTurn(kaomoji, promptEstimate,
-                    purrSet is null ? Render.PurrFrames.Full : purrSet());
+                    purrSet is null ? Render.Chrome.PurrFrames.Full : purrSet());
         }
         try { return await body(); }
         finally

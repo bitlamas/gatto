@@ -4,7 +4,7 @@ using Gatto.Core.Client;
 using Gatto.Core.Tools;
 using Gatto.Repl.Input;
 using Gatto.Repl.Render;
-using Gatto.Repl.Term;
+using Gatto.Repl.Render.Chrome;
 using Gatto.Terminal;
 using Gatto.Tests.Fakes;
 using KeyDisposition = Gatto.Terminal.KeyDisposition;
@@ -243,7 +243,7 @@ public class AwaySnapTests : IDisposable
         var hooks = new Gatto.Core.Loop.HookBus();
         var chrome = new ChromeHandle();
         var h = new RichReplHarness(_cwd, width: 60, height: 30, mouseEnabled: true, modeControl: new FakeConsoleModeControl(), tools: reg, hooks: hooks, chrome: chrome);
-        var prompter = new Gatto.Repl.RichPermissionPrompter(h.Surface, new Theme(new TermCaps(true, true)), h.Keys, h.Pump, chrome);
+        var prompter = new Gatto.Repl.Prompts.RichPermissionPrompter(h.Surface, new Theme(new TermCaps(true, true)), h.Keys, h.Pump, chrome);
         var gate = new Gatto.Core.Loop.Permissions.PermissionGate(Gatto.Core.Loop.Permissions.PermissionStore.InMemory(_cwd), prompter, autoYes: false);
         gate.AllowReadClass("wait");   //the gate asks for every other tool, and only the guarded one may open the prompt
         hooks.On(Gatto.Core.Loop.HookEvent.ToolCall, gate.CheckAsync);

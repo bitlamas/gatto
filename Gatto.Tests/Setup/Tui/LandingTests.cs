@@ -283,7 +283,7 @@ public class LandingTests
         flow.StartPastEngine();
         var empty = Assert.IsType<WizardScreen.Choice>(flow.Answer(ShelfControls.SourceAnswer()));
 
-        Assert.Contains(Gatto.Repl.Cats.EmptyOf(glyphs: GlyphSet.Unicode), empty.Shelf!.Empty!);
+        Assert.Contains(Gatto.Repl.Render.Chrome.Cats.EmptyOf(glyphs: GlyphSet.Unicode), empty.Shelf!.Empty!);
     }
 
     //the folder door says Enter look, since the hint is data on each door and the corpus has three that differ

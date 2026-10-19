@@ -18,7 +18,7 @@ public class AskEscChordTests
     }
 
     //it always reports a key waiting, so the script alone drives the run, since a hang would name no screen
-    private sealed class Ready : Gatto.Repl.IPollClock
+    private sealed class Ready : Gatto.Repl.Prompts.IPollClock
     {
         public bool KeyAvailable => true;
         public bool WaitForKey(TimeSpan _) => true;

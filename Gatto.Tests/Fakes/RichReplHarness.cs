@@ -5,6 +5,7 @@ using Gatto.Core.Loop;
 using Gatto.Core.Session;
 using Gatto.Core.Tools;
 using Gatto.Repl;
+using Gatto.Repl.Prompts;
 using Gatto.Terminal;
 
 namespace Gatto.Tests.Fakes;
@@ -142,7 +143,7 @@ public sealed class RichReplHarness
         //what /context counts, absent unless a test hands it in, as a session without it reports the figures unavailable
         Func<ContextUsageState, ContextInputs>? contextInputs = null,
         //the hooks the loop runs and the handle a prompt draws through, absent unless a test wires a real prompter, as the interactive entry does
-        HookBus? hooks = null, Gatto.Repl.Render.ChromeHandle? chrome = null,
+        HookBus? hooks = null, Gatto.Repl.Render.Chrome.ChromeHandle? chrome = null,
         //the commands extensions registered, absent unless a test hands a registry in, as a home with no extension has none
         Gatto.Core.Commands.CommandRegistry? commands = null,
         //the warnings the launch raised before the banner, absent unless a test hands them in, as a clean launch raises none

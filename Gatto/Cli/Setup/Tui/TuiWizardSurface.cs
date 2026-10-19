@@ -1,7 +1,8 @@
 using Gatto.Core.Acquire;
 using Gatto.Repl;
 using Gatto.Repl.Input;
-using Gatto.Repl.Render;
+using Gatto.Repl.Prompts;
+using Gatto.Repl.Render.Chrome;
 using Gatto.Terminal;
 
 namespace Gatto.Cli.Setup.Tui;
@@ -30,7 +31,7 @@ internal sealed class TuiWizardSurface : IWizardSurface, IDisposable
         Func<long>? nowMs = null, Func<bool, IPollClock>? clock = null,
         Func<IPurrPulse>? pulse = null,
         GlyphSet? glyphs = null,
-        Gatto.Repl.Render.PurrFrames? fullPurr = null,
+        Gatto.Repl.Render.Chrome.PurrFrames? fullPurr = null,
         string command = ScreenPainter.DefaultCommand, int doubleClickMs = DefaultDoubleClickMs)
         : this(surface, new KeyInputSource(keys), theme, version, build, nowMs, clock, pulse, glyphs, fullPurr, command,
             doubleClickMs) { }
@@ -43,13 +44,13 @@ internal sealed class TuiWizardSurface : IWizardSurface, IDisposable
         Func<long>? nowMs = null, Func<bool, IPollClock>? clock = null,
         Func<IPurrPulse>? pulse = null,
         GlyphSet? glyphs = null,
-        Gatto.Repl.Render.PurrFrames? fullPurr = null,
+        Gatto.Repl.Render.Chrome.PurrFrames? fullPurr = null,
         string command = ScreenPainter.DefaultCommand, int doubleClickMs = DefaultDoubleClickMs)
     {
         _command = command;
         _doubleClickMs = doubleClickMs;
         //the purr is chosen once when the face is built, and null keeps the frame every golden pins
-        _fullPurr = fullPurr ?? Gatto.Repl.Render.PurrFrames.Full;
+        _fullPurr = fullPurr ?? Gatto.Repl.Render.Chrome.PurrFrames.Full;
         //the set is handed in rather than read from a static, and the Unicode default keeps every call site and golden unchanged
         _glyphs = glyphs ?? GlyphSet.Unicode;
         _pulse = pulse;
@@ -71,7 +72,7 @@ internal sealed class TuiWizardSurface : IWizardSurface, IDisposable
     private readonly GlyphSet _glyphs;
 
     //the full purr for this face, chosen once. the short set stays the same for hours, so only the check's set varies
-    private readonly Gatto.Repl.Render.PurrFrames _fullPurr;
+    private readonly Gatto.Repl.Render.Chrome.PurrFrames _fullPurr;
 
     //the set this face speaks, for the runner to hand the flow (it holds a face and a flow at once)
     public GlyphSet Glyphs => _glyphs;

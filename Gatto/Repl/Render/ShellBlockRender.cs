@@ -2,6 +2,7 @@ using System.Globalization;
 using Gatto.Core;
 using Gatto.Core.Tools;
 using Gatto.Repl.Input;
+using Gatto.Repl.Render.Syntax;
 using Gatto.Terminal;
 
 namespace Gatto.Repl.Render;

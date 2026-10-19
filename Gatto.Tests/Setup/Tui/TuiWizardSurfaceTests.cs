@@ -31,7 +31,7 @@ public class TuiWizardSurfaceTests
     private const string Build = "1a2b3c4";
 
     //an armed chord waits out its remainder, so the clock has to be eager or a chord armed by Esc waits forever
-    private sealed class Ready : Gatto.Repl.IPollClock
+    private sealed class Ready : Gatto.Repl.Prompts.IPollClock
     {
         public bool WaitForKey(TimeSpan budget) => true;
         public long ElapsedMs => 0;
@@ -168,9 +168,9 @@ public class TuiWizardSurfaceTests
     {
         private long _t;
         public long Now() => _t;
-        public Gatto.Repl.IPollClock Clock(bool isWatch) => new Advancing(this);
+        public Gatto.Repl.Prompts.IPollClock Clock(bool isWatch) => new Advancing(this);
 
-        private sealed class Advancing(AdvancingClock c) : Gatto.Repl.IPollClock
+        private sealed class Advancing(AdvancingClock c) : Gatto.Repl.Prompts.IPollClock
         {
             public bool WaitForKey(TimeSpan budget)
             {

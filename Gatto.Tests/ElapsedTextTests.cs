@@ -1,5 +1,6 @@
 using Gatto.Core;
 using Gatto.Repl.Render;
+using Gatto.Repl.Render.Chrome;
 using Gatto.Roles.Agents;
 using Gatto.Roles.Serve;
 

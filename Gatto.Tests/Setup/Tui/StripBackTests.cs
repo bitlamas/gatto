@@ -87,7 +87,7 @@ public class StripBackTests
         { Strip = Road, AllowBack = true };
 
     //a watching screen needs a clock, without one the face waits on a console that isn't there and the run hangs
-    private sealed class Ready : Gatto.Repl.IPollClock
+    private sealed class Ready : Gatto.Repl.Prompts.IPollClock
     {
         public bool WaitForKey(TimeSpan budget) => true;
         public long ElapsedMs => 0;

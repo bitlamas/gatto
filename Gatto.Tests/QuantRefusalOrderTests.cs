@@ -1,5 +1,5 @@
 using Gatto.Cli;
-using Gatto.Repl;
+using Gatto.Repl.Prompts;
 using Gatto.Roles.Models;
 
 namespace Gatto.Tests;

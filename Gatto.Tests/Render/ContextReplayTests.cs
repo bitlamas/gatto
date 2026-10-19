@@ -29,7 +29,7 @@ public class ContextReplayTests
     }
 
     private static CommandEchoItem Committed(int width) =>
-        new([.. Gatto.Repl.ContextReport.Rows(Figures, width, T, U).Select(r => r.Rendered)], null) { Context = Figures };
+        new([.. Gatto.Repl.Commands.ContextReport.Rows(Figures, width, T, U).Select(r => r.Rendered)], null) { Context = Figures };
 
     [Fact]
     public void The_figures_survive_the_session_file()
