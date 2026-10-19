@@ -414,7 +414,7 @@ public sealed record CommandEchoItem(IReadOnlyList<string> LogicalRows, ChatMess
         DimText is { } text
             ? SoftWrap.Wrap(TermText.Sanitize(text), width, width).Select(s => theme.Paint(s.Text, Theme.Dim)).ToList()
             : Context is { } figures
-                ? [.. Gatto.Repl.Commands.ContextReport.Unhung(figures, width, theme, glyphs ?? GlyphSet.Unicode).Select(r => GutterWrap.Hang + r)]
+                ? [.. Gatto.Repl.Render.ContextReport.Unhung(figures, width, theme, glyphs ?? GlyphSet.Unicode).Select(r => GutterWrap.Hang + r)]
                 : ItemRender.Verbatim(LogicalRows, width);
 
     protected override IReadOnlyList<RowWrap> RowWrapsBody(int width, Theme theme, GlyphSet? glyphs) =>

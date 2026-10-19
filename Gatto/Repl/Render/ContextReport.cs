@@ -2,7 +2,7 @@ using System.Globalization;
 using Gatto.Core.Loop;
 using Gatto.Terminal;
 
-namespace Gatto.Repl.Commands;
+namespace Gatto.Repl.Render;
 
 //the /context screen: a header, the source of the counts, one bar of the window by group, the auto-compaction mark, a table of every part and the cache line
 public static class ContextReport

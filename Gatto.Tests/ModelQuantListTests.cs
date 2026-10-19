@@ -12,7 +12,7 @@ public class ModelQuantListTests
     [Fact]
     public void THE_FILE_IN_USE_IS_MARKED_AND_NAMED()
     {
-        var text = Gatto.Repl.Repl.QuantLines(Files(("Q4_K_M", true), ("Q6_K", false)), glyphs: GlyphSet.Unicode);
+        var text = Gatto.Repl.Commands.CommandText.QuantLines(Files(("Q4_K_M", true), ("Q6_K", false)), glyphs: GlyphSet.Unicode);
 
         Assert.Contains("● Q4_K_M   in use", text, StringComparison.Ordinal);
         Assert.Contains("Q6_K", text, StringComparison.Ordinal);
@@ -24,8 +24,8 @@ public class ModelQuantListTests
     [Fact]
     public void THE_SWITCH_HINT_APPEARS_ONLY_WHEN_THERE_IS_A_CHOICE()
     {
-        var several = Gatto.Repl.Repl.QuantLines(Files(("Q4_K_M", true), ("Q6_K", false)), glyphs: GlyphSet.Unicode);
-        var one = Gatto.Repl.Repl.QuantLines(Files(("Q4_K_M", true)), glyphs: GlyphSet.Unicode);
+        var several = Gatto.Repl.Commands.CommandText.QuantLines(Files(("Q4_K_M", true), ("Q6_K", false)), glyphs: GlyphSet.Unicode);
+        var one = Gatto.Repl.Commands.CommandText.QuantLines(Files(("Q4_K_M", true)), glyphs: GlyphSet.Unicode);
 
         Assert.Contains("/model quant <name>", several, StringComparison.Ordinal);
         Assert.DoesNotContain("/model quant <name>", one, StringComparison.Ordinal);
@@ -36,7 +36,7 @@ public class ModelQuantListTests
     [Fact]
     public void A_SESSION_WITH_NO_PROFILE_SAYS_SO_RATHER_THAN_REPORTING_NOTHING()
     {
-        var text = Gatto.Repl.Repl.QuantLines(null, glyphs: GlyphSet.Unicode);
+        var text = Gatto.Repl.Commands.CommandText.QuantLines(null, glyphs: GlyphSet.Unicode);
 
         Assert.Contains("no model profile", text, StringComparison.Ordinal);
         Assert.DoesNotContain("names no files", text, StringComparison.Ordinal);
@@ -46,17 +46,17 @@ public class ModelQuantListTests
     [Fact]
     public void AND_AN_EMPTY_LIST_IS_A_DIFFERENT_SENTENCE()
     {
-        var text = Gatto.Repl.Repl.QuantLines(Files(), glyphs: GlyphSet.Unicode);
+        var text = Gatto.Repl.Commands.CommandText.QuantLines(Files(), glyphs: GlyphSet.Unicode);
 
         Assert.Contains("names no files", text, StringComparison.Ordinal);
-        Assert.NotEqual(Gatto.Repl.Repl.QuantLines(null, glyphs: GlyphSet.Unicode), text);
+        Assert.NotEqual(Gatto.Repl.Commands.CommandText.QuantLines(null, glyphs: GlyphSet.Unicode), text);
     }
 
     //the hint and the dispatch read one const, so the hint can't spell a verb the command rejects
     [Fact]
     public void THE_HINT_SPELLS_THE_VERB_THE_DISPATCH_LISTENS_FOR()
     {
-        var text = Gatto.Repl.Repl.QuantLines(Files(("Q4_K_M", true), ("Q6_K", false)), glyphs: GlyphSet.Unicode);
+        var text = Gatto.Repl.Commands.CommandText.QuantLines(Files(("Q4_K_M", true), ("Q6_K", false)), glyphs: GlyphSet.Unicode);
 
         Assert.Contains("/model " + Gatto.Repl.Repl.QuantArg + " ", text, StringComparison.Ordinal);
     }

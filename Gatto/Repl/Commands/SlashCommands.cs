@@ -14,7 +14,7 @@ public static class SlashCommands
     {
         var trimmed = input.Trim();
         foreach (var cmd in known)
-            if (Repl.TryMatchCommand(trimmed, cmd.Name, out _)) return cmd.ReachesModel;
+            if (SlashGate.TryMatchCommand(trimmed, cmd.Name, out _)) return cmd.ReachesModel;
         //default true so ordinary text purrs, and a command missing its row shows a spinner rather than going silent
         return true;
     }
@@ -24,7 +24,7 @@ public static class SlashCommands
     {
         var trimmed = input.Trim();
         foreach (var cmd in All)
-            if (Repl.TryMatchCommand(trimmed, cmd.Name, out var arg))
+            if (SlashGate.TryMatchCommand(trimmed, cmd.Name, out var arg))
                 return cmd.Name == "/permissions" ? arg.Trim() is "" or "all" : cmd.BypassesQueue;
         return false;
     }

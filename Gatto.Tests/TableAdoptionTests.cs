@@ -63,7 +63,7 @@ public class TableAdoptionTests
     public void ToolsListIsTwoColumns_OriginTrailsInlineNotInAColumn()
     {
         //origin goes inline in parentheses, since a third column is as wide as the longest origin and detaches the value from its row
-        var spec = Gatto.Repl.Repl.ToolsSpec(new[]
+        var spec = Gatto.Repl.Commands.CommandText.ToolsSpec(new[]
         {
             new ToolInfo("read_file", "Read a file from disk", null),
             new ToolInfo("ask_user", "Ask the user a question", "ask_user"),

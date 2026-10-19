@@ -19,7 +19,7 @@ public class SafeCommandTests
         h.Keys.Line("/safe").Line("/quit");
         await h.RunAsync();
 
-        Assert.True(h.Saw(Gatto.Repl.Repl.WildLine(false, null)), h.Written());
+        Assert.True(h.Saw(Gatto.Repl.Commands.CommandText.WildLine(false, null)), h.Written());
         Assert.False(wild.On);
         Assert.DoesNotContain("wild", TopRule(h), StringComparison.Ordinal);
     }
@@ -28,8 +28,8 @@ public class SafeCommandTests
     public void THE_WILD_LINES_NAME_THE_PROMPTS_ALONE()
     {
         Assert.Equal("wild mode on — permission prompts are OFF for this session  " + Gatto.Terminal.GlyphSet.Unicode.Wild,
-            Gatto.Repl.Repl.WildLine(true, Gatto.Terminal.GlyphSet.Unicode));
-        Assert.Equal("wild mode off — permission prompts are back on", Gatto.Repl.Repl.WildLine(false, null));
+            Gatto.Repl.Commands.CommandText.WildLine(true, Gatto.Terminal.GlyphSet.Unicode));
+        Assert.Equal("wild mode off — permission prompts are back on", Gatto.Repl.Commands.CommandText.WildLine(false, null));
     }
 
     [Fact]
@@ -80,7 +80,7 @@ public class SafeCommandTests
         h.Keys.Line("/wild never").Line("/quit");
         await h.RunAsync();
 
-        Assert.True(h.Saw(Gatto.Repl.Repl.WildLine(false, null)), h.Written());
+        Assert.True(h.Saw(Gatto.Repl.Commands.CommandText.WildLine(false, null)), h.Written());
         Assert.False(h.Saw("on again next launch"), h.Written());
     }
 
@@ -112,7 +112,7 @@ public class SafeCommandTests
         h.Keys.Line("/wild never").Line("/quit");
         await h.RunAsync();
 
-        Assert.True(h.Saw(Gatto.Repl.Repl.WildLine(false, null)), h.Written());
+        Assert.True(h.Saw(Gatto.Repl.Commands.CommandText.WildLine(false, null)), h.Written());
         Assert.False(h.Saw("persistence removed"), h.Written());
     }
 

@@ -1,5 +1,6 @@
 using Gatto.Core.Loop;
 using Gatto.Repl.Commands;
+using Gatto.Repl.Render;
 using Gatto.Terminal;
 
 namespace Gatto.Tests;

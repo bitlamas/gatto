@@ -195,7 +195,7 @@ public class ReplWildTests : IDisposable
 
         var (output, w) = RunWild("/safe\n/quit\n", wild, store);
 
-        Assert.Contains(Gatto.Repl.Repl.WildLine(false, null), output, StringComparison.Ordinal);
+        Assert.Contains(Gatto.Repl.Commands.CommandText.WildLine(false, null), output, StringComparison.Ordinal);
         Assert.False(w.On);
         Assert.False(File.Exists(PermissionsPath));
     }
@@ -568,35 +568,35 @@ public class TryMatchCommandTests
     [Fact]
     public void BareCommand_ExactMatch_ReturnsTrue_EmptyArg()
     {
-        Assert.True(Gatto.Repl.Repl.TryMatchCommand("/wild", "/wild", out var arg));
+        Assert.True(Gatto.Repl.Commands.SlashGate.TryMatchCommand("/wild", "/wild", out var arg));
         Assert.Equal("", arg);
     }
 
     [Fact]
     public void CommandWithArgument_ReturnsTrue_TrimmedArg()
     {
-        Assert.True(Gatto.Repl.Repl.TryMatchCommand("/wild always", "/wild", out var arg));
+        Assert.True(Gatto.Repl.Commands.SlashGate.TryMatchCommand("/wild always", "/wild", out var arg));
         Assert.Equal("always", arg);
     }
 
     [Fact]
     public void CommandWithExtraLeadingSpacesBeforeArgument_TrimsThemOff()
     {
-        Assert.True(Gatto.Repl.Repl.TryMatchCommand("/wild   always", "/wild", out var arg));
+        Assert.True(Gatto.Repl.Commands.SlashGate.TryMatchCommand("/wild   always", "/wild", out var arg));
         Assert.Equal("always", arg);
     }
 
     [Fact]
     public void CommandWithTrailingSpaceOnly_ReturnsTrue_EmptyArg()
     {
-        Assert.True(Gatto.Repl.Repl.TryMatchCommand("/wild ", "/wild", out var arg));
+        Assert.True(Gatto.Repl.Commands.SlashGate.TryMatchCommand("/wild ", "/wild", out var arg));
         Assert.Equal("", arg);
     }
 
     [Fact]
     public void MultiWordArgument_IsPreservedAndTrimmed()
     {
-        Assert.True(Gatto.Repl.Repl.TryMatchCommand("/permissions revoke 2", "/permissions", out var arg));
+        Assert.True(Gatto.Repl.Commands.SlashGate.TryMatchCommand("/permissions revoke 2", "/permissions", out var arg));
         Assert.Equal("revoke 2", arg);
     }
 
@@ -604,20 +604,20 @@ public class TryMatchCommandTests
     public void NameWithNoSpaceBoundary_DoesNotMatch_LongerCommandIsNotAPrefixHit()
     {
         //the character after the name must be a space, so /wildcard never matches /wild
-        Assert.False(Gatto.Repl.Repl.TryMatchCommand("/wildcard", "/wild", out _));
+        Assert.False(Gatto.Repl.Commands.SlashGate.TryMatchCommand("/wildcard", "/wild", out _));
     }
 
     [Fact]
     public void UnrelatedCommand_DoesNotMatch()
     {
-        Assert.False(Gatto.Repl.Repl.TryMatchCommand("/model", "/wild", out _));
-        Assert.False(Gatto.Repl.Repl.TryMatchCommand("/permissions", "/wild", out _));
+        Assert.False(Gatto.Repl.Commands.SlashGate.TryMatchCommand("/model", "/wild", out _));
+        Assert.False(Gatto.Repl.Commands.SlashGate.TryMatchCommand("/permissions", "/wild", out _));
     }
 
     [Fact]
     public void EmptyLine_DoesNotMatch()
     {
-        Assert.False(Gatto.Repl.Repl.TryMatchCommand("", "/wild", out var arg));
+        Assert.False(Gatto.Repl.Commands.SlashGate.TryMatchCommand("", "/wild", out var arg));
         Assert.Equal("", arg);
     }
 
@@ -625,8 +625,8 @@ public class TryMatchCommandTests
     public void BothWildAndPermissions_ParseIdentically_ForTheSameShapeOfInput()
     {
         //both names go through one matcher, so no per-command special case can drift
-        Assert.True(Gatto.Repl.Repl.TryMatchCommand("/wild never", "/wild", out var wildArg));
-        Assert.True(Gatto.Repl.Repl.TryMatchCommand("/permissions revoke 1", "/permissions", out var permArg));
+        Assert.True(Gatto.Repl.Commands.SlashGate.TryMatchCommand("/wild never", "/wild", out var wildArg));
+        Assert.True(Gatto.Repl.Commands.SlashGate.TryMatchCommand("/permissions revoke 1", "/permissions", out var permArg));
         Assert.Equal("never", wildArg);
         Assert.Equal("revoke 1", permArg);
     }
@@ -671,7 +671,7 @@ public class ReplRememberTests : IDisposable
 
         Assert.Single(client.Requests);
         var sent = client.Requests[0].Messages.Single(m => m.Role == "user");
-        Assert.Equal(Gatto.Repl.Repl.RememberPrompt("what we just figured out about the slots poll"), sent.Content);
+        Assert.Equal(Gatto.Repl.Commands.CommandText.RememberPrompt("what we just figured out about the slots poll"), sent.Content);
     }
 
     [Fact]
@@ -706,7 +706,7 @@ public class ReplRememberTests : IDisposable
     public void RememberPrompt_NamesTheToolAndAsksForASlug_TextRidesVerbatim()
     {
         //the prompt asks for a slug (reusing one for a revision) and the operator's text rides verbatim at the end
-        var prompt = Gatto.Repl.Repl.RememberPrompt("a raw <verbatim> string, untouched by the harness");
+        var prompt = Gatto.Repl.Commands.CommandText.RememberPrompt("a raw <verbatim> string, untouched by the harness");
 
         Assert.Contains("memory_write", prompt, StringComparison.Ordinal);
         Assert.Contains("slug", prompt, StringComparison.Ordinal);
@@ -1470,7 +1470,7 @@ public class ReplEffortSlashTests : IDisposable
         var output = await Feed(repl, "/effort");
 
         Assert.False(opened, "a plain terminal must never open the picker");
-        Assert.Contains(Gatto.Repl.Repl.EffortUsage("medium", isToggle: false, unavailable: false), output);
+        Assert.Contains(Gatto.Repl.Commands.CommandText.EffortUsage("medium", isToggle: false, unavailable: false), output);
     }
 
     [Fact]
@@ -1480,7 +1480,7 @@ public class ReplEffortSlashTests : IDisposable
 
         var output = await Feed(repl, "/effort");
 
-        Assert.Contains(Gatto.Repl.Repl.EffortUsage(null, isToggle: false, unavailable: false), output);
+        Assert.Contains(Gatto.Repl.Commands.CommandText.EffortUsage(null, isToggle: false, unavailable: false), output);
     }
 
     private sealed class RecordingPicker(Action onPick) : IListPicker
@@ -1507,7 +1507,7 @@ public class InterpretEffortPick_Tests
     [Fact]
     public void ENTER_ON_A_ROW_PERSISTS_THAT_ROWS_LEVEL()
     {
-        var r = Gatto.Repl.Repl.InterpretEffortPick(Items, new PickOutcome.Picked(2));
+        var r = Gatto.Repl.Commands.CommandText.InterpretEffortPick(Items, new PickOutcome.Picked(2));
 
         Assert.Equal(("xhigh", true), r);
     }
@@ -1515,7 +1515,7 @@ public class InterpretEffortPick_Tests
     [Fact]
     public void THE_S_KEY_ON_A_ROW_APPLIES_THAT_ROWS_LEVEL_WITHOUT_PERSISTING()
     {
-        var r = Gatto.Repl.Repl.InterpretEffortPick(Items, new PickOutcome.Control('s', 0));
+        var r = Gatto.Repl.Commands.CommandText.InterpretEffortPick(Items, new PickOutcome.Control('s', 0));
 
         Assert.Equal(("low", false), r);
     }
@@ -1524,8 +1524,8 @@ public class InterpretEffortPick_Tests
     [Fact]
     public void ENTER_AND_S_ON_THE_SAME_ROW_AGREE_ON_THE_LEVEL_AND_DISAGREE_ONLY_ON_PERSIST()
     {
-        var enter = Gatto.Repl.Repl.InterpretEffortPick(Items, new PickOutcome.Picked(1));
-        var s = Gatto.Repl.Repl.InterpretEffortPick(Items, new PickOutcome.Control('s', 1));
+        var enter = Gatto.Repl.Commands.CommandText.InterpretEffortPick(Items, new PickOutcome.Picked(1));
+        var s = Gatto.Repl.Commands.CommandText.InterpretEffortPick(Items, new PickOutcome.Control('s', 1));
 
         Assert.Equal("medium", enter!.Value.LevelArg);
         Assert.Equal("medium", s!.Value.LevelArg);
@@ -1536,14 +1536,14 @@ public class InterpretEffortPick_Tests
     [Fact]
     public void CANCELLED_IS_NULL_NOTHING_TO_APPLY()
     {
-        Assert.Null(Gatto.Repl.Repl.InterpretEffortPick(Items, new PickOutcome.Cancelled()));
+        Assert.Null(Gatto.Repl.Commands.CommandText.InterpretEffortPick(Items, new PickOutcome.Cancelled()));
     }
 
     //the picker never reports an out-of-list row, so a bogus one counts as a cancel
     [Fact]
     public void AN_S_KEY_OUTSIDE_THE_LIST_IS_TREATED_AS_A_CANCEL()
     {
-        Assert.Null(Gatto.Repl.Repl.InterpretEffortPick(Items, new PickOutcome.Control('s', 99)));
-        Assert.Null(Gatto.Repl.Repl.InterpretEffortPick(Items, new PickOutcome.Control('s', -1)));
+        Assert.Null(Gatto.Repl.Commands.CommandText.InterpretEffortPick(Items, new PickOutcome.Control('s', 99)));
+        Assert.Null(Gatto.Repl.Commands.CommandText.InterpretEffortPick(Items, new PickOutcome.Control('s', -1)));
     }
 }

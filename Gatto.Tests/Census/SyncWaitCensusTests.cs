@@ -31,7 +31,7 @@ public class SyncWaitCensusTests
         ["Gatto/Core/Acquire/TokenizerMemory.cs"] = 2,
         ["Gatto/Core/Hardware/HardwareProbe.cs"] = 3,
         ["Gatto/Extensions/ExtensionHost.cs"] = 1,
-        ["Gatto/Repl/Repl.cs"] = 1,
+        ["Gatto/Repl/DispatchQueue.cs"] = 1,
     };
 
     //text can't see the receiver's type, so each .Result read here names its record and its own ceiling

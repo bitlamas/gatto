@@ -22,7 +22,7 @@ public class ReplToolsListTests
             new ToolInfo("web_search", "search", "web_search"),
         };
 
-        var text = Gatto.Repl.Repl.RenderToolsListFor(tools, new[] { ("ask_user", "stop and ask") }, Plain, width: 100, glyphs: GlyphSet.Unicode);
+        var text = Gatto.Repl.Commands.CommandText.RenderToolsListFor(tools, new[] { ("ask_user", "stop and ask") }, Plain, width: 100, glyphs: GlyphSet.Unicode);
 
         var rows = text.Split('\n');
         var askRow = Array.FindIndex(rows, r => r.Contains("ask_user", StringComparison.Ordinal));
@@ -44,7 +44,7 @@ public class ReplToolsListTests
             new ToolInfo("web_search", "search", "web_search"),
         };
 
-        var text = Gatto.Repl.Repl.RenderToolsListFor(tools, new[] { ("web_search", "cite what you fetch") }, Plain, 100, glyphs: GlyphSet.Unicode);
+        var text = Gatto.Repl.Commands.CommandText.RenderToolsListFor(tools, new[] { ("web_search", "cite what you fetch") }, Plain, 100, glyphs: GlyphSet.Unicode);
 
         var rows = text.Split('\n');
         Assert.Equal(1, rows.Count(r => r.Contains("Policy:", StringComparison.Ordinal)));
@@ -59,7 +59,7 @@ public class ReplToolsListTests
     [Fact]
     public void A_description_promising_a_list_folds_the_keys_inline()
     {
-        var text = Gatto.Repl.Repl.RenderToolsListFor(
+        var text = Gatto.Repl.Commands.CommandText.RenderToolsListFor(
             new[] { new ToolInfo("run_agent",
                 "Run a named subagent on a task. Available agents:\n"
                 + "- code-review: reviews a diff\n- spec-review: reviews a spec", null) },
@@ -73,7 +73,7 @@ public class ReplToolsListTests
     [Fact]
     public void A_colon_with_nothing_under_it_loses_the_colon_rather_than_dangling()
     {
-        var text = Gatto.Repl.Repl.RenderToolsListFor(
+        var text = Gatto.Repl.Commands.CommandText.RenderToolsListFor(
             new[] { new ToolInfo("odd", "Does a thing. Available agents:\nnot a bulleted list", null) },
             NoPolicy, Plain, 200, glyphs: GlyphSet.Unicode);
 
@@ -85,7 +85,7 @@ public class ReplToolsListTests
     public void An_ordinary_multiline_description_still_shows_its_first_line_only()
     {
         //an ordinary multi-line description must not fold, otherwise a fold on every multi-line description would pass
-        var text = Gatto.Repl.Repl.RenderToolsListFor(
+        var text = Gatto.Repl.Commands.CommandText.RenderToolsListFor(
             new[] { new ToolInfo("plain", "The first line.\n- second: line", null) },
             NoPolicy, Plain, 200, glyphs: GlyphSet.Unicode);
 
@@ -96,7 +96,7 @@ public class ReplToolsListTests
     [Fact]
     public void A_builtin_never_gets_a_policy_row()
     {
-        var text = Gatto.Repl.Repl.RenderToolsListFor(
+        var text = Gatto.Repl.Commands.CommandText.RenderToolsListFor(
             new[] { new ToolInfo("read_file", "read a file", null) }, NoPolicy, Plain, 100, glyphs: GlyphSet.Unicode);
 
         Assert.DoesNotContain("Policy:", text, StringComparison.Ordinal);
@@ -106,7 +106,7 @@ public class ReplToolsListTests
     public void A_policy_line_naming_a_builtin_is_not_rendered_under_it()
     {
         //a policy line is keyed by extension name, and a built-in has no origin. a colliding key must find no group and render as its own row.
-        var text = Gatto.Repl.Repl.RenderToolsListFor(
+        var text = Gatto.Repl.Commands.CommandText.RenderToolsListFor(
             new[] { new ToolInfo("read_file", "read a file", null) },
             new[] { ("read_file", "this line owns no tool") }, Plain, 100, glyphs: GlyphSet.Unicode);
 
@@ -120,7 +120,7 @@ public class ReplToolsListTests
     public void A_tool_less_extension_renders_one_row_carrying_its_own_origin()
     {
         //an extension with a policy line and no tools would otherwise get no row. its row must name its own origin.
-        var text = Gatto.Repl.Repl.RenderToolsListFor(
+        var text = Gatto.Repl.Commands.CommandText.RenderToolsListFor(
             new[] { new ToolInfo("read_file", "read a file", null) },
             new[] { ("skillish", "always restate the task first") }, Plain, 100, glyphs: GlyphSet.Unicode);
 
@@ -132,7 +132,7 @@ public class ReplToolsListTests
     public void The_headline_counts_tools_only()
     {
         //a policy row is not a tool. the headline counts tools only, or it overstates what was armed.
-        var text = Gatto.Repl.Repl.RenderToolsListFor(
+        var text = Gatto.Repl.Commands.CommandText.RenderToolsListFor(
             new[]
             {
                 new ToolInfo("read_file", "read a file", null),
@@ -147,14 +147,14 @@ public class ReplToolsListTests
     public void No_tools_and_no_lines_is_the_only_case_that_says_nothing_is_armed()
     {
         Assert.Equal("no tools are armed this session",
-            Gatto.Repl.Repl.RenderToolsListFor(Array.Empty<ToolInfo>(), NoPolicy, Plain, 100, glyphs: GlyphSet.Unicode));
+            Gatto.Repl.Commands.CommandText.RenderToolsListFor(Array.Empty<ToolInfo>(), NoPolicy, Plain, 100, glyphs: GlyphSet.Unicode));
     }
 
     [Fact]
     public void A_line_with_no_tools_at_all_still_renders_rather_than_claiming_nothing_is_armed()
     {
         //when only policy rows exist, rendering must continue and not claim nothing is armed.
-        var text = Gatto.Repl.Repl.RenderToolsListFor(
+        var text = Gatto.Repl.Commands.CommandText.RenderToolsListFor(
             Array.Empty<ToolInfo>(), new[] { ("skillish", "always restate the task first") }, Plain, 100, glyphs: GlyphSet.Unicode);
 
         Assert.DoesNotContain("no tools are armed", text, StringComparison.Ordinal);
@@ -173,8 +173,8 @@ public class ReplToolsListTests
         };
 
         Assert.Equal(
-            Gatto.Repl.Repl.RenderToolsListFor(tools, NoPolicy, Plain, 100, glyphs: GlyphSet.Unicode),
-            Gatto.Repl.Repl.RenderToolsListFor(tools, new[] { ("skillish", "x") }, Plain, 100, glyphs: GlyphSet.Unicode)
+            Gatto.Repl.Commands.CommandText.RenderToolsListFor(tools, NoPolicy, Plain, 100, glyphs: GlyphSet.Unicode),
+            Gatto.Repl.Commands.CommandText.RenderToolsListFor(tools, new[] { ("skillish", "x") }, Plain, 100, glyphs: GlyphSet.Unicode)
                 .Split('\n').Where(r => !r.Contains("Policy:", StringComparison.Ordinal))
                 .Aggregate((a, b) => a + "\n" + b));
     }
@@ -191,7 +191,7 @@ public class ReplToolsListTests
             new ToolInfo("web_fetch", "fetch", "web_search"),
         };
 
-        var rows = Gatto.Repl.Repl.RenderToolsListFor(tools, NoPolicy, Plain, 100, glyphs: GlyphSet.Unicode).Split('\n');
+        var rows = Gatto.Repl.Commands.CommandText.RenderToolsListFor(tools, NoPolicy, Plain, 100, glyphs: GlyphSet.Unicode).Split('\n');
         var lastAskUser = Array.FindLastIndex(rows, r => r.Contains("(ask_user)", StringComparison.Ordinal));
         var firstWeb = Array.FindIndex(rows, r => r.Contains("(web_search)", StringComparison.Ordinal));
 
@@ -206,7 +206,7 @@ public class ReplToolsListTests
     [MemberData(nameof(EveryWidth))]
     public void The_row_survives_a_width_sweep_without_overflowing(int width)
     {
-        var text = Gatto.Repl.Repl.RenderToolsListFor(
+        var text = Gatto.Repl.Commands.CommandText.RenderToolsListFor(
             new[] { new ToolInfo("ask_user", "ask the user a question", "ask_user") },
             new[] { ("ask_user", "stop and ask when a choice is the user's") }, Plain, width, glyphs: GlyphSet.Unicode);
 
@@ -224,7 +224,7 @@ public class ReplToolsListTests
     public void The_plain_render_indents_by_two_and_the_product_reserves_four()
     {
         //every row after the headline has a two-space indent, and the product reserves four columns so the composed line fits a terminal
-        var text = Gatto.Repl.Repl.RenderToolsListFor(
+        var text = Gatto.Repl.Commands.CommandText.RenderToolsListFor(
             new[] { new ToolInfo("ask_user", "ask the user", "ask_user") },
             new[] { ("ask_user", "stop and ask") }, Plain, 100, glyphs: GlyphSet.Unicode);
 

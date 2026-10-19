@@ -288,18 +288,18 @@ public class VisionAttachWiringTests : IDisposable
     [MemberData(nameof(EveryCommand))]
     public void Every_declared_command_is_classified_as_one(string name)
     {
-        Assert.True(Gatto.Repl.Repl.IsSlashCommand(name, Gatto.Repl.Commands.SlashCommands.All));
-        Assert.True(Gatto.Repl.Repl.IsSlashCommand($"{name} shot.png", Gatto.Repl.Commands.SlashCommands.All));
-        Assert.True(Gatto.Repl.Repl.IsSlashCommand($"  {name}  ", Gatto.Repl.Commands.SlashCommands.All));
+        Assert.True(Gatto.Repl.Commands.SlashGate.IsSlashCommand(name, Gatto.Repl.Commands.SlashCommands.All));
+        Assert.True(Gatto.Repl.Commands.SlashGate.IsSlashCommand($"{name} shot.png", Gatto.Repl.Commands.SlashCommands.All));
+        Assert.True(Gatto.Repl.Commands.SlashGate.IsSlashCommand($"  {name}  ", Gatto.Repl.Commands.SlashCommands.All));
     }
 
     [Fact]
     public void An_undeclared_slash_line_is_not_a_command()
     {
         //these lines match no command, so they reach the model as text and must be able to attach, where a prefix check fails
-        Assert.False(Gatto.Repl.Repl.IsSlashCommand("/zzz shot.png", Gatto.Repl.Commands.SlashCommands.All));
-        Assert.False(Gatto.Repl.Repl.IsSlashCommand("/models shot.png", Gatto.Repl.Commands.SlashCommands.All));   //this line nearly names a real command but is not declared.
-        Assert.False(Gatto.Repl.Repl.IsSlashCommand("look at /srv/shot.png", Gatto.Repl.Commands.SlashCommands.All));
+        Assert.False(Gatto.Repl.Commands.SlashGate.IsSlashCommand("/zzz shot.png", Gatto.Repl.Commands.SlashCommands.All));
+        Assert.False(Gatto.Repl.Commands.SlashGate.IsSlashCommand("/models shot.png", Gatto.Repl.Commands.SlashCommands.All));   //this line nearly names a real command but is not declared.
+        Assert.False(Gatto.Repl.Commands.SlashGate.IsSlashCommand("look at /srv/shot.png", Gatto.Repl.Commands.SlashCommands.All));
     }
 
     //an escaped slash line must still attach, so the gate reads the literal flag rather than the stripped text
@@ -327,7 +327,7 @@ public class VisionAttachWiringTests : IDisposable
         var h = new RichReplHarness(_dir);
         h.Client.EnqueueTurn(new StreamEvent.TextDelta("ok"), new StreamEvent.Finished("stop", null));
 
-        Assert.False(Gatto.Repl.Repl.GateSlash("/srv/pics what is in shot.jpg", Gatto.Repl.Commands.SlashCommands.All).Refused);
+        Assert.False(Gatto.Repl.Commands.SlashGate.GateSlash("/srv/pics what is in shot.jpg", Gatto.Repl.Commands.SlashCommands.All).Refused);
         h.Keys.Line("/srv/pics what is in shot.jpg");
         h.Keys.Line("/quit");
         await h.RunAsync();

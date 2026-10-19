@@ -410,8 +410,8 @@ public sealed class StreamRenderer : ITurnObserver
 
     //a /context report drawn now at this width, its figures kept on the item so a repaint or a resumed session draws it at its own width
     public void CommitContext(ContextFigures figures) =>
-        CommitHung(Gatto.Repl.Commands.ContextReport.Unhung(figures, _surface.Width, _theme, _glyphs), figures,
-            () => _surface.Write(string.Join("\n", Gatto.Repl.Commands.ContextReport.Unhung(figures, _surface.Width, _theme, _glyphs)) + "\n"));
+        CommitHung(Gatto.Repl.Render.ContextReport.Unhung(figures, _surface.Width, _theme, _glyphs), figures,
+            () => _surface.Write(string.Join("\n", Gatto.Repl.Render.ContextReport.Unhung(figures, _surface.Width, _theme, _glyphs)) + "\n"));
 
     private void CommitHung(IReadOnlyList<string> lines, ContextFigures? context, Action degraded) => Guarded(
         () =>

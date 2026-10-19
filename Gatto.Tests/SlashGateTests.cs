@@ -13,7 +13,7 @@ namespace Gatto.Tests;
 //a mistyped command is refused instead of going to the model, and // escapes a leading slash. both faces call this decision, so it is tested here
 public class GateSlashTests
 {
-    private static Gatto.Repl.Repl.SlashGate G(string input) => Gatto.Repl.Repl.GateSlash(input, Gatto.Repl.Commands.SlashCommands.All);
+    private static Gatto.Repl.Commands.SlashGate G(string input) => Gatto.Repl.Commands.SlashGate.GateSlash(input, Gatto.Repl.Commands.SlashCommands.All);
 
     private static IReadOnlyList<SlashCommands.Cmd> WithUndo() =>
         [.. SlashCommands.All, new SlashCommands.Cmd("/undo", "[n|path]", "list snapshots for this folder, or restore one", Source: "undo.csx")];
@@ -21,20 +21,20 @@ public class GateSlashTests
     [Fact]
     public void A_REGISTERED_NAME_PASSES_AND_ITS_CAPITALISED_TWIN_IS_REFUSED()
     {
-        Assert.False(Gatto.Repl.Repl.GateSlash("/undo", WithUndo()).Refused);
-        Assert.False(Gatto.Repl.Repl.GateSlash("/undo 2", WithUndo()).Refused);
-        Assert.False(Gatto.Repl.Repl.GateSlash("  /undo  ", WithUndo()).Refused);
-        var g = Gatto.Repl.Repl.GateSlash("/Undo", WithUndo());
+        Assert.False(Gatto.Repl.Commands.SlashGate.GateSlash("/undo", WithUndo()).Refused);
+        Assert.False(Gatto.Repl.Commands.SlashGate.GateSlash("/undo 2", WithUndo()).Refused);
+        Assert.False(Gatto.Repl.Commands.SlashGate.GateSlash("  /undo  ", WithUndo()).Refused);
+        var g = Gatto.Repl.Commands.SlashGate.GateSlash("/Undo", WithUndo());
         Assert.True(g.Refused);
         Assert.Contains("/Undo", g.Refusal!, StringComparison.Ordinal);
-        Assert.True(Gatto.Repl.Repl.GateSlash("/undo", SlashCommands.All).Refused);   //without the registration it is unknown
+        Assert.True(Gatto.Repl.Commands.SlashGate.GateSlash("/undo", SlashCommands.All).Refused);   //without the registration it is unknown
     }
 
     [Fact]
     public void A_REGISTERED_NAME_IS_A_SLASH_COMMAND_AND_NEVER_REACHES_THE_MODEL()
     {
-        Assert.True(Gatto.Repl.Repl.IsSlashCommand("/undo 1", WithUndo()));
-        Assert.False(Gatto.Repl.Repl.IsSlashCommand("/undo 1", SlashCommands.All));
+        Assert.True(Gatto.Repl.Commands.SlashGate.IsSlashCommand("/undo 1", WithUndo()));
+        Assert.False(Gatto.Repl.Commands.SlashGate.IsSlashCommand("/undo 1", SlashCommands.All));
         Assert.False(SlashCommands.ReachesModel("/undo", WithUndo()));
         Assert.True(SlashCommands.ReachesModel("hello", WithUndo()));
         Assert.False(SlashCommands.BypassesQueue("/undo"));
@@ -82,7 +82,7 @@ public class GateSlashTests
     [Fact]
     public void A_multi_line_submit_beginning_with_a_real_command_is_not_refused()
     {
-        Assert.False(Gatto.Repl.Repl.IsSlashCommand("/help\nmore", Gatto.Repl.Commands.SlashCommands.All));   //a refusal must not be built on this predicate
+        Assert.False(Gatto.Repl.Commands.SlashGate.IsSlashCommand("/help\nmore", Gatto.Repl.Commands.SlashCommands.All));   //a refusal must not be built on this predicate
         Assert.False(G("/help\nmore").Refused);             //the gate never refuses a real command
     }
 
@@ -109,7 +109,7 @@ public class GateSlashTests
         var g = G("//help");
         Assert.True(g.Literal);
         Assert.Equal("/help", g.Text);
-        Assert.True(Gatto.Repl.Repl.IsSlashCommand(g.Text, Gatto.Repl.Commands.SlashCommands.All));   //the text matches a real command name, which the Literal flag has to keep off the chain
+        Assert.True(Gatto.Repl.Commands.SlashGate.IsSlashCommand(g.Text, Gatto.Repl.Commands.SlashCommands.All));   //the text matches a real command name, which the Literal flag has to keep off the chain
     }
 }
 
@@ -185,9 +185,9 @@ public class PlainGateWalkTests : System.IDisposable
     {
         //normalize CRLF to LF first, or the search passes on this checkout and fails on one with autocrlf
         var source = System.IO.File.ReadAllText(
-            System.IO.Path.Combine(RepoRoot(), "Gatto", "Repl", "Repl.cs")).Replace("\r\n", "\n");
+            System.IO.Path.Combine(RepoRoot(), "Gatto", "Repl", "Repl.Linear.cs")).Replace("\r\n", "\n");
 
-        var gateCall = source.IndexOf("var gate = GateSlash(input, KnownCommands());", System.StringComparison.Ordinal);
+        var gateCall = source.IndexOf("var gate = SlashGate.GateSlash(input, KnownCommands());", System.StringComparison.Ordinal);
         var refusal = source.IndexOf(
             "            s.Renderer.CommitSystem(gate.Refusal!);\n            return false;",
             System.StringComparison.Ordinal);

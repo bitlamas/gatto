@@ -5,18 +5,17 @@ namespace Gatto.Tests;
 
 public class ReplSourceInvariantTests
 {
-    //search upward from the test binary for Repl.cs and hard-fail when it is missing
+    //the Repl class is every Repl.cs and Repl.*.cs directly in Gatto/Repl, read as one text, so a part nobody named is still read
     private static string ReplSource()
     {
-        var dir = new DirectoryInfo(AppContext.BaseDirectory);
-        while (dir is not null)
-        {
-            var candidate = Path.Combine(dir.FullName, "Gatto", "Repl", "Repl.cs");
-            if (File.Exists(candidate)) return File.ReadAllText(candidate);
-            dir = dir.Parent;
-        }
-        throw new FileNotFoundException(
-            $"could not find Gatto/Repl/Repl.cs above {AppContext.BaseDirectory} — this test reads the repo source");
+        var folder = Path.Combine(Census.SourceTree.RepoRoot(), "Gatto", "Repl");
+        var parts = Census.SourceTree.ProductionFilesUnder("Repl")
+            .Where(f => Path.GetDirectoryName(f) == folder)
+            .Where(f => Path.GetFileName(f).StartsWith("Repl.", StringComparison.Ordinal))
+            .OrderBy(f => f, StringComparer.Ordinal)
+            .ToList();
+        Assert.NotEmpty(parts);
+        return string.Concat(parts.Select(File.ReadAllText));
     }
 
     //every dispatched command must have a help row or a written exemption, matched by dispatch shape in source text
@@ -108,6 +107,15 @@ public class ReplSourceInvariantTests
         Assert.Equal(5, Occurrences(planted, "PolicyRows()"));
     }
 
+    //the command text functions the Repl calls, read beside the class
+    private static string CommandTextSource()
+    {
+        var dir = new DirectoryInfo(AppContext.BaseDirectory);
+        while (dir is not null && !File.Exists(Path.Combine(dir.FullName, "Gatto", "Repl", "Commands", "CommandText.cs"))) dir = dir.Parent;
+        Assert.NotNull(dir);
+        return File.ReadAllText(Path.Combine(dir!.FullName, "Gatto", "Repl", "Commands", "CommandText.cs"));
+    }
+
     private static int Occurrences(string haystack, string needle)
     {
         var n = 0;
@@ -123,8 +131,8 @@ public class ReplSourceInvariantTests
         var source = ReplSource();
 
         //assert the member exists so a zero count means the call sites changed (a broken needle would look the same)
-        Assert.Contains("internal static string ModelLine(", source, StringComparison.Ordinal);
+        Assert.Contains("internal static string ModelLine(", CommandTextSource(), StringComparison.Ordinal);
 
-        Assert.Equal(2, source.Split("notice ?? ModelLine(modelName)").Length - 1);
+        Assert.Equal(2, source.Split("notice ?? CommandText.ModelLine(modelName)").Length - 1);
     }
 }

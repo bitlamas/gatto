@@ -36,7 +36,7 @@ public class ServedModelNameTests
 
     [Fact]
     public void The_model_notice_names_a_gguf_path_by_its_file_name() =>
-        Assert.Equal("model: Qwen-9B", Gatto.Repl.Repl.ModelLine(@"C:\models\Qwen-9B.gguf"));
+        Assert.Equal("model: Qwen-9B", Gatto.Repl.Commands.CommandText.ModelLine(@"C:\models\Qwen-9B.gguf"));
 
     [Fact]
     public void The_status_line_names_a_gguf_path_by_its_file_name()

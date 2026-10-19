@@ -55,7 +55,7 @@ public class RefusalClearsTheComposerTests
     [Fact]
     public void The_ruling_is_scoped_to_commands_and_the_attach_refusal_still_restores()
     {
-        var source = System.IO.File.ReadAllText(System.IO.Path.Combine(RepoRoot(), "Gatto", "Repl", "Repl.cs"))
+        var source = System.IO.File.ReadAllText(System.IO.Path.Combine(RepoRoot(), "Gatto", "Repl", "Repl.Linear.cs"))
             .Replace("\r\n", "\n");
 
         //the attach refusal still restores the composer text and the command refusal does not

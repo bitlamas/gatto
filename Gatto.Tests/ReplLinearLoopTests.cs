@@ -420,15 +420,15 @@ public class ReplLinearLoopTests
         foreach (var line in new[]
                  {
                      Gatto.Repl.Repl.NewConversationLine,
-                     Gatto.Repl.Repl.WildUsage, Gatto.Repl.Repl.RoleLine("coder"),
-                     Gatto.Repl.Repl.WildLine(true, glyphs: GlyphSet.Unicode), Gatto.Repl.Repl.WildLine(false, glyphs: GlyphSet.Unicode),
+                     Gatto.Repl.Repl.WildUsage, Gatto.Repl.Commands.CommandText.RoleLine("coder"),
+                     Gatto.Repl.Commands.CommandText.WildLine(true, glyphs: GlyphSet.Unicode), Gatto.Repl.Commands.CommandText.WildLine(false, glyphs: GlyphSet.Unicode),
                  })
         {
             Assert.False(line.StartsWith('('), $"parenthesized system message: {line}");
         }
 
         Assert.Equal("new conversation", Gatto.Repl.Repl.NewConversationLine);
-        Assert.Equal("role: coder", Gatto.Repl.Repl.RoleLine("coder"));
+        Assert.Equal("role: coder", Gatto.Repl.Commands.CommandText.RoleLine("coder"));
     }
 
     [Fact]
@@ -437,7 +437,7 @@ public class ReplLinearLoopTests
         var (surface, _, _, renderer, _) = Wire();
 
         renderer.CommitSystem(Gatto.Repl.Repl.NewConversationLine);
-        renderer.CommitSystem(Gatto.Repl.Repl.RoleLine("coder"));
+        renderer.CommitSystem(Gatto.Repl.Commands.CommandText.RoleLine("coder"));
 
         var visible = Visible(surface.Text);
         Assert.Contains("♯ new conversation", visible, StringComparison.Ordinal);

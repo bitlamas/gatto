@@ -558,11 +558,11 @@ public class CompactorTests
     public void CompactOfferLine_states_what_will_actually_happen()
     {
         //the offer line states the threshold in force and no variant names 90%, elision is age-based
-        var armed = Gatto.Repl.Repl.CompactOfferLineFor(0.8);
+        var armed = Gatto.Repl.Commands.CommandText.CompactOfferLineFor(0.8);
         Assert.Contains("auto-compacts at 80%", armed);
         Assert.DoesNotContain("90%", armed);
 
-        var off = Gatto.Repl.Repl.CompactOfferLineFor(null);
+        var off = Gatto.Repl.Commands.CommandText.CompactOfferLineFor(null);
         Assert.Contains("/compact", off);
         Assert.Contains("auto-compact is off", off);
         Assert.DoesNotContain("90%", off);
