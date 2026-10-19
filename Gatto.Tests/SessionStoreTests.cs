@@ -60,6 +60,29 @@ public class SessionStoreTests : IDisposable
         Assert.Equal(1, new SessionStore(_home, _cwd).CountForCwd());                 //only the session is counted, the sidecar is left out
     }
 
+    //a /context event can be written before the system record, so line 1 is not the system record and a read by position gets nothing
+    [Fact]
+    public void The_system_record_is_found_by_role_not_by_line()
+    {
+        var baseline = new SessionBaseline(4, "generalist", "test-model", "all", new ThinkingMark("medium", null),
+            new List<ToolMark> { new("read_file", "t1") }, new BaselineSources(null, null, new List<ContextFileMark>(), new List<PolicyMark>(), "r", "m"));
+        var identity = new SessionIdentity(Guid.Parse("abcdef12-3456-7890-abcd-ef1234567890"), new DateTimeOffset(2026, 10, 18, 9, 30, 0, TimeSpan.FromHours(-4)));
+        var path = Path.Combine(_home, "by-role.jsonl");
+        File.WriteAllLines(path,
+        [
+            """{"event":"command","rows":["context"],"context":{"total":12,"exact":true,"fell_back":false,"before_first_request":true,"parts":[]}}""",
+            SessionStore.ChatJson(new ChatMessage("system", "sys"), _cwd, baseline, identity),
+            SessionStore.ChatJson(new ChatMessage("user", "hi")),
+        ]);
+
+        var loaded = SessionStore.LoadBaseline(path);
+        Assert.NotNull(loaded);
+        Assert.Equal((4, "generalist", "test-model"), (loaded!.Seq, loaded.Role, loaded.Model));
+        Assert.Equal(_cwd, SessionStore.CwdOf(path));
+        Assert.Equal(identity.IdText, SessionStore.IdentityOf(path)!.IdText);
+        Assert.Equal(["system", "user"], new SessionStore(_home, _cwd).LoadPath(path).Select(m => m.Role));
+    }
+
     [Fact]
     public void Different_cwd_sessions_do_not_mix()
     {

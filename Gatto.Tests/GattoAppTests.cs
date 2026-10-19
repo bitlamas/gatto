@@ -271,6 +271,26 @@ public class GattoAppTests : IDisposable
         Assert.Equal(SeatSix.Order(), ListedTools(output).Intersect(SeatSix).Order());
     }
 
+    //a project cannot arm its own tools when someone opens it. the same script in the home does load, so the refusal is not a script that never compiled
+    [Fact]
+    public async Task Extensions_in_the_project_folder_are_not_loaded()
+    {
+        const string probe = "Gatto.Register(\"probe\", \"a project tool\", \"{\\\"type\\\":\\\"object\\\"}\", async (args, ctx, ct) => new ToolResult(\"armed\"));\n";
+        foreach (var dir in new[] { Path.Combine(_cwd, "extensions"), Path.Combine(_cwd, ".gatto", "extensions") })
+        {
+            Directory.CreateDirectory(dir);
+            File.WriteAllText(Path.Combine(dir, "probe.csx"), probe);
+        }
+
+        var fromProject = ListedTools(await SwitchInThePlainLoop("/tools\n/quit\n"));
+        Directory.CreateDirectory(Path.Combine(_home, "extensions"));
+        File.WriteAllText(Path.Combine(_home, "extensions", "probe.csx"), probe);
+        var fromHome = ListedTools(await SwitchInThePlainLoop("/tools\n/quit\n"));
+
+        Assert.DoesNotContain("probe", fromProject);
+        Assert.Contains("probe", fromHome);
+    }
+
     [Fact]
     public async Task THE_LAUNCH_OPENS_WITH_THE_ROLES_FIRST_MESSAGE_IN_THE_PLAIN_LOOP()
     {
