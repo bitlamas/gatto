@@ -33,6 +33,17 @@ internal static class SourceTree
                     "Cli/AuditionCommand.cs", "Cli/Setup/SetupCommand.cs", "Cli/StatusCommand.cs" }
             .Select(r => Path.Combine([RepoRoot(), "Gatto", .. r.Split('/')]))];
 
+    //every partial part of the setup flow, SetupFlow.cs and SetupFlow.*.cs directly in Cli/Setup, so a part nobody named is still read
+    public static IReadOnlyList<string> SetupFlowParts()
+    {
+        var folder = Path.Combine(RepoRoot(), "Gatto", "Cli", "Setup");
+        var parts = ProductionFilesUnder("Cli", "Setup")
+            .Where(f => Path.GetDirectoryName(f) == folder && Path.GetFileName(f).StartsWith("SetupFlow.", StringComparison.Ordinal))
+            .ToList();
+        Assert.NotEmpty(parts);
+        return parts;
+    }
+
     //true when the file sits under the named folder of any product project.
     public static bool IsUnder(string file, params string[] folder) =>
         ProductProjects.Any(p => file.StartsWith(

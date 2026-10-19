@@ -21,10 +21,10 @@ public class FixtureScreenKeyCensusTests
         return d!.FullName;
     }
 
-    //the keys the flow can emit are its public const string values in SetupFlow.cs
+    //the keys the flow can emit are its public const string values in the setup flow's parts
     private static HashSet<string> DeclaredKeys()
     {
-        var src = File.ReadAllText(Path.Combine(Root(), "Gatto", "Cli", "Setup", "SetupFlow.cs"));
+        var src = string.Concat(SourceTree.SetupFlowParts().Select(File.ReadAllText));
         return [.. Regex.Matches(src, @"public const string \w+ = ""([^""]+)"";")
             .Select(m => m.Groups[1].Value)];
     }

@@ -6,8 +6,7 @@ namespace Gatto.Tests.Census;
 //every waiting screen must have an arm in the SetupFlow.Answer dispatch, or an answer throws and exits the wizard
 public class AnswerableScreenCensusTests
 {
-    private static string Source() =>
-        File.ReadAllText(Path.Combine(SourceTree.RepoRoot(), "Gatto", "Cli", "Setup", "SetupFlow.cs"));
+    private static string Source() => string.Concat(SourceTree.SetupFlowParts().Select(File.ReadAllText));
 
     //map the name of each string constant in the flow source to its value.
     private static Dictionary<string, string> Constants(string src) =>

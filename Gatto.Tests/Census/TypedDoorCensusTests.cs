@@ -198,8 +198,7 @@ public class TypedDoorCensusTests
     //the screen key that each Door: in the flow belongs to. read it from the masked source, so comments and steeredDoor cannot match
     private static HashSet<string> DoorScreensInSource()
     {
-        var src = SourceMask.Mask(SourceTree.Read(
-            Path.Combine(SourceTree.RepoRoot(), "Gatto", "Cli", "Setup", "SetupFlow.cs")));
+        var src = SourceMask.Mask(string.Concat(SourceTree.SetupFlowParts().Select(SourceTree.Read)));
 
         var consts = Regex.Matches(src, @"const\s+string\s+(\w+)\s*=")
             .Select(m => m.Groups[1].Value)

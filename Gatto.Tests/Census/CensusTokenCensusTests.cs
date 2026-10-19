@@ -87,7 +87,7 @@ public class CensusTokenCensusTests
     [Fact]
     public void THE_EXCLUDED_CENSUSES_REALLY_DO_BOUND_ON_PROSE()
     {
-        var flow = Source("Gatto/Cli/Setup/SetupFlow.cs");
+        var flow = string.Concat(SourceTree.SetupFlowParts().Select(SourceTree.Read));
 
         foreach (var (census, token, why) in ProseSubject)
         {

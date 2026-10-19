@@ -74,7 +74,7 @@ public class SetupDoorTests : IDisposable
         var cli = Gatto.Tests.Census.SourceTree.ProductionFilesUnder("Cli");
         //count only code lines, a comment naming the flag would satisfy the guard without a reader
         var readers = cli
-            .Where(f => !f.EndsWith("SetupFlow.cs", StringComparison.Ordinal))   //this file writes the flag, so it cannot count as a reader.
+            .Where(f => !Path.GetFileName(f).StartsWith("SetupFlow.", StringComparison.Ordinal))   //the flow's parts write the flag, so none counts as a reader.
             .SelectMany(File.ReadAllLines)
             .Count(l => l.Contains("StartReplWhenDone", StringComparison.Ordinal)
                         && !l.TrimStart().StartsWith("//", StringComparison.Ordinal));
