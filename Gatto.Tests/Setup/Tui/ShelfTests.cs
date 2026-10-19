@@ -189,7 +189,7 @@ public class ShelfTests
             MoreBelow: 14, Facts: [.. facts.Select(Publisher)]);
     }
 
-    internal static WizardScreen.Choice Screen(ShelfView shelf) =>
+    internal static SetupScreen.Choice Screen(ShelfView shelf) =>
         new(SetupFlow.SearchKey, "Which model should gatto start with?",
             [.. shelf.Rows.Select((r, i) => new ChoiceOption(i.ToString(), r.RowFile!.RepoId))],
             Shelf: shelf, Door: SetupFlow.ShelfDoorPlaceholderOf(Gatto.Terminal.GlyphSet.Unicode)) { Strip = Strip, AllowBack = true };
@@ -205,7 +205,7 @@ public class ShelfTests
     public void AN_EMPTY_SEARCH_MATCHES_ITS_GOLDEN()
     {
         IReadOnlyList<ModelRow> browse = [Row("qwen3.5-7b", 7, 4, 262144, false, FitRegime.FitsGpu)];
-        var probes = new WizardProbes
+        var probes = new FakeSetupProbes
         {
             Llama = @"C:\llama\llama-server.exe",
             Rows = browse,
@@ -213,15 +213,15 @@ public class ShelfTests
             Snapshot = new HardwareSnapshot(137438953472, 34359738368, GpuKind.Integrated, 103079215104),
             //the fake answers rows until a search is typed, since a fake always answering empty leaves no shelf to empty
             Answer = req => req.Search is { Length: > 0 }
-                ? WizardProbes.Outcome([], null)
-                : WizardProbes.Outcome(browse, null),
+                ? FakeSetupProbes.Outcome([], null)
+                : FakeSetupProbes.Outcome(browse, null),
         };
         var flow = new SetupFlow(probes);
-        Assert.IsType<WizardScreen.Choice>(flow.StartPastEngine());
+        Assert.IsType<SetupScreen.Choice>(flow.StartPastEngine());
 
         //lift the filter first, since the golden shows this shelf unfiltered and the flow keeps the typed word in Draft
         flow.Answer(SetupFlow.CtlLift);
-        var screen = Assert.IsType<WizardScreen.Choice>(
+        var screen = Assert.IsType<SetupScreen.Choice>(
             flow.Answer(ShelfControls.TypedAnswer("qwerty")));
 
         Golden.AssertEquals("s5", "unified-96-empty", 100,
@@ -236,7 +236,7 @@ public class ShelfTests
         //the fixture sets Searched, the field the chips row's sentence reads, since the subject here is Enter
         var shelf = new ShelfView([], MachineShape.UnifiedWithShare,
             Families: Families, Family: "qwen", Searched: true);
-        var screen = new WizardScreen.Choice(SetupFlow.SearchKey,
+        var screen = new SetupScreen.Choice(SetupFlow.SearchKey,
             "Which model should gatto start with?", [], Shelf: shelf, Door: "qwerty")
             { Strip = Strip, AllowBack = true };
 
@@ -412,7 +412,7 @@ public class ShelfTests
     {
         var theme = new Theme(new TermCaps(true, true));
         var surface = new RecordingSurface { Width = 100 };
-        var face = new TuiWizardSurface(surface, new EscOnly(), theme, "0.5.0", "1a2b3c4", () => 0);
+        var face = new TuiSetupSurface(surface, new EscOnly(), theme, "0.5.0", "1a2b3c4", () => 0);
         face.Choose(Screen(Unified96()) with { BodyRows = [Found] },
             watch: null, tick: null);
         //assert on the single row, since the footer paints its own bright m and a screen-wide search reads the wrong row
@@ -434,11 +434,11 @@ public class ShelfTests
     {
         var theme = new Theme(new TermCaps(true, true));
         var surface = new RecordingSurface { Width = 100 };
-        var face = new TuiWizardSurface(surface, new EscOnly(), theme, "0.5.0", "1a2b3c4", () => 0);
+        var face = new TuiSetupSurface(surface, new EscOnly(), theme, "0.5.0", "1a2b3c4", () => 0);
 
-        face.Choose(new WizardScreen.Choice("k", "q",
+        face.Choose(new SetupScreen.Choice("k", "q",
             [new ChoiceOption("a", "a")],
-            BodyRows: [new WizardRow("gatto found them, m shows them", RowTone.Aside, Keys: ["m"])]));
+            BodyRows: [new SetupRow("gatto found them, m shows them", RowTone.Aside, Keys: ["m"])]));
 
         var row = surface.Text.Split('\n')
             .Single(l => l.Contains("gatto found them", StringComparison.Ordinal));
@@ -456,7 +456,7 @@ public class ShelfTests
     }
 
     //the row names m as a key, so a screen need not know about themes
-    private static readonly WizardRow Found = new(
+    private static readonly SetupRow Found = new(
         "gatto also found 5 models already on this machine, m shows them",
         RowTone.Aside, Keys: ["m"]);
 
@@ -563,7 +563,7 @@ public class ShelfTests
     public void AN_OPTION_BEYOND_THE_SHELFS_ROWS_IS_STILL_RENDERED()
     {
         var shelf = Unified96();
-        var screen = new WizardScreen.Choice(SetupFlow.SearchKey, "Which model should gatto start with?",
+        var screen = new SetupScreen.Choice(SetupFlow.SearchKey, "Which model should gatto start with?",
             [.. shelf.Rows.Select((r, i) => new ChoiceOption(i.ToString(), r.RowFile!.RepoId)),
              new ChoiceOption("something-new", "Something the face was never told about")],
             Shelf: shelf, Door: SetupFlow.ShelfDoorPlaceholderOf(Gatto.Terminal.GlyphSet.Unicode)) { Strip = Strip, AllowBack = true };
@@ -612,7 +612,7 @@ public class ShelfTests
     }
 
     //the shelf as the flow emits it, built from the flow's own key so a test cannot answer with an unknown one
-    private static WizardScreen.Choice WithFolderDoor(ShelfView shelf) =>
+    private static SetupScreen.Choice WithFolderDoor(ShelfView shelf) =>
         new(SetupFlow.SearchKey, "Which model should gatto start with?",
             [.. shelf.Rows.Select((r, i) => new ChoiceOption(i.ToString(), r.RowFile!.RepoId)),
              new ChoiceOption(SetupFlow.Elsewhere, "I already have a model, let me point at the folder")],
@@ -664,7 +664,7 @@ public class ShelfTests
     }
 
     //the shelf with a door, then the options the flow adds, so the run must skip the door rather than cap the list
-    private static WizardScreen.Choice WithFolderDoorAnd(ShelfView shelf, params string[] after) =>
+    private static SetupScreen.Choice WithFolderDoorAnd(ShelfView shelf, params string[] after) =>
         new(SetupFlow.SearchKey, "Which model should gatto start with?",
             [.. shelf.Rows.Select((r, i) => new ChoiceOption(i.ToString(), r.RowFile!.RepoId)),
              new ChoiceOption(SetupFlow.Elsewhere, "I already have a model, let me point at the folder"),

@@ -32,11 +32,11 @@ public class PurrPlaceTests
         [PaintedRow.Of("  a row"), PaintedRow.Of("  another")], null,
         [new FooterKey("Enter", "choose")]);
 
-    private static (TuiWizardSurface Face, VtScreenSurface Screen, Pulse Beat) Purring()
+    private static (TuiSetupSurface Face, VtScreenSurface Screen, Pulse Beat) Purring()
     {
         var screen = new VtScreenSurface(100, 40);
         var pulse = new Pulse();
-        var face = new TuiWizardSurface(screen, new NoKeys(), T, "0.5.0", "1a2b3c4", () => 0,
+        var face = new TuiSetupSurface(screen, new NoKeys(), T, "0.5.0", "1a2b3c4", () => 0,
             pulse: () => pulse);
 
         face.Paint((_, _) => Body());
@@ -94,7 +94,7 @@ public class PurrPlaceTests
         {
             var screen = new VtScreenSurface(80, 40);
             var pulse = new Pulse();
-            var face = new TuiWizardSurface(screen, new NoKeys(), T, "0.5.0", "1a2b3c4", () => 0,
+            var face = new TuiSetupSurface(screen, new NoKeys(), T, "0.5.0", "1a2b3c4", () => 0,
                 pulse: () => pulse, glyphs: g);
             face.Paint((_, _) => Body());
             face.Notes.WriteLine("probing the server");

@@ -4,12 +4,12 @@ namespace Gatto.Cli.Setup;
 internal static class SetupRunner
 {
     //the /model add entry, which starts the same flow at the model segment rather than at the fork
-    public static int Run(SetupFlow flow, IWizardSurface face, string? homePath = null,
+    public static int Run(SetupFlow flow, ISetupSurface face, string? homePath = null,
         bool modelSegmentOnly = false)
         => Run(flow, face, out _, homePath, modelSegmentOnly);
 
     //the model this run armed, or null. the id comes from Apply's own out-parameter rather than a config re-read
-    public static int Run(SetupFlow flow, IWizardSurface face, out string? addedModelId,
+    public static int Run(SetupFlow flow, ISetupSurface face, out string? addedModelId,
         string? homePath = null, bool modelSegmentOnly = false)
     {
         addedModelId = null;
@@ -41,13 +41,13 @@ internal static class SetupRunner
 
                 if (WriteSetApply.Apply(h, flow.Writes, out var written, out var moveNote) is { } problem)
                 {
-                    face.Show(new WizardScreen.Info("write.failed", [problem]));
+                    face.Show(new SetupScreen.Info("write.failed", [problem]));
                     return 1;
                 }
 
                 //show the move note. a move that did not happen must not leave the user believing their weights left Downloads, and it is a line rather than an exit
                 if (moveNote is { Length: > 0 } note)
-                    face.Show(new WizardScreen.Info("move.incomplete", [note]));
+                    face.Show(new SetupScreen.Info("move.incomplete", [note]));
 
                 //written is null on the connect path, which is what the flow routes on. an empty string would make the two runs indistinguishable
                 screen = flow.ResumeAfterWrites(written);
@@ -62,7 +62,7 @@ internal static class SetupRunner
 
             switch (screen)
             {
-                case WizardScreen.Choice c:
+                case SetupScreen.Choice c:
                     //the watch predicate, its tick and the check's moments are wired here, from one hand and one clock. null on a watch that is not a download
                     if (face.Choose(c, c.Watching ? flow.PollWatch : null,
                             c.Watching ? flow.PollTick : null,
@@ -72,12 +72,12 @@ internal static class SetupRunner
                     screen = flow.Answer(key);
                     break;
 
-                case WizardScreen.Info i:
+                case SetupScreen.Info i:
                     face.Show(i);
                     //an Info that nothing follows ends the run, since the flow only returns one as passing narration
                     return 0;
 
-                case WizardScreen.Ask a:
+                case SetupScreen.Ask a:
                     var asked = face.Ask(a);
                     if (asked == SetupFlow.LeaveKey) return Left(face, flow);
                     if (asked is not { } typed)
@@ -90,10 +90,10 @@ internal static class SetupRunner
                     screen = flow.Answer(typed);
                     break;
 
-                case WizardScreen.Progress:
+                case SetupScreen.Progress:
                     return 0;   //a Progress screen belongs to the tick line, so this case ends the run rather than drawing it
 
-                case WizardScreen.Terminal t:
+                case SetupScreen.Terminal t:
                     //both paths apply above, since prove-it reads the config from disk and must read one this run wrote
 
                     //default_model is written by the apply that creates the model, so a run that leaves at the check still points at something
@@ -102,7 +102,7 @@ internal static class SetupRunner
                     return t.Success ? 0 : 1;
 
                 default:
-                    throw new InvalidOperationException("unreachable, WizardScreen is closed");
+                    throw new InvalidOperationException("unreachable, SetupScreen is closed");
             }
         }
     }
@@ -111,11 +111,11 @@ internal static class SetupRunner
     //backing out with Esc, with the words composed by the flow. only the flow knows whether this run's writes already happened, so a fixed sentence could be false
 
     //one home for the leave screen, reached by the cancel path. it is a Terminal rather than an Info, since End is what composes the closing line
-    private static int Left(IWizardSurface face, SetupFlow flow)
+    private static int Left(ISetupSurface face, SetupFlow flow)
     {
         //the flow is told before its rows and sentence are read, since Esc never reaches the flow
         flow.MarkLeaving();
-        face.End(new WizardScreen.Terminal("left", flow.LeavingRows, flow.LeaveStep, Success: true));
+        face.End(new SetupScreen.Terminal("left", flow.LeavingRows, flow.LeaveStep, Success: true));
         return 0;
     }
 }

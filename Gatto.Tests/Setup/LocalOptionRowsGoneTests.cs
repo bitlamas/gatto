@@ -7,9 +7,9 @@ namespace Gatto.Tests.Setup;
 //the local shelf has no option rows: the folder door types a folder, m reaches the Hub, and Esc does on the empty shelf
 public class LocalOptionRowsGoneTests
 {
-    private static (SetupFlow Flow, WizardScreen.Choice Shelf) Local(params (string, string?, string?, int)[] files)
+    private static (SetupFlow Flow, SetupScreen.Choice Shelf) Local(params (string, string?, string?, int)[] files)
     {
-        var probes = new WizardProbes
+        var probes = new FakeSetupProbes
         {
             Llama = @"C:\llama\llama-server.exe",
             Snapshot = ShelfFixtures.Snapshot("unified"),
@@ -19,7 +19,7 @@ public class LocalOptionRowsGoneTests
         };
         var flow = new SetupFlow(probes) { CanSwitchSource = true };
         flow.StartAtModelSegment();
-        return (flow, Assert.IsType<WizardScreen.Choice>(flow.Answer(SetupFlow.CtlSource)));
+        return (flow, Assert.IsType<SetupScreen.Choice>(flow.Answer(SetupFlow.CtlSource)));
     }
 
     [Fact]
@@ -38,7 +38,7 @@ public class LocalOptionRowsGoneTests
         var (flow, empty) = Local();
         Assert.Equal(SetupFlow.DiscoveredKey, empty.Key);
         Assert.Empty(empty.Shelf!.Rows);
-        var hub = Assert.IsType<WizardScreen.Choice>(flow.Answer(SetupFlow.BackKey));
+        var hub = Assert.IsType<SetupScreen.Choice>(flow.Answer(SetupFlow.BackKey));
         Assert.Equal(SetupFlow.SearchKey, hub.Key);
     }
 
@@ -46,7 +46,7 @@ public class LocalOptionRowsGoneTests
     public void M_ON_THE_POPULATED_LOCAL_SHELF_SHOWS_THE_HUB_SHELF()
     {
         var (flow, _) = Local((@"C:\m\x-Q4_K_M.gguf", "llama", "8B", 5));
-        var hub = Assert.IsType<WizardScreen.Choice>(flow.Answer(SetupFlow.CtlSource));
+        var hub = Assert.IsType<SetupScreen.Choice>(flow.Answer(SetupFlow.CtlSource));
         Assert.Equal(SetupFlow.SearchKey, hub.Key);
     }
 }

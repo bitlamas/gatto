@@ -5,9 +5,9 @@ using Gatto.Terminal;
 namespace Gatto.Cli.Setup;
 
 //one screen, as data rather than paint, so tests assert on it. the private constructor keeps the hierarchy closed, so a new kind fails at compile time
-internal abstract record WizardScreen
+internal abstract record SetupScreen
 {
-    private WizardScreen() { }
+    private SetupScreen() { }
 
     //whether the screen offers go back, stamped by the flow and rendered by the face. one flag for both askable kinds, so the faces cannot drift
     public bool AllowBack { get; init; }
@@ -24,7 +24,7 @@ internal abstract record WizardScreen
         string Key,
         string? Question,
         IReadOnlyList<ChoiceOption> Options,
-        IReadOnlyList<WizardRow>? BodyRows = null,
+        IReadOnlyList<SetupRow>? BodyRows = null,
         ShelfView? Shelf = null,
         bool Watching = false,
         //the sentence the transcript commits when a watching screen resolves itself, declared by the screen so the flow stays pure
@@ -62,7 +62,7 @@ internal abstract record WizardScreen
         //no digits on the rows, since a digit promises a key that picks them. the same flag puts ↑↓ move in the footer, so the two cannot disagree
         bool Unnumbered = false,
         //this screen offers the source switch, so m answers it and the footer names it. it stays positional, since the door census reads that closing argument
-        bool SwitchesSource = false) : WizardScreen
+        bool SwitchesSource = false) : SetupScreen
     {
         //nothing moves this screen on except the watch, computed from the screen itself. the back flag is left out, since a back row is another escape
         public bool OnlyTheWatchAdvances =>
@@ -75,11 +75,11 @@ internal abstract record WizardScreen
         public string? Notice { get; init; }
     }
 
-    //rows the user reads and acknowledges, each a WizardRow so a span can be accented like a body row
-    internal sealed record Info(string Key, IReadOnlyList<WizardRow> Rows) : WizardScreen;
+    //rows the user reads and acknowledges, each a SetupRow so a span can be accented like a body row
+    internal sealed record Info(string Key, IReadOnlyList<SetupRow> Rows) : SetupScreen;
 
     //something is happening and the wait is long enough to say so, bound onto TickLine by the face
-    internal sealed record Progress(string Key, string Label) : WizardScreen;
+    internal sealed record Progress(string Key, string Label) : SetupScreen;
 
     //free text with validation, the rule kept on the screen. the placeholder is an instruction, since an example reads as an option to pick
     internal sealed record Ask(
@@ -88,16 +88,16 @@ internal abstract record WizardScreen
         Func<string, string?> Validate,
         string? Placeholder = null,
         AskOffer? Offer = null,
-        IReadOnlyList<WizardRow>? BodyRows = null,
+        IReadOnlyList<SetupRow>? BodyRows = null,
         //what Enter does here, in the footer's words, next to the rule it names. the Esc verb comes from AllowBack instead, since the flow owns that fact
-        string EnterVerb = "continue") : WizardScreen;
+        string EnterVerb = "continue") : SetupScreen;
 
     //the end of a setup, with the next step the user does now. null means there is no closing sentence, since a blank row renders a bare gutter mark
     internal sealed record Terminal(
         string Key,
-        IReadOnlyList<WizardRow> Rows,
-        WizardRow? NextStep,
-        bool Success) : WizardScreen;
+        IReadOnlyList<SetupRow> Rows,
+        SetupRow? NextStep,
+        bool Success) : SetupScreen;
 }
 
 //how a body row reads, as a meaning the widget turns into paint, since a screen knows nothing of themes or terminals
@@ -127,13 +127,13 @@ internal enum RowGlyph
 }
 
 //one row of a screen's body, with its tone, spans and shape as data. three span kinds at most, and the indent comes off the row
-internal sealed record WizardRow(string Text, RowTone Tone = RowTone.Body,
+internal sealed record SetupRow(string Text, RowTone Tone = RowTone.Body,
     IReadOnlyList<string>? Highlight = null, int Indent = 0, int Hang = 0, RowGlyph? Glyph = null,
     IReadOnlyList<string>? Lift = null, IReadOnlyList<string>? Keys = null, string? Tail = null,
     IReadOnlyList<string>? Items = null,
     bool Wide = false, bool Optional = false)
 {
-    public static implicit operator WizardRow(string text) => new(text);
+    public static implicit operator SetupRow(string text) => new(text);
 
     //the row's text, so it still reads as a string in a test that joins a body
     public override string ToString() => Text;

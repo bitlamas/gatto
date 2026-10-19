@@ -12,7 +12,7 @@ public class ShelfQuestionTests
     private static IReadOnlyList<string> Painted(bool inSession)
     {
         var flow = new SetupFlow(ModelFetchTests.ShelfProbes(Unified));
-        var shelf = Assert.IsType<WizardScreen.Choice>(
+        var shelf = Assert.IsType<SetupScreen.Choice>(
             inSession ? flow.StartAtModelSegment() : flow.StartPastEngine());
         Assert.NotNull(shelf.Shelf);
         Assert.NotEmpty(shelf.Shelf!.Rows);

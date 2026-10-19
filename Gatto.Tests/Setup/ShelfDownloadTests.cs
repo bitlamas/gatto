@@ -93,7 +93,7 @@ public sealed class ShelfDownloadTests : IDisposable
     [Fact]
     public void THE_SOURCE_AND_THE_CHECK_READ_THE_CHOSEN_REPO()
     {
-        var probes = new WizardProbes { Rows = [Row(StaticQ4, sha: false)], Found = [] };
+        var probes = new FakeSetupProbes { Rows = [Row(StaticQ4, sha: false)], Found = [] };
         var flow = new SetupFlow(probes);
         flow.StartPastEngine();
         flow.Answer(ShelfControls.PickAnswer("0", I1Q4));

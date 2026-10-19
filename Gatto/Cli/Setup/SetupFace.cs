@@ -10,7 +10,7 @@ namespace Gatto.Cli.Setup;
 internal sealed class SetupFace(
     ITermSurface surface, Theme theme, IKeySource keys, TextWriter output,
     Func<IPollClock>? clock = null, Gatto.Terminal.GlyphSet? glyphs = null)
-    : IWizardSurface
+    : ISetupSurface
 {
     private readonly Gatto.Terminal.GlyphSet _glyphs = glyphs ?? Gatto.Terminal.GlyphSet.Unicode;
 
@@ -18,14 +18,14 @@ internal sealed class SetupFace(
     public Gatto.Terminal.GlyphSet Glyphs => _glyphs;
 
     //one transcript per face, since the collapse and the divider describe the whole run. a method that writes something other than a committed pair has to say so
-    private readonly WizardTranscript _transcript = new(theme, glyphs);
+    private readonly SetupTranscript _transcript = new(theme, glyphs);
 
     //the chosen option's key, or null when the user backed out. the check is taken without being drawn, AuditionTicker already writes its row into the transcript
-    public string? Choose(WizardScreen.Choice c, Func<bool>? watch = null, Func<FetchTick?>? tick = null,
+    public string? Choose(SetupScreen.Choice c, Func<bool>? watch = null, Func<FetchTick?>? tick = null,
         Func<CheckTick?>? check = null)
     {
         //the shelf renders as a table, so the keys, count and order don't move with the width (only the display follows it)
-        var options = WizardPaint.Options(c, _glyphs);
+        var options = SetupPaint.Options(c, _glyphs);
         var shelf = c.Shelf is { } view ? ShelfBinding.For(view, options, theme, _glyphs) : default;
 
         var spec = new SelectSpec(
@@ -35,9 +35,9 @@ internal sealed class SetupFace(
             //back is a row, and always the last one, so the numbers beside the real options never shift
             Options: options,
             //tone in, painted rows out, one mapping for both faces
-            BodyRows: WizardPaint.Body(c.BodyRows),
+            BodyRows: SetupPaint.Body(c.BodyRows),
             //just "Esc to leave" here, the write-at-the-end reassurance sits once in the fork's intro
-            FooterHint: PrompterWizardSurface.LeaveHint,
+            FooterHint: PrompterSetupSurface.LeaveHint,
             //keys left, legend right, and no legend off the shelf or on a shelf whose rows show no marks
             FooterLegend: shelf.Legend,
             //erase the block on the way out, the transcript writes question, answer and a rule to the next segment in its place
@@ -109,7 +109,7 @@ internal sealed class SetupFace(
     internal static string BackLabelOf(Gatto.Terminal.GlyphSet g) => $"{g.Left} back";
 
     //print rows the user reads and keeps
-    public void Show(WizardScreen.Info i)
+    public void Show(SetupScreen.Info i)
     {
         //these rows sit between two committed pairs, so the transcript must not reclaim its previous tail
         _transcript.Interrupt();
@@ -117,16 +117,16 @@ internal sealed class SetupFace(
         output.WriteLine();
     }
 
-    //wrap with the row's own indent from WizardRow.Hang, then paint each produced line separately (a highlight crossing a wrap just does not fire)
-    private void Write(WizardRow row)
+    //wrap with the row's own indent from SetupRow.Hang, then paint each produced line separately (a highlight crossing a wrap just does not fire)
+    private void Write(SetupRow row)
     {
-        //the wrapping lives in WizardRows, so both faces answer where a wrapped line starts the same way
-        foreach (var (lead, text) in WizardRows.Wrap(row, surface.Width, glyphs: _glyphs))
-            output.WriteLine(lead + WizardPaint.Line(row with { Text = text }, theme));
+        //the wrapping lives in SetupRows, so both faces answer where a wrapped line starts the same way
+        foreach (var (lead, text) in SetupRows.Wrap(row, surface.Width, glyphs: _glyphs))
+            output.WriteLine(lead + SetupPaint.Line(row with { Text = text }, theme));
     }
 
     //free text checked by the screen's own rule, re-asked until it passes or the user leaves, so prompt and check can't drift
-    public string? Ask(WizardScreen.Ask a)
+    public string? Ask(SetupScreen.Ask a)
     {
         while (true)
         {
@@ -139,11 +139,11 @@ internal sealed class SetupFace(
                     .. a.AllowBack
                         ? new[] { new SelectOption(BackLabelOf(_glyphs), Key: BackOptionKey) }
                         : []],
-                BodyRows: WizardPaint.Body(a.BodyRows),
+                BodyRows: SetupPaint.Body(a.BodyRows),
                 FreeTextLabel: a.Placeholder ?? "type your answer",
                 //the free-text row sits after the offer and before back, so back is last. do not add an InitialCursor override, a rendered number must still select its row
                 FreeTextIndex: a.Offer is null ? 0 : 1,
-                FooterHint: PrompterWizardSurface.LeaveHint,
+                FooterHint: PrompterSetupSurface.LeaveHint,
                 EchoOnCompletion: true,
                 EchoCompose: _transcript.Commit,
                 DrainTypeAhead: true);
@@ -169,7 +169,7 @@ internal sealed class SetupFace(
     }
 
     //the last screen always prints the next step, and a blank line after it so the shell prompt doesn't touch it
-    public void End(WizardScreen.Terminal t)
+    public void End(SetupScreen.Terminal t)
     {
         _transcript.Interrupt();   //nothing follows the last screen, so nothing may reclaim into it
         //the separator belongs to the rows, so an empty row list prints no blank line

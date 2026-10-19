@@ -17,11 +17,11 @@ public class ConsentDoorTests
     private static HubQuant Quant(string file, long bytes) => new(file, bytes, new string('a', 64));
 
     //the fake disk reports this value, injected rather than read so a test never depends on this machine's drives
-    private static WizardProbes Probes(long weights, long? mmproj = null, long? free = null)
+    private static FakeSetupProbes Probes(long weights, long? mmproj = null, long? free = null)
     {
         var offer = new ModelFetchOffer(Repo, "gemma-4-26b-a4b-it", Into,
             Quant(Weights, weights), mmproj is { } m ? Quant(Mmproj, m) : null);
-        return new WizardProbes
+        return new FakeSetupProbes
         {
             HubOffer = offer,
             FreeSpace = free,
@@ -35,17 +35,17 @@ public class ConsentDoorTests
         ShelfRows.Of(repoId, repoId.Split('/')[0], quant, Gatto.Core.Models.FitRegime.FitsGpu,
             32768, false, null, 100, false);
 
-    private static (SetupFlow Flow, WizardScreen.Choice Consent) At(WizardProbes probes)
+    private static (SetupFlow Flow, SetupScreen.Choice Consent) At(FakeSetupProbes probes)
     {
         var flow = new SetupFlow(probes);
         flow.StartPastEngine();
-        return (flow, Assert.IsType<WizardScreen.Choice>(flow.Answer("0")));
+        return (flow, Assert.IsType<SetupScreen.Choice>(flow.Answer("0")));
     }
 
-    private static string Text(WizardScreen screen) =>
-        string.Join("\n", Assert.IsType<WizardScreen.Choice>(screen).BodyRows?.Select(r => r.Text) ?? [])
+    private static string Text(SetupScreen screen) =>
+        string.Join("\n", Assert.IsType<SetupScreen.Choice>(screen).BodyRows?.Select(r => r.Text) ?? [])
         + "\n" + string.Join("\n",
-            ModelFetchView.Rows(Assert.IsType<WizardScreen.Choice>(screen).Model!.Value, 100,
+            ModelFetchView.Rows(Assert.IsType<SetupScreen.Choice>(screen).Model!.Value, 100,
                 GlyphSet.Unicode).Select(r => r.Text));
 
     //the consent screen must show a typeable folder field, in the shape the engine screen uses
@@ -64,7 +64,7 @@ public class ConsentDoorTests
     {
         var (flow, _) = At(Probes(18_000_000_000, free: 500_000_000_000));
 
-        var after = Assert.IsType<WizardScreen.Choice>(flow.Answer(ShelfControls.TypedAnswer(@"D:\weights")));
+        var after = Assert.IsType<SetupScreen.Choice>(flow.Answer(ShelfControls.TypedAnswer(@"D:\weights")));
 
         Assert.Equal(SetupFlow.ModelFetchingKey, after.Key);
         Assert.Equal(@"D:\weights", flow.Writes.WeightsRoot);
@@ -77,7 +77,7 @@ public class ConsentDoorTests
     {
         var (flow, _) = At(Probes(18_000_000_000, free: 15_000_000_000));
 
-        var after = Assert.IsType<WizardScreen.Choice>(flow.Answer(ShelfControls.TypedAnswer(@"D:\weights")));
+        var after = Assert.IsType<SetupScreen.Choice>(flow.Answer(ShelfControls.TypedAnswer(@"D:\weights")));
 
         Assert.Equal(SetupFlow.ModelConsentKey, after.Key);
         Assert.Null(flow.Writes.WeightsRoot);
@@ -90,7 +90,7 @@ public class ConsentDoorTests
     {
         var (flow, _) = At(Probes(18_000_000_000, free: 500_000_000_000));
 
-        var after = Assert.IsType<WizardScreen.Choice>(flow.Answer(ShelfControls.TypedAnswer("   ")));
+        var after = Assert.IsType<SetupScreen.Choice>(flow.Answer(ShelfControls.TypedAnswer("   ")));
 
         Assert.Equal(SetupFlow.ModelConsentKey, after.Key);
         Assert.Null(flow.Writes.WeightsRoot);
@@ -116,12 +116,12 @@ public class ConsentDoorTests
 
         var after = flow.Answer(ShelfControls.TypedAnswer(@"C:\weights"));
 
-        Assert.Equal(SetupFlow.ModelConsentKey, Assert.IsType<WizardScreen.Choice>(after).Key);
+        Assert.Equal(SetupFlow.ModelConsentKey, Assert.IsType<SetupScreen.Choice>(after).Key);
         var text = Text(after);
         Assert.Contains("16.8 GB", text, StringComparison.Ordinal);
         Assert.Contains("14.0 GB", text, StringComparison.Ordinal);
         Assert.Contains("margin", text, StringComparison.Ordinal);
-        Assert.NotNull(Assert.IsType<WizardScreen.Choice>(after).Door);
+        Assert.NotNull(Assert.IsType<SetupScreen.Choice>(after).Door);
     }
 
     //the margin is enforced, 18.0 GB into 18.5 GB free fits the file but not the file plus the margin. without this case an ignored margin would pass
@@ -133,7 +133,7 @@ public class ConsentDoorTests
         var after = flow.Answer(ShelfControls.TypedAnswer(@"C:\weights"));
 
         Assert.Contains("not enough room", Text(after), StringComparison.Ordinal);
-        Assert.NotNull(Assert.IsType<WizardScreen.Choice>(after).Door);
+        Assert.NotNull(Assert.IsType<SetupScreen.Choice>(after).Door);
     }
 
     //the projector file counts toward the needed space, a check from the weights alone would accept a target that fills up mid-fetch

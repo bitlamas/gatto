@@ -4,7 +4,7 @@ using Gatto.Core.Acquire;
 using Gatto.Core.Hardware;
 using Gatto.Tests.Fakes;
 //the alias names the shared fake in Gatto.Tests.Fakes, so the fixtures here keep one spelling
-using Probes = Gatto.Tests.Fakes.WizardProbes;
+using Probes = Gatto.Tests.Fakes.FakeSetupProbes;
 
 namespace Gatto.Tests.Setup;
 
@@ -12,12 +12,12 @@ namespace Gatto.Tests.Setup;
 public class SetupRunnerWalkTests
 {
     //answers the walk in order, where a null answer means the user pressed Esc and ends the run there
-    private sealed class ScriptedSurface(params string?[] answers) : IWizardSurface
+    private sealed class ScriptedSurface(params string?[] answers) : ISetupSurface
     {
         private int _i;
-        public List<WizardScreen> Seen { get; } = [];
+        public List<SetupScreen> Seen { get; } = [];
 
-        public string? Choose(WizardScreen.Choice c, Func<bool>? watch = null,
+        public string? Choose(SetupScreen.Choice c, Func<bool>? watch = null,
             Func<FetchTick?>? tick = null, Func<CheckTick?>? check = null)
         {
             Seen.Add(c);
@@ -27,9 +27,9 @@ public class SetupRunnerWalkTests
 
         //records which screens the runner handed a poll to, since the face's tests only show a watch resolving
         public List<string> Watched { get; } = [];
-        public string? Ask(WizardScreen.Ask a) { Seen.Add(a); return Next(); }
-        public void Show(WizardScreen.Info i) => Seen.Add(i);
-        public void End(WizardScreen.Terminal t) => Seen.Add(t);
+        public string? Ask(SetupScreen.Ask a) { Seen.Add(a); return Next(); }
+        public void Show(SetupScreen.Info i) => Seen.Add(i);
+        public void End(SetupScreen.Terminal t) => Seen.Add(t);
 
         private string? Next() => _i < answers.Length ? answers[_i++] : null;
 
@@ -80,7 +80,7 @@ public class SetupRunnerWalkTests
 
         var keys = surface.Keys.ToList();
         Assert.Equal(1, keys.Count(k => k == SetupFlow.SteerKey));
-        Assert.IsType<WizardScreen.Terminal>(surface.Seen[^1]);
+        Assert.IsType<SetupScreen.Terminal>(surface.Seen[^1]);
     }
 
     //the escape key on a numbered screen still leaves, since going back belongs to the typed screens where the footer says so
@@ -107,7 +107,7 @@ public class SetupRunnerWalkTests
 
         SetupRunner.Run(new SetupFlow(probes), face, homePath: null);
 
-        Assert.Contains(face.Seen, s => s is WizardScreen.Choice c && c.Key == SetupFlow.DownloadKey);
+        Assert.Contains(face.Seen, s => s is SetupScreen.Choice c && c.Key == SetupFlow.DownloadKey);
     }
 
     [Fact]
@@ -117,8 +117,8 @@ public class SetupRunnerWalkTests
         var face = new ScriptedSurface([.. WalkOpening.PastEngine, "0"]);
         SetupRunner.Run(new SetupFlow(new Probes { Rows = [Row("bartowski/Qwen3-8B-GGUF")] }), face, null);
 
-        var screen = Assert.IsType<WizardScreen.Choice>(
-            face.Seen.Last(s => s is WizardScreen.Choice c && c.Key == SetupFlow.DownloadKey));
+        var screen = Assert.IsType<SetupScreen.Choice>(
+            face.Seen.Last(s => s is SetupScreen.Choice c && c.Key == SetupFlow.DownloadKey));
         var body = string.Join(" ", screen.BodyRows!);
 
         //the address renders as a fact row with no scheme, but it still reaches the screen
@@ -140,8 +140,8 @@ public class SetupRunnerWalkTests
         SetupRunner.Run(new SetupFlow(new Probes { Rows = [SetRow("org/big", 13, 52_000_000_000)] }),
             face, homePath: null);
 
-        var screen = Assert.IsType<WizardScreen.Choice>(
-            face.Seen.Last(s => s is WizardScreen.Choice c && c.Key == SetupFlow.DownloadKey));
+        var screen = Assert.IsType<SetupScreen.Choice>(
+            face.Seen.Last(s => s is SetupScreen.Choice c && c.Key == SetupFlow.DownloadKey));
         var body = string.Join(" ", screen.BodyRows!.Select(r => r.Text));
 
         Assert.Contains("huggingface.co/org/big/tree/main", body, StringComparison.Ordinal);
@@ -157,8 +157,8 @@ public class SetupRunnerWalkTests
         var face = new ScriptedSurface([.. WalkOpening.PastEngine, "0"]);
         SetupRunner.Run(new SetupFlow(new Probes { Rows = [Row("org/small")] }), face, homePath: null);
 
-        var body = string.Join(" ", Assert.IsType<WizardScreen.Choice>(
-            face.Seen.Last(s => s is WizardScreen.Choice c && c.Key == SetupFlow.DownloadKey))
+        var body = string.Join(" ", Assert.IsType<SetupScreen.Choice>(
+            face.Seen.Last(s => s is SetupScreen.Choice c && c.Key == SetupFlow.DownloadKey))
             .BodyRows!.Select(r => r.Text));
 
         Assert.Contains("?download=true", body, StringComparison.Ordinal);
@@ -175,8 +175,8 @@ public class SetupRunnerWalkTests
         var face = new ScriptedSurface([.. WalkOpening.PastEngine, "0"]);
         SetupRunner.Run(new SetupFlow(new Probes { Rows = [row] }), face, homePath: null);
 
-        var body = string.Join(" ", Assert.IsType<WizardScreen.Choice>(
-            face.Seen.Last(s => s is WizardScreen.Choice c && c.Key == SetupFlow.DownloadKey))
+        var body = string.Join(" ", Assert.IsType<SetupScreen.Choice>(
+            face.Seen.Last(s => s is SetupScreen.Choice c && c.Key == SetupFlow.DownloadKey))
             .BodyRows!.Select(r => r.Text));
 
         Assert.Contains("/resolve/main/Q4_K_M/model-Q4_K_M.gguf", body, StringComparison.Ordinal);
@@ -259,8 +259,8 @@ public class SetupRunnerWalkTests
 
         SetupRunner.Run(flow, face, homePath: null);
 
-        var screen = Assert.IsType<WizardScreen.Choice>(
-            face.Seen.Last(s => s is WizardScreen.Choice c && c.Key == SetupFlow.PartialSetKey));
+        var screen = Assert.IsType<SetupScreen.Choice>(
+            face.Seen.Last(s => s is SetupScreen.Choice c && c.Key == SetupFlow.PartialSetKey));
         Assert.True(screen.Watching, "a set nobody picked is still a set gatto can watch fill up");
         Assert.Contains(SetupFlow.PartialSetKey, face.Watched);
 
@@ -283,7 +283,7 @@ public class SetupRunnerWalkTests
         flow.Answer(SetupFlow.PickAnother);                  //back to the shelf.
         flow.Answer("1");                                    //a different model is picked.
 
-        var miss = Assert.IsType<WizardScreen.Choice>(flow.Answer(SetupFlow.Landed));
+        var miss = Assert.IsType<SetupScreen.Choice>(flow.Answer(SetupFlow.Landed));
         //the download screen has its own present-tense heading, and the shelf keeps the past-tense line
         Assert.Contains(miss.BodyRows!, r => r.Text.Contains("It is watching:", StringComparison.Ordinal));
     }
@@ -334,8 +334,8 @@ public class SetupRunnerWalkTests
 
         SetupRunner.Run(flow, face, homePath: null);
 
-        var screen = Assert.IsType<WizardScreen.Choice>(
-            face.Seen.Last(s => s is WizardScreen.Choice c && c.Key == SetupFlow.PartialSetKey));
+        var screen = Assert.IsType<SetupScreen.Choice>(
+            face.Seen.Last(s => s is SetupScreen.Choice c && c.Key == SetupFlow.PartialSetKey));
         Assert.Contains("6 of 13", screen.Question!, StringComparison.Ordinal);
         Assert.Contains(@"C:\Users\me\Downloads",
             string.Join("\n", screen.BodyRows!.Select(r => r.Text)), StringComparison.Ordinal);
@@ -385,13 +385,13 @@ public class SetupRunnerWalkTests
 
         probes.Found = [FoundSet(1, 3)];
         Assert.True(flow.PollForDownload());
-        var first = Assert.IsType<WizardScreen.Choice>(flow.Answer(SetupFlow.Landed));
+        var first = Assert.IsType<SetupScreen.Choice>(flow.Answer(SetupFlow.Landed));
         Assert.Equal(SetupFlow.PartialSetKey, first.Key);
         Assert.Contains("1 of 3", first.Question!, StringComparison.Ordinal);
 
         probes.Found = [FoundSet(2, 3)];
         Assert.True(flow.PollForDownload(), "another shard is a state change and must wake it");
-        var again = Assert.IsType<WizardScreen.Choice>(flow.Answer(SetupFlow.Landed));
+        var again = Assert.IsType<SetupScreen.Choice>(flow.Answer(SetupFlow.Landed));
         Assert.Contains("2 of 3", again.Question!, StringComparison.Ordinal);
 
         probes.Found = [FoundSet(3, 3)];
@@ -412,7 +412,7 @@ public class SetupRunnerWalkTests
         probes.Found = [new FoundModel(@"C:\Users\me\Downloads\m-Q4_K_M-00003-of-00005.gguf",
             8_000_000_000, null, 2)];
         Assert.True(flow.PollForDownload());
-        var screen = Assert.IsType<WizardScreen.Choice>(flow.Answer(SetupFlow.Landed));
+        var screen = Assert.IsType<SetupScreen.Choice>(flow.Answer(SetupFlow.Landed));
 
         Assert.Equal(SetupFlow.PartialSetKey, screen.Key);
         Assert.Contains("2 of 5", screen.Question!, StringComparison.Ordinal);
@@ -427,7 +427,7 @@ public class SetupRunnerWalkTests
         flow.Answer("0");
 
         //the typed field on this screen is the way out, so the user isn't stuck in a folder the file will never appear in
-        var watch = Assert.IsType<WizardScreen.Choice>(flow.Answer(SetupFlow.Landed));
+        var watch = Assert.IsType<SetupScreen.Choice>(flow.Answer(SetupFlow.Landed));
         Assert.Equal(SetupFlow.DownloadKey, watch.Key);
         Assert.NotNull(watch.Door);
     }
@@ -475,7 +475,7 @@ public class SetupRunnerWalkTests
 
         //put another file in that folder, so the list has rows without the one asked for
         probes.Found = [new FoundModel(@"D:\my downloads\something-else.gguf", 4_000_000_000, null)];
-        var screen = Assert.IsType<WizardScreen.Choice>(flow.Answer(ShelfControls.TypedAnswer(@"D:\my downloads")));
+        var screen = Assert.IsType<SetupScreen.Choice>(flow.Answer(ShelfControls.TypedAnswer(@"D:\my downloads")));
 
         Assert.Equal(SetupFlow.DiscoveredKey, screen.Key);
         Assert.Null(flow.Selected);
@@ -492,7 +492,7 @@ public class SetupRunnerWalkTests
             Found = [new FoundModel(@"C:\models\already-here.gguf", 4_000_000_000, null)],
         };
         var flow = new SetupFlow(probes);
-        var screen = Assert.IsType<WizardScreen.Choice>(flow.StartPastEngine());
+        var screen = Assert.IsType<SetupScreen.Choice>(flow.StartPastEngine());
 
         Assert.Equal(SetupFlow.DiscoveredKey, screen.Key);
         Assert.Contains("already on this machine", screen.Question!, StringComparison.Ordinal);
@@ -512,7 +512,7 @@ public class SetupRunnerWalkTests
         flow.StartPastEngine();
         flow.Answer("0");                                  //0 picks the row, which opens the download screen
 
-        var miss = Assert.IsType<WizardScreen.Choice>(flow.Answer(SetupFlow.Landed));
+        var miss = Assert.IsType<SetupScreen.Choice>(flow.Answer(SetupFlow.Landed));
         Assert.Equal(SetupFlow.DownloadKey, miss.Key);
 
         var body = string.Join("\n", miss.BodyRows!.Select(r => r.Text));
@@ -530,7 +530,7 @@ public class SetupRunnerWalkTests
         var flow = new SetupFlow(probes);
         flow.StartPastEngine();
 
-        var first = Assert.IsType<WizardScreen.Choice>(flow.Answer("0"));
+        var first = Assert.IsType<SetupScreen.Choice>(flow.Answer("0"));
         var body = string.Join("\n", first.BodyRows!.Select(r => r.Text));
 
         Assert.Equal(SetupFlow.DownloadKey, first.Key);
@@ -568,7 +568,7 @@ public class SetupRunnerWalkTests
         flow.StartPastEngine();
         flow.Answer(SetupFlow.TypeAnId);
         flow.Answer("someone/model");
-        var screen = Assert.IsType<WizardScreen.Choice>(flow.Answer("0"));
+        var screen = Assert.IsType<SetupScreen.Choice>(flow.Answer("0"));
 
         Assert.Equal(SetupFlow.DownloadKey, screen.Key);
     }
@@ -603,7 +603,7 @@ public class SetupRunnerWalkTests
         public IReadOnlyList<string> Roots { get; init; } = [];
         public ScanResult Scan(string? r) => new([], Roots);
         public ShelfOutcome SearchModels(ModelSearchRequest request, IProgress<SearchProgress>? progress, CancellationToken ct) =>
-            WizardProbes.Outcome(Rows);
+            FakeSetupProbes.Outcome(Rows);
         public (string Path, long Bytes)? ProjectorFor(string p) => null;
         public string? ArchitectureOf(string p) => null;
         public MoveOffer? MoveOfferFor(string p) => null;
@@ -636,13 +636,13 @@ public class SetupRunnerWalkTests
 
         SetupRunner.Run(new SetupFlow(new Probes()), face, homePath: null);
 
-        var shown = face.Seen.OfType<WizardScreen.Info>().Select(i => i.Key).ToList();
+        var shown = face.Seen.OfType<SetupScreen.Info>().Select(i => i.Key).ToList();
         Assert.Contains("step.model", shown);
         Assert.DoesNotContain("step.install", shown);
 
         //the heading must render before the screen it heads
-        var marker = face.Seen.FindIndex(x => x is WizardScreen.Info { Key: "step.model" });
-        var fork = face.Seen.FindIndex(x => x is WizardScreen.Choice { Key: SetupFlow.FoundKey });
+        var marker = face.Seen.FindIndex(x => x is SetupScreen.Info { Key: "step.model" });
+        var fork = face.Seen.FindIndex(x => x is SetupScreen.Choice { Key: SetupFlow.FoundKey });
         Assert.True(marker >= 0 && fork > marker,
             "the Model heading must render before the fork it heads, not after it");
     }
@@ -673,7 +673,7 @@ public class SetupRunnerWalkTests
 
         SetupRunner.Run(new SetupFlow(probes), face, home);
 
-        var narrated = string.Join(" ", face.Seen.OfType<WizardScreen.Info>()
+        var narrated = string.Join(" ", face.Seen.OfType<SetupScreen.Info>()
             .SelectMany(i => i.Rows.Select(r => r.Text)));
 
         Assert.Contains("development build", narrated, StringComparison.Ordinal);
@@ -689,8 +689,8 @@ public class SetupRunnerWalkTests
         var face = new ScriptedSurface([.. WalkOpening.PastEngine, "0"]);
         SetupRunner.Run(new SetupFlow(new Probes { Rows = [Row(repo)] }), face, null);
 
-        var screen = Assert.IsType<WizardScreen.Choice>(
-            face.Seen.Last(s => s is WizardScreen.Choice c && c.Key == SetupFlow.DownloadKey));
+        var screen = Assert.IsType<SetupScreen.Choice>(
+            face.Seen.Last(s => s is SetupScreen.Choice c && c.Key == SetupFlow.DownloadKey));
 
         //these two assertions prove the screen can be answered before Enter is judged
         Assert.False(screen.OnlyTheWatchAdvances);
@@ -712,7 +712,7 @@ public class SetupRunnerWalkTests
 
         probes.Found = [FoundSet(1, 3)];
         Assert.True(flow.PollForDownload());
-        var partial = Assert.IsType<WizardScreen.Choice>(flow.Answer(SetupFlow.Landed));
+        var partial = Assert.IsType<SetupScreen.Choice>(flow.Answer(SetupFlow.Landed));
         Assert.Equal(SetupFlow.PartialSetKey, partial.Key);
         Assert.True(partial.OnlyTheWatchAdvances, "this screen must be render-and-wait");
 

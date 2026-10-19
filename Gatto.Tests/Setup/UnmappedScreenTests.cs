@@ -15,21 +15,21 @@ public class UnmappedScreenTests : IDisposable
 
     private static string Fixture(string n) => Path.Combine(AppContext.BaseDirectory, "Fixtures", n);
 
-    private sealed class Surface(params string?[] answers) : IWizardSurface
+    private sealed class Surface(params string?[] answers) : ISetupSurface
     {
         private int _i;
-        public List<WizardScreen> Seen { get; } = [];
-        public string? Choose(WizardScreen.Choice c, Func<bool>? watch = null,
+        public List<SetupScreen> Seen { get; } = [];
+        public string? Choose(SetupScreen.Choice c, Func<bool>? watch = null,
             Func<FetchTick?>? tick = null, Func<CheckTick?>? check = null) { Seen.Add(c); return Next(); }
-        public string? Ask(WizardScreen.Ask a) { Seen.Add(a); return Next(); }
-        public void Show(WizardScreen.Info i) => Seen.Add(i);
-        public void End(WizardScreen.Terminal t) => Seen.Add(t);
+        public string? Ask(SetupScreen.Ask a) { Seen.Add(a); return Next(); }
+        public void Show(SetupScreen.Info i) => Seen.Add(i);
+        public void End(SetupScreen.Terminal t) => Seen.Add(t);
         private string? Next() => _i < answers.Length ? answers[_i++] : null;
 
         public IEnumerable<string> Keys => Seen.Select(ScreenKey.Of);
 
         public string Text(string key) => string.Join(" ",
-            Seen.OfType<WizardScreen.Info>().Where(i => i.Key == key).SelectMany(i => i.Rows.Select(r => r.Text)));
+            Seen.OfType<SetupScreen.Info>().Where(i => i.Key == key).SelectMany(i => i.Rows.Select(r => r.Text)));
     }
 
     private sealed class Probes : ISetupProbes
@@ -104,7 +104,7 @@ public class UnmappedScreenTests : IDisposable
         SetupRunner.Run(flow, face, homePath: null);
 
         //the confirmation is gone from Emitted as well as from the face, so it is not merely unrendered
-        Assert.DoesNotContain(flow.Emitted, s => s is WizardScreen.Info i && i.Key == "model.chosen");
+        Assert.DoesNotContain(flow.Emitted, s => s is SetupScreen.Info i && i.Key == "model.chosen");
         Assert.DoesNotContain("model.chosen", face.Keys);
         //this run finds a model already, so none of the five survivors fires here and the kept-rows claim sits in SetupRunnerWalkTests
     }

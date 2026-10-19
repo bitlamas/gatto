@@ -27,7 +27,7 @@ public class EngineFetchTests
         new(Zip, "https://example.invalid/" + Zip, new string('a', 64), Bytes);
 
     //the flow reads the engine from Llama alone, so leaving Llama null is the whole no-engine fixture
-    private static WizardProbes Probes(
+    private static FakeSetupProbes Probes(
         EngineAsset? asset = null,
         Func<EnginePair, EngineFetch>? fetch = null,
         Gatto.Roles.Serve.LlamaAsset? pick = null,
@@ -42,15 +42,15 @@ public class EngineFetchTests
         };
 
     //the no-engine screen as the flow emits it, reached from the opening. don't build one by hand, that only proves the renderer on a screen nobody reaches
-    private static WizardScreen.Choice NoEngine(WizardProbes probes)
+    private static SetupScreen.Choice NoEngine(FakeSetupProbes probes)
     {
         var flow = new SetupFlow(probes);
-        return Assert.IsType<WizardScreen.Choice>(flow.StartPastOpening());
+        return Assert.IsType<SetupScreen.Choice>(flow.StartPastOpening());
     }
 
-    private static WizardScreen.Choice Consent() => NoEngine(Probes(Asset));
+    private static SetupScreen.Choice Consent() => NoEngine(Probes(Asset));
 
-    private static WizardScreen.Choice Fallback() => NoEngine(Probes(asset: null));
+    private static SetupScreen.Choice Fallback() => NoEngine(Probes(asset: null));
 
     //fixtures
 
@@ -64,15 +64,15 @@ public class EngineFetchTests
         new(CudaZip, 1, 2, 93L * 1024 * 1024, 268L * 1024 * 1024, 11_000);
 
     //the fetching screen the flow emits after the consent button, reached the way a user reaches it
-    private static WizardScreen.Choice Fetching(WizardProbes? probes = null)
+    private static SetupScreen.Choice Fetching(FakeSetupProbes? probes = null)
     {
         var flow = new SetupFlow(probes
             ?? Probes(Asset, _ => new EngineFetch(@"C:\e\llama-server.exe", null)));
         flow.StartPastOpening();
-        return Assert.IsType<WizardScreen.Choice>(flow.Answer(SetupFlow.ConsentFetch));
+        return Assert.IsType<SetupScreen.Choice>(flow.Answer(SetupFlow.ConsentFetch));
     }
 
-    private static WizardProbes PairProbes() =>
+    private static FakeSetupProbes PairProbes() =>
         new()
         {
             Llama = null,
@@ -91,18 +91,18 @@ public class EngineFetchTests
     [Fact]
     public void THE_FETCH_CONSENT_MATCHES_ITS_GOLDEN() =>
         Golden.AssertEquals("s4", "consent", 100,
-            WalkRender.Choice(Consent(), 100, script: [WizardRig.Enter]).Rows);
+            WalkRender.Choice(Consent(), 100, script: [SetupRig.Enter]).Rows);
 
     //below 90 columns the from row's why-clause shortens and every fact stays put (a wrapped row would break the label column a table needs)
     [Fact]
     public void THE_FETCH_CONSENT_FOLDS_AT_EIGHTY_COLUMNS() =>
         Golden.AssertEquals("s4", "consent-80", 80,
-            WalkRender.Choice(Consent(), 80, script: [WizardRig.Enter]).Rows);
+            WalkRender.Choice(Consent(), 80, script: [SetupRig.Enter]).Rows);
 
     [Fact]
     public void THE_OFFLINE_ARM_MATCHES_ITS_GOLDEN() =>
         Golden.AssertEquals("s4", "fallback", 100,
-            WalkRender.Choice(Fallback(), 100, script: [WizardRig.Enter]).Rows);
+            WalkRender.Choice(Fallback(), 100, script: [SetupRig.Enter]).Rows);
 
     [Fact]
     public void THE_FETCHING_SCREEN_MATCHES_ITS_GOLDEN() =>
@@ -120,7 +120,7 @@ public class EngineFetchTests
     public void THE_ARMED_ESC_MATCHES_ITS_GOLDEN() =>
         Golden.AssertEquals("s4", "fetching-armed", 100,
             WalkRender.Watching(Fetching(), 100, Tick,
-                script: [WizardRig.Esc, WizardRig.Esc], nowMs: () => 0).Rows);
+                script: [SetupRig.Esc, SetupRig.Esc], nowMs: () => 0).Rows);
 
     //the companion is named while the second file is still arriving, so nobody closes the wizard believing the pair is done
     [Fact]
@@ -139,12 +139,12 @@ public class EngineFetchTests
     }
 
     //the watch screen and the arrival from one flow, because the purr has to be the watch the face actually ran
-    private static (WizardScreen.Choice Watch, WizardScreen.Choice Arrived) WatchThenArrived()
+    private static (SetupScreen.Choice Watch, SetupScreen.Choice Arrived) WatchThenArrived()
     {
         var flow = new SetupFlow(Probes(Asset, _ => new EngineFetch(@"C:\e\llama-server.exe", null)));
         flow.StartPastOpening();
-        var watch = Assert.IsType<WizardScreen.Choice>(flow.Answer(SetupFlow.ConsentFetch));
-        var arrived = Assert.IsType<WizardScreen.Choice>(flow.Answer(SetupFlow.Landed));
+        var watch = Assert.IsType<SetupScreen.Choice>(flow.Answer(SetupFlow.ConsentFetch));
+        var arrived = Assert.IsType<SetupScreen.Choice>(flow.Answer(SetupFlow.Landed));
         return (watch, arrived);
     }
 
@@ -156,7 +156,7 @@ public class EngineFetchTests
     {
         var screen = fetching ? Consent() : Fallback();
         for (var w = 78; w <= 120; w++)
-            foreach (var row in WalkRender.Choice(screen, w, script: [WizardRig.Enter]).Rows)
+            foreach (var row in WalkRender.Choice(screen, w, script: [SetupRig.Enter]).Rows)
                 Assert.True(Gatto.Terminal.UnicodeWidth.Of(row) <= w,
                     $"at width {w} a row is {Gatto.Terminal.UnicodeWidth.Of(row)} cells: {row}");
     }
@@ -197,7 +197,7 @@ public class EngineFetchTests
     public void A_CUDA_PICK_REACHES_THE_CONSENT_AND_ITS_COMPANION_IS_ON_THE_SCREEN()
     {
         var pick = new Gatto.Roles.Serve.LlamaAsset(Zip, "cudart-12.4.zip", "an NVIDIA card", "CUDA");
-        var flow = new SetupFlow(new WizardProbes
+        var flow = new SetupFlow(new FakeSetupProbes
         {
             Llama = null,
             Asset = pick,
@@ -207,7 +207,7 @@ public class EngineFetchTests
             Verify = _ => new ProbeResult(ProbeShape.ClassicServer, "d", Build: Pin),
         });
 
-        var screen = Assert.IsType<WizardScreen.Choice>(flow.StartPastOpening());
+        var screen = Assert.IsType<SetupScreen.Choice>(flow.StartPastOpening());
         Assert.Equal(SetupFlow.ConsentKey, screen.Key);
 
         var rows = string.Join("\n", EngineFetchView.Rows(screen.Engine!.Value, 100, glyphs: GlyphSet.Unicode).Select(r => r.Text));
@@ -226,14 +226,14 @@ public class EngineFetchTests
         var flow = new SetupFlow(Probes(offering: false));
 
         Assert.Equal(SetupFlow.SteerKey,
-            Assert.IsType<WizardScreen.Choice>(flow.StartPastOpening()).Key);
+            Assert.IsType<SetupScreen.Choice>(flow.StartPastOpening()).Key);
     }
 
     //no golden covers this frame, so the sentence and the connect door are asserted (the key alone proves nothing about what a user sees)
     [Fact]
     public void THE_STEERING_SCREEN_CARRIES_ITS_SENTENCE_AND_THE_CONNECT_DOOR()
     {
-        var screen = Assert.IsType<WizardScreen.Choice>(
+        var screen = Assert.IsType<SetupScreen.Choice>(
             new SetupFlow(Probes(offering: false)).StartPastOpening());
 
         Assert.Equal(SetupFlow.SteerKey, screen.Key);
@@ -249,24 +249,24 @@ public class EngineFetchTests
     {
         var flow = new SetupFlow(Probes(offering: false));
         Assert.Equal(SetupFlow.SteerKey,
-            Assert.IsType<WizardScreen.Choice>(flow.StartPastOpening()).Key);
+            Assert.IsType<SetupScreen.Choice>(flow.StartPastOpening()).Key);
 
         var next = flow.Answer(SetupFlow.ForkConnect);
 
         //the door only has to lead somewhere, so the assertion stops at a different key rather than the destination
         Assert.NotNull(next);
         Assert.NotEqual(SetupFlow.SteerKey,
-            next is WizardScreen.Choice c ? c.Key
-            : next is WizardScreen.Ask a ? a.Key
-            : next is WizardScreen.Info i ? i.Key
-            : ((WizardScreen.Terminal)next).Key);
+            next is SetupScreen.Choice c ? c.Key
+            : next is SetupScreen.Ask a ? a.Key
+            : next is SetupScreen.Info i ? i.Key
+            : ((SetupScreen.Terminal)next).Key);
     }
 
     //a swept exe that fails verification is not a found engine, and the note goes to the record. a wrong guess is not the user's problem to fix on a screen
     [Fact]
     public void A_SWEPT_EXE_THAT_IS_NOT_THE_SERVER_REACHES_THE_CONSENT_AND_IS_NOTED()
     {
-        var flow = new SetupFlow(new WizardProbes
+        var flow = new SetupFlow(new FakeSetupProbes
         {
             Llama = @"C:\llama\llama-cli.exe",
             Asset = Pick,
@@ -274,7 +274,7 @@ public class EngineFetchTests
             Verify = _ => new ProbeResult(ProbeShape.KnownSibling, "d", SiblingName: "llama-cli.exe"),
         });
 
-        var screen = Assert.IsType<WizardScreen.Choice>(flow.StartPastOpening());
+        var screen = Assert.IsType<SetupScreen.Choice>(flow.StartPastOpening());
 
         //the consent with its door, the same first screen a bare machine gets
         Assert.Equal(SetupFlow.ConsentKey, screen.Key);
@@ -310,7 +310,7 @@ public class EngineFetchTests
     [Fact]
     public void ESC_STOPS_THE_FETCH_AND_GATTO_WAITS_FOR_IT_TO_UNWIND()
     {
-        var probes = new WizardProbes
+        var probes = new FakeSetupProbes
         {
             Llama = null,
             Asset = Pick,
@@ -326,7 +326,7 @@ public class EngineFetchTests
         var back = flow.Answer(SetupFlow.FetchStop);
 
         Assert.True(probes.Unwound, "the stop answer returned while the fetch was still running");
-        Assert.Equal(SetupFlow.ConsentKey, Assert.IsType<WizardScreen.Choice>(back).Key);
+        Assert.Equal(SetupFlow.ConsentKey, Assert.IsType<SetupScreen.Choice>(back).Key);
         Assert.Null(flow.Writes.LlamaServer);
     }
 
@@ -335,12 +335,12 @@ public class EngineFetchTests
     public void BACK_FROM_PAST_A_FINISHED_FETCH_NEVER_LANDS_ON_THE_WATCH()
     {
         var (flow, arrived) = Fetch(_ => new EngineFetch(@"C:\e\llama-server.exe", null));
-        Assert.Equal(SetupFlow.FetchedKey, Assert.IsType<WizardScreen.Choice>(arrived).Key);
+        Assert.Equal(SetupFlow.FetchedKey, Assert.IsType<SetupScreen.Choice>(arrived).Key);
         flow.Answer(SetupFlow.FetchedNext);
 
         var once = flow.Answer(SetupFlow.BackKey);
-        Assert.Equal(SetupFlow.FetchedKey, Assert.IsType<WizardScreen.Choice>(once).Key);
-        var twice = Assert.IsType<WizardScreen.Choice>(flow.Answer(SetupFlow.BackKey));
+        Assert.Equal(SetupFlow.FetchedKey, Assert.IsType<SetupScreen.Choice>(once).Key);
+        var twice = Assert.IsType<SetupScreen.Choice>(flow.Answer(SetupFlow.BackKey));
         Assert.False(twice.Watching, $"back landed on the watched screen {twice.Key}");
         Assert.Equal(SetupFlow.ConsentKey, twice.Key);
     }
@@ -351,7 +351,7 @@ public class EngineFetchTests
     {
         var (flow, emitted) = Fetch(_ => throw new IOException("the disk went away"));
 
-        var screen = Assert.IsType<WizardScreen.Choice>(emitted);
+        var screen = Assert.IsType<SetupScreen.Choice>(emitted);
         Assert.Equal(SetupFlow.FallbackKey, screen.Key);
         Assert.Contains("the disk went away", string.Join("\n", screen.BodyRows!));
         Assert.Null(flow.Writes.LlamaServer);
@@ -420,21 +420,21 @@ public class EngineFetchTests
     {
         //if the enter key answered, Choose returns the stop key and the arrival never happens
         Assert.Equal(SetupFlow.Landed,
-            WalkRender.WatchAfterKeys(Fetching(), 100, Tick, [WizardRig.Enter]));
+            WalkRender.WatchAfterKeys(Fetching(), 100, Tick, [SetupRig.Enter]));
     }
 
     //a digit does nothing on the watch either, since the inert keys are computed from this screen's own options
     [Fact]
     public void A_DIGIT_DOES_NOTHING_WHILE_GATTO_IS_FETCHING() =>
         Assert.Equal(SetupFlow.Landed,
-            WalkRender.WatchAfterKeys(Fetching(), 100, Tick, [WizardRig.Digit('1')]));
+            WalkRender.WatchAfterKeys(Fetching(), 100, Tick, [SetupRig.Digit('1')]));
 
     private static string Frame(FetchTick t) =>
         string.Join("\n", WalkRender.Watching(Fetching(), 100, t).Rows);
 
     private static string Armed(FetchTick t) =>
         string.Join("\n", WalkRender.Watching(Fetching(), 100, t,
-            script: [WizardRig.Esc, WizardRig.Esc], nowMs: () => 0).Rows);
+            script: [SetupRig.Esc, SetupRig.Esc], nowMs: () => 0).Rows);
 
     //the config takes the exe the probe answered with, since the folder answer is what actually ran
     [Fact]
@@ -442,7 +442,7 @@ public class EngineFetchTests
     {
         var (flow, screen) = Fetch(_ => new EngineFetch(@"C:\e\llama-server.exe", null));
 
-        Assert.Equal(SetupFlow.FetchedKey, Assert.IsType<WizardScreen.Choice>(screen).Key);
+        Assert.Equal(SetupFlow.FetchedKey, Assert.IsType<SetupScreen.Choice>(screen).Key);
         Assert.Equal(@"C:\e\llama-server.exe", flow.Writes.LlamaServer);
     }
 
@@ -450,7 +450,7 @@ public class EngineFetchTests
     [Fact]
     public void AN_ARRIVAL_THAT_IS_NOT_THE_SERVER_IS_REFUSED_AND_NOTHING_IS_WRITTEN()
     {
-        var probes = new WizardProbes
+        var probes = new FakeSetupProbes
         {
             Llama = null,
             Asset = Pick,
@@ -474,7 +474,7 @@ public class EngineFetchTests
     {
         var (_, emitted) = Fetch(_ => new EngineFetch(null, "the download contains 0 copies of llama-server.exe"));
 
-        var screen = Assert.IsType<WizardScreen.Choice>(emitted);
+        var screen = Assert.IsType<SetupScreen.Choice>(emitted);
         Assert.Equal(SetupFlow.FallbackKey, screen.Key);
         Assert.Contains("0 copies", string.Join("\n", screen.BodyRows!));
         Assert.DoesNotContain("couldn't reach GitHub", string.Join("\n", screen.BodyRows!));
@@ -485,7 +485,7 @@ public class EngineFetchTests
     public void DONE_CHECK_THAT_FOLDER_WALKS_THE_FOLDER_GATTO_NAMED()
     {
         var asked = new List<string>();
-        var probes = new WizardProbes
+        var probes = new FakeSetupProbes
         {
             Llama = null,
             Asset = Pick,
@@ -539,27 +539,27 @@ public class EngineFetchTests
     //the whole flow to the fetch's answer, returning the flow and the screen it opened. a test about the fetch needs what the user sees and what was written
 
     //press the button, then answer the arrival, and assert the watch in between, or the test passes even if the button stops fetching
-    private static (SetupFlow Flow, WizardScreen Screen) Fetch(Func<EnginePair, EngineFetch> fetch)
+    private static (SetupFlow Flow, SetupScreen Screen) Fetch(Func<EnginePair, EngineFetch> fetch)
     {
         var flow = new SetupFlow(Probes(Asset, fetch));
         flow.StartPastOpening();
         Assert.Equal(SetupFlow.FetchingKey,
-            Assert.IsType<WizardScreen.Choice>(flow.Answer(SetupFlow.ConsentFetch)).Key);
+            Assert.IsType<SetupScreen.Choice>(flow.Answer(SetupFlow.ConsentFetch)).Key);
         //no wait is needed, since the arrival joins the task and returns only once the fetch has finished
         return (flow, flow.Answer(SetupFlow.Landed));
     }
 
-    private static WizardScreen.Choice Arrived() =>
-        Assert.IsType<WizardScreen.Choice>(
+    private static SetupScreen.Choice Arrived() =>
+        Assert.IsType<SetupScreen.Choice>(
             Fetch(_ => new EngineFetch(@"C:\e\llama-server.exe", null)).Screen);
 
-    private static string RowText(WizardScreen.Choice c) =>
+    private static string RowText(SetupScreen.Choice c) =>
         string.Join("\n", EngineFetchView.Rows(c.Engine!.Value, 100, glyphs: GlyphSet.Unicode).Select(r => r.Text));
 
-    private static string RowsOf(WizardScreen s) => s switch
+    private static string RowsOf(SetupScreen s) => s switch
     {
-        WizardScreen.Choice c => string.Join("\n", c.BodyRows ?? []),
-        WizardScreen.Ask a => string.Join("\n", a.BodyRows ?? []),
+        SetupScreen.Choice c => string.Join("\n", c.BodyRows ?? []),
+        SetupScreen.Ask a => string.Join("\n", a.BodyRows ?? []),
         _ => "",
     };
     //the arrival follows a watch, so it shows the elapsed, and the flag is all the change needs (the face measured it)

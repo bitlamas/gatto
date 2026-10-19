@@ -103,7 +103,7 @@ public class SetupFlowTests
         {
             Asked.Add("Search");
             Searches.Add(request.Search);
-            return WizardProbes.Outcome(Rows, SearchOutcome);
+            return FakeSetupProbes.Outcome(Rows, SearchOutcome);
         }
 
         //rows the tier filter set aside as older, so a test can drive the count line's buckets through the flow rather than the renderer
@@ -282,7 +282,7 @@ public class SetupFlowTests
     public void A_COLLECTION_LINK_IS_ANSWERED_WITHOUT_BLAME()
     {
         var probes = new FakeProbes { Llama = @"C:\llama\llama-server.exe" };
-        var again = Assert.IsType<WizardScreen.Ask>(
+        var again = Assert.IsType<SetupScreen.Ask>(
             AtTypedDoor(probes).Answer("https://huggingface.co/collections/unsloth/gemma-4-68a1"));
 
         Assert.Equal(SetupFlow.TypedIdKey, again.Key);
@@ -298,7 +298,7 @@ public class SetupFlowTests
     public void AN_EMPTY_SEARCH_SAYS_SO_ABOUT_THE_SEARCH()
     {
         var probes = new FakeProbes { Llama = @"C:\llama\llama-server.exe", Rows = [] };
-        var screen = Assert.IsType<WizardScreen.Choice>(
+        var screen = Assert.IsType<SetupScreen.Choice>(
             AtTypedDoor(probes).Answer("wharrgarbl"));
 
         //this walk never reached a shelf, so the sentence is the screen's heading, since no frame holds the block
@@ -317,7 +317,7 @@ public class SetupFlowTests
     public void AN_EMPTY_BROWSE_KEEPS_THE_BROWSE_SENTENCE()
     {
         var probes = new FakeProbes { Llama = @"C:\llama\llama-server.exe", Rows = [] };
-        var screen = Assert.IsType<WizardScreen.Choice>(AtSearch(probes).Emitted[^1]);
+        var screen = Assert.IsType<SetupScreen.Choice>(AtSearch(probes).Emitted[^1]);
 
         Assert.DoesNotContain("Nothing on Hugging Face answers", screen.Question!, StringComparison.Ordinal);
     }
@@ -346,7 +346,7 @@ public class SetupFlowTests
             TypedId = new TypedIdOutcome.NoWeights(),
         });
         flow.Answer(SetupFlow.TypeAnId);
-        var again = Assert.IsType<WizardScreen.Ask>(flow.Answer("ggml-org/vocabs"));
+        var again = Assert.IsType<SetupScreen.Ask>(flow.Answer("ggml-org/vocabs"));
 
         Assert.Equal(SetupFlow.TypedIdKey, again.Key);
         Assert.Contains("publishes no weights", again.Label!, StringComparison.OrdinalIgnoreCase);
@@ -369,7 +369,7 @@ public class SetupFlowTests
             Llama = @"C:\llama\llama-server.exe",
             Rows = [Row("org/a", structure: "MoE A4B"), Row("org/b", structure: "dense")],
         };
-        var screen = Assert.IsType<WizardScreen.Choice>(new SetupFlow(probes).StartPastEngine());
+        var screen = Assert.IsType<SetupScreen.Choice>(new SetupFlow(probes).StartPastEngine());
 
         //render through the TUI widget, since the structure cell exists only there. the plain face's labels show no such cell
         var table = string.Join("\n", Gatto.Cli.Setup.Shelves.Shelf
@@ -379,10 +379,10 @@ public class SetupFlowTests
         Assert.Contains("dense", table, StringComparison.Ordinal);
     }
 
-    private static T Screen<T>(SetupFlow f, string key) where T : WizardScreen =>
+    private static T Screen<T>(SetupFlow f, string key) where T : SetupScreen =>
         Assert.IsType<T>(f.Emitted.Single(s => Key(s) == key));
 
-    private static string Key(WizardScreen s) => ScreenKey.Of(s);
+    private static string Key(SetupScreen s) => ScreenKey.Of(s);
 
     [Fact]
     public void THE_WELCOME_IS_FIRST_AND_IT_CARRIES_THE_HARDWARE_LINE()
@@ -390,7 +390,7 @@ public class SetupFlowTests
         //the user learns gatto's reading of the machine before choosing a path, so the line is a body row of the first screen
         var flow = new SetupFlow(new FakeProbes());
 
-        var welcome = Assert.IsType<WizardScreen.Choice>(flow.Start());
+        var welcome = Assert.IsType<SetupScreen.Choice>(flow.Start());
         Assert.Equal(SetupFlow.WelcomeKey, welcome.Key);
         Assert.Contains(welcome.BodyRows!, r => r.Text.Contains("This machine", StringComparison.Ordinal));
 
@@ -433,7 +433,7 @@ public class SetupFlowTests
     {
         //the last row a person reads must be what to do next (the all-builds link isn't it). assert the rule rather than a stored position
         var flow = new SetupFlow(new FakeProbes { Llama = null, Model = true });
-        var steer = Assert.IsType<WizardScreen.Choice>(flow.StartPastOpening());
+        var steer = Assert.IsType<SetupScreen.Choice>(flow.StartPastOpening());
         var rows = steer.BodyRows!.Select(r => r.Text).ToList();
 
         Assert.StartsWith("Once you're done", rows[^1], StringComparison.Ordinal);
@@ -451,7 +451,7 @@ public class SetupFlowTests
     public void THE_STEERING_SCREEN_ASKS_FOR_THE_PATH_ITSELF_rather_than_for_a_keystroke()
     {
         var flow = AtSteering(new FakeProbes { Llama = null, Shape = Gatto.Core.Acquire.ProbeShape.ClassicServer });
-        var steer = Assert.IsType<WizardScreen.Choice>(flow.Emitted[^1]);
+        var steer = Assert.IsType<SetupScreen.Choice>(flow.Emitted[^1]);
 
         //the title names the step, the body asks for the path, and the connect row shares the screen with the typed area
         Assert.Equal(SetupFlow.EngineTitle, steer.Question);
@@ -475,7 +475,7 @@ public class SetupFlowTests
     public void THE_AUDITION_OFFER_ASKS_BEFORE_IT_EXPLAINS_and_recommends_the_check()
     {
         var flow = AtAuditionOffer();
-        var offer = Assert.IsType<WizardScreen.Choice>(flow.Emitted[^1]);
+        var offer = Assert.IsType<SetupScreen.Choice>(flow.Emitted[^1]);
         var rows = offer.BodyRows!.Select(r => r.Text).ToList();
 
         Assert.Equal("Can it run commands and edit files?", offer.Question);
@@ -496,7 +496,7 @@ public class SetupFlowTests
     public void THE_COMPLETION_SCREEN_SHOWS_WHAT_WAS_MEASURED()
     {
         var flow = AtAuditionOffer(new AuditionFacts("Q6_K", "defaults", "template default", 49.4));
-        var done = Assert.IsType<WizardScreen.Choice>(PastThePass(flow));
+        var done = Assert.IsType<SetupScreen.Choice>(PastThePass(flow));
         var body = string.Join("\n", done.BodyRows!.Select(r => r.Text));
 
         Assert.Equal(SetupFlow.SummaryKey, done.Key);
@@ -520,7 +520,7 @@ public class SetupFlowTests
         var flow = AtAuditionOffer(
             new AuditionFacts("Q6_K", "defaults", "template default", 49.4, TasksPassed: 4, TasksTotal: 5));
         //the pass screen is emitted and answerable, and its own dwell keeps it up
-        var said = Assert.IsType<WizardScreen.Choice>(CheckRan(flow));
+        var said = Assert.IsType<SetupScreen.Choice>(CheckRan(flow));
         Assert.Equal(SetupFlow.AuditionPassedKey, said.Key);
         var body = string.Join("\n", said.BodyRows!.Select(r => r.Text));
 
@@ -549,7 +549,7 @@ public class SetupFlowTests
         flow.Answer("0");
         Resumed(flow, "qwen");
 
-        var failed = Assert.IsType<WizardScreen.Choice>(Answered(flow, SetupFlow.Yes));
+        var failed = Assert.IsType<SetupScreen.Choice>(Answered(flow, SetupFlow.Yes));
         var rows = failed.BodyRows!.Select(r => r.Text).ToList();
 
         Assert.Equal(SetupFlow.AuditionFailedKey, failed.Key);
@@ -582,10 +582,10 @@ public class SetupFlowTests
         }
 
         var passFlow = At(AuditionOutcome.Passed);
-        var passRows = Assert.IsType<WizardScreen.Choice>(CheckRan(passFlow))
+        var passRows = Assert.IsType<SetupScreen.Choice>(CheckRan(passFlow))
             .BodyRows!.Select(r => r.Text).ToList();
 
-        var failed = Assert.IsType<WizardScreen.Choice>(CheckRan(At(AuditionOutcome.Failed)));
+        var failed = Assert.IsType<SetupScreen.Choice>(CheckRan(At(AuditionOutcome.Failed)));
         var failRows = failed.BodyRows!.Select(r => r.Text).ToList();
 
         //the stamp is the block of key and value rows, which each screen wraps in its own words.
@@ -606,7 +606,7 @@ public class SetupFlowTests
         //skipping the check measures nothing, so a stamp row here would be an invention (every line must be something gatto watched happen)
         var flow = AtAuditionOffer();
         PastTheSkip(flow);
-        var done = Assert.IsType<WizardScreen.Choice>(flow.Emitted[^1]);
+        var done = Assert.IsType<SetupScreen.Choice>(flow.Emitted[^1]);
         var body = string.Join("\n", done.BodyRows!.Select(r => r.Text));
 
         Assert.DoesNotContain("quant", body, StringComparison.Ordinal);
@@ -641,7 +641,7 @@ public class SetupFlowTests
         Resumed(flow, "qwen");
         PastTheSkip(flow);
 
-        var line = Assert.IsType<WizardScreen.Choice>(flow.Emitted[^1])
+        var line = Assert.IsType<SetupScreen.Choice>(flow.Emitted[^1])
             .BodyRows!.Select(r => r.Text)
             .First(r => r.Contains("first reply", StringComparison.Ordinal));
         return line[(line.IndexOf("took ", StringComparison.Ordinal) + 5)..].TrimEnd('.');
@@ -653,7 +653,7 @@ public class SetupFlowTests
         //the earlier screen already said setup finished, so this one must not say it again.
         var flow = AtAuditionOffer();
         PastTheSkip(flow);
-        var end = Assert.IsType<WizardScreen.Terminal>(Answered(flow, SetupFlow.Finish));
+        var end = Assert.IsType<SetupScreen.Terminal>(Answered(flow, SetupFlow.Finish));
 
         Assert.DoesNotContain(end.Rows, r => r.Text.Contains("gatto is set up", StringComparison.Ordinal));
         //the closing line is optional in the model, so assert it exists (sending the user off is the point of the screen)
@@ -671,16 +671,16 @@ public class SetupFlowTests
         //the blank row belongs to the branch that leaves the user in a shell, so starting gatto has none
         var flow = AtAuditionOffer();
         PastTheSkip(flow);
-        var end = Assert.IsType<WizardScreen.Terminal>(Answered(flow, SetupFlow.OpenRepl));
+        var end = Assert.IsType<SetupScreen.Terminal>(Answered(flow, SetupFlow.OpenRepl));
 
         Assert.Empty(end.Rows);
         Assert.True(flow.StartReplWhenDone);
     }
 
     //answer the offer, wait on the poll rather than on a duration, and stop at the outcome. the write pause stays undrained, since a caller still reads an intent
-    private static WizardScreen CheckRan(SetupFlow flow)
+    private static SetupScreen CheckRan(SetupFlow flow)
     {
-        var running = Assert.IsType<WizardScreen.Choice>(flow.Answer(SetupFlow.Yes));
+        var running = Assert.IsType<SetupScreen.Choice>(flow.Answer(SetupFlow.Yes));
         Assert.Equal(SetupFlow.AuditionRunningKey, running.Key);
         Assert.True(SpinWait.SpinUntil(flow.PollWatch, TimeSpan.FromSeconds(10)),
             "the check never finished, so this walk never reached its own subject");
@@ -688,22 +688,22 @@ public class SetupFlowTests
     }
 
     //answering Skip returns the wait screen, since the skip runs one load. let the load finish, return the arrival, and leave the pause undrained
-    private static WizardScreen SkipRan(SetupFlow flow)
+    private static SetupScreen SkipRan(SetupFlow flow)
     {
-        var waiting = Assert.IsType<WizardScreen.Choice>(flow.Answer(SetupFlow.Skip));
+        var waiting = Assert.IsType<SetupScreen.Choice>(flow.Answer(SetupFlow.Skip));
         Assert.Equal(SetupFlow.AuditionWaitingKey, waiting.Key);
         Assert.True(SpinWait.SpinUntil(flow.PollWatch, TimeSpan.FromSeconds(10)),
             "the one load never finished, so this walk never reached its own subject");
         var landed = flow.Answer(SetupFlow.Landed);
 
         //answer the arrival so the helper ends past the check step with the pause armed. a load that never answered has no arrival, so don't require one
-        return landed is WizardScreen.Choice { Key: SetupFlow.AuditionAnswersKey }
+        return landed is SetupScreen.Choice { Key: SetupFlow.AuditionAnswersKey }
             ? flow.Answer(SetupFlow.AnswersNext)
             : landed;
     }
 
     //the skip step, with the write pause drained. it stays apart from SkipRan, which leaves the pause armed for callers that read an intent
-    private static WizardScreen PastTheSkip(SetupFlow flow)
+    private static SetupScreen PastTheSkip(SetupFlow flow)
     {
         var screen = SkipRan(flow);
         while (flow.NeedsWritesApplied) screen = flow.ResumeAfterWrites(null);
@@ -711,18 +711,18 @@ public class SetupFlowTests
     }
 
     //a walk must answer the pass screen to reach what follows. this stays separate from Answered, since draining there would hide the frame
-    private static WizardScreen PastThePass(SetupFlow flow)
+    private static SetupScreen PastThePass(SetupFlow flow)
     {
-        var passed = Assert.IsType<WizardScreen.Choice>(CheckRan(flow));
+        var passed = Assert.IsType<SetupScreen.Choice>(CheckRan(flow));
         Assert.Equal(SetupFlow.AuditionPassedKey, passed.Key);
         return Answered(flow, SetupFlow.AuditionPassedNext);
     }
 
     //answer a screen as the runner does. use it only where a test reads what follows, since draining wipes the armed state another test pins
-    private static WizardScreen Answered(SetupFlow flow, string key)
+    private static SetupScreen Answered(SetupFlow flow, string key)
     {
         var screen = flow.Answer(key);
-        if (screen is WizardScreen.Choice { OnlyTheWatchAdvances: true })
+        if (screen is SetupScreen.Choice { OnlyTheWatchAdvances: true })
         {
             Assert.True(SpinWait.SpinUntil(flow.PollWatch, TimeSpan.FromSeconds(10)),
                 "the watched work never finished, so this walk never reached its own subject");
@@ -733,13 +733,13 @@ public class SetupFlowTests
     }
 
     //the same drain, from the runner's side, since the connect path arms the next pause on its first resume
-    private static WizardScreen Resumed(SetupFlow flow, string? modelId = null)
+    private static SetupScreen Resumed(SetupFlow flow, string? modelId = null)
     {
         var screen = flow.ResumeAfterWrites(modelId);
         while (flow.NeedsWritesApplied) screen = flow.ResumeAfterWrites(null);
 
         //pass through the watched screen as the runner does when the poll resolves. guard on Watching, since the other path's prove is not watched
-        if (screen is WizardScreen.Choice { Watching: true, Key: SetupFlow.ProveKey })
+        if (screen is SetupScreen.Choice { Watching: true, Key: SetupFlow.ProveKey })
             screen = flow.Answer(SetupFlow.OpenRepl);
         return screen;
     }
@@ -757,7 +757,7 @@ public class SetupFlowTests
             Facts = new AuditionFacts("Q4_K_M", "defaults", "template default", 12.5),
         });
         CheckRan(flow);                                   //let the check fail here
-        var prove = Assert.IsType<WizardScreen.Choice>(Answered(flow, SetupFlow.Anyway));
+        var prove = Assert.IsType<SetupScreen.Choice>(Answered(flow, SetupFlow.Anyway));
 
         var body = string.Join("\n", prove.BodyRows!.Select(r => r.Text));
 
@@ -790,7 +790,7 @@ public class SetupFlowTests
             Found = [Model(@"D:\models\qwen.gguf")],
             Facts = new AuditionFacts("Q4_K_M", "defaults", "template default", 60.0),
         });
-        var prove = Assert.IsType<WizardScreen.Choice>(PastThePass(flow));
+        var prove = Assert.IsType<SetupScreen.Choice>(PastThePass(flow));
 
         var body = string.Join("\n", prove.BodyRows!.Select(r => r.Text));
         Assert.Contains("passed, it ran commands and edited files", body, StringComparison.Ordinal);
@@ -803,7 +803,7 @@ public class SetupFlowTests
     {
         var flow = AtChosenModel(WithModel(audition: AuditionOutcome.CouldNotRun));
         CheckRan(flow);
-        var prove = Assert.IsType<WizardScreen.Choice>(Answered(flow, SetupFlow.Anyway));
+        var prove = Assert.IsType<SetupScreen.Choice>(Answered(flow, SetupFlow.Anyway));
 
         var body = string.Join("\n", prove.BodyRows!.Select(r => r.Text));
         Assert.DoesNotContain("answering properly", body, StringComparison.Ordinal);
@@ -964,8 +964,8 @@ public class SetupFlowTests
 
         var rows = flow.Emitted.SelectMany(s => s switch
         {
-            WizardScreen.Choice c => c.BodyRows ?? [],
-            WizardScreen.Terminal t => t.Rows,
+            SetupScreen.Choice c => c.BodyRows ?? [],
+            SetupScreen.Terminal t => t.Rows,
             _ => [],
         }).Select(r => r.Text).ToList();
         Assert.Contains(rows, r => r.StartsWith("model", StringComparison.Ordinal) && r.EndsWith("Qwen-9B-Q4", StringComparison.Ordinal));
@@ -1027,10 +1027,10 @@ public class SetupFlowTests
         while (flow.NeedsWritesApplied) screen = flow.ResumeAfterWrites(null);
 
         //the connect check is watched, so pass through its screen as the runner does, since any answer but the stop key means it finished
-        if (screen is WizardScreen.Choice { Watching: true })
+        if (screen is SetupScreen.Choice { Watching: true })
             screen = flow.Answer(SetupFlow.OpenRepl);
 
-        var prove = Assert.IsType<WizardScreen.Choice>(screen);
+        var prove = Assert.IsType<SetupScreen.Choice>(screen);
         return string.Join(" ", prove.BodyRows!.Select(r => r.Text));
     }
 
@@ -1108,7 +1108,7 @@ public class SetupFlowTests
                 new EngineAsset("llama-b11071-bin-win-vulkan-x64.zip", "https://example.invalid/z",
                     new string('a', 64), 1), null)),
         });
-        var steer = Assert.IsType<WizardScreen.Choice>(flow.StartPastOpening());
+        var steer = Assert.IsType<SetupScreen.Choice>(flow.StartPastOpening());
 
         var highlighted = steer.BodyRows!.Where(r => r.Highlight is { Count: > 0 }).ToList();
         Assert.NotEmpty(highlighted);
@@ -1172,7 +1172,7 @@ public class SetupFlowTests
             Server = new Gatto.Core.Acquire.ConnectProbe("http://127.0.0.1:1234", ["some-model"], 8192),
         });
         flow.StartPastOpening();
-        var confirm = Assert.IsType<WizardScreen.Choice>(flow.Answer(SetupFlow.ForkConnect));
+        var confirm = Assert.IsType<SetupScreen.Choice>(flow.Answer(SetupFlow.ForkConnect));
 
         Assert.Equal(SetupFlow.ConfirmServerKey, confirm.Key);
         //the address is a body row, so that is where the echo is asserted
@@ -1189,7 +1189,7 @@ public class SetupFlowTests
             Server = new Gatto.Core.Acquire.ConnectProbe("http://host:9", ["a", "b", "c"], 8192),
         });
         many.StartPastOpening();
-        var manyRows = Assert.IsType<WizardScreen.Choice>(many.Answer(SetupFlow.ForkConnect)).BodyRows!;
+        var manyRows = Assert.IsType<SetupScreen.Choice>(many.Answer(SetupFlow.ForkConnect)).BodyRows!;
 
         Assert.DoesNotContain(manyRows, r => r.Text.Contains("Serving", StringComparison.Ordinal));
         //the catalogue renders as one fact with a count, and the model pick is what names the models
@@ -1204,7 +1204,7 @@ public class SetupFlowTests
             Server = new Gatto.Core.Acquire.ConnectProbe("http://host:9", ["only-one"], 8192),
         });
         one.StartPastOpening();
-        var oneRows = Assert.IsType<WizardScreen.Choice>(one.Answer(SetupFlow.ForkConnect)).BodyRows!;
+        var oneRows = Assert.IsType<SetupScreen.Choice>(one.Answer(SetupFlow.ForkConnect)).BodyRows!;
 
         //assert the row exactly, since a single-model server must still name what it serves
         Assert.Contains(oneRows, r => r.Text == "serving   only-one");
@@ -1234,7 +1234,7 @@ ew.gguf", 4_000_000_000, null)],
         //a taken model name must ask here, since a late throw sends the user off to delete a directory by hand
         var flow = AdoptingWithCollision(colliding: "qwen3.6-35b-a3b");
 
-        var screen = Assert.IsType<WizardScreen.Choice>(flow.Answer("0"));
+        var screen = Assert.IsType<SetupScreen.Choice>(flow.Answer("0"));
 
         Assert.Equal(SetupFlow.ModelCollisionKey, screen.Key);
         //two options only, since this fixture has two files that differ, which rules out joining them
@@ -1268,7 +1268,7 @@ ew.gguf", 4_000_000_000, null)],
     {
         var flow = AdoptingWithCollision("gemma-4-e4b-it", kind: Gatto.Roles.Models.IdClash.CannotTell);
 
-        var screen = Assert.IsType<WizardScreen.Choice>(flow.Answer("0"));
+        var screen = Assert.IsType<SetupScreen.Choice>(flow.Answer("0"));
 
         Assert.Equal([SetupFlow.UseExistingModel, SetupFlow.AddAsFile, SetupFlow.ReplaceModel],
             screen.Options.Select(o => o.Key));
@@ -1282,7 +1282,7 @@ ew.gguf", 4_000_000_000, null)],
     {
         var flow = AdoptingWithCollision("gemma-4-e4b-it", kind: Gatto.Roles.Models.IdClash.HolderUnreadable);
 
-        var screen = Assert.IsType<WizardScreen.Choice>(flow.Answer("0"));
+        var screen = Assert.IsType<SetupScreen.Choice>(flow.Answer("0"));
 
         Assert.Equal([SetupFlow.UseExistingModel, SetupFlow.ReplaceModel], screen.Options.Select(o => o.Key));
     }
@@ -1330,7 +1330,7 @@ ew.gguf", 4_000_000_000, null)],
         Assert.True(flow.NeedsWritesApplied);
 
         //the narration must state the added file before the flow asks anything about it.
-        var screen = Assert.IsType<WizardScreen.Choice>(flow.ResumeAfterWrites("gemma-4-e4b-it"));
+        var screen = Assert.IsType<SetupScreen.Choice>(flow.ResumeAfterWrites("gemma-4-e4b-it"));
         var said = string.Join(" ",
             flow.TakeNarration().SelectMany(i => i.Rows).Select(r => r.Text));
         Assert.Contains("Q6_K is added to gemma-4-e4b-it", said, StringComparison.Ordinal);
@@ -1349,7 +1349,7 @@ ew.gguf", 4_000_000_000, null)],
     {
         var flow = Joining();
 
-        var screen = Assert.IsType<WizardScreen.Choice>(flow.ResumeAfterWrites("gemma-4-e4b-it"));
+        var screen = Assert.IsType<SetupScreen.Choice>(flow.ResumeAfterWrites("gemma-4-e4b-it"));
 
         Assert.Equal(SetupFlow.QuantFromNowKey, screen.Key);
         //the screen and the in-session confirm read the sentence from Gatto.Cli.SwapConfirm, so the two can't drift apart
@@ -1362,7 +1362,7 @@ ew.gguf", 4_000_000_000, null)],
     {
         var flow = Joining(loaded: "gemma-4-e4b-it");
 
-        var screen = Assert.IsType<WizardScreen.Choice>(flow.ResumeAfterWrites("gemma-4-e4b-it"));
+        var screen = Assert.IsType<SetupScreen.Choice>(flow.ResumeAfterWrites("gemma-4-e4b-it"));
         var body = string.Join(" ", (screen.BodyRows ?? []).Select(r => r.Text));
 
         Assert.Contains("until it restarts", body, StringComparison.Ordinal);
@@ -1374,7 +1374,7 @@ ew.gguf", 4_000_000_000, null)],
     {
         var flow = Joining(loaded: null);
 
-        var screen = Assert.IsType<WizardScreen.Choice>(flow.ResumeAfterWrites("gemma-4-e4b-it"));
+        var screen = Assert.IsType<SetupScreen.Choice>(flow.ResumeAfterWrites("gemma-4-e4b-it"));
         var body = string.Join(" ", (screen.BodyRows ?? []).Select(r => r.Text));
 
         Assert.DoesNotContain("restart", body, StringComparison.OrdinalIgnoreCase);
@@ -1486,7 +1486,7 @@ ew.gguf", model.GgufPath);
         flow.Answer(SetupFlow.Yes);
         Resumed(flow, null);
 
-        var ask = Assert.IsType<WizardScreen.Choice>(Answered(flow, SetupFlow.Finish));
+        var ask = Assert.IsType<SetupScreen.Choice>(Answered(flow, SetupFlow.Finish));
 
         Assert.Equal(SetupFlow.UpdateKey, ask.Key);
         //no option is pre-selected, since a highlighted default on a network question nudges the answer.
@@ -1508,9 +1508,9 @@ ew.gguf", model.GgufPath);
         Resumed(flow, null);
 
         //naming the summary screen is a stronger claim than its type, since reaching it at all proves the consent screen was skipped
-        var done = Assert.IsType<WizardScreen.Choice>(Answered(flow, SetupFlow.Finish));
+        var done = Assert.IsType<SetupScreen.Choice>(Answered(flow, SetupFlow.Finish));
         Assert.Equal(SetupFlow.SummaryKey, done.Key);
-        Assert.IsType<WizardScreen.Terminal>(flow.Answer(SetupFlow.Finish));
+        Assert.IsType<SetupScreen.Terminal>(flow.Answer(SetupFlow.Finish));
         Assert.Null(flow.Writes.UpdateCheck);   //an already answered machine records no consent write again.
     }
 
@@ -1533,9 +1533,9 @@ ew.gguf", model.GgufPath);
         Assert.Equal(expected, flow.Writes.UpdateCheck);
 
         //the summary screen sits between the consent question and the final screen, so the intent above is read first
-        var done = Assert.IsType<WizardScreen.Choice>(Resumed(flow));
+        var done = Assert.IsType<SetupScreen.Choice>(Resumed(flow));
         Assert.Equal(SetupFlow.SummaryKey, done.Key);
-        Assert.IsType<WizardScreen.Terminal>(flow.Answer(SetupFlow.Finish));
+        Assert.IsType<SetupScreen.Terminal>(flow.Answer(SetupFlow.Finish));
     }
 
     [Fact]
@@ -1548,11 +1548,11 @@ ew.gguf", model.GgufPath);
             Server = new Gatto.Core.Acquire.ConnectProbe("http://host:9", ["alpha"], 8192),
         });
 
-        var found = Assert.IsType<WizardScreen.Choice>(flow.StartPastOpening());
+        var found = Assert.IsType<SetupScreen.Choice>(flow.StartPastOpening());
         Assert.True(found.AllowBack);                     //the screen itself offers back, so a mis-pick is visibly undoable.
 
         flow.Answer(SetupFlow.ForkConnect);               //the wrong turn, taken instead of the found model
-        var again = Assert.IsType<WizardScreen.Choice>(flow.Answer(SetupFlow.BackKey));
+        var again = Assert.IsType<SetupScreen.Choice>(flow.Answer(SetupFlow.BackKey));
 
         Assert.Equal(SetupFlow.FoundKey, again.Key);
         Assert.Contains(SetupFlow.FoundUse, again.Options.Select(o => o.Key));
@@ -1576,7 +1576,7 @@ ew.gguf", model.GgufPath);
         flow.Answer(SetupFlow.ForkConnect);               //the wrong turn, which switches the flow to the connect path.
         Assert.Equal(SetupPath.Connect, flow.Path);
 
-        var back = Assert.IsType<WizardScreen.Choice>(flow.Answer(SetupFlow.BackKey));
+        var back = Assert.IsType<SetupScreen.Choice>(flow.Answer(SetupFlow.BackKey));
 
         Assert.Equal(SetupFlow.FoundKey, back.Key);
         Assert.Equal(SetupPath.Llama, flow.Path);
@@ -1590,7 +1590,7 @@ ew.gguf", model.GgufPath);
         flow.Answer(SetupFlow.Yes);
         Resumed(flow, null);                     //from this call on, the writes are on disk.
 
-        var refused = Assert.IsType<WizardScreen.Info>(flow.Answer(SetupFlow.BackKey));
+        var refused = Assert.IsType<SetupScreen.Info>(flow.Answer(SetupFlow.BackKey));
 
         Assert.Equal("back.refused", refused.Key);        //the key proves this is the refusal screen itself
         Assert.Contains("can't go back", refused.Rows[0].Text, StringComparison.Ordinal);
@@ -1657,7 +1657,7 @@ ew.gguf", model.GgufPath);
         FlowWithInstall(state, null);
 
     //drive the flow to the install question without asserting where it sits, since each test asserts the screen and what an answer records
-    private static WizardScreen AtTheInstallQuestion(SetupFlow flow)
+    private static SetupScreen AtTheInstallQuestion(SetupFlow flow)
     {
         flow.StartPastEngine();
         flow.Answer("0");
@@ -1687,7 +1687,7 @@ ew.gguf", model.GgufPath);
     {
         var flow = WalkableFlowWithInstall(Gatto.Cli.Install.InstallState.AlreadyInstalledElsewhere, installed: "0.3.9");
 
-        var first = Assert.IsType<WizardScreen.Choice>(AtTheInstallQuestion(flow));
+        var first = Assert.IsType<SetupScreen.Choice>(AtTheInstallQuestion(flow));
 
         Assert.Equal(SetupFlow.UpdateInstalledKey, first.Key);
         //check NoDefault on this screen, since the rendered guards build their own choice and only prove the face obeys it
@@ -1705,7 +1705,7 @@ ew.gguf", model.GgufPath);
     public void THE_UPDATE_OFFER_CAN_ACTUALLY_BE_ANSWERED_and_records_the_copy()
     {
         var flow = WalkableFlowWithInstall(Gatto.Cli.Install.InstallState.AlreadyInstalledElsewhere, installed: "0.3.9");
-        Assert.IsType<WizardScreen.Choice>(AtTheInstallQuestion(flow));
+        Assert.IsType<SetupScreen.Choice>(AtTheInstallQuestion(flow));
 
         var next = flow.Answer(SetupFlow.InstallYes);
 
@@ -1720,7 +1720,7 @@ ew.gguf", model.GgufPath);
     public void LEAVING_THE_INSTALLED_COPY_ALONE_WALKS_ON_AND_WRITES_NOTHING()
     {
         var flow = WalkableFlowWithInstall(Gatto.Cli.Install.InstallState.AlreadyInstalledElsewhere, installed: "0.3.9");
-        Assert.IsType<WizardScreen.Choice>(AtTheInstallQuestion(flow));
+        Assert.IsType<SetupScreen.Choice>(AtTheInstallQuestion(flow));
 
         var next = flow.Answer(SetupFlow.InstallNo);
 
@@ -1777,7 +1777,7 @@ ew.gguf", model.GgufPath);
     public void SITE_TWO_REPAIRS_WITHOUT_COPYING_WHEN_THE_IMAGE_IS_NOT_NEWER(string? installed)
     {
         var flow = WalkableFlowWithInstall(Gatto.Cli.Install.InstallState.InstalledButNotOnPath, installed);
-        var first = Assert.IsType<WizardScreen.Choice>(AtTheInstallQuestion(flow));
+        var first = Assert.IsType<SetupScreen.Choice>(AtTheInstallQuestion(flow));
 
         Assert.Equal("Fix that for me", first.Options[0].Label);
         var everything = first.Question + " "
@@ -1798,7 +1798,7 @@ ew.gguf", model.GgufPath);
         //the fixture derives the version, since a literal here fails at the next bump instead of at a defect
         var flow = WalkableFlowWithInstall(Gatto.Cli.Install.InstallState.InstalledButNotOnPath,
             installed: Gatto.Core.GattoVersion.String);
-        var first = Assert.IsType<WizardScreen.Choice>(AtTheInstallQuestion(flow));
+        var first = Assert.IsType<SetupScreen.Choice>(AtTheInstallQuestion(flow));
 
         var body = string.Join(" ", (first.BodyRows ?? []).Select(r => r.Text));
         Assert.Contains($"the same version ({Gatto.Core.GattoVersion.String})", body, StringComparison.Ordinal);
@@ -1812,7 +1812,7 @@ ew.gguf", model.GgufPath);
     public void SITE_TWO_STILL_NAMES_BOTH_VERSIONS_WHEN_THEY_DIFFER()
     {
         var flow = WalkableFlowWithInstall(Gatto.Cli.Install.InstallState.InstalledButNotOnPath, installed: "0.9.9");
-        var first = Assert.IsType<WizardScreen.Choice>(AtTheInstallQuestion(flow));
+        var first = Assert.IsType<SetupScreen.Choice>(AtTheInstallQuestion(flow));
 
         var body = string.Join(" ", (first.BodyRows ?? []).Select(r => r.Text));
         Assert.Contains("0.9.9", body, StringComparison.Ordinal);
@@ -1825,7 +1825,7 @@ ew.gguf", model.GgufPath);
     {
         var flow = WalkableFlowWithInstall(Gatto.Cli.Install.InstallState.AlreadyInstalledElsewhere, installed: "0.3.9");
 
-        var first = Assert.IsType<WizardScreen.Choice>(AtTheInstallQuestion(flow));
+        var first = Assert.IsType<SetupScreen.Choice>(AtTheInstallQuestion(flow));
 
         Assert.Equal(SetupFlow.UpdateInstalledKey, first.Key);
         //no step heading here, since the question sits inside the done step and the strip has no such section
@@ -1882,7 +1882,7 @@ ew.gguf", model.GgufPath);
     {
         var flow = WalkableFlowWithInstall(Gatto.Cli.Install.InstallState.NotInstalled);
 
-        var first = Assert.IsType<WizardScreen.Choice>(AtTheInstallQuestion(flow));
+        var first = Assert.IsType<SetupScreen.Choice>(AtTheInstallQuestion(flow));
 
         Assert.Equal(SetupFlow.InstallKey, first.Key);
         var body = string.Join(" ", (first.BodyRows ?? []).Select(r => r.Text));
@@ -1897,7 +1897,7 @@ ew.gguf", model.GgufPath);
         //the half-done state needs its own wording, since the copy exists and the path entry does not and asking to install would misstate both
         var flow = WalkableFlowWithInstall(Gatto.Cli.Install.InstallState.InstalledButNotOnPath);
 
-        var first = Assert.IsType<WizardScreen.Choice>(AtTheInstallQuestion(flow));
+        var first = Assert.IsType<SetupScreen.Choice>(AtTheInstallQuestion(flow));
 
         Assert.Contains("only this window can find it", first.Question!, StringComparison.Ordinal);
         Assert.DoesNotContain("Install gatto", first.Question!, StringComparison.Ordinal);
@@ -1983,7 +1983,7 @@ ew.gguf", model.GgufPath);
         //a server lists everything it could load, so the choice of model is the user's and the labels are the server's own strings
         var flow = ConnectingTo(["alpha", "beta", "gamma"]);
 
-        var pick = Assert.IsType<WizardScreen.Choice>(flow.Answer(SetupFlow.Yes));
+        var pick = Assert.IsType<SetupScreen.Choice>(flow.Answer(SetupFlow.Yes));
 
         Assert.Equal(SetupFlow.ModelPickKey, pick.Key);
         Assert.Equal(["alpha", "beta", "gamma"], pick.Options.Select(o => o.Key));
@@ -2002,7 +2002,7 @@ ew.gguf", model.GgufPath);
         var many = Enumerable.Range(1, 12).Select(i => $"model-{i}").ToList();
         var flow = ConnectingTo(many);
 
-        var pick = Assert.IsType<WizardScreen.Choice>(flow.Answer(SetupFlow.Yes));
+        var pick = Assert.IsType<SetupScreen.Choice>(flow.Answer(SetupFlow.Yes));
 
         Assert.Equal(SetupFlow.ModelPickKey, pick.Key);
         Assert.Equal(many, pick.Options.Select(o => o.Key));      //every model, in the order the server gave.
@@ -2018,7 +2018,7 @@ ew.gguf", model.GgufPath);
         //a server that lists nothing leaves gatto without an id, so it asks for the name
         var flow = ConnectingTo([]);
 
-        var ask = Assert.IsType<WizardScreen.Ask>(flow.Answer(SetupFlow.Yes));
+        var ask = Assert.IsType<SetupScreen.Ask>(flow.Answer(SetupFlow.Yes));
 
         Assert.Equal(SetupFlow.ModelNameKey, ask.Key);
         Assert.NotNull(ask.Validate("   "));
@@ -2079,7 +2079,7 @@ ew.gguf", model.GgufPath);
         flow.StartPastOpening();
         flow.Answer(SetupFlow.ForkConnect);
 
-        var ask = Assert.IsType<WizardScreen.Ask>(flow.Answer(SetupFlow.Yes));
+        var ask = Assert.IsType<SetupScreen.Ask>(flow.Answer(SetupFlow.Yes));
         //the key check is what ties the body assertion below to this screen
         Assert.Equal(SetupFlow.ContextKey, ask.Key);
         var body = string.Join("\n", (ask.BodyRows ?? []).Select(r => r.Text));
@@ -2096,7 +2096,7 @@ ew.gguf", model.GgufPath);
         flow.StartPastOpening();
         flow.Answer(SetupFlow.ForkConnect);
 
-        var ask = Assert.IsType<WizardScreen.Ask>(flow.Answer(SetupFlow.Yes));
+        var ask = Assert.IsType<SetupScreen.Ask>(flow.Answer(SetupFlow.Yes));
         Assert.Equal(SetupFlow.ContextKey, ask.Key);
         //the offer is a pickable row holding the flat default, and its label must not show 8192
         var offer = Assert.IsType<AskOffer>(ask.Offer);
@@ -2142,7 +2142,7 @@ ew.gguf", model.GgufPath);
         var flow = new SetupFlow(new FakeProbes { Server = null });
         flow.StartPastOpening();
 
-        var retry = Assert.IsType<WizardScreen.Choice>(flow.Answer(SetupFlow.ForkConnect));
+        var retry = Assert.IsType<SetupScreen.Choice>(flow.Answer(SetupFlow.ForkConnect));
 
         Assert.Equal(SetupFlow.RetryKey, retry.Key);
         Assert.Contains(retry.Options, o => o.Key == SetupFlow.Retry);
@@ -2155,7 +2155,7 @@ ew.gguf", model.GgufPath);
         var flow = new SetupFlow(new FakeProbes { Server = new Gatto.Core.Acquire.ConnectProbe("http://host:9", ["their-model"], 8192) });
         flow.StartPastOpening();
         flow.Answer(SetupFlow.ForkConnect);
-        var end = Assert.IsType<WizardScreen.Terminal>(flow.Answer(SetupFlow.No));
+        var end = Assert.IsType<SetupScreen.Terminal>(flow.Answer(SetupFlow.No));
 
         //only the model write is asserted, since choosing the engine records a write of its own
         Assert.Null(flow.Writes.CreateModel);
@@ -2174,7 +2174,7 @@ ew.gguf", model.GgufPath);
             Llama = @"C:\llama\llama-server.exe",
             Found = [Model(@"D:\models\qwen.gguf"), Model(@"D:\models\gemma.gguf")],
         });
-        var choice = Assert.IsType<WizardScreen.Choice>(flow.StartPastEngine());
+        var choice = Assert.IsType<SetupScreen.Choice>(flow.StartPastEngine());
 
         Assert.Equal(SetupFlow.DiscoveredKey, choice.Key);
         //a row is named after its model, the file's name less its extension and quant
@@ -2191,7 +2191,7 @@ ew.gguf", model.GgufPath);
             Llama = @"C:\llama\llama-server.exe",
             Found = [Model(@"D:\models\qwen.gguf", 8_589_934_592)],
         });
-        var choice = Assert.IsType<WizardScreen.Choice>(flow.StartPastEngine());
+        var choice = Assert.IsType<SetupScreen.Choice>(flow.StartPastEngine());
 
         var row = choice.Options[0];
         Assert.Contains("GB", row.Description!, StringComparison.Ordinal);
@@ -2256,7 +2256,7 @@ ew.gguf", model.GgufPath);
     {
         //zero rows means the Hub is unreachable, and the wizard continues through a typed folder path
         var flow = new SetupFlow(new FakeProbes { Llama = @"C:\llama\llama-server.exe", Rows = [] });
-        var search = Assert.IsType<WizardScreen.Choice>(flow.StartPastEngine());
+        var search = Assert.IsType<SetupScreen.Choice>(flow.StartPastEngine());
 
         Assert.Contains(search.Options, o => o.Key == SetupFlow.Elsewhere);
         foreach (var word in new[] { "error", "failed", "sorry" })
@@ -2273,13 +2273,13 @@ ew.gguf", model.GgufPath);
             Found = [],
             Rows = [Row("org/a")],
         });
-        var search = Assert.IsType<WizardScreen.Choice>(flow.StartPastEngine());
+        var search = Assert.IsType<SetupScreen.Choice>(flow.StartPastEngine());
 
         //the row stays in the flow list, since the plain face binds no "d" and this is its only folder route
         Assert.Contains(search.Options, o => o.Key == SetupFlow.Elsewhere);
 
         //taking it opens the folder ask
-        var ask = Assert.IsType<WizardScreen.Ask>(flow.Answer(SetupFlow.Elsewhere));
+        var ask = Assert.IsType<SetupScreen.Ask>(flow.Answer(SetupFlow.Elsewhere));
         Assert.Equal(SetupFlow.ScanPathKey, ask.Key);
     }
 
@@ -2330,12 +2330,12 @@ ew.gguf", model.GgufPath);
     public void BACK_NEVER_UNDOES_A_LIFT_THAT_FOUND_ROWS()
     {
         var flow = AtSearch(new FakeProbes { Llama = @"C:\llama\llama-server.exe", Rows = [Row("unsloth/a-GGUF")] });
-        var lifted = Assert.IsType<WizardScreen.Choice>(flow.Answer(SetupFlow.CtlLift));
+        var lifted = Assert.IsType<SetupScreen.Choice>(flow.Answer(SetupFlow.CtlLift));
         Assert.True(lifted.Shelf!.Lift);
         Assert.NotEmpty(lifted.Shelf.Rows);
 
         var back = flow.Answer(SetupFlow.BackKey);
-        Assert.False(back is WizardScreen.Choice { Key: SetupFlow.SearchKey, Shelf.Lift: false },
+        Assert.False(back is SetupScreen.Choice { Key: SetupFlow.SearchKey, Shelf.Lift: false },
             "back from the lifted shelf showed the unlifted one");
     }
 
@@ -2351,7 +2351,7 @@ ew.gguf", model.GgufPath);
         var flow = AtSearch(probes);
         flow.Answer(SetupFlow.TypeAnId);
 
-        var shelf = Assert.IsType<WizardScreen.Choice>(flow.Answer("someone/typed-GGUF"));
+        var shelf = Assert.IsType<SetupScreen.Choice>(flow.Answer("someone/typed-GGUF"));
         Assert.Equal(SetupFlow.SearchKey, shelf.Key);
         Assert.Null(flow.Picked);
         var view = shelf.Shelf!;
@@ -2361,11 +2361,11 @@ ew.gguf", model.GgufPath);
         Assert.NotNull(Assert.Single(view.Facts!).Publishers);
 
         var next = flow.Answer("0");
-        Assert.NotEqual(SetupFlow.SearchKey, (next as WizardScreen.Choice)?.Key);
+        Assert.NotEqual(SetupFlow.SearchKey, (next as SetupScreen.Choice)?.Key);
         Assert.Equal("someone/typed-GGUF", flow.Picked!.RowFile!.RepoId);
 
         var asked = probes.TypedIds.Count;
-        var back = Assert.IsType<WizardScreen.Choice>(flow.Answer(SetupFlow.BackKey));
+        var back = Assert.IsType<SetupScreen.Choice>(flow.Answer(SetupFlow.BackKey));
         Assert.Equal(SetupFlow.SearchKey, back.Key);
         Assert.Equal(["someone/typed-GGUF"], back.Shelf!.Rows.Select(r => r.RowFile!.RepoId));
         Assert.Equal(asked, probes.TypedIds.Count);
@@ -2382,7 +2382,7 @@ ew.gguf", model.GgufPath);
         });
         flow.Answer(SetupFlow.TypeAnId);
 
-        var again = Assert.IsType<WizardScreen.Ask>(flow.Answer("https://huggingface.co/org/model"));
+        var again = Assert.IsType<SetupScreen.Ask>(flow.Answer("https://huggingface.co/org/model"));
 
         Assert.Contains("org/model", again.Label, StringComparison.Ordinal);   //org/model is the shape the label must show
         foreach (var wrong in new[] { "unreachable", "offline", "connection", "network" })
@@ -2399,7 +2399,7 @@ ew.gguf", model.GgufPath);
         });
         flow.Answer(SetupFlow.TypeAnId);
 
-        var again = Assert.IsType<WizardScreen.Ask>(flow.Answer("org/gated"));
+        var again = Assert.IsType<SetupScreen.Ask>(flow.Answer("org/gated"));
         Assert.Contains("licence", again.Label, StringComparison.OrdinalIgnoreCase);
     }
 
@@ -2428,7 +2428,7 @@ ew.gguf", model.GgufPath);
             TypedId = new TypedIdOutcome.NoUsableQuant(),
         });
         flow.Answer(SetupFlow.TypeAnId);
-        var again = Assert.IsType<WizardScreen.Ask>(flow.Answer("someone/enormous"));
+        var again = Assert.IsType<SetupScreen.Ask>(flow.Answer("someone/enormous"));
 
         Assert.Equal(SetupFlow.TypedIdKey, again.Key);
         Assert.Contains("Found it", again.Label!, StringComparison.Ordinal);
@@ -2453,7 +2453,7 @@ ew.gguf", model.GgufPath);
         //vision stays an addition the screen asks for, so the projector is never armed on its own
         var flow = new SetupFlow(WithProjector());
         flow.StartPastEngine();
-        var ask = Assert.IsType<WizardScreen.Choice>(flow.Answer("0"));
+        var ask = Assert.IsType<SetupScreen.Choice>(flow.Answer("0"));
 
         Assert.Equal(SetupFlow.ProjectorKey, ask.Key);
         Assert.Equal(SetupFlow.Yes, ask.Options[0].Key);
@@ -2487,7 +2487,7 @@ ew.gguf", model.GgufPath);
         flow.StartPastEngine();
         flow.Answer("0");
 
-        Assert.DoesNotContain(flow.Emitted, s => s is WizardScreen.Choice c && c.Key == SetupFlow.ProjectorKey);
+        Assert.DoesNotContain(flow.Emitted, s => s is SetupScreen.Choice c && c.Key == SetupFlow.ProjectorKey);
         Assert.NotNull(flow.Writes.CreateModel);
     }
 
@@ -2497,7 +2497,7 @@ ew.gguf", model.GgufPath);
         //a projector costs about a fixed size, so the screen shows the pair's regime and warns only when the answer changes it
         var costs = new SetupFlow(WithProjector(Gatto.Core.Models.FitRegime.FitsGpu, Gatto.Core.Models.FitRegime.FitsRamOnly));
         costs.StartPastEngine();
-        var warned = Assert.IsType<WizardScreen.Choice>(costs.Answer("0"));
+        var warned = Assert.IsType<SetupScreen.Choice>(costs.Answer("0"));
         var warnedBody = string.Join(" ", warned.BodyRows!);
 
         Assert.Contains(SearchRow.FitWords(Gatto.Core.Models.FitRegime.FitsRamOnly, Gatto.Core.Hardware.MachineShape.Discrete, Gatto.Terminal.GlyphSet.Unicode), warnedBody, StringComparison.Ordinal);
@@ -2505,7 +2505,7 @@ ew.gguf", model.GgufPath);
 
         var free = new SetupFlow(WithProjector(Gatto.Core.Models.FitRegime.FitsGpu, Gatto.Core.Models.FitRegime.FitsGpu));
         free.StartPastEngine();
-        var quiet = Assert.IsType<WizardScreen.Choice>(free.Answer("0"));
+        var quiet = Assert.IsType<SetupScreen.Choice>(free.Answer("0"));
 
         Assert.Single(quiet.BodyRows!);   //the single row is the file itself, with no fit sentence
     }
@@ -2516,7 +2516,7 @@ ew.gguf", model.GgufPath);
         //the screen prices the two resident files, so it must not imply a cost per image
         var flow = new SetupFlow(WithProjector(Gatto.Core.Models.FitRegime.FitsGpu, Gatto.Core.Models.FitRegime.FitsRamOnly));
         flow.StartPastEngine();
-        var ask = Assert.IsType<WizardScreen.Choice>(flow.Answer("0"));
+        var ask = Assert.IsType<SetupScreen.Choice>(flow.Answer("0"));
         var body = string.Join(" ", ask.BodyRows!);
 
         foreach (var banned in new[] { "per image", "each image", "tokens", "slower per" })
@@ -2529,7 +2529,7 @@ ew.gguf", model.GgufPath);
     {
         var flow = new SetupFlow(WithProjector());
         flow.StartPastEngine();
-        var ask = Assert.IsType<WizardScreen.Choice>(flow.Answer("0"));
+        var ask = Assert.IsType<SetupScreen.Choice>(flow.Answer("0"));
         Assert.Equal(SetupFlow.ProjectorKey, ask.Key);
 
         flow.Answer(SetupFlow.BackKey);
@@ -2553,7 +2553,7 @@ ew.gguf", model.GgufPath);
         Move = new MoveOffer(@"C:\Users\me\.gatto\models", crossVolume, bytes, null),
     };
 
-    private static (SetupFlow Flow, WizardScreen Landed) AtMove(FakeProbes probes)
+    private static (SetupFlow Flow, SetupScreen Landed) AtMove(FakeProbes probes)
     {
         var flow = new SetupFlow(probes);
         flow.StartPastEngine();
@@ -2565,7 +2565,7 @@ ew.gguf", model.GgufPath);
     {
         //a multi-gigabyte copy is a choice, and the first option is the default on this widget
         var (flow, landed) = AtMove(InDownloads());
-        var ask = Assert.IsType<WizardScreen.Choice>(landed);
+        var ask = Assert.IsType<SetupScreen.Choice>(landed);
 
         Assert.Equal(SetupFlow.MoveKey, ask.Key);
         Assert.Equal(SetupFlow.No, ask.Options[0].Key);
@@ -2586,7 +2586,7 @@ ew.gguf", model.GgufPath);
             Found = [new Gatto.Core.Acquire.FoundModel(@"D:\models\qwen.gguf", 4_000_000_000, null)],
         });
 
-        Assert.DoesNotContain(flow.Emitted, s => s is WizardScreen.Choice c && c.Key == SetupFlow.MoveKey);
+        Assert.DoesNotContain(flow.Emitted, s => s is SetupScreen.Choice c && c.Key == SetupFlow.MoveKey);
         Assert.NotNull(flow.Writes.CreateModel);
     }
 
@@ -2594,7 +2594,7 @@ ew.gguf", model.GgufPath);
     public void A_CROSS_VOLUME_MOVE_SAYS_COPY_AND_THE_SIZE_BEFORE_STARTING()
     {
         var (_, landed) = AtMove(InDownloads(crossVolume: true));
-        var body = string.Join(" ", Assert.IsType<WizardScreen.Choice>(landed).BodyRows!);
+        var body = string.Join(" ", Assert.IsType<SetupScreen.Choice>(landed).BodyRows!);
 
         Assert.Contains("COPY", body, StringComparison.Ordinal);
         //30e9 bytes converts to 27.94 GB through Gb(), so the expected text is 27.9 GB
@@ -2606,7 +2606,7 @@ ew.gguf", model.GgufPath);
     {
         //a same-volume rename costs nothing, so a cost warning would misstate it
         var (_, landed) = AtMove(InDownloads(crossVolume: false));
-        var body = string.Join(" ", Assert.IsType<WizardScreen.Choice>(landed).BodyRows!);
+        var body = string.Join(" ", Assert.IsType<SetupScreen.Choice>(landed).BodyRows!);
 
         Assert.DoesNotContain("COPY", body, StringComparison.Ordinal);
         Assert.DoesNotContain("GB", body, StringComparison.Ordinal);
@@ -2616,11 +2616,11 @@ ew.gguf", model.GgufPath);
     public void THE_COPY_PRICE_IS_A_FIGURE_OR_NOTHING_never_zero()
     {
         //a pricing screen must never show 0 GB, since zero reads as free. the zero comes from the byte count rather than the formatter
-        var priced = string.Join(" ", Assert.IsType<WizardScreen.Choice>(
+        var priced = string.Join(" ", Assert.IsType<SetupScreen.Choice>(
             AtMove(InDownloads(crossVolume: true)).Landed).BodyRows!);
         Assert.Contains("COPY 27.9 GB", priced, StringComparison.Ordinal);
 
-        var unmeasured = string.Join(" ", Assert.IsType<WizardScreen.Choice>(
+        var unmeasured = string.Join(" ", Assert.IsType<SetupScreen.Choice>(
             AtMove(InDownloadsSized(crossVolume: true, bytes: 0)).Landed).BodyRows!);
         Assert.Contains("COPY the file rather than rename it", unmeasured, StringComparison.Ordinal);
         //no size that reads as zero may appear anywhere on the row.
@@ -2633,7 +2633,7 @@ ew.gguf", model.GgufPath);
     public void A_TINY_MODEL_IS_PRICED_BELOW_THE_RESOLUTION_not_at_zero()
     {
         //one size rule serves every screen, so a tiny file reads "<0.1 GB" here as it does elsewhere
-        var tiny = string.Join(" ", Assert.IsType<WizardScreen.Choice>(
+        var tiny = string.Join(" ", Assert.IsType<SetupScreen.Choice>(
             AtMove(InDownloadsSized(crossVolume: true, bytes: 40L * 1024 * 1024)).Landed).BodyRows!);
 
         Assert.Contains("<0.1 GB", tiny, StringComparison.Ordinal);
@@ -2645,11 +2645,11 @@ ew.gguf", model.GgufPath);
     public void STORAGE_SENSE_NAMES_THE_CASE_WHEN_READ_AND_IS_SILENT_WHEN_NOT()
     {
         //the policy read informs and never gates, so an unreadable policy keeps the generic sentence
-        var armed = string.Join(" ", Assert.IsType<WizardScreen.Choice>(
+        var armed = string.Join(" ", Assert.IsType<SetupScreen.Choice>(
             AtMove(InDownloads(storageSense: "armed")).Landed).BodyRows!);
         Assert.Contains("currently armed", armed, StringComparison.Ordinal);
 
-        var unknown = string.Join(" ", Assert.IsType<WizardScreen.Choice>(
+        var unknown = string.Join(" ", Assert.IsType<SetupScreen.Choice>(
             AtMove(InDownloads()).Landed).BodyRows!);
         Assert.DoesNotContain("armed", unknown, StringComparison.Ordinal);
         //the generic line stands either way, so the read never gates it
@@ -2670,7 +2670,7 @@ ew.gguf", model.GgufPath);
     public void CHOOSING_A_FOLDER_ASKS_FOR_IT_AND_RECORDS_WHAT_WAS_TYPED()
     {
         var (flow, _) = AtMove(InDownloads());
-        var ask = Assert.IsType<WizardScreen.Ask>(flow.Answer(SetupFlow.Elsewhere));
+        var ask = Assert.IsType<SetupScreen.Ask>(flow.Answer(SetupFlow.Elsewhere));
         Assert.Equal(SetupFlow.MovePathKey, ask.Key);
 
         //a folder that does not exist yet is legal, since adoption creates it, so only an empty answer is rejected.
@@ -2699,7 +2699,7 @@ ew.gguf", model.GgufPath);
         Assert.Equal(@"C:\Users\me\.gatto\models", flow.Writes.MoveTo);
 
         //the projector ask sits between this intent and the write pause, so backing out is possible.
-        var projector = Assert.IsType<WizardScreen.Choice>(flow.Answer(SetupFlow.BackKey));
+        var projector = Assert.IsType<SetupScreen.Choice>(flow.Answer(SetupFlow.BackKey));
         Assert.Equal(SetupFlow.MoveKey, projector.Key);
 
         flow.Answer(SetupFlow.No);
@@ -2715,7 +2715,7 @@ ew.gguf", model.GgufPath);
     };
 
     //drive to where the build offer appears and return the flow with the screen that came back (the flow exposes no reader for it)
-    private static (SetupFlow Flow, WizardScreen Landed) AtCustomBuild(FakeProbes probes)
+    private static (SetupFlow Flow, SetupScreen Landed) AtCustomBuild(FakeProbes probes)
     {
         var flow = new SetupFlow(probes);
         flow.StartPastEngine();
@@ -2726,7 +2726,7 @@ ew.gguf", model.GgufPath);
     public void A_MODEL_THE_BUILD_CANNOT_LOAD_IS_OFFERED_A_BUILD_FOR_THIS_PACK()
     {
         var (flow, landed) = AtCustomBuild(WithCustomArch());
-        var ask = Assert.IsType<WizardScreen.Choice>(landed);
+        var ask = Assert.IsType<SetupScreen.Choice>(landed);
 
         Assert.Equal(SetupFlow.CustomBuildKey, ask.Key);
         Assert.Equal(SetupFlow.No, ask.Options[0].Key);
@@ -2755,7 +2755,7 @@ ew.gguf", model.GgufPath);
     public void SAYING_YES_RECORDS_THE_BUILD_AGAINST_THE_PACK_and_never_the_machine()
     {
         var (flow, _) = AtCustomBuild(WithCustomArch());
-        var ask = Assert.IsType<WizardScreen.Ask>(flow.Answer(SetupFlow.Yes));
+        var ask = Assert.IsType<SetupScreen.Ask>(flow.Answer(SetupFlow.Yes));
         Assert.Equal(SetupFlow.CustomBuildPathKey, ask.Key);
 
         flow.Answer(@"C:\forks\bailing\llama-server.exe");
@@ -2773,7 +2773,7 @@ ew.gguf", model.GgufPath);
         var (flow, _) = AtCustomBuild(WithCustomArch("qwen3"));
 
         Assert.DoesNotContain(flow.Emitted,
-            s => s is WizardScreen.Choice c && c.Key == SetupFlow.CustomBuildKey);
+            s => s is SetupScreen.Choice c && c.Key == SetupFlow.CustomBuildKey);
         Assert.NotNull(flow.Writes.CreateModel);
     }
 
@@ -2784,7 +2784,7 @@ ew.gguf", model.GgufPath);
         var (flow, _) = AtCustomBuild(WithCustomArch(arch: null));
 
         Assert.DoesNotContain(flow.Emitted,
-            s => s is WizardScreen.Choice c && c.Key == SetupFlow.CustomBuildKey);
+            s => s is SetupScreen.Choice c && c.Key == SetupFlow.CustomBuildKey);
         Assert.NotNull(flow.Writes.CreateModel);
     }
 
@@ -2803,7 +2803,7 @@ ew.gguf", model.GgufPath);
         });
         flow.Answer(SetupFlow.Yes);
 
-        var again = Assert.IsType<WizardScreen.Ask>(flow.Answer(@"C:\wrong\llama.exe"));
+        var again = Assert.IsType<SetupScreen.Ask>(flow.Answer(@"C:\wrong\llama.exe"));
         Assert.Equal(SetupFlow.CustomBuildPathKey, again.Key);
         Assert.Contains("single combined program", again.Label!, StringComparison.Ordinal);
         Assert.Null(flow.Writes.ModelLlamaServer);
@@ -2824,13 +2824,13 @@ ew.gguf", model.GgufPath);
         flow.StartPastEngine();
         flow.Answer("0");
 
-        var offer = Assert.IsType<WizardScreen.Choice>(flow.Answer(SetupFlow.Yes));
+        var offer = Assert.IsType<SetupScreen.Choice>(flow.Answer(SetupFlow.Yes));
         Assert.Equal(@"D:\m\mmproj-qwen-f16.gguf", flow.Writes.Projector);
 
         //the build offer is the screen that sits between the intent and the pause.
         Assert.Equal(SetupFlow.CustomBuildKey, offer.Key);
 
-        var back = Assert.IsType<WizardScreen.Choice>(flow.Answer(SetupFlow.BackKey));
+        var back = Assert.IsType<SetupScreen.Choice>(flow.Answer(SetupFlow.BackKey));
         Assert.Equal(SetupFlow.ProjectorKey, back.Key);
         flow.Answer(SetupFlow.No);
 
@@ -2848,7 +2848,7 @@ ew.gguf", model.GgufPath);
             TypedId = new TypedIdOutcome.Unreachable(false),
         });
         flow.Answer(SetupFlow.TypeAnId);
-        var again = Assert.IsType<WizardScreen.Ask>(flow.Answer("someone/nope"));
+        var again = Assert.IsType<SetupScreen.Ask>(flow.Answer("someone/nope"));
 
         Assert.Contains("private", again.Label!, StringComparison.OrdinalIgnoreCase);
     }
@@ -2864,7 +2864,7 @@ ew.gguf", model.GgufPath);
             Rows = [],
             SearchOutcome = Gatto.Core.Acquire.HubSearchCause.NothingFits,
         });
-        var smallBody = string.Join(" ", Assert.IsType<WizardScreen.Choice>(small.Emitted[^1]).BodyRows!);
+        var smallBody = string.Join(" ", Assert.IsType<SetupScreen.Choice>(small.Emitted[^1]).BodyRows!);
 
         //here every publisher request failed, so the Hub is the cause and the machine is fine.
         var offline = AtSearch(new FakeProbes
@@ -2873,7 +2873,7 @@ ew.gguf", model.GgufPath);
             Rows = [],
             SearchOutcome = Gatto.Core.Acquire.HubSearchCause.HubFailed,
         });
-        var offlineBody = string.Join(" ", Assert.IsType<WizardScreen.Choice>(offline.Emitted[^1]).BodyRows!);
+        var offlineBody = string.Join(" ", Assert.IsType<SetupScreen.Choice>(offline.Emitted[^1]).BodyRows!);
 
         Assert.NotEqual(smallBody, offlineBody);
         Assert.Contains("this machine", smallBody, StringComparison.OrdinalIgnoreCase);
@@ -2881,7 +2881,7 @@ ew.gguf", model.GgufPath);
         //the cause changed and the exits did not, so both screens still offer a folder and a typed id.
         foreach (var flow in new[] { small, offline })
         {
-            var screen = Assert.IsType<WizardScreen.Choice>(flow.Emitted[^1]);
+            var screen = Assert.IsType<SetupScreen.Choice>(flow.Emitted[^1]);
             Assert.Contains(screen.Options, o => o.Key == SetupFlow.Elsewhere);
             Assert.Contains(screen.Options, o => o.Key == SetupFlow.TypeAnId);
         }
@@ -2944,7 +2944,7 @@ ew.gguf", model.GgufPath);
     {
         var flow = AtChosenModel(WithModel());
 
-        var offer = Assert.IsType<WizardScreen.Choice>(flow.Emitted[^1]);
+        var offer = Assert.IsType<SetupScreen.Choice>(flow.Emitted[^1]);
         Assert.Equal(SetupFlow.AuditionOfferKey, offer.Key);
         Assert.Contains(offer.Options, o => o.Key == SetupFlow.Skip);   //the check is never compulsory, so the offer has a skip
     }
@@ -2954,7 +2954,7 @@ ew.gguf", model.GgufPath);
     {
         //measured waits ranged from 72 to 128 seconds, so the offer gives a range
         var flow = AtChosenModel(WithModel());
-        var offer = Assert.IsType<WizardScreen.Choice>(flow.Emitted[^1]);
+        var offer = Assert.IsType<SetupScreen.Choice>(flow.Emitted[^1]);
         var body = string.Join(" ", offer.BodyRows!);
 
         Assert.Contains("a minute or two", body, StringComparison.OrdinalIgnoreCase);
@@ -2968,14 +2968,14 @@ ew.gguf", model.GgufPath);
         //a failed check warns and recommends another model, then the user can keep their choice
         var flow = AtChosenModel(WithModel(audition: AuditionOutcome.Failed));
 
-        var failed = Assert.IsType<WizardScreen.Choice>(CheckRan(flow));
+        var failed = Assert.IsType<SetupScreen.Choice>(CheckRan(flow));
         Assert.Equal(SetupFlow.AuditionFailedKey, failed.Key);
         Assert.Equal(SetupFlow.PickAnother, failed.Options[0].Key);   //the recommendation is the first option.
         Assert.Contains(failed.Options, o => o.Key == SetupFlow.Anyway);
 
         //insisting still reaches the proof screen and the run ends in success
         Assert.Equal(SetupFlow.SummaryKey, Key(Answered(flow, SetupFlow.Anyway)));
-        var end = Assert.IsType<WizardScreen.Terminal>(Answered(flow, SetupFlow.Finish));
+        var end = Assert.IsType<SetupScreen.Terminal>(Answered(flow, SetupFlow.Finish));
         Assert.True(end.Success);
     }
 
@@ -2997,8 +2997,8 @@ ew.gguf", model.GgufPath);
         Assert.Equal(SetupFlow.SummaryKey, Key(Resumed(skipped)));
         Assert.Equal(SetupFlow.SummaryKey, Key(Resumed(passed)));
 
-        var a = Assert.IsType<WizardScreen.Terminal>(Answered(skipped, SetupFlow.Finish));
-        var b = Assert.IsType<WizardScreen.Terminal>(Answered(passed, SetupFlow.Finish));
+        var a = Assert.IsType<SetupScreen.Terminal>(Answered(skipped, SetupFlow.Finish));
+        var b = Assert.IsType<SetupScreen.Terminal>(Answered(passed, SetupFlow.Finish));
 
         Assert.Equal(a.Key, b.Key);
         Assert.Equal(a.Success, b.Success);
@@ -3041,7 +3041,7 @@ ew.gguf", model.GgufPath);
                 new EngineAsset("cudart-llama-bin-win-cuda-12.4-x64.zip", "https://example.invalid/c",
                     new string('b', 64), 66_060_288))),
         });
-        var consent = Assert.IsType<WizardScreen.Choice>(flow.StartPastOpening());
+        var consent = Assert.IsType<SetupScreen.Choice>(flow.StartPastOpening());
         var body = string.Join(" ", consent.BodyRows!)
             + " " + string.Join(" ", EngineFetchView.Rows(consent.Engine!.Value, 100, glyphs: GlyphSet.Unicode).Select(r => r.Text));
 
@@ -3065,7 +3065,7 @@ ew.gguf", model.GgufPath);
                 "llama-b11071-bin-win-vulkan-x64.zip", null, "an AMD discrete card", "Vulkan"),
             Offer = new EngineFetchOffer(@"C:\Users\you\.gatto\llama\b11071\", null),
         });
-        var view = Assert.IsType<WizardScreen.Choice>(flow.StartPastOpening()).Engine!.Value;
+        var view = Assert.IsType<SetupScreen.Choice>(flow.StartPastOpening()).Engine!.Value;
         var body = string.Join(" ", EngineFetchView.Rows(view, 100, glyphs: GlyphSet.Unicode).Select(r => r.Text));
 
         Assert.Contains("extract to", body, StringComparison.Ordinal);
@@ -3080,7 +3080,7 @@ ew.gguf", model.GgufPath);
     {
         //steering to one CUDA build on a machine gatto could not read is a guess that costs a large download when wrong.
         var flow = AtSteering(new FakeProbes { Llama = null, Asset = null });
-        var steer = Assert.IsType<WizardScreen.Choice>(flow.Emitted[^1]);
+        var steer = Assert.IsType<SetupScreen.Choice>(flow.Emitted[^1]);
 
         Assert.DoesNotContain("cuda", string.Join(" ", steer.BodyRows!), StringComparison.OrdinalIgnoreCase);
         Assert.Contains("point gatto at", string.Join(" ", steer.BodyRows!), StringComparison.OrdinalIgnoreCase);
@@ -3142,7 +3142,7 @@ ew.gguf", model.GgufPath);
                 Asset = asset,
             });
             flow.Answer(SetupFlow.Yes);   //yes opens the path ask.
-            label = Assert.IsType<WizardScreen.Ask>(flow.Answer(@"D:\mine\llama-server.exe")).Label!;
+            label = Assert.IsType<SetupScreen.Ask>(flow.Answer(@"D:\mine\llama-server.exe")).Label!;
         }
 
         Assert.Contains(mustSay, label, StringComparison.OrdinalIgnoreCase);
@@ -3289,12 +3289,12 @@ ew.gguf", model.GgufPath);
     {
         //the run never ends by closing the console, gatto opens or the screen shows the next command
         var flow = AtChosenModel(WithModel());
-        var prove = Assert.IsType<WizardScreen.Choice>(PastTheSkip(flow));
+        var prove = Assert.IsType<SetupScreen.Choice>(PastTheSkip(flow));
 
         Assert.Contains(prove.Options, o => o.Key == SetupFlow.OpenRepl);
         Assert.Contains(prove.Options, o => o.Key == SetupFlow.Finish);
 
-        var end = Assert.IsType<WizardScreen.Terminal>(Answered(flow, SetupFlow.OpenRepl));
+        var end = Assert.IsType<SetupScreen.Terminal>(Answered(flow, SetupFlow.OpenRepl));
         Assert.True(flow.StartReplWhenDone);
         Assert.NotEqual("", end.NextStep);
     }
@@ -3304,7 +3304,7 @@ ew.gguf", model.GgufPath);
     {
         var flow = AtChosenModel(WithModel());
         PastTheSkip(flow);
-        var end = Assert.IsType<WizardScreen.Terminal>(Answered(flow, SetupFlow.Finish));
+        var end = Assert.IsType<SetupScreen.Terminal>(Answered(flow, SetupFlow.Finish));
 
         Assert.False(flow.StartReplWhenDone);
         //the NextStep field is nullable, this screen must set it to place the user somewhere
@@ -3323,7 +3323,7 @@ ew.gguf", model.GgufPath);
             Proof = new Gatto.Core.Acquire.ProveOutcome(false, "connection refused", TimeSpan.Zero),
         });
 
-        var prove = Assert.IsType<WizardScreen.Choice>(PastTheSkip(flow));
+        var prove = Assert.IsType<SetupScreen.Choice>(PastTheSkip(flow));
         var body = string.Join(" ", prove.BodyRows!);
 
         Assert.Contains("connection refused", body, StringComparison.Ordinal);   //the screen quotes the real failure detail.
@@ -3345,7 +3345,7 @@ ew.gguf", model.GgufPath);
                 false, "model is corrupted or incomplete", TimeSpan.Zero),
         });
 
-        var prove = Assert.IsType<WizardScreen.Choice>(PastTheSkip(flow));
+        var prove = Assert.IsType<SetupScreen.Choice>(PastTheSkip(flow));
         var body = string.Join(" ", prove.BodyRows!);
 
         Assert.DoesNotContain(
@@ -3366,7 +3366,7 @@ ew.gguf", model.GgufPath);
                 Proof = new Gatto.Core.Acquire.ProveOutcome(
                     false, "some detail", TimeSpan.Zero, StartFailed: startFailed),
             });
-            return Assert.IsType<WizardScreen.Choice>(PastTheSkip(flow)).Question!;
+            return Assert.IsType<SetupScreen.Choice>(PastTheSkip(flow)).Question!;
         }
 
         Assert.Contains("the server didn't start", Headline(true), StringComparison.Ordinal);
@@ -3381,10 +3381,10 @@ ew.gguf", model.GgufPath);
     public void THE_THREE_SCREENS_THE_BACKTICK_SWEEP_CANNOT_REACH_are_clean_too()
     {
         //these screens are not on the sweep's path, so drive them directly, and each command must be a real highlight span
-        static IReadOnlyList<WizardRow> Rows(WizardScreen s) => s switch
+        static IReadOnlyList<SetupRow> Rows(SetupScreen s) => s switch
         {
-            WizardScreen.Choice c => c.BodyRows ?? [],
-            WizardScreen.Ask a => a.BodyRows ?? [],
+            SetupScreen.Choice c => c.BodyRows ?? [],
+            SetupScreen.Ask a => a.BodyRows ?? [],
             _ => [],
         };
 
@@ -3471,7 +3471,7 @@ ew.gguf", model.GgufPath);
                     ? new EngineAsset(c, "https://example.invalid/c", new string('b', 64), 1)
                     : null)),
         });
-        var rows = Assert.IsType<WizardScreen.Choice>(flow.StartPastOpening()).BodyRows!;
+        var rows = Assert.IsType<SetupScreen.Choice>(flow.StartPastOpening()).BodyRows!;
         var row = Assert.Single(rows, r => r.Text.StartsWith("According to your hardware", StringComparison.Ordinal));
         var sentence = row.Text;
 
@@ -3566,13 +3566,13 @@ ew.gguf", model.GgufPath);
         Assert.Contains("llama.cpp", string.Join("\n", llama.Emitted.Skip(llamaBeforeFork).SelectMany(Words)),
             StringComparison.OrdinalIgnoreCase);
 
-        static IEnumerable<string> Words(WizardScreen s) => s switch
+        static IEnumerable<string> Words(SetupScreen s) => s switch
         {
-            WizardScreen.Choice c => [c.Question ?? "", .. (c.BodyRows ?? []).Select(r => r.Text),
+            SetupScreen.Choice c => [c.Question ?? "", .. (c.BodyRows ?? []).Select(r => r.Text),
                                       .. c.Options.Select(o => o.Label + " " + (o.Description ?? ""))],
-            WizardScreen.Ask a => [a.Label ?? "", .. (a.BodyRows ?? []).Select(r => r.Text)],
-            WizardScreen.Info i => [.. i.Rows.Select(r => r.Text)],
-            WizardScreen.Terminal t => [.. t.Rows.Select(r => r.Text)],
+            SetupScreen.Ask a => [a.Label ?? "", .. (a.BodyRows ?? []).Select(r => r.Text)],
+            SetupScreen.Info i => [.. i.Rows.Select(r => r.Text)],
+            SetupScreen.Terminal t => [.. t.Rows.Select(r => r.Text)],
             _ => [],
         };
     }
@@ -3584,7 +3584,7 @@ ew.gguf", model.GgufPath);
         var flow = new SetupFlow(new FakeProbes { Snapshot = null });
 
         //the unreadable-memory fact sits on the welcome map, so the assertion reads the welcome row
-        var welcome = Assert.IsType<WizardScreen.Choice>(flow.Start());
+        var welcome = Assert.IsType<SetupScreen.Choice>(flow.Start());
         var line = welcome.BodyRows!.Single(r => r.Text.Contains("machine's memory", StringComparison.Ordinal)).Text;
         Assert.DoesNotContain("0 GB", line, StringComparison.Ordinal);
         Assert.Contains("couldn't read", line, StringComparison.OrdinalIgnoreCase);
@@ -3602,16 +3602,16 @@ ew.gguf", model.GgufPath);
         Assert.Throws<InvalidOperationException>(() => flow.Answer("whatever"));
     }
 
-    private static string Rendered(WizardScreen s) => s switch
+    private static string Rendered(SetupScreen s) => s switch
     {
-        WizardScreen.Choice c => c.Question + " " + string.Join(" ", c.Options.Select(o => o.Label + " " + o.Description))
+        SetupScreen.Choice c => c.Question + " " + string.Join(" ", c.Options.Select(o => o.Label + " " + o.Description))
                                 + " " + string.Join(" ", c.BodyRows ?? []),
-        WizardScreen.Info i => string.Join(" ", i.Rows),
-        WizardScreen.Progress p => p.Label,
+        SetupScreen.Info i => string.Join(" ", i.Rows),
+        SetupScreen.Progress p => p.Label,
         //an Ask has body rows, so the renderer must include them. an assertion without them reads an empty screen and passes
-        WizardScreen.Ask a => a.Label + " " + a.Placeholder
+        SetupScreen.Ask a => a.Label + " " + a.Placeholder
                               + " " + string.Join(" ", a.BodyRows ?? []),
-        WizardScreen.Terminal t => string.Join(" ", t.Rows) + " " + t.NextStep,
+        SetupScreen.Terminal t => string.Join(" ", t.Rows) + " " + t.NextStep,
         _ => "",
     };
 
@@ -3628,7 +3628,7 @@ ew.gguf", model.GgufPath);
                 "llama-b11071-bin-win-vulkan-x64.zip", null, "an AMD discrete card", "Vulkan"),
             Offer = new EngineFetchOffer(@"C:\Users\you\.gatto\llama\b11071\", null),
         });
-        var arm = Assert.IsType<WizardScreen.Choice>(flow.StartPastOpening());
+        var arm = Assert.IsType<SetupScreen.Choice>(flow.StartPastOpening());
         var text = string.Join("\n", flow.Emitted.Select(Rendered))
             + "\n" + string.Join("\n", EngineFetchView.Rows(arm.Engine!.Value, 100, glyphs: GlyphSet.Unicode).Select(r => r.Text));
 
@@ -3652,7 +3652,7 @@ ew.gguf", model.GgufPath);
                 "an NVIDIA adapter", "CUDA"),
             Offer = new EngineFetchOffer(@"C:\Users\you\.gatto\llama\b11071\", null),
         });
-        var arm = Assert.IsType<WizardScreen.Choice>(flow.StartPastOpening());
+        var arm = Assert.IsType<SetupScreen.Choice>(flow.StartPastOpening());
         var text = string.Join("\n", EngineFetchView.Rows(arm.Engine!.Value, 100, glyphs: GlyphSet.Unicode).Select(r => r.Text));
 
         //the screen names the companion file rather than linking it, a stale link strands the user
@@ -3687,7 +3687,7 @@ ew.gguf", model.GgufPath);
         //the steering screen takes a typed path, so the answer must be wrapped as typed text.
         else { flow.Answer(ShelfControls.TypedAnswer(@"C:\llama\llama-server.exe")); }
 
-        var asks = flow.Emitted.OfType<WizardScreen.Ask>().ToList();
+        var asks = flow.Emitted.OfType<SetupScreen.Ask>().ToList();
         Assert.NotEmpty(asks);
         foreach (var a in asks)
         {
@@ -3708,7 +3708,7 @@ ew.gguf", model.GgufPath);
             Rows = [.. Enumerable.Range(1, 50).Select(n => Row($"org/model{n}"))],
         };
         var flow = new SetupFlow(probes);
-        var search = Assert.IsType<WizardScreen.Choice>(flow.StartPastEngine());
+        var search = Assert.IsType<SetupScreen.Choice>(flow.StartPastEngine());
 
         Assert.True(search.Options.Count <= 9,
             $"the search screen offers {search.Options.Count} numbered rows; a digit cannot press past nine");
@@ -3718,7 +3718,7 @@ ew.gguf", model.GgufPath);
     public void THE_WELCOMES_QUESTION_IS_WRITTEN_FOR_ITS_COMMITTED_FORM()
     {
         //the transcript commits the question on its own, so the question must read well without the body
-        var welcome = Assert.IsType<WizardScreen.Choice>(new SetupFlow(new FakeProbes()).Start());
+        var welcome = Assert.IsType<SetupScreen.Choice>(new SetupFlow(new FakeProbes()).Start());
 
         Assert.Equal("Ready to set gatto up?", welcome.Question);
     }
@@ -3727,7 +3727,7 @@ ew.gguf", model.GgufPath);
     public void THE_PRIVACY_LINE_SAYS_HAS_TO_BECAUSE_THE_ABSOLUTE_BREAKS_WHEN_CLOUD_SHIPS()
     {
         //an absolute privacy claim becomes false the day cloud ships, so the line says the model has to run somewhere the reader chooses
-        var welcome = Assert.IsType<WizardScreen.Choice>(new SetupFlow(new FakeProbes()).Start());
+        var welcome = Assert.IsType<SetupScreen.Choice>(new SetupFlow(new FakeProbes()).Start());
         var body = string.Join(" ", welcome.BodyRows!.Select(r => r.Text));
 
         //the wording has to stay, the absolute form turns false the day cloud ships
@@ -3740,7 +3740,7 @@ ew.gguf", model.GgufPath);
     {
         //the map states a fact about this run, so both states are asserted. a line that appears means nothing unless it is absent when false
         static string MapWithLlama(string? llama) => string.Join("\n",
-            Assert.IsType<WizardScreen.Choice>(new SetupFlow(new FakeProbes { Llama = llama }).Start())
+            Assert.IsType<SetupScreen.Choice>(new SetupFlow(new FakeProbes { Llama = llama }).Start())
                 .BodyRows!.Select(r => r.Text));
 
         //the fact sits on the engine row of the map, so both states of that row are asserted
@@ -3756,7 +3756,7 @@ ew.gguf", model.GgufPath);
     public void THE_INSTALL_SCREEN_SHOWS_FROM_TO_AND_HAS_HANDED_THE_PATH_SENTENCE_ON()
     {
         //both halves of the move are asserted, a line that leaves one screen and never arrives is worse than one that never moved
-        var install = Assert.IsType<WizardScreen.Choice>(
+        var install = Assert.IsType<SetupScreen.Choice>(
             AtTheInstallQuestion(WalkableFlowWithInstall(Gatto.Cli.Install.InstallState.NotInstalled)));
         var body = string.Join(" ", install.BodyRows!.Select(r => r.Text));
 
@@ -3770,7 +3770,7 @@ ew.gguf", model.GgufPath);
     {
         //the engine step answers what the fork asked, and an engine is stated on purpose so no screen stands before it
         var probes = new FakeProbes { Llama = @"C:\llama\llama-server.exe" };
-        var first = Assert.IsType<WizardScreen.Choice>(new SetupFlow(probes).StartPastOpening());
+        var first = Assert.IsType<SetupScreen.Choice>(new SetupFlow(probes).StartPastOpening());
 
         //the flow lands on the engine step itself, with no question before it
         Assert.Equal(SetupFlow.FoundKey, first.Key);
@@ -3821,7 +3821,7 @@ ew.gguf", model.GgufPath);
         //the hardware line must quote the budget a model can use, since the inventory understates a unified machine by about 3x
         var flow = new SetupFlow(new FakeProbes { Snapshot = HwFixture.Fixture(fixture) });
         var body = string.Join(" ",
-            Assert.IsType<WizardScreen.Choice>(flow.Start()).BodyRows!.Select(r => r.Text));
+            Assert.IsType<SetupScreen.Choice>(flow.Start()).BodyRows!.Select(r => r.Text));
 
         Assert.Contains(shapePhrase, body, StringComparison.Ordinal);
         Assert.Contains(budgetPhrase, body, StringComparison.Ordinal);
@@ -3836,7 +3836,7 @@ ew.gguf", model.GgufPath);
             Snapshot = HwFixture.Fixture("unified-32gb-1gb-carveout.txt"),
         });
         var body = string.Join(" ",
-            Assert.IsType<WizardScreen.Choice>(flow.Start()).BodyRows!.Select(r => r.Text));
+            Assert.IsType<SetupScreen.Choice>(flow.Start()).BodyRows!.Select(r => r.Text));
 
         Assert.DoesNotContain("0 GB", body, StringComparison.Ordinal);
         Assert.DoesNotContain("graphics chip, a model can use", body, StringComparison.Ordinal);
@@ -3883,7 +3883,7 @@ ew.gguf", model.GgufPath);
                 Gatto.Core.Hardware.GpuKind.None, null),
         });
         var body = string.Join(" ",
-            Assert.IsType<WizardScreen.Choice>(flow.Start()).BodyRows!.Select(r => r.Text));
+            Assert.IsType<SetupScreen.Choice>(flow.Start()).BodyRows!.Select(r => r.Text));
 
         Assert.Contains("no graphics driver gatto can use", body, StringComparison.Ordinal);
         Assert.Contains("models run in system memory", body, StringComparison.Ordinal);
@@ -3892,7 +3892,7 @@ ew.gguf", model.GgufPath);
         Assert.DoesNotContain("couldn't work out", body, StringComparison.Ordinal);
     }
 
-    private static WizardScreen ConnectRoad(FakeProbes probes)
+    private static SetupScreen ConnectRoad(FakeProbes probes)
     {
         var flow = new SetupFlow(probes);
         flow.StartPastOpening();
@@ -3910,7 +3910,7 @@ ew.gguf", model.GgufPath);
             Own = (1235, "gemma-4-26B-A4B-it"),
         };
 
-        var screen = Assert.IsType<WizardScreen.Choice>(ConnectRoad(probes));
+        var screen = Assert.IsType<SetupScreen.Choice>(ConnectRoad(probes));
         var body = string.Join("\n", screen.BodyRows!);
 
         Assert.Equal(SetupFlow.ConfirmServerKey, screen.Key);
@@ -3940,7 +3940,7 @@ ew.gguf", model.GgufPath);
             Own = (1235, "gemma-4-26B-A4B-it"),
         };
 
-        var screen = Assert.IsType<WizardScreen.Choice>(ConnectRoad(probes));
+        var screen = Assert.IsType<SetupScreen.Choice>(ConnectRoad(probes));
         var body = string.Join("\n", screen.BodyRows!);
 
         Assert.Equal(SetupFlow.RetryKey, screen.Key);
@@ -3958,7 +3958,7 @@ ew.gguf", model.GgufPath);
             Own = null,   //a null Own also answers what a dead pid gives, so one fixture covers both states
         };
 
-        var screen = Assert.IsType<WizardScreen.Choice>(ConnectRoad(probes));
+        var screen = Assert.IsType<SetupScreen.Choice>(ConnectRoad(probes));
 
         Assert.Equal(SetupFlow.ConfirmServerKey, screen.Key);
         Assert.Contains(screen.BodyRows!, r => r.Text.Contains("http://127.0.0.1:1235",

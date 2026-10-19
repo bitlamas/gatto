@@ -18,7 +18,7 @@ public class InSessionLayoutHoldsTests
         Fit: FitRegime.FitsGpu, NativeCtx: 262144, Vision: false, Badge: null,
         Downloads: 900, Gated: false, Params: 26_000_000_000, Arch: "gemma3");
 
-    private static WizardScreen.Choice Screen(int files, MachineShape shape)
+    private static SetupScreen.Choice Screen(int files, MachineShape shape)
     {
         var pane = Enumerable.Range(0, files)
             .Select(i => new PaneFile("Q" + i, 4_000_000_000L + i, FitRegime.FitsGpu))
@@ -26,7 +26,7 @@ public class InSessionLayoutHoldsTests
         var shelf = new ShelfView([Row()], shape, Total: 1,
             Families: Families.Load().Ladder, Family: "all",
             Facts: [new ModelFacts(Files: pane)]);
-        return new WizardScreen.Choice(SetupFlow.SearchKey, SetupFlow.ModelTitleFor(inSession: true),
+        return new SetupScreen.Choice(SetupFlow.SearchKey, SetupFlow.ModelTitleFor(inSession: true),
             [new ChoiceOption("0", "unsloth/gemma-4-26B")],
             Shelf: shelf, Door: SetupFlow.ShelfDoorPlaceholderOf(GlyphSet.Unicode))
         {
@@ -37,7 +37,7 @@ public class InSessionLayoutHoldsTests
     private static IReadOnlyList<string> Frame(int files, int height, MachineShape shape)
     {
         var surface = new RecordingSurface { Width = 100, Height = height };
-        var face = new TuiWizardSurface(surface, new Keys([Esc, Esc]),
+        var face = new TuiSetupSurface(surface, new Keys([Esc, Esc]),
             new Theme(new TermCaps(true, true)), version: "0.5.0", build: "1a2b3c4", nowMs: () => 0,
             //the clock must answer at once and nowMs stays frozen, an armed chord's bounded wait would otherwise hang here
             clock: _ => new Ready());

@@ -19,32 +19,32 @@ public class DoorBlankFitTests
         new(Path.Combine(@"C:\weights", name + ".gguf"), 4_000_000_000, null);
 
     //the hub shelf with 18 models and the discovery line, with the flow's row budget set from this height. tooBig hides rows until a.
-    private static WizardScreen.Choice HubShelf(int height, int tooBig)
+    private static SetupScreen.Choice HubShelf(int height, int tooBig)
     {
-        var probes = new WizardProbes
+        var probes = new FakeSetupProbes
         {
             Rows = [.. Enumerable.Range(1, 18).Select(i =>
                 Hub(i, i > 18 - tooBig ? FitRegime.DoesNotFit : FitRegime.FitsGpu))],
             Found = [OnDisk("one"), OnDisk("two")],
         };
         var flow = new SetupFlow(probes) { CanSwitchSource = true, RowBudget = Shelf.RowBudget(height) };
-        var shelf = Assert.IsType<WizardScreen.Choice>(flow.StartPastEngine());
+        var shelf = Assert.IsType<SetupScreen.Choice>(flow.StartPastEngine());
         Assert.Equal(ShelfSource.Hub, shelf.Shelf!.Source);
         Assert.Contains(shelf.BodyRows ?? [], r => r.Text.Contains("m shows them", StringComparison.Ordinal));
         return shelf;
     }
 
     //the local shelf with 18 models, which draws two escape rows under the table
-    private static WizardScreen.Choice LocalShelf(int height)
+    private static SetupScreen.Choice LocalShelf(int height)
     {
-        var probes = new WizardProbes
+        var probes = new FakeSetupProbes
         {
             Llama = @"C:\llama\llama-server.exe",
             Found = [.. Enumerable.Range(1, 18).Select(i =>
                 new FoundModel($@"C:\weights\model-{i:00}-Q4_K_M.gguf", 4_000_000_000, null))],
         };
         var flow = new SetupFlow(probes) { RowBudget = Shelf.RowBudget(height) };
-        var shelf = Assert.IsType<WizardScreen.Choice>(flow.StartAtModelSegment());
+        var shelf = Assert.IsType<SetupScreen.Choice>(flow.StartAtModelSegment());
         Assert.Equal(ShelfSource.Local, shelf.Shelf!.Source);
         return shelf;
     }

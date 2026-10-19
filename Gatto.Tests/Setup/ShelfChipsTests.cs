@@ -15,15 +15,15 @@ public class ShelfChipsTests
         RepoId: id, Publisher: "unsloth", PickedQuant: new HubQuant("m-Q4_K_M.gguf", 4_000_000_000, null),
         Fit: FitRegime.FitsGpu, NativeCtx: 262144, Params: billions * 1_000_000_000);
 
-    private static (SetupFlow Flow, WizardProbes Probes) Open(IReadOnlyList<ModelRow>? rows = null)
+    private static (SetupFlow Flow, FakeSetupProbes Probes) Open(IReadOnlyList<ModelRow>? rows = null)
     {
-        var probes = new WizardProbes { Rows = rows ?? [Row("unsloth/a", 4), Row("unsloth/b", 27), Row("unsloth/c", 9)] };
+        var probes = new FakeSetupProbes { Rows = rows ?? [Row("unsloth/a", 4), Row("unsloth/b", 27), Row("unsloth/c", 9)] };
         var flow = new SetupFlow(probes) { CanSwitchSource = true };
         flow.StartPastEngine();
         return (flow, probes);
     }
 
-    private static IReadOnlyList<string> Lit(WizardProbes probes) => [.. probes.LastRequest!.Lit.Order()];
+    private static IReadOnlyList<string> Lit(FakeSetupProbes probes) => [.. probes.LastRequest!.Lit.Order()];
 
     private static IReadOnlyList<string> Every() =>
         [.. Families.Load().Ladder.Where(f => f != "all").Order()];
@@ -80,11 +80,11 @@ public class ShelfChipsTests
         var (flow, probes) = Open();
         var asked = probes.Requests.Count;
 
-        var smallest = Assert.IsType<WizardScreen.Choice>(flow.Answer(SetupFlow.CtlParams));
+        var smallest = Assert.IsType<SetupScreen.Choice>(flow.Answer(SetupFlow.CtlParams));
         Assert.Equal(["a", "c", "b"], smallest.Shelf!.Rows.Select(r => r.Model));
         Assert.True(smallest.Shelf.SmallestFirst);
 
-        var largest = Assert.IsType<WizardScreen.Choice>(flow.Answer(SetupFlow.CtlParams));
+        var largest = Assert.IsType<SetupScreen.Choice>(flow.Answer(SetupFlow.CtlParams));
         Assert.Equal(["b", "c", "a"], largest.Shelf!.Rows.Select(r => r.Model));
         Assert.False(largest.Shelf.SmallestFirst);
         Assert.Equal(asked, probes.Requests.Count);
@@ -98,10 +98,10 @@ public class ShelfChipsTests
         flow.Answer(ShelfControls.FamilyAnswer("glm"));
         flow.Answer(SetupFlow.CtlLift);
         flow.Answer(SetupFlow.CtlParams);
-        var left = Assert.IsType<WizardScreen.Choice>(flow.Answer(SetupFlow.CtlParams));
+        var left = Assert.IsType<SetupScreen.Choice>(flow.Answer(SetupFlow.CtlParams));
 
         flow.Answer("0");
-        var back = Assert.IsType<WizardScreen.Choice>(flow.Answer(SetupFlow.BackKey));
+        var back = Assert.IsType<SetupScreen.Choice>(flow.Answer(SetupFlow.BackKey));
 
         Assert.Equal(SetupFlow.SearchKey, back.Key);
         Assert.Equal(left.Shelf!.Lit!.Order(), back.Shelf!.Lit!.Order());

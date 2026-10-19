@@ -50,10 +50,10 @@ internal static class ModelFetchView
             : $" {g.Dot} every file's fingerprint verified");
 
     //the glyph set comes in from the face, defaulted so every existing caller and golden stays as it was
-    public static IReadOnlyList<WizardRow> Rows(ModelView v, int width, GlyphSet? glyphs)
+    public static IReadOnlyList<SetupRow> Rows(ModelView v, int width, GlyphSet? glyphs)
     {
         var g = glyphs ?? GlyphSet.Unicode;
-        var rows = new List<WizardRow>
+        var rows = new List<SetupRow>
         {
             SetupFlow.ModelFacts.Row("fetch", v.First.Name + $" {g.Dot} " + v.First.Size,
                 lift: v.First.Name),

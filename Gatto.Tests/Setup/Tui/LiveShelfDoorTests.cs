@@ -33,22 +33,22 @@ public class LiveShelfDoorTests
         FitRegime.FitsGpu, 262144, false, null, 900, false, Params: 3_000_000_000, Arch: "qwen3");
 
     //the shelf the flow arrives at, with the probe that records the request
-    private static (WizardProbes Probes, SetupFlow Flow, WizardScreen.Choice Screen) LiveShelf()
+    private static (FakeSetupProbes Probes, SetupFlow Flow, SetupScreen.Choice Screen) LiveShelf()
     {
         IReadOnlyList<ModelRow> rows = [Row("unsloth/a"), Row("unsloth/b")];
-        var probes = new WizardProbes
+        var probes = new FakeSetupProbes
         {
             Rows = rows,
-            Answer = _ => WizardProbes.Outcome(rows, null),
+            Answer = _ => FakeSetupProbes.Outcome(rows, null),
         };
         var flow = new SetupFlow(probes);
-        return (probes, flow, Assert.IsType<WizardScreen.Choice>(flow.StartPastEngine()));
+        return (probes, flow, Assert.IsType<SetupScreen.Choice>(flow.StartPastEngine()));
     }
 
     private static (string? Answer, IReadOnlyList<string> Frame) Press(
-        WizardScreen.Choice screen, int width, params ConsoleKeyInfo[] keys)
+        SetupScreen.Choice screen, int width, params ConsoleKeyInfo[] keys)
     {
-        var face = new TuiWizardSurface(
+        var face = new TuiSetupSurface(
             new RecordingSurface { Width = width, Height = 60 },
             new Keys(keys), new Theme(new TermCaps(true, true)), "0.5.0", "1a2b3c4", () => 0,
             clock: _ => new Ready());
@@ -90,13 +90,13 @@ public class LiveShelfDoorTests
     [Fact]
     public void AN_EMPTY_SHELF_HAS_NO_DOOR()
     {
-        var probes = new WizardProbes
+        var probes = new FakeSetupProbes
         {
             Rows = [],
-            Answer = _ => WizardProbes.Outcome([], HubSearchCause.NothingFits),
+            Answer = _ => FakeSetupProbes.Outcome([], HubSearchCause.NothingFits),
         };
 
-        Assert.Null(Assert.IsType<WizardScreen.Choice>(new SetupFlow(probes).StartPastEngine()).Door);
+        Assert.Null(Assert.IsType<SetupScreen.Choice>(new SetupFlow(probes).StartPastEngine()).Door);
     }
 
     //and it works
@@ -145,12 +145,12 @@ public class LiveShelfDoorTests
     [Fact]
     public void THE_LIVE_LOCAL_SHELF_DRAWS_ITS_OWN_DOOR()
     {
-        var probes = new WizardProbes
+        var probes = new FakeSetupProbes
         {
             Found = [new FoundModel(@"D:\m\qwen.gguf", 4_000_000_000, null)],
         };
         //the local shelf is the first screen when the sweep found something, so the key is asserted before the door is read
-        var local = Assert.IsType<WizardScreen.Choice>(new SetupFlow(probes).StartPastEngine());
+        var local = Assert.IsType<SetupScreen.Choice>(new SetupFlow(probes).StartPastEngine());
 
         Assert.Equal(SetupFlow.DiscoveredKey, local.Key);
         Assert.Equal(SetupFlow.LocalShelfDoorPlaceholderOf(GlyphSet.Unicode), local.Door);

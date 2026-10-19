@@ -9,8 +9,8 @@ internal static class WalkOpening
     //a screen added to the opening is one row here and nothing else, the three vocabularies all derive from this table
     private static readonly (string Screen, string Answer, ConsoleKeyInfo Key)[] Steps =
     [
-        (SetupFlow.WelcomeKey, SetupFlow.WelcomeGo, WizardRig.Enter),
-        (SetupFlow.MachineKey, SetupFlow.MachineNext, WizardRig.Enter),
+        (SetupFlow.WelcomeKey, SetupFlow.WelcomeGo, SetupRig.Enter),
+        (SetupFlow.MachineKey, SetupFlow.MachineNext, SetupRig.Enter),
     ];
 
     //the opening as screen keys, in the order a face shows them

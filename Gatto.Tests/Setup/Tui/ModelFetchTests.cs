@@ -57,7 +57,7 @@ public class ModelFetchTests
         new(Repo, "gemma-4-26b-a4b-it", Into, Quant(Weights, WeightsBytes), null);
 
     //the probes answer with an offer, a fake that offers nothing gets the browser watch instead
-    private static WizardProbes Probes(ModelFetchOffer? offer, HubQuant? quant = null,
+    private static FakeSetupProbes Probes(ModelFetchOffer? offer, HubQuant? quant = null,
         HubFetchResult? result = null, IReadOnlyList<HubQuant>? projectors = null) =>
         new()
         {
@@ -66,46 +66,46 @@ public class ModelFetchTests
             Rows = [Row(offer?.RepoId ?? Repo, quant ?? Quant(Weights, WeightsBytes), projectors)],
         };
 
-    private static WizardScreen.Choice Consent(WizardProbes probes)
+    private static SetupScreen.Choice Consent(FakeSetupProbes probes)
     {
         var flow = new SetupFlow(probes);
         flow.StartPastEngine();
-        return Assert.IsType<WizardScreen.Choice>(flow.Answer("0"));
+        return Assert.IsType<SetupScreen.Choice>(flow.Answer("0"));
     }
 
-    private static WizardScreen.Choice Fetching(WizardProbes probes) => Fetching(probes, false);
+    private static SetupScreen.Choice Fetching(FakeSetupProbes probes) => Fetching(probes, false);
 
     //the add path enters at the model segment, everything from the shelf on is the same three answers
-    private static WizardScreen.Choice Fetching(WizardProbes probes, bool inSession)
+    private static SetupScreen.Choice Fetching(FakeSetupProbes probes, bool inSession)
     {
         var flow = new SetupFlow(probes);
         if (inSession) flow.StartAtModelSegment(); else flow.StartPastEngine();
         flow.Answer("0");
-        return Assert.IsType<WizardScreen.Choice>(flow.Answer(SetupFlow.ModelFetchNow));
+        return Assert.IsType<SetupScreen.Choice>(flow.Answer(SetupFlow.ModelFetchNow));
     }
 
     //the live download screen for the tests that guard its keys, exposed so the fixture is not copied again
-    internal static WizardScreen.Choice FetchingScreen(bool inSession = false) =>
+    internal static SetupScreen.Choice FetchingScreen(bool inSession = false) =>
         Fetching(Probes(VisionOffer()), inSession);
 
     //the tick every download frame is drawn at
     internal static FetchTick FetchingTick => Tick;
 
     //probes with a one-row shelf, a discrete machine by default, so a unified test must pass its own
-    internal static WizardProbes ShelfProbes(
+    internal static FakeSetupProbes ShelfProbes(
         Gatto.Core.Hardware.HardwareSnapshot? snapshot = null,
         IReadOnlyList<Gatto.Cli.Setup.ISetupProbes.PausedFetch>? paused = null)
     {
         var offer = VisionOffer();
         return snapshot is null
-            ? new WizardProbes
+            ? new FakeSetupProbes
             {
                 HubOffer = offer,
                 ModelResult = new(HubFetchOutcome.Arrived),
                 Rows = [Row(offer.RepoId, Quant(Weights, WeightsBytes))],
                 Paused = paused ?? [],
             }
-            : new WizardProbes
+            : new FakeSetupProbes
             {
                 HubOffer = offer,
                 ModelResult = new(HubFetchOutcome.Arrived),
@@ -116,11 +116,11 @@ public class ModelFetchTests
     }
 
     //the drop screen for a fetch that kept something, a drop with no tick gets the browser watch
-    internal static (SetupFlow Flow, WizardProbes Probes, WizardScreen.Choice Screen) Dropped(
+    internal static (SetupFlow Flow, FakeSetupProbes Probes, SetupScreen.Choice Screen) Dropped(
         bool inSession = false)
     {
         var offer = VisionOffer();
-        var probes = new WizardProbes
+        var probes = new FakeSetupProbes
         {
             HubOffer = offer,
             ModelResult = new(HubFetchOutcome.Dropped, Weights),
@@ -131,7 +131,7 @@ public class ModelFetchTests
         if (inSession) flow.StartAtModelSegment(); else flow.StartPastEngine();
         flow.Answer("0");
         flow.Answer(SetupFlow.ModelFetchNow);
-        var screen = Assert.IsType<WizardScreen.Choice>(flow.Answer(SetupFlow.Landed));
+        var screen = Assert.IsType<SetupScreen.Choice>(flow.Answer(SetupFlow.Landed));
         Assert.Equal(SetupFlow.ModelDroppedKey, screen.Key);
         //the strip says which path landed, three sections for add and five for setup
         Assert.Equal(inSession ? 3 : 5, screen.Strip.Count);
@@ -139,11 +139,11 @@ public class ModelFetchTests
     }
 
     //the fetch must still be running and the probes come back with the flow, since the pause oracles are records on them
-    internal static (SetupFlow Flow, WizardProbes Probes, WizardScreen.Choice Screen) LiveFetch(
+    internal static (SetupFlow Flow, FakeSetupProbes Probes, SetupScreen.Choice Screen) LiveFetch(
         bool inSession = true, int blockingFetches = int.MaxValue, HubFetchResult? result = null)
     {
         var offer = VisionOffer();
-        var probes = new WizardProbes
+        var probes = new FakeSetupProbes
         {
             HubOffer = offer,
             ModelResult = result ?? new(HubFetchOutcome.Arrived),
@@ -155,18 +155,18 @@ public class ModelFetchTests
         var flow = new SetupFlow(probes);
         if (inSession) flow.StartAtModelSegment(); else flow.StartPastEngine();
         flow.Answer("0");
-        var screen = Assert.IsType<WizardScreen.Choice>(flow.Answer(SetupFlow.ModelFetchNow));
+        var screen = Assert.IsType<SetupScreen.Choice>(flow.Answer(SetupFlow.ModelFetchNow));
         Assert.Equal(SetupFlow.ModelFetchingKey, screen.Key);
         return (flow, probes, screen);
     }
 
-    private static WizardScreen.Choice Arrived(WizardProbes probes)
+    private static SetupScreen.Choice Arrived(FakeSetupProbes probes)
     {
         var flow = new SetupFlow(probes);
         flow.StartPastEngine();
         flow.Answer("0");
         flow.Answer(SetupFlow.ModelFetchNow);
-        return Assert.IsType<WizardScreen.Choice>(flow.Answer(SetupFlow.Landed));
+        return Assert.IsType<SetupScreen.Choice>(flow.Answer(SetupFlow.Landed));
     }
 
     //the corpus
@@ -178,7 +178,7 @@ public class ModelFetchTests
     //the consent as the corpus pins it, one home so the golden and the guard cannot render two screens
     internal static IReadOnlyList<string> ConsentGoldenRows() =>
         WalkRender.Choice(Consent(Probes(VisionOffer(), projectors: [Quant(Mmproj, MmprojBytes)])),
-            100, script: [WizardRig.Enter]).Rows;
+            100, script: [SetupRig.Enter]).Rows;
 
     [Fact]
     public void THE_FETCHING_SCREEN_MATCHES_ITS_GOLDEN() =>
@@ -200,7 +200,7 @@ public class ModelFetchTests
     public void THE_ARMED_ESC_MATCHES_ITS_GOLDEN() =>
         Golden.AssertEquals("s6", "fetching-armed", 100,
             WalkRender.Watching(Fetching(Probes(VisionOffer())), 100, Tick,
-                script: [WizardRig.Esc, WizardRig.Esc], nowMs: () => 0).Rows);
+                script: [SetupRig.Esc, SetupRig.Esc], nowMs: () => 0).Rows);
 
     [Fact]
     public void A_SHARD_SET_COUNTS_ITS_FILES_AND_NAMES_THE_NEXT_ONE() =>
@@ -210,7 +210,7 @@ public class ModelFetchTests
     public void THE_ARRIVAL_MATCHES_ITS_GOLDEN() =>
         Golden.AssertEquals("s6", "done", 100,
             WalkRender.Choice(Arrived(Probes(VisionOffer())) with { PurredMs = 461_000 }, 100,
-                script: [WizardRig.Enter]).Rows);
+                script: [SetupRig.Enter]).Rows);
 
     //the marker and the then row
 
@@ -275,10 +275,10 @@ public class ModelFetchTests
         var probes = Probes(VisionOffer());
         var flow = new SetupFlow(probes);
         flow.StartPastEngine();
-        var consent = Assert.IsType<WizardScreen.Choice>(flow.Answer("0"));
+        var consent = Assert.IsType<SetupScreen.Choice>(flow.Answer("0"));
         Assert.Equal(2, consent.Options.Count);
 
-        var back = Assert.IsType<WizardScreen.Choice>(flow.Answer(SetupFlow.PickAnother));
+        var back = Assert.IsType<SetupScreen.Choice>(flow.Answer(SetupFlow.PickAnother));
         Assert.Equal(SetupFlow.SearchKey, back.Key);
         Assert.Empty(probes.ModelFetched);
     }
@@ -306,7 +306,7 @@ public class ModelFetchTests
         var flow = new SetupFlow(probes);
         flow.StartPastEngine();
         flow.Answer("0");
-        var screen = Assert.IsType<WizardScreen.Choice>(flow.Answer(SetupFlow.ModelFetchNow));
+        var screen = Assert.IsType<SetupScreen.Choice>(flow.Answer(SetupFlow.ModelFetchNow));
 
         Assert.Equal(SetupFlow.ModelFetchingKey, screen.Key);
         Assert.True(screen.Watching);
@@ -344,7 +344,7 @@ public class ModelFetchTests
         flow.Answer("0");
         flow.Answer(SetupFlow.ModelFetchNow);
 
-        var after = Assert.IsType<WizardScreen.Choice>(flow.Answer(SetupFlow.Landed));
+        var after = Assert.IsType<SetupScreen.Choice>(flow.Answer(SetupFlow.Landed));
         Assert.Equal(SetupFlow.DownloadKey, after.Key);
     }
 
@@ -369,7 +369,7 @@ public class ModelFetchTests
     //slice B: the two endings that are not arrival
 
     //the drop fixture, a set whose first shard stopped at 11.2 of 25.1 GB
-    private static WizardProbes Dropping() =>
+    private static FakeSetupProbes Dropping() =>
         new()
         {
             HubOffer = SetOffer(),
@@ -378,13 +378,13 @@ public class ModelFetchTests
             Rows = [Row(SetRepo, SetQuant())],
         };
 
-    private static WizardScreen.Choice Ending(WizardProbes probes)
+    private static SetupScreen.Choice Ending(FakeSetupProbes probes)
     {
         var flow = new SetupFlow(probes);
         flow.StartPastEngine();
         flow.Answer("0");
         flow.Answer(SetupFlow.ModelFetchNow);
-        return Assert.IsType<WizardScreen.Choice>(flow.Answer(SetupFlow.Landed));
+        return Assert.IsType<SetupScreen.Choice>(flow.Answer(SetupFlow.Landed));
     }
 
     [Fact]
@@ -394,7 +394,7 @@ public class ModelFetchTests
         //the key first, a golden alone would pass against the wrong screen
         Assert.Equal(SetupFlow.ModelDroppedKey, screen.Key);
         Golden.AssertEquals("s6", "dropped", 100,
-            WalkRender.Choice(screen, 100, script: [WizardRig.Enter]).Rows);
+            WalkRender.Choice(screen, 100, script: [SetupRig.Enter]).Rows);
     }
 
     //the screen has no live tick here, so its own figure is what the armed row names
@@ -402,7 +402,7 @@ public class ModelFetchTests
     public void THE_DROPS_ARMED_CTRL_C_MATCHES_ITS_GOLDEN() =>
         Golden.AssertEquals("s6", "dropped-armed", 100,
             WalkRender.Choice(Ending(Dropping()), 100,
-                script: [WizardRig.CtrlC, WizardRig.CtrlC]).Rows);
+                script: [SetupRig.CtrlC, SetupRig.CtrlC]).Rows);
 
     //back from the drop screen keeps the partial, so a leave from the restored screen deletes nothing it never priced
     [Fact]
@@ -411,7 +411,7 @@ public class ModelFetchTests
         var probes = Dropping();
         var dropped = Ending(probes);
         Assert.Equal(SetupFlow.ModelDroppedKey, dropped.Key);
-        Assert.Equal(SetupFlow.BackKey, WalkRender.Answered(dropped, 100, [WizardRig.Esc]).Answer);
+        Assert.Equal(SetupFlow.BackKey, WalkRender.Answered(dropped, 100, [SetupRig.Esc]).Answer);
 
         var flow = new SetupFlow(probes);
         flow.StartPastEngine();
@@ -433,9 +433,9 @@ public class ModelFetchTests
         flow.StartPastEngine();
         flow.Answer("0");
         flow.Answer(SetupFlow.ModelFetchNow);
-        var dropped = Assert.IsType<WizardScreen.Choice>(flow.Answer(SetupFlow.Landed));
+        var dropped = Assert.IsType<SetupScreen.Choice>(flow.Answer(SetupFlow.Landed));
 
-        var (answer, frame) = WalkRender.Answered(dropped, 100, [WizardRig.CtrlC, WizardRig.CtrlC]);
+        var (answer, frame) = WalkRender.Answered(dropped, 100, [SetupRig.CtrlC, SetupRig.CtrlC]);
         Assert.Null(answer);
         Assert.Contains(frame, r => r.Contains("Ctrl+C again: deletes the 11.2 GB already here", StringComparison.Ordinal));
 
@@ -450,7 +450,7 @@ public class ModelFetchTests
         var screen = Ending(Dropping());
         Assert.NotNull(screen.Kept);
 
-        var armed = WalkRender.Choice(screen, 100, script: [WizardRig.CtrlC, WizardRig.CtrlC]).Rows;
+        var armed = WalkRender.Choice(screen, 100, script: [SetupRig.CtrlC, SetupRig.CtrlC]).Rows;
         var body = string.Join("\n", armed);
 
         Assert.DoesNotContain("nothing has been written", body, StringComparison.Ordinal);
@@ -463,7 +463,7 @@ public class ModelFetchTests
     [Fact]
     public void THE_MISMATCH_MATCHES_ITS_GOLDEN()
     {
-        var screen = Ending(new WizardProbes
+        var screen = Ending(new FakeSetupProbes
         {
             HubOffer = VisionOffer(),
             //full 64-character shas, so the abbreviation rule produces the row on screen
@@ -475,14 +475,14 @@ public class ModelFetchTests
 
         Assert.Equal(SetupFlow.ModelMismatchKey, screen.Key);
         Golden.AssertEquals("s6", "mismatch", 100,
-            WalkRender.Choice(screen, 100, script: [WizardRig.Enter]).Rows);
+            WalkRender.Choice(screen, 100, script: [SetupRig.Enter]).Rows);
     }
 
     //a drop with no tick is the Hub out of reach, so the tick decides between the two screens
     [Fact]
     public void A_DROP_THAT_KEPT_NOTHING_IS_THE_HUB_OUT_OF_REACH()
     {
-        var probes = new WizardProbes
+        var probes = new FakeSetupProbes
         {
             HubOffer = VisionOffer(),
             ModelResult = new(HubFetchOutcome.Dropped, Weights),
@@ -505,7 +505,7 @@ public class ModelFetchTests
         flow.Answer(SetupFlow.Landed);
         Assert.Equal(1, probes.ModelStarts);
 
-        var again = Assert.IsType<WizardScreen.Choice>(flow.Answer(SetupFlow.ModelResume));
+        var again = Assert.IsType<SetupScreen.Choice>(flow.Answer(SetupFlow.ModelResume));
         Assert.Equal(SetupFlow.ModelFetchingKey, again.Key);
 
         flow.Answer(SetupFlow.Landed);
@@ -520,7 +520,7 @@ public class ModelFetchTests
     [InlineData("mismatch")]
     public void BOTH_ENDINGS_HAVE_A_ROAD_BACK_TO_THE_SHELF(string ending)
     {
-        var probes = ending == "dropped" ? Dropping() : new WizardProbes
+        var probes = ending == "dropped" ? Dropping() : new FakeSetupProbes
         {
             HubOffer = VisionOffer(),
             ModelResult = new(HubFetchOutcome.Mismatch, Weights, Sha, Sha),
@@ -530,10 +530,10 @@ public class ModelFetchTests
         flow.StartPastEngine();
         flow.Answer("0");
         flow.Answer(SetupFlow.ModelFetchNow);
-        var screen = Assert.IsType<WizardScreen.Choice>(flow.Answer(SetupFlow.Landed));
+        var screen = Assert.IsType<SetupScreen.Choice>(flow.Answer(SetupFlow.Landed));
         Assert.Equal(2, screen.Options.Count);
 
-        var back = Assert.IsType<WizardScreen.Choice>(flow.Answer(SetupFlow.PickAnother));
+        var back = Assert.IsType<SetupScreen.Choice>(flow.Answer(SetupFlow.PickAnother));
         Assert.Equal(SetupFlow.SearchKey, back.Key);
         Assert.Equal(1, probes.ModelStarts);
     }
@@ -542,7 +542,7 @@ public class ModelFetchTests
     [Fact]
     public void STOPPING_WAITS_FOR_THE_FETCH_TO_UNWIND()
     {
-        var probes = new WizardProbes
+        var probes = new FakeSetupProbes
         {
             HubOffer = VisionOffer(),
             ModelBlockUntilCancelled = true,
@@ -553,7 +553,7 @@ public class ModelFetchTests
         flow.Answer("0");
         flow.Answer(SetupFlow.ModelFetchNow);
 
-        var after = Assert.IsType<WizardScreen.Choice>(flow.Answer(SetupFlow.ModelFetchStop));
+        var after = Assert.IsType<SetupScreen.Choice>(flow.Answer(SetupFlow.ModelFetchStop));
 
         Assert.True(probes.ModelUnwound, "the flow spoke before the fetch had unwound");
         //the stop goes back to the offer, declining this download is not leaving setup
@@ -573,7 +573,7 @@ public class ModelFetchTests
 
         probes.Arrive();
         flow.Answer(SetupFlow.ModelResume);
-        var arrived = Assert.IsType<WizardScreen.Choice>(flow.Answer(SetupFlow.Landed));
+        var arrived = Assert.IsType<SetupScreen.Choice>(flow.Answer(SetupFlow.Landed));
 
         Assert.Equal(SetupFlow.ModelArrivedKey, arrived.Key);
         //two legs were run, so the figure the arrival carries covers both rather than restarting
@@ -589,7 +589,7 @@ public class ModelFetchTests
     private static readonly string[] WatchRoots = [Into, @"C:\Users\you\Downloads\"];
 
     //a dropped fetch with no tick, the state the fallback frames are drawn for
-    private static WizardProbes Unreachable() =>
+    private static FakeSetupProbes Unreachable() =>
         new()
         {
             HubOffer = VisionOffer(),
@@ -599,13 +599,13 @@ public class ModelFetchTests
             Roots = WatchRoots,
         };
 
-    private static WizardScreen.Choice Watching(WizardProbes probes)
+    private static SetupScreen.Choice Watching(FakeSetupProbes probes)
     {
         var flow = new SetupFlow(probes);
         flow.StartPastEngine();
         flow.Answer("0");
         flow.Answer(SetupFlow.ModelFetchNow);
-        return Assert.IsType<WizardScreen.Choice>(flow.Answer(SetupFlow.Landed));
+        return Assert.IsType<SetupScreen.Choice>(flow.Answer(SetupFlow.Landed));
     }
 
     //a clock that answers 0 once and then the given moment, so the purr comes out as a real wait
@@ -645,7 +645,7 @@ public class ModelFetchTests
     public void THE_WATCH_CHECKS_WHAT_LANDS_IN_ORDER(bool arriving, string? hash, string expected)
     {
         var quant = new HubQuant(Weights, WeightsBytes, "aaa");
-        var probes = new WizardProbes
+        var probes = new FakeSetupProbes
         {
             HubOffer = null,
             Rows = [Row(Repo, quant)],
@@ -665,7 +665,7 @@ public class ModelFetchTests
 
         var stillWatching = ScreenKey.Of(next) == SetupFlow.DownloadKey;
         var body = stillWatching
-            ? string.Join(" ", ((WizardScreen.Choice)next).BodyRows!.Select(r => r.Text))
+            ? string.Join(" ", ((SetupScreen.Choice)next).BodyRows!.Select(r => r.Text))
             : "";
         var accused = body.Contains("isn't the published one", StringComparison.Ordinal);
 
@@ -682,7 +682,7 @@ public class ModelFetchTests
     public void WITHOUT_A_PUBLISHED_HASH_THE_SIZE_IS_THE_CHECK()
     {
         var quant = new HubQuant(Weights, WeightsBytes, null);
-        var probes = new WizardProbes
+        var probes = new FakeSetupProbes
         {
             HubOffer = null,
             Rows = [Row(Repo, quant)],
@@ -693,7 +693,7 @@ public class ModelFetchTests
 
         var flow = new SetupFlow(probes);
         flow.StartPastEngine();
-        var watch = Assert.IsType<WizardScreen.Choice>(flow.Answer("0"));
+        var watch = Assert.IsType<SetupScreen.Choice>(flow.Answer("0"));
         var body = string.Join("\n", watch.BodyRows!.Select(r => r.Text));
         Assert.Contains("It will check the name and the size when a file lands, but without a "
             + "published fingerprint it can't check the bytes.", body, StringComparison.Ordinal);
@@ -701,7 +701,7 @@ public class ModelFetchTests
         //the right name at the wrong size is the only wrongness this state can see
         probes.Found = [Landed(bytes: WeightsBytes - 1)];
         flow.PollWatch();
-        var wrong = Assert.IsType<WizardScreen.Choice>(flow.Answer(SetupFlow.Landed));
+        var wrong = Assert.IsType<SetupScreen.Choice>(flow.Answer(SetupFlow.Landed));
         Assert.Equal(SetupFlow.DownloadKey, wrong.Key);
         Assert.Contains("isn't the published one",
             string.Join(" ", wrong.BodyRows!.Select(r => r.Text)), StringComparison.Ordinal);
@@ -716,7 +716,7 @@ public class ModelFetchTests
     [Fact]
     public void THE_WRONG_FILE_MATCHES_ITS_GOLDEN()
     {
-        var probes = new WizardProbes
+        var probes = new FakeSetupProbes
         {
             HubOffer = null,
             Rows = [Row(Repo, new HubQuant(Weights, WeightsBytes, PublishedSha))],
@@ -729,7 +729,7 @@ public class ModelFetchTests
         flow.Answer("0");
         probes.Found = [Landed()];
         flow.PollWatch();
-        var screen = Assert.IsType<WizardScreen.Choice>(flow.Answer(SetupFlow.Landed));
+        var screen = Assert.IsType<SetupScreen.Choice>(flow.Answer(SetupFlow.Landed));
 
         Assert.Equal(SetupFlow.DownloadKey, screen.Key);
         Assert.True(screen.Watching, "the watch stops after a wrong file, and it must not");
@@ -741,7 +741,7 @@ public class ModelFetchTests
 
 
     //a vision pair with the weights in and no encoder, both paths reach the same rows under different cause sentences
-    private static WizardProbes HalfArrived(bool unreachable = true) =>
+    private static FakeSetupProbes HalfArrived(bool unreachable = true) =>
         new()
         {
             HubOffer = unreachable ? VisionOffer() : null,
@@ -751,7 +751,7 @@ public class ModelFetchTests
             Hash = _ => Sha,
         };
 
-    private static WizardScreen.Choice PartialWatch(WizardProbes probes)
+    private static SetupScreen.Choice PartialWatch(FakeSetupProbes probes)
     {
         var flow = new SetupFlow(probes);
         flow.StartPastEngine();
@@ -764,7 +764,7 @@ public class ModelFetchTests
         }
         probes.Found = [Landed()];
         flow.PollWatch();
-        return Assert.IsType<WizardScreen.Choice>(flow.Answer(SetupFlow.Landed));
+        return Assert.IsType<SetupScreen.Choice>(flow.Answer(SetupFlow.Landed));
     }
 
     //the watch waits for the whole unit, so weights alone keep it running since the model cannot see yet
@@ -790,7 +790,7 @@ public class ModelFetchTests
         //nothing has arrived so there is nothing to decline, and the no-fingerprint path reaches the watch first
         var empty = new SetupFlow(HalfArrived(unreachable: false));
         empty.StartPastEngine();
-        var watching = Assert.IsType<WizardScreen.Choice>(empty.Answer("0"));
+        var watching = Assert.IsType<SetupScreen.Choice>(empty.Answer("0"));
         Assert.Equal([SetupFlow.PickAnother], watching.Options.Select(o => o.Key));
     }
 
@@ -804,7 +804,7 @@ public class ModelFetchTests
         flow.Answer("0");
         probes.Found = [Landed()];
         flow.PollWatch();
-        var partial = Assert.IsType<WizardScreen.Choice>(flow.Answer(SetupFlow.Landed));
+        var partial = Assert.IsType<SetupScreen.Choice>(flow.Answer(SetupFlow.Landed));
         Assert.Contains(partial.Options, o => o.Key == SetupFlow.UseTextOnly);
 
         var after = flow.Answer(SetupFlow.UseTextOnly);
@@ -825,7 +825,7 @@ public class ModelFetchTests
         flow.StartPastEngine();
         flow.Answer("0");
         flow.Answer(SetupFlow.ModelFetchNow);
-        var watch = Assert.IsType<WizardScreen.Choice>(flow.Answer(SetupFlow.Landed));
+        var watch = Assert.IsType<SetupScreen.Choice>(flow.Answer(SetupFlow.Landed));
 
         //both files arrive here, so this is the arrival rather than the partial arm
         probes.Found =
@@ -837,7 +837,7 @@ public class ModelFetchTests
         //the move offer is set after the files land, the arrival needs the files to be there
         probes.Move = _ => new MoveOffer(Into, false, WeightsBytes, null);
         flow.PollWatch();
-        var screen = Assert.IsType<WizardScreen.Choice>(flow.Answer(SetupFlow.Landed));
+        var screen = Assert.IsType<SetupScreen.Choice>(flow.Answer(SetupFlow.Landed));
 
         Assert.Equal(SetupFlow.MoveKey, screen.Key);
         Assert.True(screen.PurredSinceWatch, "the arrival does not ask for the wait it just watched");
@@ -858,7 +858,7 @@ public class ModelFetchTests
             ? new HubQuant(Weights, WeightsBytes, PublishedSha)
             : new HubQuant(Weights, WeightsBytes, null);
 
-        var probes = new WizardProbes
+        var probes = new FakeSetupProbes
         {
             Rows = [Row(Repo, quant)],
             Roots = WatchRoots,
@@ -871,7 +871,7 @@ public class ModelFetchTests
         //published, the hash disagrees. unpublished, the size disagrees, that state's own strongest check
         probes.Found = [Landed(bytes: published ? WeightsBytes : WeightsBytes - 1)];
         flow.PollWatch();
-        var screen = Assert.IsType<WizardScreen.Choice>(flow.Answer(SetupFlow.Landed));
+        var screen = Assert.IsType<SetupScreen.Choice>(flow.Answer(SetupFlow.Landed));
 
         var body = string.Join("\n", screen.BodyRows!.Select(r => r.Text));
         Assert.Contains("isn't the published one", body, StringComparison.Ordinal);
@@ -900,7 +900,7 @@ public class ModelFetchTests
             ? Into + Weights
             : @"C:\Users\you\Downloads\" + Weights;
 
-        var probes = new WizardProbes
+        var probes = new FakeSetupProbes
         {
             HubOffer = VisionOffer(),
             Rows = [Row(Repo, Quant(Weights, WeightsBytes))],
@@ -931,7 +931,7 @@ public class ModelFetchTests
     {
         var consent = Consent(Probes(VisionOffer(), projectors: [Quant(Mmproj, MmprojBytes)]));
         for (var w = 78; w <= 120; w++)
-            foreach (var row in WalkRender.Choice(consent, w, script: [WizardRig.Enter]).Rows)
+            foreach (var row in WalkRender.Choice(consent, w, script: [SetupRig.Enter]).Rows)
                 Assert.True(Gatto.Terminal.UnicodeWidth.Of(row) <= w,
                     $"at width {w} a row is {Gatto.Terminal.UnicodeWidth.Of(row)} cells: {row}");
     }
@@ -943,7 +943,7 @@ public class ModelFetchTests
         var flow = new SetupFlow(probes);
         flow.StartPastEngine();
         flow.Answer("0");
-        var screen = Assert.IsType<WizardScreen.Choice>(flow.Answer(SetupFlow.ModelFetchNow));
+        var screen = Assert.IsType<SetupScreen.Choice>(flow.Answer(SetupFlow.ModelFetchNow));
         Assert.Equal(SetupFlow.ModelFetchingKey, screen.Key);
 
         Assert.Equal(SetupFlow.Landed,

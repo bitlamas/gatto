@@ -27,7 +27,7 @@ public class LoadAskConstantCensusTests
     [Fact]
     public void THE_LOAD_ASK_QUOTES_NO_CONSTANT()
     {
-        var probes = new Gatto.Tests.Fakes.WizardProbes
+        var probes = new Gatto.Tests.Fakes.FakeSetupProbes
         {
             Llama = @"C:\llama\llama-server.exe",
             ActiveFile = "gemma-4-26B-A4B-it-UD-Q4_K_M.gguf",
@@ -40,7 +40,7 @@ public class LoadAskConstantCensusTests
         flow.Answer(SetupFlow.Yes);
 
         Assert.True(SpinWait.SpinUntil(flow.PollWatch, TimeSpan.FromSeconds(20)), "no question");
-        var ask = Assert.IsType<WizardScreen.Choice>(flow.Answer(SetupFlow.Landed));
+        var ask = Assert.IsType<SetupScreen.Choice>(flow.Answer(SetupFlow.Landed));
         Assert.Equal(SetupFlow.AuditionLoadAskKey, ask.Key);
 
         //the assertion above proves the screen was reached, so a non-match is not vacuous.

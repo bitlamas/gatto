@@ -30,22 +30,22 @@ public class AskEscChordTests
     private static ConsoleKeyInfo Tab => K(ConsoleKey.Tab);
 
     //the clock stands still unless a test moves it, since a moving clock would make these tests about timing
-    private static TuiWizardSurface Face(RecordingSurface surface, Func<long> now,
+    private static TuiSetupSurface Face(RecordingSurface surface, Func<long> now,
         params ConsoleKeyInfo[] keys) =>
         new(surface, new Keys(keys), new Theme(new TermCaps(true, true)),
             "0.5.0", "1a2b3c4", now, clock: _ => new Ready());
 
-    private static TuiWizardSurface Face(params ConsoleKeyInfo[] keys) =>
+    private static TuiSetupSurface Face(params ConsoleKeyInfo[] keys) =>
         Face(new RecordingSurface { Width = 100 }, () => 0, keys);
 
     //an ask with an offer, so it has a list and the keys start in it.
-    private static WizardScreen.Ask Offered() => new(
+    private static SetupScreen.Ask Offered() => new(
         "model.context", "How much context?", _ => null,
         Placeholder: "type a number…",
         Offer: new AskOffer("Use 8,192", "8192"));
 
     //an ask with only a typed field, so no list exists anywhere in it.
-    private static WizardScreen.Ask DoorOnly() => new(
+    private static SetupScreen.Ask DoorOnly() => new(
         "model.typedid", "Which repo?", _ => null, Placeholder: "type an id…");
 
     //one Esc arms and the screen stays, so the face asks for another key and the script runs dry

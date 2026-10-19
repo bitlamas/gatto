@@ -34,22 +34,22 @@ public class PaneAccordionTests
         ], 0, rowFile, FitRegime.FitsGpu, Structure: "dense");
     }
 
-    private static (SetupFlow Flow, WizardScreen.Choice Shelf) OnTheShelf(ModelRow? row = null)
+    private static (SetupFlow Flow, SetupScreen.Choice Shelf) OnTheShelf(ModelRow? row = null)
     {
-        var flow = new SetupFlow(new WizardProbes { Rows = [row ?? Row()] }) { CanSwitchSource = true };
-        return (flow, Assert.IsType<WizardScreen.Choice>(flow.StartPastEngine()));
+        var flow = new SetupFlow(new FakeSetupProbes { Rows = [row ?? Row()] }) { CanSwitchSource = true };
+        return (flow, Assert.IsType<SetupScreen.Choice>(flow.StartPastEngine()));
     }
 
     private static ConsoleKeyInfo Key(ConsoleKey k) => new('\0', k, false, false, false);
 
-    private static IEnumerable<ConsoleKeyInfo> TabToFiles(WizardScreen.Choice c)
+    private static IEnumerable<ConsoleKeyInfo> TabToFiles(SetupScreen.Choice c)
     {
         var ring = Gatto.Cli.Setup.Shelves.Shelf.Regions(c.Shelf!, 120, 0, c.Door is not null).ToList();
         var steps = (ring.IndexOf(Region.Files) - ring.IndexOf(Gatto.Cli.Setup.Shelves.Shelf.Opening(c.Shelf!)) + ring.Count) % ring.Count;
         return Enumerable.Repeat(Key(ConsoleKey.Tab), steps);
     }
 
-    private static string Pane(WizardScreen.Choice c, IEnumerable<ConsoleKeyInfo> keys) =>
+    private static string Pane(SetupScreen.Choice c, IEnumerable<ConsoleKeyInfo> keys) =>
         string.Join("\n", WalkRender.SettledFrame(c, 120, script: keys).Rows);
 
     [Fact]

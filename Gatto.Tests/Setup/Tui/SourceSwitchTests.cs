@@ -24,9 +24,9 @@ public class SourceSwitchTests
         Params: 25_200_000_000);
 
     //a sweep that finds two models on disk, one gemma and one qwen, and their order matters
-    private static (SetupFlow Flow, WizardProbes Probes) TwoOnDisk()
+    private static (SetupFlow Flow, FakeSetupProbes Probes) TwoOnDisk()
     {
-        var probes = new WizardProbes
+        var probes = new FakeSetupProbes
         {
             Rows = [HubRow()],
             Found = [OnDisk("gemma-4-26B-A4B-it", "gemma3"), OnDisk("Qwen3-30B-A3B", "qwen3")],
@@ -35,13 +35,13 @@ public class SourceSwitchTests
     }
 
     //every flow here binds m, since the key exists only on the tui face and a default flow follows the numbered face
-    private static SetupFlow Flow(WizardProbes probes) => new(probes) { CanSwitchSource = true };
+    private static SetupFlow Flow(FakeSetupProbes probes) => new(probes) { CanSwitchSource = true };
 
     //press m to reach the local shelf, and assert the shelf arrived at, so a blind helper cannot keep passing
-    private static WizardScreen.Choice LocalShelfOf(SetupFlow flow)
+    private static SetupScreen.Choice LocalShelfOf(SetupFlow flow)
     {
         flow.StartPastEngine();
-        var local = Assert.IsType<WizardScreen.Choice>(flow.Answer(ShelfControls.SourceAnswer()));
+        var local = Assert.IsType<SetupScreen.Choice>(flow.Answer(ShelfControls.SourceAnswer()));
         Assert.Equal(ShelfSource.Local, local.Shelf!.Source);
         return local;
     }
@@ -55,7 +55,7 @@ public class SourceSwitchTests
     public void WITH_MODELS_ON_DISK_THE_WALK_OPENS_ON_THE_HUB_SHELF()
     {
         var (flow, _) = TwoOnDisk();
-        var opened = Assert.IsType<WizardScreen.Choice>(flow.StartPastEngine());
+        var opened = Assert.IsType<SetupScreen.Choice>(flow.StartPastEngine());
 
         Assert.Equal(SetupFlow.SearchKey, opened.Key);
         Assert.Equal(ShelfSource.Hub, opened.Shelf!.Source);
@@ -66,7 +66,7 @@ public class SourceSwitchTests
     public void M_ON_A_SHELF_ANSWERS_THE_SOURCE_CONTROL()
     {
         var (flow, _) = TwoOnDisk();
-        var shelf = Assert.IsType<WizardScreen.Choice>(flow.StartPastEngine());
+        var shelf = Assert.IsType<SetupScreen.Choice>(flow.StartPastEngine());
 
         Assert.Equal(ShelfControls.SourceAnswer(), WalkRender.AnswerAfter(shelf, 100, [M]));
     }
@@ -75,7 +75,7 @@ public class SourceSwitchTests
     [Fact]
     public void M_IS_JUST_A_LETTER_WHERE_THERE_IS_NO_SHELF()
     {
-        var plain = new WizardScreen.Choice("k", "Which?",
+        var plain = new SetupScreen.Choice("k", "Which?",
             [new ChoiceOption("0", "one"), new ChoiceOption("1", "two")]);
 
         Assert.NotEqual(ShelfControls.SourceAnswer(), WalkRender.AnswerAfter(plain, 100,
@@ -91,7 +91,7 @@ public class SourceSwitchTests
         var (flow, _) = TwoOnDisk();
         flow.StartPastEngine();
 
-        var local = Assert.IsType<WizardScreen.Choice>(flow.Answer(ShelfControls.SourceAnswer()));
+        var local = Assert.IsType<SetupScreen.Choice>(flow.Answer(ShelfControls.SourceAnswer()));
 
         Assert.Equal(SetupFlow.DiscoveredKey, local.Key);
         Assert.Equal(ShelfSource.Local, local.Shelf!.Source);
@@ -106,7 +106,7 @@ public class SourceSwitchTests
         flow.StartPastEngine();
         flow.Answer(ShelfControls.SourceAnswer());
 
-        var hub = Assert.IsType<WizardScreen.Choice>(flow.Answer(ShelfControls.SourceAnswer()));
+        var hub = Assert.IsType<SetupScreen.Choice>(flow.Answer(ShelfControls.SourceAnswer()));
 
         Assert.Equal(SetupFlow.SearchKey, hub.Key);
         Assert.Equal(ShelfSource.Hub, hub.Shelf!.Source);
@@ -116,14 +116,14 @@ public class SourceSwitchTests
     [Fact]
     public void M_SWEEPS_AGAIN_RATHER_THAN_SHOWING_WHAT_THE_WALK_FOUND()
     {
-        var probes = new WizardProbes { Rows = [HubRow()] };
+        var probes = new FakeSetupProbes { Rows = [HubRow()] };
         //the file arrives between the walk's first sweep and the one m asks for, as a download finishing in another window would
         probes.OnScan = n => { if (n >= 2) probes.Found = [OnDisk("arrived-later", "gemma3")]; };
         var flow = Flow(probes);
         //nothing found means the walk opens on the Hub shelf, so one m reaches the local one. the file must not exist when the walk starts
         flow.StartPastEngine();
 
-        var local = Assert.IsType<WizardScreen.Choice>(flow.Answer(ShelfControls.SourceAnswer()));
+        var local = Assert.IsType<SetupScreen.Choice>(flow.Answer(ShelfControls.SourceAnswer()));
 
         Assert.Single(local.Shelf!.Rows);
         Assert.Contains("arrived-later", local.Shelf!.Rows[0].RowFile!.RepoId, StringComparison.Ordinal);
@@ -145,9 +145,9 @@ public class SourceSwitchTests
         //read the key off whichever screen shape came back, that is the name the walk map records
         var key = next switch
         {
-            WizardScreen.Choice c2 => c2.Key,
-            WizardScreen.Ask a => a.Key,
-            WizardScreen.Info i => i.Key,
+            SetupScreen.Choice c2 => c2.Key,
+            SetupScreen.Ask a => a.Key,
+            SetupScreen.Info i => i.Key,
             _ => "",
         };
         Assert.DoesNotContain("download", key, StringComparison.OrdinalIgnoreCase);
@@ -160,7 +160,7 @@ public class SourceSwitchTests
         var (flow, _) = TwoOnDisk();
         LocalShelfOf(flow);
 
-        var qwen = Assert.IsType<WizardScreen.Choice>(flow.Answer(ShelfControls.FamilyAnswer("qwen")));
+        var qwen = Assert.IsType<SetupScreen.Choice>(flow.Answer(ShelfControls.FamilyAnswer("qwen")));
         Assert.Single(qwen.Shelf!.Rows);
         Assert.Contains("Qwen3", qwen.Shelf!.Rows[0].RowFile!.RepoId, StringComparison.Ordinal);
 
@@ -173,7 +173,7 @@ public class SourceSwitchTests
     [Fact]
     public void THE_RESCAN_BEHIND_M_HAS_NO_FOLDER_AFTER_A_TYPED_ONE()
     {
-        var probes = new WizardProbes { Rows = [HubRow()] };
+        var probes = new FakeSetupProbes { Rows = [HubRow()] };
         var flow = Flow(probes);
         flow.StartPastEngine();
 
@@ -181,7 +181,7 @@ public class SourceSwitchTests
         flow.Answer(@"D:\my models");
         //an empty typed folder stays on the local shelf, so the round trip goes to the Hub first
         Assert.Equal(SetupFlow.SearchKey,
-            Assert.IsType<WizardScreen.Choice>(flow.Answer(ShelfControls.SourceAnswer())).Key);
+            Assert.IsType<SetupScreen.Choice>(flow.Answer(ShelfControls.SourceAnswer())).Key);
         var asked = probes.ScanRoots.Count;
 
         flow.Answer(ShelfControls.SourceAnswer());
@@ -197,7 +197,7 @@ public class SourceSwitchTests
         var (flow, _) = TwoOnDisk();
         LocalShelfOf(flow);
 
-        var qwen = Assert.IsType<WizardScreen.Choice>(flow.Answer(ShelfControls.FamilyAnswer("qwen")));
+        var qwen = Assert.IsType<SetupScreen.Choice>(flow.Answer(ShelfControls.FamilyAnswer("qwen")));
 
         Assert.Equal(1, qwen.Shelf!.HiddenByFamily);
         Assert.Equal(2, qwen.Shelf!.Total);

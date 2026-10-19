@@ -40,7 +40,7 @@ public class ShelfLiftKeyTests
         [.. Enumerable.Range(0, 6).Select(Row)], shape,
         Families: ["gemma", "all"], Family: "gemma", Total: 6, Source: source);
 
-    private static WizardScreen.Choice Screen(bool inSession = false, ShelfView? shelf = null,
+    private static SetupScreen.Choice Screen(bool inSession = false, ShelfView? shelf = null,
         bool everyKey = false)
     {
         var view = shelf ?? View();
@@ -58,9 +58,9 @@ public class ShelfLiftKeyTests
 
     //the rig here is the shipping face, whose dispatch is what the keys row advertises
     private static (string? Answer, IReadOnlyList<string> Frame) Press(
-        WizardScreen.Choice screen, int width, params ConsoleKeyInfo[] keys)
+        SetupScreen.Choice screen, int width, params ConsoleKeyInfo[] keys)
     {
-        var face = new TuiWizardSurface(
+        var face = new TuiSetupSurface(
             new RecordingSurface { Width = width, Height = 60 },
             new Keys(keys), new Theme(new TermCaps(true, true)), "0.5.0", "1a2b3c4", () => 0,
             clock: _ => new Ready());
@@ -85,7 +85,7 @@ public class ShelfLiftKeyTests
     [Fact]
     public void A_IS_AN_ORDINARY_LETTER_ON_A_SCREEN_WITH_NO_SHELF()
     {
-        var plain = new WizardScreen.Choice("plain", "a question?",
+        var plain = new SetupScreen.Choice("plain", "a question?",
             [new ChoiceOption("1", "one")]) { Strip = [] };
 
         var (answer, _) = Press(plain, 100, Ch('a'), Enter);
@@ -106,7 +106,7 @@ public class ShelfLiftKeyTests
     [Fact]
     public void THE_HUB_SHELF_LIFTS_THE_FIT_FILTER()
     {
-        var probes = new WizardProbes { Rows = [Row(0)] };
+        var probes = new FakeSetupProbes { Rows = [Row(0)] };
         var flow = new SetupFlow(probes);
         flow.StartPastOpening();
         flow.Answer(SetupFlow.FoundUse);
@@ -121,7 +121,7 @@ public class ShelfLiftKeyTests
     [Fact]
     public void THE_LOCAL_SHELF_ANSWERS_THE_LIFT_RATHER_THAN_THROWING()
     {
-        var flow = new SetupFlow(new WizardProbes
+        var flow = new SetupFlow(new FakeSetupProbes
         {
             Roots = [@"C:\models"],
             Found = [new FoundModel(@"C:\m\a.gguf", 1_000_000_000, null)],

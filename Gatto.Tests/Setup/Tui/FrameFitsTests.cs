@@ -25,14 +25,14 @@ public class FrameFitsTests
     //the machine screen as a walk reaches it, at one terminal size
     private static IReadOnlyList<string> MachineFrame(int height, int width)
     {
-        var rig = new WizardRig(width);
+        var rig = new SetupRig(width);
         rig.Surface.Height = height;
         var home = Directory.CreateTempSubdirectory("gatto-fits-").FullName;
         try
         {
             Gatto.Core.Home.GattoHome.EnsureInitialized(home);
-            SetupRunner.Run(new SetupFlow(new WizardProbes()),
-                rig.TuiFace([.. WalkOpening.Keys, WizardRig.Esc, WizardRig.Esc]), home);
+            SetupRunner.Run(new SetupFlow(new FakeSetupProbes()),
+                rig.TuiFace([.. WalkOpening.Keys, SetupRig.Esc, SetupRig.Esc]), home);
             //the welcome paints first and the machine section second, so index 1 is the frame wanted. a search for its words would pass on a frame that only mentions them
             Assert.True(rig.PaintedFrames.Count > 1, "the walk did not reach the machine section");
             return rig.PaintedFrames[1];

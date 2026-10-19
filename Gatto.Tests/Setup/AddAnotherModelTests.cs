@@ -13,9 +13,9 @@ public class AddAnotherModelTests
     private const string Holder = "qwen3.6-35b-a3b";
 
     //the add road over found files, with the session's model holding the server when a holder is named
-    private static (SetupFlow Flow, WizardProbes Probes) Started(string? heldBy = Holder, string? defaultModel = null)
+    private static (SetupFlow Flow, FakeSetupProbes Probes) Started(string? heldBy = Holder, string? defaultModel = null)
     {
-        var probes = new WizardProbes
+        var probes = new FakeSetupProbes
         {
             Llama = @"C:\llama\llama-server.exe",
             Snapshot = ShelfFixtures.Snapshot("unified"),
@@ -27,21 +27,21 @@ public class AddAnotherModelTests
         };
         var flow = new SetupFlow(probes) { CanSwitchSource = true };
         flow.StartAtModelSegment();
-        Assert.Equal(SetupFlow.DiscoveredKey, Assert.IsType<WizardScreen.Choice>(flow.Answer(SetupFlow.CtlSource)).Key);
+        Assert.Equal(SetupFlow.DiscoveredKey, Assert.IsType<SetupScreen.Choice>(flow.Answer(SetupFlow.CtlSource)).Key);
         return (flow, probes);
     }
 
     //a local row picked and its scaffold written, the id the writer would produce passed back in
-    private static WizardScreen.Choice PickAndReachTheCheck(SetupFlow flow, int row, string id)
+    private static SetupScreen.Choice PickAndReachTheCheck(SetupFlow flow, int row, string id)
     {
         var screen = flow.Answer(row.ToString(System.Globalization.CultureInfo.InvariantCulture));
         Assert.True(flow.NeedsWritesApplied);
         screen = flow.ResumeAfterWrites(id);
         while (flow.NeedsWritesApplied) screen = flow.ResumeAfterWrites(null);
-        return Assert.IsType<WizardScreen.Choice>(screen);
+        return Assert.IsType<SetupScreen.Choice>(screen);
     }
 
-    private static WizardScreen ThroughThePause(SetupFlow flow, string answer)
+    private static SetupScreen ThroughThePause(SetupFlow flow, string answer)
     {
         var screen = flow.Answer(answer);
         while (flow.NeedsWritesApplied) screen = flow.ResumeAfterWrites(null);
@@ -68,8 +68,8 @@ public class AddAnotherModelTests
         Assert.True(flow.NeedsWritesApplied);
         Assert.Equal("alpha", flow.Writes.DefaultModelIfAbsent);
         Assert.Null(flow.Writes.DefaultModel);
-        Assert.IsType<WizardScreen.Info>(saving);
-        var shelf = Assert.IsType<WizardScreen.Choice>(flow.ResumeAfterWrites(null));
+        Assert.IsType<SetupScreen.Info>(saving);
+        var shelf = Assert.IsType<SetupScreen.Choice>(flow.ResumeAfterWrites(null));
         Assert.Equal(SetupFlow.DiscoveredKey, shelf.Key);
         Assert.Equal(0, probes.Proofs);
         Assert.Equal(0, probes.AuditionStarts);
@@ -89,10 +89,10 @@ public class AddAnotherModelTests
     {
         var (flow, _) = Started();
         flow.Answer(SetupFlow.CtlParams);
-        var sorted = Assert.IsType<WizardScreen.Choice>(flow.Answer(SetupFlow.CtlParams));
+        var sorted = Assert.IsType<SetupScreen.Choice>(flow.Answer(SetupFlow.CtlParams));
         Assert.False(sorted.Shelf!.SmallestFirst);
         PickAndReachTheCheck(flow, 0, "alpha");
-        var back = Assert.IsType<WizardScreen.Choice>(ThroughThePause(flow, SetupFlow.AddAnother));
+        var back = Assert.IsType<SetupScreen.Choice>(ThroughThePause(flow, SetupFlow.AddAnother));
         Assert.False(back.Shelf!.SmallestFirst);
         Assert.Equal(sorted.Shelf.Rows.Select(r => r.Model), back.Shelf.Rows.Select(r => r.Model));
     }
@@ -113,33 +113,33 @@ public class AddAnotherModelTests
     {
         var (flow, _) = Started();
         PickAndReachTheCheck(flow, 0, "alpha");
-        var shelf = Assert.IsType<WizardScreen.Choice>(ThroughThePause(flow, SetupFlow.AddAnother));
+        var shelf = Assert.IsType<SetupScreen.Choice>(ThroughThePause(flow, SetupFlow.AddAnother));
         Assert.False(shelf.AllowBack);
-        var typed = Assert.IsType<WizardScreen.Choice>(flow.Answer(ShelfControls.TypedAnswer(@"C:\m")));
+        var typed = Assert.IsType<SetupScreen.Choice>(flow.Answer(ShelfControls.TypedAnswer(@"C:\m")));
         Assert.True(typed.AllowBack);
-        Assert.Equal(SetupFlow.DiscoveredKey, Assert.IsType<WizardScreen.Choice>(flow.Answer(SetupFlow.BackKey)).Key);
+        Assert.Equal(SetupFlow.DiscoveredKey, Assert.IsType<SetupScreen.Choice>(flow.Answer(SetupFlow.BackKey)).Key);
     }
 
     //a model added from the Hub returns to the Hub shelf with its sort, and nothing behind it
     [Fact]
     public void THE_HUB_SHELF_RETURNS_AFTER_A_HUB_PICK_WITH_ITS_SORT()
     {
-        var probes = new WizardProbes
+        var probes = new FakeSetupProbes
         {
             Llama = @"C:\llama\llama-server.exe",
-            Answer = _ => WizardProbes.Outcome([
+            Answer = _ => FakeSetupProbes.Outcome([
                 ShelfRows.Of("qwen/a", "qwen", new HubQuant("a-Q4_K_M.gguf", 4_000_000_000, null), FitRegime.FitsGpu, 32768, false, Badge: null, Downloads: 5, Gated: false, Params: 8_000_000_000),
                 ShelfRows.Of("qwen/b", "qwen", new HubQuant("b-Q4_K_M.gguf", 2_000_000_000, null), FitRegime.FitsGpu, 32768, false, Badge: null, Downloads: 5, Gated: false, Params: 4_000_000_000)]),
             HeldBy = "qwen3.5",
             Snapshot = ShelfFixtures.Snapshot("unified"),
         };
         var flow = new SetupFlow(probes) { CanSwitchSource = true };
-        Assert.Equal(SetupFlow.SearchKey, Assert.IsType<WizardScreen.Choice>(flow.StartAtModelSegment()).Key);
+        Assert.Equal(SetupFlow.SearchKey, Assert.IsType<SetupScreen.Choice>(flow.StartAtModelSegment()).Key);
         flow.Answer(SetupFlow.CtlParams);
         var screen = flow.ResumeAfterWrites("gemma-4-26B-A4B-it");
         while (flow.NeedsWritesApplied) screen = flow.ResumeAfterWrites(null);
-        Assert.Equal(SetupFlow.InSessionCheckKey, Assert.IsType<WizardScreen.Choice>(screen).Key);
-        var back = Assert.IsType<WizardScreen.Choice>(ThroughThePause(flow, SetupFlow.AddAnother));
+        Assert.Equal(SetupFlow.InSessionCheckKey, Assert.IsType<SetupScreen.Choice>(screen).Key);
+        var back = Assert.IsType<SetupScreen.Choice>(ThroughThePause(flow, SetupFlow.AddAnother));
         Assert.Equal(SetupFlow.SearchKey, back.Key);
         Assert.True(back.Shelf!.SmallestFirst);
         Assert.False(back.AllowBack);
@@ -168,7 +168,7 @@ public class AddAnotherModelTests
         Assert.Equal(SetupFlow.AuditionOfferKey, offer.Key);
         Assert.Equal([SetupFlow.Yes, SetupFlow.Skip, SetupFlow.AddAnother], offer.Options.Select(o => o.Key));
         Assert.Equal("Add another model", offer.Options[^1].Label);
-        var shelf = Assert.IsType<WizardScreen.Choice>(ThroughThePause(flow, SetupFlow.AddAnother));
+        var shelf = Assert.IsType<SetupScreen.Choice>(ThroughThePause(flow, SetupFlow.AddAnother));
         Assert.Equal(SetupFlow.DiscoveredKey, shelf.Key);
         Assert.Equal(0, probes.Proofs);
     }

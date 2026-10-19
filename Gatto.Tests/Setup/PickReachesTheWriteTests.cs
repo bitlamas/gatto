@@ -29,11 +29,11 @@ public class PickReachesTheWriteTests
             Params: 25_200_000_000,
             AllQuants: [Quant(Picked, 21.1), Quant(Knee, 16.9)]);
 
-    private static SetupFlow FlowAtTheShelf(out WizardScreen.Choice shelf)
+    private static SetupFlow FlowAtTheShelf(out SetupScreen.Choice shelf)
     {
-        var probes = new WizardProbes { Rows = [Row()] };
+        var probes = new FakeSetupProbes { Rows = [Row()] };
         var flow = new SetupFlow(probes) { CanSwitchSource = true };
-        shelf = Assert.IsType<WizardScreen.Choice>(flow.StartPastEngine());
+        shelf = Assert.IsType<SetupScreen.Choice>(flow.StartPastEngine());
         return flow;
     }
 
@@ -98,7 +98,7 @@ public class PickReachesTheWriteTests
             Facts: [new ModelFacts(Files: [
                 new PaneFile(Knee, (long)(16.9 * 1024 * 1024 * 1024), FitRegime.FitsGpu, Ref(Knee)),
                 new PaneFile(Picked, (long)(21.1 * 1024 * 1024 * 1024), FitRegime.FitsGpu, Ref(Picked))])]);
-        var c = new WizardScreen.Choice(SetupFlow.SearchKey, "Which model should gatto start with?",
+        var c = new SetupScreen.Choice(SetupFlow.SearchKey, "Which model should gatto start with?",
             [new ChoiceOption("0", rows[0].RowFile!.RepoId)], Shelf: shelf, Door: SetupFlow.ShelfDoorPlaceholderOf(Gatto.Terminal.GlyphSet.Unicode));
 
         var ring = Shelf.Regions(shelf, 100, 0, hasDoor: true).ToList();
@@ -120,13 +120,13 @@ public class PickReachesTheWriteTests
     private static ConsoleKeyInfo Key(ConsoleKey k) => new('\0', k, false, false, false);
 
     //joins everything the screen shows (question, body rows, option labels), a guard on private state would pass while the shown quant is wrong
-    private static string Text(WizardScreen s) => s switch
+    private static string Text(SetupScreen s) => s switch
     {
-        WizardScreen.Choice c => string.Join("\n",
+        SetupScreen.Choice c => string.Join("\n",
             new[] { c.Question }
                 .Concat((c.BodyRows ?? []).Select(r => r.Text))
                 .Concat(c.Options.Select(o => o.Label + " " + o.Description))),
-        WizardScreen.Ask a => string.Join("\n", (a.BodyRows ?? []).Select(r => r.Text)),
+        SetupScreen.Ask a => string.Join("\n", (a.BodyRows ?? []).Select(r => r.Text)),
         _ => s.ToString() ?? "",
     };
 }

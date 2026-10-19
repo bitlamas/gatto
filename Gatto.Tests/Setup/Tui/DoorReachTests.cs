@@ -13,14 +13,14 @@ public class DoorReachTests
     private static readonly ConsoleKeyInfo Up = new('\0', ConsoleKey.UpArrow, false, false, false);
     private static readonly ConsoleKeyInfo Tab = new('\t', ConsoleKey.Tab, false, false, false);
 
-    private static IEnumerable<ConsoleKeyInfo> Type(string s) => s.Select(WizardRig.Ch);
+    private static IEnumerable<ConsoleKeyInfo> Type(string s) => s.Select(SetupRig.Ch);
 
     //the connect road's door screen, driven through the flow rather than composed
-    private static WizardScreen.Choice Road()
+    private static SetupScreen.Choice Road()
     {
-        var flow = new SetupFlow(new WizardProbes { Llama = @"C:\llama\llama-server.exe" });
+        var flow = new SetupFlow(new FakeSetupProbes { Llama = @"C:\llama\llama-server.exe" });
         flow.StartPastOpening();
-        var screen = Assert.IsType<WizardScreen.Choice>(flow.Answer(SetupFlow.ForkConnect));
+        var screen = Assert.IsType<SetupScreen.Choice>(flow.Answer(SetupFlow.ForkConnect));
         Assert.NotNull(screen.Door);
         return screen;
     }
@@ -30,10 +30,10 @@ public class DoorReachTests
     public void DOWN_FROM_THE_LAST_OPTION_ENTERS_THE_DOOR()
     {
         var screen = Road();
-        var downs = Enumerable.Repeat(WizardRig.Down, screen.Options.Count);
+        var downs = Enumerable.Repeat(SetupRig.Down, screen.Options.Count);
 
         var answer = WalkRender.AnswerAfter(screen, 100,
-            [.. downs, .. Type("http://127.0.0.1:9999"), WizardRig.Enter]);
+            [.. downs, .. Type("http://127.0.0.1:9999"), SetupRig.Enter]);
 
         Assert.Equal(ShelfControls.TypedAnswer("http://127.0.0.1:9999"), answer);
     }
@@ -43,10 +43,10 @@ public class DoorReachTests
     public void UP_FROM_THE_DOOR_RETURNS_TO_THE_OPTIONS()
     {
         var screen = Road();
-        var downs = Enumerable.Repeat(WizardRig.Down, screen.Options.Count);
+        var downs = Enumerable.Repeat(SetupRig.Down, screen.Options.Count);
 
         var answer = WalkRender.AnswerAfter(screen, 100,
-            [.. downs, .. Type("typed-then-abandoned"), Up, WizardRig.Enter]);
+            [.. downs, .. Type("typed-then-abandoned"), Up, SetupRig.Enter]);
 
         Assert.Contains(answer, screen.Options.Select(o => o.Key));
     }
@@ -56,7 +56,7 @@ public class DoorReachTests
     public void TAB_STILL_REACHES_THE_DOOR()
     {
         var answer = WalkRender.AnswerAfter(Road(), 100,
-            [Tab, .. Type("http://elsewhere:1234"), WizardRig.Enter]);
+            [Tab, .. Type("http://elsewhere:1234"), SetupRig.Enter]);
 
         Assert.Equal(ShelfControls.TypedAnswer("http://elsewhere:1234"), answer);
     }
@@ -116,7 +116,7 @@ public class DoorReachTests
         Assert.False(Promises("Tab or ↓ to type"), "the matcher sees one where there is none");
 
         var face = File.ReadAllText(Path.Combine(Gatto.Tests.Census.SourceTree.RepoRoot(),
-            "Gatto", "Cli", "Setup", "Tui", "TuiWizardSurface.cs"));
+            "Gatto", "Cli", "Setup", "Tui", "TuiSetupSurface.cs"));
         Assert.DoesNotContain("MouseController", face, StringComparison.Ordinal);
 
         foreach (var hint in new[]

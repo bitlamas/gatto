@@ -6,15 +6,15 @@ namespace Gatto.Tests.Setup;
 //enter must answer the screen and the back row must render last. the caller places the input, so the row 0 cursor default is right for both shapes.
 public class AskCursorTests
 {
-    private static WizardScreen.Ask Screen(string? placeholder = "type the path below", bool back = true) =>
-        new WizardScreen.Ask("k", "Where is it?", _ => null, Placeholder: placeholder) { AllowBack = back };
+    private static SetupScreen.Ask Screen(string? placeholder = "type the path below", bool back = true) =>
+        new SetupScreen.Ask("k", "Where is it?", _ => null, Placeholder: placeholder) { AllowBack = back };
 
     [Fact]
     public void TYPING_ON_ARRIVAL_ANSWERS_THE_SCREEN()
     {
         //the widget takes characters only when the cursor is on the input row, so a cursor left on the back row swallows the typing.
-        var rig = new WizardRig();
-        var face = rig.Face(WizardRig.Ch('h'), WizardRig.Ch('i'), WizardRig.Ch('!'), WizardRig.Enter);
+        var rig = new SetupRig();
+        var face = rig.Face(SetupRig.Ch('h'), SetupRig.Ch('i'), SetupRig.Ch('!'), SetupRig.Enter);
 
         var answer = face.Ask(Screen());
 
@@ -25,10 +25,10 @@ public class AskCursorTests
     public void WITH_AN_OFFER_PRESENT_ENTER_ON_ARRIVAL_ACCEPTS_IT()
     {
         //row 0 is the offer when there is one and the input when there is none, so the cursor default needs no override.
-        var rig = new WizardRig();
-        var face = rig.Face(WizardRig.Enter);
+        var rig = new SetupRig();
+        var face = rig.Face(SetupRig.Enter);
 
-        var answer = face.Ask(new WizardScreen.Ask("k", "How much context?", _ => null,
+        var answer = face.Ask(new SetupScreen.Ask("k", "How much context?", _ => null,
             Placeholder: "Or type a number", Offer: new AskOffer("Use 32768", "32768")));
 
         Assert.Equal("32768", answer);
@@ -38,10 +38,10 @@ public class AskCursorTests
     public void WITH_AN_OFFER_PRESENT_THE_INPUT_IS_STILL_ONE_ARROW_AWAY()
     {
         //one down press from the offer must reach the input under it, and the input must still take text.
-        var rig = new WizardRig();
-        var face = rig.Face(WizardRig.Down, WizardRig.Ch('8'), WizardRig.Ch('k'), WizardRig.Enter);
+        var rig = new SetupRig();
+        var face = rig.Face(SetupRig.Down, SetupRig.Ch('8'), SetupRig.Ch('k'), SetupRig.Enter);
 
-        var answer = face.Ask(new WizardScreen.Ask("k", "How much context?", _ => null,
+        var answer = face.Ask(new SetupScreen.Ask("k", "How much context?", _ => null,
             Placeholder: "Or type a number", Offer: new AskOffer("Use 32768", "32768")));
 
         Assert.Equal("8k", answer);
@@ -51,8 +51,8 @@ public class AskCursorTests
     public void BACK_IS_THE_LAST_ROW_ON_AN_ASK_SCREEN()
     {
         //assert the back row's position on the rendered screen, a presence check passes for a back row above the input.
-        var rig = new WizardRig();
-        var face = rig.Face(WizardRig.Ch('x'), WizardRig.Enter);
+        var rig = new SetupRig();
+        var face = rig.Face(SetupRig.Ch('x'), SetupRig.Enter);
 
         face.Ask(Screen());
 
@@ -73,10 +73,10 @@ public class AskCursorTests
     public void BACK_IS_THE_LAST_ROW_ON_A_CHOICE_SCREEN_TOO()
     {
         //pin both screen kinds, a rule proved on one kind says nothing about the other.
-        var rig = new WizardRig();
-        var face = rig.Face(WizardRig.Enter);
+        var rig = new SetupRig();
+        var face = rig.Face(SetupRig.Enter);
 
-        face.Choose(new WizardScreen.Choice("k", "Which?",
+        face.Choose(new SetupScreen.Choice("k", "Which?",
             [new ChoiceOption("a", "The first one"), new ChoiceOption("b", "The second one")])
             { AllowBack = true });
 
@@ -91,10 +91,10 @@ public class AskCursorTests
     public void A_PICKER_KEEPS_ITS_CURSOR_ON_ITS_FIRST_OPTION()
     {
         //a picker opens on option one, and this test fails first if a picker grows a free-text row.
-        var rig = new WizardRig();
-        var face = rig.Face(WizardRig.Enter);
+        var rig = new SetupRig();
+        var face = rig.Face(SetupRig.Enter);
 
-        var picked = face.Choose(new WizardScreen.Choice("k", "Which model?",
+        var picked = face.Choose(new SetupScreen.Choice("k", "Which model?",
             [new ChoiceOption("first", "Found one on this machine"), new ChoiceOption("other", "Somewhere else")])
             { AllowBack = true });
 
@@ -110,8 +110,8 @@ public class AskCursorTests
     public void THE_ORDER_HOLDS_AT_EVERY_WIDTH(int width)
     {
         //test every width, a wrapped label can push the placeholder below the back row at one width and not another.
-        var rig = new WizardRig(width);
-        var face = rig.Face(WizardRig.Ch('x'), WizardRig.Enter);
+        var rig = new SetupRig(width);
+        var face = rig.Face(SetupRig.Ch('x'), SetupRig.Enter);
 
         face.Ask(Screen());
 

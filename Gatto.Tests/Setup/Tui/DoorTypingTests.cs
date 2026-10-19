@@ -11,17 +11,17 @@ public class DoorTypingTests
     private static readonly ConsoleKeyInfo Tab = new('\t', ConsoleKey.Tab, false, false, false);
     private static readonly ConsoleKeyInfo Back = new('\b', ConsoleKey.Backspace, false, false, false);
 
-    private static IEnumerable<ConsoleKeyInfo> Type(string s) => s.Select(WizardRig.Ch);
+    private static IEnumerable<ConsoleKeyInfo> Type(string s) => s.Select(SetupRig.Ch);
 
-    private static WizardProbes Probes(ConnectProbe? server = null) =>
+    private static FakeSetupProbes Probes(ConnectProbe? server = null) =>
         new() { Llama = @"C:\llama\llama-server.exe", Server = server };
 
     //the road's screen taken from the flow rather than composed, since the door is a property of the screen the flow emits
-    private static WizardScreen.Choice Road(ConnectProbe? server)
+    private static SetupScreen.Choice Road(ConnectProbe? server)
     {
         var flow = new SetupFlow(Probes(server));
         flow.StartPastOpening();
-        return Assert.IsType<WizardScreen.Choice>(flow.Answer(SetupFlow.ForkConnect));
+        return Assert.IsType<SetupScreen.Choice>(flow.Answer(SetupFlow.ForkConnect));
     }
 
     //nothing answered, so the user's server is somewhere gatto does not look, and the face must answer with what was typed
@@ -29,7 +29,7 @@ public class DoorTypingTests
     public void AN_ADDRESS_TYPED_INTO_THE_DOOR_IS_WHAT_THE_FACE_ANSWERS()
     {
         var answer = WalkRender.AnswerAfter(Road(null), 100,
-            [Tab, .. Type("http://127.0.0.1:9999"), WizardRig.Enter]);
+            [Tab, .. Type("http://127.0.0.1:9999"), SetupRig.Enter]);
 
         Assert.Equal(ShelfControls.TypedAnswer("http://127.0.0.1:9999"), answer);
     }
@@ -41,7 +41,7 @@ public class DoorTypingTests
         var found = Road(new ConnectProbe("http://127.0.0.1:8080", ["a-model"], 8192));
 
         var answer = WalkRender.AnswerAfter(found, 100,
-            [Tab, .. Type("http://elsewhere:1234"), WizardRig.Enter]);
+            [Tab, .. Type("http://elsewhere:1234"), SetupRig.Enter]);
 
         Assert.Equal(ShelfControls.TypedAnswer("http://elsewhere:1234"), answer);
     }
@@ -51,7 +51,7 @@ public class DoorTypingTests
     public void BACKSPACE_EDITS_THE_DRAFT()
     {
         var answer = WalkRender.AnswerAfter(Road(null), 100,
-            [Tab, .. Type("http://x:99XY"), Back, Back, WizardRig.Enter]);
+            [Tab, .. Type("http://x:99XY"), Back, Back, SetupRig.Enter]);
 
         Assert.Equal(ShelfControls.TypedAnswer("http://x:99"), answer);
     }
@@ -61,7 +61,7 @@ public class DoorTypingTests
     public void ESC_FROM_THE_DOOR_RETURNS_THE_KEYS_TO_THE_LIST()
     {
         var answer = WalkRender.AnswerAfter(Road(null), 100,
-            [Tab, .. Type("half-typed"), WizardRig.Esc, WizardRig.Enter]);
+            [Tab, .. Type("half-typed"), SetupRig.Esc, SetupRig.Enter]);
 
         Assert.Equal(SetupFlow.Retry, answer);
     }
@@ -71,7 +71,7 @@ public class DoorTypingTests
     public void ENTER_ON_AN_EMPTY_DOOR_WITH_NO_OFFER_ANSWERS_NOTHING()
     {
         var answer = WalkRender.AnswerAfter(Road(null), 100,
-            [Tab, WizardRig.Enter, WizardRig.Enter]);
+            [Tab, SetupRig.Enter, SetupRig.Enter]);
 
         Assert.Equal(SetupFlow.Retry, answer);
     }
@@ -88,7 +88,7 @@ public class DoorTypingTests
         Assert.NotNull(screen.Door);                    //the fixture really is a door screen
 
         var answer = WalkRender.AnswerAfter(screen, 100,
-            [Tab, .. Type("typed-into-the-door"), WizardRig.Enter]);
+            [Tab, .. Type("typed-into-the-door"), SetupRig.Enter]);
 
         Assert.Equal(ShelfControls.TypedAnswer("typed-into-the-door"), answer);
     }
@@ -97,37 +97,37 @@ public class DoorTypingTests
     [Fact]
     public void THE_CENSUS_SEES_A_PLANTED_DOOR_SCREEN()
     {
-        var planted = new WizardScreen.Choice("planted", "Type something?",
+        var planted = new SetupScreen.Choice("planted", "Type something?",
             [new ChoiceOption("only", "The one option")],
             Door: "type here…");
 
         Assert.Equal(ShelfControls.TypedAnswer("abc"),
             WalkRender.AnswerAfter(planted, 100,
-                [Tab, .. Type("abc"), WizardRig.Enter]));
+                [Tab, .. Type("abc"), SetupRig.Enter]));
     }
 
     //a screen with no door answers no text, its characters are commands or nothing, which is what makes the rule above about doors
     [Fact]
     public void A_SCREEN_WITH_NO_DOOR_DOES_NOT_ANSWER_WITH_TEXT()
     {
-        var plain = new WizardScreen.Choice("plain", "Pick one?",
+        var plain = new SetupScreen.Choice("plain", "Pick one?",
             [new ChoiceOption("first", "The first"), new ChoiceOption("second", "The second")]);
 
         Assert.Equal("first", WalkRender.AnswerAfter(plain, 100,
-            [.. Type("abc"), WizardRig.Enter]));
+            [.. Type("abc"), SetupRig.Enter]));
     }
 
     //the shelf's door is excluded, since / and m are its own keys and its draft comes from the flow. a shelf view is the right fixture here.
     [Fact]
     public void THE_SHELVES_SEARCH_DOOR_IS_NOT_THIS_RULES_SUBJECT()
     {
-        var shelf = new WizardScreen.Choice("planted.shelf", "Which model?",
+        var shelf = new SetupScreen.Choice("planted.shelf", "Which model?",
             [new ChoiceOption("only", "The one option")],
             Shelf: new ShelfView([], Gatto.Core.Hardware.MachineShape.Discrete),
             Door: "search models…");
 
         //m is the shelf's own key, so it must not end up in a draft and be answered as text
-        var answer = WalkRender.AnswerAfter(shelf, 100, [.. Type("m"), WizardRig.Enter]);
+        var answer = WalkRender.AnswerAfter(shelf, 100, [.. Type("m"), SetupRig.Enter]);
 
         Assert.NotEqual("m", answer);
     }
@@ -138,23 +138,23 @@ public class DoorTypingTests
     [Fact]
     public void A_DIGIT_PICKS_NOTHING_ON_AN_UNNUMBERED_SCREEN()
     {
-        var bare = new WizardScreen.Choice("planted.bare", "Which model?",
+        var bare = new SetupScreen.Choice("planted.bare", "Which model?",
             [new ChoiceOption("first", "the first"), new ChoiceOption("second", "the second")],
             Unnumbered: true);
 
         //2 must do nothing at all, so Enter answers the row the cursor was on all along
         Assert.Equal("first", WalkRender.AnswerAfter(bare, 100,
-            [WizardRig.Digit('2'), WizardRig.Enter]));
+            [SetupRig.Digit('2'), SetupRig.Enter]));
     }
 
     //the same screen numbered, so the pair cannot pass against a face that had stopped reading digits
     [Fact]
     public void A_DIGIT_STILL_PICKS_ON_A_NUMBERED_SCREEN()
     {
-        var numbered = new WizardScreen.Choice("planted.numbered", "Which model?",
+        var numbered = new SetupScreen.Choice("planted.numbered", "Which model?",
             [new ChoiceOption("first", "the first"), new ChoiceOption("second", "the second")]);
 
-        Assert.Equal("second", WalkRender.AnswerAfter(numbered, 100, [WizardRig.Digit('2')]));
+        Assert.Equal("second", WalkRender.AnswerAfter(numbered, 100, [SetupRig.Digit('2')]));
     }
 
     //a digit typed into a focused door is text, so a port number is not eaten by a pick. the rule keys on the region the keys are in.
@@ -162,8 +162,8 @@ public class DoorTypingTests
     public void A_DIGIT_IN_A_FOCUSED_DOOR_IS_TEXT()
     {
         var answer = WalkRender.AnswerAfter(Road(null), 100,
-            [Tab, .. Type("http://127.0.0.1:"), WizardRig.Digit('8'), WizardRig.Digit('0'),
-             WizardRig.Digit('8'), WizardRig.Digit('0'), WizardRig.Enter]);
+            [Tab, .. Type("http://127.0.0.1:"), SetupRig.Digit('8'), SetupRig.Digit('0'),
+             SetupRig.Digit('8'), SetupRig.Digit('0'), SetupRig.Enter]);
 
         Assert.Equal(ShelfControls.TypedAnswer("http://127.0.0.1:8080"), answer);
     }
@@ -172,7 +172,7 @@ public class DoorTypingTests
     [Fact]
     public void EVERY_UNNUMBERED_SCREEN_THE_FLOW_EMITS_IS_DIGIT_INERT()
     {
-        var flow = new SetupFlow(new WizardProbes
+        var flow = new SetupFlow(new FakeSetupProbes
         {
             Llama = @"C:\llama\llama-server.exe",
             Server = new ConnectProbe("http://127.0.0.1:1234",
@@ -182,14 +182,14 @@ public class DoorTypingTests
         flow.Answer(SetupFlow.ForkConnect);
         flow.Answer(SetupFlow.Yes);
 
-        var bare = flow.Emitted.OfType<WizardScreen.Choice>().Where(s => s.Unnumbered).ToList();
+        var bare = flow.Emitted.OfType<SetupScreen.Choice>().Where(s => s.Unnumbered).ToList();
         Assert.True(bare.Count > 0, "the walk emitted no unnumbered screen - this census swept nothing");
 
         foreach (var screen in bare)
         {
             //a digit must not move the answer off the row the cursor already holds
-            var withDigit = WalkRender.AnswerAfter(screen, 100, [WizardRig.Digit('3'), WizardRig.Enter]);
-            var without = WalkRender.AnswerAfter(screen, 100, [WizardRig.Enter]);
+            var withDigit = WalkRender.AnswerAfter(screen, 100, [SetupRig.Digit('3'), SetupRig.Enter]);
+            var without = WalkRender.AnswerAfter(screen, 100, [SetupRig.Enter]);
 
             Assert.Equal(without, withDigit);
         }

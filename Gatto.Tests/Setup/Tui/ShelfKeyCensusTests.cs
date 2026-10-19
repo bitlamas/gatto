@@ -29,23 +29,23 @@ public class ShelfKeyCensusTests
         id, id.Split('/')[0], new HubQuant("m-Q4_K_M.gguf", 4_000_000_000, null),
         FitRegime.FitsGpu, 262144, false, null, 900, false, Params: 3_000_000_000);
 
-    private static WizardScreen.Choice LiveShelf()
+    private static SetupScreen.Choice LiveShelf()
     {
         IReadOnlyList<ModelRow> rows = [Row("unsloth/a"), Row("unsloth/b")];
-        var flow = new SetupFlow(new WizardProbes
+        var flow = new SetupFlow(new FakeSetupProbes
         {
             Rows = rows,
-            Answer = _ => WizardProbes.Outcome(rows, null),
+            Answer = _ => FakeSetupProbes.Outcome(rows, null),
         });
-        return Assert.IsType<WizardScreen.Choice>(flow.StartPastEngine());
+        return Assert.IsType<SetupScreen.Choice>(flow.StartPastEngine());
     }
 
     //report what the key did: an answer, a changed frame, or neither.
-    private static (string? Answer, bool FrameMoved) Press(WizardScreen.Choice screen, char key)
+    private static (string? Answer, bool FrameMoved) Press(SetupScreen.Choice screen, char key)
     {
-        static (string?, IReadOnlyList<string>) Run(WizardScreen.Choice s, ConsoleKeyInfo[] keys)
+        static (string?, IReadOnlyList<string>) Run(SetupScreen.Choice s, ConsoleKeyInfo[] keys)
         {
-            var face = new TuiWizardSurface(
+            var face = new TuiSetupSurface(
                 new RecordingSurface { Width = 100, Height = 40 },
                 new Keys(keys), new Theme(new TermCaps(true, true)), "0.5.0", "1a2b3c4", () => 0,
                 clock: _ => new Ready());
@@ -113,10 +113,10 @@ public class ShelfKeyCensusTests
             Assert.Equal(control.Answer, ShelfControls.AnswerFor(control.Key));
 
             IReadOnlyList<ModelRow> rows = [Row("unsloth/a"), Row("unsloth/b")];
-            var flow = new SetupFlow(new WizardProbes
+            var flow = new SetupFlow(new FakeSetupProbes
             {
                 Rows = rows,
-                Answer = _ => WizardProbes.Outcome(rows, null),
+                Answer = _ => FakeSetupProbes.Outcome(rows, null),
             });
             flow.StartPastEngine();
 

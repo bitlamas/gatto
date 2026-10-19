@@ -147,7 +147,7 @@ public class EngineSweepTests : IDisposable
     public void THE_DEFAULT_SWEEP_STILL_DERIVES_FROM_THE_METHOD_IT_REPLACES()
     {
         const string exe = @"C:\llama\llama-server.exe";
-        Gatto.Cli.Setup.ISetupProbes probes = new Gatto.Tests.Fakes.WizardProbes { Llama = exe };
+        Gatto.Cli.Setup.ISetupProbes probes = new Gatto.Tests.Fakes.FakeSetupProbes { Llama = exe };
 
         Assert.Equal(exe, probes.LlamaServerPath());
 
@@ -156,7 +156,7 @@ public class EngineSweepTests : IDisposable
         Assert.Null(swept.Build);      //the sweep never runs the engine, so the build field stays unset.
 
         //check the empty case too, so a stub that always answers one fails here.
-        Gatto.Cli.Setup.ISetupProbes none = new Gatto.Tests.Fakes.WizardProbes { Llama = null };
+        Gatto.Cli.Setup.ISetupProbes none = new Gatto.Tests.Fakes.FakeSetupProbes { Llama = null };
         Assert.Null(none.LlamaServerPath());
         Assert.Empty(none.EngineSweep());
     }

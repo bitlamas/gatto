@@ -130,23 +130,23 @@ public class FirstRunDoorTests : IDisposable
         return new FoundModel(dst, 4_000_000_000, null);
     }
 
-    private sealed class LeaveAtOnce : IWizardSurface
+    private sealed class LeaveAtOnce : ISetupSurface
     {
-        public string? Choose(WizardScreen.Choice c, Func<bool>? watch = null,
+        public string? Choose(SetupScreen.Choice c, Func<bool>? watch = null,
             Func<FetchTick?>? tick = null, Func<CheckTick?>? check = null) => null;
-        public string? Ask(WizardScreen.Ask a) => null;
-        public void Show(WizardScreen.Info i) { }
-        public void End(WizardScreen.Terminal t) { }
+        public string? Ask(SetupScreen.Ask a) => null;
+        public void Show(SetupScreen.Info i) { }
+        public void End(SetupScreen.Terminal t) { }
     }
 
-    private sealed class Answers(params string?[] answers) : IWizardSurface
+    private sealed class Answers(params string?[] answers) : ISetupSurface
     {
         private int _i;
-        public string? Choose(WizardScreen.Choice c, Func<bool>? watch = null,
+        public string? Choose(SetupScreen.Choice c, Func<bool>? watch = null,
             Func<FetchTick?>? tick = null, Func<CheckTick?>? check = null) => Next();
-        public string? Ask(WizardScreen.Ask a) => Next();
-        public void Show(WizardScreen.Info i) { }
-        public void End(WizardScreen.Terminal t) { }
+        public string? Ask(SetupScreen.Ask a) => Next();
+        public void Show(SetupScreen.Info i) { }
+        public void End(SetupScreen.Terminal t) { }
         private string? Next() => _i < answers.Length ? answers[_i++] : null;
     }
 

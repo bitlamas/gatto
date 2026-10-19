@@ -72,7 +72,7 @@ public class HaveMarksTests
     public void A_MODEL_ON_GATTOS_LIST_IS_ADDED_ON_THE_LOCAL_SHELF()
     {
         var mine = OnDisk("mine");
-        var probes = new WizardProbes
+        var probes = new FakeSetupProbes
         {
             Rows = [HubRow()],
             Found = [mine, OnDisk("stranger")],
@@ -89,7 +89,7 @@ public class HaveMarksTests
     [Fact]
     public void A_MODEL_ON_GATTOS_LIST_IS_ADDED_ON_THE_HUB_SHELF()
     {
-        var probes = new WizardProbes
+        var probes = new FakeSetupProbes
         {
             Rows = [HubRow(file: "already-here-Q4_K_M.gguf"), HubRow("unsloth/other", "other-Q4_K_M.gguf")],
             Named = { ["already-here-Q4_K_M.gguf"] = "already-here" },
@@ -106,7 +106,7 @@ public class HaveMarksTests
     public void THE_LOADED_MODEL_WEARS_THE_LOADED_MARK_NOT_THE_ADDED_ONE()
     {
         var serving = OnDisk("serving");
-        var probes = new WizardProbes
+        var probes = new FakeSetupProbes
         {
             Rows = [HubRow()],
             Found = [serving, OnDisk("idle")],
@@ -125,7 +125,7 @@ public class HaveMarksTests
     public void AND_A_MODEL_THAT_IS_MERELY_ADDED_STAYS_ADDED_WHILE_ANOTHER_IS_LOADED()
     {
         var idle = OnDisk("idle");
-        var probes = new WizardProbes
+        var probes = new FakeSetupProbes
         {
             Rows = [HubRow()],
             Found = [idle],
@@ -140,7 +140,7 @@ public class HaveMarksTests
     [Fact]
     public void THE_LOADED_PROBE_IS_ASKED_ONCE_PER_SHELF()
     {
-        var probes = new WizardProbes
+        var probes = new FakeSetupProbes
         {
             Rows = [HubRow("a/one", "one.gguf"), HubRow("a/two", "two.gguf"), HubRow("a/three", "three.gguf")],
             Found = [OnDisk("x"), OnDisk("y"), OnDisk("z")],
@@ -148,12 +148,12 @@ public class HaveMarksTests
         var flow = new SetupFlow(probes) { CanSwitchSource = true };
 
         probes.LoadedAsked = 0;
-        var hub = Assert.IsType<WizardScreen.Choice>(flow.StartPastEngine());
+        var hub = Assert.IsType<SetupScreen.Choice>(flow.StartPastEngine());
         Assert.Equal(3, hub.Shelf!.Rows.Count);
         Assert.Equal(1, probes.LoadedAsked);
 
         probes.LoadedAsked = 0;
-        var local = Assert.IsType<WizardScreen.Choice>(flow.Answer(ShelfControls.SourceAnswer()));
+        var local = Assert.IsType<SetupScreen.Choice>(flow.Answer(ShelfControls.SourceAnswer()));
         Assert.Equal(3, local.Shelf!.Rows.Count);
         Assert.Equal(1, probes.LoadedAsked);
     }
@@ -163,7 +163,7 @@ public class HaveMarksTests
     public void A_SORT_A_LOCAL_CHIP_OR_A_ASKS_THE_SERVER_NOTHING()
     {
         var x = OnDisk("x");
-        var probes = new WizardProbes
+        var probes = new FakeSetupProbes
         {
             Rows = [HubRow("a/one", "one.gguf"), HubRow("a/two", "two.gguf")],
             Found = [x, OnDisk("y")],
@@ -182,7 +182,7 @@ public class HaveMarksTests
         probes.LoadedPathAsked = 0;
         flow.Answer(SetupFlow.CtlParams);
         flow.Answer(ShelfControls.FamilyAnswer("all"));
-        var local = Assert.IsType<WizardScreen.Choice>(flow.Answer(SetupFlow.CtlLift));
+        var local = Assert.IsType<SetupScreen.Choice>(flow.Answer(SetupFlow.CtlLift));
         Assert.Equal(0, probes.LoadedAsked);
         Assert.Equal(0, probes.LoadedPathAsked);
         //the kept answer still marks the loaded row
@@ -196,7 +196,7 @@ public class HaveMarksTests
     public void THE_MODELS_ID_RIDES_THE_FACTS_ON_BOTH_SHELVES_NOT_ONLY_THE_MARK()
     {
         var mine = OnDisk("mine");
-        var probes = new WizardProbes
+        var probes = new FakeSetupProbes
         {
             Rows = [HubRow(file: "already-here-Q4_K_M.gguf")],
             Named = { ["already-here-Q4_K_M.gguf"] = "already-here" },
@@ -212,7 +212,7 @@ public class HaveMarksTests
     [Fact]
     public void A_MODEL_FROM_ANOTHER_REPO_DOES_NOT_MARK_THIS_ROW()
     {
-        var probes = new WizardProbes
+        var probes = new FakeSetupProbes
         {
             Rows = [HubRow(repo: "publisher-b/model-GGUF", file: "model-Q4_K_M.gguf")],
             FromRepo = { ["publisher-a/model-GGUF"] = "mine" },
@@ -229,7 +229,7 @@ public class HaveMarksTests
     [Fact]
     public void AND_THE_ROW_FROM_ITS_OWN_REPO_STILL_MARKS()
     {
-        var probes = new WizardProbes
+        var probes = new FakeSetupProbes
         {
             Rows = [HubRow(repo: "publisher-a/model-GGUF", file: "model-Q4_K_M.gguf")],
             FromRepo = { ["publisher-a/model-GGUF"] = "mine" },
@@ -246,7 +246,7 @@ public class HaveMarksTests
     [Fact]
     public void AND_A_MODEL_YOU_DO_NOT_HAVE_CARRIES_NO_ID()
     {
-        var probes = new WizardProbes { Rows = [HubRow(file: "stranger-Q4_K_M.gguf")] };
+        var probes = new FakeSetupProbes { Rows = [HubRow(file: "stranger-Q4_K_M.gguf")] };
 
         var facts = HubShelfOf(probes).Facts![0];
 
@@ -255,19 +255,19 @@ public class HaveMarksTests
     }
 
     //the Hub shelf the flow opens on, asserting the shelf it reached so a helper cannot drive the wrong screen
-    private static ShelfView HubShelfOf(WizardProbes probes)
+    private static ShelfView HubShelfOf(FakeSetupProbes probes)
     {
         var flow = new SetupFlow(probes) { CanSwitchSource = true };
-        var hub = Assert.IsType<WizardScreen.Choice>(flow.StartPastEngine());
+        var hub = Assert.IsType<SetupScreen.Choice>(flow.StartPastEngine());
         Assert.Equal(ShelfSource.Hub, hub.Shelf!.Source);
         return hub.Shelf!;
     }
 
-    private static ShelfView LocalShelfOf(WizardProbes probes)
+    private static ShelfView LocalShelfOf(FakeSetupProbes probes)
     {
         var flow = new SetupFlow(probes) { CanSwitchSource = true };
         flow.StartPastEngine();
-        var local = Assert.IsType<WizardScreen.Choice>(flow.Answer(ShelfControls.SourceAnswer()));
+        var local = Assert.IsType<SetupScreen.Choice>(flow.Answer(ShelfControls.SourceAnswer()));
         Assert.Equal(ShelfSource.Local, local.Shelf!.Source);
         return local.Shelf!;
     }

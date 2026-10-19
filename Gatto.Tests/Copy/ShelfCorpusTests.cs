@@ -30,14 +30,14 @@ public sealed class ShelfCorpusTests : IDisposable
     public static TheoryData<CorpusMode> Modes() => new() { CorpusMode.Dark, CorpusMode.Plain };
 
     //the setup walk's landing shelf from the shared fixtures, its home this class's own
-    private (SetupFlow Flow, WizardScreen.Choice Shelf) Walk(string machine)
+    private (SetupFlow Flow, SetupScreen.Choice Shelf) Walk(string machine)
     {
         var (flow, screen) = ShelfFixtures.Flow(machine, home: _home);
-        return (flow, Assert.IsType<WizardScreen.Choice>(screen));
+        return (flow, Assert.IsType<SetupScreen.Choice>(screen));
     }
 
     //the settled frame at 120 by 30, inked in the dark mode so a wrong colour moves a golden. the plain mode pins text, since the face has no uncoloured theme
-    private static string Frame(WizardScreen.Choice c, CorpusMode mode, IEnumerable<ConsoleKeyInfo>? keys = null,
+    private static string Frame(SetupScreen.Choice c, CorpusMode mode, IEnumerable<ConsoleKeyInfo>? keys = null,
         int height = 30, string command = ScreenPainter.DefaultCommand) =>
         mode == CorpusMode.Dark
             ? CorpusDriver.Visible(string.Join("\n",
@@ -47,10 +47,10 @@ public sealed class ShelfCorpusTests : IDisposable
     private const string ModelCommand = "gatto model";
 
     //gatto model's landing, entered at the model segment as the in-session command enters it
-    private (SetupFlow Flow, WizardScreen.Choice Shelf) ModelWalk(string machine, IReadOnlyList<Gatto.Core.Acquire.FoundModel>? found = null)
+    private (SetupFlow Flow, SetupScreen.Choice Shelf) ModelWalk(string machine, IReadOnlyList<Gatto.Core.Acquire.FoundModel>? found = null)
     {
         var (flow, screen) = ShelfFixtures.Flow(machine, ShelfFixtures.Entry.Model, _home, found);
-        return (flow, Assert.IsType<WizardScreen.Choice>(screen));
+        return (flow, Assert.IsType<SetupScreen.Choice>(screen));
     }
 
     [Theory]
@@ -67,7 +67,7 @@ public sealed class ShelfCorpusTests : IDisposable
     public void THE_MODEL_LIFTED_SHELF(CorpusMode mode)
     {
         var (flow, _) = ModelWalk("discrete");
-        var lifted = Assert.IsType<WizardScreen.Choice>(flow.Answer(SetupFlow.CtlLift));
+        var lifted = Assert.IsType<SetupScreen.Choice>(flow.Answer(SetupFlow.CtlLift));
         CopyGolden.Check($"model-shelf-lifted-discrete-{mode}", Frame(lifted, mode, command: ModelCommand));
     }
 
@@ -80,10 +80,10 @@ public sealed class ShelfCorpusTests : IDisposable
     }
 
     //one model in two folders, its row's folder opened by the keys
-    private (SetupFlow Flow, WizardScreen.Choice Shelf) GroupedLocal()
+    private (SetupFlow Flow, SetupScreen.Choice Shelf) GroupedLocal()
     {
         var (flow, _) = ModelWalk("unified", ShelfFixtures.GroupedScan());
-        var local = Assert.IsType<WizardScreen.Choice>(flow.Answer(SetupFlow.CtlSource));
+        var local = Assert.IsType<SetupScreen.Choice>(flow.Answer(SetupFlow.CtlSource));
         Assert.Equal(SetupFlow.DiscoveredKey, local.Key);
         return (flow, local);
     }
@@ -120,7 +120,7 @@ public sealed class ShelfCorpusTests : IDisposable
     public void THE_LIFTED_SHELF(CorpusMode mode)
     {
         var (flow, _) = Walk("discrete");
-        var lifted = Assert.IsType<WizardScreen.Choice>(flow.Answer(SetupFlow.CtlLift));
+        var lifted = Assert.IsType<SetupScreen.Choice>(flow.Answer(SetupFlow.CtlLift));
         CopyGolden.Check($"shelf-lifted-discrete-{mode}", Frame(lifted, mode));
     }
 

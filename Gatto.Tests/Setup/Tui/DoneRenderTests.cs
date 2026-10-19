@@ -25,20 +25,20 @@ public class DoneRenderTests
     private static readonly string EngineInto = $@"C:\Users\you\.gatto\llama\{Pin}\";
 
     //the fixture fetches its model, since the frame says verified, and each parameter reaches one of the other frames
-    internal static WizardProbes Machine(bool? consent, HardwareSnapshot? snapshot = null,
+    internal static FakeSetupProbes Machine(bool? consent, HardwareSnapshot? snapshot = null,
         bool fetchEngine = false, Gatto.Cli.Install.InstallState install = Gatto.Cli.Install.InstallState.Installed,
         AuditionCheck? audition = null, bool block = false, string? heldBy = null,
         ProveOutcome? prove = null)
     {
-        var probes = new WizardProbes
+        var probes = new FakeSetupProbes
         {
-            Prove = prove ?? new WizardProbes().Prove,
-            Snapshot = snapshot ?? new WizardProbes().Snapshot,
+            Prove = prove ?? new FakeSetupProbes().Prove,
+            Snapshot = snapshot ?? new FakeSetupProbes().Snapshot,
             //an engine on the machine sends the run down the found path, so the fetch path must have none
             Llama = fetchEngine ? null : @"C:\llama\llama-b11071-bin-win-vulkan-x64\llama-server.exe",
             Asset = fetchEngine
                 ? new Gatto.Roles.Serve.LlamaAsset(EngineZip, null, "an AMD discrete card", "Vulkan")
-                : new WizardProbes().Asset,
+                : new FakeSetupProbes().Asset,
             Offer = fetchEngine
                 ? new EngineFetchOffer(EngineInto, new EnginePair(
                     new EngineAsset(EngineZip, "https://example.invalid/" + EngineZip,
@@ -83,7 +83,7 @@ public class DoneRenderTests
     }
 
     //drives a run to the done step and returns the first screen it shows. only the combinations the frames use are driven, the check answers were printed from a run.
-    internal static (SetupFlow Flow, WizardScreen Screen) DoneStep(
+    internal static (SetupFlow Flow, SetupScreen Screen) DoneStep(
         bool? consent, HardwareSnapshot? snapshot = null, bool fetchEngine = false,
         Gatto.Cli.Install.InstallState install = Gatto.Cli.Install.InstallState.Installed,
         AuditionCheck? audition = null, bool block = false, string[]? check = null,
@@ -192,7 +192,7 @@ public class DoneRenderTests
             block: frame == "summary-stopped", check: road,
             heldBy: frame == "summary-held" ? "minimax-m2.7-REAP-139B-A10B-Q4_K_S" : null);
 
-        var summary = Assert.IsType<WizardScreen.Choice>(flow.Emitted[^1]);
+        var summary = Assert.IsType<SetupScreen.Choice>(flow.Emitted[^1]);
         Assert.Equal(SetupFlow.SummaryKey, summary.Key);
 
         Golden.AssertEquals("s9", frame, 100,
@@ -204,7 +204,7 @@ public class DoneRenderTests
     public void THE_CONSENT_RENDERS_AT_100()
     {
         var (_, screen) = DoneStep(consent: null);
-        var choice = Assert.IsType<WizardScreen.Choice>(screen);
+        var choice = Assert.IsType<SetupScreen.Choice>(screen);
         Assert.Equal(SetupFlow.UpdateKey, choice.Key);
 
         Golden.AssertEquals("s9", "updates", 100,
@@ -216,7 +216,7 @@ public class DoneRenderTests
     public void THE_SUMMARY_RENDERS_AT_100()
     {
         var (flow, _) = DoneStep(consent: true);
-        var summary = Assert.IsType<WizardScreen.Choice>(flow.Emitted[^1]);
+        var summary = Assert.IsType<SetupScreen.Choice>(flow.Emitted[^1]);
         Assert.Equal(SetupFlow.SummaryKey, summary.Key);
 
         //this fixture sets Llama, so the engine row draws the found form. a frame is a claim about one path, so a test must drive the path its frame draws.
@@ -229,7 +229,7 @@ public class DoneRenderTests
     public void THE_SUMMARY_RENDERS_THE_FETCHED_ENGINE_AT_100()
     {
         var (flow, _) = DoneStep(consent: true, fetchEngine: true);
-        var summary = Assert.IsType<WizardScreen.Choice>(flow.Emitted[^1]);
+        var summary = Assert.IsType<SetupScreen.Choice>(flow.Emitted[^1]);
         Assert.Equal(SetupFlow.SummaryKey, summary.Key);
 
         Golden.AssertEquals("s9", "summary", 100,
@@ -239,7 +239,7 @@ public class DoneRenderTests
     //an unmanaged server that reports models and no context window, its own fixture since the summary draws three rows the llama path lacks
     private static SetupFlow ConnectWalk(int? reported = null, string? already = null)
     {
-        var flow = new SetupFlow(new WizardProbes
+        var flow = new SetupFlow(new FakeSetupProbes
         {
             //an endpoint the config already points at this address, so the fence writes a second one rather than reuse it
             ExistingEndpoint = already,
@@ -263,7 +263,7 @@ public class DoneRenderTests
         while (flow.NeedsWritesApplied) s = flow.ResumeAfterWrites(null);
 
         //the check is a watching screen, the first answer joins it and reports the verdict
-        Assert.True(s is WizardScreen.Choice { Watching: true }, "the check never started");
+        Assert.True(s is SetupScreen.Choice { Watching: true }, "the check never started");
         Assert.Equal(SetupFlow.ProveKey, ScreenKey.Of(flow.Answer(SetupFlow.OpenRepl)));
 
         s = flow.Answer(SetupFlow.OpenRepl);
@@ -276,7 +276,7 @@ public class DoneRenderTests
     public void THE_CONNECT_SUMMARY_RENDERS_AT_100()
     {
         var flow = ConnectWalk();
-        var summary = Assert.IsType<WizardScreen.Choice>(flow.Emitted[^1]);
+        var summary = Assert.IsType<SetupScreen.Choice>(flow.Emitted[^1]);
         Assert.Equal(SetupFlow.SummaryKey, summary.Key);
 
         Golden.AssertEquals("s9", "summary-connect", 100,
@@ -293,12 +293,12 @@ public class DoneRenderTests
         var flow = ConnectWalk(reported);
 
         var check = flow.Emitted
-            .OfType<WizardScreen.Choice>()
+            .OfType<SetupScreen.Choice>()
             .Where(c => c.Key == SetupFlow.ProveKey && c.BodyRows is not null)
             .SelectMany(c => c.BodyRows!)
             .Last(r => r.Text.StartsWith("context", StringComparison.Ordinal));
 
-        var summary = Assert.IsType<WizardScreen.Choice>(flow.Emitted[^1]).BodyRows!
+        var summary = Assert.IsType<SetupScreen.Choice>(flow.Emitted[^1]).BodyRows!
             .Single(r => r.Text.StartsWith("context", StringComparison.Ordinal));
 
         //the note is what follows the number and its separator on each rendered row
@@ -315,7 +315,7 @@ public class DoneRenderTests
     public void A_SECOND_ENDPOINT_BESIDE_ONE_YOU_HAD_IS_SAID_ON_THE_SUMMARY()
     {
         var flow = ConnectWalk(already: "local");
-        var summary = Assert.IsType<WizardScreen.Choice>(flow.Emitted[^1]);
+        var summary = Assert.IsType<SetupScreen.Choice>(flow.Emitted[^1]);
         Assert.Equal(SetupFlow.SummaryKey, summary.Key);
 
         Golden.AssertEquals("s9", "summary-connect-beside-local", 100,
@@ -327,7 +327,7 @@ public class DoneRenderTests
     public void A_FIRST_ENDPOINT_SAYS_NOTHING_ABOUT_AN_EARLIER_SETUP()
     {
         var flow = ConnectWalk();
-        var row = Assert.IsType<WizardScreen.Choice>(flow.Emitted[^1]).BodyRows!
+        var row = Assert.IsType<SetupScreen.Choice>(flow.Emitted[^1]).BodyRows!
             .Single(r => r.Text.StartsWith("server", StringComparison.Ordinal));
 
         Assert.DoesNotContain("earlier setup", row.Text, StringComparison.Ordinal);
@@ -339,7 +339,7 @@ public class DoneRenderTests
     {
         var flow = ConnectWalk(already: "local");
 
-        var summary = Assert.IsType<WizardScreen.Choice>(flow.Emitted[^1]).BodyRows!
+        var summary = Assert.IsType<SetupScreen.Choice>(flow.Emitted[^1]).BodyRows!
             .Single(r => r.Text.StartsWith("server", StringComparison.Ordinal));
         var record = flow.RecordRows()
             .Single(r => r.Text.StartsWith("server", StringComparison.Ordinal));
@@ -369,7 +369,7 @@ public class DoneRenderTests
         var (flow, _) = DoneStep(consent: true, fetchEngine: true,
             block: road == "stopped", check: road == "stopped" ? Stops : Passes);
 
-        var summary = Assert.IsType<WizardScreen.Choice>(flow.Emitted[^1]);
+        var summary = Assert.IsType<SetupScreen.Choice>(flow.Emitted[^1]);
         Assert.Equal(SetupFlow.SummaryKey, summary.Key);
 
         Golden.AssertEquals("s9", frame, 80,
@@ -381,7 +381,7 @@ public class DoneRenderTests
     public void THE_INSTALLED_GATTO_ROW_MATCHES_THE_ONE_THE_CORPUS_DRAWS()
     {
         var (flow, _) = DoneStep(consent: true);
-        var summary = Assert.IsType<WizardScreen.Choice>(flow.Emitted[^1]);
+        var summary = Assert.IsType<SetupScreen.Choice>(flow.Emitted[^1]);
 
         var drawn = File.ReadAllLines(Path.Combine(Golden.Dir, "s9-summary-100.txt"))
             .Single(l => l.TrimStart().StartsWith("gatto  ", StringComparison.Ordinal));
@@ -395,7 +395,7 @@ public class DoneRenderTests
     [Fact]
     public void A_MODEL_THIS_WALK_DID_NOT_VERIFY_DOES_NOT_SAY_VERIFIED()
     {
-        var probes = new WizardProbes
+        var probes = new FakeSetupProbes
         {
             Llama = @"C:\llama\llama-b11071-bin-win-vulkan-x64\llama-server.exe",
             ActiveFile = Gguf,
@@ -421,7 +421,7 @@ public class DoneRenderTests
         s = flow.Answer(SetupFlow.AuditionPassedNext);
         while (flow.NeedsWritesApplied) s = flow.ResumeAfterWrites(null);
 
-        var summary = Assert.IsType<WizardScreen.Choice>(flow.Emitted[^1]);
+        var summary = Assert.IsType<SetupScreen.Choice>(flow.Emitted[^1]);
         Assert.Equal(SetupFlow.SummaryKey, summary.Key);
         var model = summary.BodyRows!.Single(r => r.Text.StartsWith("model ", StringComparison.Ordinal));
 
@@ -446,7 +446,7 @@ public class DoneRenderTests
     public void THE_CONFIG_KEY_IS_MENTIONED_AND_NEVER_ACCENTED()
     {
         var (_, screen) = DoneStep(consent: null);
-        var choice = Assert.IsType<WizardScreen.Choice>(screen);
+        var choice = Assert.IsType<SetupScreen.Choice>(screen);
         var body = string.Join(" ", choice.BodyRows!.Select(r => r.Text));
 
         Assert.Contains("update_check", body, StringComparison.Ordinal);
@@ -460,7 +460,7 @@ public class DoneRenderTests
     [Fact]
     public void THE_CONSENT_FOLLOWS_THE_INSTALL_QUESTION()
     {
-        var flow = new SetupFlow(new WizardProbes
+        var flow = new SetupFlow(new FakeSetupProbes
         {
             Llama = @"C:\llama\llama-b11071-bin-win-vulkan-x64\llama-server.exe",
             ActiveFile = "gemma-4-26B-A4B-it-UD-Q4_K_M.gguf",

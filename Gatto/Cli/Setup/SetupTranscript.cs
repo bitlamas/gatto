@@ -5,7 +5,7 @@ using Gatto.Terminal;
 namespace Gatto.Cli.Setup;
 
 //what an answered wizard screen leaves behind: the answer below its question, a rule between segments, one row per answer with its count
-internal sealed class WizardTranscript(Theme theme, Gatto.Terminal.GlyphSet? glyphs)
+internal sealed class SetupTranscript(Theme theme, Gatto.Terminal.GlyphSet? glyphs)
 {
     private readonly Gatto.Terminal.GlyphSet _glyphs = glyphs ?? Gatto.Terminal.GlyphSet.Unicode;
 

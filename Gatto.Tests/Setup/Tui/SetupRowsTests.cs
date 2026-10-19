@@ -4,10 +4,10 @@ using Gatto.Terminal;
 namespace Gatto.Tests.Setup.Tui;
 
 //both wrapping rules go through the margin knob, so the plain face at margin 0 keeps its line breaks
-public class WizardRowsTests
+public class SetupRowsTests
 {
     private static string[] Wrap(string text, int width, int margin) =>
-        [.. WizardRows.Wrap(new WizardRow(text), width, margin, Gatto.Terminal.GlyphSet.Unicode).Select(s => s.Lead + s.Text)];
+        [.. SetupRows.Wrap(new SetupRow(text), width, margin, Gatto.Terminal.GlyphSet.Unicode).Select(s => s.Lead + s.Text)];
 
     //the same sentence widows at margin 0 and not at the frame margin, so one fixture proves both halves
     [Fact]
@@ -18,7 +18,7 @@ public class WizardRowsTests
         //the widow is there at margin 0, so the rule below has something to fix
         Assert.Equal("tenlongword", Wrap(text, 50, margin: 0)[^1].Trim());
 
-        var framed = Wrap(text, 50, WizardRows.FrameMargin);
+        var framed = Wrap(text, 50, SetupRows.FrameMargin);
         Assert.Equal("nine tenlongword", framed[^1].Trim());
 
         //the same words in order, so the wrap lost and duplicated nothing
@@ -33,7 +33,7 @@ public class WizardRowsTests
 
         var transcript = Wrap(text, 50, margin: 0);
         Assert.Single(transcript[^1].Trim().Split(' '));
-        Assert.NotEqual(Wrap(text, 50, WizardRows.FrameMargin)[^1], transcript[^1]);
+        Assert.NotEqual(Wrap(text, 50, SetupRows.FrameMargin)[^1], transcript[^1]);
     }
 
     //taking a word from a one-word donor line would widow the line above, so the wrap declines instead
@@ -41,7 +41,7 @@ public class WizardRowsTests
     public void IT_DECLINES_WHEN_TAKING_A_WORD_WOULD_WIDOW_THE_LINE_ABOVE()
     {
         //two words nearly a full line each, then a short tail, so the donor line has nothing to give
-        var wrapped = Wrap("aaaaaaaaaaaaaaaaaaaa bbbbbbbbbbbbbbbbbbbb cc", 26, WizardRows.FrameMargin);
+        var wrapped = Wrap("aaaaaaaaaaaaaaaaaaaa bbbbbbbbbbbbbbbbbbbb cc", 26, SetupRows.FrameMargin);
 
         Assert.Equal(3, wrapped.Length);
         Assert.Equal("cc", wrapped[^1].Trim());
@@ -52,7 +52,7 @@ public class WizardRowsTests
     public void IT_DECLINES_WHEN_THE_MERGED_LINE_WOULD_NOT_FIT()
     {
         const int width = 19;
-        var wrapped = Wrap("wxyz 1234567890 abcdefghij", width, WizardRows.FrameMargin);
+        var wrapped = Wrap("wxyz 1234567890 abcdefghij", width, SetupRows.FrameMargin);
 
         //the widow stays, the merge would not fit the frame
         Assert.Equal("abcdefghij", wrapped[^1].Trim());
@@ -68,7 +68,7 @@ public class WizardRowsTests
     public void NO_WIDTH_PRODUCES_A_ROW_WIDER_THAN_THE_FRAME(string text)
     {
         for (var width = 12; width <= 120; width++)
-            Assert.All(Wrap(text, width, WizardRows.FrameMargin), l => Assert.True(l.Length <= width,
+            Assert.All(Wrap(text, width, SetupRows.FrameMargin), l => Assert.True(l.Length <= width,
                 $"at {width} columns a row reaches {l.Length} cells: [{l}]"));
     }
 
@@ -80,7 +80,7 @@ public class WizardRowsTests
     {
         var text = string.Join(" ", Enumerable.Repeat("word", 200));
 
-        var framed = Wrap(text, width, WizardRows.FrameMargin);
+        var framed = Wrap(text, width, SetupRows.FrameMargin);
         Assert.All(framed, l => Assert.True(l.Length <= width - 2, $"row reaches {l.Length} of {width}"));
         Assert.Contains(framed, l => l.Length > width - 2 - 5);   //and one row really uses the budget, or a wrap that stopped early would still pass
     }
@@ -92,10 +92,10 @@ public class WizardRowsTests
     [InlineData(78)]
     public void A_STATUS_MARK_LEADS_ONLY_THE_FIRST_LINE_OF_ITS_ROW(int width)
     {
-        var row = new WizardRow(
+        var row = new SetupRow(
             string.Join(" ", Enumerable.Repeat("word", 40)), Glyph: RowGlyph.Good);
 
-        var lines = WizardRows.Toned([row], width, WizardRows.FrameMargin).ToList();
+        var lines = SetupRows.Toned([row], width, SetupRows.FrameMargin).ToList();
 
         Assert.True(lines.Count > 1, $"the fixture did not wrap at {width}, so nothing below is tested");
         Assert.StartsWith(Glyphs.Of(RowGlyph.Good, glyphs: GlyphSet.Unicode) + " ", lines[0].Text, StringComparison.Ordinal);
@@ -113,8 +113,8 @@ public class WizardRowsTests
     [Fact]
     public void A_MARKED_ROW_AND_A_PLAIN_ROW_START_THEIR_TEXT_IN_THE_SAME_COLUMN()
     {
-        var marked = WizardRows.Toned([new WizardRow("hello", Glyph: RowGlyph.Good)], 100, 2).Single();
-        var plain = WizardRows.Toned([new WizardRow("hello")], 100, 2).Single();
+        var marked = SetupRows.Toned([new SetupRow("hello", Glyph: RowGlyph.Good)], 100, 2).Single();
+        var plain = SetupRows.Toned([new SetupRow("hello")], 100, 2).Single();
 
         Assert.Equal(plain.Text.IndexOf("hello", StringComparison.Ordinal),
             Gatto.Terminal.UnicodeWidth.Of(marked.Text[..marked.Text.IndexOf("hello", StringComparison.Ordinal)]));
@@ -129,9 +129,9 @@ public class WizardRowsTests
 
         for (var width = 40; width <= 120; width++)
         {
-            var wide = WizardRows.Wrap(new WizardRow(text, Wide: true), width, WizardRows.FrameMargin, Gatto.Terminal.GlyphSet.Unicode)
+            var wide = SetupRows.Wrap(new SetupRow(text, Wide: true), width, SetupRows.FrameMargin, Gatto.Terminal.GlyphSet.Unicode)
                 .Select(s => s.Lead + s.Text).ToList();
-            var prose = WizardRows.Wrap(new WizardRow(text), width, WizardRows.FrameMargin, Gatto.Terminal.GlyphSet.Unicode)
+            var prose = SetupRows.Wrap(new SetupRow(text), width, SetupRows.FrameMargin, Gatto.Terminal.GlyphSet.Unicode)
                 .Select(s => s.Lead + s.Text).ToList();
 
             foreach (var line in wide)
@@ -149,15 +149,15 @@ public class WizardRowsTests
     }
     //a highlighted span is atomic to the wrapper
 
-    private static string[] Wrap(WizardRow row, int width, int margin) =>
-        [.. WizardRows.Wrap(row, width, margin, Gatto.Terminal.GlyphSet.Unicode).Select(s => s.Lead + s.Text)];
+    private static string[] Wrap(SetupRow row, int width, int margin) =>
+        [.. SetupRows.Wrap(row, width, margin, Gatto.Terminal.GlyphSet.Unicode).Select(s => s.Lead + s.Text)];
 
     //a highlight is matched per line, so a span broken across a wrap never fires and reads as two commands
     [Fact]
     public void A_HIGHLIGHTED_COMMAND_IS_NEVER_BROKEN_ACROSS_A_WRAP()
     {
         const string cmd = "gatto audition gemma-4-26B-A4B-it";
-        var row = new WizardRow($"The check couldn't run yet. Type {cmd} in a terminal to run it.",
+        var row = new SetupRow($"The check couldn't run yet. Type {cmd} in a terminal to run it.",
             Highlight: [cmd]);
 
         for (var w = 40; w <= 120; w++)
@@ -169,7 +169,7 @@ public class WizardRowsTests
     public void AND_THE_SAME_WORDS_UNHIGHLIGHTED_STILL_BREAK()
     {
         const string cmd = "gatto audition gemma-4-26B-A4B-it";
-        var plain = new WizardRow($"The check couldn't run yet. Type {cmd} in a terminal to run it.");
+        var plain = new SetupRow($"The check couldn't run yet. Type {cmd} in a terminal to run it.");
 
         Assert.Contains(Enumerable.Range(40, 81),
             w => !Wrap(plain, w, 2).Any(l => l.Contains(cmd, StringComparison.Ordinal)));
@@ -180,7 +180,7 @@ public class WizardRowsTests
     public void THE_PLACEHOLDER_LEAVES_NO_TRACE_AND_COSTS_NO_CELLS()
     {
         const string cmd = "gatto serve start gemma-4-26B-A4B-it";
-        var row = new WizardRow($"Type {cmd} when you want to run it.", Highlight: [cmd]);
+        var row = new SetupRow($"Type {cmd} when you want to run it.", Highlight: [cmd]);
 
         for (var w = 40; w <= 120; w++)
         {
@@ -198,9 +198,9 @@ public class WizardRowsTests
     {
         const string text = "Run gatto from where it is, and have fun with your local model.";
 
-        Assert.Equal(Wrap(new WizardRow(text), 60, 2),
-            Wrap(new WizardRow(text, Highlight: ["gatto"]), 60, 2));
-        Assert.Equal(Wrap(new WizardRow(text), 60, 2),
-            Wrap(new WizardRow(text, Highlight: ["a command nobody wrote"]), 60, 2));
+        Assert.Equal(Wrap(new SetupRow(text), 60, 2),
+            Wrap(new SetupRow(text, Highlight: ["gatto"]), 60, 2));
+        Assert.Equal(Wrap(new SetupRow(text), 60, 2),
+            Wrap(new SetupRow(text, Highlight: ["a command nobody wrote"]), 60, 2));
     }
 }

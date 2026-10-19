@@ -183,7 +183,7 @@ public class CommandCorpusTests : IDisposable
     {
         //the drawn record, built by the row builder the flow uses, so the label column and the hang are the product's
         var dot = CorpusDriver.Glyphs.Dot;
-        var facts = new List<Gatto.Cli.Setup.WizardRow>
+        var facts = new List<Gatto.Cli.Setup.SetupRow>
         {
             Gatto.Cli.Setup.SetupFlow.SummaryFacts.Row("fetched", $"llama-b10076-bin-win-vulkan-x64.zip {dot} digest matched"),
             Gatto.Cli.Setup.SetupFlow.SummaryFacts.Row("into", @"C:\Users\you\.gatto\llama\b10076\"),
@@ -191,7 +191,7 @@ public class CommandCorpusTests : IDisposable
             Gatto.Cli.Setup.SetupFlow.SummaryFacts.Row("checked", "llama-server.exe ran, and it is the path gatto wrote to its config"),
         };
         var rows = Gatto.Cli.Setup.Tui.Epilogue.Lines(facts, CorpusFacts.Version, CorpusFacts.Build,
-            CorpusFacts.Today, closing: new Gatto.Cli.Setup.WizardRow("run gatto to start a session"),
+            CorpusFacts.Today, closing: new Gatto.Cli.Setup.SetupRow("run gatto to start a session"),
             width, CorpusDriver.Glyphs);
         CopyGolden.Check($"wizard-record-{width}",
             CorpusDriver.Visible(string.Join("\n", rows) + "\n"));
@@ -202,7 +202,7 @@ public class CommandCorpusTests : IDisposable
     public void THE_WIZARD_RECORD_AT_60_ENDS_NO_ROW_WITH_THE_DOT()
     {
         var dot = CorpusDriver.Glyphs.Dot;
-        var facts = new List<Gatto.Cli.Setup.WizardRow>
+        var facts = new List<Gatto.Cli.Setup.SetupRow>
         {
             Gatto.Cli.Setup.SetupFlow.SummaryFacts.Row("fetched", $"llama-b10076-bin-win-vulkan-x64.zip {dot} digest matched"),
             Gatto.Cli.Setup.SetupFlow.SummaryFacts.Row("into", @"C:\Users\you\.gatto\llama\b10076\"),
@@ -210,7 +210,7 @@ public class CommandCorpusTests : IDisposable
             Gatto.Cli.Setup.SetupFlow.SummaryFacts.Row("checked", "llama-server.exe ran, and it is the path gatto wrote to its config"),
         };
         var rows = Gatto.Cli.Setup.Tui.Epilogue.Lines(facts, CorpusFacts.Version, CorpusFacts.Build,
-            CorpusFacts.Today, closing: new Gatto.Cli.Setup.WizardRow("run gatto to start a session"),
+            CorpusFacts.Today, closing: new Gatto.Cli.Setup.SetupRow("run gatto to start a session"),
             60, CorpusDriver.Glyphs);
 
         Assert.DoesNotContain(rows, r => r.TrimEnd().EndsWith(dot, StringComparison.Ordinal));
@@ -221,10 +221,10 @@ public class CommandCorpusTests : IDisposable
     public void AN_ASCII_FULL_STOP_AT_A_ROW_EDGE_STAYS()
     {
         const string text = "write the folder's own .gatto.json and keep the old file where it was.";
-        var row = new Gatto.Cli.Setup.WizardRow(text);
+        var row = new Gatto.Cli.Setup.SetupRow(text);
         for (var width = 20; width <= 80; width++)   //from 20 no word is hard-broken, so the rows rejoin with single spaces
         {
-            var lines = Gatto.Cli.Setup.WizardRows.Wrap(row, width, glyphs: Gatto.Terminal.GlyphSet.Ascii);
+            var lines = Gatto.Cli.Setup.SetupRows.Wrap(row, width, glyphs: Gatto.Terminal.GlyphSet.Ascii);
             var joined = string.Join(" ", lines.Select(l => l.Text.Trim()));
             Assert.Equal(text, joined);
         }
@@ -234,7 +234,7 @@ public class CommandCorpusTests : IDisposable
     [Fact]
     public void THE_WIZARD_RECORD_FROM_GATTO_MODEL()
     {
-        var facts = new List<Gatto.Cli.Setup.WizardRow>
+        var facts = new List<Gatto.Cli.Setup.SetupRow>
         {
             Gatto.Cli.Setup.SetupFlow.SummaryFacts.Row("model", $"{CorpusFacts.ModelId} {CorpusDriver.Glyphs.Dot} ~23.8 GB"),
         };
@@ -254,12 +254,12 @@ public class CommandCorpusTests : IDisposable
         var home = Directory.CreateTempSubdirectory("gatto-corpus-leave-").FullName;
         try
         {
-            var flow = new Gatto.Cli.Setup.SetupFlow(new Gatto.Tests.Fakes.WizardProbes());
-            var face = new Gatto.Tests.Fakes.WizardRig(100).TuiFace(Gatto.Tests.Fakes.WizardRig.Esc, Gatto.Tests.Fakes.WizardRig.Esc);
+            var flow = new Gatto.Cli.Setup.SetupFlow(new Gatto.Tests.Fakes.FakeSetupProbes());
+            var face = new Gatto.Tests.Fakes.SetupRig(100).TuiFace(Gatto.Tests.Fakes.SetupRig.Esc, Gatto.Tests.Fakes.SetupRig.Esc);
             Gatto.Cli.Setup.SetupRunner.Run(flow, face, home, modelSegmentOnly: modelRoad);
             foreach (var mode in new[] { CorpusMode.Dark, CorpusMode.Plain })
             {
-                var rows = Gatto.Cli.Setup.WizardSession.Scrollback(flow, () => face.LastPainted, 100,
+                var rows = Gatto.Cli.Setup.SetupSession.Scrollback(flow, () => face.LastPainted, 100,
                     CorpusDriver.Glyphs, CorpusFacts.Stamp, CorpusFacts.Today, "gatto " + road, CorpusDriver.ThemeFor(mode));
                 CopyGolden.Check($"wizard-leave-frame-{road}-{mode}",
                     CorpusDriver.Visible(string.Join("\n", rows) + "\n"));

@@ -27,7 +27,7 @@ internal static class WalkRender
     public static Captured Paint(Screen screen, int width, string key = "screen")
     {
         var surface = new RecordingSurface { Width = width };
-        var face = new TuiWizardSurface(surface, new ScriptedKeys([]), new Theme(new TermCaps(true, true)),
+        var face = new TuiSetupSurface(surface, new ScriptedKeys([]), new Theme(new TermCaps(true, true)),
             version: "0.5.0", build: "1a2b3c4", nowMs: () => 0);
         face.Paint((_, _) => screen);
         return new Captured(key, width, face.LastPainted);
@@ -35,18 +35,18 @@ internal static class WalkRender
 
     //the row budget the real face hands the flow at this size
     public static int RowBudget(int width, int height) =>
-        new TuiWizardSurface(new RecordingSurface { Width = width, Height = height }, new ScriptedKeys([]),
+        new TuiSetupSurface(new RecordingSurface { Width = width, Height = height }, new ScriptedKeys([]),
             new Theme(new TermCaps(true, true)), version: "0.5.0", build: "1a2b3c4", nowMs: () => 0).RowBudget;
 
     //the script must resolve on its first key, or the captured frame is a later one. a numbered screen passes Enter, an Esc arms the leave chord and repaints
 
     //the frame the walk comes to rest on, through Choose so the binder stays the subject. script holds the keys to press before the run goes dry
-    public static Captured SettledFrame(WizardScreen.Choice c, int width, string key = "choice",
+    public static Captured SettledFrame(SetupScreen.Choice c, int width, string key = "choice",
         IEnumerable<ConsoleKeyInfo>? script = null, int height = 0, string command = ScreenPainter.DefaultCommand)
     {
         var surface = new RecordingSurface { Width = width, Height = height };
         //nowMs is frozen at 0 here, so the clock has to be eager or the chord's wait never expires and the run hangs
-        var face = new TuiWizardSurface(surface, new ScriptedKeys(script ?? []),
+        var face = new TuiSetupSurface(surface, new ScriptedKeys(script ?? []),
             new Theme(new TermCaps(true, true)), version: "0.5.0", build: "1a2b3c4", nowMs: () => 0,
             clock: _ => new AlwaysReady(), command: command);
         try { face.Choose(c); }
@@ -55,11 +55,11 @@ internal static class WalkRender
     }
 
     //the settled frame's rows inked in a given theme, for a golden that pins colour as well as text
-    public static IReadOnlyList<string> Inked(WizardScreen.Choice c, int width, int height, Theme theme,
+    public static IReadOnlyList<string> Inked(SetupScreen.Choice c, int width, int height, Theme theme,
         IEnumerable<ConsoleKeyInfo>? script = null, string command = ScreenPainter.DefaultCommand)
     {
         var surface = new RecordingSurface { Width = width, Height = height };
-        var face = new TuiWizardSurface(surface, new ScriptedKeys(script ?? []), theme, version: "0.5.0",
+        var face = new TuiSetupSurface(surface, new ScriptedKeys(script ?? []), theme, version: "0.5.0",
             build: "1a2b3c4", nowMs: () => 0, clock: _ => new AlwaysReady(), command: command);
         try { face.Choose(c); }
         catch (WalkEnded) { }
@@ -68,22 +68,22 @@ internal static class WalkRender
 
     //what a keystroke answers, beside the frame it left on screen. the script must resolve, a run that goes dry has no answer to report
     public static (string? Answer, IReadOnlyList<string> Rows) Answered(
-        WizardScreen.Choice c, int width, IEnumerable<ConsoleKeyInfo> script)
+        SetupScreen.Choice c, int width, IEnumerable<ConsoleKeyInfo> script)
     {
         var surface = new RecordingSurface { Width = width };
-        var face = new TuiWizardSurface(surface, new ScriptedKeys(script),
+        var face = new TuiSetupSurface(surface, new ScriptedKeys(script),
             new Theme(new TermCaps(true, true)), version: "0.5.0", build: "1a2b3c4", nowMs: () => 0,
             clock: _ => new AlwaysReady());
         var answer = face.Choose(c);
         return (answer, face.LastPainted);
     }
 
-    public static Captured Choice(WizardScreen.Choice c, int width, string key = "choice",
+    public static Captured Choice(SetupScreen.Choice c, int width, string key = "choice",
         IEnumerable<ConsoleKeyInfo>? script = null)
     {
         var surface = new RecordingSurface { Width = width };
         //the default script arms the chord, so this needs the same eager clock or the second Esc waits a chord out forever
-        var face = new TuiWizardSurface(surface, new ScriptedKeys(script ?? [Esc, Esc]),
+        var face = new TuiSetupSurface(surface, new ScriptedKeys(script ?? [Esc, Esc]),
             new Theme(new TermCaps(true, true)), version: "0.5.0", build: "1a2b3c4", nowMs: () => 0,
             clock: _ => new AlwaysReady());
         face.Choose(c);
@@ -94,11 +94,11 @@ internal static class WalkRender
 
     //the settled purr is the face's own figure. the clock answers 0 once and watchedMs thereafter, the difference is the wait
     public static Captured AfterWatch(
-        WizardScreen.Choice watch, WizardScreen.Choice next, int width, long watchedMs)
+        SetupScreen.Choice watch, SetupScreen.Choice next, int width, long watchedMs)
     {
         var surface = new RecordingSurface { Width = width };
         var first = true;
-        var face = new TuiWizardSurface(surface, new ScriptedKeys([WizardRig.Enter]),
+        var face = new TuiSetupSurface(surface, new ScriptedKeys([SetupRig.Enter]),
             new Theme(new TermCaps(true, true)), version: "0.5.0", build: "1a2b3c4",
             nowMs: () => { if (first) { first = false; return 0; } return watchedMs; },
             clock: _ => new NeverReady());
@@ -110,13 +110,13 @@ internal static class WalkRender
     }
 
     //the check parameter names the check's moment, null off an audition. the fullPurr parameter drives another purr frame, and null keeps index 0
-    public static Captured Watching(WizardScreen.Choice c, int width, FetchTick? tick,
+    public static Captured Watching(SetupScreen.Choice c, int width, FetchTick? tick,
         string key = "choice", IEnumerable<ConsoleKeyInfo>? script = null, Func<long>? nowMs = null,
         CheckTick? check = null, Gatto.Repl.Render.Chrome.PurrFrames? fullPurr = null)
     {
         var surface = new RecordingSurface { Width = width };
         var pressing = script is not null;
-        var face = new TuiWizardSurface(surface, new ScriptedKeys(script ?? []),
+        var face = new TuiSetupSurface(surface, new ScriptedKeys(script ?? []),
             new Theme(new TermCaps(true, true)), version: "0.5.0", build: "1a2b3c4",
             nowMs: nowMs ?? (() => 0),
             clock: _ => pressing ? new AlwaysReady() : new NeverReady(),
@@ -127,13 +127,13 @@ internal static class WalkRender
     }
 
     //presses the keys and then lets the watch resolve, so a key that was meant to be inert shows up as the wrong answer
-    public static string? WatchAfterKeys(WizardScreen.Choice c, int width, FetchTick? tick,
+    public static string? WatchAfterKeys(SetupScreen.Choice c, int width, FetchTick? tick,
         IEnumerable<ConsoleKeyInfo> keys)
     {
         var surface = new RecordingSurface { Width = width };
         var script = keys.ToList();
         var left = script.Count;
-        var face = new TuiWizardSurface(surface, new ScriptedKeys(script),
+        var face = new TuiSetupSurface(surface, new ScriptedKeys(script),
             new Theme(new TermCaps(true, true)), version: "0.5.0", build: "1a2b3c4",
             nowMs: () => 0, clock: _ => new HandsOver(() => left > 0, () => left--));
         return face.Choose(c, watch: () => left == 0, tick: () => tick);
@@ -160,11 +160,11 @@ internal static class WalkRender
     }
 
     //lets the interval expire before a key arrives, so the loop repaints with whatever tick says now. this is the harness for the motion itself
-    public static Captured WatchingOverIntervals(WizardScreen.Choice c, int width,
+    public static Captured WatchingOverIntervals(SetupScreen.Choice c, int width,
         Func<FetchTick> tick, int expiries, string key = "choice")
     {
         var surface = new RecordingSurface { Width = width };
-        var face = new TuiWizardSurface(surface, new ScriptedKeys([]),
+        var face = new TuiSetupSurface(surface, new ScriptedKeys([]),
             new Theme(new TermCaps(true, true)), version: "0.5.0", build: "1a2b3c4",
             nowMs: () => 0, clock: _ => new NeverReady());
         //no keys, and the frame is painted expiries plus one times because the loop paints before it asks the watch
@@ -174,10 +174,10 @@ internal static class WalkRender
     }
 
     //the arrival with nothing pressed, returning what Choose answered for the runner to use
-    public static string? WatchArrives(WizardScreen.Choice c, int width, FetchTick tick)
+    public static string? WatchArrives(SetupScreen.Choice c, int width, FetchTick tick)
     {
         var surface = new RecordingSurface { Width = width };
-        var face = new TuiWizardSurface(surface, new ScriptedKeys([]),
+        var face = new TuiSetupSurface(surface, new ScriptedKeys([]),
             new Theme(new TermCaps(true, true)), version: "0.5.0", build: "1a2b3c4",
             nowMs: () => 0, clock: _ => new AlwaysReady());
         //the empty script is deliberate, an arrival that did not answer throws instead of reading a key nobody supplied
@@ -192,24 +192,24 @@ internal static class WalkRender
     }
 
     //a screen as a user finds it, driven by no key at all. the face paints before its first ReadKey, and Esc on an ask with an offer arms the chord
-    public static Captured Ask(WizardScreen.Ask a, int width, string key = "ask")
+    public static Captured Ask(SetupScreen.Ask a, int width, string key = "ask")
     {
         var surface = new RecordingSurface { Width = width };
-        var face = new TuiWizardSurface(surface, new ScriptedKeys([]),
+        var face = new TuiSetupSurface(surface, new ScriptedKeys([]),
             new Theme(new TermCaps(true, true)), version: "0.5.0", build: "1a2b3c4", nowMs: () => 0);
         try { face.Ask(a); } catch (WalkEnded) { }
         return new Captured(key, width, face.LastPainted);
     }
 
     //what one key answers on a screen, through the real Choose so leaving and answering a row stay distinguishable
-    public static string? Answer(WizardScreen.Choice c, ConsoleKey key) =>
+    public static string? Answer(SetupScreen.Choice c, ConsoleKey key) =>
         Answer(c, new ConsoleKeyInfo('\0', key, false, false, false));
 
     //the same question with a whole keystroke, since a ConsoleKey leaves KeyChar as nul and the row digits are read from KeyChar
-    public static string? Answer(WizardScreen.Choice c, ConsoleKeyInfo key)
+    public static string? Answer(SetupScreen.Choice c, ConsoleKeyInfo key)
     {
         //nowMs is frozen at 0, so AlwaysReady keeps the single scripted key as immediate as a plain ReadKey
-        var face = new TuiWizardSurface(new RecordingSurface { Width = 100 },
+        var face = new TuiSetupSurface(new RecordingSurface { Width = 100 },
             new ScriptedKeys([key]),
             new Theme(new TermCaps(true, true)), version: "0.5.0", build: "1a2b3c4", nowMs: () => 0,
             clock: _ => new AlwaysReady());
@@ -217,10 +217,10 @@ internal static class WalkRender
     }
 
     //what the face answers after a whole script, so a late key's answer can be read. the script must resolve, or Choose reads from an exhausted source
-    public static string? AnswerAfter(WizardScreen.Choice c, int width, IEnumerable<ConsoleKeyInfo> script)
+    public static string? AnswerAfter(SetupScreen.Choice c, int width, IEnumerable<ConsoleKeyInfo> script)
     {
         //an intermediate key may arm the chord before the resolving one, so this frozen nowMs needs the eager clock
-        var face = new TuiWizardSurface(new RecordingSurface { Width = width },
+        var face = new TuiSetupSurface(new RecordingSurface { Width = width },
             new ScriptedKeys(script),
             new Theme(new TermCaps(true, true)), version: "0.5.0", build: "1a2b3c4", nowMs: () => 0,
             clock: _ => new AlwaysReady());

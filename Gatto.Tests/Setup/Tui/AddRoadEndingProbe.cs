@@ -11,7 +11,7 @@ public class AddRoadEndingProbe
     private const string Serving = "qwen-qwen3.6-35b-a3b";
 
     //null answered means the question was never asked, so the parameter has no default
-    private static WizardProbes Probes(string? heldBy, bool? answered) => new()
+    private static FakeSetupProbes Probes(string? heldBy, bool? answered) => new()
     {
         Llama = @"C:\llama\llama-server.exe",
         ActiveFile = "gemma-4-26B-A4B-it-UD-Q4_K_M.gguf",
@@ -26,7 +26,7 @@ public class AddRoadEndingProbe
         Walk(heldBy, answered).Keys;
 
     //hands back the flow that ran and the screen it stopped on, so a flag always comes from a real run
-    private static (List<string> Keys, SetupFlow Flow, WizardScreen Last) Walk(
+    private static (List<string> Keys, SetupFlow Flow, SetupScreen Last) Walk(
         string? heldBy, bool? answered, bool addUnchecked = false, string? stopAt = null)
     {
         var flow = new SetupFlow(Probes(heldBy, answered));
@@ -39,9 +39,9 @@ public class AddRoadEndingProbe
         {
             var key = ScreenKey.Of(screen);
             seen.Add(key);
-            if (key == stopAt || screen is WizardScreen.Terminal
+            if (key == stopAt || screen is SetupScreen.Terminal
                 || key.StartsWith("model.done", StringComparison.Ordinal)) return (seen, flow, screen);
-            if (screen is not WizardScreen.Choice c || c.Options.Count == 0) break;
+            if (screen is not SetupScreen.Choice c || c.Options.Count == 0) break;
             var pick = addUnchecked && key == SetupFlow.InSessionCheckKey
                 ? SetupFlow.AddUnchecked
                 : c.Options[0].Key;
@@ -125,8 +125,8 @@ public class AddRoadEndingProbe
         var (keys, _, last) = Walk(heldBy: null, answered: null, stopAt: SetupFlow.UpdateKey);
         Assert.Equal(SetupFlow.UpdateKey, keys[^1]);
 
-        var rows = WalkRender.Choice(Assert.IsType<WizardScreen.Choice>(last), 100,
-            script: [WizardRig.Esc, WizardRig.Esc]).Rows;
+        var rows = WalkRender.Choice(Assert.IsType<SetupScreen.Choice>(last), 100,
+            script: [SetupRig.Esc, SetupRig.Esc]).Rows;
         var frame = string.Join("\n", rows);
 
         Assert.Contains("Esc again to leave", frame, StringComparison.Ordinal);

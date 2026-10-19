@@ -9,7 +9,7 @@ using Gatto.Terminal;
 namespace Gatto.Cli.Setup.Tui;
 
 //ink goes on after the clamp, or an inked row would be cut by escape bytes. paint through ITermSurface so a test can render the face
-internal sealed class TuiWizardSurface : IWizardSurface, IDisposable
+internal sealed class TuiSetupSurface : ISetupSurface, IDisposable
 {
     private readonly ITermSurface _surface;
     private readonly IInputSource _input;
@@ -28,7 +28,7 @@ internal sealed class TuiWizardSurface : IWizardSurface, IDisposable
 
     //version has no default, a literal version would be printed rather than reported. pass a clock that resolves at once, otherwise a scripted cancel hangs the run
 
-    public TuiWizardSurface(ITermSurface surface, IKeySource keys, Theme theme, string version, string build,
+    public TuiSetupSurface(ITermSurface surface, IKeySource keys, Theme theme, string version, string build,
         Func<long>? nowMs = null, Func<bool, IPollClock>? clock = null,
         Func<IPurrPulse>? pulse = null,
         GlyphSet? glyphs = null,
@@ -41,7 +41,7 @@ internal sealed class TuiWizardSurface : IWizardSurface, IDisposable
     private const int DefaultDoubleClickMs = 500;
 
     //the key form above wraps its keys, so every face a test builds keeps compiling and behaving
-    public TuiWizardSurface(ITermSurface surface, IInputSource input, Theme theme, string version, string build,
+    public TuiSetupSurface(ITermSurface surface, IInputSource input, Theme theme, string version, string build,
         Func<long>? nowMs = null, Func<bool, IPollClock>? clock = null,
         Func<IPurrPulse>? pulse = null,
         GlyphSet? glyphs = null,
@@ -213,10 +213,10 @@ internal sealed class TuiWizardSurface : IWizardSurface, IDisposable
     //the writer's newline is \n, set once here, since a CR hits the arm below and clears the line
     private sealed class NoteSink : TextWriter
     {
-        private readonly TuiWizardSurface _face;
+        private readonly TuiSetupSurface _face;
         private readonly System.Text.StringBuilder _line = new();
 
-        public NoteSink(TuiWizardSurface face)
+        public NoteSink(TuiSetupSurface face)
         {
             _face = face;
             CoreNewLine = ['\n'];
@@ -432,12 +432,12 @@ internal sealed class TuiWizardSurface : IWizardSurface, IDisposable
     //every run of the row carries the tag, so a press anywhere on it is a press on it
     private static PaintedRow Tagged(PaintedRow row, HitTag tag) => new([.. row.Runs.Select(r => r with { Tag = tag })], row.Fit);
 
-    //the IWizardSurface members below
+    //the ISetupSurface members below
 
-    public string? Choose(WizardScreen.Choice c, Func<bool>? watch = null, Func<FetchTick?>? tick = null,
+    public string? Choose(SetupScreen.Choice c, Func<bool>? watch = null, Func<FetchTick?>? tick = null,
         Func<CheckTick?>? check = null) => Choose(c, watch, tick, check, null);
 
-    public string? Choose(WizardScreen.Choice c, Func<bool>? watch, Func<FetchTick?>? tick,
+    public string? Choose(SetupScreen.Choice c, Func<bool>? watch, Func<FetchTick?>? tick,
         Func<CheckTick?>? check, Func<ShelfLoadTick?>? load)
     {
         DrainIfTheWaitWasLong();
@@ -445,7 +445,7 @@ internal sealed class TuiWizardSurface : IWizardSurface, IDisposable
         finally { Answered(); }
     }
 
-    private string? ChooseCore(WizardScreen.Choice c, Func<bool>? watch, Func<FetchTick?>? tick,
+    private string? ChooseCore(SetupScreen.Choice c, Func<bool>? watch, Func<FetchTick?>? tick,
         Func<CheckTick?>? check, Func<ShelfLoadTick?>? load)
     {
         var regions = RegionsFor(c);
@@ -802,14 +802,14 @@ internal sealed class TuiWizardSurface : IWizardSurface, IDisposable
     }
 
     //the typed ask, with the same door row every other screen draws. a rejected answer repaints with the message and keeps the draft
-    public string? Ask(WizardScreen.Ask a)
+    public string? Ask(SetupScreen.Ask a)
     {
         DrainIfTheWaitWasLong();
         try { return AskCore(a); }
         finally { Answered(); }
     }
 
-    private string? AskCore(WizardScreen.Ask a)
+    private string? AskCore(SetupScreen.Ask a)
     {
         //an offer is a row to pick, so the keys start in the list. with no offer the door is the only region and keeps the focus
         var offer = a.Offer;
@@ -932,11 +932,11 @@ internal sealed class TuiWizardSurface : IWizardSurface, IDisposable
         }
     }
 
-    public void Show(WizardScreen.Info i) =>
+    public void Show(SetupScreen.Info i) =>
         Paint((w, _) => new Screen(i.Strip, Region.List, null, [.. Rows(i.Rows, w)], null, []));
 
     //the option Esc answers on a numbered screen, or null when Esc leaves. the Esc branch and the footer both read it, so the drawn verb and the key can't disagree
-    private static ChoiceOption? EscAnswer(WizardScreen.Choice c)
+    private static ChoiceOption? EscAnswer(SetupScreen.Choice c)
     {
         if (c.KeysOnly) return null;
         ChoiceOption? found = null;
@@ -952,7 +952,7 @@ internal sealed class TuiWizardSurface : IWizardSurface, IDisposable
     }
 
     //one Esc is back wherever the flow has a screen behind, except where work is running or starting, which keep the chord that names its price
-    private static bool EscGoesBack(WizardScreen.Choice c) => c.AllowBack && !c.Watching && !c.Starting;
+    private static bool EscGoesBack(SetupScreen.Choice c) => c.AllowBack && !c.Watching && !c.Starting;
 
     //both key loops ask this instead of testing the modifier mask, so they can't leave on different keys
     private static bool IsCtrlC(ConsoleKeyInfo key) =>
@@ -980,18 +980,18 @@ internal sealed class TuiWizardSurface : IWizardSurface, IDisposable
     }
 
     //the terminal screen renders like any other, and the caller prints its rows to scrollback once the alt screen is restored. otherwise they vanish with the buffer
-    public void End(WizardScreen.Terminal t) =>
+    public void End(SetupScreen.Terminal t) =>
         Paint((w, _) => new Screen(t.Strip, Region.List, null,
             [
                 .. Rows(t.Rows, w),
                 //draw NextStep after the rows, with a blank between only when rows are above. on a leave that wrote nothing the line stands alone
                 .. t.NextStep is null ? []
-                    : t.Rows.Count > 0 ? Rows([new WizardRow(""), t.NextStep], w) : Rows([t.NextStep], w),
+                    : t.Rows.Count > 0 ? Rows([new SetupRow(""), t.NextStep], w) : Rows([t.NextStep], w),
             ],
             null, []));
 
     //the next key, or null when a watching screen's thing arrived first. it waits one interval, hands back for a repaint, and asks the watch first
-    private (bool Arrived, InputEvent? Event) NextKey(WizardScreen.Choice c, Func<bool>? watch)
+    private (bool Arrived, InputEvent? Event) NextKey(SetupScreen.Choice c, Func<bool>? watch)
     {
         var isWatch = c.Watching && watch is not null;
         TimeSpan budget;
@@ -1158,7 +1158,7 @@ internal sealed class TuiWizardSurface : IWizardSurface, IDisposable
               && char.ToLowerInvariant(key.KeyChar) == char.ToLowerInvariant(press[0]);
 
     //a watching screen's keys in option order, each under the key it names and the last under Esc
-    private static IReadOnlyList<FooterKey> WatchKeys(WizardScreen.Choice c)
+    private static IReadOnlyList<FooterKey> WatchKeys(SetupScreen.Choice c)
     {
         var keys = new List<FooterKey>(c.Options.Count);
         for (var i = 0; i < c.Options.Count; i++)
@@ -1171,7 +1171,7 @@ internal sealed class TuiWizardSurface : IWizardSurface, IDisposable
     }
 
     //the footer's keys, composed from the options on a keys-only screen so the words and the deeds are one fact. the label is the flow's own copy, drawn verbatim
-    private static IReadOnlyList<FooterKey> KeysFor(GlyphSet g, WizardScreen.Choice c, FocusRing ring,
+    private static IReadOnlyList<FooterKey> KeysFor(GlyphSet g, SetupScreen.Choice c, FocusRing ring,
         int width)
     {
         //the shelf names its own keys, the arrows and m, and its Enter says next since picking a model is the step's answer
@@ -1251,7 +1251,7 @@ internal sealed class TuiWizardSurface : IWizardSurface, IDisposable
     private IReadOnlyList<PaintedRow> MachineRows(MachineView m, int width) =>
     [
         //fact rows take the frame margin, since DeWidow is gated on it. without it a row keeps the full width and orphans its last word
-        .. WizardRows.Toned(MachineFacts.Rows(m.Hardware, m.Names, width), width, WizardRows.FrameMargin,
+        .. SetupRows.Toned(MachineFacts.Rows(m.Hardware, m.Names, width), width, SetupRows.FrameMargin,
             _glyphs).Select(r =>
         {
             var lead = 2 + MachineFacts.Column;
@@ -1276,22 +1276,22 @@ internal sealed class TuiWizardSurface : IWizardSurface, IDisposable
     }
 
     //rows at the full width with no right margin, these facts fold rather than wrap and a margin would only break a fitted row
-    private IReadOnlyList<PaintedRow> RowsUnwrapped(int width, IReadOnlyList<WizardRow>? rows) =>
+    private IReadOnlyList<PaintedRow> RowsUnwrapped(int width, IReadOnlyList<SetupRow>? rows) =>
     [
-        .. WizardRows.Toned(rows, width, glyphs: _glyphs).Select(r => Tailed(Marked(r.Text, SpansOf(r, r.Text),
+        .. SetupRows.Toned(rows, width, glyphs: _glyphs).Select(r => Tailed(Marked(r.Text, SpansOf(r, r.Text),
             r.Tone == RowTone.Aside ? RunInk.Dim : r.Tone == RowTone.Subject ? RunInk.Accent : RunInk.Plain),
             r.Tail, width))
     ];
 
     //the body decides a row's fit class: optional stays optional through wrapping, and a blank row is a paragraph break
-    private static PaintedRow Classify(WizardRow src, PaintedRow painted) =>
+    private static PaintedRow Classify(SetupRow src, PaintedRow painted) =>
         src.Optional ? painted with { Fit = RowFit.Optional }
         : painted.Text.Trim().Length == 0 ? painted with { Fit = RowFit.Paragraph }
         : painted;
 
-    private IReadOnlyList<PaintedRow> Rows(IReadOnlyList<WizardRow>? rows, int width) =>
+    private IReadOnlyList<PaintedRow> Rows(IReadOnlyList<SetupRow>? rows, int width) =>
     [
-        .. WizardRows.Toned(rows, width, WizardRows.FrameMargin, _glyphs).Select(r =>
+        .. SetupRows.Toned(rows, width, SetupRows.FrameMargin, _glyphs).Select(r =>
         {
             var ink = r.Tone switch
             {
@@ -1317,7 +1317,7 @@ internal sealed class TuiWizardSurface : IWizardSurface, IDisposable
     ];
 
     //a key named in prose with what it shows, such as m shows them, answers a press as the key does. the key and its words are one target
-    private static PaintedRow KeyClause(WizardRow src, PaintedRow row)
+    private static PaintedRow KeyClause(SetupRow src, PaintedRow row)
     {
         if (src.Keys is not { Count: > 0 } keys) return row;
         var runs = row.Runs.ToList();
@@ -1351,7 +1351,7 @@ internal sealed class TuiWizardSurface : IWizardSurface, IDisposable
     //the row's spans in the order they sit in the text, since the split runs left to right
 
     //the three span inks: accent for what the user acts on, plain for what is named, bright for a key. don't add a fourth
-    private static IReadOnlyList<(string Span, RunInk Ink, bool Word)> SpansOf(WizardRow row, string text) =>
+    private static IReadOnlyList<(string Span, RunInk Ink, bool Word)> SpansOf(SetupRow row, string text) =>
     [
         .. (row.Highlight ?? []).Select(s => (Span: s, Ink: RunInk.Accent, Word: false))
             .Concat((row.Lift ?? []).Select(s => (Span: s, Ink: RunInk.Plain, Word: false)))
@@ -1398,25 +1398,25 @@ internal sealed class TuiWizardSurface : IWizardSurface, IDisposable
     }
 
     //the files the pane lists for the row under the cursor, or none
-    private static IReadOnlyList<PaneFile> Files(WizardScreen.Choice c, int cursor) =>
+    private static IReadOnlyList<PaneFile> Files(SetupScreen.Choice c, int cursor) =>
         c.Shelf is { Facts: { } facts } && cursor >= 0 && cursor < facts.Count
             ? facts[cursor].Files ?? []
             : [];
 
     //true when the shelf's facts sit under the table at this width. ask Shelf.PaneWidth, so the answer can't drift from what draws
-    private bool Folded(WizardScreen.Choice c) =>
+    private bool Folded(SetupScreen.Choice c) =>
         c.Shelf is { } sv && Shelf.PaneWidth(sv, Width, _glyphs) == 0;
 
     //the publishers the wide pane lists for the row under the cursor, null where the pane is folded or lists none
-    private IReadOnlyList<PanePublisher>? Accordion(WizardScreen.Choice c, int cursor) =>
+    private IReadOnlyList<PanePublisher>? Accordion(SetupScreen.Choice c, int cursor) =>
         !Folded(c) && c.Shelf is { Facts: { } facts } && cursor >= 0 && cursor < facts.Count
         && facts[cursor].Publishers is { Count: > 0 } pubs ? pubs : null;
 
-    private static int RowPublisher(WizardScreen.Choice c, int cursor) =>
+    private static int RowPublisher(SetupScreen.Choice c, int cursor) =>
         c.Shelf is { } sv && cursor >= 0 && cursor < sv.Rows.Count ? sv.Rows[cursor].RowPublisher : 0;
 
     //the next index the arrows may rest on, skipping any option the face does not paint. the cursor can never rest on a row the user cannot see
-    private static int? Step(WizardScreen.Choice c, int cursor, int delta)
+    private static int? Step(SetupScreen.Choice c, int cursor, int delta)
     {
         for (var i = cursor + delta; i >= 0 && i < c.Options.Count; i += delta)
             if (!ShelfControls.IsFolderDoor(c, i)) return i;
@@ -1424,7 +1424,7 @@ internal sealed class TuiWizardSurface : IWizardSurface, IDisposable
     }
 
     //the ring after the cursor moved, rebuilt since a row with builds has one more Tab stop. it always opens on the list, the only reachable state
-    private FocusRing RingFor(WizardScreen.Choice c, int cursor) =>
+    private FocusRing RingFor(SetupScreen.Choice c, int cursor) =>
         c.Shelf is { } sv
             ? new FocusRing(Shelf.Regions(sv, Width, cursor, c.Door is not null), Shelf.Opening(sv))
             : null!;
@@ -1477,7 +1477,7 @@ internal sealed class TuiWizardSurface : IWizardSurface, IDisposable
     }
 
     //the flow's rows past the ones the shelf drew, painted so the cursor can never rest on an invisible row. they draw no numbers
-    private static IReadOnlyList<PaintedRow> Escapes(GlyphSet g, WizardScreen.Choice c, ShelfView shelf,
+    private static IReadOnlyList<PaintedRow> Escapes(GlyphSet g, SetupScreen.Choice c, ShelfView shelf,
         int cursor)
     {
         if (c.Options.Count <= shelf.Rows.Count) return [];
@@ -1501,7 +1501,7 @@ internal sealed class TuiWizardSurface : IWizardSurface, IDisposable
     }
 
     //the screen's Tab ring: the strip is a stop only where a done section sits behind it. a watching keys-only screen is the pair that has no back
-    private IReadOnlyList<Region> RegionsFor(WizardScreen.Choice c) =>
+    private IReadOnlyList<Region> RegionsFor(SetupScreen.Choice c) =>
         //the shelf declares its own ring, which depends on the width, since a folded frame has no pane for Tab to stop at
         c.Shelf is { } shelf ? Shelf.Regions(shelf, Width, c.NoDefault ? -1 : 0, c.Door is not null)
         : [
@@ -1511,7 +1511,7 @@ internal sealed class TuiWizardSurface : IWizardSurface, IDisposable
           ];
 
     //a local row whose files sit in one folder opens that folder's line, since a closed line over the only folder is a step for nothing. folded, the files start on the row's file rather than the Hub's knee
-    private ShelfCursors LocalRow(WizardScreen.Choice c, int cursor, ShelfCursors at)
+    private ShelfCursors LocalRow(SetupScreen.Choice c, int cursor, ShelfCursors at)
     {
         if (c.Shelf is not { Source: ShelfSource.Local, Facts: { } facts } sv || cursor < 0 || cursor >= facts.Count) return at;
         if (Folded(c))
@@ -1534,7 +1534,7 @@ internal sealed class TuiWizardSurface : IWizardSurface, IDisposable
     private long _watchedMs;
 
     //a loading view purrs inside its own frame, the shelf in its list and the start-up screen beside its cat
-    private static bool Loads(WizardScreen.Choice c) => c.Starting || c.Shelf is { Loading: true };
+    private static bool Loads(SetupScreen.Choice c) => c.Starting || c.Shelf is { Loading: true };
 
     //the start-up screen's title row names the program, since the command the user typed is not chosen on it
     private const string StartingCommand = "gatto";
@@ -1543,7 +1543,7 @@ internal sealed class TuiWizardSurface : IWizardSurface, IDisposable
     private const string CatGap = "    ";
 
     //the start-up screen: the cat, and beside its last rows the purr, the screen's words and the step line, the strip blank and Esc the one key
-    private Screen StartFor(WizardScreen.Choice c, long elapsedMs, ShelfLoadTick? load)
+    private Screen StartFor(SetupScreen.Choice c, long elapsedMs, ShelfLoadTick? load)
     {
         var cat = c.Hero ?? [];
         var step = load?.Step is { Length: > 0 } s ? $"> {s} {_glyphs.Dot} " : "> ";
@@ -1579,7 +1579,7 @@ internal sealed class TuiWizardSurface : IWizardSurface, IDisposable
     }
 
     //what leaving this screen costs, worded for the Esc chord
-    private static string Price(WizardScreen.Choice c, FetchTick? t) =>
+    private static string Price(SetupScreen.Choice c, FetchTick? t) =>
         //a screen's own declared price comes first in the ladder, so a screen that sets one is never silently overruled
         c.ArmedCost is { Length: > 0 } declared ? declared
         //a paused screen has a live tick and no live fetch, so it prices Esc with CostOfKept. the live arm would say it stops a fetch already stopped
@@ -1593,7 +1593,7 @@ internal sealed class TuiWizardSurface : IWizardSurface, IDisposable
     private static string ForCtrlC(string price) =>
         price.StartsWith("Esc again", StringComparison.Ordinal) ? "Ctrl+C again" + price["Esc again".Length..] : price;
 
-    private Screen ScreenFor(WizardScreen.Choice c, FocusRing ring, int cursor, FetchTick? t,
+    private Screen ScreenFor(SetupScreen.Choice c, FocusRing ring, int cursor, FetchTick? t,
         ShelfCursors at, int width, int allowance, long? watching = null, CheckTick? k = null,
         int? stripAt = null, ShelfLoadTick? load = null) => new(
         StripAt: stripAt,
@@ -1662,15 +1662,15 @@ internal sealed class TuiWizardSurface : IWizardSurface, IDisposable
     }
 
     //the body rows above the shelf or the options, composed in one place so the row window can count them
-    private IReadOnlyList<PaintedRow> BodyAbove(WizardScreen.Choice c, FetchTick? t, CheckTick? k, int width,
+    private IReadOnlyList<PaintedRow> BodyAbove(SetupScreen.Choice c, FetchTick? t, CheckTick? k, int width,
         ShelfLoadTick? load = null) =>
     [
         //the notice sits where the shelf's own notices sit, above its body, and the row window counts it once
-        .. c.Notice is { Length: > 0 } said ? Rows([new WizardRow(said, RowTone.Aside), ""], width) : (IReadOnlyList<PaintedRow>)[],
+        .. c.Notice is { Length: > 0 } said ? Rows([new SetupRow(said, RowTone.Aside), ""], width) : (IReadOnlyList<PaintedRow>)[],
         .. Rows(c.BodyRows, width),
         //the loading shelf's line about this machine, in the place the discovery line takes once the shelf lands
         .. c.Shelf is { Loading: true } && load?.Local is { Length: > 0 } local
-            ? Rows([new WizardRow(local, RowTone.Aside), ""], width)
+            ? Rows([new SetupRow(local, RowTone.Aside), ""], width)
             : (IReadOnlyList<PaintedRow>)[],
         //the machine's fact rows are composed here, since they fold at the live width and the flow has none
         .. c.Machine is { } m
@@ -1705,7 +1705,7 @@ internal sealed class TuiWizardSurface : IWizardSurface, IDisposable
     ];
 
     //the shelf frame's non-model rows, the body above and the escapes below, which the row window pays for with model rows
-    private int Outside(WizardScreen.Choice c, FetchTick? t, CheckTick? k, int width, ShelfView sv, int cursor,
+    private int Outside(SetupScreen.Choice c, FetchTick? t, CheckTick? k, int width, ShelfView sv, int cursor,
         ShelfLoadTick? load = null) =>
         BodyAbove(c, t, k, width, load).Count + Escapes(_glyphs, c, sv, cursor).Count();
 }

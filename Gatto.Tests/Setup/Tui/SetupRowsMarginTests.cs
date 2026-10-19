@@ -4,7 +4,7 @@ using Gatto.Terminal;
 namespace Gatto.Tests.Setup.Tui;
 
 //a row that fills the width exactly leaves the cursor in the terminal's deferred-wrap state, so the wrapper keeps two cells free
-public class WizardRowsMarginTests
+public class SetupRowsMarginTests
 {
     //a sweep, because the defect fires only at the widths where a row ends exactly on the edge
     [Theory]
@@ -17,10 +17,10 @@ public class WizardRowsMarginTests
     public void NO_WRAPPED_ROW_REACHES_THE_LAST_COLUMN(int width)
     {
         //words of many lengths put the break in a different place at every width, a single long word would only exercise the hard-break path
-        var row = new WizardRow(string.Join(" ", Enumerable.Range(1, 40).Select(n =>
+        var row = new SetupRow(string.Join(" ", Enumerable.Range(1, 40).Select(n =>
             new string((char)('a' + n % 26), 1 + n % 11))));
 
-        foreach (var (lead, text) in WizardRows.Wrap(row, width, margin: 2, Gatto.Terminal.GlyphSet.Unicode))
+        foreach (var (lead, text) in SetupRows.Wrap(row, width, margin: 2, Gatto.Terminal.GlyphSet.Unicode))
             Assert.True(UnicodeWidth.Of(lead + text) <= width - 2,
                 $"a wrapped row is {UnicodeWidth.Of(lead + text)} cells at width {width}, "
                 + $"over the frame's {width - 2}: {lead + text}");
@@ -30,9 +30,9 @@ public class WizardRowsMarginTests
     [Fact]
     public void AND_THE_MEASUREMENT_CAN_SEE_ONE_THAT_DOES()
     {
-        var row = new WizardRow(new string('x', 100), Wide: true);
+        var row = new SetupRow(new string('x', 100), Wide: true);
 
-        var widest = WizardRows.Wrap(row, 80, margin: 2, Gatto.Terminal.GlyphSet.Unicode)
+        var widest = SetupRows.Wrap(row, 80, margin: 2, Gatto.Terminal.GlyphSet.Unicode)
             .Max(s => UnicodeWidth.Of(s.Lead + s.Text));
 
         Assert.True(widest > 80 - 2,

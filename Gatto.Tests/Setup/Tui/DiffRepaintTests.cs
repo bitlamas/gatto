@@ -37,7 +37,7 @@ public class DiffRepaintTests
     //the emulator's screen as one string, so the byte-bearing separator is spelled once in this file
     private static string Lit(VtScreenSurface s) => string.Join(Environment.NewLine, s.Viewport);
 
-    private static TuiWizardSurface Face(WriteLog s, FakePulse? pulse = null) =>
+    private static TuiSetupSurface Face(WriteLog s, FakePulse? pulse = null) =>
         new(s, new NoKeys(), T, "0.5.0", "1a2b3c4", () => 0,
             pulse: pulse is null ? null : () => pulse);
 
@@ -120,7 +120,7 @@ public class DiffRepaintTests
     public void A_HEIGHT_ONLY_RESIZE_REPAINTS_THE_WHOLE_FRAME()
     {
         var screen = new VtScreenSurface(100, 40);
-        var f = new TuiWizardSurface(screen, new NoKeys(), T, "0.5.0", "1a2b3c4", () => 0);
+        var f = new TuiSetupSurface(screen, new NoKeys(), T, "0.5.0", "1a2b3c4", () => 0);
 
         f.Paint((_, _) => Body("ALPHA", "BRAVO"));
         screen.Resize(100, 30);                     //same width, the fake drops rows from the top
@@ -140,12 +140,12 @@ public class DiffRepaintTests
     {
         //grow the body until the painted frame is exactly as tall as the screen
         var probe = new VtScreenSurface(100, 40);
-        var pf = new TuiWizardSurface(probe, new NoKeys(), T, "0.5.0", "1a2b3c4", () => 0);
+        var pf = new TuiSetupSurface(probe, new NoKeys(), T, "0.5.0", "1a2b3c4", () => 0);
         pf.Paint((_, _) => Rows(10));
         var chrome = pf.LastPainted.Count - 10;
 
         var screen = new VtScreenSurface(100, 40);
-        var f = new TuiWizardSurface(screen, new NoKeys(), T, "0.5.0", "1a2b3c4", () => 0);
+        var f = new TuiSetupSurface(screen, new NoKeys(), T, "0.5.0", "1a2b3c4", () => 0);
 
         f.Paint((_, _) => Rows(40 - chrome));
         Assert.Equal(40, f.LastPainted.Count);      //the fixture really fills the screen
@@ -176,7 +176,7 @@ public class DiffRepaintTests
     public void A_ROW_THAT_EXACTLY_FILLS_THE_WIDTH_KEEPS_ITS_LAST_CHARACTER(int width)
     {
         var screen = new VtScreenSurface(width, 40);
-        var f = new TuiWizardSurface(screen, new NoKeys(), T, "0.5.0", "1a2b3c4", () => 0);
+        var f = new TuiSetupSurface(screen, new NoKeys(), T, "0.5.0", "1a2b3c4", () => 0);
 
         //the filler is width - 2 cells, so the row ends on the last column. make the full-width row the one that changes, or the erase never touches it.
         var filler = new string('x', width - 3);

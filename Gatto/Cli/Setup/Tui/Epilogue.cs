@@ -34,13 +34,13 @@ internal static class Epilogue
 
     //the facts a finished run has, each already worded. a fact nothing measured is null, so neither render claims it, and no row prints an unknown value
     internal readonly record struct Facts(
-        WizardRow? Machine,
-        WizardRow? Model,
-        WizardRow? ModelFolder,
-        WizardRow? Engine,
-        WizardRow Check,
-        WizardRow Gatto,
-        WizardRow Config,
+        SetupRow? Machine,
+        SetupRow? Model,
+        SetupRow? ModelFolder,
+        SetupRow? Engine,
+        SetupRow Check,
+        SetupRow Gatto,
+        SetupRow Config,
         ServerFact? Server = null);
 
     //the connect server as data rather than as rows, since the composer owns the fold. the note holds the long form the record cuts short
@@ -61,12 +61,12 @@ internal static class Epilogue
 
     //what a wizard run that wrote nothing leaves in scrollback: the header and the leave sentence at column zero, no title row, no rules
     public static IReadOnlyList<string> LeaveBlock(GlyphSet g, string version, string build, string command,
-        WizardRow? said, int width, bool dev = false, Theme? theme = null) =>
+        SetupRow? said, int width, bool dev = false, Theme? theme = null) =>
         LeaveBlock(g, version, build, command, said is null ? [] : [said], width, dev, theme);
 
     //one row per model a walk added, each under the header as the single line is
     public static IReadOnlyList<string> LeaveBlock(GlyphSet g, string version, string build, string command,
-        IReadOnlyList<WizardRow> said, int width, bool dev = false, Theme? theme = null)
+        IReadOnlyList<SetupRow> said, int width, bool dev = false, Theme? theme = null)
     {
         List<string> lines = [Head(g, version, build, on: null, command: command, dev: dev, theme: theme)];
         if (said.Count > 0)
@@ -79,8 +79,8 @@ internal static class Epilogue
 
     //the record's rows in order: head, blank, facts, blank, closing sentence. an empty list means the run wrote nothing, and that run prints the leave block
     public static IReadOnlyList<string> Lines(
-        IReadOnlyList<WizardRow> facts, string version, string build, DateOnly on,
-        WizardRow? closing, int width, GlyphSet glyphs, string? stoppedAt = null,
+        IReadOnlyList<SetupRow> facts, string version, string build, DateOnly on,
+        SetupRow? closing, int width, GlyphSet glyphs, string? stoppedAt = null,
         string command = ScreenPainter.DefaultCommand, bool dev = false, Theme? theme = null)
     {
         var g = glyphs;
@@ -94,8 +94,8 @@ internal static class Epilogue
     }
 
     //trailing blanks are trimmed here, since a label wrapped onto its own row keeps them. the wrap never splits a highlight, so painting after it cannot tear one
-    private static IEnumerable<string> Body(IReadOnlyList<WizardRow> rows, int width, GlyphSet g, Theme? theme) =>
-        rows.SelectMany(row => WizardRows.Plain([row], width, margin: 2, glyphs: g, frameGutter: "")
+    private static IEnumerable<string> Body(IReadOnlyList<SetupRow> rows, int width, GlyphSet g, Theme? theme) =>
+        rows.SelectMany(row => SetupRows.Plain([row], width, margin: 2, glyphs: g, frameGutter: "")
             .Select(line => line.TrimEnd(' '))
             .Select(line => theme is null || line.Length == 0
                 ? line
@@ -136,12 +136,12 @@ internal static class Epilogue
     }
 
     //one sentence computed from what the run did, with the closing clause only for an install question the run never reached
-    public static WizardRow LeaveSentence(
+    public static SetupRow LeaveSentence(
         LeaveLead lead, string? model, IReadOnlyList<LeaveQuestion> unreached)
     {
         //no model and no file yet, so one row says that and points at gatto setup again. no questions clause, since a run that wrote nothing reached none
         if (lead is LeaveLead.NothingWritten)
-            return new WizardRow("Nothing has been written, run gatto setup again whenever "
+            return new SetupRow("Nothing has been written, run gatto setup again whenever "
                 + "you're ready.", Highlight: ["gatto setup"]);
 
         var text = lead switch
@@ -160,7 +160,7 @@ internal static class Epilogue
                 text += " Until then, run it from the file above.";
         }
 
-        return new WizardRow(text, Highlight: ["gatto setup"]);
+        return new SetupRow(text, Highlight: ["gatto setup"]);
     }
 
     //the count clause, built from the count itself. the arm for three or more is unreachable today and stays, so a third question cannot ship a wrong count
@@ -180,11 +180,11 @@ internal static class Epilogue
         }));
 
     //the rows of one render, in order
-    public static IReadOnlyList<WizardRow> Compose(in Facts f, Face face, GlyphSet? glyphs)
+    public static IReadOnlyList<SetupRow> Compose(in Facts f, Face face, GlyphSet? glyphs)
     {
         var g = glyphs ?? GlyphSet.Unicode;
         //both differences between the two renders are here: what leads, and what the lead contains. everything below the lead is the same on both
-        WizardRow?[] lead = (face, f.Server) switch
+        SetupRow?[] lead = (face, f.Server) switch
         {
             //the record's server row holds the model and the context too, since a record spends one line per fact
             (Face.Record, { } s) => [SetupFlow.SummaryFacts.Row("server",
@@ -203,7 +203,7 @@ internal static class Epilogue
             _ => [f.Machine, f.Engine, f.Model],
         };
 
-        var rows = new List<WizardRow>(lead.Length + 3);
+        var rows = new List<SetupRow>(lead.Length + 3);
         foreach (var row in lead)
             if (row is not null) rows.Add(row);
 

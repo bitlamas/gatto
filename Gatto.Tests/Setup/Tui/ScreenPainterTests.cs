@@ -7,7 +7,7 @@ namespace Gatto.Tests.Setup.Tui;
 public class ScreenPainterTests
 {
 
-    //the painter's rows as plain text, for tests about which row sits where and that none exceeds the width. a row's ink is checked in TuiWizardSurfaceTests
+    //the painter's rows as plain text, for tests about which row sits where and that none exceeds the width. a row's ink is checked in TuiSetupSurfaceTests
     private static IReadOnlyList<string> PaintPlain(Screen s, int width, string version, string build) =>
         [.. ScreenPainter.Paint(s, width, version, build, glyphs: GlyphSet.Unicode).Select(r => r.Text)];
 

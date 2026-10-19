@@ -6,8 +6,8 @@ using Gatto.Tests.Fakes;
 
 namespace Gatto.Tests.Setup.Tui;
 
-//the app-shaped face drives the same WizardScreens the plain face gets
-public class TuiWizardSurfaceTests
+//the app-shaped face drives the same SetupScreens the plain face gets
+public class TuiSetupSurfaceTests
 {
     private sealed class Keys(IEnumerable<ConsoleKeyInfo> k) : IKeySource
     {
@@ -21,7 +21,7 @@ public class TuiWizardSurfaceTests
     private static ConsoleKeyInfo Sp(ConsoleKey k) => new('\0', k, false, false, false);
     private static ConsoleKeyInfo Dg(char d) => new(d, (ConsoleKey)((int)ConsoleKey.D0 + (d - '0')), false, false, false);
 
-    private static WizardScreen.Choice Two(bool noDefault = false, string? door = null) => new(
+    private static SetupScreen.Choice Two(bool noDefault = false, string? door = null) => new(
         "k", "Replace the installed binary?",
         [new ChoiceOption("yes", "Yes, replace it"), new ChoiceOption("no", "Not now")],
         NoDefault: noDefault, Door: door);
@@ -37,18 +37,18 @@ public class TuiWizardSurfaceTests
         public long ElapsedMs => 0;
     }
 
-    private static (RecordingSurface S, TuiWizardSurface F) Face(long now = 0, params ConsoleKeyInfo[] keys)
+    private static (RecordingSurface S, TuiSetupSurface F) Face(long now = 0, params ConsoleKeyInfo[] keys)
     {
         var s = new RecordingSurface { Width = 100 };
-        return (s, new TuiWizardSurface(s, new Keys(keys), new Theme(new TermCaps(true, true)),
+        return (s, new TuiSetupSurface(s, new Keys(keys), new Theme(new TermCaps(true, true)),
             Version, Build, () => now, clock: _ => new Ready()));
     }
 
-    private static (RecordingSurface S, TuiWizardSurface F) FaceFor(string command,
+    private static (RecordingSurface S, TuiSetupSurface F) FaceFor(string command,
         params ConsoleKeyInfo[] keys)
     {
         var s = new RecordingSurface { Width = 100 };
-        return (s, new TuiWizardSurface(s, new Keys(keys), new Theme(new TermCaps(true, true)),
+        return (s, new TuiSetupSurface(s, new Keys(keys), new Theme(new TermCaps(true, true)),
             Version, Build, () => 0, clock: _ => new Ready(), command: command));
     }
 
@@ -153,7 +153,7 @@ public class TuiWizardSurfaceTests
     {
         //each wait pushes the clock past its budget, so the second Esc finds nothing armed and re-arms, and the scripted keys run dry
         var clock = new AdvancingClock();
-        var f = new TuiWizardSurface(new RecordingSurface { Width = 100 },
+        var f = new TuiSetupSurface(new RecordingSurface { Width = 100 },
             new Keys([Sp(ConsoleKey.Escape), Sp(ConsoleKey.Escape)]),
             new Theme(new TermCaps(true, true)), Version, Build, clock.Now, clock: clock.Clock);
 
@@ -187,7 +187,7 @@ public class TuiWizardSurfaceTests
     {
         var now = 0L;
         var s = new RecordingSurface { Width = 100 };
-        var f = new TuiWizardSurface(s, new Keys([Sp(ConsoleKey.Escape), Sp(ConsoleKey.Escape)]),
+        var f = new TuiSetupSurface(s, new Keys([Sp(ConsoleKey.Escape), Sp(ConsoleKey.Escape)]),
             new Theme(new TermCaps(true, true)), Version, Build, () => now, clock: _ => new Ready());
         Assert.Null(f.Choose(Two(), null));
     }

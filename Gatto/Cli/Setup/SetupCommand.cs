@@ -36,11 +36,11 @@ internal static class SetupCommand
         var wizardCommand = command ?? (modelSegmentOnly ? "gatto model" : "gatto setup");   //the words the user typed, so gatto model new is not reported as gatto model
 
         //the wizard runs before the config loader and reads the mouse setting itself, alt_screen gates the REPL's mouse and not this
-        var input = Setup.WizardInput.For(Setup.WizardInput.MouseOf(home),
+        var input = Setup.SetupInput.For(Setup.SetupInput.MouseOf(home),
             () => new ConsoleInputSource(new Win32ConsoleInputReader()), () => new KeyInputSource(new ConsoleKeySource()),
-            () => new ConsoleInputMode(new Win32ConsoleModeControl()), Setup.WizardInput.SystemDoubleClickMs);
+            () => new ConsoleInputMode(new Win32ConsoleModeControl()), Setup.SetupInput.SystemDoubleClickMs);
 
-        using var face = new Setup.Tui.TuiWizardSurface(
+        using var face = new Setup.Tui.TuiSetupSurface(
             surface, input.Source, chrome,
             Gatto.Core.GattoVersion.String, Gatto.Core.GattoVersion.Build ?? "",
             command: wizardCommand,
@@ -50,7 +50,7 @@ internal static class SetupCommand
             fullPurr: Gatto.Repl.Render.Chrome.PurrFrames.RandomFromPool(),
             doubleClickMs: input.DoubleClickMs);
 
-        //the wizard runs on the alt buffer and gives it back on every exit, WizardSession owns that lifecycle
+        //the wizard runs on the alt buffer and gives it back on every exit, SetupSession owns that lifecycle
         var alt = new AltScreen(surface) { QuietWheel = input.QuietWheel };
 
         //rich comes from the banner and the probes write into the face, so their lines reach the user at the epilogue
@@ -64,9 +64,9 @@ internal static class SetupCommand
         using (probes)
         {
             //the scrollback is composed after the wizard returns, from the facts true then, with the width and the clock read here
-            var exit = Setup.WizardSession.Run(
+            var exit = Setup.SetupSession.Run(
                 alt, () => Setup.SetupRunner.Run(flow, face, home, modelSegmentOnly),
-                () => Setup.WizardSession.Scrollback(flow, () => face.LastPainted, surface.Width, face.Glyphs,
+                () => Setup.SetupSession.Scrollback(flow, () => face.LastPainted, surface.Width, face.Glyphs,
                     VersionStamp.Running, DateOnly.FromDateTime(DateTime.Now), wizardCommand, theme),
                 Console.Out, notes: () => face.CapturedNotes, command: wizardCommand, inputMode: input.Mode);
 

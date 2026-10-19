@@ -19,7 +19,7 @@ public class ConnectRoadReachableTests
     {
         var flow = new SetupFlow(Probes(machine));
 
-        var entry = Assert.IsType<WizardScreen.Choice>(flow.StartPastOpening());
+        var entry = Assert.IsType<SetupScreen.Choice>(flow.StartPastOpening());
 
         //the connect option must be on the screen the flow arrives at, whatever the entry is, otherwise the test only checks a remembered key.
         var door = Assert.Single(entry.Options, o => o.Key == SetupFlow.ForkConnect);
@@ -47,19 +47,19 @@ public class ConnectRoadReachableTests
     //machines are enum rows, so adding a case is one row and not a second flag.
     public enum Machine { WithEngine, NoEngine, Unreadable, Cuda }
 
-    private static WizardProbes Probes(Machine machine) => machine switch
+    private static FakeSetupProbes Probes(Machine machine) => machine switch
     {
-        Machine.WithEngine => new WizardProbes(),
-        Machine.NoEngine => new WizardProbes
+        Machine.WithEngine => new FakeSetupProbes(),
+        Machine.NoEngine => new FakeSetupProbes
         {
             Llama = null,
             Offer = new EngineFetchOffer(@"C:\Users\you\.gatto\llama\b10076\",
                 new EnginePair(new EngineAsset("z.zip", "https://example.invalid/z", new string('a', 64), 1), null)),
         },
         //with no hardware gatto can't name a build, and that branch reaches the steering screen.
-        Machine.Unreadable => new WizardProbes { Llama = null, Snapshot = null },
+        Machine.Unreadable => new FakeSetupProbes { Llama = null, Snapshot = null },
         //this fixture has a companion asset, and both screens it can reach hold the connect entry, which is the property under test.
-        Machine.Cuda => new WizardProbes
+        Machine.Cuda => new FakeSetupProbes
         {
             Llama = null,
             Asset = new("llama-cuda.zip", "cudart.zip", "an NVIDIA card", "CUDA"),

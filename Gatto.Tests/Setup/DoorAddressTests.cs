@@ -23,16 +23,16 @@ public class DoorAddressTests
     private sealed class Counted
     {
         public int Searches;
-        public WizardProbes Probes = null!;
+        public FakeSetupProbes Probes = null!;
     }
 
     private static Counted Probes()
     {
         var c = new Counted();
-        c.Probes = new WizardProbes
+        c.Probes = new FakeSetupProbes
         {
             Llama = @"C:\llama\llama-server.exe",
-            Answer = _ => { Interlocked.Increment(ref c.Searches); return WizardProbes.Outcome([Row("qwen/a"), Row("qwen/b")]); },
+            Answer = _ => { Interlocked.Increment(ref c.Searches); return FakeSetupProbes.Outcome([Row("qwen/a"), Row("qwen/b")]); },
         };
         return c;
     }
@@ -44,10 +44,10 @@ public class DoorAddressTests
     {
         var c = Probes();
         var flow = new SetupFlow(c.Probes) { CanSwitchSource = true };
-        var shelf = Assert.IsType<WizardScreen.Choice>(flow.StartAtModelSegment());
+        var shelf = Assert.IsType<SetupScreen.Choice>(flow.StartAtModelSegment());
         Assert.Equal(SetupFlow.SearchKey, shelf.Key);
         var before = c.Searches;
-        var after = Assert.IsType<WizardScreen.Choice>(flow.Answer(ShelfControls.TypedAnswer(address)));
+        var after = Assert.IsType<SetupScreen.Choice>(flow.Answer(ShelfControls.TypedAnswer(address)));
         Assert.Equal(before, c.Searches);
         Assert.Equal(SetupFlow.SearchKey, after.Key);
         Assert.Equal(Notice, after.Notice);
@@ -61,7 +61,7 @@ public class DoorAddressTests
     {
         var flow = new SetupFlow(Probes().Probes) { CanSwitchSource = true };
         flow.StartAtModelSegment();
-        var ask = Assert.IsType<WizardScreen.Ask>(flow.Answer(SetupFlow.TypeAnId));
+        var ask = Assert.IsType<SetupScreen.Ask>(flow.Answer(SetupFlow.TypeAnId));
         Assert.Equal(Notice, ask.Validate("http://127.0.0.1:8080"));
         Assert.Equal(Notice, ask.Validate("localhost:1234"));
         Assert.Null(ask.Validate("qwen/qwen3-8b"));
@@ -72,7 +72,7 @@ public class DoorAddressTests
     {
         var flow = new SetupFlow(Probes().Probes) { CanSwitchSource = true };
         flow.StartPastEngine();
-        var ask = Assert.IsType<WizardScreen.Ask>(flow.Answer(SetupFlow.TypeAnId));
+        var ask = Assert.IsType<SetupScreen.Ask>(flow.Answer(SetupFlow.TypeAnId));
         Assert.Null(ask.Validate("http://127.0.0.1:8080"));
     }
 
@@ -81,18 +81,18 @@ public class DoorAddressTests
     {
         using var release = new ManualResetEventSlim(false);
         var searches = 0;
-        var probes = new WizardProbes
+        var probes = new FakeSetupProbes
         {
-            Slow = (_, _, _) => { Interlocked.Increment(ref searches); release.Wait(Bound, CancellationToken.None); return WizardProbes.Outcome([Row("qwen/a")]); },
+            Slow = (_, _, _) => { Interlocked.Increment(ref searches); release.Wait(Bound, CancellationToken.None); return FakeSetupProbes.Outcome([Row("qwen/a")]); },
         };
         var flow = new SetupFlow(probes) { CanSwitchSource = true, LoadsShelfInBackground = true };
         try
         {
-            var loading = Assert.IsType<WizardScreen.Choice>(flow.StartAtModelSegment());
+            var loading = Assert.IsType<SetupScreen.Choice>(flow.StartAtModelSegment());
             Assert.Equal(SetupFlow.ShelfLoadingKey, loading.Key);
             //the load runs on the pool, so the one search is seen to start before the address is typed
             Assert.True(SpinWait.SpinUntil(() => Volatile.Read(ref searches) == 1, Bound));
-            var after = Assert.IsType<WizardScreen.Choice>(flow.Answer(ShelfControls.TypedAnswer("http://127.0.0.1:8080")));
+            var after = Assert.IsType<SetupScreen.Choice>(flow.Answer(ShelfControls.TypedAnswer("http://127.0.0.1:8080")));
             Assert.Equal(SetupFlow.ShelfLoadingKey, after.Key);
             Assert.Equal(Notice, after.Notice);
             Assert.Equal(1, searches);
@@ -105,16 +105,16 @@ public class DoorAddressTests
     {
         var c = Probes();
         var flow = new SetupFlow(c.Probes) { CanSwitchSource = true };
-        var shelf = Assert.IsType<WizardScreen.Choice>(flow.StartPastEngine());
+        var shelf = Assert.IsType<SetupScreen.Choice>(flow.StartPastEngine());
         Assert.Equal(SetupFlow.SearchKey, shelf.Key);
         var writes = flow.Writes;
 
-        var silent = Assert.IsType<WizardScreen.Choice>(flow.Answer(ShelfControls.TypedAnswer("  http://127.0.0.1:8080  ")));
+        var silent = Assert.IsType<SetupScreen.Choice>(flow.Answer(ShelfControls.TypedAnswer("  http://127.0.0.1:8080  ")));
         Assert.Equal("http://127.0.0.1:8080", c.Probes.ProbedAt[^1]);
         Assert.Equal(SetupPath.Connect, flow.Path);
         Assert.Contains(silent.BodyRows!, r => r.Text == "No server answered at http://127.0.0.1:8080.");
 
-        var back = Assert.IsType<WizardScreen.Choice>(flow.Answer(SetupFlow.BackKey));
+        var back = Assert.IsType<SetupScreen.Choice>(flow.Answer(SetupFlow.BackKey));
         Assert.Equal(SetupFlow.SearchKey, back.Key);
         Assert.Equal(SetupPath.Llama, flow.Path);
         Assert.Equal(writes, flow.Writes);
@@ -137,19 +137,19 @@ public class DoorAddressTests
     {
         using var release = new ManualResetEventSlim(false);
         var cancelled = false;
-        var probes = new WizardProbes
+        var probes = new FakeSetupProbes
         {
             Llama = @"C:\llama\llama-server.exe",
             Slow = (_, _, ct) =>
             {
                 cancelled = WaitHandle.WaitAny([release.WaitHandle, ct.WaitHandle], Bound) == 1;
-                return WizardProbes.Outcome([Row("qwen/a")]);
+                return FakeSetupProbes.Outcome([Row("qwen/a")]);
             },
         };
         var flow = new SetupFlow(probes) { CanSwitchSource = true, LoadsShelfInBackground = true };
         try
         {
-            Assert.Equal(SetupFlow.ShelfLoadingKey, Assert.IsType<WizardScreen.Choice>(flow.StartPastEngine()).Key);
+            Assert.Equal(SetupFlow.ShelfLoadingKey, Assert.IsType<SetupScreen.Choice>(flow.StartPastEngine()).Key);
             flow.Answer(ShelfControls.TypedAnswer("http://127.0.0.1:8080"));
             Assert.Equal(SetupPath.Connect, flow.Path);
             Assert.True(SpinWait.SpinUntil(() => cancelled, Bound), "the load was not cancelled");
@@ -164,10 +164,10 @@ public class DoorAddressTests
     [MemberData(nameof(Outcomes))]
     public void EVERY_TYPED_ID_ASK_SAYS_THE_NOTICE_FOR_AN_ADDRESS_ON_GATTO_MODEL(string outcome)
     {
-        var probes = new WizardProbes
+        var probes = new FakeSetupProbes
         {
             Llama = @"C:\llama\llama-server.exe",
-            Answer = _ => WizardProbes.Outcome([Row("qwen/a")]),
+            Answer = _ => FakeSetupProbes.Outcome([Row("qwen/a")]),
             Typed = _ => outcome switch
             {
                 "malformed" => new TypedIdOutcome.Malformed(),
@@ -180,7 +180,7 @@ public class DoorAddressTests
         var flow = new SetupFlow(probes) { CanSwitchSource = true };
         flow.StartAtModelSegment();
         flow.Answer(SetupFlow.TypeAnId);
-        var again = Assert.IsType<WizardScreen.Ask>(flow.Answer("qwen/qwen3-8b"));
+        var again = Assert.IsType<SetupScreen.Ask>(flow.Answer("qwen/qwen3-8b"));
         Assert.Equal(Notice, again.Validate("localhost:1234"));
     }
 
@@ -191,7 +191,7 @@ public class DoorAddressTests
         var flow = new SetupFlow(Probes().Probes) { CanSwitchSource = true };
         flow.StartAtModelSegment();
         flow.Answer(SetupFlow.TypeAnId);
-        Assert.IsType<WizardScreen.Ask>(flow.Answer("localhost:1234"));
+        Assert.IsType<SetupScreen.Ask>(flow.Answer("localhost:1234"));
     }
 
     [Fact]
@@ -211,9 +211,9 @@ public class DoorAddressTests
     {
         using var release = new ManualResetEventSlim(false);
         var searches = 0;
-        var probes = new WizardProbes
+        var probes = new FakeSetupProbes
         {
-            Slow = (_, _, _) => { Interlocked.Increment(ref searches); release.Wait(Bound, CancellationToken.None); return WizardProbes.Outcome([Row("qwen/a")]); },
+            Slow = (_, _, _) => { Interlocked.Increment(ref searches); release.Wait(Bound, CancellationToken.None); return FakeSetupProbes.Outcome([Row("qwen/a")]); },
         };
         var flow = new SetupFlow(probes) { CanSwitchSource = true, LoadsShelfInBackground = true };
         try
@@ -235,7 +235,7 @@ public class DoorAddressTests
         var flow = new SetupFlow(c.Probes) { CanSwitchSource = true };
         if (addRoad) flow.StartAtModelSegment(); else flow.StartPastEngine();
         var before = c.Searches;
-        var screen = Assert.IsType<WizardScreen.Choice>(flow.Answer(ShelfControls.TypedAnswer("128000")));
+        var screen = Assert.IsType<SetupScreen.Choice>(flow.Answer(ShelfControls.TypedAnswer("128000")));
         Assert.Equal(before + 1, c.Searches);
         Assert.Null(screen.Notice);
     }
@@ -245,8 +245,8 @@ public class DoorAddressTests
     public void THE_FACE_CLEARS_THE_NOTICE_AT_THE_FIRST_KEY()
     {
         var shelf = ShelfFixtures.Shelf("unified") with { Notice = Notice, AllowBack = true };
-        var rig = new WizardRig(120);
-        var face = rig.TuiFace(WizardRig.Down, WizardRig.Esc);
+        var rig = new SetupRig(120);
+        var face = rig.TuiFace(SetupRig.Down, SetupRig.Esc);
         face.Choose(shelf);
         Assert.Contains(rig.PaintedFrames[0], r => r.Contains(Notice));
         Assert.DoesNotContain(face.LastPainted, r => r.Contains(Notice));
@@ -258,13 +258,13 @@ public class DoorAddressTests
     {
         var shelf = ShelfFixtures.Shelf("unified") with { Notice = Notice, AllowBack = true };
         var row = ShelfFixtures.Target(shelf, HitKind.Row, index: 0);
-        var rig = new WizardRig(120);
-        var face = rig.TuiFaceEvents(RigMouse.Wheel(row, -120), (Action)(() => { }), new KeyEvent(WizardRig.Esc));
+        var rig = new SetupRig(120);
+        var face = rig.TuiFaceEvents(RigMouse.Wheel(row, -120), (Action)(() => { }), new KeyEvent(SetupRig.Esc));
         face.Choose(shelf);
         Assert.Contains(rig.PaintedFrames[^1], r => r.Contains(Notice));
     }
 
-    private static WizardScreen.Choice Loading(string? notice)
+    private static SetupScreen.Choice Loading(string? notice)
     {
         var shelf = ShelfFixtures.Shelf("unified");
         return shelf with { Watching = true, AllowBack = true, Notice = notice, Shelf = shelf.Shelf! with { Loading = true, Rows = [], Facts = [] } };
@@ -275,8 +275,8 @@ public class DoorAddressTests
     public void THE_LOADING_SHELFS_CLOCK_SURVIVES_THE_NOTICE_AND_RESTARTS_OTHERWISE()
     {
         long now = 0;
-        var face = new TuiWizardSurface(new RecordingSurface { Width = 120 },
-            new ScriptedInputSource(null, new KeyEvent(WizardRig.Ch('m')), new KeyEvent(WizardRig.Ch('m')), new KeyEvent(WizardRig.Ch('m'))),
+        var face = new TuiSetupSurface(new RecordingSurface { Width = 120 },
+            new ScriptedInputSource(null, new KeyEvent(SetupRig.Ch('m')), new KeyEvent(SetupRig.Ch('m')), new KeyEvent(SetupRig.Ch('m'))),
             new Theme(new TermCaps(true, true)), "0.5.0", "1a2b3c4", nowMs: () => now);
         face.Choose(Loading(null));
         now = 7000;

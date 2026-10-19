@@ -31,19 +31,19 @@ public class ShelfHeightTests
             mixed && i > 6 ? FitRegime.FitsRamOnly : FitRegime.FitsGpu, Structure: "dense");
     }
 
-    private static WizardScreen.Choice OnTheShelf(int height, bool mixed)
+    private static SetupScreen.Choice OnTheShelf(int height, bool mixed)
     {
-        var flow = new SetupFlow(new WizardProbes { Rows = [.. Enumerable.Range(1, 12).Select(i => Row(i, mixed))] })
+        var flow = new SetupFlow(new FakeSetupProbes { Rows = [.. Enumerable.Range(1, 12).Select(i => Row(i, mixed))] })
         {
             CanSwitchSource = true,
             RowBudget = Shelf.RowBudget(height),
         };
-        return Assert.IsType<WizardScreen.Choice>(flow.StartPastEngine());
+        return Assert.IsType<SetupScreen.Choice>(flow.StartPastEngine());
     }
 
     private static ConsoleKeyInfo Key(ConsoleKey k) => new('\0', k, false, false, false);
 
-    private static IEnumerable<ConsoleKeyInfo> OpenTheRowsPublisher(WizardScreen.Choice c)
+    private static IEnumerable<ConsoleKeyInfo> OpenTheRowsPublisher(SetupScreen.Choice c)
     {
         var ring = Shelf.Regions(c.Shelf!, 120, 0, c.Door is not null).ToList();
         var tabs = (ring.IndexOf(Region.Files) - ring.IndexOf(Shelf.Opening(c.Shelf!)) + ring.Count) % ring.Count;
@@ -80,7 +80,7 @@ public class ShelfHeightTests
     public void AT_20_ROWS_THE_LOCAL_GROUPED_FRAME_FITS()
     {
         var (flow, _) = ShelfFixtures.Flow("unified", ShelfFixtures.Entry.Model, found: ShelfFixtures.GroupedScan());
-        var local = Assert.IsType<WizardScreen.Choice>(flow.Answer(SetupFlow.CtlSource));
+        var local = Assert.IsType<SetupScreen.Choice>(flow.Answer(SetupFlow.CtlSource));
         var rows = WalkRender.SettledFrame(local, 120, script: ShelfFixtures.OpenKeys(local), height: 20).Rows;
 
         Assert.True(rows.Count <= 20, Dump(20, rows));
@@ -108,12 +108,12 @@ public class ShelfHeightTests
     public void THE_LIST_SCROLLS_WITH_THE_CURSOR_AND_THE_FRAME_KEEPS_ITS_HEIGHT()
     {
         const int height = 28;
-        var flow = new SetupFlow(new WizardProbes { Rows = [.. Enumerable.Range(1, 30).Select(i => Row(i, mixed: false))] })
+        var flow = new SetupFlow(new FakeSetupProbes { Rows = [.. Enumerable.Range(1, 30).Select(i => Row(i, mixed: false))] })
         {
             CanSwitchSource = true,
             RowBudget = int.MaxValue,
         };
-        var c = Assert.IsType<WizardScreen.Choice>(flow.StartPastEngine());
+        var c = Assert.IsType<SetupScreen.Choice>(flow.StartPastEngine());
         var fresh = WalkRender.SettledFrame(c, 120, height: height).Rows;
         var down = WalkRender.SettledFrame(c, 120, height: height,
             script: Enumerable.Repeat(Key(ConsoleKey.DownArrow), 20)).Rows;
@@ -142,12 +142,12 @@ public class ShelfHeightTests
     public void A_GROUPED_SHELF_SCROLLS_WITH_ITS_HEADINGS_AND_KEEPS_ITS_HEIGHT()
     {
         const int height = 28;
-        var flow = new SetupFlow(new WizardProbes { Rows = [.. Enumerable.Range(1, 30).Select(i => Row(i, mixed: true))] })
+        var flow = new SetupFlow(new FakeSetupProbes { Rows = [.. Enumerable.Range(1, 30).Select(i => Row(i, mixed: true))] })
         {
             CanSwitchSource = true,
             RowBudget = int.MaxValue,
         };
-        var c = Assert.IsType<WizardScreen.Choice>(flow.StartPastEngine());
+        var c = Assert.IsType<SetupScreen.Choice>(flow.StartPastEngine());
         var fresh = WalkRender.SettledFrame(c, 120, height: height).Rows;
         var down = WalkRender.SettledFrame(c, 120, height: height,
             script: Enumerable.Repeat(Key(ConsoleKey.DownArrow), 20)).Rows;
@@ -164,16 +164,16 @@ public class ShelfHeightTests
     [Fact]
     public void A_PRESS_ON_A_SCROLLED_WINDOW_ANSWERS_THE_ROW_UNDER_THE_POINTER()
     {
-        var flow = new SetupFlow(new WizardProbes { Rows = [.. Enumerable.Range(1, 30).Select(i => Row(i, mixed: false))] })
+        var flow = new SetupFlow(new FakeSetupProbes { Rows = [.. Enumerable.Range(1, 30).Select(i => Row(i, mixed: false))] })
         {
             CanSwitchSource = true,
             RowBudget = int.MaxValue,
         };
-        var c = Assert.IsType<WizardScreen.Choice>(flow.StartPastEngine()) with { AllowBack = false };
+        var c = Assert.IsType<SetupScreen.Choice>(flow.StartPastEngine()) with { AllowBack = false };
         var downs = Enumerable.Repeat(Key(ConsoleKey.DownArrow), 20).ToArray();
         var m16 = ShelfFixtures.Target(c, HitKind.Row, index: 15, height: 28, keys: downs);
 
-        var rig = new WizardRig(120);
+        var rig = new SetupRig(120);
         rig.Surface.Height = 28;
         var face = rig.TuiFaceEvents([.. downs.Select(k => (object)new KeyEvent(k)), .. RigMouse.On(m16), .. RigMouse.On(m16)]);
         Assert.Equal(c.Options[15].Key, face.Choose(c));

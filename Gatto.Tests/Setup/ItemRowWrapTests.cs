@@ -2,7 +2,7 @@ using Gatto.Cli.Setup;
 
 namespace Gatto.Tests.Setup;
 
-//a list-valued row may only break between items, or a task parts from its number. the layout belongs to WizardRows, so SoftWrap keeps its plain wrapping
+//a list-valued row may only break between items, or a task parts from its number. the layout belongs to SetupRows, so SoftWrap keeps its plain wrapping
 public class ItemRowWrapTests
 {
     private static readonly string[] Tasks =
@@ -11,11 +11,11 @@ public class ItemRowWrapTests
         "4) recover from a wrong path", "5) not invent a missing file's contents",
     ];
 
-    private static WizardRow Row(int hang = 14) =>
+    private static SetupRow Row(int hang = 14) =>
         new("tasks".PadRight(hang), RowTone.Aside, Hang: hang, Items: Tasks);
 
     private static IReadOnlyList<string> Lines(int width) =>
-        [.. WizardRows.Wrap(Row(), width, WizardRows.FrameMargin, Gatto.Terminal.GlyphSet.Unicode).Select(l => l.Lead + l.Text)];
+        [.. SetupRows.Wrap(Row(), width, SetupRows.FrameMargin, Gatto.Terminal.GlyphSet.Unicode).Select(l => l.Lead + l.Text)];
 
     //every piece between separators must be a whole task, at every width. an oracle built from an imagined wrap passes on shapes the real wrapper never makes
     [Theory]
@@ -71,9 +71,9 @@ public class ItemRowWrapTests
     public void AN_ITEM_TOO_WIDE_FOR_A_ROW_IS_NOT_BROKEN()
     {
         var giant = new string('x', 200);
-        var row = new WizardRow("tasks".PadRight(14), RowTone.Aside, Hang: 14, Items: ["1) a", giant]);
+        var row = new SetupRow("tasks".PadRight(14), RowTone.Aside, Hang: 14, Items: ["1) a", giant]);
 
-        var lines = WizardRows.Wrap(row, 100, WizardRows.FrameMargin, Gatto.Terminal.GlyphSet.Unicode).Select(l => l.Text).ToList();
+        var lines = SetupRows.Wrap(row, 100, SetupRows.FrameMargin, Gatto.Terminal.GlyphSet.Unicode).Select(l => l.Text).ToList();
 
         Assert.Contains(lines, l => l.Contains(giant, StringComparison.Ordinal));
     }
@@ -82,9 +82,9 @@ public class ItemRowWrapTests
     [Fact]
     public void A_ROW_WITHOUT_ITEMS_STILL_WRAPS_THE_ORDINARY_WAY()
     {
-        var prose = new WizardRow(new string('a', 40) + " " + new string('b', 40) + " " + new string('c', 40));
+        var prose = new SetupRow(new string('a', 40) + " " + new string('b', 40) + " " + new string('c', 40));
 
-        var lines = WizardRows.Wrap(prose, 60, WizardRows.FrameMargin, Gatto.Terminal.GlyphSet.Unicode).Select(l => l.Text).ToList();
+        var lines = SetupRows.Wrap(prose, 60, SetupRows.FrameMargin, Gatto.Terminal.GlyphSet.Unicode).Select(l => l.Text).ToList();
 
         Assert.True(lines.Count > 1, "a long sentence still wraps");
     }

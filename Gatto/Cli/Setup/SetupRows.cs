@@ -3,12 +3,12 @@ using Gatto.Terminal;
 namespace Gatto.Cli.Setup;
 
 //how a row becomes lines at a live width, for both faces. the indent comes off the row, and a continuation wraps in a budget narrowed by the hang
-internal static class WizardRows
+internal static class SetupRows
 {
     private const string Gutter = "  ";
 
     //the lines this row becomes, each with its lead, with the text sanitized. width 0 means unknown and nothing wraps, and margin frees cells at the right edge
-    public static IReadOnlyList<(string Lead, string Text)> Wrap(WizardRow row, int width, int margin = 0,
+    public static IReadOnlyList<(string Lead, string Text)> Wrap(SetupRow row, int width, int margin = 0,
         Gatto.Terminal.GlyphSet? glyphs = null, string frameGutter = Gutter)
     {
         var text = TermText.Sanitize(row.Text);
@@ -140,7 +140,7 @@ internal static class WizardRows
     //the same rows as plain strings, so ScreenPainter clamps them by visible cell rather than by escape byte
 
     //the same rows holding their tone, with the lead folded into the text, since plain strings leave the face nothing to paint from
-    public static IEnumerable<WizardRow> Toned(IReadOnlyList<WizardRow>? rows, int width, int margin = 0,
+    public static IEnumerable<SetupRow> Toned(IReadOnlyList<SetupRow>? rows, int width, int margin = 0,
         Gatto.Terminal.GlyphSet? glyphs = null) =>
         (rows ?? []).SelectMany(r =>
         {
@@ -156,7 +156,7 @@ internal static class WizardRows
         });
 
     //the default frameGutter is the frame's two spaces, and the record printed to scrollback passes none, since its body sits at column zero
-    public static IEnumerable<string> Plain(IReadOnlyList<WizardRow>? rows, int width,
+    public static IEnumerable<string> Plain(IReadOnlyList<SetupRow>? rows, int width,
         Gatto.Terminal.GlyphSet glyphs, int margin = 0, string frameGutter = Gutter) =>
         (rows ?? []).SelectMany(r => Wrap(r, width, margin, glyphs, frameGutter)
             //a spacer renders as a truly empty row, since the goldens are byte-pinned and trailing spaces on a blank line would differ

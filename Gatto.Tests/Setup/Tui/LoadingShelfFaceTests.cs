@@ -11,7 +11,7 @@ public class LoadingShelfFaceTests
     private const string Step = "reading the files of 13 models · 6 of 13";
     private const string Local = "looking for models on this machine…";
 
-    private static WizardScreen.Choice Loading() => new(
+    private static SetupScreen.Choice Loading() => new(
         SetupFlow.ShelfLoadingKey, "Which model should gatto add?", [],
         Shelf: new ShelfView([], MachineShape.UnifiedWithShare,
             Families: ["gemma", "qwen", "all"], Family: "all", Loading: true),
@@ -27,7 +27,7 @@ public class LoadingShelfFaceTests
     [Fact]
     public void THE_LOADING_FRAME_HOLDS_THE_CONTROLS_THE_HEADER_THE_PURR_AND_THE_STEP_LINE()
     {
-        var rig = new WizardRig(width: 120) { PollTime = true };
+        var rig = new SetupRig(width: 120) { PollTime = true };
         var face = rig.TuiFace();
 
         var answer = face.Choose(Loading(), ArrivesOn(3), null, null, () => new ShelfLoadTick(Step, Local));
@@ -52,7 +52,7 @@ public class LoadingShelfFaceTests
     [Fact]
     public void THE_STEP_LINE_FOLLOWS_THE_TICK()
     {
-        var rig = new WizardRig(width: 120) { PollTime = true };
+        var rig = new SetupRig(width: 120) { PollTime = true };
         var face = rig.TuiFace();
         var done = 0;
 
@@ -68,8 +68,8 @@ public class LoadingShelfFaceTests
     [Fact]
     public void ESC_ARMS_AND_A_SECOND_ESC_LEAVES()
     {
-        var rig = new WizardRig(width: 120) { PollTime = true, WatchKeyBudget = 2 };
-        var face = rig.TuiFace(WizardRig.Esc, WizardRig.Esc);
+        var rig = new SetupRig(width: 120) { PollTime = true, WatchKeyBudget = 2 };
+        var face = rig.TuiFace(SetupRig.Esc, SetupRig.Esc);
 
         var answer = face.Choose(Loading(), () => false, null, null, () => new ShelfLoadTick(Step, null));
 
@@ -81,8 +81,8 @@ public class LoadingShelfFaceTests
     private static readonly string Face = Gatto.Repl.Render.Chrome.Cats.Face(Gatto.Terminal.GlyphSet.Unicode);
 
     //the start-up screen as the flow builds it: the cat as hero rows, the one sentence, and the watch
-    private static WizardScreen.Choice Starting() => new WizardScreen.Choice(
-        SetupFlow.ShelfLoadingKey, null, [], BodyRows: [new WizardRow(Wait)], Watching: true)
+    private static SetupScreen.Choice Starting() => new SetupScreen.Choice(
+        SetupFlow.ShelfLoadingKey, null, [], BodyRows: [new SetupRow(Wait)], Watching: true)
     {
         Hero = [.. Gatto.Repl.Render.Chrome.Cats.For(null, Gatto.Terminal.GlyphSet.Unicode).Split('\n').Select(l => "  " + l.TrimEnd('\r'))],
         Starting = true,
@@ -95,7 +95,7 @@ public class LoadingShelfFaceTests
     [Fact]
     public void THE_START_UP_SCREEN_IS_THE_CAT_WITH_THE_PURR_THE_SENTENCE_AND_THE_STEP_LINE_BESIDE_IT()
     {
-        var rig = new WizardRig(width: 100) { PollTime = true };
+        var rig = new SetupRig(width: 100) { PollTime = true };
         var face = rig.TuiFace();
 
         Assert.Equal(SetupFlow.Landed, face.Choose(Starting(), ArrivesOn(3), null, null, () => new ShelfLoadTick(Step, Local)));
@@ -120,9 +120,9 @@ public class LoadingShelfFaceTests
     public void ONLY_ESC_ACTS_ON_THE_START_UP_SCREEN()
     {
         var right = new ConsoleKeyInfo('\0', ConsoleKey.RightArrow, false, false, false);
-        ConsoleKeyInfo[] keys = [WizardRig.Tab, right, WizardRig.Ch('m'), WizardRig.Ch('b'), WizardRig.Ch('?'),
-            WizardRig.Ch('a'), WizardRig.Enter, WizardRig.Digit('1'), WizardRig.Esc, WizardRig.Esc];
-        var rig = new WizardRig(width: 100) { PollTime = true, WatchKeyBudget = keys.Length };
+        ConsoleKeyInfo[] keys = [SetupRig.Tab, right, SetupRig.Ch('m'), SetupRig.Ch('b'), SetupRig.Ch('?'),
+            SetupRig.Ch('a'), SetupRig.Enter, SetupRig.Digit('1'), SetupRig.Esc, SetupRig.Esc];
+        var rig = new SetupRig(width: 100) { PollTime = true, WatchKeyBudget = keys.Length };
         var face = rig.TuiFace(keys);
 
         Assert.Null(face.Choose(Starting(), () => false, null, null, () => new ShelfLoadTick(Step, null)));
@@ -135,7 +135,7 @@ public class LoadingShelfFaceTests
     [InlineData(false)]
     public void THE_PULSE_AFTER_A_LOADING_VIEW_ADDS_NO_SECOND_PURR(bool starting)
     {
-        var rig = new WizardRig(width: 120) { PollTime = true, Pulse = new FakePulse() };
+        var rig = new SetupRig(width: 120) { PollTime = true, Pulse = new FakePulse() };
         var face = rig.TuiFace();
 
         face.Choose(starting ? Starting() : Loading(), ArrivesOn(2), null, null, () => new ShelfLoadTick(Step, null));
@@ -151,9 +151,9 @@ public class LoadingShelfFaceTests
     [Fact]
     public void A_CHIP_ANSWERS_ITS_FAMILY_DURING_THE_LOAD()
     {
-        var rig = new WizardRig(width: 120) { PollTime = true, WatchKeyBudget = 4 };
+        var rig = new SetupRig(width: 120) { PollTime = true, WatchKeyBudget = 4 };
         var right = new ConsoleKeyInfo('\0', ConsoleKey.RightArrow, false, false, false);
-        var face = rig.TuiFace(WizardRig.Tab, WizardRig.Tab, right, WizardRig.Enter);
+        var face = rig.TuiFace(SetupRig.Tab, SetupRig.Tab, right, SetupRig.Enter);
 
         var answer = face.Choose(Loading(), () => false, null, null, () => new ShelfLoadTick(Step, null));
 

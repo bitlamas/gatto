@@ -10,7 +10,7 @@ public class FlowSearchesModelsTests
     [Fact]
     public void THE_FLOW_SEARCHES_MODELS()
     {
-        var probes = new WizardProbes();
+        var probes = new FakeSetupProbes();
         var flow = new SetupFlow(probes) { CanSwitchSource = true };
         flow.StartPastEngine();
 

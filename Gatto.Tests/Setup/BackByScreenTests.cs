@@ -9,7 +9,7 @@ namespace Gatto.Tests.Setup;
 //back steps one screen per push, a control re-asks in place and pushes nothing. the shelf's filter state travels back with its screen.
 public class BackByScreenTests
 {
-    private static WizardProbes Probes() => new()
+    private static FakeSetupProbes Probes() => new()
     {
         Llama = @"C:\llama\llama-server.exe",
         Rows =
@@ -25,10 +25,10 @@ public class BackByScreenTests
         ],
     };
 
-    private static (SetupFlow Flow, WizardScreen.Choice Shelf) OnTheShelf()
+    private static (SetupFlow Flow, SetupScreen.Choice Shelf) OnTheShelf()
     {
         var flow = new SetupFlow(Probes()) { CanSwitchSource = true };
-        var shelf = Assert.IsType<WizardScreen.Choice>(flow.StartPastEngine());
+        var shelf = Assert.IsType<SetupScreen.Choice>(flow.StartPastEngine());
         Assert.NotNull(shelf.Shelf);
         return (flow, shelf);
     }
@@ -48,7 +48,7 @@ public class BackByScreenTests
     public void A_CHIP_THEN_B_LANDS_ON_THE_SCREEN_BEFORE_THE_SHELF()
     {
         var (flow, _) = OnTheShelf();
-        var filtered = Assert.IsType<WizardScreen.Choice>(ChipWalk.Narrow(flow, "gemma"));
+        var filtered = Assert.IsType<SetupScreen.Choice>(ChipWalk.Narrow(flow, "gemma"));
         Assert.Equal("gemma", filtered.Shelf!.Family);
 
         Assert.Equal(SetupFlow.FoundKey, ScreenKey.Of(flow.Answer(SetupFlow.BackKey)));
@@ -62,7 +62,7 @@ public class BackByScreenTests
         ChipWalk.Narrow(flow, "gemma");
         flow.Answer(SetupFlow.BackKey);
 
-        var again = Assert.IsType<WizardScreen.Choice>(flow.Answer(SetupFlow.FoundUse));
+        var again = Assert.IsType<SetupScreen.Choice>(flow.Answer(SetupFlow.FoundUse));
 
         Assert.Equal("gemma", again.Shelf!.Family);
     }

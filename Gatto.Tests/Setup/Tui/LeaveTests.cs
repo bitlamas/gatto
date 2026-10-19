@@ -112,7 +112,7 @@ public class LeaveTests
         flow.Answer(SetupFlow.Landed);
 
         //every leave option sits before the write pause, so this site can only compose the nothing-written sentence
-        var end = Assert.IsType<WizardScreen.Terminal>(flow.Answer(SetupFlow.ModelArrivedLeave));
+        var end = Assert.IsType<SetupScreen.Terminal>(flow.Answer(SetupFlow.ModelArrivedLeave));
 
         Assert.Equal("left", end.Key);
         Assert.Equal("left at the model", flow.LeftAt);

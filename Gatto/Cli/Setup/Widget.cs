@@ -88,7 +88,7 @@ internal static class Widget
     }
 
     //the then row names the CUDA pair's other half so nobody closes the wizard on one file
-    public static IReadOnlyList<WizardRow> Rows(EngineView v, FetchTick t, int width,
+    public static IReadOnlyList<SetupRow> Rows(EngineView v, FetchTick t, int width,
         GlyphSet? glyphs) =>
         Rows(glyphs ?? GlyphSet.Unicode, t, width, SetupFlow.EngineFacts.Column, v.Into,
             //the engine's companion belongs to the same fetch, so it's announced only while the tick says one is still coming
@@ -97,7 +97,7 @@ internal static class Widget
                 : null);
 
     //the marker counts the files of the unit in flight, the then row announces the next unit. the engine fetch has no pause key, so only this overload takes paused
-    public static IReadOnlyList<WizardRow> Rows(ModelView v, FetchTick t, int width,
+    public static IReadOnlyList<SetupRow> Rows(ModelView v, FetchTick t, int width,
         GlyphSet glyphs, bool paused = false) =>
         Rows(glyphs, t, width, SetupFlow.ModelFacts.Column, v.Into,
             v.Next(t) is { } next
@@ -105,7 +105,7 @@ internal static class Widget
                 : null, paused);
 
     //one composer for both fetches, they differ only in the column and where then comes from
-    private static IReadOnlyList<WizardRow> Rows(
+    private static IReadOnlyList<SetupRow> Rows(
         GlyphSet g, FetchTick t, int width, int column, string into, string? then, bool paused = false) =>
     [
         Row(column, "fetching",
@@ -113,7 +113,7 @@ internal static class Widget
             lift: t.FileName),
         BarRow(g, t, width, column, paused),
         .. then is { Length: > 0 } coming
-            ? (IReadOnlyList<WizardRow>)[Row(column, "then", coming)]
+            ? (IReadOnlyList<SetupRow>)[Row(column, "then", coming)]
             : [],
         Row(column, "into", into),
         //the block's closing blank, a screen with nothing to choose has no option list to keep its last fact off the footer rule
@@ -121,7 +121,7 @@ internal static class Widget
     ];
 
     //the filled run and the two figures are marked by their literal text, so keep each unique in what precedes it
-    private static WizardRow BarRow(GlyphSet g, FetchTick t, int width, int column, bool paused = false)
+    private static SetupRow BarRow(GlyphSet g, FetchTick t, int width, int column, bool paused = false)
     {
         var cells = BarCells(width);
         var filled = Repeat(g.HeavyRule, Filled(t, cells));
@@ -131,12 +131,12 @@ internal static class Widget
             : string.Join($" {g.Dot} ", new[] { Rate(t), Remaining(t) }.Where(s => s.Length > 0));
         var text = new string(' ', column)
             + Bar(t, width, g) + "  " + done + " of " + total + $" {g.Dot} " + tail;
-        return new WizardRow(text, RowTone.Aside, Highlight: filled.Length > 0 ? [filled] : null,
+        return new SetupRow(text, RowTone.Aside, Highlight: filled.Length > 0 ? [filled] : null,
             Hang: column, Lift: [done, total]);
     }
 
     //the same shape EngineFetchView draws, so the screens read as one block (the column is a parameter, each block has its own width)
-    private static WizardRow Row(int column, string label, string value, string? lift = null) =>
+    private static SetupRow Row(int column, string label, string value, string? lift = null) =>
         new(label.PadRight(column) + value, RowTone.Aside,
             Hang: column, Lift: lift is null ? null : [lift]);
 }

@@ -20,7 +20,7 @@ public class CursorBandTests
     [Fact]
     public void THE_SELECTED_OPTION_IS_THE_ONE_BANDED_ROW()
     {
-        var c = new WizardScreen.Choice("pick", "Pick one", [new ChoiceOption("a", "Alpha"), new ChoiceOption("b", "Beta")]);
+        var c = new SetupScreen.Choice("pick", "Pick one", [new ChoiceOption("a", "Alpha"), new ChoiceOption("b", "Beta")]);
 
         var band = Assert.Single(Banded(WalkRender.Inked(c, 100, 30, Dark)));
         Assert.Contains("1. Alpha", Plain(band), StringComparison.Ordinal);

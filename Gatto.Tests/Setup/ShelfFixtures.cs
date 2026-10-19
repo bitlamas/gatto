@@ -64,7 +64,7 @@ internal static class ShelfFixtures
     }
 
     //the flow over fake probes whose one search runs the real engine against the catalog, so nothing on this machine reaches a golden
-    public static (SetupFlow Flow, WizardScreen Screen) Flow(string machine, Entry entry = Entry.Setup, string? home = null,
+    public static (SetupFlow Flow, SetupScreen Screen) Flow(string machine, Entry entry = Entry.Setup, string? home = null,
         IReadOnlyList<FoundModel>? found = null)
     {
         if (home is null)
@@ -74,7 +74,7 @@ internal static class ShelfFixtures
         }
         var live = new LiveSetupProbes(home, GlyphSet.Unicode, TextWriter.Null,
             readHardware: () => new ProbeOutcome(Snapshot(machine), "fixture"), hubHandler: Catalog());
-        var probes = new WizardProbes
+        var probes = new FakeSetupProbes
         {
             Snapshot = Snapshot(machine),
             Answer = request => live.SearchModels(request, null, CancellationToken.None),
@@ -85,15 +85,15 @@ internal static class ShelfFixtures
     }
 
     //the landing shelf of the setup walk, lifted to every regime when asked
-    public static WizardScreen.Choice Shelf(string machine, bool lifted = false)
+    public static SetupScreen.Choice Shelf(string machine, bool lifted = false)
     {
         var (flow, screen) = Flow(machine);
-        var shelf = Assert.IsType<WizardScreen.Choice>(screen);
-        return lifted ? Assert.IsType<WizardScreen.Choice>(flow.Answer(SetupFlow.CtlLift)) : shelf;
+        var shelf = Assert.IsType<SetupScreen.Choice>(screen);
+        return lifted ? Assert.IsType<SetupScreen.Choice>(flow.Answer(SetupFlow.CtlLift)) : shelf;
     }
 
     //the 0-based console row an option's label is painted on, read from the settled frame so no layout arithmetic decides it
-    public static int RowY(WizardScreen.Choice shelf, int row, int width, int height)
+    public static int RowY(SetupScreen.Choice shelf, int row, int width, int height)
     {
         var rows = Gatto.Tests.Setup.Tui.WalkRender.SettledFrame(shelf, width, height: height).Rows;
         var label = shelf.Options[row].Label;
@@ -102,15 +102,15 @@ internal static class ShelfFixtures
     }
 
     //a target of the frame the rig's face paints at this size after these keys, read off its hit map so a press lands where the user would click
-    public static Gatto.Cli.Setup.Tui.HitTarget Target(WizardScreen.Choice c, Gatto.Cli.Setup.HitKind kind, int index = -1,
+    public static Gatto.Cli.Setup.Tui.HitTarget Target(SetupScreen.Choice c, Gatto.Cli.Setup.HitKind kind, int index = -1,
         string? key = null, int width = 120, int height = 0, params ConsoleKeyInfo[] keys) =>
         Targets(c, width, height, keys).Single(t => t.Tag.Kind == kind
             && (index < 0 || t.Tag.Index == index) && (key is null || t.Tag.Key == key));
 
-    public static IReadOnlyList<Gatto.Cli.Setup.Tui.HitTarget> Targets(WizardScreen.Choice c, int width = 120, int height = 0,
+    public static IReadOnlyList<Gatto.Cli.Setup.Tui.HitTarget> Targets(SetupScreen.Choice c, int width = 120, int height = 0,
         params ConsoleKeyInfo[] keys)
     {
-        var rig = new WizardRig(width);
+        var rig = new SetupRig(width);
         rig.Surface.Height = height;
         var face = rig.TuiFace(keys);
         Assert.Throws<InvalidOperationException>(() => face.Choose(c));
@@ -135,9 +135,9 @@ internal static class ShelfFixtures
         (@"D:\weights\Qwen3-8B-Q8_0.gguf", "qwen3", "8B", 9));
 
     //a flow over found files, answered to the local shelf from gatto model's Hub landing
-    public static (SetupFlow Flow, WizardScreen.Choice Shelf) LocalFlow(params (string, string?, string?, int)[] files)
+    public static (SetupFlow Flow, SetupScreen.Choice Shelf) LocalFlow(params (string, string?, string?, int)[] files)
     {
-        var probes = new WizardProbes
+        var probes = new FakeSetupProbes
         {
             Llama = @"C:\llama\llama-server.exe",
             Snapshot = Snapshot("unified"),
@@ -145,7 +145,7 @@ internal static class ShelfFixtures
         };
         var flow = new SetupFlow(probes) { CanSwitchSource = true };
         flow.StartAtModelSegment();
-        return (flow, Assert.IsType<WizardScreen.Choice>(flow.Answer(SetupFlow.CtlSource)));
+        return (flow, Assert.IsType<SetupScreen.Choice>(flow.Answer(SetupFlow.CtlSource)));
     }
 
     //the plain text a target covers, sliced by display cells. a frame taller than the terminal scrolled, so the painted row is the target's row plus the excess
@@ -165,7 +165,7 @@ internal static class ShelfFixtures
     }
 
     //the keys that open the selected row's publisher from the list: Tab round the ring to the files, then Enter
-    public static ConsoleKeyInfo[] OpenKeys(WizardScreen.Choice shelf, int width = 120)
+    public static ConsoleKeyInfo[] OpenKeys(SetupScreen.Choice shelf, int width = 120)
     {
         var ring = Gatto.Cli.Setup.Shelves.Shelf.Regions(shelf.Shelf!, width, 0, shelf.Door is not null).ToList();
         var tabs = (ring.IndexOf(Region.Files) - ring.IndexOf(Gatto.Cli.Setup.Shelves.Shelf.Opening(shelf.Shelf!)) + ring.Count) % ring.Count;

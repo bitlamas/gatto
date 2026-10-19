@@ -3,7 +3,7 @@ using Gatto.Terminal;
 namespace Gatto.Cli.Setup;
 
 //the wizard owns the screen for the length of a run. the restore call is idempotent, so its finally can race a ProcessExit handler
-internal static class WizardSession
+internal static class SetupSession
 {
     //run walk in the alt buffer, restore on every exit, then print the last frame to scrollback. read the frame after the restore, so a throw prints it
     public static int Run(

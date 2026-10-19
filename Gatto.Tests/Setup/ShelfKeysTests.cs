@@ -15,10 +15,10 @@ public class ShelfKeysTests
         RepoId: id, Publisher: "unsloth", PickedQuant: new HubQuant("m-Q4_K_M.gguf", 4_000_000_000, null),
         Fit: FitRegime.FitsGpu, NativeCtx: 262144, Params: 9_000_000_000);
 
-    private static WizardScreen.Choice Shelf()
+    private static SetupScreen.Choice Shelf()
     {
-        var flow = new SetupFlow(new WizardProbes { Rows = [Row("unsloth/a"), Row("unsloth/b")] }) { CanSwitchSource = true };
-        return Assert.IsType<WizardScreen.Choice>(flow.StartPastEngine());
+        var flow = new SetupFlow(new FakeSetupProbes { Rows = [Row("unsloth/a"), Row("unsloth/b")] }) { CanSwitchSource = true };
+        return Assert.IsType<SetupScreen.Choice>(flow.StartPastEngine());
     }
 
     private static ConsoleKeyInfo Ch(char c) => new(c, ConsoleKey.NoName, false, false, false);
@@ -69,14 +69,14 @@ public class ShelfKeysTests
     {
         using var release = new ManualResetEventSlim(false);
         var tokens = new List<CancellationToken>();
-        var probes = new WizardProbes
+        var probes = new FakeSetupProbes
         {
             Slow = (r, _, ct) =>
             {
                 lock (tokens) tokens.Add(ct);
-                if (r.Lit.Contains("glm")) return WizardProbes.Outcome([Row("unsloth/new")]);
+                if (r.Lit.Contains("glm")) return FakeSetupProbes.Outcome([Row("unsloth/new")]);
                 release.Wait(TimeSpan.FromSeconds(5), CancellationToken.None);
-                return WizardProbes.Outcome([Row("unsloth/old")]);
+                return FakeSetupProbes.Outcome([Row("unsloth/old")]);
             },
         };
         var flow = new SetupFlow(probes) { CanSwitchSource = true, LoadsShelfInBackground = true };
@@ -88,7 +88,7 @@ public class ShelfKeysTests
         release.Set();
 
         Assert.True(SpinWait.SpinUntil(flow.PollWatch, TimeSpan.FromSeconds(5)));
-        var landed = Assert.IsType<WizardScreen.Choice>(flow.Answer(SetupFlow.Landed));
+        var landed = Assert.IsType<SetupScreen.Choice>(flow.Answer(SetupFlow.Landed));
         Assert.Equal(["new"], landed.Shelf!.Rows.Select(r => r.Model));
     }
 }

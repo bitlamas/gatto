@@ -19,13 +19,13 @@ public class MachineTests
     private static readonly HardwareNames Names = new("AMD RYZEN AI MAX+ 395", "AMD Radeon 8060S Graphics");
 
     private static SetupFlow Flow(HardwareSnapshot? hw, HardwareNames names) =>
-        new(new WizardProbes { Llama = null, Snapshot = hw, Names = names });
+        new(new FakeSetupProbes { Llama = null, Snapshot = hw, Names = names });
 
-    private static WizardScreen.Choice Machine(HardwareSnapshot? hw, HardwareNames names)
+    private static SetupScreen.Choice Machine(HardwareSnapshot? hw, HardwareNames names)
     {
         var flow = Flow(hw, names);
         flow.Start();
-        return Assert.IsType<WizardScreen.Choice>(flow.Answer(SetupFlow.WelcomeGo));
+        return Assert.IsType<SetupScreen.Choice>(flow.Answer(SetupFlow.WelcomeGo));
     }
 
     //a discrete card, 32 GB installed with an 8 GB card whose display reserve leaves about 6.5 GB for a model

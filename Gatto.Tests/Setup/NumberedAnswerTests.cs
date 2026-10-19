@@ -24,7 +24,7 @@ public class NumberedAnswerTests
     [Fact]
     public void AN_OUT_OF_RANGE_NUMBER_REFUSES_BY_NAME_RATHER_THAN_INDEXING()
     {
-        var flow = new SetupFlow(new WizardProbes
+        var flow = new SetupFlow(new FakeSetupProbes
         {
             Rows = [HubRow("unsloth/one")],
             Found = [OnDisk("only-one")],
@@ -42,7 +42,7 @@ public class NumberedAnswerTests
     [Fact]
     public void THE_COUNT_IN_THE_REFUSAL_IS_THE_LIST_THAT_WAS_CONSULTED()
     {
-        var flow = new SetupFlow(new WizardProbes
+        var flow = new SetupFlow(new FakeSetupProbes
         {
             Rows = [HubRow("unsloth/a"), HubRow("unsloth/b"), HubRow("unsloth/c")],
             Found = [OnDisk("one")],
@@ -68,7 +68,7 @@ public class NumberedAnswerTests
     [InlineData("")]
     public void A_MALFORMED_NUMBER_REFUSES_THE_SAME_WAY(string key)
     {
-        var flow = new SetupFlow(new WizardProbes { Rows = [HubRow("unsloth/one")], Found = [OnDisk("one")] });
+        var flow = new SetupFlow(new FakeSetupProbes { Rows = [HubRow("unsloth/one")], Found = [OnDisk("one")] });
         flow.StartPastEngine();
 
         var boom = Assert.Throws<InvalidOperationException>(() => flow.Answer(key));
@@ -80,7 +80,7 @@ public class NumberedAnswerTests
     [Fact]
     public void AN_IN_RANGE_NUMBER_STILL_PICKS_ITS_ROW()
     {
-        var flow = new SetupFlow(new WizardProbes
+        var flow = new SetupFlow(new FakeSetupProbes
         {
             Rows = [HubRow("unsloth/one")],
             Found = [OnDisk("first"), OnDisk("second")],

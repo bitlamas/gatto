@@ -12,9 +12,9 @@ namespace Gatto.Tests.Setup;
 //a local row holds its model's files in the pane, one folder per line, priced once and chosen by path
 public class LocalGroupedRowTests
 {
-    private static (SetupFlow Flow, WizardScreen.Choice Shelf) Local(params (string, string?, string?, int)[] files)
+    private static (SetupFlow Flow, SetupScreen.Choice Shelf) Local(params (string, string?, string?, int)[] files)
     {
-        var probes = new WizardProbes
+        var probes = new FakeSetupProbes
         {
             Llama = @"C:\llama\llama-server.exe",
             Snapshot = ShelfFixtures.Snapshot("unified"),
@@ -22,7 +22,7 @@ public class LocalGroupedRowTests
         };
         var flow = new SetupFlow(probes) { CanSwitchSource = true };
         flow.StartAtModelSegment();
-        return (flow, Assert.IsType<WizardScreen.Choice>(flow.Answer(SetupFlow.CtlSource)));
+        return (flow, Assert.IsType<SetupScreen.Choice>(flow.Answer(SetupFlow.CtlSource)));
     }
 
     private static readonly (string, string?, string?, int)[] TwoFolders =
@@ -62,7 +62,7 @@ public class LocalGroupedRowTests
         var ring = Shelf.Regions(shelf.Shelf!, 120, 0, shelf.Door is not null).ToList();
         var tabs = (ring.IndexOf(Region.Files) - ring.IndexOf(Region.List) + ring.Count) % ring.Count;
         var (answer, _) = WalkRender.Answered(shelf, 120,
-            [.. Enumerable.Repeat(WizardRig.Tab, tabs), WizardRig.Down, WizardRig.Down, WizardRig.Enter]);
+            [.. Enumerable.Repeat(SetupRig.Tab, tabs), SetupRig.Down, SetupRig.Down, SetupRig.Enter]);
         flow.Answer(answer!);
         Assert.Equal(@"C:\m\x-Q8_0.gguf", flow.Selected!.Path);
     }
@@ -72,7 +72,7 @@ public class LocalGroupedRowTests
     {
         var (flow, _) = Local((@"C:\a\one-Q4_K_M.gguf", "qwen3", "8B", 5), (@"C:\b\two-Q4_K_M.gguf", "gemma3", "4B", 3));
         var family = Families.Load().FamilyOf("gemma3")!;
-        var lit = Assert.IsType<WizardScreen.Choice>(flow.Answer(SetupFlow.CtlFamily + family));
+        var lit = Assert.IsType<SetupScreen.Choice>(flow.Answer(SetupFlow.CtlFamily + family));
         var row = Assert.Single(lit.Shelf!.Rows);
         Assert.Equal("two", row.Model);
         flow.Answer(lit.Options[0].Key);
@@ -82,7 +82,7 @@ public class LocalGroupedRowTests
     [Fact]
     public void A_PARTIAL_SETS_LINE_SAYS_HOW_MANY_FILES_ARE_HERE()
     {
-        var probes = new WizardProbes
+        var probes = new FakeSetupProbes
         {
             Llama = @"C:\llama\llama-server.exe",
             Snapshot = ShelfFixtures.Snapshot("unified"),
@@ -91,7 +91,7 @@ public class LocalGroupedRowTests
         probes.Found = [scan[0] with { ShardsPresent = 2 }, scan[1]];
         var flow = new SetupFlow(probes) { CanSwitchSource = true };
         flow.StartAtModelSegment();
-        var shelf = Assert.IsType<WizardScreen.Choice>(flow.Answer(SetupFlow.CtlSource));
+        var shelf = Assert.IsType<SetupScreen.Choice>(flow.Answer(SetupFlow.CtlSource));
         var (rows, _) = HitMapTests.Painted(shelf);
         Assert.Contains(rows, r => r.Contains("2 of 3 files here"));
     }
@@ -122,7 +122,7 @@ public class LocalGroupedRowTests
     [Fact]
     public void ONE_SHELF_ASKS_EACH_FILES_MODEL_ONCE()
     {
-        var probes = new WizardProbes
+        var probes = new FakeSetupProbes
         {
             Llama = @"C:\llama\llama-server.exe",
             Snapshot = ShelfFixtures.Snapshot("unified"),
@@ -163,7 +163,7 @@ public class LocalGroupedRowTests
         var ring = Shelf.Regions(shelf.Shelf!, 80, 0, shelf.Door is not null).ToList();
         var tabs = (ring.IndexOf(Region.Files) - ring.IndexOf(Region.List) + ring.Count) % ring.Count;
         var (answer, _) = WalkRender.Answered(shelf, 80,
-            [.. Enumerable.Repeat(WizardRig.Tab, tabs), new ConsoleKeyInfo('\0', ConsoleKey.RightArrow, false, false, false), WizardRig.Enter]);
+            [.. Enumerable.Repeat(SetupRig.Tab, tabs), new ConsoleKeyInfo('\0', ConsoleKey.RightArrow, false, false, false), SetupRig.Enter]);
         flow.Answer(answer!);
         Assert.Equal(@"C:\m\gemma-4-26B-A4B-it-Q8_0.gguf", flow.Selected!.Path);
     }
@@ -174,7 +174,7 @@ public class LocalGroupedRowTests
         var (flow, shelf) = ShelfFixtures.LocalFlow((@"C:\m\gemma-4-26B-A4B-it-Q8_0.gguf", "llama", "8B", 9), (@"C:\m\gemma-4-26B-A4B-it-Q4_K_M.gguf", "llama", "8B", 5));
         var ring = Shelf.Regions(shelf.Shelf!, 80, 0, shelf.Door is not null).ToList();
         var tabs = (ring.IndexOf(Region.Files) - ring.IndexOf(Region.List) + ring.Count) % ring.Count;
-        var (answer, _) = WalkRender.Answered(shelf, 80, [.. Enumerable.Repeat(WizardRig.Tab, tabs), WizardRig.Enter]);
+        var (answer, _) = WalkRender.Answered(shelf, 80, [.. Enumerable.Repeat(SetupRig.Tab, tabs), SetupRig.Enter]);
         flow.Answer(answer!);
         Assert.Equal(@"C:\m\gemma-4-26B-A4B-it-Q4_K_M.gguf", flow.Selected!.Path);
     }

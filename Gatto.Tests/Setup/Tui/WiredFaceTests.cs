@@ -24,14 +24,14 @@ public class WiredFaceTests
 
     private static ConsoleKeyInfo Sp(ConsoleKey key) => new('\0', key, false, false, false);
 
-    private static (RecordingSurface S, TuiWizardSurface F) Face(int width = 100, params ConsoleKeyInfo[] keys) =>
+    private static (RecordingSurface S, TuiSetupSurface F) Face(int width = 100, params ConsoleKeyInfo[] keys) =>
         Face(null, width, keys);
 
-    private static (RecordingSurface S, TuiWizardSurface F) Face(
+    private static (RecordingSurface S, TuiSetupSurface F) Face(
         Func<bool, IPollClock>? clock, int width = 100, params ConsoleKeyInfo[] keys)
     {
         var s = new RecordingSurface { Width = width };
-        return (s, new TuiWizardSurface(s, new Keys(keys), new Theme(new TermCaps(true, true)),
+        return (s, new TuiSetupSurface(s, new Keys(keys), new Theme(new TermCaps(true, true)),
             Version, Build, () => 0, clock));
     }
 
@@ -50,12 +50,12 @@ public class WiredFaceTests
         //one string only RunSetup says, so the slice is proven to be its body before the negative assertions
         Assert.Contains("gatto setup needs a terminal it can ask questions in", body, StringComparison.Ordinal);
 
-        Assert.Contains("new Setup.Tui.TuiWizardSurface(", body, StringComparison.Ordinal);
+        Assert.Contains("new Setup.Tui.TuiSetupSurface(", body, StringComparison.Ordinal);
         //the mouse setting reaches all three places it acts: the face's source, the alt screen's wheel and the session's input mode
         Assert.Contains("surface, input.Source, chrome,", body, StringComparison.Ordinal);
         Assert.Contains("QuietWheel = input.QuietWheel", body, StringComparison.Ordinal);
         Assert.Contains("inputMode: input.Mode", body, StringComparison.Ordinal);
-        Assert.Contains("Setup.WizardSession.Run(", body, StringComparison.Ordinal);
+        Assert.Contains("Setup.SetupSession.Run(", body, StringComparison.Ordinal);
         Assert.DoesNotContain("new Setup.SetupFace(", body);
 
         //probes are handed the face's writer, the third argument after the glyph set. a console writer would put a server log on the painted frame
@@ -64,7 +64,7 @@ public class WiredFaceTests
         Assert.DoesNotContain("new Setup.LiveSetupProbes(home, face.Glyphs, Console.Out", body);
 
         //the session member composes what reaches the scrollback, so the face passes it the last frame and no console writer
-        Assert.Contains("Setup.WizardSession.Scrollback(", body, StringComparison.Ordinal);
+        Assert.Contains("Setup.SetupSession.Scrollback(", body, StringComparison.Ordinal);
         Assert.DoesNotContain("home), () => face.LastPainted, Console.Out", body);
 
         //the countdown runs on the real clock between the record and the REPL, so the record is there before the REPL starts
@@ -98,7 +98,7 @@ public class WiredFaceTests
     public void A_KEYS_ONLY_FOOTER_SAYS_WHAT_ITS_OWN_OPTIONS_SAY()
     {
         var (_, f) = Face(100, Sp(ConsoleKey.Enter));
-        f.Choose(new WizardScreen.Choice("k", "Well?",
+        f.Choose(new SetupScreen.Choice("k", "Well?",
             [new("a", "carry on"), new("b", "stop here")], KeysOnly: true));
 
         Assert.Equal("  Enter carry on   Esc stop here", f.LastPainted[^1]);
@@ -109,7 +109,7 @@ public class WiredFaceTests
     public void ESC_ANSWERS_THE_SECOND_OPTION_ON_ANY_KEYS_ONLY_SCREEN()
     {
         var (_, f) = Face(100, Sp(ConsoleKey.Escape));
-        var answer = f.Choose(new WizardScreen.Choice("k", "Well?",
+        var answer = f.Choose(new SetupScreen.Choice("k", "Well?",
             [new("a", "carry on"), new("b", "stop here")], KeysOnly: true));
 
         Assert.Equal("b", answer);
@@ -121,7 +121,7 @@ public class WiredFaceTests
     {
         var (_, f) = Face(100, Sp(ConsoleKey.Enter));
         var boom = Assert.Throws<InvalidOperationException>(() => f.Choose(
-            new WizardScreen.Choice("k", "Well?",
+            new SetupScreen.Choice("k", "Well?",
                 [new("a", "one"), new("b", "two"), new("c", "three")], KeysOnly: true)));
 
         Assert.Contains("exactly two options", boom.Message, StringComparison.Ordinal);
@@ -137,7 +137,7 @@ public class WiredFaceTests
         var options = Enumerable.Range(0, count).Select(i => new ChoiceOption($"k{i}", $"option {i}")).ToArray();
 
         var boom = Assert.Throws<InvalidOperationException>(() => f.Choose(
-            new WizardScreen.Choice("k", "Well?", options, KeysOnly: true)));
+            new SetupScreen.Choice("k", "Well?", options, KeysOnly: true)));
 
         Assert.Contains("exactly two options", boom.Message, StringComparison.Ordinal);
     }
@@ -149,22 +149,22 @@ public class WiredFaceTests
     public void A_CHOICE_SCREEN_RENDERS_ITS_PROSE_NOT_JUST_ITS_OPTIONS()
     {
         var (_, f) = Face(100, Sp(ConsoleKey.Enter));
-        f.Choose(new WizardScreen.Choice("k", "Ready?",
+        f.Choose(new SetupScreen.Choice("k", "Ready?",
             [new("yes", "Yes"), new("no", "No")],
-            BodyRows: [new WizardRow("gatto is an AI assistant that lives in your terminal.")]));
+            BodyRows: [new SetupRow("gatto is an AI assistant that lives in your terminal.")]));
 
         var screen = string.Join("\n", f.LastPainted);
         Assert.Contains("gatto is an AI assistant that lives in your terminal.", screen, StringComparison.Ordinal);
         Assert.Contains("1. Yes", screen, StringComparison.Ordinal);
     }
 
-    //the wrap goes through WizardRows at the live width, so both faces break a long row in the same place
+    //the wrap goes through SetupRows at the live width, so both faces break a long row in the same place
     [Fact]
     public void A_LONG_BODY_ROW_WRAPS_INSIDE_THE_FRAME()
     {
         var sentence = string.Join(" ", Enumerable.Repeat("word", 40));
         var (_, f) = Face(60, Sp(ConsoleKey.Enter));
-        f.Choose(new WizardScreen.Choice("k", null, [new("ok", "Ok")], BodyRows: [new WizardRow(sentence)]));
+        f.Choose(new SetupScreen.Choice("k", null, [new("ok", "Ok")], BodyRows: [new SetupRow(sentence)]));
 
         Assert.All(f.LastPainted, r => Assert.True(UnicodeWidth.Of(r) <= 60, $"row overflows 60: {r}"));
         //all 40 words are still on the screen, a truncated row would drop some
@@ -176,8 +176,8 @@ public class WiredFaceTests
     public void AN_ASK_RENDERS_ITS_BODY_AND_ITS_COMPLAINT_TOGETHER()
     {
         var (_, f) = Face(100, Sp(ConsoleKey.Enter), Sp(ConsoleKey.Escape));
-        f.Ask(new WizardScreen.Ask("k", "Where is it?", _ => "that is not a path",
-            BodyRows: [new WizardRow("gatto looked in the usual places and found nothing.")]));
+        f.Ask(new SetupScreen.Ask("k", "Where is it?", _ => "that is not a path",
+            BodyRows: [new SetupRow("gatto looked in the usual places and found nothing.")]));
 
         var screen = string.Join("\n", f.LastPainted);
         Assert.Contains("gatto looked in the usual places", screen, StringComparison.Ordinal);
@@ -192,7 +192,7 @@ public class WiredFaceTests
     {
         var (_, f) = Face(100);
         var answer = f.Choose(
-            new WizardScreen.Choice("model.download", null, [new("again", "Look again")], Watching: true),
+            new SetupScreen.Choice("model.download", null, [new("again", "Look again")], Watching: true),
             watch: () => true);
 
         Assert.Equal(SetupFlow.Landed, answer);
@@ -207,7 +207,7 @@ public class WiredFaceTests
         var (_, f) = Face(_ => new CountingClock(() => waits++), 100);
 
         var answer = f.Choose(
-            new WizardScreen.Choice("model.download", null, [new("again", "Look again")], Watching: true),
+            new SetupScreen.Choice("model.download", null, [new("again", "Look again")], Watching: true),
             watch: () => ++looks >= 3);
 
         Assert.Equal(SetupFlow.Landed, answer);
@@ -229,7 +229,7 @@ public class WiredFaceTests
         var waits = 0;
         var (_, f) = Face(_ => new CountingClock(() => waits++), 100, Sp(ConsoleKey.Enter));
 
-        f.Choose(new WizardScreen.Choice("k", "Ready?", [new("yes", "Yes")]), watch: () => true);
+        f.Choose(new SetupScreen.Choice("k", "Ready?", [new("yes", "Yes")]), watch: () => true);
         Assert.Equal(0, waits);
     }
 
@@ -239,7 +239,7 @@ public class WiredFaceTests
     [Fact]
     public void THE_VERSION_AND_BUILD_HAVE_NO_DEFAULTS_TO_FALL_BACK_ON()
     {
-        var ctors = typeof(TuiWizardSurface).GetConstructors(BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance);
+        var ctors = typeof(TuiSetupSurface).GetConstructors(BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance);
         Assert.NotEmpty(ctors);
         foreach (var ctor in ctors)
             foreach (var name in new[] { "version", "build" })
@@ -251,15 +251,15 @@ public class WiredFaceTests
 
     //gap 5: the probes write into the face
 
-    private static (RecordingSurface S, TuiWizardSurface F) ClockedFace(Func<long> now, params ConsoleKeyInfo[] keys)
+    private static (RecordingSurface S, TuiSetupSurface F) ClockedFace(Func<long> now, params ConsoleKeyInfo[] keys)
         => ClockedFace(now, null, keys);
 
     //no pulse means no purr and never the real timer, which is what a test wants unless it is about the purr
-    private static (RecordingSurface S, TuiWizardSurface F) ClockedFace(
+    private static (RecordingSurface S, TuiSetupSurface F) ClockedFace(
         Func<long> now, FakePulse? pulse, params ConsoleKeyInfo[] keys)
     {
         var s = new RecordingSurface { Width = 100 };
-        return (s, new TuiWizardSurface(s, new Keys(keys), new Theme(new TermCaps(true, true)),
+        return (s, new TuiSetupSurface(s, new Keys(keys), new Theme(new TermCaps(true, true)),
             Version, Build, now, pulse: pulse is null ? null : () => pulse));
     }
 
@@ -280,16 +280,16 @@ public class WiredFaceTests
     public void FORTY_LINES_OF_PROBE_OUTPUT_LEAVE_THE_FRAME_BYTE_IDENTICAL()
     {
         var s = new RecordingSurface { Width = 100 };
-        TuiWizardSurface? face = null;
+        TuiSetupSurface? face = null;
         var keys = new ProbingKeys(
             () => { for (var i = 0; i < 40; i++) face!.Notes.WriteLine($"llama-server: line {i}"); },
             Sp(ConsoleKey.Enter));
         //the keys need the face and the face needs the keys, so face is filled in once f exists
-        var f = new TuiWizardSurface(s, keys, new Theme(new TermCaps(true, true)), Version, Build, () => 0);
+        var f = new TuiSetupSurface(s, keys, new Theme(new TermCaps(true, true)), Version, Build, () => 0);
         face = f;
 
-        var screen = new WizardScreen.Choice("k", "Ready?", [new("yes", "Yes")],
-            BodyRows: [new WizardRow("a sentence the probe must not scribble on.")]);
+        var screen = new SetupScreen.Choice("k", "Ready?", [new("yes", "Yes")],
+            BodyRows: [new SetupRow("a sentence the probe must not scribble on.")]);
         //one option and no typed field is the shape that draws the blank before the footer rule, and the probe's words stay the subject
 
         f.Paint((_, _) => ScreenOf(screen));
@@ -310,9 +310,9 @@ public class WiredFaceTests
     }
 
     //the screen the face would paint for this choice, so the test can snapshot the frame before the probe and compare it after
-    private static Screen ScreenOf(WizardScreen.Choice c) => new(
+    private static Screen ScreenOf(SetupScreen.Choice c) => new(
         c.Strip, Region.List, c.Question,
-        [.. WizardRows.Plain(c.BodyRows, 100, glyphs: GlyphSet.Unicode), "",
+        [.. SetupRows.Plain(c.BodyRows, 100, glyphs: GlyphSet.Unicode), "",
          .. c.Options.Select((o, i) => (i == 0 ? "❯ " : "  ") + $"{i + 1}. {o.Label}"),
          //this helper mirrors the face row for row, so the comparison is about the probe rather than a pinned composition
          ""],
@@ -435,7 +435,7 @@ public class WiredFaceTests
         var alt = new AltScreen(new RecordingSurface { Width = 100 }, title: null);
         var epilogue = new StringWriter();
 
-        WizardSession.Run(alt, () => 0, () => ["the closing frame"], epilogue,
+        SetupSession.Run(alt, () => 0, () => ["the closing frame"], epilogue,
             notes: () => ["llama-server: could not bind port 1235"], registerHooks: false);
 
         var text = epilogue.ToString();
@@ -455,7 +455,7 @@ public class WiredFaceTests
         var alt = new AltScreen(surface, title: null);
         var epilogue = new StringWriter();
 
-        Assert.Throws<InvalidOperationException>(() => WizardSession.Run(
+        Assert.Throws<InvalidOperationException>(() => SetupSession.Run(
             alt, () => throw new InvalidOperationException("boom"), () => ["the last frame"],
             epilogue, registerHooks: false));
 
@@ -472,7 +472,7 @@ public class WiredFaceTests
         var epilogue = new StringWriter();
         var frame = new List<string> { "before the walk" };
 
-        var code = WizardSession.Run(
+        var code = SetupSession.Run(
             alt, () => { frame[0] = "after the walk"; return 3; }, () => frame, epilogue, registerHooks: false);
 
         Assert.Equal(3, code);
@@ -487,7 +487,7 @@ public class WiredFaceTests
         var alt = new AltScreen(new RecordingSurface { Width = 100 }, title: null);
         var epilogue = new StringWriter();
 
-        Assert.Throws<InvalidOperationException>(() => WizardSession.Run(
+        Assert.Throws<InvalidOperationException>(() => SetupSession.Run(
             alt, () => throw new InvalidOperationException("boom"),
             () => ["the closing frame"],
             epilogue,
@@ -512,7 +512,7 @@ public class WiredFaceTests
         var alt = new AltScreen(surface, title: null);
         var upDuringWalk = false;
 
-        WizardSession.Run(alt, () => { upDuringWalk = alt.Active; return 0; }, () => [], new StringWriter(),
+        SetupSession.Run(alt, () => { upDuringWalk = alt.Active; return 0; }, () => [], new StringWriter(),
             registerHooks: false);
 
         Assert.True(upDuringWalk, "the walk ran on the main screen");

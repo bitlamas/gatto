@@ -15,7 +15,7 @@ internal static class MachineFacts
     //below 90 columns the why clauses shorten, the numbers they qualify stay put
     private const int CompactBelow = 90;
 
-    public static IReadOnlyList<WizardRow> Rows(HardwareSnapshot? hw, HardwareNames names, int width)
+    public static IReadOnlyList<SetupRow> Rows(HardwareSnapshot? hw, HardwareNames names, int width)
     {
         if (hw is null) return Unread();
 
@@ -34,14 +34,14 @@ internal static class MachineFacts
     }
 
     //the probe read nothing, so these rows claim no numbers and must not borrow the CPU-only ones
-    private static IReadOnlyList<WizardRow> Unread() =>
+    private static IReadOnlyList<SetupRow> Unread() =>
     [
         Fact("memory", "couldn't be read on this machine"),
         Fact("models", "nothing on the shelf is priced against this machine"),
     ];
 
     //no gpu argument here, a chip name above 'no graphics driver' would name what the row just said was missing
-    private static IReadOnlyList<WizardRow> CpuOnly(
+    private static IReadOnlyList<SetupRow> CpuOnly(
         HardwareSnapshot hw, HardwareClass c, string cpu, bool compact) =>
     [
         Fact("cpu", cpu),
@@ -53,7 +53,7 @@ internal static class MachineFacts
                 : ", half kept free for Windows, browser and other apps")),
     ];
 
-    private static IReadOnlyList<WizardRow> Unified(
+    private static IReadOnlyList<SetupRow> Unified(
         HardwareSnapshot hw, HardwareClass c, string cpu, string gpu, bool compact)
     {
         var vram = hw.GraphicsMemoryBytes ?? 0;
@@ -90,7 +90,7 @@ internal static class MachineFacts
         ];
     }
 
-    private static IReadOnlyList<WizardRow> Discrete(
+    private static IReadOnlyList<SetupRow> Discrete(
         HardwareSnapshot hw, HardwareClass c, string cpu, string gpu, bool compact)
     {
         var vram = hw.GraphicsMemoryBytes ?? 0;
@@ -115,7 +115,7 @@ internal static class MachineFacts
     }
 
     //the memory row follows the share kind, carved out is only true of memory the firmware took from Windows
-    private static IReadOnlyList<WizardRow> Carveout(
+    private static IReadOnlyList<SetupRow> Carveout(
         HardwareSnapshot hw, HardwareClass c, string cpu, string gpu, bool compact)
     =>
     [
@@ -131,7 +131,7 @@ internal static class MachineFacts
     ];
 
     //put any wrapped remainder under the text column, and highlight the GB figures, the goldens would match either way
-    private static WizardRow Fact(string label, string text) =>
+    private static SetupRow Fact(string label, string text) =>
         new(label.PadRight(Column) + text, RowTone.Aside, Highlight: Figures(text), Indent: 0, Hang: Column);
 
     //sort the spans longest first, the face matches greedily and 8 GB inside 88 GB would split the number

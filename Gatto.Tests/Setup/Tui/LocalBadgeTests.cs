@@ -22,24 +22,24 @@ public class LocalBadgeTests
         ModelKey: File, Measured: new DateOnly(2026, 9, 6), GattoBuild: "abc1234",
         SamplingNote: "defaults", Passed: 5, Ran: 5, RepoId: "unsloth/Ministral-3-3B-GGUF");
 
-    private static WizardProbes Probes(bool measured)
+    private static FakeSetupProbes Probes(bool measured)
     {
-        var p = new WizardProbes { Llama = @"C:\llama\llama-server.exe", Found = [OnDisk()] };
+        var p = new FakeSetupProbes { Llama = @"C:\llama\llama-server.exe", Found = [OnDisk()] };
         if (measured) p.Badges[File] = Measured();
         return p;
     }
 
     //the local shelf reached the way the flow reaches it, and the helper asserts the source it got
-    private static WizardScreen.Choice LocalShelfOf(WizardProbes probes)
+    private static SetupScreen.Choice LocalShelfOf(FakeSetupProbes probes)
     {
         var flow = new SetupFlow(probes) { CanSwitchSource = true };
         flow.StartPastEngine();
-        var local = Assert.IsType<WizardScreen.Choice>(flow.Answer(ShelfControls.SourceAnswer()));
+        var local = Assert.IsType<SetupScreen.Choice>(flow.Answer(ShelfControls.SourceAnswer()));
         Assert.Equal(ShelfSource.Local, local.Shelf!.Source);
         return local;
     }
 
-    private static string Screen(WizardProbes probes) =>
+    private static string Screen(FakeSetupProbes probes) =>
         string.Join("\n", WalkRender.Choice(LocalShelfOf(probes), 100,
             script: [new ConsoleKeyInfo('\0', ConsoleKey.Enter, false, false, false)]).Rows);
 
@@ -56,7 +56,7 @@ public class LocalBadgeTests
     [Fact]
     public void AN_UNPRICED_ROW_CARRIES_ITS_BADGE_TOO()
     {
-        var probes = new WizardProbes
+        var probes = new FakeSetupProbes
         {
             Llama = @"C:\llama\llama-server.exe",
             Found = [OnDisk()],

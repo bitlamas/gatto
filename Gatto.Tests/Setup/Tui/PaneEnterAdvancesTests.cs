@@ -23,24 +23,24 @@ public class PaneEnterAdvancesTests
         Downloads: 900, Gated: false, Params: 26_000_000_000, Arch: "gemma3");
 
     //two files, so the pane cursor's file and the row's own default are different answers. with one file, or without the Down, both would come out the same
-    private static WizardScreen.Choice OnTheShelf()
+    private static SetupScreen.Choice OnTheShelf()
     {
         var shelf = new ShelfView([Row()], MachineShape.UnifiedWithShare, Total: 1,
             Facts: [new ModelFacts(Files: [
                 new PaneFile(Knee, 16_900_000_000, FitRegime.FitsGpu, Ref(Knee)),
                 new PaneFile(Heavier, 21_100_000_000, FitRegime.FitsGpu, Ref(Heavier))])]);
-        return new WizardScreen.Choice(SetupFlow.SearchKey, "Which model should gatto start with?",
+        return new SetupScreen.Choice(SetupFlow.SearchKey, "Which model should gatto start with?",
             [new ChoiceOption("0", "unsloth/gemma-4-26B")],
             Shelf: shelf, Door: SetupFlow.ShelfDoorPlaceholderOf(Gatto.Terminal.GlyphSet.Unicode));
     }
 
     private static ConsoleKeyInfo Key(ConsoleKey k) => new('\0', k, false, false, false);
 
-    private static IReadOnlyList<Region> Ring(WizardScreen.Choice c) =>
+    private static IReadOnlyList<Region> Ring(SetupScreen.Choice c) =>
         Shelf.Regions(c.Shelf!, 100, 0, c.Door is not null);
 
     //count Tab from Opening, where the keys start on a populated shelf. from index 0 the helper ends one zone short and the failure reads as the defect under test
-    private static IEnumerable<ConsoleKeyInfo> TabTo(WizardScreen.Choice c, Region want)
+    private static IEnumerable<ConsoleKeyInfo> TabTo(SetupScreen.Choice c, Region want)
     {
         var ring = Ring(c).ToList();
         var steps = (ring.IndexOf(want) - ring.IndexOf(Shelf.Opening(c.Shelf!)) + ring.Count) % ring.Count;

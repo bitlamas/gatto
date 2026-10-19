@@ -76,9 +76,9 @@ public class ShelfDoorTests
         Assert.Equal("1", answer);
     }
 
-    private static (SetupFlow Flow, WizardProbes Probes) OnTheShelf()
+    private static (SetupFlow Flow, FakeSetupProbes Probes) OnTheShelf()
     {
-        var probes = new WizardProbes();
+        var probes = new FakeSetupProbes();
         var flow = new SetupFlow(probes);
         Assert.Equal(SetupFlow.SearchKey, ScreenKey.Of(flow.StartPastEngine()));
         return (flow, probes);

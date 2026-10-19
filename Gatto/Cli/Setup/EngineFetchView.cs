@@ -31,7 +31,7 @@ internal static class EngineFetchView
     private static string G(GlyphSet? g) => (g ?? GlyphSet.Unicode).Dot;
 
     //the glyph vocabulary threaded from the face, defaulted so existing callers and goldens are unchanged
-    public static IReadOnlyList<WizardRow> Rows(EngineView v, int width, GlyphSet? glyphs) =>
+    public static IReadOnlyList<SetupRow> Rows(EngineView v, int width, GlyphSet? glyphs) =>
         v.GattoFetches
             ?
             [
@@ -40,7 +40,7 @@ internal static class EngineFetchView
                 Row("", $"{v.Release}, the release gatto is tested with"),
                 //the companion gets a row of the same block, and it borrows the model step's own with-vocabulary
                 .. v.WithName is { Length: > 0 } companion
-                    ? (IReadOnlyList<WizardRow>)[Row("with",
+                    ? (IReadOnlyList<SetupRow>)[Row("with",
                         companion + $" {G(glyphs)} " + v.WithSize + $" {G(glyphs)} the CUDA runtime it needs",
                         lift: companion)]
                     : [],
@@ -52,7 +52,7 @@ internal static class EngineFetchView
                 Row("download", v.ZipName, lift: v.ZipName),
                 //the companion is the half a manual download forgets, so it gets named here and the row says what it is for
                 .. v.WithName is { Length: > 0 } byHand
-                    ? (IReadOnlyList<WizardRow>)[Row("with",
+                    ? (IReadOnlyList<SetupRow>)[Row("with",
                         byHand + $" {G(glyphs)} the CUDA runtime it needs", lift: byHand)]
                     : [],
                 //the release page rather than the asset's link, since a stale link leaves the user stuck
@@ -61,7 +61,7 @@ internal static class EngineFetchView
             ];
 
     //the Hang property keeps a wrapped value under its own column, so a long path folds under itself
-    private static WizardRow Row(string label, string value, string? lift = null) =>
+    private static SetupRow Row(string label, string value, string? lift = null) =>
         new(label.PadRight(SetupFlow.EngineFacts.Column) + value, RowTone.Aside,
             Hang: SetupFlow.EngineFacts.Column, Lift: lift is null ? null : [lift]);
 }

@@ -7,7 +7,7 @@ namespace Gatto.Tests.Setup.Tui;
 //renders the check screens, and every helper enters through the setup start, since the frames depend on the entry
 public class CheckTests
 {
-    private static WizardProbes Probes(bool holdTheCheck = false, string? heldBy = null) => new()
+    private static FakeSetupProbes Probes(bool holdTheCheck = false, string? heldBy = null) => new()
     {
         Llama = @"C:\llama\llama-server.exe",
         ActiveFile = "gemma-4-26B-A4B-it-UD-Q4_K_M.gguf",
@@ -19,12 +19,12 @@ public class CheckTests
     private const string Holding = "minimax-m2.7-REAP-139B-A10B-Q4_K_S";
 
     //a held model skips the offer, so the run reaches the refusal, and the screen comes from running the flow
-    private static WizardScreen.Choice Held(SetupFlow flow)
+    private static SetupScreen.Choice Held(SetupFlow flow)
     {
         flow.StartPastEngine();
         var screen = flow.ResumeAfterWrites("gemma-4-26B-A4B-it");
         while (flow.NeedsWritesApplied) screen = flow.ResumeAfterWrites(null);
-        return Assert.IsType<WizardScreen.Choice>(screen);
+        return Assert.IsType<SetupScreen.Choice>(screen);
     }
 
     //the moment the live frames draw: task 3 of 5 with two finished, typed here and tied to what the flow builds
@@ -53,26 +53,26 @@ public class CheckTests
     }
 
     //the offer is answered yes and the flow starts the check, since the screen is what that answer produces. a hand-built screen is one no run reaches
-    private static WizardScreen.Choice Live(SetupFlow flow)
+    private static SetupScreen.Choice Live(SetupFlow flow)
     {
         flow.StartPastEngine();
         var screen = flow.ResumeAfterWrites("gemma-4-26B-A4B-it");
         while (flow.NeedsWritesApplied) screen = flow.ResumeAfterWrites(null);
-        Assert.Equal(SetupFlow.AuditionOfferKey, Assert.IsType<WizardScreen.Choice>(screen).Key);
+        Assert.Equal(SetupFlow.AuditionOfferKey, Assert.IsType<SetupScreen.Choice>(screen).Key);
 
-        var running = Assert.IsType<WizardScreen.Choice>(flow.Answer(SetupFlow.Yes));
+        var running = Assert.IsType<SetupScreen.Choice>(flow.Answer(SetupFlow.Yes));
         Assert.Equal(SetupFlow.AuditionRunningKey, running.Key);
         return running;
     }
 
     //the writes are done and the flow resumes with the writer's id, since the screen reads the model file when the step enters
-    private static WizardScreen.Choice Offer(WizardProbes probes)
+    private static SetupScreen.Choice Offer(FakeSetupProbes probes)
     {
         var flow = new SetupFlow(probes);
         flow.StartPastEngine();
         var screen = flow.ResumeAfterWrites("gemma-4-26B-A4B-it");
         while (flow.NeedsWritesApplied) screen = flow.ResumeAfterWrites(null);
-        return Assert.IsType<WizardScreen.Choice>(screen);
+        return Assert.IsType<SetupScreen.Choice>(screen);
     }
 
     [Fact]
@@ -130,7 +130,7 @@ public class CheckTests
     public void THE_ARMED_ESC_NAMES_WHAT_STOPPING_COSTS() =>
         Golden.AssertEquals("s7", "running-armed", 100,
             WalkRender.Watching(Live(new SetupFlow(Probes())), 100, tick: null,
-                script: [WizardRig.Esc, WizardRig.Esc], nowMs: Purring(), check: Moment).Rows);
+                script: [SetupRig.Esc, SetupRig.Esc], nowMs: Purring(), check: Moment).Rows);
 
     //derive the pinned moment from the events the flow builds, so a hand-written tick cannot pass when the sink renumbers or drops a task
     [Fact]
@@ -177,7 +177,7 @@ public class CheckTests
     }
 
     //the badge date is fixed here, a date read from the clock would make the golden true for one day only
-    private static WizardProbes Passing() => new()
+    private static FakeSetupProbes Passing() => new()
     {
         Llama = @"C:\llama\llama-server.exe",
         ActiveFile = "gemma-4-26B-A4B-it-UD-Q4_K_M.gguf",
@@ -188,14 +188,14 @@ public class CheckTests
     };
 
     //one walk returns both frames, the settled screen's activity line is the face's memory of the watch (painted alone it would report zero seconds)
-    private static (WizardScreen.Choice Running, WizardScreen.Choice Settled) Walk(
-        WizardProbes probes, string key)
+    private static (SetupScreen.Choice Running, SetupScreen.Choice Settled) Walk(
+        FakeSetupProbes probes, string key)
     {
         var flow = new SetupFlow(probes);
         var running = Live(flow);
         Assert.True(SpinWait.SpinUntil(flow.PollWatch, TimeSpan.FromSeconds(10)),
             "the check never finished, so the walk never reached its outcome");
-        var settled = Assert.IsType<WizardScreen.Choice>(flow.Answer(SetupFlow.Landed));
+        var settled = Assert.IsType<SetupScreen.Choice>(flow.Answer(SetupFlow.Landed));
         Assert.Equal(key, settled.Key);
         return (running, settled);
     }
@@ -215,7 +215,7 @@ public class CheckTests
     public void WITH_NO_BADGE_WRITTEN_THE_RECORDED_ROW_DROPS_AND_THE_STAMP_STAYS()
     {
         var unrecorded = Passing();
-        var probes = new WizardProbes
+        var probes = new FakeSetupProbes
         {
             Llama = unrecorded.Llama,
             ActiveFile = unrecorded.ActiveFile,
@@ -252,13 +252,13 @@ public class CheckTests
         Assert.True(SpinWait.SpinUntil(onward.PollWatch, TimeSpan.FromSeconds(10)), "the check never finished");
         onward.Answer(SetupFlow.Landed);
         var next = onward.Answer(SetupFlow.AuditionPassedNext);
-        Assert.Equal("default.ready", Assert.IsType<WizardScreen.Info>(next).Key);
+        Assert.Equal("default.ready", Assert.IsType<SetupScreen.Info>(next).Key);
 
         var leaving = new SetupFlow(Passing());
         Live(leaving);
         Assert.True(SpinWait.SpinUntil(leaving.PollWatch, TimeSpan.FromSeconds(10)), "the check never finished");
         leaving.Answer(SetupFlow.Landed);
-        Assert.IsType<WizardScreen.Terminal>(leaving.Answer(SetupFlow.AuditionPassedLeave));
+        Assert.IsType<SetupScreen.Terminal>(leaving.Answer(SetupFlow.AuditionPassedLeave));
     }
 
     //build each record from Battery.Tasks, an invented label would test the fixture's own words
@@ -271,7 +271,7 @@ public class CheckTests
     }
 
     //two failures end the check early, so the headline counts 2 of 4 and the fifth task never ran
-    private static WizardProbes Failing() => new()
+    private static FakeSetupProbes Failing() => new()
     {
         Llama = @"C:\llama\llama-server.exe",
         ActiveFile = "gemma-4-26B-A4B-it-UD-Q4_K_M.gguf",
@@ -289,7 +289,7 @@ public class CheckTests
     };
 
     //all five tasks ran and the last invented a file's contents. the screen says what happened and leaves disqualified to the CLI report
-    private static WizardProbes Disqualified() => new()
+    private static FakeSetupProbes Disqualified() => new()
     {
         Llama = @"C:\llama\llama-server.exe",
         ActiveFile = "gemma-4-26B-A4B-it-UD-Q4_K_M.gguf",
@@ -365,7 +365,7 @@ public class CheckTests
     public void ENTER_DOES_NOTHING_WHILE_THE_CHECK_RUNS()
     {
         var answered = WalkRender.WatchAfterKeys(Live(new SetupFlow(Probes())), 100,
-            new FetchTick("", 0, 0, 0, 0, 0), [WizardRig.Enter]);
+            new FetchTick("", 0, 0, 0, 0, 0), [SetupRig.Enter]);
 
         Assert.Equal(SetupFlow.Landed, answered);
         Assert.NotEqual(SetupFlow.AuditionStop, answered);
@@ -403,7 +403,7 @@ public class CheckTests
 
         Assert.True(probes.AuditionUnwound, "the flow moved on before the check had unwound");
         Assert.Equal(1, probes.AuditionStarts);
-        Assert.Equal("default.ready", Assert.IsType<WizardScreen.Info>(next).Key);
+        Assert.Equal("default.ready", Assert.IsType<SetupScreen.Info>(next).Key);
         Assert.True(flow.NeedsWritesApplied);
     }
 
@@ -436,7 +436,7 @@ public class CheckTests
     }
 
     //the fixture reports the server's own rate, so the speed row draws. with no rate the test would check an absence
-    private static WizardProbes Answering() => new()
+    private static FakeSetupProbes Answering() => new()
     {
         Llama = @"C:\llama\llama-server.exe",
         ActiveFile = "gemma-4-26B-A4B-it-UD-Q4_K_M.gguf",
@@ -445,15 +445,15 @@ public class CheckTests
     };
 
     //reach the waiting screen by answering Skip, a screen built by hand could show a state no answer reaches
-    private static (SetupFlow Flow, WizardScreen.Choice Waiting) Skipping(WizardProbes probes)
+    private static (SetupFlow Flow, SetupScreen.Choice Waiting) Skipping(FakeSetupProbes probes)
     {
         var flow = new SetupFlow(probes);
         flow.StartPastEngine();
         var screen = flow.ResumeAfterWrites("gemma-4-26B-A4B-it");
         while (flow.NeedsWritesApplied) screen = flow.ResumeAfterWrites(null);
-        Assert.Equal(SetupFlow.AuditionOfferKey, Assert.IsType<WizardScreen.Choice>(screen).Key);
+        Assert.Equal(SetupFlow.AuditionOfferKey, Assert.IsType<SetupScreen.Choice>(screen).Key);
 
-        var waiting = Assert.IsType<WizardScreen.Choice>(flow.Answer(SetupFlow.Skip));
+        var waiting = Assert.IsType<SetupScreen.Choice>(flow.Answer(SetupFlow.Skip));
         Assert.Equal(SetupFlow.AuditionWaitingKey, waiting.Key);
         return (flow, waiting);
     }
@@ -475,7 +475,7 @@ public class CheckTests
     {
         var (flow, waiting) = Skipping(Answering());
         Assert.True(SpinWait.SpinUntil(flow.PollWatch, TimeSpan.FromSeconds(10)), "the load never finished");
-        var answers = Assert.IsType<WizardScreen.Choice>(flow.Answer(SetupFlow.Landed));
+        var answers = Assert.IsType<SetupScreen.Choice>(flow.Answer(SetupFlow.Landed));
         Assert.Equal(SetupFlow.AuditionAnswersKey, answers.Key);
 
         Golden.AssertEquals("s7", "answers", 100,
@@ -494,15 +494,15 @@ public class CheckTests
         Assert.Equal(1, probes.Proofs);
 
         //drain the flow to its last screen, the completion screen is where a second load would happen. stopping earlier asserts about a part the test never ran
-        WizardScreen screen = flow.Answer(SetupFlow.AnswersNext);
+        SetupScreen screen = flow.Answer(SetupFlow.AnswersNext);
         while (flow.NeedsWritesApplied) screen = flow.ResumeAfterWrites(null);
-        while (screen is WizardScreen.Choice c)
+        while (screen is SetupScreen.Choice c)
         {
             screen = flow.Answer(c.Options[0].Key);
             while (flow.NeedsWritesApplied) screen = flow.ResumeAfterWrites(null);
         }
 
-        Assert.IsType<WizardScreen.Terminal>(screen);
+        Assert.IsType<SetupScreen.Terminal>(screen);
         //holding the skip's result is what keeps this at one, a second probe reads two while the screen looks the same
         Assert.Equal(1, probes.Proofs);
     }
@@ -511,7 +511,7 @@ public class CheckTests
     [Fact]
     public void WITH_NO_TIMINGS_THE_SPEED_ROW_DROPS_AND_THE_CLAIM_STANDS()
     {
-        var probes = new WizardProbes
+        var probes = new FakeSetupProbes
         {
             Llama = @"C:\llama\llama-server.exe",
             ActiveFile = "gemma-4-26B-A4B-it-UD-Q4_K_M.gguf",
@@ -519,7 +519,7 @@ public class CheckTests
         };
         var (flow, _) = Skipping(probes);
         Assert.True(SpinWait.SpinUntil(flow.PollWatch, TimeSpan.FromSeconds(10)), "the load never finished");
-        var answers = Assert.IsType<WizardScreen.Choice>(flow.Answer(SetupFlow.Landed));
+        var answers = Assert.IsType<SetupScreen.Choice>(flow.Answer(SetupFlow.Landed));
 
         var body = string.Join("\n", answers.BodyRows!.Select(r => r.Text));
         Assert.DoesNotContain("tok/s", body, StringComparison.Ordinal);
@@ -535,7 +535,7 @@ public class CheckTests
 
         var next = flow.Answer(SetupFlow.SkipStop);
 
-        Assert.Equal("default.ready", Assert.IsType<WizardScreen.Info>(next).Key);
+        Assert.Equal("default.ready", Assert.IsType<SetupScreen.Info>(next).Key);
         Assert.True(flow.NeedsWritesApplied);
     }
 
@@ -659,11 +659,11 @@ public class CheckTests
     {
         var next = new SetupFlow(Probes(heldBy: Holding));
         Held(next);
-        Assert.IsNotType<WizardScreen.Choice>(next.Answer(SetupFlow.AuditionHeldNext));
+        Assert.IsNotType<SetupScreen.Choice>(next.Answer(SetupFlow.AuditionHeldNext));
 
         var leave = new SetupFlow(Probes(heldBy: Holding));
         Held(leave);
-        Assert.IsNotType<WizardScreen.Choice>(leave.Answer(SetupFlow.AuditionHeldLeave));
+        Assert.IsNotType<SetupScreen.Choice>(leave.Answer(SetupFlow.AuditionHeldLeave));
     }
 
     //the audition command refuses while another model holds the server, so the screen offers it for later and names what must stop first
@@ -691,7 +691,7 @@ public class CheckTests
     }
 
     //fixture for a pick skipped for lack of a published fingerprint, with byte counts the one size formatter turns into the shown figures
-    private static WizardProbes Filed() => new()
+    private static FakeSetupProbes Filed() => new()
     {
         Llama = @"C:\llama\llama-server.exe",
         ActiveFile = "gemma-4-26B-A4B-it-UD-Q4_K_M.gguf",
@@ -736,9 +736,9 @@ public class CheckTests
         Live(flow);
         Assert.True(SpinWait.SpinUntil(flow.PollWatch, TimeSpan.FromSeconds(10)), "no outcome");
         Assert.Equal(SetupFlow.AuditionIncompleteKey,
-            Assert.IsType<WizardScreen.Choice>(flow.Answer(SetupFlow.Landed)).Key);
+            Assert.IsType<SetupScreen.Choice>(flow.Answer(SetupFlow.Landed)).Key);
 
-        var restarted = Assert.IsType<WizardScreen.Choice>(flow.Answer(SetupFlow.CheckAgain));
+        var restarted = Assert.IsType<SetupScreen.Choice>(flow.Answer(SetupFlow.CheckAgain));
         Assert.Equal(SetupFlow.AuditionRunningKey, restarted.Key);
         //wait on the flow's own join before reading AuditionStarts, a read right after the answer would assert on thread timing
         Assert.True(SpinWait.SpinUntil(flow.PollWatch, TimeSpan.FromSeconds(10)),
@@ -752,7 +752,7 @@ public class CheckTests
 
         var elsewhere = back.Answer(SetupFlow.PickAnother);
         Assert.NotNull(elsewhere);
-        Assert.False(elsewhere is WizardScreen.Choice { Key: SetupFlow.AuditionIncompleteKey },
+        Assert.False(elsewhere is SetupScreen.Choice { Key: SetupFlow.AuditionIncompleteKey },
             "Pick a different model redrew the screen it was leaving");
     }
 
@@ -767,7 +767,7 @@ public class CheckTests
         "main: exiting due to model loading error",
     ];
 
-    private static WizardProbes Stumbled(CheckStumble? stumble) => new()
+    private static FakeSetupProbes Stumbled(CheckStumble? stumble) => new()
     {
         Llama = @"C:\llama\llama-server.exe",
         ActiveFile = "gemma-4-26B-A4B-it-UD-Q4_K_M.gguf",
@@ -796,7 +796,7 @@ public class CheckTests
         Assert.Contains(Pointer, Body(Stumbled(stumble: null)), StringComparison.Ordinal);
     }
 
-    private static string Body(WizardProbes probes) =>
+    private static string Body(FakeSetupProbes probes) =>
         string.Join("\n", Walk(probes, SetupFlow.AuditionFailedKey).Settled.BodyRows!
             .Select(r => r.Text));
 
@@ -848,7 +848,7 @@ public class CheckTests
         var flow = new SetupFlow(probes);
         var running = Live(flow);
         Assert.True(SpinWait.SpinUntil(flow.PollWatch, TimeSpan.FromSeconds(10)), "no outcome");
-        var settled = Assert.IsType<WizardScreen.Choice>(flow.Answer(SetupFlow.Landed));
+        var settled = Assert.IsType<SetupScreen.Choice>(flow.Answer(SetupFlow.Landed));
         Assert.Equal(SetupFlow.AuditionStoppedKey, settled.Key);
 
         Golden.AssertEquals("s7", "stopped", 100,
@@ -872,7 +872,7 @@ public class CheckTests
             flow.Answer(SetupFlow.Landed);
 
             Assert.Equal(SetupFlow.AuditionRunningKey,
-                Assert.IsType<WizardScreen.Choice>(flow.Answer(SetupFlow.CheckAgain)).Key);
+                Assert.IsType<SetupScreen.Choice>(flow.Answer(SetupFlow.CheckAgain)).Key);
             Assert.True(SpinWait.SpinUntil(flow.PollWatch, TimeSpan.FromSeconds(10)), "no second outcome");
             Assert.Equal(2, probes.AuditionStarts);
 
@@ -904,14 +904,14 @@ public class CheckTests
         new(d, (ConsoleKey)((int)ConsoleKey.D0 + (d - '0')), false, false, false);
 
     //reach the load-ask screen by letting the flow's own clock pass the threshold, and wait on the predicate the face polls
-    private static (SetupFlow Flow, WizardScreen.Choice Ask) Asking(WizardProbes probes)
+    private static (SetupFlow Flow, SetupScreen.Choice Ask) Asking(FakeSetupProbes probes)
     {
         //inject a small threshold rather than faking the clock, so the flow's real predicate runs on its real stopwatch
         var flow = new SetupFlow(probes) { LoadAskAfter = TimeSpan.FromMilliseconds(40) };
         Live(flow);
         Assert.True(SpinWait.SpinUntil(flow.PollWatch, TimeSpan.FromSeconds(20)),
             "the wizard never came back with a question");
-        var ask = Assert.IsType<WizardScreen.Choice>(flow.Answer(SetupFlow.Landed));
+        var ask = Assert.IsType<SetupScreen.Choice>(flow.Answer(SetupFlow.Landed));
         Assert.Equal(SetupFlow.AuditionLoadAskKey, ask.Key);
         return (flow, ask);
     }
@@ -963,7 +963,7 @@ public class CheckTests
         Assert.True(SpinWait.SpinUntil(flow.PollWatch, TimeSpan.FromSeconds(10)), "no outcome");
 
         //the watch resolved because the check finished, so the walk continues to the outcome a patient user would have reached
-        var landed = Assert.IsType<WizardScreen.Choice>(flow.Answer(SetupFlow.Landed));
+        var landed = Assert.IsType<SetupScreen.Choice>(flow.Answer(SetupFlow.Landed));
         Assert.NotEqual(SetupFlow.AuditionLoadAskKey, landed.Key);
         Assert.Equal(SetupFlow.AuditionPassedKey, landed.Key);
     }
@@ -975,14 +975,14 @@ public class CheckTests
         var probes = Probes(holdTheCheck: true);
         var (flow, _) = Asking(probes);
 
-        var back = Assert.IsType<WizardScreen.Choice>(flow.Answer(SetupFlow.KeepWaiting));
+        var back = Assert.IsType<SetupScreen.Choice>(flow.Answer(SetupFlow.KeepWaiting));
         Assert.Equal(SetupFlow.AuditionRunningKey, back.Key);
         Assert.Equal(1, probes.AuditionStarts);
 
         //the question falls due again off the same clock, and still one check has started
         Assert.True(SpinWait.SpinUntil(flow.PollWatch, TimeSpan.FromSeconds(20)), "no second question");
         Assert.Equal(SetupFlow.AuditionLoadAskKey,
-            Assert.IsType<WizardScreen.Choice>(flow.Answer(SetupFlow.Landed)).Key);
+            Assert.IsType<SetupScreen.Choice>(flow.Answer(SetupFlow.Landed)).Key);
         Assert.Equal(1, probes.AuditionStarts);
     }
 
@@ -1034,7 +1034,7 @@ public class CheckTests
         var waited = System.Diagnostics.Stopwatch.StartNew();
         SpinWait.SpinUntil(() => waited.ElapsedMilliseconds > 400, TimeSpan.FromSeconds(2));
 
-        var landed = Assert.IsType<WizardScreen.Choice>(flow.Answer(SetupFlow.Landed));
+        var landed = Assert.IsType<SetupScreen.Choice>(flow.Answer(SetupFlow.Landed));
         Assert.Equal(SetupFlow.AuditionPassedKey, landed.Key);
     }
 
@@ -1043,10 +1043,10 @@ public class CheckTests
         new(label.Replace(" ", "-"), pass, [], TimeSpan.FromSeconds(2), label, skipped);
 
     //a passing probe with the runner's task records set, the Tasks field left null by Passing() is a fixture gap
-    private static WizardProbes PassingWith(params Gatto.Roles.Audition.AuditionTaskResult[] tasks)
+    private static FakeSetupProbes PassingWith(params Gatto.Roles.Audition.AuditionTaskResult[] tasks)
     {
         var p = Passing();
-        return new WizardProbes
+        return new FakeSetupProbes
         {
             Llama = p.Llama,
             ActiveFile = p.ActiveFile,
@@ -1054,7 +1054,7 @@ public class CheckTests
         };
     }
 
-    private static IReadOnlyList<WizardRow> PassBody(params Gatto.Roles.Audition.AuditionTaskResult[] tasks) =>
+    private static IReadOnlyList<SetupRow> PassBody(params Gatto.Roles.Audition.AuditionTaskResult[] tasks) =>
         Walk(PassingWith(tasks), SetupFlow.AuditionPassedKey).Settled.BodyRows!;
 
     //a pass that was not clean must name the failed task from the runner's own records. a row built from the tally would only count

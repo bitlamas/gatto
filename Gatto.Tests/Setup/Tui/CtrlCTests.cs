@@ -30,17 +30,17 @@ public class CtrlCTests
         public long ElapsedMs => 0;
     }
 
-    private static TuiWizardSurface Face(long now, params ConsoleKeyInfo[] keys) =>
+    private static TuiSetupSurface Face(long now, params ConsoleKeyInfo[] keys) =>
         new(new RecordingSurface { Width = 100 }, new Keys(keys),
             new Theme(new TermCaps(true, true)), "0.5.0", "1a2b3c4", () => now,
             clock: _ => new Ready());
 
-    private static WizardScreen.Choice Offer() => new(
+    private static SetupScreen.Choice Offer() => new(
         "model.audition.offer", "Run the check?",
         [new ChoiceOption("yes", "Yes"), new ChoiceOption("no", "Not now")]);
 
     //the fixture is a fetch in progress, so a press on it has a cost
-    private static WizardScreen.Choice Fetching() => new(
+    private static SetupScreen.Choice Fetching() => new(
         "model.fetching", "Downloading…",
         [new ChoiceOption("stop", "stop the download")],
         KeysOnly: true, Watching: true);
@@ -51,7 +51,7 @@ public class CtrlCTests
     {
         var f = Face(0, CtrlC);
         Assert.Throws<InvalidOperationException>(() => f.Choose(Offer()));
-        Assert.Contains(f.LastPainted, r => r.Contains(TuiWizardSurface.CtrlCAgain, StringComparison.Ordinal));
+        Assert.Contains(f.LastPainted, r => r.Contains(TuiSetupSurface.CtrlCAgain, StringComparison.Ordinal));
     }
 
     //null is what the runner reads as leaving, so two presses leave even where Esc would go back
@@ -86,7 +86,7 @@ public class CtrlCTests
     public void A_SECOND_CTRL_C_AFTER_THE_WINDOW_RE_ARMS()
     {
         var now = 0L;
-        var f = new TuiWizardSurface(new RecordingSurface { Width = 100 },
+        var f = new TuiSetupSurface(new RecordingSurface { Width = 100 },
             new Keys([CtrlC, CtrlC]), new Theme(new TermCaps(true, true)),
             "0.5.0", "1a2b3c4", () => now += Gatto.Repl.Repl.CtrlCDoubleTapMs + 1,
             clock: _ => new Ready());
@@ -99,12 +99,12 @@ public class CtrlCTests
     [Fact]
     public void TWO_CTRL_C_LEAVE_A_TYPED_SCREEN_TOO()
     {
-        var ask = new WizardScreen.Ask("model.typedid", "Which repo?", _ => null,
+        var ask = new SetupScreen.Ask("model.typedid", "Which repo?", _ => null,
             Placeholder: "type an id…") { AllowBack = true };
 
         var once = Face(0, CtrlC);
         Assert.Throws<InvalidOperationException>(() => once.Ask(ask));
-        Assert.Contains(once.LastPainted, r => r.Contains(TuiWizardSurface.CtrlCAgain, StringComparison.Ordinal));
+        Assert.Contains(once.LastPainted, r => r.Contains(TuiSetupSurface.CtrlCAgain, StringComparison.Ordinal));
 
         Assert.Equal(SetupFlow.LeaveKey, Face(0, CtrlC, CtrlC).Ask(ask));
     }
@@ -113,7 +113,7 @@ public class CtrlCTests
     [Fact]
     public void ESC_ON_A_TYPED_SCREEN_GOES_BACK()
     {
-        var ask = new WizardScreen.Ask("model.typedid", "Which repo?", _ => null,
+        var ask = new SetupScreen.Ask("model.typedid", "Which repo?", _ => null,
             Placeholder: "type an id…") { AllowBack = true };
 
         Assert.Equal(SetupFlow.BackKey, Face(0, K(ConsoleKey.Escape)).Ask(ask));
@@ -148,7 +148,7 @@ public class CtrlCTests
         var order = new List<string>();
         bool? handed = null;
 
-        var run = () => WizardSession.Run(
+        var run = () => SetupSession.Run(
             new AltScreen(new RecordingSurface { Width = 80 }),
             () => { order.Add("walk"); return walkThrows ? throw new InvalidOperationException() : 0; },
             () => [],
@@ -174,9 +174,9 @@ public class CtrlCTests
 
         IReadOnlyList<string>? withHint = null;
         TimeSpan? budget = null;
-        TuiWizardSurface? f = null;
+        TuiSetupSurface? f = null;
 
-        f = new TuiWizardSurface(new RecordingSurface { Width = 100 }, new Keys([K(ConsoleKey.Escape)]),
+        f = new TuiSetupSurface(new RecordingSurface { Width = 100 }, new Keys([K(ConsoleKey.Escape)]),
             new Theme(new TermCaps(true, true)), "0.5.0", "1a2b3c4", NowMs,
             clock: _ =>
             {
@@ -211,7 +211,7 @@ public class CtrlCTests
         var now = 0L;
         var budgets = new List<TimeSpan>();
 
-        var f = new TuiWizardSurface(new RecordingSurface { Width = 100 }, new Keys([K(ConsoleKey.Escape)]),
+        var f = new TuiSetupSurface(new RecordingSurface { Width = 100 }, new Keys([K(ConsoleKey.Escape)]),
             new Theme(new TermCaps(true, true)), "0.5.0", "1a2b3c4", () => now,
             clock: _ => new ExpiringClock(b =>
             {
@@ -236,7 +236,7 @@ public class CtrlCTests
         var budgets = new List<TimeSpan>();
         var arrivals = new Queue<bool>([true, false, true]);
 
-        var f = new TuiWizardSurface(new RecordingSurface { Width = 100 }, new Keys([CtrlC, CtrlC]),
+        var f = new TuiSetupSurface(new RecordingSurface { Width = 100 }, new Keys([CtrlC, CtrlC]),
             new Theme(new TermCaps(true, true)), "0.5.0", "1a2b3c4", () => now,
             clock: _ => new StepClock(b => { budgets.Add(b); now += 600; }, arrivals.Dequeue));
 

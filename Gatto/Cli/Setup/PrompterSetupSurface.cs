@@ -6,9 +6,9 @@ using Gatto.Terminal;
 namespace Gatto.Cli.Setup;
 
 //borrow the REPL's prompter inside a live session, a second key reader or a throwing cancel breaks the running conversation
-internal sealed class PrompterWizardSurface(
+internal sealed class PrompterSetupSurface(
     IWizardPrompter prompter, TextWriter output, Theme? theme = null,
-    Action<TimeSpan>? pause = null, Gatto.Terminal.GlyphSet? glyphs = null) : IWizardSurface
+    Action<TimeSpan>? pause = null, Gatto.Terminal.GlyphSet? glyphs = null) : ISetupSurface
 {
     private readonly Gatto.Terminal.GlyphSet _glyphs = glyphs ?? Gatto.Terminal.GlyphSet.Unicode;
 
@@ -27,7 +27,7 @@ internal sealed class PrompterWizardSurface(
     private int _resumeCursor;
 
     //watch, tick and check are taken and not drawn, this face writes committed scrollback and cannot spare a second key reader
-    public string? Choose(WizardScreen.Choice c, Func<bool>? watch = null, Func<FetchTick?>? tick = null,
+    public string? Choose(SetupScreen.Choice c, Func<bool>? watch = null, Func<FetchTick?>? tick = null,
         Func<CheckTick?>? check = null)
     {
         //when only the watch can advance, waiting on the prompt would stall, so go to WaitOut
@@ -36,7 +36,7 @@ internal sealed class PrompterWizardSurface(
         while (true)
         {
             //compose the rows with the shared helper, so the labels match and engine text goes through one sanitize
-            var options = WizardPaint.Options(c, _glyphs);
+            var options = SetupPaint.Options(c, _glyphs);
             var shelf = c.Shelf is { } view ? ShelfBinding.For(view, options, _theme, _glyphs) : default;
 
             var answer = prompter.AskOne(new WizardAsk(
@@ -46,7 +46,7 @@ internal sealed class PrompterWizardSurface(
                 FreeTextLabel: c.Door,
                 FooterHint: LeaveHint,
                 //the shelf's empty block reaches this face as body rows, it said nothing here before
-                BodyRows: WizardPaint.Body(EmptyOrBody(c)),
+                BodyRows: SetupPaint.Body(EmptyOrBody(c)),
                 LabelsAt: shelf.LabelsAt,
                 HeadingsAt: shelf.HeadingsAt,
                 FooterLegend: shelf.Legend,
@@ -80,7 +80,7 @@ internal sealed class PrompterWizardSurface(
         }
     }
 
-    public string? Ask(WizardScreen.Ask a)
+    public string? Ask(SetupScreen.Ask a)
     {
         while (true)
         {
@@ -96,7 +96,7 @@ internal sealed class PrompterWizardSurface(
                 //set the input row to 0 with no offer and 1 with one, so back never sits above the box
                 FreeTextIndex: a.Offer is null ? 0 : 1,
                 FooterHint: LeaveHint,
-                BodyRows: WizardPaint.Body(a.BodyRows)));
+                BodyRows: SetupPaint.Body(a.BodyRows)));
 
             if (answer is null) return null;
             //an Ask has no control keys, so anything that arrives as one is not an answer
@@ -114,16 +114,16 @@ internal sealed class PrompterWizardSurface(
     //leave these rows unpainted, a caller-painted line could meet a second sanitize on the commit sink
 
     //drop empty rows at this face, a blank line is a record here that renders as a bare gutter mark
-    public void Show(WizardScreen.Info i) => WriteRows(i.Rows);
+    public void Show(SetupScreen.Info i) => WriteRows(i.Rows);
 
     //the one writer for transcript rows on this face, the waiting screen goes through it too
-    private void WriteRows(IReadOnlyList<WizardRow>? rows)
+    private void WriteRows(IReadOnlyList<SetupRow>? rows)
     {
         foreach (var row in (rows ?? []).Where(r => !string.IsNullOrWhiteSpace(r.Text)))
             output.WriteLine("  " + TermText.Sanitize(row.Text));
     }
     //only the watch moves this screen on, so it waits with no cancel (polling keys would add a second console reader)
-    private string WaitOut(WizardScreen.Choice c, Func<bool> watch)
+    private string WaitOut(SetupScreen.Choice c, Func<bool> watch)
     {
         //write the screen's own rows through the same writer Show uses, a second composition would drift unseen
         if (c.Question is { Length: > 0 } question)
@@ -136,7 +136,7 @@ internal sealed class PrompterWizardSurface(
 
 
     //no bare gutter marks on the last screen, every separator here is tied to a row that is written
-    public void End(WizardScreen.Terminal t)
+    public void End(SetupScreen.Terminal t)
     {
         //drop the empty rows here too, the transcript already separates its own entries
         foreach (var row in t.Rows.Where(r => !string.IsNullOrWhiteSpace(r.Text)))
@@ -145,8 +145,8 @@ internal sealed class PrompterWizardSurface(
     }
 
     //the shelf's empty block is the body here, the two are never drawn together. blank rows are dropped from the block, an empty row on this face is a record
-    private static IReadOnlyList<WizardRow>? EmptyOrBody(WizardScreen.Choice c) =>
+    private static IReadOnlyList<SetupRow>? EmptyOrBody(SetupScreen.Choice c) =>
         c.Shelf?.Empty is { Count: > 0 } block
-            ? [.. block.Where(l => !string.IsNullOrWhiteSpace(l)).Select(l => new WizardRow(l))]
+            ? [.. block.Where(l => !string.IsNullOrWhiteSpace(l)).Select(l => new SetupRow(l))]
             : c.BodyRows;
 }

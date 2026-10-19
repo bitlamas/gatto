@@ -7,17 +7,17 @@ namespace Gatto.Tests.Setup;
 internal static class FlowStart
 {
     //assert each screen before answering it, so a wrong run fails here instead of surfacing in a caller under another screen's name
-    public static WizardScreen StartPastOpening(this SetupFlow flow) => flow.PastOpeningFrom(flow.Start());
+    public static SetupScreen StartPastOpening(this SetupFlow flow) => flow.PastOpeningFrom(flow.Start());
 
     //use this only for a fixture with a working engine (a machine without one never reaches the found screen, so it stays on StartPastOpening)
-    public static WizardScreen StartPastEngine(this SetupFlow flow)
+    public static SetupScreen StartPastEngine(this SetupFlow flow)
     {
         Assert.Equal(SetupFlow.FoundKey, ScreenKey.Of(flow.StartPastOpening()));
         return flow.Answer(SetupFlow.FoundUse);
     }
 
     //the split lets a test hand PastOpeningFrom a wrong screen. the flow's Start always returns the welcome screen, so the mismatch assertion could never fire
-    public static WizardScreen PastOpeningFrom(this SetupFlow flow, WizardScreen screen)
+    public static SetupScreen PastOpeningFrom(this SetupFlow flow, SetupScreen screen)
     {
         for (var i = 0; i < WalkOpening.Screens.Count; i++)
         {

@@ -6,13 +6,13 @@ using Gatto.Tests.Fakes;
 namespace Gatto.Tests.Setup.Tui;
 
 //the face reads one input source, keys and the mouse alike, and its waits end on anything it can act on
-public class WizardInputSourceTests
+public class SetupInputSourceTests
 {
     [Fact]
     public void A_SCRIPTED_KEY_THROUGH_THE_INPUT_SOURCE_ANSWERS_AS_BEFORE()
     {
         var shelf = ShelfFixtures.Shelf("unified");
-        var face = new WizardRig(120).TuiFaceEvents(new KeyEvent(WizardRig.Down), new KeyEvent(WizardRig.Enter));
+        var face = new SetupRig(120).TuiFaceEvents(new KeyEvent(SetupRig.Down), new KeyEvent(SetupRig.Enter));
         Assert.Equal(shelf.Options[1].Key, face.Choose(shelf));
     }
 
@@ -20,15 +20,15 @@ public class WizardInputSourceTests
     public void A_MOUSE_EVENT_IN_A_KEY_LOOP_IS_PASSED_OVER()
     {
         var shelf = ShelfFixtures.Shelf("unified");
-        var face = new WizardRig(120).TuiFaceEvents(
-            new MouseEvent(5, 5, MouseKind.Move, MouseButton.None, 0, 0), new KeyEvent(WizardRig.Enter));
+        var face = new SetupRig(120).TuiFaceEvents(
+            new MouseEvent(5, 5, MouseKind.Move, MouseButton.None, 0, 0), new KeyEvent(SetupRig.Enter));
         Assert.Equal(shelf.Options[0].Key, face.Choose(shelf));
     }
 
     //counts the face's mouse drops and how much of the frame was painted at each, over a scripted source
     private sealed class DropSpy(IInputSource inner) : IInputSource
     {
-        public TuiWizardSurface? Face;
+        public TuiSetupSurface? Face;
         public List<int> PaintedAtDrop { get; } = [];
         public InputEvent Read() => inner.Read();
         public bool KeyDownAvailable => inner.KeyDownAvailable;
@@ -39,12 +39,12 @@ public class WizardInputSourceTests
     public void EACH_SCREEN_DROPS_STALE_MOUSE_EVENTS_ONCE_AFTER_ITS_FIRST_PAINT()
     {
         var shelf = ShelfFixtures.Shelf("unified");
-        var spy = new DropSpy(new ScriptedInputSource(null, new KeyEvent(WizardRig.Down), new KeyEvent(WizardRig.Enter),
-            new KeyEvent(WizardRig.Enter), new KeyEvent(WizardRig.Enter)));
-        var face = spy.Face = new WizardRig(120).TuiFaceOver(spy);
+        var spy = new DropSpy(new ScriptedInputSource(null, new KeyEvent(SetupRig.Down), new KeyEvent(SetupRig.Enter),
+            new KeyEvent(SetupRig.Enter), new KeyEvent(SetupRig.Enter)));
+        var face = spy.Face = new SetupRig(120).TuiFaceOver(spy);
         face.Choose(shelf);
         Assert.Single(spy.PaintedAtDrop);
-        face.Ask(new WizardScreen.Ask("ask", "Where?", _ => null, "a folder", new AskOffer("here", @"C:\m")));
+        face.Ask(new SetupScreen.Ask("ask", "Where?", _ => null, "a folder", new AskOffer("here", @"C:\m")));
         Assert.Equal(2, spy.PaintedAtDrop.Count);
         Assert.All(spy.PaintedAtDrop, n => Assert.True(n > 0, "the drop ran before the screen was painted"));
     }
@@ -58,7 +58,7 @@ public class WizardInputSourceTests
         var reader = new BatchConsoleReader([],
             [BatchConsoleReader.Press(2, y), BatchConsoleReader.Release(2, y)],
             [BatchConsoleReader.Press(2, y), BatchConsoleReader.Release(2, y)]);
-        var rig = new WizardRig(120, defaultClock: true);
+        var rig = new SetupRig(120, defaultClock: true);
         rig.Surface.Height = 30;
         rig.Surface.ReportsResize = true;
         var face = rig.TuiFaceOver(new ConsoleInputSource(reader));

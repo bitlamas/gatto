@@ -3,14 +3,14 @@ using Gatto.Core.Acquire;
 namespace Gatto.Cli.Setup;
 
 //where a screen is shown and an answer comes back. the /setup command binds the REPL's prompter, since a console reader would be a second reader on one stdin
-internal interface IWizardSurface
+internal interface ISetupSurface
 {
     //the chosen option's key, or null when the user backed out. both tick and check arrive as parameters, so screens declare and the face owns the clock
-    string? Choose(WizardScreen.Choice c, Func<bool>? watch = null, Func<FetchTick?>? tick = null,
+    string? Choose(SetupScreen.Choice c, Func<bool>? watch = null, Func<FetchTick?>? tick = null,
         Func<CheckTick?>? check = null);
 
     //the same question with a shelf's load as a fourth poll. a face that draws no loading shelf answers it as the plain question
-    string? Choose(WizardScreen.Choice c, Func<bool>? watch, Func<FetchTick?>? tick,
+    string? Choose(SetupScreen.Choice c, Func<bool>? watch, Func<FetchTick?>? tick,
         Func<CheckTick?>? check, Func<ShelfLoadTick?>? load) => Choose(c, watch, tick, check);
 
     //how many model rows this face can show, since the height is only known at the face. six is the count for a numbered list, and the TUI face overrides it
@@ -29,8 +29,8 @@ internal interface IWizardSurface
     bool ShowsChoiceBodyRows => false;
 
     //the typed text, or null when the user backed out
-    string? Ask(WizardScreen.Ask a);
+    string? Ask(SetupScreen.Ask a);
 
-    void Show(WizardScreen.Info i);
-    void End(WizardScreen.Terminal t);
+    void Show(SetupScreen.Info i);
+    void End(SetupScreen.Terminal t);
 }

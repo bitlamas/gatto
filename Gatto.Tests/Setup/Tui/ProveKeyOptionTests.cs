@@ -7,7 +7,7 @@ namespace Gatto.Tests.Setup.Tui;
 //an answer must be one the screen actually drew, since several screens share the same prove key
 public class ProveKeyOptionTests
 {
-    private static WizardProbes Connect(ProveOutcome prove) => new()
+    private static FakeSetupProbes Connect(ProveOutcome prove) => new()
     {
         Llama = @"C:\llama\llama-server.exe",
         Server = new ConnectProbe("http://127.0.0.1:1234", ["a-model"], 8192),
@@ -15,7 +15,7 @@ public class ProveKeyOptionTests
     };
 
     //drives the connect path to wherever its check settles. the watch resolves the way the runner does, since stopping there asserts about a live frame
-    private static SetupFlow Settled(WizardProbes probes)
+    private static SetupFlow Settled(FakeSetupProbes probes)
     {
         var flow = new SetupFlow(probes);
         flow.StartPastOpening();
@@ -23,7 +23,7 @@ public class ProveKeyOptionTests
         flow.Answer(SetupFlow.Yes);
         var s = flow.ResumeAfterWrites(null);
         while (flow.NeedsWritesApplied) s = flow.ResumeAfterWrites(null);
-        if (s is WizardScreen.Choice { Watching: true })
+        if (s is SetupScreen.Choice { Watching: true })
         {
             Assert.True(SpinWait.SpinUntil(flow.PollWatch, TimeSpan.FromSeconds(10)),
                 "the check never settled");
@@ -33,7 +33,7 @@ public class ProveKeyOptionTests
     }
 
     private static IReadOnlyList<string> Drew(SetupFlow flow) =>
-        [.. Assert.IsType<WizardScreen.Choice>(flow.Emitted[^1]).Options.Select(o => o.Key)];
+        [.. Assert.IsType<SetupScreen.Choice>(flow.Emitted[^1]).Options.Select(o => o.Key)];
 
     //the no-stream arm withholds try again on purpose
     [Fact]
@@ -60,7 +60,7 @@ public class ProveKeyOptionTests
     [Fact]
     public void THE_SUMMARY_REFUSES_AN_OPTION_IT_DOES_NOT_DRAW()
     {
-        var flow = new SetupFlow(new WizardProbes
+        var flow = new SetupFlow(new FakeSetupProbes
         {
             Llama = @"C:\llama\llama-server.exe",
             ActiveFile = "gemma-4-26B-A4B-it-UD-Q4_K_M.gguf",
@@ -96,7 +96,7 @@ public class ProveKeyOptionTests
         var s = flow.ResumeAfterWrites(null);
         while (flow.NeedsWritesApplied) s = flow.ResumeAfterWrites(null);
 
-        var watching = Assert.IsType<WizardScreen.Choice>(s);
+        var watching = Assert.IsType<SetupScreen.Choice>(s);
         Assert.True(watching.Watching);
         Assert.Equal([SetupFlow.ConnectCheckStop], watching.Options.Select(o => o.Key));
 

@@ -37,23 +37,23 @@ public class ShelfCoverageTests
 
     //classifies the fake's machine the way the flow does, so the expected fit words match the rendered ones
     private static MachineShape Shape() =>
-        HardwareClassifier.Classify(new WizardProbes().Hardware()!).Shape;
+        HardwareClassifier.Classify(new FakeSetupProbes().Hardware()!).Shape;
 
     //drives the real flow, then renders through the real face. a census that built its own screen would miss a flow that stopped producing one
     private static List<string> ShelfFrames(int width = 100)
     {
-        var flow = new SetupFlow(new WizardProbes { Rows = [TheRow()] });
-        var shelf = Assert.IsType<WizardScreen.Choice>(flow.StartPastEngine());
+        var flow = new SetupFlow(new FakeSetupProbes { Rows = [TheRow()] });
+        var shelf = Assert.IsType<SetupScreen.Choice>(flow.StartPastEngine());
         Assert.Equal(SetupFlow.SearchKey, shelf.Key);
 
-        var rig = new WizardRig(width);
-        var picked = rig.Face(WizardRig.Enter).Choose(shelf);
+        var rig = new SetupRig(width);
+        var picked = rig.Face(SetupRig.Enter).Choose(shelf);
         Assert.NotNull(picked);
         Assert.NotEmpty(rig.Frames);
 
         //the pick returns the model's page, rendered through the same rig so its frames are captured too
-        var page = Assert.IsType<WizardScreen.Choice>(flow.Answer(picked!));
-        rig.Face(WizardRig.Enter).Choose(page);
+        var page = Assert.IsType<SetupScreen.Choice>(flow.Answer(picked!));
+        rig.Face(SetupRig.Enter).Choose(page);
 
         return rig.Frames;
     }

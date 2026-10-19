@@ -28,15 +28,15 @@ public class EpilogueTests
         return rows;
     }
 
-    private static (IReadOnlyList<WizardRow> Summary, IReadOnlyList<WizardRow> Record) BothRenders()
+    private static (IReadOnlyList<SetupRow> Summary, IReadOnlyList<SetupRow> Record) BothRenders()
     {
         var (flow, _) = DoneRenderTests.DoneStep(consent: true, snapshot: Unified);
-        var summary = Assert.IsType<WizardScreen.Choice>(flow.Emitted[^1]);
+        var summary = Assert.IsType<SetupScreen.Choice>(flow.Emitted[^1]);
         Assert.Equal(SetupFlow.SummaryKey, summary.Key);
         return (summary.BodyRows!, flow.RecordRows());
     }
 
-    private static IReadOnlyList<string> Labels(IEnumerable<WizardRow> rows) =>
+    private static IReadOnlyList<string> Labels(IEnumerable<SetupRow> rows) =>
         [.. rows.Select(r => r.Text.Split(' ')[0]).Where(l => l.Length > 0)];
 
     //the record adds the machine row and drops the model's folder line, and every other row is the same one moved
@@ -131,7 +131,7 @@ public class EpilogueTests
         var surface = new RecordingSurface { Width = 100 };
         var alt = new Gatto.Terminal.AltScreen(surface);
 
-        Gatto.Cli.Setup.WizardSession.Run(
+        Gatto.Cli.Setup.SetupSession.Run(
             alt, () => 0,
             () => [Epilogue.Head(Gatto.Terminal.GlyphSet.Unicode, "0.5.0", "1a2b3c4", new DateOnly(2026, 8, 25))],
             new StringWriter(surface.Output), registerHooks: false);
@@ -158,7 +158,7 @@ public class EpilogueTests
         var notes = anyRows ? new[] { "starting the model" } : Array.Empty<string>();
         var frame = anyRows ? new[] { "# gatto setup", "  model     x.gguf" } : Array.Empty<string>();
 
-        Gatto.Cli.Setup.WizardSession.Run(
+        Gatto.Cli.Setup.SetupSession.Run(
             alt, () => 0, () => frame, epilogue, notes: () => notes, registerHooks: false);
 
         var nl = Environment.NewLine;
@@ -176,7 +176,7 @@ public class EpilogueTests
         //the shape of the leave frame: banner, blank, rule, sentence, rule, blank
         var frame = new[] { "  gatto setup", "", "───", "  Nothing added", "───", "" };
 
-        Gatto.Cli.Setup.WizardSession.Run(alt, () => 0, () => frame, epilogue, registerHooks: false);
+        Gatto.Cli.Setup.SetupSession.Run(alt, () => 0, () => frame, epilogue, registerHooks: false);
 
         var nl = Environment.NewLine;
         Assert.Equal(nl + string.Join(nl, frame[..^1]) + nl + nl, epilogue.ToString());
@@ -189,11 +189,11 @@ public class EpilogueTests
         var surface = new RecordingSurface { Width = 100 };
         var alt = new Gatto.Terminal.AltScreen(surface);
         var epilogue = new StringWriter();
-        var record = Epilogue.Lines([new WizardRow("model     x.gguf")], "0.5.0", "1a2b3c4",
+        var record = Epilogue.Lines([new SetupRow("model     x.gguf")], "0.5.0", "1a2b3c4",
             new DateOnly(2026, 9, 13), closing: null, width: 100, glyphs: GlyphSet.Unicode);
         Assert.Equal("", record[^1]);   //the shape under test, pinned so a change in Epilogue.Lines shows up here
 
-        Gatto.Cli.Setup.WizardSession.Run(alt, () => 0, () => record, epilogue, registerHooks: false);
+        Gatto.Cli.Setup.SetupSession.Run(alt, () => 0, () => record, epilogue, registerHooks: false);
 
         var nl = Environment.NewLine;
         Assert.Equal(nl + string.Join(nl, record.Take(record.Count - 1)) + nl + nl, epilogue.ToString());
@@ -226,10 +226,10 @@ public class EpilogueTests
     private static readonly Gatto.Cli.VersionStamp Stamp = new("0.5.0", "1a2b3c4", Dev: false);
 
     //a wizard run the user left at its first screen, on the face that ships. the frame a fallback would print is then the real one.
-    private static (SetupFlow Flow, TuiWizardSurface Face) LeftAtTheFirstScreen(bool modelRoad, string home)
+    private static (SetupFlow Flow, TuiSetupSurface Face) LeftAtTheFirstScreen(bool modelRoad, string home)
     {
-        var flow = new SetupFlow(new Gatto.Tests.Fakes.WizardProbes());
-        var face = new WizardRig(100).TuiFace(WizardRig.Esc, WizardRig.Esc);
+        var flow = new SetupFlow(new Gatto.Tests.Fakes.FakeSetupProbes());
+        var face = new SetupRig(100).TuiFace(SetupRig.Esc, SetupRig.Esc);
         SetupRunner.Run(flow, face, home, modelSegmentOnly: modelRoad);
         Assert.True(flow.Left, "the walk did not leave, so this fixture tests nothing about a leave");
         return (flow, face);
@@ -248,7 +248,7 @@ public class EpilogueTests
             var (flow, face) = LeftAtTheFirstScreen(modelRoad, home);
             Assert.Contains(face.LastPainted, row => row.Contains('─'));   //the painted frame has the rules a fallback would have printed
 
-            var lines = WizardSession.Scrollback(flow, () => face.LastPainted, 100, GlyphSet.Unicode, Stamp,
+            var lines = SetupSession.Scrollback(flow, () => face.LastPainted, 100, GlyphSet.Unicode, Stamp,
                 new DateOnly(2026, 8, 25), command, theme: null);
 
             Assert.Equal([$"(^· ·^)Ⳋ  {command} · v0.5.0 · build 1a2b3c4", "", sentence], lines);
@@ -265,7 +265,7 @@ public class EpilogueTests
         {
             var theme = new Theme(new TermCaps(true, true));
             var (flow, face) = LeftAtTheFirstScreen(modelRoad: true, home);
-            var lines = WizardSession.Scrollback(flow, () => face.LastPainted, 100, GlyphSet.Unicode, Stamp,
+            var lines = SetupSession.Scrollback(flow, () => face.LastPainted, 100, GlyphSet.Unicode, Stamp,
                 new DateOnly(2026, 8, 25), "gatto model", theme);
 
             var header = new StringWriter();
@@ -294,13 +294,13 @@ public class EpilogueTests
         try
         {
             var (left, face) = LeftAtTheFirstScreen(modelRoad: false, home);
-            Assert.Equal(HeaderOf(dev), WizardSession.Scrollback(left, () => face.LastPainted, 100,
+            Assert.Equal(HeaderOf(dev), SetupSession.Scrollback(left, () => face.LastPainted, 100,
                 GlyphSet.Unicode, dev, new DateOnly(2026, 8, 25), "gatto setup", theme: null)[0]);
         }
         finally { try { Directory.Delete(home, true); } catch (IOException) { } }
 
         var (done, _) = DoneRenderTests.DoneStep(consent: true, snapshot: Unified);
-        Assert.Equal(HeaderOf(dev) + " · 2026-08-25", WizardSession.Scrollback(done, () => [], 100,
+        Assert.Equal(HeaderOf(dev) + " · 2026-08-25", SetupSession.Scrollback(done, () => [], 100,
             GlyphSet.Unicode, dev, new DateOnly(2026, 8, 25), "gatto setup", theme: null)[0]);
     }
 
@@ -317,7 +317,7 @@ public class EpilogueTests
         while (flow.NeedsWritesApplied) flow.ResumeAfterWrites("gemma-4-26B-A4B-it");
         IReadOnlyList<string> painted = ["the frame on screen when the walk threw"];
 
-        Assert.Same(painted, WizardSession.Scrollback(flow, () => painted, 100, GlyphSet.Unicode, Stamp,
+        Assert.Same(painted, SetupSession.Scrollback(flow, () => painted, 100, GlyphSet.Unicode, Stamp,
             new DateOnly(2026, 8, 25), "gatto setup", theme: null));
     }
 
@@ -350,7 +350,7 @@ public class EpilogueTests
         IReadOnlyList<string> painted = ["── the frame on screen when the walk finished ──"];
 
         //wide enough that the sentence is one row, the wrap is the leave block's and has its own tests
-        var lines = WizardSession.Scrollback(flow, () => painted, 200, GlyphSet.Unicode, Stamp,
+        var lines = SetupSession.Scrollback(flow, () => painted, 200, GlyphSet.Unicode, Stamp,
             new DateOnly(2026, 8, 25), "gatto model", theme: null);
 
         Assert.Equal(["(^· ·^)Ⳋ  gatto model · v0.5.0 · build 1a2b3c4", "", sentence], lines);

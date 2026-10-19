@@ -16,36 +16,36 @@ public class EngineTests
 
     //a machine with one engine on it, which answers as the pinned release
     private static SetupFlow Flow(string? build = null, string exe = Exe) =>
-        new(new WizardProbes
+        new(new FakeSetupProbes
         {
             Llama = exe,
             Verify = _ => new ProbeResult(ProbeShape.ClassicServer, "d", Build: build ?? Pin),
         });
 
     //the found screen as the flow emits it, reached from the opening. a hand-built one would only prove the renderer works on a screen nobody reaches
-    private static WizardScreen.Choice Found(SetupFlow flow)
+    private static SetupScreen.Choice Found(SetupFlow flow)
     {
-        return Assert.IsType<WizardScreen.Choice>(flow.StartPastOpening());
+        return Assert.IsType<SetupScreen.Choice>(flow.StartPastOpening());
     }
 
-    private static WizardScreen.Choice Found() => Found(Flow());
+    private static SetupScreen.Choice Found() => Found(Flow());
 
     [Fact]
     public void THE_EXACT_MATCH_ARM_MATCHES_ITS_GOLDEN() =>
-        Golden.AssertEquals("s4", "found", 100, WalkRender.Choice(Found(), 100, script: [WizardRig.Enter]).Rows);
+        Golden.AssertEquals("s4", "found", 100, WalkRender.Choice(Found(), 100, script: [SetupRig.Enter]).Rows);
 
     //the real banner reports a bare number while gatto spells the build with a b, so this drives the string the machine produces
     [Fact]
     public void A_BANNER_REPORTING_A_BARE_NUMBER_STILL_READS_AS_GATTOS_OWN_SPELLING() =>
         Golden.AssertEquals("s4", "found", 100,
-            WalkRender.Choice(Found(Flow(build: "11071")), 100, script: [WizardRig.Enter]).Rows);
+            WalkRender.Choice(Found(Flow(build: "11071")), 100, script: [SetupRig.Enter]).Rows);
 
     //the longest row here is a path, and one width can't see an overflow that only happens at another
     [Fact]
     public void EVERY_ROW_FITS_AT_EVERY_WIDTH_THE_LADDER_SERVES()
     {
         for (var w = 78; w <= 120; w++)
-            foreach (var row in WalkRender.Choice(Found(), w, script: [WizardRig.Enter]).Rows)
+            foreach (var row in WalkRender.Choice(Found(), w, script: [SetupRig.Enter]).Rows)
                 Assert.True(Gatto.Terminal.UnicodeWidth.Of(row) <= w,
                     $"at width {w} a row is {Gatto.Terminal.UnicodeWidth.Of(row)} cells: {row}");
     }
@@ -109,7 +109,7 @@ public class EngineTests
     [Fact]
     public void A_MACHINE_WITH_NO_ENGINE_NEVER_SEES_THIS_SCREEN()
     {
-        var flow = new SetupFlow(new WizardProbes { Llama = null });
+        var flow = new SetupFlow(new FakeSetupProbes { Llama = null });
         Assert.Equal(SetupFlow.SteerKey, ScreenKey.Of(flow.StartPastOpening()));
     }
 
@@ -121,7 +121,7 @@ public class EngineTests
     [InlineData(null, false)]              //the probe read no version
     public void ONLY_A_BUILD_THE_PROBE_COULD_READ_REACHES_THE_SCREEN(string? build, bool reaches)
     {
-        var flow = new SetupFlow(new WizardProbes
+        var flow = new SetupFlow(new FakeSetupProbes
         {
             Llama = Exe,
             Verify = _ => new ProbeResult(ProbeShape.ClassicServer, "d", Build: build),
@@ -137,21 +137,21 @@ public class EngineTests
     public void THE_NEWER_ARM_MATCHES_ITS_GOLDEN() =>
         Golden.AssertEquals("s4", "found-newer", 100, WalkRender.Choice(
             Found(Flow("b11137", Exe.Replace(Pin, "b11137", StringComparison.Ordinal))),
-            100, script: [WizardRig.Enter]).Rows);
+            100, script: [SetupRig.Enter]).Rows);
 
     //this arm dims one line, which is why the default flips: nobody knows the engine feeds the shelf's answers
     [Fact]
     public void THE_OLDER_ARM_MATCHES_ITS_GOLDEN() =>
         Golden.AssertEquals("s4", "found-older", 100, WalkRender.Choice(
             Found(Flow("b9848", Exe.Replace(Pin, "b9848", StringComparison.Ordinal))),
-            100, script: [WizardRig.Enter]).Rows);
+            100, script: [SetupRig.Enter]).Rows);
 
     //a real fork's report, whose build gatto can't place, so the row shows both and claims no relation between them
     [Fact]
     public void THE_FORK_ARM_MATCHES_ITS_GOLDEN() =>
         Golden.AssertEquals("s4", "found-fork", 100, WalkRender.Choice(
             Found(Flow("laguna-2bd55d0", Exe.Replace("llama-" + Pin, "llama-laguna-2bd55d0", StringComparison.Ordinal))),
-            100, script: [WizardRig.Enter]).Rows);
+            100, script: [SetupRig.Enter]).Rows);
 
     //every found state renders and every option on it answers, and the four builds must reach four different states
     [Fact]
@@ -181,7 +181,7 @@ public class EngineTests
     public void AN_ANSWER_THAT_IS_NOT_AN_OPTION_IS_CHECKED_BEFORE_ANYTHING_IS_WRITTEN()
     {
         var asked = new List<string>();
-        var flow = new SetupFlow(new WizardProbes
+        var flow = new SetupFlow(new FakeSetupProbes
         {
             Verify = p =>
             {
@@ -241,10 +241,10 @@ public class EngineTests
     //the failure arms
 
     //a flow that reaches the steering screen and types a path the probe refuses
-    private static WizardScreen Refused(
+    private static SetupScreen Refused(
         ProbeShape shape, string typed, bool vcAbsent = false, bool cudart = false)
     {
-        var flow = new SetupFlow(new WizardProbes
+        var flow = new SetupFlow(new FakeSetupProbes
         {
             Llama = null,
             Asset = new Gatto.Roles.Serve.LlamaAsset("z.zip", cudart ? "cudart.zip" : null, "a card", "CUDA"),
@@ -258,15 +258,15 @@ public class EngineTests
     [Fact]
     public void THE_RUNTIME_FAILURE_ARM_MATCHES_ITS_GOLDEN() =>
         Golden.AssertEquals("s4", "fail-crt", 100, WalkRender.Choice(
-            Assert.IsType<WizardScreen.Choice>(Refused(
+            Assert.IsType<SetupScreen.Choice>(Refused(
                 ProbeShape.DllNotFound, @"C:\Users\you\.gatto\llama\b11071\llama-server.exe", vcAbsent: true)),
-            100, script: [WizardRig.Enter]).Rows);
+            100, script: [SetupRig.Enter]).Rows);
 
     //the file is wrong, so there is no retry and the cursor starts in the door. the Esc word comes from the flow's back flag
     [Fact]
     public void THE_WRONG_KIND_FAILURE_ARM_MATCHES_ITS_GOLDEN() =>
         Golden.AssertEquals("s4", "fail-notclassic", 100, WalkRender.Ask(
-            Assert.IsType<WizardScreen.Ask>(Refused(ProbeShape.NotClassic, @"C:\llama\llama-cli.exe")), 100).Rows);
+            Assert.IsType<SetupScreen.Ask>(Refused(ProbeShape.NotClassic, @"C:\llama\llama-cli.exe")), 100).Rows);
 
     //the retry must verify the exe the screen named, since a button that checked something else would be the worst kind of working button
     [Fact]
@@ -274,7 +274,7 @@ public class EngineTests
     {
         var asked = new List<string>();
         var shape = ProbeShape.DllNotFound;
-        var flow = new SetupFlow(new WizardProbes
+        var flow = new SetupFlow(new FakeSetupProbes
         {
             Llama = null,
             Verify = p => { asked.Add(p); return new ProbeResult(shape, "d", Build: "b11071", VcRuntimeAbsent: true); },
@@ -335,7 +335,7 @@ public class EngineTests
     [Fact]
     public void A_KNOWN_SIBLING_IS_NAMED_AND_SO_IS_THE_FILE_THAT_SHOULD_BE_THERE()
     {
-        var flow = new SetupFlow(new WizardProbes
+        var flow = new SetupFlow(new FakeSetupProbes
         {
             Llama = null,
             Verify = _ => new ProbeResult(ProbeShape.KnownSibling, "d", SiblingName: "llama-cli.exe"),
@@ -344,7 +344,7 @@ public class EngineTests
 
         var screen = flow.Answer(ShelfControls.TypedAnswer(@"C:\llama\b11071\llama-cli.exe"));
 
-        Assert.IsType<WizardScreen.Ask>(screen);   //the typed arm, where the fix is another path
+        Assert.IsType<SetupScreen.Ask>(screen);   //the typed arm, where the fix is another path
         var sentence = FailureScreen.Sentence(screen);
         Assert.Contains("llama-cli.exe", sentence, StringComparison.Ordinal);
         Assert.Contains("llama-server.exe", sentence, StringComparison.Ordinal);
@@ -354,7 +354,7 @@ public class EngineTests
     [Fact]
     public void AN_ENGINE_THAT_DOES_NOT_ANSWER_RENDERS_NO_FOUND_SCREEN()
     {
-        var flow = new SetupFlow(new WizardProbes
+        var flow = new SetupFlow(new FakeSetupProbes
         {
             Llama = Exe,
             Verify = _ => new ProbeResult(ProbeShape.NotClassic, "d", Build: "b11071"),

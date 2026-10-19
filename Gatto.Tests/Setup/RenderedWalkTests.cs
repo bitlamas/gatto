@@ -1,7 +1,7 @@
 using Gatto.Cli.Setup;
 using Gatto.Core.Acquire;
 using Gatto.Tests.Fakes;
-using Probes = Gatto.Tests.Fakes.WizardProbes;
+using Probes = Gatto.Tests.Fakes.FakeSetupProbes;
 using Gatto.Terminal;
 
 namespace Gatto.Tests.Setup;
@@ -39,9 +39,9 @@ public class RenderedWalkTests : IDisposable
         new(modelKey, new DateOnly(2026, 7, 30), "v0.3.4", "greedy", Passed: 5, Ran: 5);
 
     //drive the whole setup flow over a real home, so the run reaches the completion screen instead of stopping at the write pause.
-    private WizardRig Walk(int width, params ConsoleKeyInfo[] keys)
+    private SetupRig Walk(int width, params ConsoleKeyInfo[] keys)
     {
-        var rig = new WizardRig(width);
+        var rig = new SetupRig(width);
         var home = NewHome();
         _walkHome = home;
         SetupRunner.Run(new SetupFlow(SteeredProbes(home)), rig.Face(keys), home);
@@ -54,9 +54,9 @@ public class RenderedWalkTests : IDisposable
     private static string Squash(string frame) =>
         new([.. frame.Where(c => !char.IsWhiteSpace(c))]);
 
-    private WizardRig Branch(Probes probes, params ConsoleKeyInfo[] keys)
+    private SetupRig Branch(Probes probes, params ConsoleKeyInfo[] keys)
     {
-        var rig = new WizardRig(80);
+        var rig = new SetupRig(80);
         var home = NewHome();
         _walkHome = home;
         SetupRunner.Run(new SetupFlow(probes), rig.Face(keys), home);
@@ -135,25 +135,25 @@ public class RenderedWalkTests : IDisposable
     private static ConsoleKeyInfo[] FullWalk =>
     [
         .. WalkOpening.Keys,       //the welcome screen, then the machine section.
-        WizardRig.Digit('1'),      //choose llama.cpp at the fork
-        WizardRig.Enter,           //pick the first row on the shelf.
+        SetupRig.Digit('1'),      //choose llama.cpp at the fork
+        SetupRig.Enter,           //pick the first row on the shelf.
         //the keys below need a real home
-        WizardRig.Digit('1'),      //answer yes to the audition offer.
-        WizardRig.Digit('1'),
-        WizardRig.Digit('1'),
-        WizardRig.Digit('1'),
+        SetupRig.Digit('1'),      //answer yes to the audition offer.
+        SetupRig.Digit('1'),
+        SetupRig.Digit('1'),
+        SetupRig.Digit('1'),
     ];
 
     //list every key instead of splicing by position, one extra screen silently changes every later answer
     private static ConsoleKeyInfo[] WalkAnsweringInstall(char install) =>
     [
         .. WalkOpening.Keys,           //the welcome screen, then the machine section.
-        WizardRig.Digit('1'),          //choose llama.cpp at the fork
-        WizardRig.Enter,               //pick the first row on the shelf.
-        WizardRig.Digit('1'),          //answer yes to the audition offer.
-        WizardRig.Digit('1'),          //advance past the pass screen.
-        WizardRig.Digit(install),      //answer the install question, which the done step asks first.
-        WizardRig.Digit('1'),          //answer the update consent.
+        SetupRig.Digit('1'),          //choose llama.cpp at the fork
+        SetupRig.Enter,               //pick the first row on the shelf.
+        SetupRig.Digit('1'),          //answer yes to the audition offer.
+        SetupRig.Digit('1'),          //advance past the pass screen.
+        SetupRig.Digit(install),      //answer the install question, which the done step asks first.
+        SetupRig.Digit('1'),          //answer the update consent.
     ];
 
     //the run must finish at every width, a funnel that throws, hangs or dead-ends at one width alone would pass screen-by-screen tests
@@ -174,7 +174,7 @@ public class RenderedWalkTests : IDisposable
     [MemberData(nameof(Widths))]
     public void EVERY_FRAME_OF_THE_WALK_IS_ASCII_UNDER_THE_ASCII_SET(int width)
     {
-        var rig = new WizardRig(width, Gatto.Terminal.GlyphSet.Ascii);
+        var rig = new SetupRig(width, Gatto.Terminal.GlyphSet.Ascii);
         var home = NewHome();
         _walkHome = home;
         SetupRunner.Run(new SetupFlow(SteeredProbes(home)), rig.Face(FullWalk), home);
@@ -190,7 +190,7 @@ public class RenderedWalkTests : IDisposable
     [MemberData(nameof(Widths))]
     public void EVERY_FRAME_OF_THE_TUI_WALK_IS_ASCII_UNDER_THE_ASCII_SET(int width)
     {
-        var rig = new WizardRig(width, Gatto.Terminal.GlyphSet.Ascii);
+        var rig = new SetupRig(width, Gatto.Terminal.GlyphSet.Ascii);
         var home = NewHome();
         _walkHome = home;
         SetupRunner.Run(new SetupFlow(SteeredProbes(home)), rig.TuiFace(FullWalk), home);
@@ -208,7 +208,7 @@ public class RenderedWalkTests : IDisposable
     }
 
     //every visible character has to draw on a legacy console, and one copy here keeps the two faces from asking different questions
-    private static void AssertAsciiVocabulary(WizardRig rig, int width)
+    private static void AssertAsciiVocabulary(SetupRig rig, int width)
     {
         Assert.NotEmpty(rig.Frames);
         foreach (var (frame, f) in rig.Frames.Select((x, i) => (x, i)))
@@ -355,7 +355,7 @@ public class RenderedWalkTests : IDisposable
         System.IO.Directory.CreateDirectory(dir);
         foreach (var width in new[] { 52, 72, 80, 120 })
         {
-            var rig = new WizardRig(width);
+            var rig = new SetupRig(width);
             string? stopped = null;
             try
             {
@@ -449,14 +449,14 @@ public class RenderedWalkTests : IDisposable
         var home = NewHome();
         var probes = SteeredProbes(home, audition: new AuditionCheck(
             AuditionOutcome.Failed, new AuditionFacts("Q4_K_M", "greedy", "off", 42.5, 2, 5)));
-        var rig = new WizardRig(80);
+        var rig = new SetupRig(80);
         _walkHome = home;
         SetupRunner.Run(new SetupFlow(probes), rig.Face(
         [
-            .. WalkOpening.Keys, WizardRig.Digit('1'), WizardRig.Enter,
-            WizardRig.Digit('1'),          //answer yes to the audition offer.
-            WizardRig.Digit('2'),          //choose to use it anyway, the product allows it on insistence
-            WizardRig.Digit('1'), WizardRig.Digit('1'), WizardRig.Digit('1'),
+            .. WalkOpening.Keys, SetupRig.Digit('1'), SetupRig.Enter,
+            SetupRig.Digit('1'),          //answer yes to the audition offer.
+            SetupRig.Digit('2'),          //choose to use it anyway, the product allows it on insistence
+            SetupRig.Digit('1'), SetupRig.Digit('1'), SetupRig.Digit('1'),
         ]), home);
 
         //assert on the first frame that holds the verdict, the shelf draws the same Q4_K_M text and later frames collapse the body rows
@@ -478,12 +478,12 @@ public class RenderedWalkTests : IDisposable
     {
         var home = NewHome();
         var probes = SteeredProbes(home, install: Gatto.Cli.Install.InstallState.DevBuild);
-        var rig = new WizardRig(80);
+        var rig = new SetupRig(80);
         _walkHome = home;
         SetupRunner.Run(new SetupFlow(probes), rig.Face(
         [
-            .. WalkOpening.Keys, WizardRig.Digit('1'), WizardRig.Enter,
-            WizardRig.Digit('1'), WizardRig.Digit('1'), WizardRig.Digit('1'), WizardRig.Digit('1'),
+            .. WalkOpening.Keys, SetupRig.Digit('1'), SetupRig.Enter,
+            SetupRig.Digit('1'), SetupRig.Digit('1'), SetupRig.Digit('1'), SetupRig.Digit('1'),
         ]), home);
 
         var seen = string.Join("\n", rig.Frames);
@@ -511,10 +511,10 @@ public class RenderedWalkTests : IDisposable
         //build the probes before the baseline, SteeredProbes creates the fixture's Downloads folder so an earlier snapshot measures the fixture
         var probes = SteeredProbes(home);
         var before = Tree(home);
-        var rig = new WizardRig(80);
+        var rig = new SetupRig(80);
         _walkHome = home;
 
-        SetupRunner.Run(new SetupFlow(probes), rig.Face([WizardRig.Digit('2')]), home);
+        SetupRunner.Run(new SetupFlow(probes), rig.Face([SetupRig.Digit('2')]), home);
 
         Assert.Equal(before, Tree(home));
         //prove the run reached the opening question and answered it, an unchanged tree alone shows only that nothing ran
@@ -528,11 +528,11 @@ public class RenderedWalkTests : IDisposable
         var home = NewHome();
         var probes = SteeredProbes(home);
         var before = Tree(home);
-        var rig = new WizardRig(80);
+        var rig = new SetupRig(80);
         _walkHome = home;
 
         SetupRunner.Run(new SetupFlow(probes), rig.Face(
-            [.. WalkOpening.Keys, WizardRig.Digit('1'), Esc]), home);
+            [.. WalkOpening.Keys, SetupRig.Digit('1'), Esc]), home);
 
         Assert.Equal(before, Tree(home));
     }
@@ -543,12 +543,12 @@ public class RenderedWalkTests : IDisposable
     {
         var home = NewHome();
         var probes = SteeredProbes(home);
-        var rig = new WizardRig(80);
+        var rig = new SetupRig(80);
         _walkHome = home;
 
         //keys for the opening question, the fork and the pick, then Esc at the audition offer, where the writes have already taken effect
         SetupRunner.Run(new SetupFlow(probes), rig.Face(
-            [.. WalkOpening.Keys, WizardRig.Digit('1'), WizardRig.Enter, Esc]), home);
+            [.. WalkOpening.Keys, SetupRig.Digit('1'), SetupRig.Enter, Esc]), home);
 
         //check the disk, the run wrote a model folder
         Assert.NotEmpty(Directory.GetDirectories(Path.Combine(home, "models")));
@@ -574,15 +574,15 @@ public class RenderedWalkTests : IDisposable
     {
         var home = NewHome();
         var flow = new SetupFlow(SteeredProbes(home));
-        var rig = new WizardRig(100);
+        var rig = new SetupRig(100);
         _walkHome = home;
 
         var exit = SetupRunner.Run(flow, rig.Face(
-            [.. WalkOpening.Keys, WizardRig.Digit('1'), WizardRig.Enter, Esc]), home);
+            [.. WalkOpening.Keys, SetupRig.Digit('1'), SetupRig.Enter, Esc]), home);
 
         Assert.Equal(0, exit);
 
-        var record = WizardSession.Scrollback(flow, () => [], 100, GlyphSet.Unicode, Stamp,
+        var record = SetupSession.Scrollback(flow, () => [], 100, GlyphSet.Unicode, Stamp,
             new DateOnly(2026, 8, 25), "gatto setup", theme: null);
 
         Assert.Equal("(^· ·^)Ⳋ  gatto setup · left at the check · v0.5.0 · build 1a2b3c4 · 2026-08-25",
@@ -597,14 +597,14 @@ public class RenderedWalkTests : IDisposable
     {
         var home = NewHome();
         var flow = new SetupFlow(SteeredProbes(home));
-        var rig = new WizardRig(100);
+        var rig = new SetupRig(100);
         _walkHome = home;
 
         SetupRunner.Run(flow, rig.Face(FullWalk), home);
 
         var header = new StringWriter();
         Gatto.Cli.CommandBanner.WriteHeader(header, null, "setup", GlyphSet.Unicode, Stamp);
-        var record = WizardSession.Scrollback(flow, () => ["the painted frame"], 100, GlyphSet.Unicode, Stamp,
+        var record = SetupSession.Scrollback(flow, () => ["the painted frame"], 100, GlyphSet.Unicode, Stamp,
             new DateOnly(2026, 8, 25), "gatto setup", theme: null);
 
         Assert.Equal(header.ToString().Split(Environment.NewLine)[1] + " · 2026-08-25", record[0]);
@@ -625,14 +625,14 @@ public class RenderedWalkTests : IDisposable
     {
         var home = NewHome();
         var flow = new SetupFlow(SteeredProbes(home));
-        var rig = new WizardRig(100);
+        var rig = new SetupRig(100);
         _walkHome = home;
 
         SetupRunner.Run(flow, rig.Face(FullWalk), home);
 
         Assert.Null(flow.LeftAt);
         Assert.Equal("(^· ·^)Ⳋ  gatto setup · v0.5.0 · build 1a2b3c4 · 2026-08-25",
-            WizardSession.Scrollback(flow, () => [], 100, GlyphSet.Unicode, Stamp,
+            SetupSession.Scrollback(flow, () => [], 100, GlyphSet.Unicode, Stamp,
                 new DateOnly(2026, 8, 25), "gatto setup", theme: null)[0]);
     }
 
@@ -641,10 +641,10 @@ public class RenderedWalkTests : IDisposable
 
     private static ConsoleKeyInfo Esc => new('', ConsoleKey.Escape, false, false, false);
 
-    private WizardRig Connect(ConnectProbe? server, params ConsoleKeyInfo[] keys)
+    private SetupRig Connect(ConnectProbe? server, params ConsoleKeyInfo[] keys)
     {
         var home = NewHome();
-        var rig = new WizardRig(80);
+        var rig = new SetupRig(80);
         _walkHome = home;
         SetupRunner.Run(new SetupFlow(SteeredProbes(home, server: server)), rig.Face(keys), home);
         return rig;
@@ -655,8 +655,8 @@ public class RenderedWalkTests : IDisposable
     public void THE_CONNECT_PATH_CONFIRMS_THE_SERVER_IT_FOUND()
     {
         var rig = Connect(new ConnectProbe("http://127.0.0.1:1234", ["qwen3-8b"], 8192),
-            [.. WalkOpening.Keys, WizardRig.Digit('2'), WizardRig.Digit('1'),
-            WizardRig.Digit('1'), WizardRig.Digit('1')]);
+            [.. WalkOpening.Keys, SetupRig.Digit('2'), SetupRig.Digit('1'),
+            SetupRig.Digit('1'), SetupRig.Digit('1')]);
 
         var seen = Squash(string.Join("\n", rig.Frames));
         //the screen asks one question, and the address appears as a fact below it.
@@ -671,8 +671,8 @@ public class RenderedWalkTests : IDisposable
     public void THE_CONNECT_PATH_ASKS_FOR_A_CONTEXT_THE_SERVER_WOULD_NOT_REPORT()
     {
         var rig = Connect(new ConnectProbe("http://127.0.0.1:1234", ["qwen3-8b"], null),
-            [.. WalkOpening.Keys, WizardRig.Digit('2'), WizardRig.Digit('1'),
-            WizardRig.Digit('1'), WizardRig.Digit('1'), WizardRig.Digit('1')]);
+            [.. WalkOpening.Keys, SetupRig.Digit('2'), SetupRig.Digit('1'),
+            SetupRig.Digit('1'), SetupRig.Digit('1'), SetupRig.Digit('1')]);
 
         var seen = Squash(string.Join("\n", rig.Frames));
         Assert.Contains("didn'treportitscontextwindow", seen, StringComparison.Ordinal);
@@ -685,8 +685,8 @@ public class RenderedWalkTests : IDisposable
     {
         //press Esc, it is valid on every choice screen so the run reaches the end and a failure names the property
         var rig = Connect(new ConnectProbe("http://127.0.0.1:1234", ["a-8b", "b-14b", "c-32b"], 8192),
-            [.. WalkOpening.Keys, WizardRig.Digit('2'), WizardRig.Digit('1'),
-            WizardRig.Digit('1'), WizardRig.Digit('1'), Esc]);
+            [.. WalkOpening.Keys, SetupRig.Digit('2'), SetupRig.Digit('1'),
+            SetupRig.Digit('1'), SetupRig.Digit('1'), Esc]);
 
         var seen = Squash(string.Join("\n", rig.Frames));
         Assert.Contains("lists3modelsitcanload", seen, StringComparison.Ordinal);
@@ -698,7 +698,7 @@ public class RenderedWalkTests : IDisposable
     public void NO_SERVER_ANSWERING_OFFERS_A_RETRY_AND_A_WAY_OUT()
     {
         //press Esc instead of the leave option's digit, a script that answers by position fails bare when that option disappears
-        var rig = Connect(null, [.. WalkOpening.Keys, WizardRig.Digit('2'), Esc]);
+        var rig = Connect(null, [.. WalkOpening.Keys, SetupRig.Digit('2'), Esc]);
 
         var seen = Squash(string.Join("\n", rig.Frames));
         //the retry state is a normal screen in the flow, it asks the flow's own question and offers a look again option
@@ -712,14 +712,14 @@ public class RenderedWalkTests : IDisposable
     }
 
     //a shelf run, opening, fork, then the state's own keys, and width is a parameter since the shelf's layout depends on it
-    private WizardRig Shelf(int width, Func<ModelSearchRequest, ShelfOutcome> answer,
+    private SetupRig Shelf(int width, Func<ModelSearchRequest, ShelfOutcome> answer,
         params ConsoleKeyInfo[] after)
     {
         var home = NewHome();
-        var rig = new WizardRig(width);
+        var rig = new SetupRig(width);
         _walkHome = home;
         SetupRunner.Run(new SetupFlow(SteeredProbes(home, answer: answer)), rig.Face(
-            [.. WalkOpening.Keys, WizardRig.Digit('1'), .. after]), home);
+            [.. WalkOpening.Keys, SetupRig.Digit('1'), .. after]), home);
         return rig;
     }
 
@@ -728,7 +728,7 @@ public class RenderedWalkTests : IDisposable
     [MemberData(nameof(Widths))]
     public void A_SHELF_WHERE_NOTHING_FITS_SAYS_SO_AND_IS_NOT_A_DEAD_END(int width)
     {
-        var rig = Shelf(width, _ => WizardProbes.Outcome([], HubSearchCause.NothingFits), Esc);
+        var rig = Shelf(width, _ => FakeSetupProbes.Outcome([], HubSearchCause.NothingFits), Esc);
 
         var seen = Squash(string.Join("\n", rig.Frames));
         Assert.Contains("Noneofthesemodelsfitthismachine", seen, StringComparison.Ordinal);
@@ -740,7 +740,7 @@ public class RenderedWalkTests : IDisposable
     [MemberData(nameof(Widths))]
     public void A_SHELF_THE_HUB_COULD_NOT_ANSWER_BLAMES_THE_NETWORK_not_the_machine(int width)
     {
-        var rig = Shelf(width, _ => WizardProbes.Outcome([], HubSearchCause.HubFailed), Esc);
+        var rig = Shelf(width, _ => FakeSetupProbes.Outcome([], HubSearchCause.HubFailed), Esc);
 
         var seen = Squash(string.Join("\n", rig.Frames));
         Assert.Contains("Couldntreachthemodellist", seen.Replace("'", ""), StringComparison.Ordinal);
@@ -754,7 +754,7 @@ public class RenderedWalkTests : IDisposable
     public void AN_EMPTY_REGISTER_PUTS_NO_TICK_ON_ANY_ROW(int width)
     {
         var rig = Shelf(width,
-            _ => WizardProbes.Outcome([Row("bartowski/Qwen3-8B-GGUF", badge: null),
+            _ => FakeSetupProbes.Outcome([Row("bartowski/Qwen3-8B-GGUF", badge: null),
                  Row("unsloth/Llama-3.3-8B-GGUF", "llama-Q4_K_M.gguf", 3_800_000_000, badge: null)], null),
             Esc);
 
@@ -775,14 +775,14 @@ public class RenderedWalkTests : IDisposable
         Assert.Contains(Squash(Gatto.Cli.Setup.Shelves.ShelfBinding.UnmeasuredShelf), seen, StringComparison.Ordinal);
     }
 
-    private WizardRig ShelfTyped(int width, Func<string, TypedIdOutcome> typed,
+    private SetupRig ShelfTyped(int width, Func<string, TypedIdOutcome> typed,
         params ConsoleKeyInfo[] after)
     {
         var home = NewHome();
-        var rig = new WizardRig(width);
+        var rig = new SetupRig(width);
         _walkHome = home;
         SetupRunner.Run(new SetupFlow(SteeredProbes(home, typed: typed)), rig.Face(
-            [.. WalkOpening.Keys, WizardRig.Digit('1'), .. after]), home);
+            [.. WalkOpening.Keys, SetupRig.Digit('1'), .. after]), home);
         return rig;
     }
 
@@ -795,7 +795,7 @@ public class RenderedWalkTests : IDisposable
         const string id = "someone/Custom-8B-GGUF";
         //write the keys as a collection expression, a spread in the argument list parses as an index
         ConsoleKeyInfo[] keys =
-            [WizardRig.Ch('?'), .. id.Select(WizardRig.Ch), WizardRig.Enter, Esc];
+            [SetupRig.Ch('?'), .. id.Select(SetupRig.Ch), SetupRig.Enter, Esc];
         var rig = ShelfTyped(width,
             typedId => { asked.Add(typedId); return new TypedIdOutcome.Ok(Row(id)); },
             keys);
@@ -812,7 +812,7 @@ public class RenderedWalkTests : IDisposable
     {
         var home = NewHome();
         var probes = SteeredProbes(home, install: Gatto.Cli.Install.InstallState.InstalledButNotOnPath);
-        var rig = new WizardRig(width);
+        var rig = new SetupRig(width);
         _walkHome = home;
         //the repair screen is the first question of the done step, so the run must reach it, and answering 2 leaves the machine alone
         SetupRunner.Run(new SetupFlow(probes), rig.Face([.. WalkAnsweringInstall('2'), Esc]), home);
@@ -831,12 +831,12 @@ public class RenderedWalkTests : IDisposable
     {
         var home = NewHome();
         var probes = SteeredProbes(home, audition: new AuditionCheck(AuditionOutcome.CouldNotRun));
-        var rig = new WizardRig(width);
+        var rig = new SetupRig(width);
         _walkHome = home;
         SetupRunner.Run(new SetupFlow(probes), rig.Face(
         [
-            .. WalkOpening.Keys, WizardRig.Digit('1'), WizardRig.Enter,
-            WizardRig.Digit('1'),          //answer yes to the check offer.
+            .. WalkOpening.Keys, SetupRig.Digit('1'), SetupRig.Enter,
+            SetupRig.Digit('1'),          //answer yes to the check offer.
             //press Esc instead of the screen's own option, it is valid on every choice screen, so a deleted branch fails the assertion
             Esc,
         ]), home);
@@ -862,14 +862,14 @@ public class RenderedWalkTests : IDisposable
         var home = NewHome();
         var probes = SteeredProbes(home, audition: new AuditionCheck(
             AuditionOutcome.Failed, new AuditionFacts("Q4_K_M", "greedy", "off", 42.5, 2, 5)));
-        var rig = new WizardRig(80);
+        var rig = new SetupRig(80);
         _walkHome = home;
         SetupRunner.Run(new SetupFlow(probes), rig.Face(
         [
-            .. WalkOpening.Keys, WizardRig.Digit('1'), WizardRig.Enter,
-            WizardRig.Digit('1'),          //answer yes to the audition offer.
-            WizardRig.Digit('2'),          //choose to use it anyway.
-            WizardRig.Digit('1'), WizardRig.Digit('1'), WizardRig.Digit('1'),
+            .. WalkOpening.Keys, SetupRig.Digit('1'), SetupRig.Enter,
+            SetupRig.Digit('1'),          //answer yes to the audition offer.
+            SetupRig.Digit('2'),          //choose to use it anyway.
+            SetupRig.Digit('1'), SetupRig.Digit('1'), SetupRig.Digit('1'),
         ]), home);
 
         Assert.Equal(1, rig.Occurrences("sampling"));
@@ -882,13 +882,13 @@ public class RenderedWalkTests : IDisposable
     public void A_WALK_WITH_NO_AUDITION_HAS_NO_STAMP_TO_LOSE()
     {
         var home = NewHome();
-        var rig = new WizardRig(80);
+        var rig = new SetupRig(80);
         _walkHome = home;
         SetupRunner.Run(new SetupFlow(SteeredProbes(home)), rig.Face(
         [
-            .. WalkOpening.Keys, WizardRig.Digit('1'), WizardRig.Enter,
-            WizardRig.Digit('2'),          //skip the audition offer and use the model as it is.
-            WizardRig.Digit('1'), WizardRig.Digit('1'), WizardRig.Digit('1'),
+            .. WalkOpening.Keys, SetupRig.Digit('1'), SetupRig.Enter,
+            SetupRig.Digit('2'),          //skip the audition offer and use the model as it is.
+            SetupRig.Digit('1'), SetupRig.Digit('1'), SetupRig.Digit('1'),
         ]), home);
 
         Assert.Equal(0, rig.Occurrences("sampling"));
@@ -910,7 +910,7 @@ public class RenderedWalkTests : IDisposable
         var state = Enum.Parse<Gatto.Cli.Install.InstallState>(stateName);
         var home = NewHome();
         var flow = new SetupFlow(SteeredProbes(home, install: state));
-        var rig = new WizardRig(80);
+        var rig = new SetupRig(80);
 
         //the run must reach the done step, that question records the install state the sentence is computed from
         SetupRunner.Run(flow, rig.Face([.. WalkAnsweringInstall(accepted ? '1' : '2'), Esc]), home);
@@ -926,7 +926,7 @@ public class RenderedWalkTests : IDisposable
     {
         var home = NewHome();
         var flow = new SetupFlow(SteeredProbes(home, install: Gatto.Cli.Install.InstallState.NotInstalled));
-        var rig = new WizardRig(80);
+        var rig = new SetupRig(80);
 
         SetupRunner.Run(flow, rig.Face([.. WalkAnsweringInstall('1'), Esc]), home);
 
@@ -963,7 +963,7 @@ public class RenderedWalkTests : IDisposable
     public void LEAVING_BEFORE_THE_WRITES_REPORTS_NO_MODEL()
     {
         var home = HomeWithDefault();
-        var rig = new WizardRig(80);
+        var rig = new SetupRig(80);
 
         SetupRunner.Run(new SetupFlow(SteeredProbes(home)), rig.Face(Esc), out var added, home,
             modelSegmentOnly: true);
@@ -976,10 +976,10 @@ public class RenderedWalkTests : IDisposable
     public void LEAVING_AFTER_THE_WRITES_REPORTS_THE_MODEL_THE_WRITER_PRODUCED()
     {
         var home = HomeWithDefault();
-        var rig = new WizardRig(80);
+        var rig = new SetupRig(80);
 
         //taking the first shelf row applies the writes, so the leave comes after them
-        SetupRunner.Run(new SetupFlow(SteeredProbes(home)), rig.Face(WizardRig.Enter, Esc),
+        SetupRunner.Run(new SetupFlow(SteeredProbes(home)), rig.Face(SetupRig.Enter, Esc),
             out var added, home, modelSegmentOnly: true);
 
         Assert.NotNull(added);

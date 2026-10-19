@@ -21,7 +21,7 @@ public class InSessionShelfTests
     private static readonly ConsoleKeyInfo Enter = new('\0', ConsoleKey.Enter, false, false, false);
     private static readonly ConsoleKeyInfo Down = new('\0', ConsoleKey.DownArrow, false, false, false);
 
-    private static WizardScreen.Choice InSessionScreen(ShelfView shelf) =>
+    private static SetupScreen.Choice InSessionScreen(ShelfView shelf) =>
         new(SetupFlow.SearchKey, SetupFlow.ModelTitleFor(inSession: true),
             [.. shelf.Rows.Select((r, i) => new ChoiceOption(i.ToString(), r.RowFile!.RepoId))],
             Shelf: shelf, Door: SetupFlow.ShelfDoorPlaceholderOf(Gatto.Terminal.GlyphSet.Unicode))
@@ -45,12 +45,12 @@ public class InSessionShelfTests
 
     private static readonly ConsoleKeyInfo Esc = new('\u001b', ConsoleKey.Escape, false, false, false);
 
-    private static (TuiWizardSurface F, Func<IReadOnlyList<string>> Painted) Face(
+    private static (TuiSetupSurface F, Func<IReadOnlyList<string>> Painted) Face(
         bool watching, params ConsoleKeyInfo[] keys)
     {
         var s = new Gatto.Tests.Fakes.RecordingSurface { Width = 100 };
         //the clock answers ready for every screen, since an armed chord's bounded wait needs it and the frozen nowMs would spin forever
-        var f = new TuiWizardSurface(s, new Keys(keys), new Gatto.Terminal.Theme(
+        var f = new TuiSetupSurface(s, new Keys(keys), new Gatto.Terminal.Theme(
                 new Gatto.Terminal.TermCaps(true, true)), "0.5.0", "1a2b3c4", () => 0,
             clock: _ => new Ready());
         return (f, () => f.LastPainted);
@@ -81,7 +81,7 @@ public class InSessionShelfTests
     public void AN_IN_SESSION_WATCHING_SCREEN_STILL_ARMS()
     {
         var (f, painted) = Face(watching: true, Esc, Esc);
-        var screen = new WizardScreen.Choice("model.fetching", "Downloading…",
+        var screen = new SetupScreen.Choice("model.fetching", "Downloading…",
             [new ChoiceOption("stop", "stop the download"), new ChoiceOption("wait", "keep waiting")],
             Watching: true, Door: "or paste a different model…")
             { Strip = InSessionStrip };
@@ -106,7 +106,7 @@ public class InSessionShelfTests
 
 
     //the setup flow's empty shelf, matching the shape of s5-unified-96-local-empty-100
-    private static WizardScreen.Choice EmptyLocalSetupScreen() =>
+    private static SetupScreen.Choice EmptyLocalSetupScreen() =>
         new(SetupFlow.SearchKey, "Which model should gatto start with?", [],
             Shelf: new ShelfView([], MachineShape.UnifiedWithShare,
                 Source: ShelfSource.Local,
@@ -189,7 +189,7 @@ public class InSessionShelfTests
     [Fact]
     public void AND_A_SCREEN_THAT_IS_NOT_A_SHELF_DRAWS_THE_SAME_HEAD()
     {
-        var screen = new WizardScreen.Choice("model.fetching", "Downloading…",
+        var screen = new SetupScreen.Choice("model.fetching", "Downloading…",
             [new ChoiceOption("stop", "stop the download"), new ChoiceOption("wait", "keep waiting")],
             Door: "or paste a different model…")
             { Strip = InSessionStrip };
@@ -319,13 +319,13 @@ public class InSessionShelfTests
             Source: ShelfSource.Local, Folder: LocalDir);
     }
 
-    private static WizardScreen.Choice LocalScreen(bool notice)
+    private static SetupScreen.Choice LocalScreen(bool notice)
     {
         var shelf = LocalShelfView();
-        return new WizardScreen.Choice(SetupFlow.SearchKey, SetupFlow.ModelTitleFor(inSession: true),
+        return new SetupScreen.Choice(SetupFlow.SearchKey, SetupFlow.ModelTitleFor(inSession: true),
             [.. shelf.Rows.Select((r, i) => new ChoiceOption(i.ToString(), r.RowFile!.RepoId))],
             //the notice goes in the body above the chips, the slot the discovery line uses on the Hub shelf
-            BodyRows: notice ? [new WizardRow(SetupFlow.OutOfReach, Tone: RowTone.Aside)] : [],
+            BodyRows: notice ? [new SetupRow(SetupFlow.OutOfReach, Tone: RowTone.Aside)] : [],
             Shelf: shelf,
             Door: SetupFlow.LocalShelfDoorPlaceholderOf(Gatto.Terminal.GlyphSet.Unicode))
         { Strip = InSessionStrip };
@@ -364,13 +364,13 @@ public class InSessionShelfTests
         new(repoId, "qwen3-5-4b", done, total, @"C:\weights\qwen3-5-4b");
 
     //a shelf opened in a session, with or without a paused fetch behind it
-    private static (SetupFlow Flow, WizardScreen.Choice Screen) OpenShelf(
+    private static (SetupFlow Flow, SetupScreen.Choice Screen) OpenShelf(
         params ISetupProbes.PausedFetch[] paused)
     {
-        //probes are built here because WizardProbes is a class with no with-expression, and this is the shelf's own fixture
+        //probes are built here because FakeSetupProbes is a class with no with-expression, and this is the shelf's own fixture
         var probes = ModelFetchTests.ShelfProbes(paused: paused);
         var flow = new SetupFlow(probes);
-        return (flow, Assert.IsType<WizardScreen.Choice>(flow.StartAtModelSegment()));
+        return (flow, Assert.IsType<SetupScreen.Choice>(flow.StartAtModelSegment()));
     }
 
     //the row names the model and how far it got, which is why the record holds the total
@@ -394,7 +394,7 @@ public class InSessionShelfTests
         var after = flow.Answer(SetupFlow.ResumePausedFetch);
 
         Assert.Equal(SetupFlow.ModelConsentKey,
-            Assert.IsType<WizardScreen.Choice>(after).Key);
+            Assert.IsType<SetupScreen.Choice>(after).Key);
     }
 
     //the resume row takes digit 1 while it exists, and the models follow it. the pair is the oracle, the with-row case alone cannot tell a shift from a coincidence
@@ -416,8 +416,8 @@ public class InSessionShelfTests
         var (_, shelf) = OpenShelf(Part("unsloth/Qwen3.5-4B-GGUF", 1, 2));
         var view = shelf.Shelf!;
 
-        //go through WizardPaint so the labels are the drawn ones, the binding takes the widget's options and the flow's are ChoiceOptions
-        var labels = ShelfBinding.For(view, WizardPaint.Options(shelf, GlyphSet.Unicode),
+        //go through SetupPaint so the labels are the drawn ones, the binding takes the widget's options and the flow's are ChoiceOptions
+        var labels = ShelfBinding.For(view, SetupPaint.Options(shelf, GlyphSet.Unicode),
             new Theme(TermCaps.Plain), GlyphSet.Unicode).LabelsAt(100);
 
         //the lead row keeps its own words

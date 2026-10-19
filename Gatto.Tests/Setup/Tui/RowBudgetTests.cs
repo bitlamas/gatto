@@ -41,7 +41,7 @@ public class RowBudgetTests
         Assert.Equal(int.MaxValue, Face(height: 24).RowBudget);
 
         //the in-session face numbers its rows, so the interface default is the right answer here
-        IWizardSurface prompter = new PrompterWizardSurface(new SilentPrompter(), TextWriter.Null);
+        ISetupSurface prompter = new PrompterSetupSurface(new SilentPrompter(), TextWriter.Null);
         Assert.Equal(HubSearch.DefaultRowBudget, prompter.RowBudget);
     }
 
@@ -49,7 +49,7 @@ public class RowBudgetTests
     [Fact]
     public void ONLY_THE_FACE_WITH_A_KEY_LOOP_CLAIMS_THE_SOURCE_SWITCH()
     {
-        IWizardSurface prompter = new PrompterWizardSurface(new SilentPrompter(), TextWriter.Null);
+        ISetupSurface prompter = new PrompterSetupSurface(new SilentPrompter(), TextWriter.Null);
 
         Assert.True(Face(height: 40).CanSwitchSource);
         Assert.False(prompter.CanSwitchSource);
@@ -59,7 +59,7 @@ public class RowBudgetTests
     [Fact]
     public void THE_RUNNER_HANDS_THE_FACES_SOURCE_SWITCH_TO_THE_FLOW()
     {
-        var flow = new SetupFlow(new WizardProbes { Llama = null });
+        var flow = new SetupFlow(new FakeSetupProbes { Llama = null });
         Assert.False(flow.CanSwitchSource);
 
         SetupRunner.Run(flow, Face(height: 60));
@@ -71,7 +71,7 @@ public class RowBudgetTests
     [Fact]
     public void THE_RUNNER_HANDS_THE_FACES_BUDGET_TO_THE_FLOW()
     {
-        var probes = new WizardProbes { Llama = null };
+        var probes = new FakeSetupProbes { Llama = null };
         var flow = new SetupFlow(probes);
         Assert.Equal(HubSearch.DefaultRowBudget, flow.RowBudget);
 
@@ -107,7 +107,7 @@ public class RowBudgetTests
         Assert.Equal(HubSearch.DefaultRowBudget, Face(height: 0).RowBudget);
     }
 
-    private static TuiWizardSurface Face(int height) =>
+    private static TuiSetupSurface Face(int height) =>
         new(new RecordingSurface { Width = 100, Height = height },
             new NoKeys(), new Theme(new TermCaps(true, true)),
             version: "0.5.0", build: "1a2b3c4", nowMs: () => 0);
@@ -130,11 +130,11 @@ public class RowBudgetTests
 
     //reach the shelf through StartPastEngine, since a private route here would drift from the screens the product really shows first
     private static ShelfView ShelfOf(SetupFlow flow) =>
-        Assert.IsType<WizardScreen.Choice>(flow.StartPastEngine()).Shelf
+        Assert.IsType<SetupScreen.Choice>(flow.StartPastEngine()).Shelf
         ?? throw new Xunit.Sdk.XunitException("the walk reached a choice with no shelf on it");
 
     //record every request, so the budget's route is observable rather than inferred from a screen that looks the same either way
-    private static WizardProbes Spy(List<ModelSearchRequest> asked, IReadOnlyList<ModelRow> rows) =>
+    private static FakeSetupProbes Spy(List<ModelSearchRequest> asked, IReadOnlyList<ModelRow> rows) =>
         //keep the default llama path rather than null, since StartPastEngine expects an engine and a machine with none stops on the steering screen
-        new() { Answer = r => { asked.Add(r); return WizardProbes.Outcome(rows, null); } };
+        new() { Answer = r => { asked.Add(r); return FakeSetupProbes.Outcome(rows, null); } };
 }

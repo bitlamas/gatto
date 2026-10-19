@@ -10,7 +10,7 @@ public class ProbeDeclarationCensusTests
     private static readonly string[] Transitional = ["FetchModel", "DeletePartial"];
 
     //these classes do the real work. the other fakes are the reason the defaults exist, so they are excluded on purpose.
-    private static readonly Type[] Real = [typeof(LiveSetupProbes), typeof(Gatto.Tests.Fakes.WizardProbes)];
+    private static readonly Type[] Real = [typeof(LiveSetupProbes), typeof(Gatto.Tests.Fakes.FakeSetupProbes)];
 
     //resolve the member through the interface map, a same-named method left by a drifted signature would keep a by-name check green
     private static MethodInfo? Implements(Type t, string name)

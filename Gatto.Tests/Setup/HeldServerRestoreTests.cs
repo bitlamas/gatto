@@ -206,14 +206,14 @@ public class HeldServerRestoreTests : IDisposable
     public void A_FAILED_RESTORE_IS_SAID_ON_THE_CONSOLE_AFTER_THE_RECORD()
     {
         var surface = new RecordingSurface { Width = 100 };
-        using var face = new TuiWizardSurface(surface, new NoKeys(), new Theme(new TermCaps(true, true)),
+        using var face = new TuiSetupSurface(surface, new NoKeys(), new Theme(new TermCaps(true, true)),
             "0.5.0", "1a2b3c4", () => 0);
         var console = new StringWriter();
         var probes = ProbesOver(new ThrowingSpawn(), face.Notes, afterWalk: console);
 
         using (probes)
         {
-            WizardSession.Run(new AltScreen(surface, title: null),
+            SetupSession.Run(new AltScreen(surface, title: null),
                 () => { probes.ReleaseHeldServer(); return 0; },
                 () => ["the record"], console, notes: () => face.CapturedNotes,
                 registerHooks: false, take: () => null, giveBack: _ => { });

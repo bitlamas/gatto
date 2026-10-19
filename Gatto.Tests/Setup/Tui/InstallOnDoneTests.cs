@@ -10,7 +10,7 @@ namespace Gatto.Tests.Setup.Tui;
 public class InstallOnDoneTests
 {
     //a machine with an engine and a passing check, so a difference between two walks can only come from the install state
-    private static WizardProbes Machine(
+    private static FakeSetupProbes Machine(
         InstallState install, string? installed = null, string? held = null,
         string? running = null, bool legacy = false) => new()
     {
@@ -52,7 +52,7 @@ public class InstallOnDoneTests
     }
 
     //walk the whole wizard from Start, since StartAtModelSegment sets _addRoad and that entry is the point of these tests
-    private static SetupFlow ToTheCheck(WizardProbes probes)
+    private static SetupFlow ToTheCheck(FakeSetupProbes probes)
     {
         var flow = new SetupFlow(probes);
         Assert.Equal(SetupFlow.FoundKey, ScreenKey.Of(flow.StartPastOpening()));
@@ -84,7 +84,7 @@ public class InstallOnDoneTests
         Assert.Null(flow.Writes.InstallTo);
 
         while (flow.NeedsWritesApplied) screen = flow.ResumeAfterWrites(null);
-        var row = Assert.IsType<WizardScreen.Choice>(flow.Emitted[^1]).BodyRows!
+        var row = Assert.IsType<SetupScreen.Choice>(flow.Emitted[^1]).BodyRows!
             .Single(r => r.Text.StartsWith("gatto ", StringComparison.Ordinal));
 
         Assert.Contains(@"C:\Users\you\AppData\Local\Programs\gatto\", row.Text, StringComparison.Ordinal);
@@ -110,7 +110,7 @@ public class InstallOnDoneTests
         Assert.Equal(key, ScreenKey.Of(screen));
 
         Golden.AssertEquals("s9", frame, 100,
-            WalkRender.SettledFrame(Assert.IsType<WizardScreen.Choice>(screen), 100, key).Rows);
+            WalkRender.SettledFrame(Assert.IsType<SetupScreen.Choice>(screen), 100, key).Rows);
     }
 
     //the install question comes right after the check settles, on a machine with nothing installed
@@ -143,7 +143,7 @@ public class InstallOnDoneTests
     {
         var flow = ToTheCheck(Machine(InstallState.AlreadyInstalledElsewhere, installed: "0.0.1"));
 
-        var offer = Assert.IsType<WizardScreen.Choice>(Drive(flow, SetupFlow.AuditionPassedNext));
+        var offer = Assert.IsType<SetupScreen.Choice>(Drive(flow, SetupFlow.AuditionPassedNext));
 
         Assert.Equal(SetupFlow.UpdateInstalledKey, offer.Key);
         Assert.True(offer.NoDefault);
@@ -218,7 +218,7 @@ public class InstallOnDoneTests
     }
 
     //answer then drain the write pause, as SetupRunner does, or a test stands on the pause screen
-    private static WizardScreen Drive(SetupFlow flow, string answer)
+    private static SetupScreen Drive(SetupFlow flow, string answer)
     {
         var screen = flow.Answer(answer);
         while (flow.NeedsWritesApplied) screen = flow.ResumeAfterWrites(null);
@@ -231,8 +231,8 @@ public class InstallOnDoneTests
         var done = flow.Emitted.Last(s => ScreenKey.Of(s) == SetupFlow.SummaryKey);
         var rows = done switch
         {
-            WizardScreen.Choice c => c.BodyRows,
-            WizardScreen.Info i => i.Rows,
+            SetupScreen.Choice c => c.BodyRows,
+            SetupScreen.Info i => i.Rows,
             _ => null,
         };
         Assert.NotNull(rows);

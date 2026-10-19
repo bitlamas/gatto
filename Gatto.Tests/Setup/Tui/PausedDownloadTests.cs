@@ -12,19 +12,19 @@ public class PausedDownloadTests
     private static ConsoleKeyInfo Esc => new('\0', ConsoleKey.Escape, false, false, false);
 
     //keys go through the real face, so what reaches the flow is the key itself
-    private static string? Press(WizardScreen.Choice c, params ConsoleKeyInfo[] keys) =>
+    private static string? Press(SetupScreen.Choice c, params ConsoleKeyInfo[] keys) =>
         WalkRender.WatchAfterKeys(c, 100, ModelFetchTests.FetchingTick, keys);
 
-    private static IReadOnlyList<string> Painted(WizardScreen.Choice c, int width) =>
+    private static IReadOnlyList<string> Painted(SetupScreen.Choice c, int width) =>
         WalkRender.Watching(c, width, ModelFetchTests.FetchingTick).Rows;
 
     //the fetching screen paused by Space, with each step asserted so a helper that fired regardless can't pass
-    private static (SetupFlow Flow, WizardProbes Probes, WizardScreen.Choice Paused) Paused()
+    private static (SetupFlow Flow, FakeSetupProbes Probes, SetupScreen.Choice Paused) Paused()
     {
         var (flow, probes, screen) = ModelFetchTests.LiveFetch();
 
         Assert.Equal(SetupFlow.ModelFetchPause, Press(screen, Space));
-        var next = Assert.IsType<WizardScreen.Choice>(flow.Answer(SetupFlow.ModelFetchPause));
+        var next = Assert.IsType<SetupScreen.Choice>(flow.Answer(SetupFlow.ModelFetchPause));
         Assert.Equal(SetupFlow.ModelFetchingPausedKey, next.Key);
         return (flow, probes, next);
     }
@@ -54,13 +54,13 @@ public class PausedDownloadTests
         var (flow, probes, paused) = Paused();
 
         Assert.Equal(SetupFlow.ModelFetchResume, Press(paused, Space));
-        var again = Assert.IsType<WizardScreen.Choice>(flow.Answer(SetupFlow.ModelFetchResume));
+        var again = Assert.IsType<SetupScreen.Choice>(flow.Answer(SetupFlow.ModelFetchResume));
         Assert.Equal(SetupFlow.ModelFetchingKey, again.Key);
 
         //pausing again is the product's own join, so nothing about the second fetch is read before it
         Assert.Equal(SetupFlow.ModelFetchPause, Press(again, Space));
         Assert.Equal(SetupFlow.ModelFetchingPausedKey,
-            Assert.IsType<WizardScreen.Choice>(flow.Answer(SetupFlow.ModelFetchPause)).Key);
+            Assert.IsType<SetupScreen.Choice>(flow.Answer(SetupFlow.ModelFetchPause)).Key);
 
         Assert.Equal(2, probes.ModelStarts);
         Assert.Empty(probes.PartialsDeleted);
@@ -122,7 +122,7 @@ public class PausedDownloadTests
         var (flow, probes, paused) = Paused();
 
         Assert.Equal(SetupFlow.ModelFetchStop, Press(paused, Esc, Esc));
-        var next = Assert.IsType<WizardScreen.Choice>(flow.Answer(SetupFlow.ModelFetchStop));
+        var next = Assert.IsType<SetupScreen.Choice>(flow.Answer(SetupFlow.ModelFetchStop));
 
         Assert.Same(probes.HubOffer, Assert.Single(probes.PartialsDeleted));
         //the consent, the same screen the live stop reaches, since the user declined the download and the partial is gone
@@ -135,7 +135,7 @@ public class PausedDownloadTests
     {
         var (_, probes, paused) = Paused();
 
-        Assert.Equal(SetupFlow.Landed, Press(paused, WizardRig.Digit('1')));
+        Assert.Equal(SetupFlow.Landed, Press(paused, SetupRig.Digit('1')));
         Assert.Equal(1, probes.ModelStarts);
     }
 
@@ -147,7 +147,7 @@ public class PausedDownloadTests
     {
         var (flow, _, _) = ModelFetchTests.LiveFetch(blockingFetches: 0);
 
-        var next = Assert.IsType<WizardScreen.Choice>(flow.Answer(SetupFlow.ModelFetchPause));
+        var next = Assert.IsType<SetupScreen.Choice>(flow.Answer(SetupFlow.ModelFetchPause));
 
         Assert.Equal(SetupFlow.ModelArrivedKey, next.Key);
         Assert.NotEqual(SetupFlow.ModelFetchingPausedKey, next.Key);
@@ -161,7 +161,7 @@ public class PausedDownloadTests
             result: new(Gatto.Core.Acquire.HubFetchOutcome.Mismatch, "weights.gguf",
                 new string('a', 64), new string('b', 64)));
 
-        var next = Assert.IsType<WizardScreen.Choice>(flow.Answer(SetupFlow.ModelFetchPause));
+        var next = Assert.IsType<SetupScreen.Choice>(flow.Answer(SetupFlow.ModelFetchPause));
 
         Assert.Equal(SetupFlow.ModelMismatchKey, next.Key);
     }
@@ -174,7 +174,7 @@ public class PausedDownloadTests
     {
         var (flow, _, screen) = ModelFetchTests.LiveFetch(blockingFetches: 1);
         Assert.Equal(SetupFlow.ModelFetchPause, Press(screen, Space));
-        var paused = Assert.IsType<WizardScreen.Choice>(flow.Answer(SetupFlow.ModelFetchPause));
+        var paused = Assert.IsType<SetupScreen.Choice>(flow.Answer(SetupFlow.ModelFetchPause));
         Assert.Equal(SetupFlow.ModelFetchingPausedKey, paused.Key);
 
         Assert.Equal(SetupFlow.ModelFetchResume, Press(paused, Space));
@@ -209,14 +209,14 @@ public class PausedDownloadTests
         var (flow, probes, screen) = ModelFetchTests.LiveFetch();
         Assert.Equal(SetupFlow.ModelFetchPause, Press(screen, Space));
         Assert.Equal(SetupFlow.ModelFetchingPausedKey,
-            Assert.IsType<WizardScreen.Choice>(flow.Answer(SetupFlow.ModelFetchPause)).Key);
+            Assert.IsType<SetupScreen.Choice>(flow.Answer(SetupFlow.ModelFetchPause)).Key);
         var pausedAfter = probes.ModelStarts;
 
         //a second gatto model run: a new flow over the same probes and the same offer
         var again = new SetupFlow(probes);
         again.StartAtModelSegment();
         again.Answer("0");
-        var fetching = Assert.IsType<WizardScreen.Choice>(again.Answer(SetupFlow.ModelFetchNow));
+        var fetching = Assert.IsType<SetupScreen.Choice>(again.Answer(SetupFlow.ModelFetchNow));
         Assert.Equal(SetupFlow.ModelFetchingKey, fetching.Key);
 
         //nothing about the second fetch is read before the pause joins it
@@ -238,7 +238,7 @@ public class PausedDownloadTests
 
         Assert.Equal(SetupFlow.ModelFetchPause, Press(screen, Space));
         Assert.Equal(SetupFlow.ModelFetchingPausedKey,
-            Assert.IsType<WizardScreen.Choice>(flow.Answer(SetupFlow.ModelFetchPause)).Key);
+            Assert.IsType<SetupScreen.Choice>(flow.Answer(SetupFlow.ModelFetchPause)).Key);
     }
 
     //p does nothing on either road, since there is no session to go back to. an unbound key lets the watch answer, so Landed is the oracle
@@ -263,7 +263,7 @@ public class PausedDownloadTests
         Assert.Contains(screen.Options, o => o.Key == SetupFlow.ModelFetchPause);
 
         Press(screen, Space);
-        var paused = Assert.IsType<WizardScreen.Choice>(flow.Answer(SetupFlow.ModelFetchPause));
+        var paused = Assert.IsType<SetupScreen.Choice>(flow.Answer(SetupFlow.ModelFetchPause));
 
         Assert.DoesNotContain(paused.Options, o => o.Press == "p");
         Assert.Contains(paused.Options, o => o.Key == SetupFlow.ModelFetchResume);

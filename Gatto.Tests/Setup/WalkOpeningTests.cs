@@ -11,14 +11,14 @@ public class WalkOpeningTests
     [Fact]
     public void EACH_OPENING_KEYSTROKE_PRODUCES_THE_ANSWER_ITS_ROW_NAMES()
     {
-        var flow = new SetupFlow(new WizardProbes());
-        var face = new WizardRig(100).Face(WalkOpening.Keys);
+        var flow = new SetupFlow(new FakeSetupProbes());
+        var face = new SetupRig(100).Face(WalkOpening.Keys);
 
         var screen = flow.Start();
 
         for (var i = 0; i < WalkOpening.Screens.Count; i++)
         {
-            var choice = Assert.IsType<WizardScreen.Choice>(screen);
+            var choice = Assert.IsType<SetupScreen.Choice>(screen);
             Assert.Equal(WalkOpening.Screens[i], choice.Key);
 
             var answered = face.Choose(choice);
@@ -28,16 +28,16 @@ public class WalkOpeningTests
         }
     }
 
-    //drive TuiWizardSurface here, the face that ships, SetupFace has no production caller
+    //drive TuiSetupSurface here, the face that ships, SetupFace has no production caller
     [Fact]
     public void EACH_OPENING_KEYSTROKE_IS_THE_KEY_THE_SHIPPED_FACE_ACCEPTS()
     {
-        var flow = new SetupFlow(new WizardProbes());
+        var flow = new SetupFlow(new FakeSetupProbes());
         var screen = flow.Start();
 
         for (var i = 0; i < WalkOpening.Screens.Count; i++)
         {
-            var choice = Assert.IsType<WizardScreen.Choice>(screen);
+            var choice = Assert.IsType<SetupScreen.Choice>(screen);
             Assert.Equal(WalkOpening.Screens[i], choice.Key);
             Assert.Equal(WalkOpening.Answers[i], Tui.WalkRender.Answer(choice, WalkOpening.Keys[i]));
 
@@ -49,11 +49,11 @@ public class WalkOpeningTests
     [Fact]
     public void A_KEYS_ONLY_SCREEN_STILL_ANSWERS_A_DIGIT()
     {
-        var flow = new SetupFlow(new WizardProbes());
-        var welcome = Assert.IsType<WizardScreen.Choice>(flow.Start());
+        var flow = new SetupFlow(new FakeSetupProbes());
+        var welcome = Assert.IsType<SetupScreen.Choice>(flow.Start());
 
-        Assert.Equal(SetupFlow.WelcomeGo, Tui.WalkRender.Answer(welcome, WizardRig.Digit('1')));
-        Assert.Equal(SetupFlow.WelcomeGo, Tui.WalkRender.Answer(welcome, WizardRig.Enter));
+        Assert.Equal(SetupFlow.WelcomeGo, Tui.WalkRender.Answer(welcome, SetupRig.Digit('1')));
+        Assert.Equal(SetupFlow.WelcomeGo, Tui.WalkRender.Answer(welcome, SetupRig.Enter));
 
         //pressing Esc answers differently here, so the digit check above is not something any key would pass
         Assert.Equal(SetupFlow.WelcomeNot, Tui.WalkRender.Answer(welcome, ConsoleKey.Escape));
@@ -63,13 +63,13 @@ public class WalkOpeningTests
     [Fact]
     public void THE_ANSWER_WALK_AND_THE_KEYSTROKE_WALK_LAND_ON_THE_SAME_SCREEN()
     {
-        var keyed = new SetupFlow(new WizardProbes());
-        var face = new WizardRig(100).Face(WalkOpening.Keys);
+        var keyed = new SetupFlow(new FakeSetupProbes());
+        var face = new SetupRig(100).Face(WalkOpening.Keys);
         var screen = keyed.Start();
         foreach (var _ in WalkOpening.Keys)
-            screen = keyed.Answer(face.Choose((WizardScreen.Choice)screen)!);
+            screen = keyed.Answer(face.Choose((SetupScreen.Choice)screen)!);
 
-        var answered = new SetupFlow(new WizardProbes()).StartPastOpening();
+        var answered = new SetupFlow(new FakeSetupProbes()).StartPastOpening();
 
         Assert.Equal(ScreenKey.Of(answered), ScreenKey.Of(screen));
     }
@@ -79,14 +79,14 @@ public class WalkOpeningTests
     public void THE_OPENING_ENDS_AT_THE_ENGINE_STEP()
     {
         //the probes' machine has an engine that answers, so the walk stops on the found screen
-        Assert.Equal(SetupFlow.FoundKey, ScreenKey.Of(new SetupFlow(new WizardProbes()).StartPastOpening()));
+        Assert.Equal(SetupFlow.FoundKey, ScreenKey.Of(new SetupFlow(new FakeSetupProbes()).StartPastOpening()));
     }
 
     //the refusal must name both the screen it wanted and the one it found
     [Fact]
     public void A_WALK_THAT_IS_NOT_AT_ITS_OPENING_IS_REFUSED_BY_NAME()
     {
-        var flow = new SetupFlow(new WizardProbes());
+        var flow = new SetupFlow(new FakeSetupProbes());
         var elsewhere = flow.StartAtModelSegment();
 
         var ex = Assert.ThrowsAny<Xunit.Sdk.XunitException>(() => flow.PastOpeningFrom(elsewhere));

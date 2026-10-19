@@ -20,17 +20,17 @@ public class TypedPathAdoptionTests
     }
 
     //the shelf opens the way gatto model opens it, and CanSwitchSource stays false so Discover reaches the local shelf. no Hub search joins the screen's history
-    private static (SetupFlow Flow, WizardProbes Probes, WizardScreen.Choice Shelf) LocalShelf(
+    private static (SetupFlow Flow, FakeSetupProbes Probes, SetupScreen.Choice Shelf) LocalShelf(
         params string[] found)
     {
-        var probes = new WizardProbes
+        var probes = new FakeSetupProbes
         {
             Llama = @"C:\llama\llama-server.exe",
             Found = [.. found.Select(f =>
                 new Gatto.Core.Acquire.FoundModel(f, 4_000_000_000, null))],
         };
         var flow = new SetupFlow(probes);
-        return (flow, probes, Assert.IsType<WizardScreen.Choice>(flow.StartAtModelSegment()));
+        return (flow, probes, Assert.IsType<SetupScreen.Choice>(flow.StartAtModelSegment()));
     }
 
     //a typed .gguf is the model the flow writes, and the oracle is the write rather than the next screen

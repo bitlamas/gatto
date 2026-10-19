@@ -4,13 +4,13 @@ using Gatto.Terminal;
 namespace Gatto.Cli.Setup;
 
 //the one place a wizard row's tone becomes paint, both faces need it and the screen data must stay unaware of a terminal
-internal static class WizardPaint
+internal static class SetupPaint
 {
-    public static IReadOnlyList<BodyRow>? Body(IReadOnlyList<WizardRow>? rows) =>
+    public static IReadOnlyList<BodyRow>? Body(IReadOnlyList<SetupRow>? rows) =>
         rows is null ? null : [.. rows.Select(Row)];
 
     //back is always the last option, so the numbers beside the real options never shift when it appears
-    public static IReadOnlyList<SelectOption> Options(WizardScreen.Choice c, Gatto.Terminal.GlyphSet g) =>
+    public static IReadOnlyList<SelectOption> Options(SetupScreen.Choice c, Gatto.Terminal.GlyphSet g) =>
     [
         .. c.Options.Select(o =>
             new SelectOption(o.Label, o.Description, Recommended: o.Recommended, Disabled: o.Disabled,
@@ -22,7 +22,7 @@ internal static class WizardPaint
     ];
 
     //the wizard's default ground is plain (SelectPrompt is left alone), and the indent must pass through here
-    public static BodyRow Row(WizardRow r) => new(r.Text, r.Tone switch
+    public static BodyRow Row(SetupRow r) => new(r.Text, r.Tone switch
     {
         RowTone.Subject => BodyRowKind.Accent,
         RowTone.Aside => BodyRowKind.Note,
@@ -30,7 +30,7 @@ internal static class WizardPaint
     }, r.Highlight, r.Indent, r.Hang);
 
     //the same tone table for rows a face prints itself (sanitize first, painting emits escapes that sanitizing would strip)
-    public static string Line(WizardRow r, Theme theme)
+    public static string Line(SetupRow r, Theme theme)
     {
         var text = TermText.Sanitize(r.Text);
         return r.Tone switch

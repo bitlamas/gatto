@@ -24,11 +24,11 @@ public class PurrPulseTests
     private static ConsoleKeyInfo Digit(char c) =>
         new(c, (ConsoleKey)((int)ConsoleKey.D0 + (c - '0')), false, false, false);
 
-    private static WizardScreen.Choice Two() =>
+    private static SetupScreen.Choice Two() =>
         new("planted.ordinary", "Which one?",
             [new ChoiceOption("a", "the first"), new ChoiceOption("b", "the second")]);
 
-    private static Screen Painted(WizardScreen.Choice c) =>
+    private static Screen Painted(SetupScreen.Choice c) =>
         new([.. c.Strip], Region.List, c.Question,
             [.. c.Options.Select(o => PaintedRow.Of("  " + o.Label))], null,
             [new FooterKey("Enter", "choose")]);
@@ -43,7 +43,7 @@ public class PurrPulseTests
         var now = 0L;
         var pulse = new FakePulse();
         var surface = new RecordingSurface { Width = 100 };
-        var face = new TuiWizardSurface(surface, new QueuedKeys(Digit('1')), T, "0.5.0", "1a2b3c4",
+        var face = new TuiSetupSurface(surface, new QueuedKeys(Digit('1')), T, "0.5.0", "1a2b3c4",
             () => now, pulse: () => pulse);
 
         Assert.Equal("a", face.Choose(Two()));
@@ -63,7 +63,7 @@ public class PurrPulseTests
     public void AN_INSTANT_TRANSITION_DRAWS_NOTHING_BECAUSE_THE_PULSE_IS_ARMED_LATE()
     {
         var pulse = new FakePulse();
-        var face = new TuiWizardSurface(new RecordingSurface { Width = 100 },
+        var face = new TuiSetupSurface(new RecordingSurface { Width = 100 },
             new QueuedKeys(Digit('1')), T, "0.5.0", "1a2b3c4", () => 0, pulse: () => pulse);
 
         face.Choose(Two());
@@ -81,7 +81,7 @@ public class PurrPulseTests
         var now = 0L;
         var pulse = new FakePulse();
         var surface = new RecordingSurface { Width = 100 };
-        var face = new TuiWizardSurface(surface, new QueuedKeys(Digit('1')), T, "0.5.0", "1a2b3c4",
+        var face = new TuiSetupSurface(surface, new QueuedKeys(Digit('1')), T, "0.5.0", "1a2b3c4",
             () => now, pulse: () => pulse);
 
         face.Choose(Two());
@@ -99,7 +99,7 @@ public class PurrPulseTests
     [Fact]
     public void A_FACE_GIVEN_NO_PULSE_NEVER_ARMS_ONE()
     {
-        var face = new TuiWizardSurface(new RecordingSurface { Width = 100 },
+        var face = new TuiSetupSurface(new RecordingSurface { Width = 100 },
             new QueuedKeys(Digit('1')), T, "0.5.0", "1a2b3c4", () => 0);
 
         Assert.False(face.PulseArmed);
@@ -108,7 +108,7 @@ public class PurrPulseTests
     }
 
 
-    private static WizardScreen.Choice Many(int options) =>
+    private static SetupScreen.Choice Many(int options) =>
         new("planted.many", "Pick a model",
             [.. Enumerable.Range(0, options).Select(i => new ChoiceOption($"k{i:00}", $"option {i:00}"))]);
 
@@ -118,7 +118,7 @@ public class PurrPulseTests
     {
         var now = 0L;
         var keys = new QueuedKeys(Digit('1'), Digit('2'), Digit('2'));
-        var face = new TuiWizardSurface(new RecordingSurface { Width = 100 }, keys, T,
+        var face = new TuiSetupSurface(new RecordingSurface { Width = 100 }, keys, T,
             "0.5.0", "1a2b3c4", () => now);
 
         Assert.Equal("a", face.Choose(Two()));
@@ -137,7 +137,7 @@ public class PurrPulseTests
     {
         var now = 0L;
         var keys = new QueuedKeys(Digit('1'), Digit('2'));
-        var face = new TuiWizardSurface(new RecordingSurface { Width = 100 }, keys, T,
+        var face = new TuiSetupSurface(new RecordingSurface { Width = 100 }, keys, T,
             "0.5.0", "1a2b3c4", () => now);
 
         Assert.Equal("a", face.Choose(Two()));
@@ -153,7 +153,7 @@ public class PurrPulseTests
     public void NOTHING_IS_DRAINED_BEFORE_THE_FIRST_QUESTION()
     {
         var keys = new QueuedKeys(Digit('2'));
-        var face = new TuiWizardSurface(new RecordingSurface { Width = 100 }, keys, T,
+        var face = new TuiSetupSurface(new RecordingSurface { Width = 100 }, keys, T,
             "0.5.0", "1a2b3c4", () => 900_000);
 
         Assert.Equal("b", face.Choose(Two()));

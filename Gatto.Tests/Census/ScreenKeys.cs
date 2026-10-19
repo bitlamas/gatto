@@ -7,19 +7,19 @@ namespace Gatto.Tests.Census;
 //one home for screen-key extraction, so two censuses can't disagree about which screens exist, and the pattern's own checks live beside it
 internal static class ScreenKeys
 {
-    //matches every WizardScreen construction and captures the key first. the \s* spans newlines, so it sees a site that puts the key on its own line
+    //matches every SetupScreen construction and captures the key first. the \s* spans newlines, so it sees a site that puts the key on its own line
     public static readonly Regex Construction = new(
-        @"new WizardScreen\.(?:Choice|Info|Ask|Progress|Terminal)\s*\(\s*(?:""([^""]+)""|([A-Za-z_][A-Za-z0-9_]*))",
+        @"new SetupScreen\.(?:Choice|Info|Ask|Progress|Terminal)\s*\(\s*(?:""([^""]+)""|([A-Za-z_][A-Za-z0-9_]*))",
         RegexOptions.Compiled);
 
     //the narration form. the match can't cross a semicolon, so it stays inside one statement and a following call isn't swept in
     public static readonly Regex Narration = new(
-        @"_emitted\.(?:Add|Insert)\([^;]*?new WizardScreen\.(?:Choice|Info|Ask|Progress|Terminal)\s*\(\s*(?:""([^""]+)""|([A-Za-z_][A-Za-z0-9_]*))",
+        @"_emitted\.(?:Add|Insert)\([^;]*?new SetupScreen\.(?:Choice|Info|Ask|Progress|Terminal)\s*\(\s*(?:""([^""]+)""|([A-Za-z_][A-Za-z0-9_]*))",
         RegexOptions.Compiled);
 
     //this channel reaches a face, and the runner drains it before each screen. a guard that asserts emptiness uses it to show the reader sees a real entry
     public static readonly Regex NarrationChannel = new(
-        @"_narrate\.Add\(new WizardScreen\.Info\(\s*(?:""([^""]+)""|([A-Za-z_][A-Za-z0-9_.]*))",
+        @"_narrate\.Add\(new SetupScreen\.Info\(\s*(?:""([^""]+)""|([A-Za-z_][A-Za-z0-9_.]*))",
         RegexOptions.Compiled);
 
     //returns the construction count per key for Gatto/Cli, with comments stripped
@@ -67,12 +67,12 @@ public class ScreenKeysTests
     public void THE_PATTERN_MATCHES_A_PLANTED_CONSTRUCTION_IN_BOTH_SPELLINGS()
     {
         var literal = ScreenKeys.ExtractFrom(
-            "return Emit(new WizardScreen.Choice(\n    \"planted.key\",\n    \"a question?\",", ScreenKeys.Construction);
+            "return Emit(new SetupScreen.Choice(\n    \"planted.key\",\n    \"a question?\",", ScreenKeys.Construction);
         Assert.Equal(1, literal.GetValueOrDefault("planted.key"));
 
         //the const spelling resolves through reflection, so it proves Resolve works. a rename drops every const-keyed screen from every census in silence
         var byConst = ScreenKeys.ExtractFrom(
-            "return Emit(new WizardScreen.Choice(\n    FoundKey,\n    \"a question?\",", ScreenKeys.Construction);
+            "return Emit(new SetupScreen.Choice(\n    FoundKey,\n    \"a question?\",", ScreenKeys.Construction);
         Assert.Equal(1, byConst.GetValueOrDefault(SetupFlow.FoundKey));
     }
 
@@ -81,7 +81,7 @@ public class ScreenKeysTests
     public void THE_PATTERN_DOES_NOT_FIRE_ON_ORDINARY_TEXT()
     {
         Assert.Empty(ScreenKeys.ExtractFrom(
-            "// the welcome screen is a WizardScreen and its key is \"welcome\", said in prose\n"
-            + "var name = \"new WizardScreen\";", ScreenKeys.Construction));
+            "// the welcome screen is a SetupScreen and its key is \"welcome\", said in prose\n"
+            + "var name = \"new SetupScreen\";", ScreenKeys.Construction));
     }
 }

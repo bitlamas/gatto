@@ -5,7 +5,7 @@ using Gatto.Tests.Fakes;
 namespace Gatto.Tests.Setup;
 
 //the wizard reads the mouse setting itself, and the console it borrowed is the shell's again on every exit
-public class WizardInputTests
+public class SetupInputTests
 {
     private const uint PI = ConsoleInputMode.EnableProcessedInput;
 
@@ -30,7 +30,7 @@ public class WizardInputTests
     {
         var ctl = new FakeConsoleModeControl(initial: 0x01F7);
         var (take, give) = ControlC(ctl);
-        Action run = () => WizardSession.Run(new AltScreen(new RecordingSurface()),
+        Action run = () => SetupSession.Run(new AltScreen(new RecordingSurface()),
             () => throws ? throw new InvalidOperationException("walk") : 0,
             () => [], TextWriter.Null, registerHooks: false, take: take, giveBack: give,
             inputMode: mouse ? new ConsoleInputMode(ctl) : null);
@@ -49,7 +49,7 @@ public class WizardInputTests
     public void THE_MOUSE_SETTING_IS_READ_WITHOUT_THE_CONFIG_LOADER(string? json, bool expected)
     {
         using var home = json is null ? TempHome.Empty() : TempHome.With("gatto.json", json);
-        Assert.Equal(expected, WizardInput.MouseOf(home.Path));
+        Assert.Equal(expected, SetupInput.MouseOf(home.Path));
     }
 
     [Theory]
@@ -57,7 +57,7 @@ public class WizardInputTests
     [InlineData(false)]
     public void THE_MOUSE_SETTING_CHOOSES_SOURCE_MODE_AND_WHEEL(bool mouse)
     {
-        var w = WizardInput.For(mouse, () => new ScriptedInputSource(), () => new KeyInputSource(new OneKeySource('x')),
+        var w = SetupInput.For(mouse, () => new ScriptedInputSource(), () => new KeyInputSource(new OneKeySource('x')),
             () => new ConsoleInputMode(new FakeConsoleModeControl(0)), () => 500);
         Assert.Equal(mouse, w.Mode is not null);
         Assert.Equal(!mouse, w.QuietWheel);

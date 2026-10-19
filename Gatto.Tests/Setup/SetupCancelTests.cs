@@ -8,7 +8,7 @@ using Gatto.Tests.Fakes;
 namespace Gatto.Tests.Setup;
 
 //drive the real RichPrompter here, a fake that returns null for a cancel hides the throw that ends the session
-public class WizardCancelTests
+public class SetupCancelTests
 {
     private sealed class ScriptedKeys(params ConsoleKeyInfo[] keys) : IKeySource
     {
@@ -88,9 +88,9 @@ public class WizardCancelTests
     [Fact]
     public void THE_SETUP_BINDING_TREATS_LEAVING_AS_AN_ANSWERLESS_RETURN_not_an_error()
     {
-        var surface = new PrompterWizardSurface(new FakeWizardPrompter((string?)null), new StringWriter());
+        var surface = new PrompterSetupSurface(new FakeWizardPrompter((string?)null), new StringWriter());
 
-        Assert.Null(surface.Choose(new WizardScreen.Choice(
+        Assert.Null(surface.Choose(new SetupScreen.Choice(
             "k", "pick one", [new ChoiceOption("alpha", "The Alpha")])));
     }
 
@@ -99,19 +99,19 @@ public class WizardCancelTests
     {
         //the binding asks for no free-text row, so a typed answer matching no label cannot arise
         var prompter = new FakeWizardPrompter("The Alpha");
-        new PrompterWizardSurface(prompter, new StringWriter()).Choose(new WizardScreen.Choice(
+        new PrompterSetupSurface(prompter, new StringWriter()).Choose(new SetupScreen.Choice(
             "k", "pick one", [new ChoiceOption("alpha", "The Alpha")]));
 
         Assert.Null(prompter.Asked[0].FreeTextLabel);
-        Assert.Equal(PrompterWizardSurface.LeaveHint, prompter.Asked[0].FooterHint);
+        Assert.Equal(PrompterSetupSurface.LeaveHint, prompter.Asked[0].FooterHint);
     }
 
     [Fact]
     public void AN_ASK_SCREEN_IS_THE_MIRROR_IMAGE_free_text_and_no_options()
     {
         var prompter = new FakeWizardPrompter("/models/x.gguf");
-        new PrompterWizardSurface(prompter, new StringWriter())
-            .Ask(new WizardScreen.Ask("k", "where is it?", Validate: _ => null));
+        new PrompterSetupSurface(prompter, new StringWriter())
+            .Ask(new SetupScreen.Ask("k", "where is it?", Validate: _ => null));
 
         Assert.Empty(prompter.Asked[0].Options);
         Assert.NotNull(prompter.Asked[0].FreeTextLabel);

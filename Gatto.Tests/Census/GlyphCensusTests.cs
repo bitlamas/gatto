@@ -35,7 +35,7 @@ public class GlyphCensusTests
         ("Gatto/Core/GattoVersion.cs", "the build stamp"),
         ("Gatto/Repl/Render/SpanWrap.cs", "a NO-BREAK SPACE in layout logic. Its twin would be a "
             + "plain space, which CHANGES where a line breaks: a behaviour change, not a glyph swap"),
-        ("Gatto/Cli/Setup/WizardRows.cs", "a FIGURE SPACE, chosen because it is the width of a "
+        ("Gatto/Cli/Setup/SetupRows.cs", "a FIGURE SPACE, chosen because it is the width of a "
             + "digit. Same reason as the no-break space: it is spacing, and its twin would move text"),
         ("Gatto.Terminal/TerminalTitle.cs", "the window TITLE, which the host draws and gatto's "
             //a name inside a string literal is not stripped the way a comment is, so describe the glyph and leave names out

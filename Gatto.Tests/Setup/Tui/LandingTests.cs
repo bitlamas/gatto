@@ -12,7 +12,7 @@ namespace Gatto.Tests.Setup.Tui;
 public class LandingTests
 {
     //named rather than inlined, so a test here that forgets it reads as a missing word instead of a passing default
-    private static SetupFlow Flow(WizardProbes probes) => new(probes) { CanSwitchSource = true };
+    private static SetupFlow Flow(FakeSetupProbes probes) => new(probes) { CanSwitchSource = true };
 
     private static FoundModel OnDisk(string name, string arch = "gemma3") =>
         new(Path.Combine(@"C:\weights", name, name + "-Q4_K_M.gguf"), 4_000_000_000,
@@ -26,7 +26,7 @@ public class LandingTests
         FitRegime.FitsGpu, 262144, false, Badge: null, Downloads: 5, Gated: false,
         Params: 25_200_000_000);
 
-    private static string Text(WizardScreen.Choice c) =>
+    private static string Text(SetupScreen.Choice c) =>
         string.Join("\n", (c.BodyRows ?? []).Select(r => r.Text));
 
     //the default landing
@@ -35,13 +35,13 @@ public class LandingTests
     [Fact]
     public void A_HEALTHY_HUB_OPENS_THE_HUB_SHELF_AND_NARRATES_THE_FIND()
     {
-        var flow = Flow(new WizardProbes
+        var flow = Flow(new FakeSetupProbes
         {
             Rows = [HubRow()],
             Found = [OnDisk("one"), OnDisk("two")],
         });
 
-        var opened = Assert.IsType<WizardScreen.Choice>(flow.StartPastEngine());
+        var opened = Assert.IsType<SetupScreen.Choice>(flow.StartPastEngine());
 
         Assert.Equal(SetupFlow.SearchKey, opened.Key);
         Assert.Equal(ShelfSource.Hub, opened.Shelf!.Source);
@@ -53,9 +53,9 @@ public class LandingTests
     [Fact]
     public void IN_SESSION_THE_FIND_IS_WHAT_IS_NOT_ON_THE_LIST_YET()
     {
-        var flow = Flow(new WizardProbes { Rows = [HubRow()], Found = [OnDisk("one"), OnDisk("two")] });
+        var flow = Flow(new FakeSetupProbes { Rows = [HubRow()], Found = [OnDisk("one"), OnDisk("two")] });
 
-        var opened = Assert.IsType<WizardScreen.Choice>(flow.StartAtModelSegment());
+        var opened = Assert.IsType<SetupScreen.Choice>(flow.StartAtModelSegment());
 
         Assert.Contains("gatto found 2 models on this machine not yet on its list, m shows them",
             Text(opened), StringComparison.Ordinal);
@@ -66,9 +66,9 @@ public class LandingTests
     [Fact]
     public void IN_SESSION_WITH_NOTHING_FOUND_THERE_IS_NO_LINE()
     {
-        var flow = Flow(new WizardProbes { Rows = [HubRow()], Found = [] });
+        var flow = Flow(new FakeSetupProbes { Rows = [HubRow()], Found = [] });
 
-        var opened = Assert.IsType<WizardScreen.Choice>(flow.StartAtModelSegment());
+        var opened = Assert.IsType<SetupScreen.Choice>(flow.StartAtModelSegment());
 
         Assert.DoesNotContain("shows them", Text(opened), StringComparison.Ordinal);
     }
@@ -77,9 +77,9 @@ public class LandingTests
     [Fact]
     public void IN_SESSION_ONE_MODEL_IS_SINGULAR()
     {
-        var flow = Flow(new WizardProbes { Rows = [HubRow()], Found = [OnDisk("one")] });
+        var flow = Flow(new FakeSetupProbes { Rows = [HubRow()], Found = [OnDisk("one")] });
 
-        var opened = Assert.IsType<WizardScreen.Choice>(flow.StartAtModelSegment());
+        var opened = Assert.IsType<SetupScreen.Choice>(flow.StartAtModelSegment());
 
         Assert.Contains("gatto found 1 model on this machine not yet on its list",
             Text(opened), StringComparison.Ordinal);
@@ -92,16 +92,16 @@ public class LandingTests
         var flow = Flow(Outage(OnDisk("one")));
         var opened = flow.StartPastEngine();
 
-        Assert.Equal(SetupFlow.DiscoveredKey, Assert.IsType<WizardScreen.Choice>(opened).Key);
-        Assert.DoesNotContain(flow.Emitted, s => s is WizardScreen.Choice { Key: SetupFlow.SearchKey });
+        Assert.Equal(SetupFlow.DiscoveredKey, Assert.IsType<SetupScreen.Choice>(opened).Key);
+        Assert.DoesNotContain(flow.Emitted, s => s is SetupScreen.Choice { Key: SetupFlow.SearchKey });
     }
 
     //m is a key inside the sentence, which no golden can see, so the key span needs its own assertion
     [Fact]
     public void THE_DISCOVERY_LINES_M_IS_MARKED_AS_A_KEY()
     {
-        var flow = Flow(new WizardProbes { Rows = [HubRow()], Found = [OnDisk("one")] });
-        var opened = Assert.IsType<WizardScreen.Choice>(flow.StartPastEngine());
+        var flow = Flow(new FakeSetupProbes { Rows = [HubRow()], Found = [OnDisk("one")] });
+        var opened = Assert.IsType<SetupScreen.Choice>(flow.StartPastEngine());
 
         var line = Assert.Single(opened.BodyRows ?? [], r => r.Text.Contains("also found", StringComparison.Ordinal));
         Assert.Contains("m", line.Keys ?? []);
@@ -111,8 +111,8 @@ public class LandingTests
     [Fact]
     public void ONE_MODEL_IS_ONE_MODEL()
     {
-        var flow = Flow(new WizardProbes { Rows = [HubRow()], Found = [OnDisk("one")] });
-        var opened = Assert.IsType<WizardScreen.Choice>(flow.StartPastEngine());
+        var flow = Flow(new FakeSetupProbes { Rows = [HubRow()], Found = [OnDisk("one")] });
+        var opened = Assert.IsType<SetupScreen.Choice>(flow.StartPastEngine());
 
         Assert.Contains("found 1 model already", Text(opened), StringComparison.Ordinal);
         Assert.DoesNotContain("1 models", Text(opened), StringComparison.Ordinal);
@@ -122,8 +122,8 @@ public class LandingTests
     [Fact]
     public void AN_EMPTY_SWEEP_IS_NOT_NARRATED()
     {
-        var flow = Flow(new WizardProbes { Rows = [HubRow()] });
-        var opened = Assert.IsType<WizardScreen.Choice>(flow.StartPastEngine());
+        var flow = Flow(new FakeSetupProbes { Rows = [HubRow()] });
+        var opened = Assert.IsType<SetupScreen.Choice>(flow.StartPastEngine());
 
         Assert.Equal(SetupFlow.SearchKey, opened.Key);
         Assert.DoesNotContain("also found", Text(opened), StringComparison.Ordinal);
@@ -132,10 +132,10 @@ public class LandingTests
     //the auto-landing
 
     //the fake scripts its outcome, so the HubFailed state is forced by construction
-    private static WizardProbes Outage(params FoundModel[] found) => new()
+    private static FakeSetupProbes Outage(params FoundModel[] found) => new()
     {
         Rows = [],
-        Answer = _ => WizardProbes.Outcome([], HubSearchCause.HubFailed),
+        Answer = _ => FakeSetupProbes.Outcome([], HubSearchCause.HubFailed),
         Found = found,
     };
 
@@ -145,7 +145,7 @@ public class LandingTests
     {
         var flow = Flow(Outage(OnDisk("one"), OnDisk("two")));
 
-        var opened = Assert.IsType<WizardScreen.Choice>(flow.StartPastEngine());
+        var opened = Assert.IsType<SetupScreen.Choice>(flow.StartPastEngine());
 
         Assert.Equal(SetupFlow.DiscoveredKey, opened.Key);
         Assert.Equal(ShelfSource.Local, opened.Shelf!.Source);
@@ -159,7 +159,7 @@ public class LandingTests
     {
         var flow = Flow(Outage());
 
-        var opened = Assert.IsType<WizardScreen.Choice>(flow.StartPastEngine());
+        var opened = Assert.IsType<SetupScreen.Choice>(flow.StartPastEngine());
 
         Assert.Equal(SetupFlow.SearchKey, opened.Key);
     }
@@ -171,10 +171,10 @@ public class LandingTests
         foreach (var found in new[] { Array.Empty<FoundModel>(), [OnDisk("one")] })
         {
             var searches = 0;
-            var probes = new WizardProbes
+            var probes = new FakeSetupProbes
             {
                 Rows = [],
-                Answer = _ => { searches++; return WizardProbes.Outcome([], HubSearchCause.HubFailed); },
+                Answer = _ => { searches++; return FakeSetupProbes.Outcome([], HubSearchCause.HubFailed); },
                 Found = found,
             };
 
@@ -188,8 +188,8 @@ public class LandingTests
     [Fact]
     public void A_HEALTHY_SEARCH_WITH_MODELS_ON_DISK_STAYS_ON_THE_HUB() =>
         Assert.Equal(SetupFlow.SearchKey,
-            Assert.IsType<WizardScreen.Choice>(
-                Flow(new WizardProbes { Rows = [HubRow()], Found = [OnDisk("one")] })
+            Assert.IsType<SetupScreen.Choice>(
+                Flow(new FakeSetupProbes { Rows = [HubRow()], Found = [OnDisk("one")] })
                     .StartPastEngine()).Key);
 
     //m keeps its meaning during an outage, since the rider fires on the arrival only
@@ -199,7 +199,7 @@ public class LandingTests
         var flow = Flow(Outage(OnDisk("one")));
         flow.StartPastEngine();
 
-        var hub = Assert.IsType<WizardScreen.Choice>(flow.Answer(ShelfControls.SourceAnswer()));
+        var hub = Assert.IsType<SetupScreen.Choice>(flow.Answer(ShelfControls.SourceAnswer()));
 
         Assert.Equal(SetupFlow.SearchKey, hub.Key);
     }
@@ -210,7 +210,7 @@ public class LandingTests
     {
         var flow = Flow(Outage(OnDisk("one"), OnDisk("two")));
         flow.StartPastEngine();
-        var hub = Assert.IsType<WizardScreen.Choice>(flow.Answer(ShelfControls.SourceAnswer()));
+        var hub = Assert.IsType<SetupScreen.Choice>(flow.Answer(ShelfControls.SourceAnswer()));
 
         Assert.Contains("The 2 models on this machine are one m away", Text(hub), StringComparison.Ordinal);
     }
@@ -219,7 +219,7 @@ public class LandingTests
     public void AND_NOT_WHEN_THERE_IS_NOTHING_BEHIND_IT()
     {
         var flow = Flow(Outage());
-        var hub = Assert.IsType<WizardScreen.Choice>(flow.StartPastEngine());
+        var hub = Assert.IsType<SetupScreen.Choice>(flow.StartPastEngine());
 
         Assert.DoesNotContain("one m away", Text(hub), StringComparison.Ordinal);
     }
@@ -230,11 +230,11 @@ public class LandingTests
     [Fact]
     public void THE_EMPTY_LOCAL_SHELF_IS_THE_INVITATION()
     {
-        var probes = new WizardProbes { Rows = [HubRow()], Roots = [@"C:\home\weights", @"C:\dl"] };
+        var probes = new FakeSetupProbes { Rows = [HubRow()], Roots = [@"C:\home\weights", @"C:\dl"] };
         var flow = Flow(probes);
         flow.StartPastEngine();
 
-        var empty = Assert.IsType<WizardScreen.Choice>(flow.Answer(ShelfControls.SourceAnswer()));
+        var empty = Assert.IsType<SetupScreen.Choice>(flow.Answer(ShelfControls.SourceAnswer()));
         var block = string.Join("\n", empty.Shelf!.Empty ?? []);
 
         Assert.Equal(SetupFlow.DiscoveredKey, empty.Key);
@@ -251,9 +251,9 @@ public class LandingTests
     [Fact]
     public void THE_INVITATION_NAMES_NO_DEPTH()
     {
-        var flow = Flow(new WizardProbes { Rows = [HubRow()], Roots = [@"C:\home\weights"] });
+        var flow = Flow(new FakeSetupProbes { Rows = [HubRow()], Roots = [@"C:\home\weights"] });
         flow.StartPastEngine();
-        var empty = Assert.IsType<WizardScreen.Choice>(flow.Answer(ShelfControls.SourceAnswer()));
+        var empty = Assert.IsType<SetupScreen.Choice>(flow.Answer(ShelfControls.SourceAnswer()));
 
         var invitation = Assert.Single(empty.Shelf!.Empty!,
             r => r.Contains("subfolders", StringComparison.Ordinal));
@@ -267,11 +267,11 @@ public class LandingTests
     [Fact]
     public void THE_ROOTS_LISTED_ARE_THE_ONES_THE_SWEEP_REPORTED()
     {
-        var probes = new WizardProbes { Rows = [HubRow()], Roots = [@"Z:\somewhere odd"] };
+        var probes = new FakeSetupProbes { Rows = [HubRow()], Roots = [@"Z:\somewhere odd"] };
         var flow = Flow(probes);
         flow.StartPastEngine();
 
-        var empty = Assert.IsType<WizardScreen.Choice>(flow.Answer(ShelfControls.SourceAnswer()));
+        var empty = Assert.IsType<SetupScreen.Choice>(flow.Answer(ShelfControls.SourceAnswer()));
 
         Assert.Contains(@"Z:\somewhere odd", empty.Shelf!.Empty!);
     }
@@ -280,9 +280,9 @@ public class LandingTests
     [Fact]
     public void THE_EMPTY_SCREEN_DRAWS_THE_CAT()
     {
-        var flow = Flow(new WizardProbes { Rows = [HubRow()], Roots = [@"C:\home\weights"] });
+        var flow = Flow(new FakeSetupProbes { Rows = [HubRow()], Roots = [@"C:\home\weights"] });
         flow.StartPastEngine();
-        var empty = Assert.IsType<WizardScreen.Choice>(flow.Answer(ShelfControls.SourceAnswer()));
+        var empty = Assert.IsType<SetupScreen.Choice>(flow.Answer(ShelfControls.SourceAnswer()));
 
         Assert.Contains(Gatto.Repl.Render.Chrome.Cats.EmptyOf(glyphs: GlyphSet.Unicode), empty.Shelf!.Empty!);
     }
@@ -291,9 +291,9 @@ public class LandingTests
     [Fact]
     public void THE_FOLDER_DOOR_SAYS_LOOK_NOT_SEARCH()
     {
-        var flow = Flow(new WizardProbes { Rows = [HubRow()], Roots = [@"C:\home\weights"] });
+        var flow = Flow(new FakeSetupProbes { Rows = [HubRow()], Roots = [@"C:\home\weights"] });
         flow.StartPastEngine();
-        var empty = Assert.IsType<WizardScreen.Choice>(flow.Answer(ShelfControls.SourceAnswer()));
+        var empty = Assert.IsType<SetupScreen.Choice>(flow.Answer(ShelfControls.SourceAnswer()));
 
         //assert on the rendered frame, and scope it to the placeholder's ellipsis so the invitation's own words don't match too
         var door = Assert.Single(

@@ -14,7 +14,7 @@ public class StripStampTests
     [Fact]
     public void THE_STRIP_IS_STAMPED_AT_BOTH_SITES_A_SCREEN_LEAVES_THE_FLOW()
     {
-        var flow = new SetupFlow(new WizardProbes());
+        var flow = new SetupFlow(new FakeSetupProbes());
         var fork = flow.StartPastOpening();
 
         //site 1, the screen SetupFlow.Emit returns
@@ -31,7 +31,7 @@ public class StripStampTests
     [Fact]
     public void THE_WELCOME_MAP_STANDS_ON_NO_SECTION()
     {
-        var welcome = new SetupFlow(new WizardProbes()).Start();
+        var welcome = new SetupFlow(new FakeSetupProbes()).Start();
 
         Assert.Equal(WalkSection.LlamaRoad.Length, welcome.Strip.Count);
         Assert.All(welcome.Strip, s => Assert.Equal(StripState.Pending, s.State));
@@ -69,7 +69,7 @@ public class StripStampTests
     [Fact]
     public void ANSWERING_THE_FORK_FOR_A_SERVER_RE_FORMS_THE_STRIP()
     {
-        var flow = new SetupFlow(new WizardProbes());
+        var flow = new SetupFlow(new FakeSetupProbes());
         flow.StartPastOpening();
 
         var before = flow.Strip.Select(s => s.Name).ToList();
@@ -83,7 +83,7 @@ public class StripStampTests
     [Fact]
     public void THE_SCREEN_CARRIES_WHAT_THE_FLOW_REPORTS()
     {
-        var flow = new SetupFlow(new WizardProbes());
+        var flow = new SetupFlow(new FakeSetupProbes());
 
         var welcome = flow.Start();
         Assert.Equal(flow.Strip, welcome.Strip);

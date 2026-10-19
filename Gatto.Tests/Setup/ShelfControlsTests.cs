@@ -33,45 +33,45 @@ public class ShelfControlsTests
         LastModified: new DateTimeOffset(2026, 7, 15, 0, 0, 0, TimeSpan.Zero),
         Params: 30_500_000_000, AllQuants: null, Projectors: null, Arch: "qwen3");
 
-    private static (SetupFlow Flow, WizardProbes Probes, WizardScreen.Choice Shelf) AtShelf()
+    private static (SetupFlow Flow, FakeSetupProbes Probes, SetupScreen.Choice Shelf) AtShelf()
     {
-        var probes = new WizardProbes
+        var probes = new FakeSetupProbes
         {
             Rows = [Row("unsloth/a-GGUF", badge: true), Row("unsloth/b-GGUF")],
         };
         var flow = new SetupFlow(probes);
         //the fixture machine has an engine, so the shelf sits one answer past the screen this returns
-        return (flow, probes, Assert.IsType<WizardScreen.Choice>(flow.StartPastEngine()));
+        return (flow, probes, Assert.IsType<SetupScreen.Choice>(flow.StartPastEngine()));
     }
 
     //a helper's name is a claim about the code, so it names the screen the flow reaches. this one stops at the engine step's first screen
-    private static (SetupFlow Flow, WizardProbes Probes, WizardScreen.Choice Entry) AtEngineStep()
+    private static (SetupFlow Flow, FakeSetupProbes Probes, SetupScreen.Choice Entry) AtEngineStep()
     {
-        var probes = new WizardProbes
+        var probes = new FakeSetupProbes
         {
             Rows = [Row("unsloth/a-GGUF", badge: true), Row("unsloth/b-GGUF")],
         };
         var flow = new SetupFlow(probes);
-        return (flow, probes, Assert.IsType<WizardScreen.Choice>(flow.StartPastOpening()));
+        return (flow, probes, Assert.IsType<SetupScreen.Choice>(flow.StartPastOpening()));
     }
 
     //one face drives the whole sequence, or each press starts a fresh transcript. the first screen is answered on purpose, so a stale height has a block to reclaim
-    private static (WizardRig Rig, WizardScreen.Choice Last) Walk(
-        SetupFlow flow, WizardScreen.Choice fork, params char[] presses)
+    private static (SetupRig Rig, SetupScreen.Choice Last) Walk(
+        SetupFlow flow, SetupScreen.Choice fork, params char[] presses)
     {
-        var rig = new WizardRig(100);
-        var keys = new[] { WizardRig.Enter }
-            .Concat(presses.Select(WizardRig.Ch)).Append(WizardRig.Enter).ToArray();
+        var rig = new SetupRig(100);
+        var keys = new[] { SetupRig.Enter }
+            .Concat(presses.Select(SetupRig.Ch)).Append(SetupRig.Enter).ToArray();
         var face = rig.Face(keys);
 
         //answers the screen above the shelf through the real transcript, so the walk starts from a committed block.
-        var screen = Assert.IsType<WizardScreen.Choice>(flow.Answer(face.Choose(fork)!));
+        var screen = Assert.IsType<SetupScreen.Choice>(flow.Answer(face.Choose(fork)!));
 
         for (var i = 0; i < presses.Length; i++)
         {
             var answer = face.Choose(screen);
             Assert.NotNull(answer);
-            screen = Assert.IsType<WizardScreen.Choice>(flow.Answer(answer!));
+            screen = Assert.IsType<SetupScreen.Choice>(flow.Answer(answer!));
         }
         face.Choose(screen);
         return (rig, screen);
@@ -123,7 +123,7 @@ public class ShelfControlsTests
     {
         //the same entry a row opens, reached here by the search control
         var (flow, _, _) = AtShelf();
-        var ask = Assert.IsType<WizardScreen.Ask>(flow.Answer(SetupFlow.CtlSearch));
+        var ask = Assert.IsType<SetupScreen.Ask>(flow.Answer(SetupFlow.CtlSearch));
 
         Assert.Equal(SetupFlow.TypedIdKey, ask.Key);
     }
@@ -133,11 +133,11 @@ public class ShelfControlsTests
     {
         //without this, a control press loses the row the user was reading. the oracle is the cursor glyph on that row, since state can hold the number without sending it
         var (flow, _, shelf) = AtShelf();
-        var rig = new WizardRig(100);
-        var face = rig.Face(WizardRig.Down, WizardRig.Ch('a'), WizardRig.Enter);
+        var rig = new SetupRig(100);
+        var face = rig.Face(SetupRig.Down, SetupRig.Ch('a'), SetupRig.Enter);
 
         var answer = face.Choose(shelf);
-        var next = Assert.IsType<WizardScreen.Choice>(flow.Answer(answer!));
+        var next = Assert.IsType<SetupScreen.Choice>(flow.Answer(answer!));
         face.Choose(next);
 
         var frame = rig.Frames[^1].Split('\n').Single(r => r.Contains("❯", StringComparison.Ordinal));

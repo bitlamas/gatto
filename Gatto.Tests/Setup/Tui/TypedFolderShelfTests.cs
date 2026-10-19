@@ -27,7 +27,7 @@ public class TypedFolderShelfTests
         FitRegime.FitsGpu, 262144, false, Badge: null, Downloads: 5, Gated: false,
         Params: 25_200_000_000);
 
-    private static WizardProbes Probes(bool hub, params FoundModel[] found) => new()
+    private static FakeSetupProbes Probes(bool hub, params FoundModel[] found) => new()
     {
         Llama = @"C:\llama\llama-server.exe",
         Rows = hub ? [HubRow()] : [],
@@ -36,17 +36,17 @@ public class TypedFolderShelfTests
     };
 
     //each row's file, since a row is named after its model and these files are one model each
-    private static IReadOnlyList<string> FileRows(WizardScreen.Choice c) =>
+    private static IReadOnlyList<string> FileRows(SetupScreen.Choice c) =>
         [.. (c.Shelf?.Rows ?? []).Select(r => r.RowFile!.Path)];
 
-    private static WizardScreen.Choice Typing(SetupFlow flow) =>
-        Assert.IsType<WizardScreen.Choice>(flow.Answer(ShelfControls.TypedAnswer(Typed)));
+    private static SetupScreen.Choice Typing(SetupFlow flow) =>
+        Assert.IsType<SetupScreen.Choice>(flow.Answer(ShelfControls.TypedAnswer(Typed)));
 
     [Fact]
     public void A_TYPED_FOLDER_SHELF_LISTS_ONLY_THAT_FOLDER()
     {
         var flow = new SetupFlow(Probes(hub: false, Weights, Sibling, Inside, Downloads));
-        var start = Assert.IsType<WizardScreen.Choice>(flow.StartAtModelSegment());
+        var start = Assert.IsType<SetupScreen.Choice>(flow.StartAtModelSegment());
         Assert.Equal(4, FileRows(start).Count);
 
         var shelf = Typing(flow);
@@ -65,7 +65,7 @@ public class TypedFolderShelfTests
         var flow = new SetupFlow(Probes(hub: false, Weights, Inside));
         flow.StartAtModelSegment();
 
-        var shelf = Assert.IsType<WizardScreen.Choice>(
+        var shelf = Assert.IsType<SetupScreen.Choice>(
             flow.Answer(ShelfControls.TypedAnswer(@"C:\models\sub\thre-Q4_K_M.gguf")));
 
         Assert.Equal(@"C:\models\sub", shelf.Shelf!.Folder);
@@ -77,7 +77,7 @@ public class TypedFolderShelfTests
     public void AN_EMPTY_TYPED_FOLDER_IS_AN_EMPTY_SHELF_UNDER_ITS_OWN_LABEL()
     {
         var flow = new SetupFlow(Probes(hub: false, Weights, Downloads));
-        Assert.Equal(2, FileRows(Assert.IsType<WizardScreen.Choice>(flow.StartAtModelSegment())).Count);
+        Assert.Equal(2, FileRows(Assert.IsType<SetupScreen.Choice>(flow.StartAtModelSegment())).Count);
 
         var shelf = Typing(flow);
         var block = string.Join("\n", shelf.Shelf!.Empty ?? []);
@@ -96,12 +96,12 @@ public class TypedFolderShelfTests
     public void M_TO_THE_HUB_AND_BACK_SHOWS_THE_MACHINE_AGAIN()
     {
         var flow = new SetupFlow(Probes(hub: true, Weights, Inside)) { CanSwitchSource = true };
-        Assert.Equal(SetupFlow.SearchKey, Assert.IsType<WizardScreen.Choice>(flow.StartPastEngine()).Key);
+        Assert.Equal(SetupFlow.SearchKey, Assert.IsType<SetupScreen.Choice>(flow.StartPastEngine()).Key);
         Assert.Single(FileRows(Typing(flow)));
-        var hub = Assert.IsType<WizardScreen.Choice>(flow.Answer(ShelfControls.SourceAnswer()));
+        var hub = Assert.IsType<SetupScreen.Choice>(flow.Answer(ShelfControls.SourceAnswer()));
         Assert.Equal(SetupFlow.SearchKey, hub.Key);
 
-        var local = Assert.IsType<WizardScreen.Choice>(flow.Answer(ShelfControls.SourceAnswer()));
+        var local = Assert.IsType<SetupScreen.Choice>(flow.Answer(ShelfControls.SourceAnswer()));
 
         Assert.Equal(ShelfSource.Local, local.Shelf!.Source);
         Assert.Null(local.Shelf.Folder);
@@ -113,11 +113,11 @@ public class TypedFolderShelfTests
     public void BACK_FROM_A_TYPED_FOLDER_DROPS_ITS_LABEL()
     {
         var flow = new SetupFlow(Probes(hub: false, Weights, Inside));
-        Assert.Equal(2, FileRows(Assert.IsType<WizardScreen.Choice>(flow.StartAtModelSegment())).Count);
+        Assert.Equal(2, FileRows(Assert.IsType<SetupScreen.Choice>(flow.StartAtModelSegment())).Count);
         Assert.Single(FileRows(Typing(flow)));
-        Assert.Equal(2, FileRows(Assert.IsType<WizardScreen.Choice>(flow.Answer(SetupFlow.BackKey))).Count);
+        Assert.Equal(2, FileRows(Assert.IsType<SetupScreen.Choice>(flow.Answer(SetupFlow.BackKey))).Count);
 
-        var redrawn = Assert.IsType<WizardScreen.Choice>(flow.Answer(ShelfControls.FamilyAnswer("all")));
+        var redrawn = Assert.IsType<SetupScreen.Choice>(flow.Answer(ShelfControls.FamilyAnswer("all")));
 
         Assert.Null(redrawn.Shelf!.Folder);
         Assert.Equal(["one-Q4_K_M.gguf", "three-Q4_K_M.gguf"], FileRows(redrawn));
@@ -129,13 +129,13 @@ public class TypedFolderShelfTests
     {
         var landed = At(@"D:\dl\other-Q4_K_M.gguf");
         var flow = new SetupFlow(Probes(hub: true, Weights, Inside, landed));
-        Assert.Equal(ShelfSource.Local, Assert.IsType<WizardScreen.Choice>(flow.StartAtModelSegment()).Shelf!.Source);
+        Assert.Equal(ShelfSource.Local, Assert.IsType<SetupScreen.Choice>(flow.StartAtModelSegment()).Shelf!.Source);
         Assert.Single(FileRows(Typing(flow)));
-        Assert.Equal(SetupFlow.SearchKey, Assert.IsType<WizardScreen.Choice>(flow.Answer(SetupFlow.CtlSource)).Key);
+        Assert.Equal(SetupFlow.SearchKey, Assert.IsType<SetupScreen.Choice>(flow.Answer(SetupFlow.CtlSource)).Key);
         flow.Answer("0");
         flow.Answer(SetupFlow.Elsewhere);
 
-        var shelf = Assert.IsType<WizardScreen.Choice>(flow.Answer(ShelfControls.TypedAnswer(@"D:\dl")));
+        var shelf = Assert.IsType<SetupScreen.Choice>(flow.Answer(ShelfControls.TypedAnswer(@"D:\dl")));
 
         Assert.Equal(SetupFlow.DiscoveredKey, shelf.Key);
         Assert.Null(shelf.Shelf!.Folder);
@@ -150,7 +150,7 @@ public class TypedFolderShelfTests
         flow.StartAtModelSegment();
         Assert.Single(FileRows(Typing(flow)));
 
-        var shelf = Assert.IsType<WizardScreen.Choice>(flow.Answer(ShelfControls.TypedAnswer("thre-Q4_K_M.gguf")));
+        var shelf = Assert.IsType<SetupScreen.Choice>(flow.Answer(ShelfControls.TypedAnswer("thre-Q4_K_M.gguf")));
 
         Assert.Null(shelf.Shelf!.Folder);
         Assert.Equal(["one-Q4_K_M.gguf", "three-Q4_K_M.gguf"], FileRows(shelf));
@@ -193,7 +193,7 @@ public class TypedFolderShelfTests
             [new ConsoleKeyInfo('\0', ConsoleKey.Escape, false, false, false)]);
 
         Assert.Equal(SetupFlow.BackKey, answer);
-        var home = Assert.IsType<WizardScreen.Choice>(flow.Answer(answer!));
+        var home = Assert.IsType<SetupScreen.Choice>(flow.Answer(answer!));
         Assert.Null(home.Shelf!.Folder);
         Assert.Equal(Machine, FileRows(home));
     }
@@ -205,10 +205,10 @@ public class TypedFolderShelfTests
         var flow = new SetupFlow(Probes(hub: false, Weights, Downloads));
         flow.StartAtModelSegment();
         Typing(flow);
-        var second = Assert.IsType<WizardScreen.Choice>(flow.Answer(ShelfControls.TypedAnswer(@"C:\elsewhere")));
+        var second = Assert.IsType<SetupScreen.Choice>(flow.Answer(ShelfControls.TypedAnswer(@"C:\elsewhere")));
         Assert.Contains(@"C:\elsewhere", string.Join("\n", second.Shelf!.Empty ?? []), StringComparison.Ordinal);
 
-        var home = Assert.IsType<WizardScreen.Choice>(flow.Answer(SetupFlow.BackKey));
+        var home = Assert.IsType<SetupScreen.Choice>(flow.Answer(SetupFlow.BackKey));
 
         Assert.Null(home.Shelf!.Folder);
         Assert.Equal(Machine, FileRows(home));

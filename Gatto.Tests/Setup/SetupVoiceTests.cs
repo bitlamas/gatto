@@ -6,7 +6,7 @@ using Gatto.Tests.Fakes;
 namespace Gatto.Tests.Setup;
 
 //an ordinary wizard sentence is body text and dim is something you opt into. assert against the paint, an enum check passes while the widget paints it grey
-public class WizardVoiceTests
+public class SetupVoiceTests
 {
     private static readonly Theme T = new(new TermCaps(true, true));
 
@@ -14,14 +14,14 @@ public class WizardVoiceTests
     private static string Accent(string s) => T.Paint(s, Theme.Accent);
 
     //renders a wizard body through the real widget seam at a real width, nothing fakes the paint
-    private static string Render(params WizardRow[] rows)
+    private static string Render(params SetupRow[] rows)
     {
         var surface = new RecordingSurface { Width = 80 };
         new SelectPrompt(surface, T, new ScriptedKeySource(Digit('1'))).Show(new SelectSpec(
             TitleRows: [],
             Question: new PromptQuestion("carry on?"),
             Options: [new SelectOption("yes")],
-            BodyRows: WizardPaint.Body(rows)));
+            BodyRows: SetupPaint.Body(rows)));
         return surface.Text;
     }
 
@@ -107,7 +107,7 @@ public class WizardVoiceTests
     public void An_ordinary_wizard_sentence_is_NOT_painted_dim()
     {
         //the whole voice rule in one assertion, the default tone rendered
-        var screen = Render(new WizardRow("It needs a server to load the models."));
+        var screen = Render(new SetupRow("It needs a server to load the models."));
 
         Assert.DoesNotContain(Dim("It needs a server to load the models."), screen, StringComparison.Ordinal);
         Assert.Contains("It needs a server to load the models.", screen, StringComparison.Ordinal);
@@ -117,7 +117,7 @@ public class WizardVoiceTests
     public void A_row_can_still_ASK_to_be_dim_because_the_default_flipping_is_not_the_same_as_dim_dying()
     {
         //the fallback row still has to be able to ask for dim, or it competes with the real link
-        var screen = Render(new WizardRow("All builds (in case the one above doesn't work):", RowTone.Aside));
+        var screen = Render(new SetupRow("All builds (in case the one above doesn't work):", RowTone.Aside));
 
         Assert.Contains(Dim("All builds (in case the one above doesn't work):"), screen, StringComparison.Ordinal);
     }
@@ -126,7 +126,7 @@ public class WizardVoiceTests
     public void A_HIGHLIGHT_on_a_white_row_paints_ACCENT_rather_than_silently_doing_nothing()
     {
         //a highlight on a white row must paint accent, it no longer stands out by contrast alone
-        var screen = Render(new WizardRow(
+        var screen = Render(new SetupRow(
             @"Extract it somewhere you will remember. C:\llama is a good choice.",
             Highlight: [@"C:\llama"]));
 
@@ -137,7 +137,7 @@ public class WizardVoiceTests
     public void TWO_spans_on_one_row_are_BOTH_accented()
     {
         //a row can highlight two spans, both paint accent so neither is picked over the other
-        var screen = Render(new WizardRow(
+        var screen = Render(new SetupRow(
             "According to your hardware, an AMD integrated adapter, you need the Vulkan build.",
             Highlight: ["an AMD integrated adapter", "Vulkan"]));
 
@@ -155,7 +155,7 @@ public class WizardVoiceTests
         //the fixture comes from Epilogue.LeaveSentence so the test checks the line the product draws
         var line = Gatto.Cli.Setup.Tui.Epilogue.LeaveSentence(
             Gatto.Cli.Setup.Tui.Epilogue.LeaveLead.NothingWritten, null, []);
-        face.End(new WizardScreen.Terminal("left", [], line, Success: true));
+        face.End(new SetupScreen.Terminal("left", [], line, Success: true));
 
         Assert.Contains(Accent("gatto setup"), surface.Text, StringComparison.Ordinal);
         Assert.DoesNotContain("`", surface.Text, StringComparison.Ordinal);
@@ -172,7 +172,7 @@ public class WizardVoiceTests
         var surface = new RecordingSurface { Width = 80 };
         var keys = new ScriptedKeySource(Digit('3'));
         var face = new SetupFace(surface, T, keys, new SurfaceWriter(surface));
-        var choice = new WizardScreen.Choice("k", "pick one",
+        var choice = new SetupScreen.Choice("k", "pick one",
             [new ChoiceOption("alpha", "The Alpha"), new ChoiceOption("beta", "The Beta")])
             { AllowBack = true };
 
@@ -190,7 +190,7 @@ public class WizardVoiceTests
         var surface = new RecordingSurface { Width = 80 };
         var keys = new ScriptedKeySource(Digit('2'));
         var face = new SetupFace(surface, T, keys, new SurfaceWriter(surface));
-        var choice = new WizardScreen.Choice("k", "pick one",
+        var choice = new SetupScreen.Choice("k", "pick one",
             [new ChoiceOption("alpha", "The Alpha"), new ChoiceOption("beta", "The Beta")])
             { AllowBack = true };
 
@@ -203,7 +203,7 @@ public class WizardVoiceTests
         var surface = new RecordingSurface { Width = 80 };
         var keys = new ScriptedKeySource(Digit('1'));
         var face = new SetupFace(surface, T, keys, new SurfaceWriter(surface));
-        var choice = new WizardScreen.Choice("k", "pick one",
+        var choice = new SetupScreen.Choice("k", "pick one",
             [new ChoiceOption("alpha", "The Alpha"), new ChoiceOption("beta", "The Beta")]);
 
         Assert.Equal("alpha", face.Choose(choice));
@@ -222,7 +222,7 @@ public class WizardVoiceTests
             seen.AddRange(Text(screen));
             screen = screen switch
             {
-                WizardScreen.Choice c when c.Options.Count > 0 => flow.Answer(c.Options[0].Key),
+                SetupScreen.Choice c when c.Options.Count > 0 => flow.Answer(c.Options[0].Key),
                 _ => null,
             };
         }
@@ -234,16 +234,16 @@ public class WizardVoiceTests
         Assert.DoesNotContain(seen, line => line.Contains('`'));
     }
 
-    private static IEnumerable<string> Text(WizardScreen s) => s switch
+    private static IEnumerable<string> Text(SetupScreen s) => s switch
     {
         //the question is nullable, for a screen whose body already asked
-        WizardScreen.Choice c => [c.Question ?? "", .. c.Options.Select(o => o.Label),
+        SetupScreen.Choice c => [c.Question ?? "", .. c.Options.Select(o => o.Label),
                                   .. (c.BodyRows ?? []).Select(r => r.Text)],
-        WizardScreen.Ask a => [a.Label ?? "", a.Placeholder ?? "",
+        SetupScreen.Ask a => [a.Label ?? "", a.Placeholder ?? "",
                                .. (a.BodyRows ?? []).Select(r => r.Text)],
-        WizardScreen.Info i => i.Rows.Select(r => r.Text),
+        SetupScreen.Info i => i.Rows.Select(r => r.Text),
         //a null NextStep contributes no row, there is no sentence there to sweep
-        WizardScreen.Terminal t =>
+        SetupScreen.Terminal t =>
             [.. t.Rows.Select(r => r.Text), .. t.NextStep is { } n ? new[] { n.Text } : []],
         _ => [],
     };
@@ -255,7 +255,7 @@ public class WizardVoiceTests
         var surface = new RecordingSurface { Width = 40 };
         var face = new SetupFace(surface, T, new ScriptedKeySource(), new SurfaceWriter(surface));
 
-        face.Show(new WizardScreen.Info("oops",
+        face.Show(new SetupScreen.Info("oops",
             ["couldn't create the model: this sentence is comfortably wider than forty columns"]));
 
         var rows = TerminalReplay.ScreenAt(surface.Text, 40).Split('\n')
@@ -275,7 +275,7 @@ public class WizardVoiceTests
     public void A_highlight_that_is_not_IN_the_row_degrades_to_the_plain_row()
     {
         //the highlight is literal text, so a stale span degrades to a plain row instead of a torn escape
-        var screen = Render(new WizardRow("no such span here", Highlight: ["C:\\nowhere"]));
+        var screen = Render(new SetupRow("no such span here", Highlight: ["C:\\nowhere"]));
 
         Assert.Contains("no such span here", screen, StringComparison.Ordinal);
     }
@@ -290,7 +290,7 @@ public class WizardVoiceTests
         var face = new SetupFace(surface, T, new ScriptedKeySource(new ConsoleKeyInfo('\0', ConsoleKey.Escape, false, false, false)),
             new SurfaceWriter(surface));
 
-        face.Choose(new WizardScreen.Choice("k", "A newer gatto is running than the one installed",
+        face.Choose(new SetupScreen.Choice("k", "A newer gatto is running than the one installed",
             [new ChoiceOption("yes", "Update the installed copy"), new ChoiceOption("no", "Leave it")],
             NoDefault: true));
 
@@ -305,7 +305,7 @@ public class WizardVoiceTests
         var face = new SetupFace(surface, T, new ScriptedKeySource(new ConsoleKeyInfo('\0', ConsoleKey.Escape, false, false, false)),
             new SurfaceWriter(surface));
 
-        face.Choose(new WizardScreen.Choice("k", "A newer gatto is running than the one installed",
+        face.Choose(new SetupScreen.Choice("k", "A newer gatto is running than the one installed",
             [new ChoiceOption("yes", "Update the installed copy"), new ChoiceOption("no", "Leave it")]));
 
         Assert.Contains("❯", surface.Text, StringComparison.Ordinal);

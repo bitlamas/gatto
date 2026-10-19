@@ -24,13 +24,13 @@ public class ChipAnswerTests
             FitRegime.FitsGpu, 262144, false, Badge: null, Downloads: 0, Gated: false,
             Params: 8_000_000_000);
 
-    private static WizardScreen.Choice Screen()
+    private static SetupScreen.Choice Screen()
     {
         ModelRow[] rows = [Row("gemma-4-31B-it"), Row("gemma-4-26B-A4B-it")];
         var shelf = new ShelfView(rows,
             MachineShape.UnifiedWithShare,
             Families: Ladder, Family: "gemma", Total: 2);
-        return new WizardScreen.Choice(SetupFlow.SearchKey, "Which model should gatto start with?",
+        return new SetupScreen.Choice(SetupFlow.SearchKey, "Which model should gatto start with?",
             [.. rows.Select((r, i) => new ChoiceOption(i.ToString(), r.RowFile!.RepoId))],
             Shelf: shelf, Door: SetupFlow.ShelfDoorPlaceholderOf(Gatto.Terminal.GlyphSet.Unicode));
     }
@@ -87,7 +87,7 @@ public class ChipAnswerTests
             Families: Ladder, Family: "gemma", Total: 1,
             Facts: [new ModelFacts(Files: [new PaneFile("Q4_K_M", Gib(8), FitRegime.FitsGpu,
                 new FileRef("unsloth", "unsloth/gemma-4-31B-it", "gemma-4-31B-it-Q4_K_M.gguf"))])]);
-        var c = new WizardScreen.Choice(SetupFlow.SearchKey, "Which model should gatto start with?",
+        var c = new SetupScreen.Choice(SetupFlow.SearchKey, "Which model should gatto start with?",
             [new ChoiceOption("0", rows[0].RowFile!.RepoId)], Shelf: shelf, Door: SetupFlow.ShelfDoorPlaceholderOf(Gatto.Terminal.GlyphSet.Unicode));
 
         var ring = Shelf.Regions(shelf, 100, 0, hasDoor: true).ToList();
@@ -135,8 +135,8 @@ public class ChipAnswerTests
     [Fact]
     public void THE_LIVE_SHELF_CARRIES_THE_CHIPS_ROW()
     {
-        var flow = new SetupFlow(new WizardProbes { Rows = [LiveRow()] });
-        var shelf = Assert.IsType<WizardScreen.Choice>(flow.StartPastEngine());
+        var flow = new SetupFlow(new FakeSetupProbes { Rows = [LiveRow()] });
+        var shelf = Assert.IsType<SetupScreen.Choice>(flow.StartPastEngine());
 
         Assert.Equal(Families.Load().Ladder, shelf.Shelf!.Families);
         Assert.Equal(Families.Load().Landing, shelf.Shelf!.Lit!.Order());
@@ -146,7 +146,7 @@ public class ChipAnswerTests
     [Fact]
     public void ANSWERING_A_CHIP_SEARCHES_THAT_FAMILY()
     {
-        var probes = new WizardProbes { Rows = [LiveRow()] };
+        var probes = new FakeSetupProbes { Rows = [LiveRow()] };
         var flow = new SetupFlow(probes);
         flow.StartPastEngine();
 
@@ -159,7 +159,7 @@ public class ChipAnswerTests
     [Fact]
     public void THE_ALL_CHIP_SEARCHES_NO_FAMILY()
     {
-        var probes = new WizardProbes { Rows = [LiveRow()] };
+        var probes = new FakeSetupProbes { Rows = [LiveRow()] };
         var flow = new SetupFlow(probes);
         flow.StartPastEngine();
 
@@ -173,10 +173,10 @@ public class ChipAnswerTests
     [Fact]
     public void THE_LIT_CHIP_IS_THE_ONE_THE_SEARCH_RAN()
     {
-        var flow = new SetupFlow(new WizardProbes { Rows = [LiveRow()] });
+        var flow = new SetupFlow(new FakeSetupProbes { Rows = [LiveRow()] });
         flow.StartPastEngine();
 
-        var after = Assert.IsType<WizardScreen.Choice>(ChipWalk.Narrow(flow, "deepseek"));
+        var after = Assert.IsType<SetupScreen.Choice>(ChipWalk.Narrow(flow, "deepseek"));
 
         Assert.Equal("deepseek", after.Shelf!.Family);
     }

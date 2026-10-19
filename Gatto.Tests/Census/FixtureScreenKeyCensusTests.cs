@@ -10,7 +10,7 @@ public class FixtureScreenKeyCensusTests
 
     //the named form and the target-typed new( both count
     private static readonly Regex ScreenKeyArgument = new(
-        @"new(\s+WizardScreen\.\w+)?\(\s*""([^""]+)""",
+        @"new(\s+SetupScreen\.\w+)?\(\s*""([^""]+)""",
         RegexOptions.Compiled);
 
     private static string Root()

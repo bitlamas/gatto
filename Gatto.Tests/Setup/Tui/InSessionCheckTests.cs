@@ -16,8 +16,8 @@ public class InSessionCheckTests
     //the GGUF the model runs on, as a path and a size, which ActiveModelFile answers from
     private const string ActivePath = @"C:\models\gemma-4-26B-A4B-it\gemma-4-26B-A4B-it-UD-Q4_K_M.gguf";
 
-    //the check's verdict, defaulting to passed and passed at construction since WizardProbes has init-only members
-    private static WizardProbes Probes(
+    //the check's verdict, defaulting to passed and passed at construction since FakeSetupProbes has init-only members
+    private static FakeSetupProbes Probes(
         string? heldBy = Serving, (string Path, long Bytes)? activeModel = null,
         AuditionOutcome outcome = AuditionOutcome.Passed) => new()
     {
@@ -30,12 +30,12 @@ public class InSessionCheckTests
     };
 
     //the step as the in-session entry reaches it, through the write pause the offer sits behind
-    private static WizardScreen.Choice CheckStep(SetupFlow flow)
+    private static SetupScreen.Choice CheckStep(SetupFlow flow)
     {
         flow.StartAtModelSegment();
         var screen = flow.ResumeAfterWrites(Incoming);
         while (flow.NeedsWritesApplied) screen = flow.ResumeAfterWrites(null);
-        return Assert.IsType<WizardScreen.Choice>(screen);
+        return Assert.IsType<SetupScreen.Choice>(screen);
     }
 
     //the consent is composed from the serve record alone, since nothing on disk records an attached repl
@@ -77,7 +77,7 @@ public class InSessionCheckTests
         var ask = CheckStep(new SetupFlow(Probes(heldBy: "qwen3.5")));
         Assert.False(ask.AllowBack);
 
-        var (answer, _) = WalkRender.Answered(ask, 100, [WizardRig.Esc]);
+        var (answer, _) = WalkRender.Answered(ask, 100, [SetupRig.Esc]);
 
         Assert.Equal(SetupFlow.AddUnchecked, answer);
     }
@@ -92,7 +92,7 @@ public class InSessionCheckTests
         flow.StartAtModelSegment();
         var screen = flow.ResumeAfterWrites(Incoming);
         while (flow.NeedsWritesApplied) screen = flow.ResumeAfterWrites(null);
-        var running = Assert.IsType<WizardScreen.Choice>(flow.Answer(SetupFlow.Yes));
+        var running = Assert.IsType<SetupScreen.Choice>(flow.Answer(SetupFlow.Yes));
 
         Assert.Contains(running.BodyRows!, r =>
             r.Text.Contains("gatto starts the server", StringComparison.Ordinal));
@@ -117,8 +117,8 @@ public class InSessionCheckTests
         while (flow.NeedsWritesApplied) screen = flow.ResumeAfterWrites(null);
 
         //the plain audition offer, nothing else holds the server so there is no swap to consent to
-        Assert.Equal(SetupFlow.AuditionOfferKey, Assert.IsType<WizardScreen.Choice>(screen).Key);
-        var running = Assert.IsType<WizardScreen.Choice>(flow.Answer(SetupFlow.Yes));
+        Assert.Equal(SetupFlow.AuditionOfferKey, Assert.IsType<SetupScreen.Choice>(screen).Key);
+        var running = Assert.IsType<SetupScreen.Choice>(flow.Answer(SetupFlow.Yes));
 
         Assert.Contains(running.BodyRows!, r =>
             r.Text.Contains($"{Incoming} is on the server now", StringComparison.Ordinal));
@@ -141,7 +141,7 @@ public class InSessionCheckTests
 
     //a check that could not run must not say the swap already happened (that claim sits with the completion's check row)
 
-    private static WizardProbes CheckReturning(AuditionCheck check) => new()
+    private static FakeSetupProbes CheckReturning(AuditionCheck check) => new()
     {
         Llama = @"C:\llama\llama-server.exe",
         ActiveFile = "gemma-4-26B-A4B-it-UD-Q4_K_M.gguf",
@@ -188,7 +188,7 @@ public class InSessionCheckTests
         var checkStep = CheckStep(yes);
         Assert.Equal(SetupFlow.Yes, checkStep.Options[0].Key);
         Assert.Equal(SetupFlow.AuditionRunningKey,
-            Assert.IsType<WizardScreen.Choice>(yes.Answer(SetupFlow.Yes)).Key);
+            Assert.IsType<SetupScreen.Choice>(yes.Answer(SetupFlow.Yes)).Key);
 
         var unchecked_ = Probes();
         var flow = new SetupFlow(unchecked_);
@@ -209,7 +209,7 @@ public class InSessionCheckTests
         var screen = flow.ResumeAfterWrites(Incoming);
         while (flow.NeedsWritesApplied) screen = flow.ResumeAfterWrites(null);
 
-        Assert.Equal(SetupFlow.AuditionHeldKey, Assert.IsType<WizardScreen.Choice>(screen).Key);
+        Assert.Equal(SetupFlow.AuditionHeldKey, Assert.IsType<SetupScreen.Choice>(screen).Key);
     }
 
     //nothing is serving here, so the ordinary offer stands (this is the fixture that keeps the condition load-bearing)
@@ -236,9 +236,9 @@ public class InSessionCheckTests
     private static readonly ConsoleKeyInfo Tab = new('\t', ConsoleKey.Tab, false, false, false);
     private static readonly ConsoleKeyInfo Esc = new('\u001b', ConsoleKey.Escape, false, false, false);
 
-    private static (TuiWizardSurface F, Func<IReadOnlyList<string>> Painted) Face(params ConsoleKeyInfo[] keys)
+    private static (TuiSetupSurface F, Func<IReadOnlyList<string>> Painted) Face(params ConsoleKeyInfo[] keys)
     {
-        var f = new TuiWizardSurface(new RecordingSurface { Width = 100 }, new Keys(keys),
+        var f = new TuiSetupSurface(new RecordingSurface { Width = 100 }, new Keys(keys),
             new Gatto.Terminal.Theme(new Gatto.Terminal.TermCaps(true, true)),
             "0.5.0", "1a2b3c4", () => 0);
         return (f, () => f.LastPainted);
@@ -272,7 +272,7 @@ public class InSessionCheckTests
         var screen = setup.ResumeAfterWrites(Incoming);
         while (setup.NeedsWritesApplied) screen = setup.ResumeAfterWrites(null);
         Assert.Equal(["machine", "engine", "model", "check", "done"],
-            Assert.IsType<WizardScreen.Choice>(screen).Strip.Select(s => s.Name));
+            Assert.IsType<SetupScreen.Choice>(screen).Strip.Select(s => s.Name));
     }
 
     //the footer names no Tab in a session and the key moves nothing, either half alone lets the screen lie about its keys
@@ -301,7 +301,7 @@ public class InSessionCheckTests
 
         //press Enter here so the ordinary footer is the last frame painted, the first Esc arms the leave chord and repaints
         var (f, painted) = Face(Enter);
-        f.Choose(Assert.IsType<WizardScreen.Choice>(screen));
+        f.Choose(Assert.IsType<SetupScreen.Choice>(screen));
         Assert.DoesNotContain(painted(), r => r.Contains("Tab ", StringComparison.Ordinal));
     }
 
@@ -311,7 +311,7 @@ public class InSessionCheckTests
     {
         var inSession = new SetupFlow(Probes());
         CheckStep(inSession);
-        var running = Assert.IsType<WizardScreen.Choice>(inSession.Answer(SetupFlow.Yes));
+        var running = Assert.IsType<SetupScreen.Choice>(inSession.Answer(SetupFlow.Yes));
         Assert.Equal(SetupFlow.AuditionRunningKey, running.Key);
         Assert.Contains(running.BodyRows!, r =>
             r.Text.Contains("gatto starts the server", StringComparison.Ordinal));
@@ -322,7 +322,7 @@ public class InSessionCheckTests
         setup.StartPastEngine();
         var screen = setup.ResumeAfterWrites(Incoming);
         while (setup.NeedsWritesApplied) screen = setup.ResumeAfterWrites(null);
-        var onTheRoad = Assert.IsType<WizardScreen.Choice>(setup.Answer(SetupFlow.Yes));
+        var onTheRoad = Assert.IsType<SetupScreen.Choice>(setup.Answer(SetupFlow.Yes));
         Assert.Contains(onTheRoad.BodyRows!, r =>
             r.Text.Contains("gatto starts the server", StringComparison.Ordinal));
         Assert.Equal("stopping keeps it set up, unchecked", onTheRoad.Legend);
@@ -332,7 +332,7 @@ public class InSessionCheckTests
     [Fact]
     public void TWO_OPTIONS_CLAIMING_ESC_IS_A_SCREEN_DEFECT_AND_IT_FAILS_LOUD()
     {
-        var twoClaims = new WizardScreen.Choice(
+        var twoClaims = new SetupScreen.Choice(
             SetupFlow.InSessionCheckKey, "Check it now?",
             [
                 new ChoiceOption(SetupFlow.Yes, "Check it now", EscVerb: "check it"),
@@ -349,7 +349,7 @@ public class InSessionCheckTests
     [Fact]
     public void ONE_OPTION_CLAIMING_ESC_IS_THE_ORDINARY_SHAPE()
     {
-        var oneClaim = new WizardScreen.Choice(
+        var oneClaim = new SetupScreen.Choice(
             SetupFlow.InSessionCheckKey, "Check it now?",
             [
                 new ChoiceOption(SetupFlow.Yes, "Check it now"),

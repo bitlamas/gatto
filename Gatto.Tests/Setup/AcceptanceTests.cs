@@ -36,7 +36,7 @@ public class AcceptanceTests
         public IReadOnlyList<string> Roots { get; init; } = [];
         public ScanResult Scan(string? r) => new(Found, Roots);
         public ShelfOutcome SearchModels(ModelSearchRequest request, IProgress<SearchProgress>? progress, CancellationToken ct)
-        { Searches++; return WizardProbes.Outcome(Rows); }
+        { Searches++; return FakeSetupProbes.Outcome(Rows); }
         public (string Path, long Bytes)? ProjectorFor(string p) => null;
         public string? ArchitectureOf(string p) => null;
         public MoveOffer? MoveOfferFor(string p) => null;
@@ -107,7 +107,7 @@ public class AcceptanceTests
 
         //skip starts the one load and the step ends at its arrival. the test waits for the load and answers the arrival, then the default is an intent
         Assert.Equal(SetupFlow.AuditionWaitingKey,
-            Assert.IsType<WizardScreen.Choice>(flow.Answer(SetupFlow.Skip)).Key);
+            Assert.IsType<SetupScreen.Choice>(flow.Answer(SetupFlow.Skip)).Key);
         Assert.True(SpinWait.SpinUntil(flow.PollWatch, TimeSpan.FromSeconds(10)), "the load never finished");
         flow.Answer(SetupFlow.Landed);
         flow.Answer(SetupFlow.AnswersNext);
@@ -116,7 +116,7 @@ public class AcceptanceTests
 
         //prove-it runs on into the done step and ends at the consent pause, where the summary draws from what the install question did
         flow.ResumeAfterWrites(null);
-        var end = Assert.IsType<WizardScreen.Terminal>(flow.Answer(SetupFlow.Finish));
+        var end = Assert.IsType<SetupScreen.Terminal>(flow.Answer(SetupFlow.Finish));
 
         Assert.True(end.Success);
         Assert.True(flow.Writes.IsEmpty);      //nothing is left pending, because every intent reached a writer.
@@ -147,7 +147,7 @@ public class AcceptanceTests
         //don't assert that nothing fits (zero rows also means every org failed). the screen states the machine's numbers and two ways forward with no cause named
         var flow = new SetupFlow(new Probes { Rows = [], Found = [] });
         //the fake machine has an engine, so the flow crosses the engine step before the shelf.
-        var screen = Assert.IsType<WizardScreen.Choice>(flow.StartPastEngine());
+        var screen = Assert.IsType<SetupScreen.Choice>(flow.StartPastEngine());
 
         //assert the presence of the machine's numbers rather than their values (a figure that reads as os-visible memory would be the defect)
         Assert.Contains("This machine:", string.Join(" ", screen.BodyRows!), StringComparison.Ordinal);
@@ -176,11 +176,11 @@ public class AcceptanceTests
         var first = flow.StartAtModelSegment();
 
         //the entry screen depends on what discovery found, so assert one of the model segment's own keys (the picker or the search)
-        var screen = Assert.IsType<WizardScreen.Choice>(first);
+        var screen = Assert.IsType<SetupScreen.Choice>(first);
         Assert.Contains(screen.Key, new[] { SetupFlow.DiscoveredKey, SetupFlow.SearchKey });
 
         //a user who typed /model add asked for one thing, so the wizard must not open with a welcome screen or the install question
-        Assert.DoesNotContain(flow.Emitted, s => s is WizardScreen.Choice c
+        Assert.DoesNotContain(flow.Emitted, s => s is SetupScreen.Choice c
             && (c.Key == SetupFlow.WelcomeKey || c.Key == SetupFlow.InstallKey));
         //the fork screen must not be emitted at all, so this reads the emitted screens rather than the flow's decisions
         Assert.DoesNotContain(flow.Emitted, s => ScreenKey.Of(s) == "fork");
@@ -195,7 +195,7 @@ public class AcceptanceTests
         flow.StartPastOpening();
 
         //a satisfied segment asks nothing, so assert the questions' absence (a confirmation line would only say what the next screen shows)
-        Assert.DoesNotContain(flow.Emitted, s => s is WizardScreen.Ask a && a.Key == SetupFlow.SteerKey);
+        Assert.DoesNotContain(flow.Emitted, s => s is SetupScreen.Ask a && a.Key == SetupFlow.SteerKey);
         Assert.DoesNotContain(flow.TakeNarration(), i => i.Key is "segment.llama" or "segment.model");
     }
 
@@ -228,7 +228,7 @@ public class AcceptanceTests
         public IReadOnlyList<string> Roots { get; init; } = [];
         public ScanResult Scan(string? r) => new([new(@"D:\m\a.gguf", 1, null)], Roots);
         public ShelfOutcome SearchModels(ModelSearchRequest request, IProgress<SearchProgress>? progress, CancellationToken ct) =>
-            WizardProbes.Outcome([]);
+            FakeSetupProbes.Outcome([]);
         public (string Path, long Bytes)? ProjectorFor(string p) => null;
         public string? ArchitectureOf(string p) => null;
         public MoveOffer? MoveOfferFor(string p) => null;

@@ -39,7 +39,7 @@ public class BackKeyTests
     ];
 
     //a shelf screen has a real second area, so Tab belongs to that area rather than the strip
-    private static WizardScreen.Choice Shelf(bool allowBack) =>
+    private static SetupScreen.Choice Shelf(bool allowBack) =>
         new("model.search", "Which model should gatto start with?",
             [new ChoiceOption("0", "unsloth/gemma-4-26B-A4B-it")],
             Shelf: new ShelfView(
@@ -51,20 +51,20 @@ public class BackKeyTests
         { Strip = Road, AllowBack = allowBack };
 
     //a screen with one area: options and a strip, with no typed field and no pane
-    private static WizardScreen.Choice OneArea(bool allowBack) =>
+    private static SetupScreen.Choice OneArea(bool allowBack) =>
         new("backkey.one-area", "Which engine build fits this machine?",
             [new ChoiceOption("use", "Use it"), new ChoiceOption("fetch", "Fetch the tested release")])
         { Strip = Road, AllowBack = allowBack };
 
     private static (string? Answer, IReadOnlyList<string> Frame) Press(
-        WizardScreen.Choice screen, params ConsoleKeyInfo[] keys) => Press(screen, 100, keys);
+        SetupScreen.Choice screen, params ConsoleKeyInfo[] keys) => Press(screen, 100, keys);
 
     //at 100 a full shelf no longer draws Tab, so a guard must ask at a width where it can appear
     private static (string? Answer, IReadOnlyList<string> Frame) Press(
-        WizardScreen.Choice screen, int width, params ConsoleKeyInfo[] keys)
+        SetupScreen.Choice screen, int width, params ConsoleKeyInfo[] keys)
     {
         var surface = new RecordingSurface { Width = width, Height = 40 };
-        var face = new TuiWizardSurface(surface, new Keys(keys),
+        var face = new TuiSetupSurface(surface, new Keys(keys),
             new Theme(new TermCaps(true, true)), "0.5.0", "1a2b3c4", () => 0,
             clock: _ => new Ready());
         string? answer = null;
@@ -128,7 +128,7 @@ public class BackKeyTests
     }
 
     //a screen where Esc answers the second option, the shape of the in-session check ask
-    private static WizardScreen.Choice EscAnswers(bool allowBack) =>
+    private static SetupScreen.Choice EscAnswers(bool allowBack) =>
         new("backkey.esc-answers", "Check gemma-4-26B-A4B-it now?",
             [new ChoiceOption("check", "Check it now"),
              new ChoiceOption("unchecked", "Add it unchecked", EscVerb: "add it unchecked")])

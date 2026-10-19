@@ -28,7 +28,7 @@ public class AddRoadFaceTests
     }
 
     //take the screen from the flow, it stamps the route, and leave CanSwitchSource false so the local shelf answers with no network
-    private static WizardScreen.Choice AddRoadScreen()
+    private static SetupScreen.Choice AddRoadScreen()
     {
         var gguf = Path.Combine(Path.GetTempPath(), "addroadface-tiny.gguf");
         if (!File.Exists(gguf)) File.WriteAllBytes(gguf, GgufTestBytes.SyntheticHeader(kv =>
@@ -37,22 +37,22 @@ public class AddRoadFaceTests
             kv.U32("qwen3.context_length", 4096);
         }));
 
-        var flow = new SetupFlow(new WizardProbes
+        var flow = new SetupFlow(new FakeSetupProbes
         {
             Llama = @"C:\llama\llama-server.exe",
             ActiveFile = "gemma-4-26B-A4B-it-UD-Q4_K_M.gguf",
             Found = [new Gatto.Core.Acquire.FoundModel(gguf, 4_000_000_000, null)],
         });
-        var screen = Assert.IsType<WizardScreen.Choice>(flow.StartAtModelSegment());
+        var screen = Assert.IsType<SetupScreen.Choice>(flow.StartAtModelSegment());
         //the footer row exists only for a screen with a shelf, so the fixture asserts it has one
         Assert.NotNull(screen.Shelf);
         return screen;
     }
 
-    private static (TuiWizardSurface F, Func<IReadOnlyList<string>> Painted) Face(
+    private static (TuiSetupSurface F, Func<IReadOnlyList<string>> Painted) Face(
         params ConsoleKeyInfo[] keys)
     {
-        var f = new TuiWizardSurface(new RecordingSurface { Width = 100 }, new Keys(keys),
+        var f = new TuiSetupSurface(new RecordingSurface { Width = 100 }, new Keys(keys),
             new Theme(new TermCaps(true, true)),
             Gatto.Core.GattoVersion.String, "1a2b3c4", () => 0, clock: _ => new Ready());
         return (f, () => f.LastPainted);

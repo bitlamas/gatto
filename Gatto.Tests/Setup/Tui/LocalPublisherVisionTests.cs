@@ -21,11 +21,11 @@ public class LocalPublisherVisionTests
         ShelfRows.Of("unsloth/gemma-4-26B-A4B-it-GGUF", "unsloth", new HubQuant("gemma-4-26B-A4B-it-Q4_K_M.gguf", 4_000_000_000, null),
             FitRegime.FitsGpu, 262144, false, Badge: null, Downloads: 5, Gated: false, Params: 25_200_000_000);
 
-    private static ShelfView LocalShelfOf(WizardProbes probes)
+    private static ShelfView LocalShelfOf(FakeSetupProbes probes)
     {
         var flow = new SetupFlow(probes) { CanSwitchSource = true };
         flow.StartPastEngine();
-        var local = Assert.IsType<WizardScreen.Choice>(flow.Answer(ShelfControls.SourceAnswer()));
+        var local = Assert.IsType<SetupScreen.Choice>(flow.Answer(ShelfControls.SourceAnswer()));
         return local.Shelf!;
     }
 
@@ -37,7 +37,7 @@ public class LocalPublisherVisionTests
         var fetched = OnDisk("fetched", @"C:\weights\fetched", quantizedBy: "someone-else");
         var quantized = OnDisk("quantized", @"C:\weights\quantized", quantizedBy: "bartowski");
         var bare = OnDisk("bare", @"C:\weights\bare");
-        var probes = new WizardProbes
+        var probes = new FakeSetupProbes
         {
             Rows = [HubRow()],
             Found = [fetched, quantized, bare],
@@ -60,7 +60,7 @@ public class LocalPublisherVisionTests
         var shared = OnDisk("shared", @"C:\downloads");
         var neighbour = OnDisk("neighbour", @"C:\downloads");
         var plain = OnDisk("plain", @"C:\weights\plain");
-        var probes = new WizardProbes
+        var probes = new FakeSetupProbes
         {
             Rows = [HubRow()],
             Found = [added, alone, shared, neighbour, plain],
@@ -102,7 +102,7 @@ public class LocalPublisherVisionTests
     public void A_QUANTIZER_WITH_CONTROL_CHARACTERS_IS_SANITIZED()
     {
         var odd = OnDisk("odd", @"C:\weights\odd", quantizedBy: "evil\u001b[31m\nrow");
-        var v = LocalShelfOf(new WizardProbes { Rows = [HubRow()], Found = [odd] });
+        var v = LocalShelfOf(new FakeSetupProbes { Rows = [HubRow()], Found = [odd] });
 
         var publisher = v.Facts![RowOf(v, "odd")].Publisher!;
         Assert.DoesNotContain('\u001b', publisher);

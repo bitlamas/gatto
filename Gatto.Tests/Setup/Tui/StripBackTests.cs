@@ -31,7 +31,7 @@ public class StripBackTests
         new("done", StripState.Pending),
     ];
 
-    private static WizardScreen.Choice Shelf(bool allowBack = true) =>
+    private static SetupScreen.Choice Shelf(bool allowBack = true) =>
         new("model.search", "Which model should gatto start with?",
             [new ChoiceOption("0", "unsloth/gemma-4-26B-A4B-it")],
             Shelf: new ShelfView(
@@ -42,11 +42,11 @@ public class StripBackTests
             Door: SetupFlow.ShelfDoorPlaceholderOf(Gatto.Terminal.GlyphSet.Unicode))
         { Strip = Road, AllowBack = allowBack };
 
-    private static (TuiWizardSurface F, System.Func<IReadOnlyList<string>> Painted) Face(
+    private static (TuiSetupSurface F, System.Func<IReadOnlyList<string>> Painted) Face(
         params ConsoleKeyInfo[] keys)
     {
         var s = new RecordingSurface { Width = 100 };
-        var f = new TuiWizardSurface(s, new Keys(keys), new Theme(new TermCaps(true, true)),
+        var f = new TuiSetupSurface(s, new Keys(keys), new Theme(new TermCaps(true, true)),
             "0.5.0", "1a2b3c4", () => 0);
         return (f, () => f.LastPainted);
     }
@@ -61,7 +61,7 @@ public class StripBackTests
 
 
     //an ordinary strip screen with two options and no shelf, so its ring is only the strip and the list
-    private static WizardScreen.Choice Ordinary() =>
+    private static SetupScreen.Choice Ordinary() =>
         //a placeholder key, the flow declares no screen by this name
         new("planted.ordinary", "Which engine build fits this machine?",
             [new ChoiceOption("0", "the pinned build"), new ChoiceOption("1", "something else")])
@@ -76,13 +76,13 @@ public class StripBackTests
     ];
 
     //a keys-only screen on whichever road it is given, two options, Enter answers the first and Esc the second
-    private static WizardScreen.Choice KeysOnly(IReadOnlyList<StripSection> road) =>
+    private static SetupScreen.Choice KeysOnly(IReadOnlyList<StripSection> road) =>
         new("machine", "This machine",
             [new ChoiceOption("0", "next"), new ChoiceOption("1", "leave")], KeysOnly: true)
         { Strip = road, AllowBack = true };
 
     //a watch-only screen, its single key is the stop. the road has completed sections on purpose, so the guard can't pass on an empty road
-    private static WizardScreen.Choice WatchOnly() =>
+    private static SetupScreen.Choice WatchOnly() =>
         new("model.fetching", "Downloading…",
             [new ChoiceOption("stop", "stop, deletes the partial")], KeysOnly: true, Watching: true)
         { Strip = Road, AllowBack = true };
@@ -94,11 +94,11 @@ public class StripBackTests
         public long ElapsedMs => 0;
     }
 
-    private static (TuiWizardSurface F, System.Func<IReadOnlyList<string>> Painted) WatchingFace(
+    private static (TuiSetupSurface F, System.Func<IReadOnlyList<string>> Painted) WatchingFace(
         params ConsoleKeyInfo[] keys)
     {
         var s = new RecordingSurface { Width = 100 };
-        var f = new TuiWizardSurface(s, new Keys(keys), new Theme(new TermCaps(true, true)),
+        var f = new TuiSetupSurface(s, new Keys(keys), new Theme(new TermCaps(true, true)),
             "0.5.0", "1a2b3c4", () => 0, clock: _ => new Ready());
         return (f, () => f.LastPainted);
     }

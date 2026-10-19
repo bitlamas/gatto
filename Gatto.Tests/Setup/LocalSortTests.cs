@@ -10,9 +10,9 @@ namespace Gatto.Tests.Setup;
 //the local shelf draws the size label in the params column and sorts by its magnitude, with the Hub's click and flip
 public class LocalSortTests
 {
-    private static (SetupFlow Flow, WizardScreen.Choice Shelf) Local()
+    private static (SetupFlow Flow, SetupScreen.Choice Shelf) Local()
     {
-        var probes = new WizardProbes
+        var probes = new FakeSetupProbes
         {
             Llama = @"C:\llama\llama-server.exe",
             Snapshot = ShelfFixtures.Snapshot("unified"),
@@ -23,20 +23,20 @@ public class LocalSortTests
         };
         var flow = new SetupFlow(probes) { CanSwitchSource = true };
         flow.StartAtModelSegment();
-        return (flow, Assert.IsType<WizardScreen.Choice>(flow.Answer(SetupFlow.CtlSource)));
+        return (flow, Assert.IsType<SetupScreen.Choice>(flow.Answer(SetupFlow.CtlSource)));
     }
 
-    private static string[] Names(WizardScreen.Choice c) => [.. c.Shelf!.Rows.Select(r => r.Model)];
+    private static string[] Names(SetupScreen.Choice c) => [.. c.Shelf!.Rows.Select(r => r.Model)];
 
     [Fact]
     public void A_PARAMS_PRESS_SORTS_BY_THE_LABELS_MAGNITUDE_BOTH_WAYS_WITH_A_BLANK_LAST()
     {
         var (flow, shelf) = Local();
         Assert.Equal(["big", "tiny", "none"], Names(shelf));
-        var smallest = Assert.IsType<WizardScreen.Choice>(flow.Answer(SetupFlow.CtlParams));
+        var smallest = Assert.IsType<SetupScreen.Choice>(flow.Answer(SetupFlow.CtlParams));
         Assert.Equal(["tiny", "big", "none"], Names(smallest));
         Assert.True(smallest.Shelf!.SmallestFirst);
-        var largest = Assert.IsType<WizardScreen.Choice>(flow.Answer(SetupFlow.CtlParams));
+        var largest = Assert.IsType<SetupScreen.Choice>(flow.Answer(SetupFlow.CtlParams));
         Assert.Equal(["big", "tiny", "none"], Names(largest));
         Assert.False(largest.Shelf!.SmallestFirst);
     }
@@ -46,7 +46,7 @@ public class LocalSortTests
     public void A_SORTED_ROW_ANSWERS_ITS_OWN_FILE()
     {
         var (flow, _) = Local();
-        var smallest = Assert.IsType<WizardScreen.Choice>(flow.Answer(SetupFlow.CtlParams));
+        var smallest = Assert.IsType<SetupScreen.Choice>(flow.Answer(SetupFlow.CtlParams));
         flow.Answer(smallest.Options[0].Key);
         Assert.Equal(@"C:\m\tiny-Q8_0.gguf", flow.Selected!.Path);
     }
@@ -67,7 +67,7 @@ public class LocalSortTests
         var (flow, _) = ShelfFixtures.Flow("unified");
         flow.Answer(SetupFlow.CtlParams);
         flow.Answer(SetupFlow.CtlSource);
-        var back = Assert.IsType<WizardScreen.Choice>(flow.Answer(SetupFlow.CtlSource));
+        var back = Assert.IsType<SetupScreen.Choice>(flow.Answer(SetupFlow.CtlSource));
         Assert.Equal(ShelfSource.Hub, back.Shelf!.Source);
         Assert.True(back.Shelf.SmallestFirst);
     }

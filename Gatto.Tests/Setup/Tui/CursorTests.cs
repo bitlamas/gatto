@@ -36,7 +36,7 @@ public class CursorTests
         var surface = new RecordingSurface { Width = 100 };
         var alt = new AltScreen(surface, title: null);
 
-        WizardSession.Run(alt, () => 0, () => ["the closing frame"], new StringWriter(),
+        SetupSession.Run(alt, () => 0, () => ["the closing frame"], new StringWriter(),
             registerHooks: false);
 
         var text = surface.Text;
@@ -55,7 +55,7 @@ public class CursorTests
         var surface = new RecordingSurface { Width = 100 };
         var alt = new AltScreen(surface, title: null);
 
-        Assert.Throws<InvalidOperationException>(() => WizardSession.Run(
+        Assert.Throws<InvalidOperationException>(() => SetupSession.Run(
             alt, () => throw new InvalidOperationException("boom"), () => ["the last frame"],
             new StringWriter(), registerHooks: false));
 
@@ -79,10 +79,10 @@ public class CursorTests
 
     //paints a setup screen with the real face, driven by a script of keys.
     private static (RecordingSurface Surface, IReadOnlyList<string> Frame) Painted(
-        WizardScreen.Choice screen, params ConsoleKeyInfo[] keys)
+        SetupScreen.Choice screen, params ConsoleKeyInfo[] keys)
     {
         var surface = new RecordingSurface { Width = 100, Height = 40 };
-        var face = new TuiWizardSurface(surface, new Keys(keys),
+        var face = new TuiSetupSurface(surface, new Keys(keys),
             new Theme(new TermCaps(true, true)), "0.5.0", "1a2b3c4", () => 0,
             clock: _ => new Ready());
         try { face.Choose(screen); }
@@ -90,7 +90,7 @@ public class CursorTests
         return (surface, face.LastPainted);
     }
 
-    private static WizardScreen.Choice DoorScreen() =>
+    private static SetupScreen.Choice DoorScreen() =>
         new("a-door", "Where is llama-server?",
             [new ChoiceOption("1", "browse for it")],
             Door: "type the path to llama-server.exe…")
@@ -140,7 +140,7 @@ public class CursorTests
     public void A_SCREEN_WITH_NO_DOOR_HIDES_THE_CURSOR()
     {
         var (surface, _) = Painted(
-            new WizardScreen.Choice("plain", "What can this machine run?",
+            new SetupScreen.Choice("plain", "What can this machine run?",
                 [new ChoiceOption("1", "carry on")]) { Strip = [] });
 
         Assert.EndsWith(Ansi.HideCursor, surface.Text, StringComparison.Ordinal);
@@ -152,7 +152,7 @@ public class CursorTests
     public void A_FITTED_FRAME_STILL_PUTS_THE_CURSOR_ON_THE_CARET()
     {
         var surface = new RecordingSurface { Width = 100, Height = 9 };
-        var face = new TuiWizardSurface(surface, new Keys([Key(ConsoleKey.Tab), Typed('q')]),
+        var face = new TuiSetupSurface(surface, new Keys([Key(ConsoleKey.Tab), Typed('q')]),
             new Theme(new TermCaps(true, true)), "0.5.0", "1a2b3c4", () => 0,
             clock: _ => new Ready());
         try { face.Choose(DoorScreen()); }

@@ -50,7 +50,7 @@ public class CopyGuardAuditTests
     public void EVERY_LITERAL_KEYED_SCREEN_IN_THE_SOURCE_IS_LISTED_HERE()
     {
         var pattern = new System.Text.RegularExpressions.Regex(
-            @"new WizardScreen\.(?:Info|Terminal|Progress)\(""([^""]+)""");
+            @"new SetupScreen\.(?:Info|Terminal|Progress)\(""([^""]+)""");
 
         var inSource = Gatto.Tests.Census.SourceTree.ProductionFilesUnder("Cli")
             .SelectMany(f => pattern.Matches(File.ReadAllText(f)).Select(m => m.Groups[1].Value))

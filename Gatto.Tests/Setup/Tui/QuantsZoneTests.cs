@@ -26,20 +26,20 @@ public class QuantsZoneTests
     //the bigger card makes the 9.9 GB quant a GPU fit where the default calls it RAM-only, so the pricing claim can fail
     private static readonly HardwareSnapshot BigCard = new(34359738368, 34093496320, GpuKind.Discrete, 42949672960);
 
-    private static WizardScreen.Choice Shelf(HardwareSnapshot? machine = null)
+    private static SetupScreen.Choice Shelf(HardwareSnapshot? machine = null)
     {
         IReadOnlyList<ModelRow> rows = [Row("unsloth/a"), Row("unsloth/b")];
-        var probes = new WizardProbes
+        var probes = new FakeSetupProbes
         {
             Rows = rows,
-            Answer = _ => WizardProbes.Outcome(rows, null),
+            Answer = _ => FakeSetupProbes.Outcome(rows, null),
             //the default snapshot when the caller names no machine, so both arms build the same fixture and only the hardware differs
             Snapshot = machine ?? new HardwareSnapshot(34359738368, 34093496320, GpuKind.Discrete, 8589934592),
         };
-        return Assert.IsType<WizardScreen.Choice>(new SetupFlow(probes).StartPastEngine());
+        return Assert.IsType<SetupScreen.Choice>(new SetupFlow(probes).StartPastEngine());
     }
 
-    private static ModelFacts Facts(WizardScreen.Choice c) => c.Shelf!.Facts![0];
+    private static ModelFacts Facts(SetupScreen.Choice c) => c.Shelf!.Facts![0];
 
     //each quant keeps its own fit regime, since readers pick by seeing which files their machine can hold
     [Fact]
@@ -70,12 +70,12 @@ public class QuantsZoneTests
         {
             IReadOnlyList<ModelRow> rows =
                 [.. Enumerable.Range(0, rowCount).Select(i => Row($"unsloth/m{i}"))];
-            var probes = new WizardProbes
+            var probes = new FakeSetupProbes
             {
                 Rows = rows,
-                Answer = _ => WizardProbes.Outcome(rows, null),
+                Answer = _ => FakeSetupProbes.Outcome(rows, null),
             };
-            var screen = Assert.IsType<WizardScreen.Choice>(new SetupFlow(probes).StartPastEngine());
+            var screen = Assert.IsType<SetupScreen.Choice>(new SetupFlow(probes).StartPastEngine());
             Assert.Equal(rowCount, screen.Shelf!.Rows.Count);
             return probes.HardwareReads;
         }
@@ -89,10 +89,10 @@ public class QuantsZoneTests
     {
         IReadOnlyList<ModelRow> rows =
             [Row("unsloth/a").WithFiles([], 0)];
-        var screen = Assert.IsType<WizardScreen.Choice>(new SetupFlow(new WizardProbes
+        var screen = Assert.IsType<SetupScreen.Choice>(new SetupFlow(new FakeSetupProbes
         {
             Rows = rows,
-            Answer = _ => WizardProbes.Outcome(rows, null),
+            Answer = _ => FakeSetupProbes.Outcome(rows, null),
         }).StartPastEngine());
 
         Assert.Null(Facts(screen).Files);
@@ -109,10 +109,10 @@ public class QuantsZoneTests
             Gatto.Cli.Setup.Shelves.Shelf.Regions(withFiles.Shelf!, 100, 0, withFiles.Door is not null));
 
         IReadOnlyList<ModelRow> bare = [Row("unsloth/a").WithFiles([])];
-        var without = Assert.IsType<WizardScreen.Choice>(new SetupFlow(new WizardProbes
+        var without = Assert.IsType<SetupScreen.Choice>(new SetupFlow(new FakeSetupProbes
         {
             Rows = bare,
-            Answer = _ => WizardProbes.Outcome(bare, null),
+            Answer = _ => FakeSetupProbes.Outcome(bare, null),
         }).StartPastEngine());
 
         Assert.False(Gatto.Cli.Setup.Shelves.Shelf.HasFiles(without.Shelf!, 0));
@@ -136,12 +136,12 @@ public class QuantsZoneTests
     public void PICKING_A_QUANT_IN_THE_PANE_CHANGES_THE_ROWS_OWN_QUANT()
     {
         IReadOnlyList<ModelRow> rows = [Row("unsloth/a")];
-        var flow = new SetupFlow(new WizardProbes
+        var flow = new SetupFlow(new FakeSetupProbes
         {
             Rows = rows,
-            Answer = _ => WizardProbes.Outcome(rows, null),
+            Answer = _ => FakeSetupProbes.Outcome(rows, null),
         });
-        var shelf = Assert.IsType<WizardScreen.Choice>(flow.StartPastEngine());
+        var shelf = Assert.IsType<SetupScreen.Choice>(flow.StartPastEngine());
 
         Assert.Equal("m-Q4_K_M.gguf", shelf.Shelf!.Rows[0].RowQuant!.FileName);
 
@@ -151,10 +151,10 @@ public class QuantsZoneTests
         //the next screen names the chosen file only, since a screen naming both would read as a choice still to make
         var text = string.Join(" | ", next switch
         {
-            WizardScreen.Choice c => new[] { c.Question }
+            SetupScreen.Choice c => new[] { c.Question }
                 .Concat((c.BodyRows ?? []).Select(r => r.Text))
                 .Concat(c.Options.Select(o => o.Label)),
-            WizardScreen.Ask a => (a.BodyRows ?? []).Select(r => r.Text),
+            SetupScreen.Ask a => (a.BodyRows ?? []).Select(r => r.Text),
             _ => [],
         });
 
@@ -172,10 +172,10 @@ public class QuantsZoneTests
         [
             Row("ggml-org/models").WithFiles([.. Quants, sidecar], 8) with { Params = 7_000_000_000 },
         ];
-        var screen = Assert.IsType<WizardScreen.Choice>(new SetupFlow(new WizardProbes
+        var screen = Assert.IsType<SetupScreen.Choice>(new SetupFlow(new FakeSetupProbes
         {
             Rows = rows,
-            Answer = _ => WizardProbes.Outcome(rows, null),
+            Answer = _ => FakeSetupProbes.Outcome(rows, null),
         }).StartPastEngine());
 
         var files = Facts(screen).Files!;
@@ -192,10 +192,10 @@ public class QuantsZoneTests
     {
         IReadOnlyList<ModelRow> rows =
             [Row("unsloth/a").WithFiles([.. Quants, Q("model.gguf", 4.2)])];
-        var screen = Assert.IsType<WizardScreen.Choice>(new SetupFlow(new WizardProbes
+        var screen = Assert.IsType<SetupScreen.Choice>(new SetupFlow(new FakeSetupProbes
         {
             Rows = rows,
-            Answer = _ => WizardProbes.Outcome(rows, null),
+            Answer = _ => FakeSetupProbes.Outcome(rows, null),
         }).StartPastEngine());
 
         var files = Facts(screen).Files!;

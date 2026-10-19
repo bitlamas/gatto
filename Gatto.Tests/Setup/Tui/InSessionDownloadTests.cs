@@ -8,7 +8,7 @@ namespace Gatto.Tests.Setup.Tui;
 public class InSessionDownloadTests
 {
     //the footer is the last row the face paints on both roads, so the golden is sliced by the helper that knows its shape
-    private static string PaintedKeys(WizardScreen.Choice c, int width) =>
+    private static string PaintedKeys(SetupScreen.Choice c, int width) =>
         WalkRender.Watching(c, width, ModelFetchTests.FetchingTick).Rows[^1];
 
     //the 80 frame is its own file in the corpus (the fold is what it is drawn to show)
@@ -38,7 +38,7 @@ public class InSessionDownloadTests
     [Fact]
     public void A_WATCHING_SCREEN_REFUSES_AN_OPTION_WITH_A_KEY_IT_CANNOT_PRESS()
     {
-        var unpressable = new WizardScreen.Choice("model.fetching", "Downloading…",
+        var unpressable = new SetupScreen.Choice("model.fetching", "Downloading…",
             [new ChoiceOption("pause", "pause", Press: "Ctrl+Alt+P"),
              new ChoiceOption("stop", "stop, deletes the partial")],
             KeysOnly: true, Watching: true);
@@ -60,7 +60,7 @@ public class InSessionDownloadTests
     [Fact]
     public void AN_OPTION_BEFORE_ESCS_WITHOUT_A_KEY_IS_REFUSED()
     {
-        var nameless = new WizardScreen.Choice("model.fetching", "Downloading…",
+        var nameless = new SetupScreen.Choice("model.fetching", "Downloading…",
             [new ChoiceOption("pause", "pause"),
              new ChoiceOption("stop", "stop, deletes the partial")],
             KeysOnly: true, Watching: true);
@@ -73,7 +73,7 @@ public class InSessionDownloadTests
     [Fact]
     public void A_WATCHING_SCREEN_WITH_NO_OPTIONS_IS_REFUSED()
     {
-        var none = new WizardScreen.Choice("model.fetching", "Downloading…", [],
+        var none = new SetupScreen.Choice("model.fetching", "Downloading…", [],
             KeysOnly: true, Watching: true);
 
         Assert.Throws<InvalidOperationException>(() => PaintedKeys(none, 100));
@@ -154,5 +154,5 @@ public class InSessionDownloadTests
     public void A_DIGIT_ANSWERS_NOTHING_ON_A_KEYS_ONLY_SCREEN(bool inSession) =>
         Assert.Equal(SetupFlow.Landed,
             WalkRender.WatchAfterKeys(ModelFetchTests.FetchingScreen(inSession), 100,
-                ModelFetchTests.FetchingTick, [WizardRig.Digit('1')]));
+                ModelFetchTests.FetchingTick, [SetupRig.Digit('1')]));
 }

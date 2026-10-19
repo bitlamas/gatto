@@ -16,7 +16,7 @@ public class CensusTokenCensusTests
 
         Add("ContextWalkCallSiteCensusTests", "Gatto/Cli/GattoApp.cs", "class GattoApp");
         Add("LaunchRefusalCensusTests", "Gatto/Cli/GattoApp.cs", "ServeNotice.Refusing(", "return 1;");
-        Add("PlainFaceCensusTests", "Gatto/Cli/Setup/SetupCommand.cs", "new Setup.Tui.TuiWizardSurface(");
+        Add("PlainFaceCensusTests", "Gatto/Cli/Setup/SetupCommand.cs", "new Setup.Tui.TuiSetupSurface(");
         Add("ServerBinaryCensusTests", "Gatto/Cli/GattoApp.cs", "new ServeManager(", "config.LlamaServer");
         Add("ServerBinaryCensusTests", "Gatto/Cli/ServeCommand.cs", "new ServeManager(", "config.LlamaServer");
         Add("ServerBinaryCensusTests", "Gatto/Cli/Install/UninstallCommand.cs", "new ServeManager(", "config.LlamaServer");

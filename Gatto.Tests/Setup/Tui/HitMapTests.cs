@@ -10,10 +10,10 @@ namespace Gatto.Tests.Setup.Tui;
 public class HitMapTests
 {
     //the frame the face painted and the map it kept, with no key read, so the first paint is the one asserted on
-    internal static (IReadOnlyList<string> Rows, HitMap Map) Painted(WizardScreen.Choice c, int width = 120, int height = 30,
+    internal static (IReadOnlyList<string> Rows, HitMap Map) Painted(SetupScreen.Choice c, int width = 120, int height = 30,
         params ConsoleKeyInfo[] keys)
     {
-        var rig = new WizardRig(width);
+        var rig = new SetupRig(width);
         rig.Surface.Height = height;
         var face = rig.TuiFace(keys);
         Assert.Throws<InvalidOperationException>(() => face.Choose(c));
@@ -196,7 +196,7 @@ public class HitMapTests
     public void THE_M_SHOWS_THEM_CLAUSE_ACTS_AS_M()
     {
         var shelf = ShelfFixtures.Shelf("discrete");
-        var row = new WizardRow("gatto also found 2 models already on this machine, m shows them", Tone: RowTone.Aside, Keys: ["m"]);
+        var row = new SetupRow("gatto also found 2 models already on this machine, m shows them", Tone: RowTone.Aside, Keys: ["m"]);
         var (rows, map) = Painted(shelf with { BodyRows = [row] });
         var t = Assert.Single(Of(map, HitKind.Clause), x => x.Tag.Key == "m");
         Assert.Equal("m shows them", ShelfFixtures.TextAt(rows, t, map.Height));
@@ -260,13 +260,13 @@ public class HitMapTests
         {
             Painted(ShelfFixtures.Shelf("discrete")).Map,
             Painted(ShelfFixtures.Shelf("discrete", lifted: true)).Map,
-            Painted(new WizardScreen.Choice("pick", "Which one?", [new("a", "One"), new("b", "Two")], Unnumbered: true, SwitchesSource: true, Door: "type…")).Map,
-            Painted(new WizardScreen.Choice("nodefault", "Which one?", [new("a", "One"), new("b", "Two")], NoDefault: true)).Map,
-            Painted(new WizardScreen.Choice("keys", "Go on?", [new("y", "continue"), new("n", "stop")], KeysOnly: true)).Map,
-            Painted(new WizardScreen.Choice("watch", "Fetching", [new("p", "pause", Press: "p"), new("s", "skip", Press: "Space"), new("x", "stop")],
+            Painted(new SetupScreen.Choice("pick", "Which one?", [new("a", "One"), new("b", "Two")], Unnumbered: true, SwitchesSource: true, Door: "type…")).Map,
+            Painted(new SetupScreen.Choice("nodefault", "Which one?", [new("a", "One"), new("b", "Two")], NoDefault: true)).Map,
+            Painted(new SetupScreen.Choice("keys", "Go on?", [new("y", "continue"), new("n", "stop")], KeysOnly: true)).Map,
+            Painted(new SetupScreen.Choice("watch", "Fetching", [new("p", "pause", Press: "p"), new("s", "skip", Press: "Space"), new("x", "stop")],
                 Watching: true, KeysOnly: true)).Map,
-            AskMap(new WizardScreen.Ask("ask", "Where?", _ => null, "a folder…", new AskOffer("here", "C:\\m"))),
-            AskMap(new WizardScreen.Ask("ask2", "Where?", _ => null, "a folder…")),
+            AskMap(new SetupScreen.Ask("ask", "Where?", _ => null, "a folder…", new AskOffer("here", "C:\\m"))),
+            AskMap(new SetupScreen.Ask("ask2", "Where?", _ => null, "a folder…")),
         };
         var keys = maps.SelectMany(m => Of(m, HitKind.FooterKey)).Select(t => t.Tag.Key!).Distinct().ToList();
         Assert.Contains("Esc", keys);
@@ -274,9 +274,9 @@ public class HitMapTests
         foreach (var k in keys) Assert.True(FooterKeys.KeyOf(k) is not null, $"footer key {k} maps to no key");
     }
 
-    private static HitMap AskMap(WizardScreen.Ask a)
+    private static HitMap AskMap(SetupScreen.Ask a)
     {
-        var rig = new WizardRig(120);
+        var rig = new SetupRig(120);
         rig.Surface.Height = 30;
         var face = rig.TuiFace();
         Assert.Throws<InvalidOperationException>(() => face.Ask(a));

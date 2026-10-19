@@ -30,7 +30,7 @@ public class TypedDoorCensusTests
         FitRegime.FitsGpu, 32768, false, null, 10, false, Params: 4_000_000_000);
 
     //reaches every screen with a typed option the way a user reaches it. the screen key is asserted before anything is typed, so a drifted recipe fails
-    private static (SetupFlow Flow, WizardProbes Probes, List<string> Verified, WizardScreen Screen)
+    private static (SetupFlow Flow, FakeSetupProbes Probes, List<string> Verified, SetupScreen Screen)
         At(string key)
     {
         var verified = new List<string>();
@@ -44,7 +44,7 @@ public class TypedDoorCensusTests
                 : new ProbeResult(ProbeShape.ClassicServer, "d", Build: "b10076");
         };
 
-        WizardProbes probes = key switch
+        FakeSetupProbes probes = key switch
         {
             SetupFlow.FoundKey or SetupFlow.SearchKey or SetupFlow.RetryKey or SetupFlow.ShelfLoadingKey =>
                 new() { Verify = recording },
@@ -100,7 +100,7 @@ public class TypedDoorCensusTests
     }
 
     //a typed answer must be wrapped exactly as the face wraps it, so this calls the same member. a bare key that is nobody's option isn't typed input and throws
-    private static string DoorAnswer(WizardScreen screen, string text) =>
+    private static string DoorAnswer(SetupScreen screen, string text) =>
         ShelfControls.TypedAnswer(text);
 
     private static IReadOnlyList<string> Route(string key) => key switch
@@ -180,7 +180,7 @@ public class TypedDoorCensusTests
     [Fact]
     public void A_ROW_INDEX_IS_NOT_READ_AS_A_TYPED_FOLDER()
     {
-        var probes = new WizardProbes
+        var probes = new FakeSetupProbes
         {
             Roots = [@"C:\models"],
             Found = [new FoundModel(@"C:\m\a.gguf", 1_000_000_000, null)],
@@ -253,7 +253,7 @@ public class TypedDoorCensusTests
     [Fact]
     public void THE_READER_FINDS_A_DOOR_THAT_WAS_JUST_ADDED()
     {
-        const string source = "        return Emit(new WizardScreen.Choice(\n"
+        const string source = "        return Emit(new SetupScreen.Choice(\n"
             + "            BrandNewKey,\n"
             + "            \"a question?\",\n"
             + "            [],\n"
@@ -276,7 +276,7 @@ public class TypedDoorCensusTests
 
     //a fixture naming a real screen key may not give it a Door the flow does not set. synthetic keys are exempt, their screen has no producer
     private static readonly Regex FixtureDoor = new(
-        @"new(?:\s+WizardScreen\.Choice)?\(\s*SetupFlow\.(\w+Key)\b[^;]*?Door:",
+        @"new(?:\s+SetupScreen\.Choice)?\(\s*SetupFlow\.(\w+Key)\b[^;]*?Door:",
         RegexOptions.Compiled | RegexOptions.Singleline);
 
     //the matcher is shown a known match and a known miss before the tree check trusts its answer
@@ -284,13 +284,13 @@ public class TypedDoorCensusTests
     public void THE_FIXTURE_READER_FIRES_ON_A_PLANTED_DOOR_AND_REFUSES_A_DOORLESS_FIXTURE()
     {
         Assert.Equal("MachineKey", FixtureDoor
-            .Match("new WizardScreen.Choice(SetupFlow.MachineKey, \"t\", opts, Door: \"x\");")
+            .Match("new SetupScreen.Choice(SetupFlow.MachineKey, \"t\", opts, Door: \"x\");")
             .Groups[1].Value);
         Assert.Equal("SearchKey", FixtureDoor
             .Match("new(SetupFlow.SearchKey, \"t\", opts, Shelf: v, Door: D);").Groups[1].Value);
-        Assert.DoesNotMatch(FixtureDoor, "new WizardScreen.Choice(SetupFlow.MachineKey, \"t\", opts);");
+        Assert.DoesNotMatch(FixtureDoor, "new SetupScreen.Choice(SetupFlow.MachineKey, \"t\", opts);");
         //a synthetic key matches nothing, stating the exemption as a pattern rather than a list of files.
-        Assert.DoesNotMatch(FixtureDoor, "new WizardScreen.Choice(\"planted.shelf\", \"t\", opts, Door: \"x\");");
+        Assert.DoesNotMatch(FixtureDoor, "new SetupScreen.Choice(\"planted.shelf\", \"t\", opts, Door: \"x\");");
     }
 
     [Fact]

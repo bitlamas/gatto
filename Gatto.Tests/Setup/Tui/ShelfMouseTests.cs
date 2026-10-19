@@ -15,7 +15,7 @@ public class ShelfMouseTests
 
 
     //a shelf with nothing behind it, so Esc arms the leave chord rather than stepping back
-    private static WizardScreen.Choice Front(string machine = "unified", bool lifted = false) =>
+    private static SetupScreen.Choice Front(string machine = "unified", bool lifted = false) =>
         ShelfFixtures.Shelf(machine, lifted) with { AllowBack = false };
 
     [Fact]
@@ -23,7 +23,7 @@ public class ShelfMouseTests
     {
         var shelf = Front();
         var row = ShelfFixtures.Target(shelf, HitKind.Row, index: 1);
-        var face = new WizardRig(120).TuiFaceEvents(RigMouse.On(row), RigMouse.On(row));
+        var face = new SetupRig(120).TuiFaceEvents(RigMouse.On(row), RigMouse.On(row));
         Assert.Equal(shelf.Options[1].Key, face.Choose(shelf));
     }
 
@@ -32,30 +32,30 @@ public class ShelfMouseTests
     {
         var shelf = Front();
         var row = ShelfFixtures.Target(shelf, HitKind.Row, index: 2);
-        var face = new WizardRig(120).TuiFaceEvents(RigMouse.On(row), RigMouse.On(row, @double: true));
+        var face = new SetupRig(120).TuiFaceEvents(RigMouse.On(row), RigMouse.On(row, @double: true));
         Assert.Equal(shelf.Options[2].Key, face.Choose(shelf));
     }
 
     [Fact]
     public void A_PRESS_AFTER_A_RESIZE_IS_DROPPED()
     {
-        var rig = new WizardRig(120);
+        var rig = new SetupRig(120);
         var shelf = Front();
         var selected = ShelfFixtures.Target(shelf, HitKind.Row, index: 0);
         //the width changes after the first paint and before the press is read
         var face = rig.TuiFaceEvents((Action)(() => rig.Surface.Width = 100), RigMouse.On(selected),
-            new KeyEvent(WizardRig.Esc), new KeyEvent(WizardRig.Esc));
+            new KeyEvent(SetupRig.Esc), new KeyEvent(SetupRig.Esc));
         Assert.Null(face.Choose(shelf));   //a press read against the stale frame would answer the selected row
     }
 
     [Fact]
     public void A_DOUBLE_CLICK_ON_ESC_ARMS_ONCE()
     {
-        var rig = new WizardRig(120);
+        var rig = new SetupRig(120);
         var shelf = Front();
         var esc = ShelfFixtures.Target(shelf, HitKind.FooterKey, key: "Esc");
         var face = rig.TuiFaceEvents(RigMouse.On(esc), RigMouse.On(esc, @double: true),
-            new KeyEvent(WizardRig.Down), new KeyEvent(WizardRig.Enter));
+            new KeyEvent(SetupRig.Down), new KeyEvent(SetupRig.Enter));
         Assert.Equal(shelf.Options[1].Key, face.Choose(shelf));   //no leave: the second press of the double click did not complete the chord
         Assert.Contains(rig.Frames, f => f.Contains("Esc again to leave"));
     }
@@ -68,7 +68,7 @@ public class ShelfMouseTests
         //the pause stops the first screen's drop, so the press is still queued when the second screen paints
         var reader = new BatchConsoleReader([BatchConsoleReader.Key('\r', ConsoleKey.Enter)], [],
             [BatchConsoleReader.Press(row1.FirstCol, row1.Row), BatchConsoleReader.Key('\r', ConsoleKey.Enter)]);
-        var face = new WizardRig(120).TuiFaceOver(new ConsoleInputSource(reader));
+        var face = new SetupRig(120).TuiFaceOver(new ConsoleInputSource(reader));
         Assert.Equal(shelf.Options[0].Key, face.Choose(shelf));
         //a missing drop reads the press, which selects row 1, and the Enter answers it
         Assert.Equal(shelf.Options[0].Key, face.Choose(shelf));
@@ -81,7 +81,7 @@ public class ShelfMouseTests
     {
         var shelf = Front();
         var list = ShelfFixtures.Target(shelf, HitKind.Row, index: 0);
-        var face = new WizardRig(120).TuiFaceEvents(RigMouse.Wheel(list, first), RigMouse.Wheel(list, second), new KeyEvent(WizardRig.Enter));
+        var face = new SetupRig(120).TuiFaceEvents(RigMouse.Wheel(list, first), RigMouse.Wheel(list, second), new KeyEvent(SetupRig.Enter));
         Assert.Equal(shelf.Options[expectedRow].Key, face.Choose(shelf));
     }
 
@@ -92,7 +92,7 @@ public class ShelfMouseTests
         var targets = ShelfFixtures.Targets(shelf);
         var last = targets.Where(t => t.Tag.Kind == HitKind.Row).Max(t => t.Tag.Index);
         var row = targets.Single(t => t.Tag.Kind == HitKind.Row && t.Tag.Index == 0);
-        var face = new WizardRig(120).TuiFaceEvents(RigMouse.Wheel(row, -120 * (last + 3)), new KeyEvent(WizardRig.Enter));
+        var face = new SetupRig(120).TuiFaceEvents(RigMouse.Wheel(row, -120 * (last + 3)), new KeyEvent(SetupRig.Enter));
         Assert.Equal(shelf.Options[last].Key, face.Choose(shelf));
     }
 
@@ -102,12 +102,12 @@ public class ShelfMouseTests
         var shelf = Front("discrete");
         var line = ShelfFixtures.Target(shelf, HitKind.PaneLine, index: 1);
         //the press opened publisher 1 with the keys on its pick, so the Enter that follows chooses a file
-        var picked = new WizardRig(120).TuiFaceEvents(RigMouse.On(line), new KeyEvent(WizardRig.Enter)).Choose(shelf);
+        var picked = new SetupRig(120).TuiFaceEvents(RigMouse.On(line), new KeyEvent(SetupRig.Enter)).Choose(shelf);
         Assert.StartsWith(PickPrefix, picked);
 
         var opened = ShelfFixtures.Targets(shelf, 120, 0, [.. ShelfFixtures.OpenKeys(shelf)]);
         var file = opened.First(t => t.Tag.Kind == HitKind.PaneFile);
-        var answer = new WizardRig(120).TuiFaceEvents([.. ShelfFixtures.OpenKeys(shelf).Select(k => (object)new KeyEvent(k)), .. RigMouse.On(file)])
+        var answer = new SetupRig(120).TuiFaceEvents([.. ShelfFixtures.OpenKeys(shelf).Select(k => (object)new KeyEvent(k)), .. RigMouse.On(file)])
             .Choose(shelf);
         Assert.StartsWith(PickPrefix, answer);   //a file choice carries its file
     }
@@ -117,7 +117,7 @@ public class ShelfMouseTests
     {
         var shelf = Front();
         var file = ShelfFixtures.Target(shelf, HitKind.FoldedFile, width: 80);
-        var face = new WizardRig(80).TuiFaceEvents(RigMouse.On(file));
+        var face = new SetupRig(80).TuiFaceEvents(RigMouse.On(file));
         Assert.StartsWith(PickPrefix, face.Choose(shelf));
     }
 
@@ -126,7 +126,7 @@ public class ShelfMouseTests
     {
         var shelf = Front();
         var chip = ShelfFixtures.Target(shelf, HitKind.Chip, index: 2);
-        var face = new WizardRig(120).TuiFaceEvents(RigMouse.On(chip));
+        var face = new SetupRig(120).TuiFaceEvents(RigMouse.On(chip));
         Assert.Equal(ShelfControls.FamilyAnswer(shelf.Shelf!.Families![2]), face.Choose(shelf));
     }
 
@@ -135,7 +135,7 @@ public class ShelfMouseTests
     {
         var shelf = Front();
         var door = ShelfFixtures.Target(shelf, HitKind.Door);
-        var face = new WizardRig(120).TuiFaceEvents(RigMouse.On(door), new KeyEvent(WizardRig.Ch('q')), new KeyEvent(WizardRig.Enter));
+        var face = new SetupRig(120).TuiFaceEvents(RigMouse.On(door), new KeyEvent(SetupRig.Ch('q')), new KeyEvent(SetupRig.Enter));
         Assert.Equal(ShelfControls.TypedAnswer("q"), face.Choose(shelf));
     }
 
@@ -144,7 +144,7 @@ public class ShelfMouseTests
     {
         var shelf = Front();
         var header = ShelfFixtures.Target(shelf, HitKind.ParamsHeader);
-        Assert.Equal(SetupFlow.CtlParams, new WizardRig(120).TuiFaceEvents(RigMouse.On(header)).Choose(shelf));
+        Assert.Equal(SetupFlow.CtlParams, new SetupRig(120).TuiFaceEvents(RigMouse.On(header)).Choose(shelf));
     }
 
     [Fact]
@@ -152,9 +152,9 @@ public class ShelfMouseTests
     {
         var shelf = Front("discrete");
         var a = ShelfFixtures.Target(shelf, HitKind.Clause, key: "a");
-        Assert.Equal(ShelfControls.LiftAnswer(), new WizardRig(120).TuiFaceEvents(RigMouse.On(a)).Choose(shelf));
+        Assert.Equal(ShelfControls.LiftAnswer(), new SetupRig(120).TuiFaceEvents(RigMouse.On(a)).Choose(shelf));
         var m = ShelfFixtures.Target(shelf, HitKind.FooterKey, key: "m");
-        Assert.Equal(ShelfControls.SourceAnswer(), new WizardRig(120).TuiFaceEvents(RigMouse.On(m)).Choose(shelf));
+        Assert.Equal(ShelfControls.SourceAnswer(), new SetupRig(120).TuiFaceEvents(RigMouse.On(m)).Choose(shelf));
     }
 
     [Fact]
@@ -167,7 +167,7 @@ public class ShelfMouseTests
         var shown = targets.Where(t => t.Tag.Kind == HitKind.Row).Select(t => t.Tag.Index).Order().ToList();
         var first = shown.First(i => v.Rows[i].Fit == FitRegime.FitsRamOnly);
         Assert.NotEqual(0, first);
-        var face = new WizardRig(120).TuiFaceEvents(RigMouse.On(ram), new KeyEvent(WizardRig.Enter));
+        var face = new SetupRig(120).TuiFaceEvents(RigMouse.On(ram), new KeyEvent(SetupRig.Enter));
         Assert.Equal(shelf.Options[first].Key, face.Choose(shelf));
     }
 
@@ -179,7 +179,7 @@ public class ShelfMouseTests
         //every shown row made a card row, so the memory count names rows the screen does not show
         var cardOnly = shelf with { Shelf = v with { Rows = [.. v.Rows.Select(r => r with { Fit = FitRegime.FitsGpu })] } };
         var ram = ShelfFixtures.Targets(cardOnly).Single(t => t.Tag.Kind == HitKind.RegimeJump && t.Tag.Regimes!.SetEquals([FitRegime.FitsRamOnly]));
-        var face = new WizardRig(120).TuiFaceEvents(RigMouse.On(ram), new KeyEvent(WizardRig.Enter));
+        var face = new SetupRig(120).TuiFaceEvents(RigMouse.On(ram), new KeyEvent(SetupRig.Enter));
         Assert.Equal(cardOnly.Options[0].Key, face.Choose(cardOnly));
     }
 
@@ -189,7 +189,7 @@ public class ShelfMouseTests
         var shelf = Front();
         var withEscape = shelf with { Options = [.. shelf.Options, new ChoiceOption("escape-key", "Skip this step")] };
         var row = ShelfFixtures.Target(withEscape, HitKind.EscapeRow);
-        Assert.Equal("escape-key", new WizardRig(120).TuiFaceEvents(RigMouse.On(row), new KeyEvent(WizardRig.Enter)).Choose(withEscape));
+        Assert.Equal("escape-key", new SetupRig(120).TuiFaceEvents(RigMouse.On(row), new KeyEvent(SetupRig.Enter)).Choose(withEscape));
     }
 
     //the frame moves once the escape row is selected, since the pane goes, so the press is read off that frame
@@ -198,9 +198,9 @@ public class ShelfMouseTests
     {
         var shelf = Front();
         var withEscape = shelf with { Options = [.. shelf.Options, new ChoiceOption("escape-key", "Skip this step")] };
-        var downs = Enumerable.Repeat(WizardRig.Down, withEscape.Options.Count - 1).ToArray();
+        var downs = Enumerable.Repeat(SetupRig.Down, withEscape.Options.Count - 1).ToArray();
         var row = ShelfFixtures.Target(withEscape, HitKind.EscapeRow, keys: downs);
-        var face = new WizardRig(120).TuiFaceEvents([.. downs.Select(k => (object)new KeyEvent(k)), .. RigMouse.On(row)]);
+        var face = new SetupRig(120).TuiFaceEvents([.. downs.Select(k => (object)new KeyEvent(k)), .. RigMouse.On(row)]);
         Assert.Equal("escape-key", face.Choose(withEscape));
     }
 
@@ -211,7 +211,7 @@ public class ShelfMouseTests
         var shelf = Front("discrete");
         var tabs = ShelfFixtures.OpenKeys(shelf)[..^1];
         var enter = ShelfFixtures.Target(shelf, HitKind.FooterKey, key: "Enter", keys: tabs);
-        var face = new WizardRig(120).TuiFaceEvents([.. tabs.Select(k => (object)new KeyEvent(k)), .. RigMouse.On(enter), new KeyEvent(WizardRig.Enter)]);
+        var face = new SetupRig(120).TuiFaceEvents([.. tabs.Select(k => (object)new KeyEvent(k)), .. RigMouse.On(enter), new KeyEvent(SetupRig.Enter)]);
         var answer = face.Choose(shelf);
         //the footer Enter opened the publisher and the key Enter chose its pick, a press that moved the keys to the list would have answered the row
         Assert.StartsWith(PickPrefix, answer);
@@ -224,7 +224,7 @@ public class ShelfMouseTests
         var shelf = Front("discrete");
         var question = new ConsoleKeyInfo('?', ConsoleKey.Oem2, true, false, false);
         var a = ShelfFixtures.Target(shelf, HitKind.Clause, key: "a", keys: [question]);
-        var face = new WizardRig(120).TuiFaceEvents(new KeyEvent(question), RigMouse.On(a), new KeyEvent(WizardRig.Enter));
+        var face = new SetupRig(120).TuiFaceEvents(new KeyEvent(question), RigMouse.On(a), new KeyEvent(SetupRig.Enter));
         Assert.Equal(ShelfControls.LiftAnswer(), face.Choose(shelf));
     }
 
@@ -236,7 +236,7 @@ public class ShelfMouseTests
         var shelf = Front("discrete");
         var question = new ConsoleKeyInfo('?', ConsoleKey.Oem2, true, false, false);
         var t = ShelfFixtures.Target(shelf, HitKind.FooterKey, key: word, keys: [question]);
-        var face = new WizardRig(120).TuiFaceEvents(new KeyEvent(question), RigMouse.On(t), new KeyEvent(WizardRig.Enter));
+        var face = new SetupRig(120).TuiFaceEvents(new KeyEvent(question), RigMouse.On(t), new KeyEvent(SetupRig.Enter));
         Assert.Equal(word == "m" ? ShelfControls.SourceAnswer() : ShelfControls.LiftAnswer(), face.Choose(shelf));
     }
 
@@ -248,7 +248,7 @@ public class ShelfMouseTests
         var v = shelf.Shelf!;
         var bare = shelf with { Shelf = v with { Facts = [.. v.Facts!.Select(f => f with { Files = [], Publishers = [.. f.Publishers!.Select(p => p with { Files = [] })] })] } };
         var line = ShelfFixtures.Targets(bare).First(t => t.Tag.Kind == HitKind.PaneLine);
-        var face = new WizardRig(120).TuiFaceEvents(RigMouse.On(line), new KeyEvent(WizardRig.Esc), new KeyEvent(WizardRig.Esc));
+        var face = new SetupRig(120).TuiFaceEvents(RigMouse.On(line), new KeyEvent(SetupRig.Esc), new KeyEvent(SetupRig.Esc));
         Assert.Null(face.Choose(bare));
     }
 
@@ -257,7 +257,7 @@ public class ShelfMouseTests
     {
         var shelf = Front("discrete");
         var line = ShelfFixtures.Target(shelf, HitKind.PaneLine, index: 0);
-        var face = new WizardRig(120).TuiFaceEvents(RigMouse.Wheel(line, -120), new KeyEvent(WizardRig.Enter), new KeyEvent(WizardRig.Enter));
+        var face = new SetupRig(120).TuiFaceEvents(RigMouse.Wheel(line, -120), new KeyEvent(SetupRig.Enter), new KeyEvent(SetupRig.Enter));
         Assert.StartsWith(PickPrefix, face.Choose(shelf));
     }
 
@@ -266,7 +266,7 @@ public class ShelfMouseTests
     {
         var shelf = Front();
         var file = ShelfFixtures.Target(shelf, HitKind.FoldedFile, width: 80);
-        var face = new WizardRig(80).TuiFaceEvents(RigMouse.Wheel(file, -120), new KeyEvent(WizardRig.Enter));
+        var face = new SetupRig(80).TuiFaceEvents(RigMouse.Wheel(file, -120), new KeyEvent(SetupRig.Enter));
         Assert.Equal(shelf.Options[0].Key, face.Choose(shelf));
     }
 
@@ -276,9 +276,9 @@ public class ShelfMouseTests
         var shelf = Front("discrete");
         var open = ShelfFixtures.OpenKeys(shelf);
         var files = ShelfFixtures.Targets(shelf, 120, 0, [.. open]).Where(t => t.Tag.Kind == HitKind.PaneFile).OrderBy(t => t.Row).ToList();
-        var first = new WizardRig(120).TuiFaceEvents([.. open.Select(k => (object)new KeyEvent(k)), .. RigMouse.On(files[0])]).Choose(shelf);
-        var byKeys = new WizardRig(120).TuiFaceEvents([.. open.Select(k => (object)new KeyEvent(k)), new KeyEvent(WizardRig.Down), new KeyEvent(WizardRig.Enter)]).Choose(shelf);
-        var byMouse = new WizardRig(120).TuiFaceEvents([.. open.Select(k => (object)new KeyEvent(k)), .. RigMouse.On(files[1])]).Choose(shelf);
+        var first = new SetupRig(120).TuiFaceEvents([.. open.Select(k => (object)new KeyEvent(k)), .. RigMouse.On(files[0])]).Choose(shelf);
+        var byKeys = new SetupRig(120).TuiFaceEvents([.. open.Select(k => (object)new KeyEvent(k)), new KeyEvent(SetupRig.Down), new KeyEvent(SetupRig.Enter)]).Choose(shelf);
+        var byMouse = new SetupRig(120).TuiFaceEvents([.. open.Select(k => (object)new KeyEvent(k)), .. RigMouse.On(files[1])]).Choose(shelf);
         Assert.NotEqual(first, byKeys);
         Assert.Equal(byKeys, byMouse);
     }
@@ -289,7 +289,7 @@ public class ShelfMouseTests
         var shelf = Front();
         var r1 = ShelfFixtures.Target(shelf, HitKind.Row, index: 1);
         var r2 = ShelfFixtures.Target(shelf, HitKind.Row, index: 2);
-        var face = new WizardRig(120).TuiFaceEvents(RigMouse.On(r1, @double: true), RigMouse.On(r2, @double: true), new KeyEvent(WizardRig.Enter));
+        var face = new SetupRig(120).TuiFaceEvents(RigMouse.On(r1, @double: true), RigMouse.On(r2, @double: true), new KeyEvent(SetupRig.Enter));
         Assert.Equal(shelf.Options[2].Key, face.Choose(shelf));
     }
 
@@ -298,8 +298,8 @@ public class ShelfMouseTests
     {
         var shelf = Front("discrete");
         var line = ShelfFixtures.Target(shelf, HitKind.PaneLine, index: 1);
-        var rig = new WizardRig(120);
-        var face = rig.TuiFaceEvents(RigMouse.On(line), RigMouse.On(line), new KeyEvent(WizardRig.Enter), new KeyEvent(WizardRig.Enter));
+        var rig = new SetupRig(120);
+        var face = rig.TuiFaceEvents(RigMouse.On(line), RigMouse.On(line), new KeyEvent(SetupRig.Enter), new KeyEvent(SetupRig.Enter));
         Assert.StartsWith(PickPrefix, face.Choose(shelf));
         Assert.Equal(0, rig.KeysPending);
     }
@@ -310,7 +310,7 @@ public class ShelfMouseTests
     {
         var shelf = Front();
         var chip = ShelfFixtures.Target(shelf, HitKind.Chip, index: 1);
-        var face = new WizardRig(120).TuiFaceEvents(RigMouse.On(chip), RigMouse.On(chip, @double: true), new KeyEvent(WizardRig.Enter));
+        var face = new SetupRig(120).TuiFaceEvents(RigMouse.On(chip), RigMouse.On(chip, @double: true), new KeyEvent(SetupRig.Enter));
         Assert.Equal(ShelfControls.FamilyAnswer(shelf.Shelf!.Families![1]), face.Choose(shelf));
         Assert.Equal(shelf.Options[0].Key, face.Choose(shelf));
     }
@@ -321,7 +321,7 @@ public class ShelfMouseTests
     {
         var shelf = Front();
         var chip = ShelfFixtures.Target(shelf, HitKind.Chip, index: 1);
-        var face = new WizardRig(120).TuiFaceEvents(RigMouse.On(chip), RigMouse.On(chip, @double: true));
+        var face = new SetupRig(120).TuiFaceEvents(RigMouse.On(chip), RigMouse.On(chip, @double: true));
         Assert.Equal(ShelfControls.FamilyAnswer(shelf.Shelf!.Families![1]), face.Choose(shelf));
         var other = shelf with { Key = "another-shelf" };
         Assert.Equal(ShelfControls.FamilyAnswer(shelf.Shelf!.Families![1]), face.Choose(other));
@@ -331,10 +331,10 @@ public class ShelfMouseTests
     public void THE_M_SHOWS_THEM_CLAUSE_ACTS_AS_M()
     {
         var shelf = Front("discrete");
-        var row = new WizardRow("gatto also found 2 models already on this machine, m shows them", Tone: RowTone.Aside, Keys: ["m"]);
+        var row = new SetupRow("gatto also found 2 models already on this machine, m shows them", Tone: RowTone.Aside, Keys: ["m"]);
         var withRow = shelf with { BodyRows = [row] };
         var clause = ShelfFixtures.Target(withRow, HitKind.Clause, key: "m");
-        Assert.Equal(ShelfControls.SourceAnswer(), new WizardRig(120).TuiFaceEvents(RigMouse.On(clause)).Choose(withRow));
+        Assert.Equal(ShelfControls.SourceAnswer(), new SetupRig(120).TuiFaceEvents(RigMouse.On(clause)).Choose(withRow));
     }
 
     [Theory]
@@ -346,7 +346,7 @@ public class ShelfMouseTests
         var shelf = Front();
         var row = ShelfFixtures.Target(shelf, HitKind.Row, index: 2);
         var ev = new MouseEvent(row.FirstCol, row.Row, kind, button, 0, 0);
-        var face = new WizardRig(120).TuiFaceEvents(new RigMouse.PastTheWindow(), ev, new RigMouse.PastTheWindow(), ev, new KeyEvent(WizardRig.Enter));
+        var face = new SetupRig(120).TuiFaceEvents(new RigMouse.PastTheWindow(), ev, new RigMouse.PastTheWindow(), ev, new KeyEvent(SetupRig.Enter));
         Assert.Equal(shelf.Options[0].Key, face.Choose(shelf));
     }
 
@@ -354,7 +354,7 @@ public class ShelfMouseTests
     public void A_PRESS_ON_NO_TARGET_DOES_NOTHING()
     {
         var shelf = Front();
-        var face = new WizardRig(120).TuiFaceEvents(RigMouse.Press(119, 0), new KeyEvent(WizardRig.Enter));
+        var face = new SetupRig(120).TuiFaceEvents(RigMouse.Press(119, 0), new KeyEvent(SetupRig.Enter));
         Assert.Equal(shelf.Options[0].Key, face.Choose(shelf));
     }
 
@@ -363,7 +363,7 @@ public class ShelfMouseTests
     {
         var shelf = Front();
         var chip = ShelfFixtures.Target(shelf, HitKind.Chip, index: 1);
-        var face = new WizardRig(120).TuiFaceEvents(RigMouse.Wheel(chip, -120), new KeyEvent(WizardRig.Enter));
+        var face = new SetupRig(120).TuiFaceEvents(RigMouse.Wheel(chip, -120), new KeyEvent(SetupRig.Enter));
         Assert.Equal(shelf.Options[0].Key, face.Choose(shelf));
     }
 }

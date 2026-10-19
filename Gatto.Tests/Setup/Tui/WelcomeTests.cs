@@ -7,7 +7,7 @@ namespace Gatto.Tests.Setup.Tui;
 public class WelcomeTests
 {
     //the machine the generator priced its hardware line against, read from it rather than chosen
-    private static SetupFlow Flow(string? llama = null) => new(new WizardProbes
+    private static SetupFlow Flow(string? llama = null) => new(new FakeSetupProbes
     {
         //a fresh machine by default, the welcome golden is the first-run screen and the map row reads the engine as something to fetch
         Llama = llama,
@@ -23,7 +23,7 @@ public class WelcomeTests
     [Fact]
     public void ESC_ON_THE_WELCOME_IS_THE_SAME_ANSWER_AS_NOT_NOW()
     {
-        var welcome = Assert.IsType<WizardScreen.Choice>(Flow().Start());
+        var welcome = Assert.IsType<SetupScreen.Choice>(Flow().Start());
 
         Assert.Equal(SetupFlow.WelcomeNot, WalkRender.Answer(welcome, ConsoleKey.Escape));
         Assert.Equal(SetupFlow.WelcomeGo, WalkRender.Answer(welcome, ConsoleKey.Enter));
@@ -36,21 +36,21 @@ public class WelcomeTests
     [Fact]
     public void THE_WELCOME_SCREEN_MATCHES_S2S_GOLDEN_AT_100()
     {
-        var welcome = Assert.IsType<WizardScreen.Choice>(Flow().Start());
+        var welcome = Assert.IsType<SetupScreen.Choice>(Flow().Start());
         Golden.AssertEquals("s2", "welcome-100", 100, WalkRender.Choice(welcome, 100).Rows);
     }
 
     [Fact]
     public void AND_AT_80()
     {
-        var welcome = Assert.IsType<WizardScreen.Choice>(Flow().Start());
+        var welcome = Assert.IsType<SetupScreen.Choice>(Flow().Start());
         Golden.AssertEquals("s2", "welcome-80", 80, WalkRender.Choice(welcome, 80).Rows);
     }
     //the second sentence of the welcome folds to one clause, the first one is left alone
     [Fact]
     public void THE_WELCOME_SENTENCE_IS_ONE_CLAUSE()
     {
-        var welcome = Assert.IsType<WizardScreen.Choice>(Flow().Start());
+        var welcome = Assert.IsType<SetupScreen.Choice>(Flow().Start());
         var body = string.Join(" ", welcome.BodyRows!.Select(r => r.Text));
 
         Assert.Contains(

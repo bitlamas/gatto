@@ -23,7 +23,7 @@ public class SiblingFileNotLoadedTests
                 KeyLength: 128, ValueLength: 128, ChatTemplate: null));
 
     //both files answer the same id, since a profile's files all resolve to their profile
-    private static WizardProbes Probes(string? loadedPath) => new()
+    private static FakeSetupProbes Probes(string? loadedPath) => new()
     {
         Rows = [ShelfRows.Of("unsloth/gemma-4-e4b", "unsloth",
             new HubQuant("gemma-4-e4b-Q4_K_M.gguf", 4_000_000_000, null),
@@ -35,11 +35,11 @@ public class SiblingFileNotLoadedTests
         LoadedPath = loadedPath,
     };
 
-    private static ShelfView LocalShelfOf(WizardProbes probes)
+    private static ShelfView LocalShelfOf(FakeSetupProbes probes)
     {
         var flow = new SetupFlow(probes) { CanSwitchSource = true };
         flow.StartPastEngine();
-        var local = Assert.IsType<WizardScreen.Choice>(flow.Answer(ShelfControls.SourceAnswer()));
+        var local = Assert.IsType<SetupScreen.Choice>(flow.Answer(ShelfControls.SourceAnswer()));
         Assert.Equal(ShelfSource.Local, local.Shelf!.Source);
         return local.Shelf!;
     }

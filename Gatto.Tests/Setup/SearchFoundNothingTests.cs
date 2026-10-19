@@ -36,26 +36,26 @@ public class SearchFoundNothingTests
     private static SetupFlow Flow(HubSearchCause? cause, int tooBig = 0)
     {
         IReadOnlyList<ModelRow> rows = [Ranked("o/qwen-small"), Ranked("o/qwen-tiny")];
-        var probes = new WizardProbes
+        var probes = new FakeSetupProbes
         {
             Rows = rows,
             Answer = req => req.Search is { Length: > 0 } && !req.Lifted
-                ? WizardProbes.Outcome([], cause, moreBehindA: tooBig > 0)
-                : WizardProbes.Outcome(rows, null),
+                ? FakeSetupProbes.Outcome([], cause, moreBehindA: tooBig > 0)
+                : FakeSetupProbes.Outcome(rows, null),
         };
         var flow = new SetupFlow(probes);
-        Assert.IsType<WizardScreen.Choice>(flow.StartPastEngine());
+        Assert.IsType<SetupScreen.Choice>(flow.StartPastEngine());
         return flow;
     }
 
-    private static WizardScreen.Choice AfterSearch(
+    private static SetupScreen.Choice AfterSearch(
         string term, HubSearchCause? cause, int tooBig = 0)
     {
         var flow = Flow(cause, tooBig);
-        return Assert.IsType<WizardScreen.Choice>(flow.Answer(ShelfControls.TypedAnswer(term)));
+        return Assert.IsType<SetupScreen.Choice>(flow.Answer(ShelfControls.TypedAnswer(term)));
     }
 
-    private static string Painted(WizardScreen.Choice screen, int width = 100) =>
+    private static string Painted(SetupScreen.Choice screen, int width = 100) =>
         string.Join(" | ", Shelf.Body(screen.Shelf!, row: 0, chip: 0, file: -1,
             Region.List, width, glyphs: GlyphSet.Unicode).Select(r => r.Text));
 
@@ -127,10 +127,10 @@ public class SearchFoundNothingTests
     public void THE_SENTENCE_NAMES_a_AND_THE_SCREEN_ANSWERS_IT()
     {
         var flow = Flow(HubSearchCause.NothingFits, tooBig: 9);
-        var empty = Assert.IsType<WizardScreen.Choice>(flow.Answer(ShelfControls.TypedAnswer("test")));
+        var empty = Assert.IsType<SetupScreen.Choice>(flow.Answer(ShelfControls.TypedAnswer("test")));
         Assert.Empty(empty.Shelf!.Rows);
 
-        var lifted = Assert.IsType<WizardScreen.Choice>(flow.Answer(SetupFlow.CtlLift));
+        var lifted = Assert.IsType<SetupScreen.Choice>(flow.Answer(SetupFlow.CtlLift));
 
         Assert.NotEmpty(lifted.Shelf!.Rows);
     }
@@ -150,14 +150,14 @@ public class SearchFoundNothingTests
     [Fact]
     public void AN_EMPTY_BROWSE_STILL_DRAWS_THE_DISCOVERY_SCREEN()
     {
-        var probes = new WizardProbes
+        var probes = new FakeSetupProbes
         {
             Rows = [],
-            Answer = _ => WizardProbes.Outcome([], HubSearchCause.NothingFits),
+            Answer = _ => FakeSetupProbes.Outcome([], HubSearchCause.NothingFits),
         };
         var flow = new SetupFlow(probes);
 
-        var screen = Assert.IsType<WizardScreen.Choice>(flow.StartPastEngine());
+        var screen = Assert.IsType<SetupScreen.Choice>(flow.StartPastEngine());
 
         Assert.Null(screen.Shelf);
         //assert the cause's own sentence, every arm of EmptyRows produces a non-empty body so a row count proves nothing
@@ -181,7 +181,7 @@ public class SearchFoundNothingTests
     {
         var screen = AfterSearch("test", cause: null);
         var prompter = new Recorder();
-        new PrompterWizardSurface(prompter, TextWriter.Null).Choose(screen);
+        new PrompterSetupSurface(prompter, TextWriter.Null).Choose(screen);
 
         var body = string.Join(" | ", prompter.Asked.Single().BodyRows!.Select(r => r.Text));
 

@@ -24,10 +24,10 @@ public class InkTests
 
     private static readonly Theme T = new(new TermCaps(true, true));
 
-    private static (RecordingSurface S, TuiWizardSurface F) Face(int width = 100)
+    private static (RecordingSurface S, TuiSetupSurface F) Face(int width = 100)
     {
         var s = new RecordingSurface { Width = width };
-        return (s, new TuiWizardSurface(s, new NoKeys(), T, "0.5.0", "1a2b3c4", () => 0,
+        return (s, new TuiSetupSurface(s, new NoKeys(), T, "0.5.0", "1a2b3c4", () => 0,
             clock: _ => new Ready()));
     }
 
@@ -38,9 +38,9 @@ public class InkTests
     [Fact]
     public void THE_WELCOMES_ROWS_CARRY_THE_INK_THE_MOCK_PROMISES()
     {
-        var flow = new SetupFlow(new WizardProbes { Llama = null });
+        var flow = new SetupFlow(new FakeSetupProbes { Llama = null });
         var (s, f) = Face();
-        f.Choose((WizardScreen.Choice)flow.Start());
+        f.Choose((SetupScreen.Choice)flow.Start());
         var screen = s.Text;
 
         //the footer's keys are bright and their verbs dim, which is what a user scans for
@@ -77,7 +77,7 @@ public class InkTests
             FetchQuant(FetchFile, (long)(16.9 * FetchGib)),
             FetchQuant("mmproj-F16.gguf", 851L * 1024 * 1024));
 
-    private static WizardProbes FetchProbes(
+    private static FakeSetupProbes FetchProbes(
         Gatto.Core.Acquire.HubFetchResult? result = null) =>
         new()
         {
@@ -97,15 +97,15 @@ public class InkTests
         new(FetchFile, 1, 1, (long)(7.9 * FetchGib), (long)(16.9 * FetchGib), 188_000);
 
     //drive the flow to the screen and paint it, returning what the terminal got
-    private static string PaintFetch(WizardProbes probes, params string[] answers)
+    private static string PaintFetch(FakeSetupProbes probes, params string[] answers)
     {
         var flow = new SetupFlow(probes);
         flow.StartPastEngine();
-        WizardScreen screen = flow.Answer("0");
+        SetupScreen screen = flow.Answer("0");
         foreach (var a in answers) screen = flow.Answer(a);
 
         var (s, f) = Face();
-        f.Choose((WizardScreen.Choice)screen);
+        f.Choose((SetupScreen.Choice)screen);
         return s.Text;
     }
 
@@ -135,7 +135,7 @@ public class InkTests
         var flow = new SetupFlow(probes);
         flow.StartPastEngine();
         flow.Answer("0");
-        var fetching = (WizardScreen.Choice)flow.Answer(SetupFlow.ModelFetchNow);
+        var fetching = (SetupScreen.Choice)flow.Answer(SetupFlow.ModelFetchNow);
 
         var (s, f) = Face();
         //the watch must resolve, or the face polls for ever against a key source that never yields
@@ -186,7 +186,7 @@ public class InkTests
     private static Gatto.Core.Acquire.HubQuant WatchQuant(string sha) =>
         new(WatchFile, 16L * 1024 * 1024 * 1024, sha);
 
-    private static WizardProbes WatchProbes(string? sha = null, Func<string, string?>? hash = null) =>
+    private static FakeSetupProbes WatchProbes(string? sha = null, Func<string, string?>? hash = null) =>
         new()
         {
             Rows =
@@ -199,11 +199,11 @@ public class InkTests
         };
 
     //drive to the browser watch without a fingerprint, where it is the first screen, and paint it
-    private static string PaintWatch(WizardProbes probes, bool land = false)
+    private static string PaintWatch(FakeSetupProbes probes, bool land = false)
     {
         var flow = new SetupFlow(probes);
         flow.StartPastEngine();
-        WizardScreen screen = flow.Answer("0");
+        SetupScreen screen = flow.Answer("0");
         if (land)
         {
             probes.Found = [new Gatto.Core.Acquire.FoundModel(
@@ -213,7 +213,7 @@ public class InkTests
         }
 
         var (s, f) = Face();
-        f.Choose((WizardScreen.Choice)screen, watch: () => true, tick: () => null);
+        f.Choose((SetupScreen.Choice)screen, watch: () => true, tick: () => null);
         return s.Text;
     }
 
@@ -256,7 +256,7 @@ public class InkTests
     [Fact]
     public void THE_PARTIAL_ARMS_MARKS_TAKE_THE_ROWS_INK()
     {
-        var probes = new WizardProbes
+        var probes = new FakeSetupProbes
         {
             Rows =
             [
@@ -281,7 +281,7 @@ public class InkTests
     [Fact]
     public void THE_WATCHS_ARRIVAL_TICK_IS_GREEN()
     {
-        var probes = new WizardProbes
+        var probes = new FakeSetupProbes
         {
             Rows =
             [
@@ -303,15 +303,15 @@ public class InkTests
     [Fact]
     public void THE_LIVE_CHECKS_COUNT_STEPS_OUT_AND_ITS_FINISHED_TASKS_DO_NOT()
     {
-        var flow = new SetupFlow(new WizardProbes
+        var flow = new SetupFlow(new FakeSetupProbes
         {
             Llama = @"C:\llama\llama-server.exe",
             ActiveFile = "gemma-4-26B-A4B-it-UD-Q4_K_M.gguf",
         });
         flow.StartAtModelSegment();
-        WizardScreen offer = flow.ResumeAfterWrites("gemma-4-26B-A4B-it");
+        SetupScreen offer = flow.ResumeAfterWrites("gemma-4-26B-A4B-it");
         while (flow.NeedsWritesApplied) offer = flow.ResumeAfterWrites(null);
-        var live = (WizardScreen.Choice)flow.Answer(SetupFlow.Yes);
+        var live = (SetupScreen.Choice)flow.Answer(SetupFlow.Yes);
 
         var (s, f) = Face();
         var polls = 0;
@@ -333,7 +333,7 @@ public class InkTests
     [Fact]
     public void THE_PASSES_STAMP_WEARS_THREE_INKS()
     {
-        var flow = new SetupFlow(new WizardProbes
+        var flow = new SetupFlow(new FakeSetupProbes
         {
             Llama = @"C:\llama\llama-server.exe",
             ActiveFile = "gemma-4-26B-A4B-it-UD-Q4_K_M.gguf",
@@ -343,11 +343,11 @@ public class InkTests
                 new DateOnly(2026, 8, 24)),
         });
         flow.StartAtModelSegment();
-        WizardScreen at = flow.ResumeAfterWrites("gemma-4-26B-A4B-it");
+        SetupScreen at = flow.ResumeAfterWrites("gemma-4-26B-A4B-it");
         while (flow.NeedsWritesApplied) at = flow.ResumeAfterWrites(null);
         flow.Answer(SetupFlow.Yes);
         Assert.True(SpinWait.SpinUntil(flow.PollWatch, TimeSpan.FromSeconds(10)), "the check never finished");
-        var passed = (WizardScreen.Choice)flow.Answer(SetupFlow.Landed);
+        var passed = (SetupScreen.Choice)flow.Answer(SetupFlow.Landed);
 
         var (s, f) = Face();
         f.Choose(passed);
@@ -366,7 +366,7 @@ public class InkTests
     public void THE_STRIP_INKS_DONE_GREEN_CURRENT_ACCENT_AND_AHEAD_DIM()
     {
         var (s, f) = Face();
-        f.Show(new WizardScreen.Info("k", [new WizardRow("body")])
+        f.Show(new SetupScreen.Info("k", [new SetupRow("body")])
         {
             Strip = WalkSection.For("model.search", SetupPath.Llama),
         });
@@ -397,9 +397,9 @@ public class InkTests
     public void THE_DOOR_IS_ACCENT_ONLY_WHILE_IT_HAS_THE_KEYS()
     {
         var s = new RecordingSurface { Width = 100 };
-        var f = new TuiWizardSurface(s, new TabThenEscape(), T, "0.5.0", "1a2b3c4", () => 0,
+        var f = new TuiSetupSurface(s, new TabThenEscape(), T, "0.5.0", "1a2b3c4", () => 0,
             clock: _ => new Ready());
-        f.Choose(new WizardScreen.Choice("ink.door", "Pick one",
+        f.Choose(new SetupScreen.Choice("ink.door", "Pick one",
             [new ChoiceOption("0", "one"), new ChoiceOption("1", "two")], Door: "search models…"));
 
         var g = GlyphSet.Unicode;
@@ -425,10 +425,10 @@ public class InkTests
     {
         var s = new RecordingSurface { Width = 100 };
         var tab = new ConsoleKeyInfo('\t', ConsoleKey.Tab, false, false, false);
-        var f = new TuiWizardSurface(s,
+        var f = new TuiSetupSurface(s,
             new ScriptThenEscape(tab, new ConsoleKeyInfo('q', ConsoleKey.Q, false, false, false), tab),
             T, "0.5.0", "1a2b3c4", () => 0, clock: _ => new Ready());
-        f.Choose(new WizardScreen.Choice("ink.draft", "Pick one",
+        f.Choose(new SetupScreen.Choice("ink.draft", "Pick one",
             [new ChoiceOption("0", "one"), new ChoiceOption("1", "two")], Door: "search models…"));
 
         var drafted = GlyphSet.Unicode.Prompt + " q";
@@ -440,7 +440,7 @@ public class InkTests
     [Fact]
     public void THE_MACHINE_FACTS_WEAR_THEIR_INK()
     {
-        var flow = new SetupFlow(new WizardProbes
+        var flow = new SetupFlow(new FakeSetupProbes
         {
             Llama = null,
             Snapshot = new Gatto.Core.Hardware.HardwareSnapshot(128UL << 30, 32UL << 30,
@@ -449,7 +449,7 @@ public class InkTests
         });
         var (s, f) = Face();
         flow.Start();
-        f.Choose((WizardScreen.Choice)flow.Answer(SetupFlow.WelcomeGo));
+        f.Choose((SetupScreen.Choice)flow.Answer(SetupFlow.WelcomeGo));
         var screen = s.Text;
 
         Assert.True(Wears(screen, "  models        ", Theme.Dim), "the fact label is not dim");
@@ -465,7 +465,7 @@ public class InkTests
     public void THE_FOUND_SCREENS_ROWS_CARRY_THE_INK_THE_MOCK_PROMISES()
     {
         const string exe = @"C:\llama\llama-b11071-bin-win-vulkan-x64\llama-server.exe";
-        var flow = new SetupFlow(new WizardProbes
+        var flow = new SetupFlow(new FakeSetupProbes
         {
             Llama = exe,
             Verify = _ => new Gatto.Core.Acquire.ProbeResult(
@@ -473,7 +473,7 @@ public class InkTests
                 Build: Gatto.Roles.Serve.LlamaAssetSteering.PinnedRelease),
         });
         var (s, f) = Face();
-        f.Choose((WizardScreen.Choice)flow.StartPastOpening());
+        f.Choose((SetupScreen.Choice)flow.StartPastOpening());
         var screen = s.Text;
 
         //the mark is green as its own run, which no golden can tell from grey
@@ -496,14 +496,14 @@ public class InkTests
     [Fact]
     public void THE_OLDER_ARMS_ONE_LINE_IS_DIM_AND_THE_OPTIONS_ABOVE_IT_ARE_NOT()
     {
-        var flow = new SetupFlow(new WizardProbes
+        var flow = new SetupFlow(new FakeSetupProbes
         {
             Llama = @"C:\llama\llama-b9848-bin-win-vulkan-x64\llama-server.exe",
             Verify = _ => new Gatto.Core.Acquire.ProbeResult(
                 Gatto.Core.Acquire.ProbeShape.ClassicServer, "d", Build: "b9848"),
         });
         var (s, f) = Face();
-        f.Choose((WizardScreen.Choice)flow.StartPastOpening());
+        f.Choose((SetupScreen.Choice)flow.StartPastOpening());
         var screen = s.Text;
 
         Assert.True(
@@ -521,7 +521,7 @@ public class InkTests
     public void THE_MATCHER_DISCRIMINATES_OR_EVERY_ASSERTION_ABOVE_IS_VACUOUS()
     {
         var (s, f) = Face();
-        f.Show(new WizardScreen.Info("k", [new WizardRow("an ordinary body row")]));
+        f.Show(new SetupScreen.Info("k", [new SetupRow("an ordinary body row")]));
 
         Assert.Contains("an ordinary body row", s.Text, StringComparison.Ordinal);
         Assert.False(Wears(s.Text, "an ordinary body row", Theme.Accent),
@@ -535,7 +535,7 @@ public class InkTests
     public void A_TERMINAL_WITH_NO_ROWS_STILL_SAYS_ITS_CLOSING_LINE()
     {
         var (_, f) = Face();
-        f.End(new WizardScreen.Terminal("left", [], new WizardRow("Run gatto setup again whenever you like."), Success: true));
+        f.End(new SetupScreen.Terminal("left", [], new SetupRow("Run gatto setup again whenever you like."), Success: true));
 
         Assert.Contains(f.LastPainted, r => r.Contains("Run gatto setup again", StringComparison.Ordinal));
     }
@@ -548,9 +548,9 @@ public class InkTests
         var alt = new AltScreen(new RecordingSurface { Width = 100 }, title: null);
         var epilogue = new StringWriter();
 
-        WizardSession.Run(
+        SetupSession.Run(
             alt,
-            () => { f.End(new WizardScreen.Terminal("left", [], new WizardRow("Run gatto setup again whenever you like."), Success: true)); return 0; },
+            () => { f.End(new SetupScreen.Terminal("left", [], new SetupRow("Run gatto setup again whenever you like."), Success: true)); return 0; },
             () => f.LastPainted, epilogue, registerHooks: false);
 
         Assert.Contains("Run gatto setup again", epilogue.ToString(), StringComparison.Ordinal);
@@ -561,7 +561,7 @@ public class InkTests
     public void THE_FETCH_ROWS_FILE_NAME_STEPS_OUT_OF_THE_ASIDE()
     {
         const string Zip = "llama-b11071-bin-win-vulkan-x64.zip";
-        var flow = new SetupFlow(new WizardProbes
+        var flow = new SetupFlow(new FakeSetupProbes
         {
             Llama = null,
             Asset = new(Zip, null, "an AMD discrete card", "Vulkan"),
@@ -572,7 +572,7 @@ public class InkTests
                     null)),
         });
         var (s, f) = Face();
-        f.Choose((WizardScreen.Choice)flow.StartPastOpening());
+        f.Choose((SetupScreen.Choice)flow.StartPastOpening());
         var screen = s.Text;
 
         Assert.Contains(
@@ -596,9 +596,9 @@ public class InkTests
     [Fact]
     public void THE_PLAIN_RECORD_CARRIES_NO_ESCAPE_BYTES()
     {
-        var flow = new SetupFlow(new WizardProbes { Llama = null });
+        var flow = new SetupFlow(new FakeSetupProbes { Llama = null });
         var (_, f) = Face();
-        f.Choose((WizardScreen.Choice)flow.Start());
+        f.Choose((SetupScreen.Choice)flow.Start());
 
         Assert.All(f.LastPainted, r => Assert.DoesNotContain('\x1b', r));
     }

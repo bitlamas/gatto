@@ -15,14 +15,14 @@ public class WelcomeFitsTests
     //the welcome as a walk reaches it, at one terminal size
     private static IReadOnlyList<string> Welcome(int height, int width)
     {
-        var rig = new WizardRig(width);
+        var rig = new SetupRig(width);
         rig.Surface.Height = height;
         var home = Directory.CreateTempSubdirectory("gatto-welcome-").FullName;
         try
         {
             Gatto.Core.Home.GattoHome.EnsureInitialized(home);
-            SetupRunner.Run(new SetupFlow(new WizardProbes()),
-                rig.TuiFace([.. WalkOpening.Keys, WizardRig.Esc, WizardRig.Esc]), home);
+            SetupRunner.Run(new SetupFlow(new FakeSetupProbes()),
+                rig.TuiFace([.. WalkOpening.Keys, SetupRig.Esc, SetupRig.Esc]), home);
             //the first painted frame, indexed rather than searched, a search for the welcome's words would pass on any frame that quotes them
             return rig.PaintedFrames[0];
         }

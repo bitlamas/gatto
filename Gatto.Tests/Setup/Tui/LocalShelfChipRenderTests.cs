@@ -18,9 +18,9 @@ public class LocalShelfChipRenderTests
             FitRegime.FitsGpu, 262144, false, Badge: null, Downloads: 5, Gated: false,
             Params: 7_000_000_000);
 
-    private static WizardProbes Probes()
+    private static FakeSetupProbes Probes()
     {
-        var p = new WizardProbes
+        var p = new FakeSetupProbes
         {
             Llama = @"C:\llama\llama-server.exe",
             Rows = [HubRow()],
@@ -48,7 +48,7 @@ public class LocalShelfChipRenderTests
         flow.StartAtModelSegment();
         flow.Answer(SetupFlow.CtlFamily + AFamily);
         flow.Answer(SetupFlow.Elsewhere);
-        var screen = Assert.IsType<WizardScreen.Choice>(flow.Answer(@"D:\models"));
+        var screen = Assert.IsType<SetupScreen.Choice>(flow.Answer(@"D:\models"));
 
         var frame = string.Join("\n", WalkRender.SettledFrame(screen, 100, "local-after-hub-chip").Rows);
 
@@ -69,7 +69,7 @@ public class LocalShelfChipRenderTests
         var flow = new SetupFlow(Probes()) { CanSwitchSource = false };
         flow.StartAtModelSegment();
         flow.Answer(ShelfControls.TypedAnswer(@"D:\models"));
-        var screen = Assert.IsType<WizardScreen.Choice>(flow.Answer(SetupFlow.CtlFamily + AFamily));
+        var screen = Assert.IsType<SetupScreen.Choice>(flow.Answer(SetupFlow.CtlFamily + AFamily));
 
         var frame = string.Join("\n", WalkRender.SettledFrame(screen, 100, "local-chip-empty").Rows);
 

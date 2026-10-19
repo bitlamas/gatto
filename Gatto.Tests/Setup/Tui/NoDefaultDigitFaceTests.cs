@@ -20,7 +20,7 @@ public class NoDefaultDigitFaceTests
     private static ConsoleKeyInfo Digit(char d) =>
         new(d, (ConsoleKey)((int)ConsoleKey.D0 + (d - '0')), false, false, false);
 
-    private static WizardScreen.Choice NoDefaultChoice() => new(
+    private static SetupScreen.Choice NoDefaultChoice() => new(
         "update", "Replace the installed binary?",
         [new ChoiceOption("yes", "Yes, replace it"), new ChoiceOption("no", "Not now")],
         NoDefault: true);
@@ -48,13 +48,13 @@ public class NoDefaultDigitFaceTests
         Assert.Null(face.Choose(NoDefaultChoice()));
     }
 
-    //site 2 of 4: PrompterWizardSurface, the in-session face, driven here only for the wiring that tells the widget there is no default
+    //site 2 of 4: PrompterSetupSurface, the in-session face, driven here only for the wiring that tells the widget there is no default
     [Fact]
-    public void PrompterWizardSurface_carries_NoDefault_to_the_ask()
+    public void PrompterSetupSurface_carries_NoDefault_to_the_ask()
     {
         WizardAsk? seen = null;
         //the fake must return a label, since the surface maps that label back to a key (a returned key makes it re-ask forever)
-        var surface = new PrompterWizardSurface(
+        var surface = new PrompterSetupSurface(
             new RecordingPrompter(a => { seen = a; return "Yes, replace it"; }), TextWriter.Null);
 
         Assert.Equal("yes", surface.Choose(NoDefaultChoice()));

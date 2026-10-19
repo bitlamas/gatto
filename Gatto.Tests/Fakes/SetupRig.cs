@@ -5,7 +5,7 @@ using Gatto.Terminal;
 namespace Gatto.Tests.Fakes;
 
 //drive a wizard face with scripted keys and read the screen back. the surface and the plain writer share one buffer, so their interleaving is visible
-internal sealed class WizardRig(int width = 80, Gatto.Terminal.GlyphSet? glyphs = null, bool defaultClock = false)
+internal sealed class SetupRig(int width = 80, Gatto.Terminal.GlyphSet? glyphs = null, bool defaultClock = false)
 {
     public static readonly Theme T = new(new TermCaps(true, true));
 
@@ -21,7 +21,7 @@ internal sealed class WizardRig(int width = 80, Gatto.Terminal.GlyphSet? glyphs 
     //the rows the full-screen face composed at the same moments as Frames, empty on the plain face. a replay hides row overflow, so a width failure shows only here
     public List<IReadOnlyList<string>> PaintedFrames { get; } = [];
 
-    private Gatto.Cli.Setup.Tui.TuiWizardSurface? _tui;
+    private Gatto.Cli.Setup.Tui.TuiSetupSurface? _tui;
 
     //one method captures both lists, so they cannot record different moments.
     internal void Snapshot()
@@ -39,10 +39,10 @@ internal sealed class WizardRig(int width = 80, Gatto.Terminal.GlyphSet? glyphs 
     }
 
     //the face that ships. the other member is the plain fallback that draws numbered options, so a harness must say which one it ran
-    public Gatto.Cli.Setup.Tui.TuiWizardSurface TuiFace(params ConsoleKeyInfo[] keys)
+    public Gatto.Cli.Setup.Tui.TuiSetupSurface TuiFace(params ConsoleKeyInfo[] keys)
     {
         _keys.AddRange(keys);
-        return _tui = new Gatto.Cli.Setup.Tui.TuiWizardSurface(
+        return _tui = new Gatto.Cli.Setup.Tui.TuiSetupSurface(
             Surface, new Keys(this, [.. _keys]), T, "0.5.0", "1a2b3c4",
             clock: isWatchPoll => new RigClock(this, isWatchPoll), glyphs: glyphs,
             pulse: Pulse is { } beat ? () => beat : null,
@@ -50,7 +50,7 @@ internal sealed class WizardRig(int width = 80, Gatto.Terminal.GlyphSet? glyphs 
     }
 
     //the face over a script of input events and actions, an action runs before the next read. a distinct name, since an overload beside TuiFace makes its empty calls ambiguous
-    public Gatto.Cli.Setup.Tui.TuiWizardSurface TuiFaceEvents(params object[] script)
+    public Gatto.Cli.Setup.Tui.TuiSetupSurface TuiFaceEvents(params object[] script)
     {
         var source = new ScriptedInputSource(Snapshot, [.. Flat(script)]);
         _source = () => source.Remaining;
@@ -73,8 +73,8 @@ internal sealed class WizardRig(int width = 80, Gatto.Terminal.GlyphSet? glyphs 
     private long _pressOffset;
 
     //the face over a given source, with the rig's clock unless the rig was built to leave the face its own
-    public Gatto.Cli.Setup.Tui.TuiWizardSurface TuiFaceOver(IInputSource source) =>
-        _tui = new Gatto.Cli.Setup.Tui.TuiWizardSurface(
+    public Gatto.Cli.Setup.Tui.TuiSetupSurface TuiFaceOver(IInputSource source) =>
+        _tui = new Gatto.Cli.Setup.Tui.TuiSetupSurface(
             Surface, source, T, "0.5.0", "1a2b3c4",
             clock: defaultClock ? null : isWatchPoll => new RigClock(this, isWatchPoll), glyphs: glyphs,
             pulse: Pulse is { } beat ? () => beat : null,
@@ -94,7 +94,7 @@ internal sealed class WizardRig(int width = 80, Gatto.Terminal.GlyphSet? glyphs 
     private void Spent(TimeSpan budget) => Interlocked.Add(ref _pollNow, (long)budget.TotalMilliseconds);
 
     //the clock never reports a key and never sleeps, so the run stays deterministic, and only its snapshots capture a watch screen's frames
-    private sealed class RigClock(WizardRig rig, bool isWatchPoll) : IPollClock
+    private sealed class RigClock(SetupRig rig, bool isWatchPoll) : IPollClock
     {
         private int _ticks;
 
@@ -191,10 +191,10 @@ internal sealed class WizardRig(int width = 80, Gatto.Terminal.GlyphSet? glyphs 
     //keep KeyAvailable false, a true here claims the user typed before the prompt and the widget drops those keys
     private sealed class Keys : IKeySource
     {
-        private readonly WizardRig rig;
+        private readonly SetupRig rig;
         private readonly Queue<ConsoleKeyInfo> _q;
 
-        public Keys(WizardRig rig, params ConsoleKeyInfo[] keys)
+        public Keys(SetupRig rig, params ConsoleKeyInfo[] keys)
         {
             this.rig = rig;
             _q = new Queue<ConsoleKeyInfo>(keys);

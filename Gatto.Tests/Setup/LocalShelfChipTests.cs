@@ -19,9 +19,9 @@ public class LocalShelfChipTests
             Params: 7_000_000_000);
 
     //the first sweep finds one model, the rescan of a typed folder finds three. none of the three has a family header, so a chip filter drops all three
-    private static WizardProbes Probes()
+    private static FakeSetupProbes Probes()
     {
-        var p = new WizardProbes
+        var p = new FakeSetupProbes
         {
             Llama = @"C:\llama\llama-server.exe",
             Rows = [HubRow()],
@@ -51,7 +51,7 @@ public class LocalShelfChipTests
         flow.Answer(SetupFlow.CtlFamily + AFamily);
 
         flow.Answer(SetupFlow.Elsewhere);
-        var screen = Assert.IsType<WizardScreen.Choice>(flow.Answer(@"D:\models"));
+        var screen = Assert.IsType<SetupScreen.Choice>(flow.Answer(@"D:\models"));
 
         Assert.Equal("Found 3 models already on this machine", screen.Question);
         Assert.NotNull(screen.Shelf);
@@ -68,7 +68,7 @@ public class LocalShelfChipTests
         flow.StartAtModelSegment();
         flow.Answer(ShelfControls.TypedAnswer(@"D:\models"));
 
-        var screen = Assert.IsType<WizardScreen.Choice>(
+        var screen = Assert.IsType<SetupScreen.Choice>(
             flow.Answer(SetupFlow.CtlFamily + AFamily));
 
         Assert.Equal("Found 3 models already on this machine", screen.Question);
@@ -94,7 +94,7 @@ public class LocalShelfChipTests
         flow.Answer(@"D:\models");
         flow.Answer(SetupFlow.CtlFamily + AFamily);
 
-        var hub = Assert.IsType<WizardScreen.Choice>(flow.Answer(SetupFlow.CtlSource));
+        var hub = Assert.IsType<SetupScreen.Choice>(flow.Answer(SetupFlow.CtlSource));
 
         Assert.Equal(Families.Load().Landing, hub.Shelf!.Lit!.Order());
     }

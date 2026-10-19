@@ -157,12 +157,12 @@ public class WriteSetAcceptanceTests : IDisposable
 
         //read the leaving screen by key, a filter by screen kind can quietly match nothing
         var leaving = string.Join(" ", face.Seen
-            .Where(s => s is WizardScreen.Info { Key: "left" } or WizardScreen.Terminal { Key: "left" })
+            .Where(s => s is SetupScreen.Info { Key: "left" } or SetupScreen.Terminal { Key: "left" })
             .SelectMany(s => s switch
             {
-                WizardScreen.Info i => i.Rows.Select(r => r.Text),
+                SetupScreen.Info i => i.Rows.Select(r => r.Text),
                 //the projection adds NextStep too, reading only the rows would drop the sentence under test
-                WizardScreen.Terminal t => t.Rows.Select(r => r.Text).Append(t.NextStep?.Text ?? ""),
+                SetupScreen.Terminal t => t.Rows.Select(r => r.Text).Append(t.NextStep?.Text ?? ""),
                 _ => [],
             }));
         Assert.NotEqual("", leaving);   //the filter found a screen at all
@@ -209,7 +209,7 @@ public class WriteSetAcceptanceTests : IDisposable
     }
 
     //a screen only the watch advances takes no scripted answer, poll and report Landed or fail loudly
-    private static string? WatchedThrough(WizardScreen.Choice c, Func<bool>? watch)
+    private static string? WatchedThrough(SetupScreen.Choice c, Func<bool>? watch)
     {
         if (!c.OnlyTheWatchAdvances || watch is null) return null;
         Assert.True(SpinWait.SpinUntil(watch, TimeSpan.FromSeconds(30)),
@@ -219,23 +219,23 @@ public class WriteSetAcceptanceTests : IDisposable
 
     //snapshots the config the instant the named screen renders, the reading twin of BreakingSurface
     private sealed class WatchingSurface(string configPath, string watchFor, params string?[] answers)
-        : IWizardSurface
+        : ISetupSurface
     {
         private int _i;
         public string? Snapshot { get; private set; }
-        public List<WizardScreen> Seen { get; } = [];
+        public List<SetupScreen> Seen { get; } = [];
 
-        public string? Choose(WizardScreen.Choice c, Func<bool>? watch = null,
+        public string? Choose(SetupScreen.Choice c, Func<bool>? watch = null,
             Func<FetchTick?>? tick = null, Func<CheckTick?>? check = null)
         {
             Record(c, c.Key);
             return WatchedThrough(c, watch) ?? Next();
         }
-        public string? Ask(WizardScreen.Ask a) { Record(a, a.Key); return Next(); }
-        public void Show(WizardScreen.Info i) => Record(i, i.Key);
-        public void End(WizardScreen.Terminal t) => Record(t, t.Key);
+        public string? Ask(SetupScreen.Ask a) { Record(a, a.Key); return Next(); }
+        public void Show(SetupScreen.Info i) => Record(i, i.Key);
+        public void End(SetupScreen.Terminal t) => Record(t, t.Key);
 
-        private void Record(WizardScreen s, string key)
+        private void Record(SetupScreen s, string key)
         {
             Seen.Add(s);
             if (key == watchFor && Snapshot is null && File.Exists(configPath))
@@ -280,7 +280,7 @@ public class WriteSetAcceptanceTests : IDisposable
             var exit = SetupRunner.Run(new SetupFlow(probes), face, _home);
 
             Assert.Equal(1, exit);
-            var failed = string.Join(" ", face.Seen.OfType<WizardScreen.Info>()
+            var failed = string.Join(" ", face.Seen.OfType<SetupScreen.Info>()
                 .Where(i => i.Key == "write.failed").SelectMany(i => i.Rows.Select(r => r.Text)));
             Assert.Contains(expected, failed, StringComparison.Ordinal);
 
@@ -296,22 +296,22 @@ public class WriteSetAcceptanceTests : IDisposable
 
     //makes the config unwritable when the named screen shows, so a later pause fails, and the test's finally restores it
     private sealed class BreakingSurface(string configPath, string breakAt, params string?[] answers)
-        : IWizardSurface
+        : ISetupSurface
     {
         private int _i;
-        public List<WizardScreen> Seen { get; } = [];
+        public List<SetupScreen> Seen { get; } = [];
 
-        public string? Choose(WizardScreen.Choice c, Func<bool>? watch = null,
+        public string? Choose(SetupScreen.Choice c, Func<bool>? watch = null,
             Func<FetchTick?>? tick = null, Func<CheckTick?>? check = null)
         {
             Record(c, c.Key);
             return WatchedThrough(c, watch) ?? Next();
         }
-        public string? Ask(WizardScreen.Ask a) { Record(a, a.Key); return Next(); }
-        public void Show(WizardScreen.Info i) => Record(i, i.Key);
-        public void End(WizardScreen.Terminal t) => Record(t, t.Key);
+        public string? Ask(SetupScreen.Ask a) { Record(a, a.Key); return Next(); }
+        public void Show(SetupScreen.Info i) => Record(i, i.Key);
+        public void End(SetupScreen.Terminal t) => Record(t, t.Key);
 
-        private void Record(WizardScreen s, string key)
+        private void Record(SetupScreen s, string key)
         {
             Seen.Add(s);
             if (key == breakAt && File.Exists(configPath))
@@ -347,19 +347,19 @@ public class WriteSetAcceptanceTests : IDisposable
         return new FoundModel(dst, 4_000_000_000, null);
     }
 
-    private sealed class Surface(params string?[] answers) : IWizardSurface
+    private sealed class Surface(params string?[] answers) : ISetupSurface
     {
         private int _i;
-        public List<WizardScreen> Seen { get; } = [];
-        public string? Choose(WizardScreen.Choice c, Func<bool>? watch = null,
+        public List<SetupScreen> Seen { get; } = [];
+        public string? Choose(SetupScreen.Choice c, Func<bool>? watch = null,
             Func<FetchTick?>? tick = null, Func<CheckTick?>? check = null)
         {
             Seen.Add(c);
             return WatchedThrough(c, watch) ?? Next();
         }
-        public string? Ask(WizardScreen.Ask a) { Seen.Add(a); return Next(); }
-        public void Show(WizardScreen.Info i) => Seen.Add(i);
-        public void End(WizardScreen.Terminal t) => Seen.Add(t);
+        public string? Ask(SetupScreen.Ask a) { Seen.Add(a); return Next(); }
+        public void Show(SetupScreen.Info i) => Seen.Add(i);
+        public void End(SetupScreen.Terminal t) => Seen.Add(t);
         private string? Next() => _i < answers.Length ? answers[_i++] : null;
 
         //set by the walk that binds m, so every other walk in this file keeps describing the numbered product

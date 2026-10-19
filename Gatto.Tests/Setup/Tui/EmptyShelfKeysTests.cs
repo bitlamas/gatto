@@ -26,32 +26,32 @@ public class EmptyShelfKeysTests
                 BlockCount: 32, HeadCount: 32, HeadCountKv: 8, EmbeddingLength: 4096,
                 KeyLength: 128, ValueLength: 128, ChatTemplate: null));
 
-    private static SetupFlow Flow(bool hubUp, params FoundModel[] found) => new(new WizardProbes
+    private static SetupFlow Flow(bool hubUp, params FoundModel[] found) => new(new FakeSetupProbes
     {
         Llama = @"C:\llama\llama-server.exe",
         Rows = hubUp ? [HubRow()] : [],
-        Answer = hubUp ? null : _ => WizardProbes.Outcome([], HubSearchCause.HubFailed),
+        Answer = hubUp ? null : _ => FakeSetupProbes.Outcome([], HubSearchCause.HubFailed),
         Roots = [@"C:\home\weights"],
         Found = [.. found],
     }) { CanSwitchSource = true };
 
     //the Hub answers and the machine has no model, so the flow opens on the Hub shelf
-    private static (SetupFlow Flow, WizardScreen.Choice Empty) EmptyLocalFromTheHub()
+    private static (SetupFlow Flow, SetupScreen.Choice Empty) EmptyLocalFromTheHub()
     {
         var flow = Flow(hubUp: true);
-        Assert.Equal(SetupFlow.SearchKey, Assert.IsType<WizardScreen.Choice>(flow.StartAtModelSegment()).Key);
-        var empty = Assert.IsType<WizardScreen.Choice>(flow.Answer(ShelfControls.SourceAnswer()));
+        Assert.Equal(SetupFlow.SearchKey, Assert.IsType<SetupScreen.Choice>(flow.StartAtModelSegment()).Key);
+        var empty = Assert.IsType<SetupScreen.Choice>(flow.Answer(ShelfControls.SourceAnswer()));
         Assert.Equal(SetupFlow.DiscoveredKey, empty.Key);
         Assert.Empty(empty.Shelf!.Rows);
         return (flow, empty);
     }
 
     //the Hub is out of reach and the machine has one model, so the flow opens on the local shelf
-    private static (SetupFlow Flow, WizardScreen.Choice Outage) OutageFromTheLocalShelf()
+    private static (SetupFlow Flow, SetupScreen.Choice Outage) OutageFromTheLocalShelf()
     {
         var flow = Flow(hubUp: false, OnDisk("one"));
-        Assert.Equal(ShelfSource.Local, Assert.IsType<WizardScreen.Choice>(flow.StartAtModelSegment()).Shelf!.Source);
-        var outage = Assert.IsType<WizardScreen.Choice>(flow.Answer(ShelfControls.SourceAnswer()));
+        Assert.Equal(ShelfSource.Local, Assert.IsType<SetupScreen.Choice>(flow.StartAtModelSegment()).Shelf!.Source);
+        var outage = Assert.IsType<SetupScreen.Choice>(flow.Answer(ShelfControls.SourceAnswer()));
         Assert.Equal(SetupFlow.SearchKey, outage.Key);
         Assert.Null(outage.Shelf);
         return (flow, outage);
@@ -69,7 +69,7 @@ public class EmptyShelfKeysTests
         var (answer, _) = WalkRender.Answered(empty, 100, [Esc]);
         Assert.Equal(SetupFlow.BackKey, answer);
 
-        var hub = Assert.IsType<WizardScreen.Choice>(flow.Answer(answer!));
+        var hub = Assert.IsType<SetupScreen.Choice>(flow.Answer(answer!));
         Assert.Equal(SetupFlow.SearchKey, hub.Key);
         Assert.NotEmpty(hub.Shelf!.Rows);
     }
@@ -83,10 +83,10 @@ public class EmptyShelfKeysTests
         Assert.True(outage.AllowBack);
 
         Assert.Equal(SetupFlow.CtlSource, WalkRender.Answered(outage, 100, [M]).Answer);
-        var (answer, _) = WalkRender.Answered(outage, 100, [WizardRig.Esc]);
+        var (answer, _) = WalkRender.Answered(outage, 100, [SetupRig.Esc]);
         Assert.Equal(SetupFlow.BackKey, answer);
 
-        var local = Assert.IsType<WizardScreen.Choice>(flow.Answer(answer!));
+        var local = Assert.IsType<SetupScreen.Choice>(flow.Answer(answer!));
         Assert.Equal(ShelfSource.Local, local.Shelf!.Source);
         Assert.NotEmpty(local.Shelf.Rows);
     }
@@ -97,7 +97,7 @@ public class EmptyShelfKeysTests
     {
         var (flow, _) = OutageFromTheLocalShelf();
 
-        var local = Assert.IsType<WizardScreen.Choice>(flow.Answer(ShelfControls.SourceAnswer()));
+        var local = Assert.IsType<SetupScreen.Choice>(flow.Answer(ShelfControls.SourceAnswer()));
 
         Assert.Equal(ShelfSource.Local, local.Shelf!.Source);
         Assert.False(local.AllowBack);
@@ -108,10 +108,10 @@ public class EmptyShelfKeysTests
     public void M_BETWEEN_TWO_SHELVES_WITH_ROWS_RECORDS_NO_STEP()
     {
         var flow = Flow(hubUp: true, OnDisk("one"));
-        var first = Assert.IsType<WizardScreen.Choice>(flow.StartAtModelSegment());
+        var first = Assert.IsType<SetupScreen.Choice>(flow.StartAtModelSegment());
         Assert.NotEmpty(first.Shelf!.Rows);
 
-        var other = Assert.IsType<WizardScreen.Choice>(flow.Answer(ShelfControls.SourceAnswer()));
+        var other = Assert.IsType<SetupScreen.Choice>(flow.Answer(ShelfControls.SourceAnswer()));
 
         Assert.NotEqual(first.Shelf.Source, other.Shelf!.Source);
         Assert.NotEmpty(other.Shelf.Rows);
@@ -123,12 +123,12 @@ public class EmptyShelfKeysTests
     public void BACK_TO_THE_OUTAGE_SCREEN_THEN_M_LEAVES_NO_STEP_BEHIND()
     {
         var (flow, _) = OutageFromTheLocalShelf();
-        Assert.IsType<WizardScreen.Ask>(flow.Answer(SetupFlow.TypeAnId));
-        var outage = Assert.IsType<WizardScreen.Choice>(flow.Answer(SetupFlow.BackKey));
+        Assert.IsType<SetupScreen.Ask>(flow.Answer(SetupFlow.TypeAnId));
+        var outage = Assert.IsType<SetupScreen.Choice>(flow.Answer(SetupFlow.BackKey));
         Assert.Equal(SetupFlow.SearchKey, outage.Key);
         Assert.Null(outage.Shelf);
 
-        var local = Assert.IsType<WizardScreen.Choice>(flow.Answer(ShelfControls.SourceAnswer()));
+        var local = Assert.IsType<SetupScreen.Choice>(flow.Answer(ShelfControls.SourceAnswer()));
 
         Assert.Equal(ShelfSource.Local, local.Shelf!.Source);
         Assert.False(local.AllowBack);
@@ -191,13 +191,13 @@ public class EmptyShelfKeysTests
     [Fact]
     public void THE_FLOW_S_EMPTY_LOCAL_SHELF_IS_ITS_GOLDEN()
     {
-        var flow = new SetupFlow(new WizardProbes
+        var flow = new SetupFlow(new FakeSetupProbes
         {
             Rows = [HubRow()],
             Roots = [@"C:\Users\you\.gatto\weights\", @"C:\Users\you\Downloads\"],
         }) { CanSwitchSource = true };
-        Assert.Equal(SetupFlow.SearchKey, Assert.IsType<WizardScreen.Choice>(flow.StartPastEngine()).Key);
-        var empty = Assert.IsType<WizardScreen.Choice>(flow.Answer(ShelfControls.SourceAnswer()));
+        Assert.Equal(SetupFlow.SearchKey, Assert.IsType<SetupScreen.Choice>(flow.StartPastEngine()).Key);
+        var empty = Assert.IsType<SetupScreen.Choice>(flow.Answer(ShelfControls.SourceAnswer()));
 
         Golden.AssertEquals("s5", "unified-96-local-empty", 100, WalkRender.SettledFrame(empty, 100).Rows);
     }
@@ -206,15 +206,15 @@ public class EmptyShelfKeysTests
     [Fact]
     public void THE_FLOW_S_OUTAGE_SCREEN_IS_ITS_GOLDEN()
     {
-        var flow = new SetupFlow(new WizardProbes
+        var flow = new SetupFlow(new FakeSetupProbes
         {
             Rows = [],
-            Answer = _ => WizardProbes.Outcome([], HubSearchCause.HubFailed),
+            Answer = _ => FakeSetupProbes.Outcome([], HubSearchCause.HubFailed),
             Roots = [@"C:\Users\you\.gatto\weights\"],
             Found = [OnDisk("one")],
         }) { CanSwitchSource = true };
-        Assert.Equal(ShelfSource.Local, Assert.IsType<WizardScreen.Choice>(flow.StartPastEngine()).Shelf!.Source);
-        var outage = Assert.IsType<WizardScreen.Choice>(flow.Answer(ShelfControls.SourceAnswer()));
+        Assert.Equal(ShelfSource.Local, Assert.IsType<SetupScreen.Choice>(flow.StartPastEngine()).Shelf!.Source);
+        var outage = Assert.IsType<SetupScreen.Choice>(flow.Answer(ShelfControls.SourceAnswer()));
 
         Golden.AssertEquals("s5", "unified-96-hub-out-of-reach", 100, WalkRender.SettledFrame(outage, 100).Rows);
     }

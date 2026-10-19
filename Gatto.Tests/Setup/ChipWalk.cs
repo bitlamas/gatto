@@ -18,9 +18,9 @@ internal static class ChipWalk
     }
 
     //the presses answered on the flow, the screen of the last one returned
-    public static WizardScreen Narrow(SetupFlow flow, string family)
+    public static SetupScreen Narrow(SetupFlow flow, string family)
     {
-        WizardScreen? last = null;
+        SetupScreen? last = null;
         foreach (var chip in PressesFor(family)) last = flow.Answer(ShelfControls.FamilyAnswer(chip));
         return last!;
     }

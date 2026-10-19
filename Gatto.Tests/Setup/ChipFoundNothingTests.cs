@@ -17,31 +17,31 @@ public class ChipFoundNothingTests
         Fit: FitRegime.FitsGpu, NativeCtx: 262144, Vision: false, Badge: null,
         Downloads: 900, Gated: false, Params: 3_000_000_000, Arch: arch);
 
-    private static (SetupFlow Flow, WizardScreen.Choice Screen) AfterChip(
+    private static (SetupFlow Flow, SetupScreen.Choice Screen) AfterChip(
         string chip, int tooBig = 27, int otherFamilies = 0, HubSearchCause? cause = HubSearchCause.NothingFits,
         GlyphSet? set = null)
     {
         IReadOnlyList<ModelRow> rows = [Ranked("o/qwen-small", "qwen3"), Ranked("o/qwen-tiny", "qwen3")];
-        var probes = new WizardProbes
+        var probes = new FakeSetupProbes
         {
             Rows = rows,
             //the fake gives the too-big rows back to a lift (empty answers for every family would make the lift guard unfalsifiable).
             Answer = req => req.Family() is null || req.Lifted
-                ? WizardProbes.Outcome(rows, null)
-                : WizardProbes.Outcome([], cause, moreBehindA: tooBig > 0),
+                ? FakeSetupProbes.Outcome(rows, null)
+                : FakeSetupProbes.Outcome([], cause, moreBehindA: tooBig > 0),
         };
         var flow = new SetupFlow(probes);
         //the flow owns the glyph set, it composes the cat and the sentence. a test that sets it on the painter alone would still draw a Unicode cat and call it ASCII.
         if (set is not null) flow.Glyphs = set;
-        Assert.IsType<WizardScreen.Choice>(flow.StartPastEngine());
-        return (flow, Assert.IsType<WizardScreen.Choice>(ChipWalk.Narrow(flow, chip)));
+        Assert.IsType<SetupScreen.Choice>(flow.StartPastEngine());
+        return (flow, Assert.IsType<SetupScreen.Choice>(ChipWalk.Narrow(flow, chip)));
     }
 
-    private static string PaintedIn(GlyphSet g, WizardScreen.Choice screen, int width = 100) =>
+    private static string PaintedIn(GlyphSet g, SetupScreen.Choice screen, int width = 100) =>
         string.Join("\n", Shelf.Body(screen.Shelf!, row: 0, chip: 0, file: -1,
             Region.List, width, glyphs: g).Select(r => r.Text));
 
-    private static string Painted(WizardScreen.Choice screen, int width = 100) =>
+    private static string Painted(SetupScreen.Choice screen, int width = 100) =>
         PaintedIn(GlyphSet.Unicode, screen, width);
 
     //assert on the screen the chip press reaches (a screen built by hand would prove nothing).
@@ -84,12 +84,12 @@ public class ChipFoundNothingTests
     [Fact]
     public void AN_EMPTY_SEARCH_WITH_NO_CHIP_KEEPS_THE_CATALOGUE_WIDE_SENTENCE()
     {
-        var probes = new WizardProbes
+        var probes = new FakeSetupProbes
         {
             Rows = [],
-            Answer = _ => WizardProbes.Outcome([], HubSearchCause.NothingFits),
+            Answer = _ => FakeSetupProbes.Outcome([], HubSearchCause.NothingFits),
         };
-        var screen = Assert.IsType<WizardScreen.Choice>(new SetupFlow(probes).StartPastEngine());
+        var screen = Assert.IsType<SetupScreen.Choice>(new SetupFlow(probes).StartPastEngine());
 
         Assert.Contains(screen.BodyRows ?? [],
             r => r.Text.Contains("needs more than that", StringComparison.Ordinal));
@@ -113,7 +113,7 @@ public class ChipFoundNothingTests
 
         Assert.True(ShelfControls.OffersLift(screen));
 
-        var lifted = Assert.IsType<WizardScreen.Choice>(flow.Answer(SetupFlow.CtlLift));
+        var lifted = Assert.IsType<SetupScreen.Choice>(flow.Answer(SetupFlow.CtlLift));
         Assert.NotEmpty(lifted.Shelf!.Rows);
     }
 

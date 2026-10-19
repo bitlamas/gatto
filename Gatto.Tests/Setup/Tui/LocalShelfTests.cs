@@ -63,7 +63,7 @@ public class LocalShelfTests
             HiddenByFamily: Local.Length - keep.Length);
     }
 
-    private static WizardScreen.Choice Screen(ShelfView v) =>
+    private static SetupScreen.Choice Screen(ShelfView v) =>
         new(SetupFlow.SearchKey, "Which model should gatto start with?",
             [.. v.Rows.Select((r, i) => new ChoiceOption(i.ToString(), r.Model))],
             Shelf: v, Door: SetupFlow.LocalShelfDoorPlaceholderOf(Gatto.Terminal.GlyphSet.Unicode))
@@ -236,7 +236,7 @@ public class LocalShelfTests
         new(Path.Combine(Dir, "unsloth", name), Gib(gb), null, shards);
 
     private static HardwareClass Hw() =>
-        HardwareClassifier.Classify(new Gatto.Tests.Fakes.WizardProbes().Hardware()!);
+        HardwareClassifier.Classify(new Gatto.Tests.Fakes.FakeSetupProbes().Hardware()!);
 
     //a local row leaves every field it cannot know empty, Params stays null and summing shard headers would report a third of the parameters
     [Fact]

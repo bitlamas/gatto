@@ -16,7 +16,7 @@ public class PlainFaceCensusTests
         //this proves the pattern can find a construction site in the tree, so a zero below means something
         var tuiSites = SourceTree.ProductionFiles()
             .Count(f => SourceTree.WithoutComments(SourceTree.Read(f))
-                .Contains("new Setup.Tui.TuiWizardSurface(", StringComparison.Ordinal));
+                .Contains("new Setup.Tui.TuiSetupSurface(", StringComparison.Ordinal));
         Assert.True(tuiSites > 0,
             "the construction-site pattern matched NOTHING, so the zero below means nothing either");
 

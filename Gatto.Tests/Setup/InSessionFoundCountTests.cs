@@ -17,9 +17,9 @@ public class InSessionFoundCountTests
             FitRegime.FitsGpu, 262144, false, Badge: null, Downloads: 5, Gated: false,
             Params: 7_000_000_000);
 
-    private static WizardProbes Probes()
+    private static FakeSetupProbes Probes()
     {
-        var p = new WizardProbes
+        var p = new FakeSetupProbes
         {
             Llama = @"C:\llama\llama-server.exe",
             Rows = [HubRow()],
@@ -39,8 +39,8 @@ public class InSessionFoundCountTests
         return flow;
     }
 
-    private static string FoundLine(WizardScreen s) =>
-        Assert.IsType<WizardScreen.Choice>(s).BodyRows!
+    private static string FoundLine(SetupScreen s) =>
+        Assert.IsType<SetupScreen.Choice>(s).BodyRows!
             .Select(r => r.Text)
             .Single(t => t.Contains("gatto found", StringComparison.Ordinal)
                       || t.Contains("also found", StringComparison.Ordinal));
@@ -64,7 +64,7 @@ public class InSessionFoundCountTests
         flow.StartAtModelSegment();
 
         //the test answers with the flow command, since the face maps m to CtlSource. typing m at the flow would drive a seam the product does not have
-        var shelf = Assert.IsType<WizardScreen.Choice>(flow.Answer(SetupFlow.CtlSource)).Shelf!;
+        var shelf = Assert.IsType<SetupScreen.Choice>(flow.Answer(SetupFlow.CtlSource)).Shelf!;
 
         Assert.Equal(2, shelf.Rows.Count);
         Assert.Contains(shelf.Rows, r => r.RowFile!.RepoId.Contains("qwen3.5-4b", StringComparison.OrdinalIgnoreCase));

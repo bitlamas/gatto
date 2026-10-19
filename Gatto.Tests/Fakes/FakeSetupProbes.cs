@@ -5,7 +5,7 @@ using Gatto.Core.Hardware;
 namespace Gatto.Tests.Fakes;
 
 //one shared fake for the wizard's probe seam, so no two fakes disagree about a machine. the probe contract is read-only, so only the recording lists act.
-internal sealed class WizardProbes : ISetupProbes
+internal sealed class FakeSetupProbes : ISetupProbes
 {
     public string? Llama { get; init; } = @"C:\llama\llama-server.exe";
     public IReadOnlyList<ModelRow> Rows { get; init; } = [];

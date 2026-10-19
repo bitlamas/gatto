@@ -18,7 +18,7 @@ internal enum SetupPath
     Connect,
 }
 
-//keep the flow pure and resumeless, a user who leaves mid-way leaves nothing behind. every fact from ISetupProbes, every word out as a WizardScreen
+//keep the flow pure and resumeless, a user who leaves mid-way leaves nothing behind. every fact from ISetupProbes, every word out as a SetupScreen
 
 //five states rather than a bool, still arriving, unreadable and wrong file are three facts, collapsing them accuses a half-written file
 
@@ -311,19 +311,19 @@ internal sealed class SetupFlow(ISetupProbes probes)
     //use this port as the fallback for a fresh machine (no local endpoint exists to derive one from)
     public const int DefaultPort = 1235;
 
-    private readonly List<WizardScreen> _emitted = [];
+    private readonly List<SetupScreen> _emitted = [];
 
     //step markers are named rather than counted, each announced as one word where its step begins. an info screen asks no question, so its marker commits and stays
 
     //keep the narration in its own list, an info added to _emitted does not render and draining it would draw every key at once
-    private readonly List<WizardScreen.Info> _narrate = [];
+    private readonly List<SetupScreen.Info> _narrate = [];
 
     //return the narration since the last screen and clear it, so each marker renders where the flow reached it.
-    public IReadOnlyList<WizardScreen.Info> TakeNarration()
+    public IReadOnlyList<SetupScreen.Info> TakeNarration()
     {
         if (_narrate.Count == 0) return [];
         //stamp the marker when it is drained, so the user sees what was true when it is shown
-        var taken = _narrate.Select(n => (WizardScreen.Info)Crossing(n, n.Key)).ToArray();
+        var taken = _narrate.Select(n => (SetupScreen.Info)Crossing(n, n.Key)).ToArray();
         _narrate.Clear();
         return taken;
     }
@@ -680,18 +680,18 @@ internal sealed class SetupFlow(ISetupProbes probes)
     public IReadOnlyList<StripSection> Strip => WalkSection.For(_awaiting, Path);
 
     //give a screen that asks nothing its own position, done is the last section of the strip
-    private static string KeyOf(WizardScreen s) => s switch
+    private static string KeyOf(SetupScreen s) => s switch
     {
-        WizardScreen.Choice c => c.Key,
-        WizardScreen.Ask a => a.Key,
-        WizardScreen.Info i => i.Key,
-        WizardScreen.Progress p => p.Key,
-        WizardScreen.Terminal t => t.Key,
-        _ => throw new InvalidOperationException("unreachable, WizardScreen is closed"),
+        SetupScreen.Choice c => c.Key,
+        SetupScreen.Ask a => a.Key,
+        SetupScreen.Info i => i.Key,
+        SetupScreen.Progress p => p.Key,
+        SetupScreen.Terminal t => t.Key,
+        _ => throw new InvalidOperationException("unreachable, SetupScreen is closed"),
     };
 
     //every emitted screen, oldest first (the tests' window onto the flow)
-    public IReadOnlyList<WizardScreen> Emitted => _emitted;
+    public IReadOnlyList<SetupScreen> Emitted => _emitted;
 
     //what this run intends to write, empty until a path completes. nobody applies it here
     public WriteSet Writes { get; private set; } = new();
@@ -721,7 +721,7 @@ internal sealed class SetupFlow(ISetupProbes probes)
         string? ConnectBaseUrl, int ConnectContext, string? ConnectEndpointName,
         bool ConnectBesideLocal,
         SetupPath Path, WriteSet Writes, FoundModel? Selected, ModelRow? Picked,
-        bool StartReplWhenDone, WizardScreen Screen,
+        bool StartReplWhenDone, SetupScreen Screen,
         //whether this step's screen came from a control that hit no list. going back restores the flag, so a control pressed there still undoes the step
         bool ControlStep,
         //the repo a typed id landed on, so going back shows that one-row shelf again rather than re-running a search
@@ -736,20 +736,20 @@ internal sealed class SetupFlow(ISetupProbes probes)
     private bool _backClosed;
 
     //the screen the flow waits on, the last emitted one (every branch emits its screen last)
-    private WizardScreen? LastScreen => _emitted.Count > 0 ? _emitted[^1] : null;
+    private SetupScreen? LastScreen => _emitted.Count > 0 ? _emitted[^1] : null;
 
-    private Snapshot Capture(WizardScreen screen) => new(
+    private Snapshot Capture(SetupScreen screen) => new(
         _awaiting, _found, _discovered, _scanTyped, _rows, _searchCause, _lift,
         _modelId, _llamaPath, _check,
         _connectBaseUrl, _connectContext, _connectEndpointName, _besideLocal,
         Path, Writes, Selected, Picked, StartReplWhenDone, screen, _controlStep, _lookedUp);
 
     //step back to the previous screen with the state it was answered under. after a write the step refuses with a screen, so the flow shows it and a test can open it
-    private WizardScreen Back()
+    private SetupScreen Back()
     {
         if (!CanGoBack)
             //second guard, reachable when a face offers back without advertising AllowBack. it renders a sentence (silence would teach the user their key is broken)
-            return Emit(new WizardScreen.Info("back.refused", [new WizardRow(BackRefused)]), _awaiting);
+            return Emit(new SetupScreen.Info("back.refused", [new SetupRow(BackRefused)]), _awaiting);
 
         //a step back keeps the partial the drop screen offered to delete, so a later leave cannot delete what no screen it shows has priced, and a resume finds it
         _droppedPartial = null;
@@ -783,7 +783,7 @@ internal sealed class SetupFlow(ISetupProbes probes)
         _lookedUp = s.LookedUp;
 
         //recompose the shelf from live fields and re-run the search, a chips row could otherwise show a filter the rows lack. a looked-up row has no search to re-run
-        if (s.Screen is WizardScreen.Choice { Key: SearchKey }) return _lookedUp is not null ? SearchScreen() : Search();
+        if (s.Screen is SetupScreen.Choice { Key: SearchKey }) return _lookedUp is not null ? SearchScreen() : Search();
 
         //the screen is emitted again, the transcript keeps both visits (both happened)
         return Emit(WithBack(s.Screen), s.Awaiting);
@@ -791,19 +791,19 @@ internal sealed class SetupFlow(ISetupProbes probes)
 
     //true for the two screens of one folder search: the folder question and a local shelf filtered by a typed folder
     private static bool IsFolderSearchStep(Snapshot s) =>
-        s.Screen is WizardScreen.Ask { Key: ScanPathKey }
-        || (s.Screen is WizardScreen.Choice { Key: DiscoveredKey } && s.ScanTyped is not null);
+        s.Screen is SetupScreen.Ask { Key: ScanPathKey }
+        || (s.Screen is SetupScreen.Choice { Key: DiscoveredKey } && s.ScanTyped is not null);
 
     //set AllowBack from the one rule (no screen author decides it, no face guesses it)
-    private WizardScreen WithBack(WizardScreen screen) => screen switch
+    private SetupScreen WithBack(SetupScreen screen) => screen switch
     {
-        WizardScreen.Choice c => c with { AllowBack = CanGoBack },
-        WizardScreen.Ask a => a with { AllowBack = CanGoBack },
+        SetupScreen.Choice c => c with { AllowBack = CanGoBack },
+        SetupScreen.Ask a => a with { AllowBack = CanGoBack },
         _ => screen,     //the Info, Progress and Terminal screens ask nothing, they can't offer a back row
     };
 
     //enter the model segment of the same flow (no second flow). skip the engine binary and hardware line, a live session already runs a server
-    public WizardScreen StartAtModelSegment()
+    public SetupScreen StartAtModelSegment()
     {
         Path = SetupPath.Llama;
         _addRoad = true;
@@ -825,16 +825,16 @@ internal sealed class SetupFlow(ISetupProbes probes)
     //whether a repair made an existing copy findable, recorded beside the install target (otherwise the summary line would say gatto is not installed)
     private bool _pathOnlyLanded;
 
-    public WizardScreen Start() => Emit(Welcome(), WelcomeKey);
+    public SetupScreen Start() => Emit(Welcome(), WelcomeKey);
 
     //the welcome screen draws the flow as a map (a step counter can't be right when the flow forks)
 
     //keep the copy from the generator, a paraphrase reads well but is wrong about the screen
-    private WizardScreen Welcome()
+    private SetupScreen Welcome()
     {
         var engineInstalled = probes.LlamaServerPath() is { Length: > 0 };
 
-        return new WizardScreen.Choice(
+        return new SetupScreen.Choice(
             WelcomeKey,
             "Ready to set gatto up?",
             //keep these labels lowercase, the footer is their only reader and the face renders them verbatim
@@ -845,23 +845,23 @@ internal sealed class SetupFlow(ISetupProbes probes)
             BodyRows:
             [
                 //keep the second body sentence as one clause, examples inside it read as a list that turns out to be an aside
-                new WizardRow("gatto is an AI assistant that lives in your terminal. Describe a job "
+                new SetupRow("gatto is an AI assistant that lives in your terminal. Describe a job "
                     + "in plain words and it does the work itself: reading, writing and running "
                     + "things on your computer, showing you every step."),
-                new WizardRow(""),
-                new WizardRow("The thinking happens on this machine too: the model is a file on your "
+                new SetupRow(""),
+                new SetupRow("The thinking happens on this machine too: the model is a file on your "
                     + "own disk, so your words and your files never have to leave it."),
-                new WizardRow(""),
+                new SetupRow(""),
                 //machine line on the welcome, the nothing-fits screen shouldn't be where the user first sees it
-                new WizardRow(HardwareLine(probes.Hardware())),
-                new WizardRow(""),
-                new WizardRow("Setting up takes a few minutes:"),
-                new WizardRow(""),
+                new SetupRow(HardwareLine(probes.Hardware())),
+                new SetupRow(""),
+                new SetupRow("Setting up takes a few minutes:"),
+                new SetupRow(""),
                 //one gloss row per word of the strip, the user meets each step before it. the engine row states a fact about this run (gatto reports what it discovered)
                 .. StripMap.Rows(engineInstalled, Glyphs),
-                new WizardRow(""),
+                new SetupRow(""),
                 //optional row, dropped last by height fitting. it names a glyph, so the word and the highlight both read the glyph table and can't disagree
-                new WizardRow($"Inside, Tab moves between the parts of a screen, {Glyphs.Prompt} shows "
+                new SetupRow($"Inside, Tab moves between the parts of a screen, {Glyphs.Prompt} shows "
                     + "where the keys are.", RowTone.Aside, Highlight: [Glyphs.Prompt],
                     Optional: true),
             ],
@@ -896,9 +896,9 @@ internal sealed class SetupFlow(ISetupProbes probes)
 
         public static readonly int Column = Labels.Max(l => l.Length) + 3;
 
-        public static IEnumerable<WizardRow> Rows(bool engineInstalled,
+        public static IEnumerable<SetupRow> Rows(bool engineInstalled,
             Gatto.Terminal.GlyphSet? glyphs) =>
-            Labels.Select(l => new WizardRow(
+            Labels.Select(l => new SetupRow(
                 l.PadRight(Column) + (l == WalkSection.Engine && engineInstalled
                     ? $"{(glyphs ?? Gatto.Terminal.GlyphSet.Unicode).Ok} already on this machine"
                     : Gloss[l]),
@@ -921,23 +921,23 @@ internal sealed class SetupFlow(ISetupProbes probes)
     }
 
     //the from and to rows sit on SummaryFacts rows, so they take the done step's column rather than ColumnLabel's
-    private static WizardRow MapRow(string step, string what) => SummaryFacts.Row(step, what);
+    private static SetupRow MapRow(string step, string what) => SummaryFacts.Row(step, what);
 
-    private WizardScreen AnswerWelcome(string key)
+    private SetupScreen AnswerWelcome(string key)
     {
         if (key != WelcomeGo) return Leave();
         return Machine();
     }
 
     //the machine screen asks nothing (gatto reports what it found), its summary is the welcome's HardwareLine
-    private WizardScreen Machine() => Emit(new WizardScreen.Choice(
+    private SetupScreen Machine() => Emit(new SetupScreen.Choice(
         MachineKey,
         "What can this machine run?",
         [
             new ChoiceOption(MachineNext, "next"),
             new ChoiceOption(WelcomeNot, "leave"),
         ],
-        BodyRows: [new WizardRow(MachineSummary(probes.Hardware()))],
+        BodyRows: [new SetupRow(MachineSummary(probes.Hardware()))],
         Machine: new MachineView(probes.Hardware(), probes.HardwareNames()),
         KeysOnly: true), MachineKey);
 
@@ -948,7 +948,7 @@ internal sealed class SetupFlow(ISetupProbes probes)
             ? "Couldn't read this machine's memory, so nothing here is priced against it."
             : HardwareLine(hw);
 
-    private WizardScreen AnswerMachine(string key) =>
+    private SetupScreen AnswerMachine(string key) =>
         key == MachineNext ? EngineStep() : Leave();
 
     //true only when the running image is strictly newer than the installed copy, so both sites share one comparison and an unreadable version gives false
@@ -968,7 +968,7 @@ internal sealed class SetupFlow(ISetupProbes probes)
     };
 
     //first question of the done step, asked after the proof (a gatto that can't be typed does not work). null means nothing to ask
-    private WizardScreen? InstallSegment()
+    private SetupScreen? InstallSegment()
     {
         var (state, dir) = probes.InstallStatus();
         //record the state, the closing sentence claims whether a new terminal can find gatto. null in Writes.InstallTo means declined, installed and dev build at once
@@ -981,8 +981,8 @@ internal sealed class SetupFlow(ISetupProbes probes)
         {
             //one silent state still speaks, a dev build changes what happens. the other states leave a fact on the summary's gatto row
             if (state is InstallState.DevBuild)
-                _narrate.Add(new WizardScreen.Info("segment.install",
-                    [new WizardRow("running from a development build, which can't be copied as one "
+                _narrate.Add(new SetupScreen.Info("segment.install",
+                    [new SetupRow("running from a development build, which can't be copied as one "
                         + "file, skipping the install step")]));
             return null;
         }
@@ -991,7 +991,7 @@ internal sealed class SetupFlow(ISetupProbes probes)
         {
             //no heading here, the install question sits inside the done step and a heading would announce a section the strip doesn't have
             _installDir = dir;
-            return Emit(new WizardScreen.Choice(
+            return Emit(new SetupScreen.Choice(
                 UpdateInstalledKey,
                 "A newer gatto is running than the one installed",
                 [
@@ -1001,10 +1001,10 @@ internal sealed class SetupFlow(ISetupProbes probes)
                 ],
                 BodyRows:
                 [
-                    new WizardRow($"Installed: {probes.InstalledVersion()} at {dir}"),
-                    new WizardRow($"This one:  {probes.RunningVersion()}"),
-                    new WizardRow(""),
-                    new WizardRow("Updating copies this gatto over the installed one. Nothing is "
+                    new SetupRow($"Installed: {probes.InstalledVersion()} at {dir}"),
+                    new SetupRow($"This one:  {probes.RunningVersion()}"),
+                    new SetupRow(""),
+                    new SetupRow("Updating copies this gatto over the installed one. Nothing is "
                         + "downloaded, the files are already here."),
                 ],
                 NoDefault: true),
@@ -1017,7 +1017,7 @@ internal sealed class SetupFlow(ISetupProbes probes)
         //this repair offer needs the same version comparison as the update offer, or an older image silently downgrades a newer install
         var installedHere = probes.InstalledVersion();
         _repairOnly = half && !RunningIsNewerThanInstalled();
-        return Emit(new WizardScreen.Choice(
+        return Emit(new SetupScreen.Choice(
             InstallKey,
             //the title says what's wrong in the user's terms (PATH is jargon). the option says what gatto will do rather than naming the mechanism
             half ? "gatto is installed, but only this window can find it"
@@ -1029,18 +1029,18 @@ internal sealed class SetupFlow(ISetupProbes probes)
             //the first branch names its type, two collection expressions in a ternary leave the spread nothing to convert between
             BodyRows: [.. half
                 ?
-                (IReadOnlyList<WizardRow>)[
+                (IReadOnlyList<SetupRow>)[
                     //keep these as two rows, the copy's location then why the window can't find it, one paragraph wraps them together
-                    new WizardRow($"A copy is already at {dir}."),
-                    new WizardRow("Windows doesn't know to look there yet, so typing gatto in a "
+                    new SetupRow($"A copy is already at {dir}."),
+                    new SetupRow("Windows doesn't know to look there yet, so typing gatto in a "
                         + "new window won't work until it does."),
                     //show the version rows only when both versions can be read, a row that says unknown teaches nothing
                     .. installedHere is { Length: > 0 } iv && _repairOnly
                         ? new[]
                         {
-                            new WizardRow(""),
+                            new SetupRow(""),
                             //an equal version also sets the repair flag. an equal pair gets its own sentence, two equal numbers read as a fault
-                            new WizardRow(string.Equals(iv, probes.RunningVersion(), StringComparison.Ordinal)
+                            new SetupRow(string.Equals(iv, probes.RunningVersion(), StringComparison.Ordinal)
                                 ? $"The installed copy is the same version ({iv}), so gatto will "
                                   + "leave it in place and just make it findable."
                                 : $"The installed copy is {iv} and this one is "
@@ -1052,15 +1052,15 @@ internal sealed class SetupFlow(ISetupProbes probes)
                 :
                 [
                     //the from and to rows say which gatto this is when the exe sits beside other copies. keep them as two rows, where gatto is now and what installing does
-                    new WizardRow("gatto is running from the folder you unzipped it into."),
-                    new WizardRow("Installing puts a copy in your account's programs folder, so "
+                    new SetupRow("gatto is running from the folder you unzipped it into."),
+                    new SetupRow("Installing puts a copy in your account's programs folder, so "
                         + "you can type gatto in any terminal instead of finding this file again."),
-                    new WizardRow(""),
+                    new SetupRow(""),
                     MapRow(ColumnLabel.From, probes.RunningFrom()),
                     MapRow(ColumnLabel.To, dir),
-                    new WizardRow(""),
+                    new SetupRow(""),
                     //the new-terminal line belongs on the completion screen (before a decision it reads as a caveat)
-                    new WizardRow("Your account only, Windows won't ask for administrator "
+                    new SetupRow("Your account only, Windows won't ask for administrator "
                         + "permission."),
                 ],
                 //one aside from one place, appended to both branches (two copies would drift). it ends by saying this console works, or it would read as a requirement
@@ -1069,15 +1069,15 @@ internal sealed class SetupFlow(ISetupProbes probes)
     }
 
     //the Windows Terminal aside, legacy console only, after a blank row. the probe also decides the glyph set, so the aside and the vocabulary can't disagree
-    private IReadOnlyList<WizardRow> TerminalNudgeRows() =>
+    private IReadOnlyList<SetupRow> TerminalNudgeRows() =>
         probes.IsLegacyConsole()
             //mark the nudge optional, a short terminal drops it before it drops a fact (this is not a thing the install does)
-            ? [new WizardRow(""),
-               new WizardRow("gatto looks better in Windows Terminal (free, in the Microsoft "
+            ? [new SetupRow(""),
+               new SetupRow("gatto looks better in Windows Terminal (free, in the Microsoft "
                    + "Store); this console works too.", RowTone.Aside, Optional: true)]
             : [];
 
-    private WizardScreen AnswerInstall(string optionKey)
+    private SetupScreen AnswerInstall(string optionKey)
     {
         _awaiting = null;
         //this records intent, leaving after this screen installs nothing. the answer sets exactly one of the two (a copy beside a repair would install the older image)
@@ -1090,7 +1090,7 @@ internal sealed class SetupFlow(ISetupProbes probes)
     }
 
     //the update answer must set InstallTo with no PathOnly (AnswerInstall would route it through _repairOnly, which could drift when either branch changes)
-    private WizardScreen AnswerUpdateInstalled(string optionKey)
+    private SetupScreen AnswerUpdateInstalled(string optionKey)
     {
         _awaiting = null;
         if (optionKey == InstallYes)
@@ -1098,7 +1098,7 @@ internal sealed class SetupFlow(ISetupProbes probes)
         return AfterTheInstallAsk();
     }
 
-    public WizardScreen Answer(string answer)
+    public SetupScreen Answer(string answer)
     {
         //handle the back key before the dispatch, a handler could read it as an option. route on the key alone, deferring to AllowBack let a handler end the wizard on it
         if (answer == BackKey && _awaiting is not null)
@@ -1127,7 +1127,7 @@ internal sealed class SetupFlow(ISetupProbes probes)
         var control = ShelfControls.IsControl(answer) || (_addRoad && IsAddress(answer));   //an address on gatto model is answered in place, a control
         if (control && _controlStep) { _back.Pop(); _controlStep = false; }
         var stepped = _awaiting is not null && !_backClosed && LastScreen is { } current
-            && current is not WizardScreen.Choice { Watching: true }   //a watch ends with its task, so a later back to it shows a stop for work that finished
+            && current is not SetupScreen.Choice { Watching: true }   //a watch ends with its task, so a later back to it shows a stop for work that finished
             && Push(Capture(current));
         //clear the flag only after the capture, the step being left keeps the value a step back restores
         if (!control) _controlStep = false;
@@ -1145,16 +1145,16 @@ internal sealed class SetupFlow(ISetupProbes probes)
     }
 
     //keep a control's step only when its screen holds no list, otherwise drop it and stamp the screen again
-    private WizardScreen KeepStepIfNoList(WizardScreen landed)
+    private SetupScreen KeepStepIfNoList(SetupScreen landed)
     {
         //a loading shelf does not know yet whether a list will come, so the step is kept and the landing decides
-        if (landed is WizardScreen.Choice { Key: ShelfLoadingKey } loading)
+        if (landed is SetupScreen.Choice { Key: ShelfLoadingKey } loading)
         {
             _stepAwaitsLoad = true;
             return HonestBack(loading);
         }
 
-        if (landed is WizardScreen.Choice { Key: SearchKey or DiscoveredKey } c
+        if (landed is SetupScreen.Choice { Key: SearchKey or DiscoveredKey } c
             && (c.Shelf is null || c.Shelf.NothingFetched))
         {
             _controlStep = true;
@@ -1168,14 +1168,14 @@ internal sealed class SetupFlow(ISetupProbes probes)
     }
 
     //a control's step waiting on its load is not one b returns to, so the loading shelf offers back only when a step lies behind it
-    private WizardScreen HonestBack(WizardScreen.Choice loading)
+    private SetupScreen HonestBack(SetupScreen.Choice loading)
     {
         var honest = loading with { AllowBack = _back.Count > 1 && !_backClosed };
         if (_emitted.Count > 0 && ReferenceEquals(_emitted[^1], loading)) _emitted[^1] = honest;
         return honest;
     }
 
-    private WizardScreen Dispatch(string answer)
+    private SetupScreen Dispatch(string answer)
     {
         return _awaiting switch
         {
@@ -1259,10 +1259,10 @@ internal sealed class SetupFlow(ISetupProbes probes)
     }
 
     //the engine step sets the llama road, a user who never opens connect is not undecided. one handler serves the connect row on both first screens
-    private WizardScreen EngineStep()
+    private SetupScreen EngineStep()
     {
         Path = SetupPath.Llama;
-        _narrate.Add(new WizardScreen.Info("step.model", [new WizardRow("Model")]));
+        _narrate.Add(new SetupScreen.Info("step.model", [new SetupRow("Model")]));
         return NextLlamaSegment();
     }
 
@@ -1283,13 +1283,13 @@ internal sealed class SetupFlow(ISetupProbes probes)
         : null;
 
     //one answer for an address at any Hub door: in place on gatto model, the connect road on gatto setup. an ask comes back as it was, its own check says the notice
-    private WizardScreen AnswerAddress(string typed)
+    private SetupScreen AnswerAddress(string typed)
     {
         if (_addRoad)
             return LastScreen switch
             {
-                WizardScreen.Choice here => Emit(here with { Notice = AddressNotice }, _awaiting),
-                WizardScreen.Ask ask => Emit(ask, _awaiting),
+                SetupScreen.Choice here => Emit(here with { Notice = AddressNotice }, _awaiting),
+                SetupScreen.Ask ask => Emit(ask, _awaiting),
                 _ => throw new InvalidOperationException("an address was answered with nothing on screen to keep"),
             };
 
@@ -1304,7 +1304,7 @@ internal sealed class SetupFlow(ISetupProbes probes)
     }
 
     //leave the llama road for the user's own server in one home (three screens open it, three copies could disagree)
-    private WizardScreen TakeConnectRoad()
+    private SetupScreen TakeConnectRoad()
     {
         Path = SetupPath.Connect;
         return ProbeForServer();
@@ -1325,40 +1325,40 @@ internal sealed class SetupFlow(ISetupProbes probes)
         $"type the server's address{Glyphs.Ellipsis} e.g. http://127.0.0.1:8080";
 
     //a screen on the road rather than a failure page, the user is still asked something. ports are named by owner, so the user can recognise their own setup
-    private WizardScreen NoServerAnswered() => Emit(new WizardScreen.Choice(
+    private SetupScreen NoServerAnswered() => Emit(new SetupScreen.Choice(
         RetryKey,
         "Which server should gatto talk to?",
         [new ChoiceOption(Retry, "Look again")],
         BodyRows: _typedServer is { } typedServer
             ? [
-                new WizardRow($"No server answered at {typedServer}."),
-                new WizardRow(""),
-                new WizardRow("Start your server, then look again, or type its address if it lives "
+                new SetupRow($"No server answered at {typedServer}."),
+                new SetupRow(""),
+                new SetupRow("Start your server, then look again, or type its address if it lives "
                     + "somewhere else."),
               ]
             : _ownServerSaid is { } said
             ? [
-                new WizardRow($"{said} No other server answered."),
-                new WizardRow(""),
-                new WizardRow("Start the server you run yourself, then look again, or type its "
+                new SetupRow($"{said} No other server answered."),
+                new SetupRow(""),
+                new SetupRow("Start the server you run yourself, then look again, or type its "
                     + "address if it lives somewhere else."),
               ]
             : [
-                new WizardRow("No server answered on the ports llama.cpp and LM Studio usually use "
+                new SetupRow("No server answered on the ports llama.cpp and LM Studio usually use "
                     + "on this machine."),
-                new WizardRow(""),
-                new WizardRow("Start your server, then look again, or type its address if it lives "
+                new SetupRow(""),
+                new SetupRow("Start your server, then look again, or type its address if it lives "
                     + "somewhere else."),
               ],
         Door: ServerDoorPlaceholder), RetryKey);
 
     //accept only the retry option or a typed address. falling into the default arm would leave setup, the worst reading of a typed address
-    private WizardScreen AnswerRetry(string optionKey) =>
+    private SetupScreen AnswerRetry(string optionKey) =>
         optionKey == Retry ? _typedServer is { } typed ? TypedAddress(typed) : ProbeForServer()
             : TypedAddress(ShelfControls.Untyped(optionKey)!);
 
     //probe exactly the address the user typed, on silence re-show that screen (they told gatto where to look)
-    private WizardScreen TypedAddress(string typed)
+    private SetupScreen TypedAddress(string typed)
     {
         //the address is kept, so the silence names it and Look again asks it again
         _typedServer = typed.Trim();
@@ -1368,7 +1368,7 @@ internal sealed class SetupFlow(ISetupProbes probes)
     }
 
     //look for a server, treat nothing found as a retry state rather than a dead exit. the user probably hasn't started their server yet, quitting means starting over
-    private WizardScreen ProbeForServer()
+    private SetupScreen ProbeForServer()
     {
         //gatto's own serving server is narrated and passed rather than offered. the match keys on the answered port, a typed read stops a dead process claiming it
         List<int>? spent = null;
@@ -1389,18 +1389,18 @@ internal sealed class SetupFlow(ISetupProbes probes)
         if (_found is null) return NoServerAnswered();
 
         //never adopt a found server silently, the user confirms it. its url and model list are the server's own strings, shown through the sanitizing widget
-        return Emit(new WizardScreen.Choice(
+        return Emit(new SetupScreen.Choice(
             ConfirmServerKey,
             //ask the road's question the same way on every screen of it, the title doesn't change under the user
             "Which server should gatto talk to?",
             [new ChoiceOption(Yes, "Use this server")],
             //compute the row from the model list, several entries are a catalogue rather than all up. the cost sentence stays here too
             BodyRows: [
-                .. _ownServerSaid is { } skipped ? (IReadOnlyList<WizardRow>)[skipped, ""] : [],
+                .. _ownServerSaid is { } skipped ? (IReadOnlyList<SetupRow>)[skipped, ""] : [],
                 ConnectCost, "",
                 ServerFacts.Row(ServerFacts.Server, _found.BaseUrl),
                 //compute the row from the list itself: one entry is a model serving, several is a catalogue of what it could load on demand
-                .. (IReadOnlyList<WizardRow>)(_found.Models switch
+                .. (IReadOnlyList<SetupRow>)(_found.Models switch
                 {
                     { Count: 0 } => [ServerFacts.Row(ServerFacts.Serving, "it did not say")],
                     { Count: 1 } m => [ServerFacts.Row(ServerFacts.Serving, Gatto.Core.Models.ServedModelName.Display(m[0]))],
@@ -1425,7 +1425,7 @@ internal sealed class SetupFlow(ISetupProbes probes)
 
         public static readonly int Column = Labels.Max(l => l.Length) + 3;
 
-        public static WizardRow Row(string label, string value, string? lift = null) =>
+        public static SetupRow Row(string label, string value, string? lift = null) =>
             new(label.PadRight(Column) + value, RowTone.Aside, Indent: 0, Hang: Column,
                 Lift: lift is null ? null : [lift]);
     }
@@ -1438,16 +1438,16 @@ internal sealed class SetupFlow(ISetupProbes probes)
 
         public static readonly int Column = Labels.Max(l => l.Length) + 3;
 
-        public static WizardRow Row(string label, string value, string? lift = null) =>
+        public static SetupRow Row(string label, string value, string? lift = null) =>
             new(label.PadRight(Column) + value, RowTone.Aside, Indent: 0, Hang: Column,
                 Lift: lift is null ? null : [lift]);
 
         //round the figure first and read the band from the rounded value, so the sentence can't disagree with the number shown. the band only chooses words
-        public static WizardRow Speed(double rate)
+        public static SetupRow Speed(double rate)
         {
             var shown = Math.Round(rate, 1);
             var figure = $"~{shown:0.#} tok/s";
-            return new WizardRow(
+            return new SetupRow(
                 "speed".PadRight(Column)
                     + $"{figure}, {Gatto.Roles.Audition.AuditionReport.SpeedNote(shown)}",
                 RowTone.Aside, Hang: Column, Highlight: [figure]);
@@ -1469,7 +1469,7 @@ internal sealed class SetupFlow(ISetupProbes probes)
 
         public static readonly int Column = Labels.Max(l => l.Length) + 3;
 
-        public static WizardRow Row(string label, string value) =>
+        public static SetupRow Row(string label, string value) =>
             new(label.PadRight(Column) + value, RowTone.Aside, Indent: 0, Hang: Column);
     }
 
@@ -1478,11 +1478,11 @@ internal sealed class SetupFlow(ISetupProbes probes)
         $"type another server's address{Glyphs.Ellipsis} e.g. http://127.0.0.1:8080";
 
     //state what this option is, don't phrase it as a warning, so a user of another server isn't turned away
-    private static readonly WizardRow ConnectCost = new(
+    private static readonly SetupRow ConnectCost = new(
         "gatto will talk to this server as it is, it can't switch models or change settings on a "
         + "server it didn't start.");
 
-    private WizardScreen AnswerConfirm(string optionKey)
+    private SetupScreen AnswerConfirm(string optionKey)
     {
         //a typed answer here is another address rather than a refusal, the door invites one. read the typed mark directly, the wrapper sets it
         if (ShelfControls.Untyped(optionKey) is { } address) return TypedAddress(address);
@@ -1493,11 +1493,11 @@ internal sealed class SetupFlow(ISetupProbes probes)
         _contextWasReported = _found.NCtx is > 0;
         return _found.NCtx is { } n && n > 0
             ? Complete(_found.BaseUrl, n)
-            : Emit(new WizardScreen.Ask(
+            : Emit(new SetupScreen.Ask(
                 ContextKey,
                 //say why the number is asked, gatto asks only when the server would not say
                 "How much context should gatto use?",
-                BodyRows: [new WizardRow(
+                BodyRows: [new SetupRow(
                     "This server didn't report its context window, so gatto has to ask. If the "
                     + "server reports its own context later, that number overrides this answer.")],
                 Validate: ContextComplaint,
@@ -1512,7 +1512,7 @@ internal sealed class SetupFlow(ISetupProbes probes)
                 ContextKey);
     }
 
-    private WizardScreen AnswerContext(string typed)
+    private SetupScreen AnswerContext(string typed)
     {
         if (_found is null) return Leave();
 
@@ -1540,7 +1540,7 @@ internal sealed class SetupFlow(ISetupProbes probes)
     //the connect path ends with one endpoint whose context is known.
 
     //the connect flow's completion. the endpoint and a model must both be set here, or the next launch throws
-    private WizardScreen Complete(string baseUrl, int context)
+    private SetupScreen Complete(string baseUrl, int context)
     {
         _connectBaseUrl = baseUrl;
         _connectContext = context;
@@ -1556,7 +1556,7 @@ internal sealed class SetupFlow(ISetupProbes probes)
     }
 
     //the served model that requests will name, gatto cannot invent it (only the server knows what it answers to)
-    private WizardScreen ContinueConnect(string endpointName)
+    private SetupScreen ContinueConnect(string endpointName)
     {
         _connectEndpointName = endpointName;
         var models = _found?.Models ?? [];
@@ -1565,22 +1565,22 @@ internal sealed class SetupFlow(ISetupProbes probes)
         if (models.Count == 1) return FinishConnect(endpointName, models[0]);
 
         if (models.Count > 1)
-            return Emit(new WizardScreen.Choice(
+            return Emit(new SetupScreen.Choice(
                 ModelPickKey,
                 "Which model should gatto ask for?",
                 //the options are the server's own strings, rendered through the widget that sanitizes them.
                 [.. models.Select(m => new ChoiceOption(m, m))],
-                BodyRows: [new WizardRow("This server lists several. gatto names one on every "
+                BodyRows: [new SetupRow("This server lists several. gatto names one on every "
                     + "request; you can change it later in gatto.json.")],
                 //leave the rows unnumbered, the server's own strings can be any length or count and the footer names the arrows
                 Unnumbered: true),
                 ModelPickKey);
 
         //keep the question in the title and the reason in the body (a title carrying both became the longest line)
-        return Emit(new WizardScreen.Ask(
+        return Emit(new SetupScreen.Ask(
             ModelNameKey,
             "What model should gatto ask for?",
-            BodyRows: [new WizardRow("This server didn't list its models. gatto names one on every "
+            BodyRows: [new SetupRow("This server didn't list its models. gatto names one on every "
                 + "request, so it needs the name this server answers to.")],
             Validate: t => string.IsNullOrWhiteSpace(t) ? "Type the model name the server expects" : null,
             Placeholder: $"the name of the model this server answers to{Glyphs.Ellipsis}",
@@ -1589,7 +1589,7 @@ internal sealed class SetupFlow(ISetupProbes probes)
     }
 
     //write the intent, then pause, the prove reads gatto.json from disk and would measure the config that stood before this flow
-    private WizardScreen FinishConnect(string endpointName, string modelId)
+    private SetupScreen FinishConnect(string endpointName, string modelId)
     {
         _connectModel = modelId;
         Writes = Writes with
@@ -1618,7 +1618,7 @@ internal sealed class SetupFlow(ISetupProbes probes)
         public static readonly int Column = Labels.Max(l => l.Length) + 3;
 
         //one fact row, whose hang keeps a wrapped value under its own column rather than at the margin. the lift marks a file name the reader must recognise later.
-        public static WizardRow Row(string label, string value, string? lift = null) =>
+        public static SetupRow Row(string label, string value, string? lift = null) =>
             new(label.PadRight(Column) + value, RowTone.Aside, Indent: 0, Hang: Column,
                 Lift: lift is null ? null : [lift]);
 
@@ -1638,16 +1638,16 @@ internal sealed class SetupFlow(ISetupProbes probes)
         public static readonly int Column = Labels.Max(l => l.Length) + 3;
 
         //let this row take the two cells the frame keeps for prose, a fact block folds where prose wraps
-        public static WizardRow Row(string label, string value, string? lift = null, bool wide = false) =>
+        public static SetupRow Row(string label, string value, string? lift = null, bool wide = false) =>
             new(label.PadRight(Column) + value, RowTone.Aside, Indent: 0, Hang: Column,
                 Lift: lift is null ? null : [lift], Wide: wide);
 
         //a second line under a fact, at the fact's own column, so a continuation never sits off the value it continues.
-        public static WizardRow Cont(string value, bool wide = false) =>
+        public static SetupRow Cont(string value, bool wide = false) =>
             new(new string(' ', Column) + value, RowTone.Aside, Indent: 0, Hang: Column, Wide: wide);
 
         //a fact whose value is a list that may break only between its items.
-        public static WizardRow Row(string label, IReadOnlyList<string> items) =>
+        public static SetupRow Row(string label, IReadOnlyList<string> items) =>
             new(label.PadRight(Column), RowTone.Aside, Indent: 0, Hang: Column, Items: items);
     }
 
@@ -1661,7 +1661,7 @@ internal sealed class SetupFlow(ISetupProbes probes)
         public static readonly int Column = Labels.Max(l => l.Length) + 3;
 
         //one fact row at this block's column, the same shape as the engine block but deliberately not shared, the column must differ
-        public static WizardRow Row(string label, string value, string? lift = null) =>
+        public static SetupRow Row(string label, string value, string? lift = null) =>
             new(label.PadRight(Column) + value, RowTone.Aside, Indent: 0, Hang: Column,
                 Lift: lift is null ? null : [lift]);
     }
@@ -1706,11 +1706,11 @@ internal sealed class SetupFlow(ISetupProbes probes)
         "Use a server you start yourself, LM Studio, Ollama, or another";
 
     //the one home for the opening fact of why this machine gets this build, both variables highlighted
-    private static WizardRow SteeringRow(Gatto.Roles.Serve.LlamaAsset asset) =>
+    private static SetupRow SteeringRow(Gatto.Roles.Serve.LlamaAsset asset) =>
         new($"According to your hardware, {asset.HardwareFact}, you need the {asset.BuildName} build.",
             Highlight: [asset.HardwareFact, asset.BuildName]);
 
-    private WizardScreen NextLlamaSegment()
+    private SetupScreen NextLlamaSegment()
     {
         //sweep every engine rather than reading one configured path, a machine with two builds is the case this screen exists for
         foreach (var engine in probes.EngineSweep())
@@ -1724,8 +1724,8 @@ internal sealed class SetupFlow(ISetupProbes probes)
                     Gatto.Roles.Serve.LlamaAssetSteering.Classify(build, engine.GattoFolder));
 
             //an exe that fails verification is not a found engine, the sweep is gatto's guess. a skipped engine goes into a note instead of a screen
-            _narrate.Add(new WizardScreen.Info(EngineSkippedKey,
-                [new WizardRow(
+            _narrate.Add(new SetupScreen.Info(EngineSkippedKey,
+                [new SetupRow(
                     $"skipped {System.IO.Path.GetFileName(engine.Path)}, {SweepSkipReason(result)}",
                     RowTone.Aside)]));
         }
@@ -1746,7 +1746,7 @@ internal sealed class SetupFlow(ISetupProbes probes)
     };
 
     //the found screen states three facts and offers the two roads out. it asks nothing about whether the engine exists, the title already asks which build to run
-    private WizardScreen Found(string path, string build, Gatto.Roles.Serve.LlamaAssetSteering.FoundState state)
+    private SetupScreen Found(string path, string build, Gatto.Roles.Serve.LlamaAssetSteering.FoundState state)
     {
         //hold the exe the screen named, a second sweep at answer time could disagree with the row the user saw
         _foundEngine = path;
@@ -1786,13 +1786,13 @@ internal sealed class SetupFlow(ISetupProbes probes)
             _ => throw new ArgumentOutOfRangeException(nameof(state), state, "no found arm for this state"),
         };
 
-        return Emit(new WizardScreen.Choice(
+        return Emit(new SetupScreen.Choice(
         FoundKey,
         EngineTitle,
         arm.Options,
         BodyRows:
         [
-            new WizardRow("llama-server.exe is already on this machine.", Glyph: RowGlyph.Good),
+            new SetupRow("llama-server.exe is already on this machine.", Glyph: RowGlyph.Good),
             "",
             EngineFacts.Row(EngineFacts.Found, path),
             //spell the build through ReleaseName, the probe captures what the banner said while gatto writes the b form elsewhere
@@ -1800,14 +1800,14 @@ internal sealed class SetupFlow(ISetupProbes probes)
             //use the past tense, this reports a run that already happened and the build above came from that same run
             EngineFacts.Row(EngineFacts.Checked, "it ran, and it answered as the server gatto drives"),
             //show the one dim line on the arm where the default flips, it explains why the shelf's answers depend on the engine
-            .. arm.Note is null ? (IReadOnlyList<WizardRow>)[] : ["", new WizardRow(arm.Note, RowTone.Aside)],
+            .. arm.Note is null ? (IReadOnlyList<SetupRow>)[] : ["", new SetupRow(arm.Note, RowTone.Aside)],
         ],
         //keep the door idle rather than focused, a user with one engine is not being asked to type
         Door: LlamaDoorPlaceholderOf(Glyphs)), FoundKey);
     }
 
     //fail closed on a key this screen does not know, treating any other answer as use-it would commit a config write by omission
-    private WizardScreen AnswerFound(string optionKey)
+    private SetupScreen AnswerFound(string optionKey)
     {
         if (optionKey == ForkConnect) return TakeConnectRoad();
 
@@ -1835,17 +1835,17 @@ internal sealed class SetupFlow(ISetupProbes probes)
             : null;
 
     //the engine step with nothing found: fetch the engine, fall back to a manual download, or steer when no fetch is possible.
-    private WizardScreen NoEngine() =>
+    private SetupScreen NoEngine() =>
         FetchableOffer() is not { } offer ? Steer()
         : offer.Assets is not null ? Consent(offer)
         : Fallback(offer, "gatto couldn't reach GitHub to fetch the engine, so this time the "
             + "download is yours, everything below is exact.");
 
     //the one question before the engine download, stating what arrives, where from and where it goes. the size is read from GitHub rather than estimated
-    private WizardScreen Consent(Offer offer)
+    private SetupScreen Consent(Offer offer)
     {
         _offer = offer;
-        return Emit(new WizardScreen.Choice(
+        return Emit(new SetupScreen.Choice(
             ConsentKey,
             EngineTitle,
             [
@@ -1855,7 +1855,7 @@ internal sealed class SetupFlow(ISetupProbes probes)
             BodyRows:
             [
                 //lift llama.cpp rather than accent it, the engine is the subject of the sentence
-                new WizardRow(
+                new SetupRow(
                     "Models don't run by themselves, they need an engine: llama.cpp, the open-source "
                     + "server gatto drives. gatto looked in the usual places and hasn't found it.",
                     RowTone.Aside, Lift: ["llama.cpp"]),
@@ -1868,20 +1868,20 @@ internal sealed class SetupFlow(ISetupProbes probes)
     }
 
     //the offline arm, shown when the release read or the fetch failed, using the same destination the consent screen names
-    private WizardScreen Fallback(Offer offer, string why)
+    private SetupScreen Fallback(Offer offer, string why)
     {
         _offer = offer;
-        return Emit(new WizardScreen.Choice(
+        return Emit(new SetupScreen.Choice(
             FallbackKey,
             EngineTitle,
             [new ChoiceOption(FallbackDone, "Done, check that folder")],
-            BodyRows: [new WizardRow(why, RowTone.Aside), "", SteeringRow(offer.Pick)],
+            BodyRows: [new SetupRow(why, RowTone.Aside), "", SteeringRow(offer.Pick)],
             Engine: EngineBlock(offer, gattoFetches: false),
             Door: LlamaDoorPlaceholderOf(Glyphs)), FallbackKey);
     }
 
     //verify what arrived through the same probe every other door runs, so a wrong exe is refused before it runs
-    private WizardScreen StartFetch(Offer offer)
+    private SetupScreen StartFetch(Offer offer)
     {
         //non-null by construction, both call sites match Assets first
         var assets = offer.Assets!;
@@ -1893,7 +1893,7 @@ internal sealed class SetupFlow(ISetupProbes probes)
     }
 
     //the fetch has stopped, either it finished or Esc stopped it
-    private WizardScreen AfterFetch(Offer offer, string answer)
+    private SetupScreen AfterFetch(Offer offer, string answer)
     {
         var fetch = _fetching!;
         _fetching = null;
@@ -1935,13 +1935,13 @@ internal sealed class SetupFlow(ISetupProbes probes)
     }
 
     //the engine arrived, so this line states a verification result rather than repeating the answer the user just gave.
-    private WizardScreen Fetched(Offer offer, string zipName) => Emit(new WizardScreen.Choice(
+    private SetupScreen Fetched(Offer offer, string zipName) => Emit(new SetupScreen.Choice(
         FetchedKey,
         EngineTitle,
         [new ChoiceOption(FetchedNext, "next"), new ChoiceOption(FetchedLeave, "leave")],
         BodyRows:
         [
-            new WizardRow("That's the one, fetched, verified, and it answers as the server gatto "
+            new SetupRow("That's the one, fetched, verified, and it answers as the server gatto "
                 + "drives.", RowTone.Aside, Glyph: RowGlyph.Good, Lift: ["That's the one"]),
             "",
             EngineFacts.Row("fetched", zipName + $" {Glyphs.Dot} digest matched", lift: zipName),
@@ -1956,7 +1956,7 @@ internal sealed class SetupFlow(ISetupProbes probes)
         //let the face supply the elapsed time from the watch it just ran, a figure composed here would be a second clock
         PurredSinceWatch: true), FetchedKey);
 
-    private WizardScreen AnswerConsent(string optionKey)
+    private SetupScreen AnswerConsent(string optionKey)
     {
         if (optionKey == ForkConnect) return TakeConnectRoad();
 
@@ -1969,10 +1969,10 @@ internal sealed class SetupFlow(ISetupProbes probes)
     }
 
     //the screen where gatto does the work, one option only (nothing to choose). reuses the consent's EngineView, so nothing changes while the user watches
-    private WizardScreen Fetching(Offer offer)
+    private SetupScreen Fetching(Offer offer)
     {
         _offer = offer;
-        return Emit(new WizardScreen.Choice(
+        return Emit(new SetupScreen.Choice(
             FetchingKey,
             EngineTitle,
             //declare the key even though its face cannot reach this screen. a fact stated only where it matters now turns a later reachability change into a defect
@@ -1980,7 +1980,7 @@ internal sealed class SetupFlow(ISetupProbes probes)
             BodyRows:
             [
                 //state the screen's whole job in one aside, it is context for the rows below. a companion download gets its own sentence, both files must reach one folder
-                new WizardRow(offer.Assets?.Companion is null
+                new SetupRow(offer.Assets?.Companion is null
                     ? "Nothing to do here, gatto fetches the build, checks it against GitHub's own "
                         + "digest, and moves on by itself."
                     : "Nothing to do here, gatto fetches both files into one folder, checks each "
@@ -1992,23 +1992,23 @@ internal sealed class SetupFlow(ISetupProbes probes)
     }
 
     //one entry for both endings of the watch, each means the fetch has stopped and which one it was is the parameter
-    private WizardScreen AnswerFetching(string answer) => AfterFetch(_offer!, answer);
+    private SetupScreen AnswerFetching(string answer) => AfterFetch(_offer!, answer);
 
     //answer with the folder rather than a composed exe path, one resolution rule finds the server inside it
-    private WizardScreen AnswerFallback(string optionKey) =>
+    private SetupScreen AnswerFallback(string optionKey) =>
         optionKey == FallbackDone
             ? VerifyLlama(_offer!.Into)
             : throw new InvalidOperationException(
                 $"the fallback screen has no handler for the answer '{optionKey}'");
 
-    private WizardScreen AnswerFetched(string optionKey) =>
+    private SetupScreen AnswerFetched(string optionKey) =>
         optionKey == FetchedNext ? Discover(extraRoot: null) : Leave();
 
     //name the one asset this machine wants, companion included as the same unit, choosing among thirteen needs facts a user cannot know
 
     //the screen for a machine gatto cannot read, it states no build and offers no fetch (gatto must not guess a build it cannot price)
-    private WizardScreen Steer() =>
-        Emit(new WizardScreen.Choice(
+    private SetupScreen Steer() =>
+        Emit(new SetupScreen.Choice(
             SteerKey,
             EngineTitle,
             [new ChoiceOption(ForkConnect, ConnectDoorLabel)],
@@ -2037,7 +2037,7 @@ internal sealed class SetupFlow(ISetupProbes probes)
             : null;
 
     //drive every branch off ProbeShape rather than parsing the output, and leave the cuda-no-device shape out until a real run captures it
-    private WizardScreen VerifyLlama(string path)
+    private SetupScreen VerifyLlama(string path)
     {
         var result = probes.VerifyLlamaServer(path);
         if (LlamaProbeComplaint(result.Shape, probes.ChooseLlamaAsset()?.CudartZipName is not null,
@@ -2049,7 +2049,7 @@ internal sealed class SetupFlow(ISetupProbes probes)
         _llamaPath = verified;
         Writes = Writes with { LlamaServer = verified };
         //keep this narration line, it reports a verification result rather than repeating the answer, and the channel hands it to a face
-        _narrate.Add(new WizardScreen.Info("llama.ok", [new WizardRow($"{Glyphs.Ok} That's the one")]));
+        _narrate.Add(new SetupScreen.Info("llama.ok", [new SetupRow($"{Glyphs.Ok} That's the one")]));
         return Discover(extraRoot: null);
     }
 
@@ -2095,28 +2095,28 @@ internal sealed class SetupFlow(ISetupProbes probes)
     };
 
     //two failure arms, re-checking the same path helps only when the file is right, otherwise the typed door is the only move
-    private WizardScreen Failed(Gatto.Core.Acquire.ProbeShape shape, string sentence, string tested)
+    private SetupScreen Failed(Gatto.Core.Acquire.ProbeShape shape, string sentence, string tested)
     {
         _foundEngine = tested;
 
-        IReadOnlyList<WizardRow> body =
+        IReadOnlyList<SetupRow> body =
         [
             //accent the exe name inside the sentence, it is the word to look for, and the highlight skips a span that is absent
-            new WizardRow(sentence, Highlight: [Gatto.Roles.Serve.EngineSearch.ExeName], Glyph: RowGlyph.Bad),
+            new SetupRow(sentence, Highlight: [Gatto.Roles.Serve.EngineSearch.ExeName], Glyph: RowGlyph.Bad),
             "",
             EngineFacts.Row(EngineFacts.Tested, tested),
         ];
 
         //name the runtime shape explicitly, only there does re-checking the same path help. every other shape falls to the typed door
         if (shape is Gatto.Core.Acquire.ProbeShape.DllNotFound)
-            return Emit(new WizardScreen.Choice(
+            return Emit(new SetupScreen.Choice(
                 FailedKey,
                 EngineTitle,
                 [new ChoiceOption(FailedRetry, "Check it again")],
                 BodyRows: body,
                 Door: LlamaDoorPlaceholderOf(Glyphs)), FailedKey);
 
-        return Emit(new WizardScreen.Ask(
+        return Emit(new SetupScreen.Ask(
             LlamaPathKey,
             //use the step's title as the label, the bad row says what happened and this says where in the flow the user is
             Label: EngineTitle,
@@ -2150,17 +2150,17 @@ internal sealed class SetupFlow(ISetupProbes probes)
     }
 
     //return nothing when there is only one file, the sentence exists to explain two files and absence is the honest copy
-    private IReadOnlyList<WizardRow> ConsentProse(ModelFetchOffer offer)
+    private IReadOnlyList<SetupRow> ConsentProse(ModelFetchOffer offer)
     {
         //show the root note first, it is about the deed the user just did
         if (_rootNote is { Length: > 0 } note)
-            return [new WizardRow(note, RowTone.Aside)];
+            return [new SetupRow(note, RowTone.Aside)];
         var shards = offer.Weights.Members.Count;
         if (shards > 1)
-            return [new WizardRow($"This model is {shards} files, gatto fetches them one by one "
+            return [new SetupRow($"This model is {shards} files, gatto fetches them one by one "
                 + "into one folder, and checks each file, byte for byte, as it lands.", RowTone.Aside)];
         if (offer.Projector is not null)
-            return [new WizardRow($"{ModelDisplayName(offer.RepoId)} can see images, so the fetch "
+            return [new SetupRow($"{ModelDisplayName(offer.RepoId)} can see images, so the fetch "
                 + "is two files, the model and the small encoder that does the seeing.", RowTone.Aside)];
         return [];
     }
@@ -2196,13 +2196,13 @@ internal sealed class SetupFlow(ISetupProbes probes)
         $"resume {ModelDisplayName(p.RepoId)}, {SizeWords.Auto(p.Done)} of {SizeWords.Auto(p.Total)}";
 
     //gatto asks before it fetches. one option, the way out is Esc and the footer says so. a second numbered row saying no is the same choice offered twice
-    private WizardScreen ModelConsent(ModelFetchOffer offer)
+    private SetupScreen ModelConsent(ModelFetchOffer offer)
     {
         _modelOffer = offer;
         _modelView = ViewOf(offer);
         //reset the clock for a new consent, resuming skips this screen and the elapsed must accumulate across a drop
         _modelElapsedMs = 0;
-        return Emit(new WizardScreen.Choice(
+        return Emit(new SetupScreen.Choice(
             ModelConsentKey,
             ModelTitle,
             //add the second option, one option plus an escape is a trap with no way back to the shelf. reuses the watch screen's words, no new copy
@@ -2215,10 +2215,10 @@ internal sealed class SetupFlow(ISetupProbes probes)
     }
 
     //the fetch runs and the user waits, the face draws from the tick the flow stores
-    private WizardScreen ModelFetching()
+    private SetupScreen ModelFetching()
     {
         var shards = _modelOffer!.Weights.Members.Count;
-        return Emit(new WizardScreen.Choice(
+        return Emit(new SetupScreen.Choice(
             ModelFetchingKey,
             ModelTitle,
             //pause keeps the bytes and stop deletes the partial. the escape option goes last, as the face requires on a watching screen
@@ -2228,7 +2228,7 @@ internal sealed class SetupFlow(ISetupProbes probes)
             ],
             BodyRows:
             [
-                new WizardRow(shards > 1
+                new SetupRow(shards > 1
                     ? $"This model is {shards} files, gatto fetches them one by one into one folder, "
                         + "and checks each file, byte for byte, as it lands."
                     : "Nothing to do here, gatto fetches, checks each file is byte for byte the one "
@@ -2240,7 +2240,7 @@ internal sealed class SetupFlow(ISetupProbes probes)
     }
 
     //nothing is running here, so stop deletes the partial through the probe and goes back to consent, as the live stop does
-    private WizardScreen AnswerModelFetchingPaused(string answer)
+    private SetupScreen AnswerModelFetchingPaused(string answer)
     {
         if (answer == ModelFetchResume)
         {
@@ -2260,10 +2260,10 @@ internal sealed class SetupFlow(ISetupProbes probes)
     }
 
     //keep Watching true while paused, the escape chord depends on it and Esc would otherwise leave the session with the bytes still on disk
-    private WizardScreen ModelFetchingPaused()
+    private SetupScreen ModelFetchingPaused()
     {
         var shards = _modelOffer!.Weights.Members.Count;
-        return Emit(new WizardScreen.Choice(
+        return Emit(new SetupScreen.Choice(
             ModelFetchingPausedKey,
             ModelTitle,
             //put resume on the key that paused, a screen whose only ways out delete the bytes is a trap. the go-back option stays out, an option leading nowhere is worse
@@ -2273,7 +2273,7 @@ internal sealed class SetupFlow(ISetupProbes probes)
             ],
             BodyRows:
             [
-                new WizardRow(shards > 1
+                new SetupRow(shards > 1
                     ? $"This model is {shards} files, gatto fetches them one by one into one folder, "
                         + "and checks each file, byte for byte, as it lands."
                     : "Nothing to do here, gatto fetches, checks each file is byte for byte the one "
@@ -2286,20 +2286,20 @@ internal sealed class SetupFlow(ISetupProbes probes)
     }
 
     //every file was checked against its published digest, that's why the screen says byte for byte. the elapsed comes from the caller, a second clock could disagree
-    private WizardScreen ModelArrived(ModelView view, long elapsedMs)
+    private SetupScreen ModelArrived(ModelView view, long elapsedMs)
     {
         //set the verified flag here, the fetch checked every file to reach it, other routes to this screen don't
         _modelVerified = true;
         return ModelArrivedScreen(view, elapsedMs);
     }
 
-    private WizardScreen ModelArrivedScreen(ModelView view, long elapsedMs) => Emit(new WizardScreen.Choice(
+    private SetupScreen ModelArrivedScreen(ModelView view, long elapsedMs) => Emit(new SetupScreen.Choice(
         ModelArrivedKey,
         ModelTitle,
         [new ChoiceOption(ModelArrivedNext, "next"), new ChoiceOption(ModelArrivedLeave, "leave")],
         BodyRows:
         [
-            new WizardRow($"{view.First.Name} arrived, byte for byte the "
+            new SetupRow($"{view.First.Name} arrived, byte for byte the "
                 + (view.Files.Count > 1 ? "files" : "file") + " Hugging Face publishes.",
                 RowTone.Aside, Glyph: RowGlyph.Good, Lift: [view.First.Name]),
             "",
@@ -2316,19 +2316,19 @@ internal sealed class SetupFlow(ISetupProbes probes)
 
 
     //keep the partial after a drop, an option that deleted it would break the promise on the screen. the two rows read one figure off the kept tick
-    private WizardScreen ModelDropped(FetchTick kept)
+    private SetupScreen ModelDropped(FetchTick kept)
     {
         var (done, total) = SizeWords.Pair(kept.Done, kept.Total);
         //the delete option appears only on the setup screen. a session leaves on one Esc, a delete no line shows must not destroy bytes
         _droppedPartial = _addRoad ? null : _modelOffer;
-        return Emit(new WizardScreen.Choice(
+        return Emit(new SetupScreen.Choice(
             ModelDroppedKey,
             ModelTitle,
             [new ChoiceOption(ModelResume, "Resume the fetch"),
              new ChoiceOption(PickAnother, "Pick a different model", Advances: false)],
             BodyRows:
             [
-                new WizardRow("The connection dropped mid-fetch. What already arrived is safe, "
+                new SetupRow("The connection dropped mid-fetch. What already arrived is safe, "
                     + "resuming picks up where it stopped, nothing is fetched twice.",
                     RowTone.Aside, Glyph: RowGlyph.Bad),
                 "",
@@ -2339,14 +2339,14 @@ internal sealed class SetupFlow(ISetupProbes probes)
     }
 
     //show both fingerprints, a screen saying only there was no match leaves nothing to check. the bad file is deleted, nothing is kept and no delete is promised
-    private WizardScreen ModelMismatch(Gatto.Core.Acquire.HubFetchResult got) => Emit(new WizardScreen.Choice(
+    private SetupScreen ModelMismatch(Gatto.Core.Acquire.HubFetchResult got) => Emit(new SetupScreen.Choice(
         ModelMismatchKey,
         ModelTitle,
         [new ChoiceOption(ModelRefetch, "Fetch it again"),
          new ChoiceOption(PickAnother, "Pick a different model", Advances: false)],
         BodyRows:
         [
-            new WizardRow("What arrived is not the file Hugging Face publishes, the copy broke "
+            new SetupRow("What arrived is not the file Hugging Face publishes, the copy broke "
                 + "somewhere on the way, so gatto deleted it. Fetching again usually fixes it.",
                 RowTone.Aside, Glyph: RowGlyph.Bad),
             "",
@@ -2361,13 +2361,13 @@ internal sealed class SetupFlow(ISetupProbes probes)
         System.IO.Path.GetDirectoryName(path) + System.IO.Path.DirectorySeparatorChar;
 
     //set _arrivedByWatch where the watch's find is adopted, so OfferMove gives the arrival's words rather than a bare question
-    private WizardScreen AdoptFromWatch(FoundModel model)
+    private SetupScreen AdoptFromWatch(FoundModel model)
     {
         _arrivedByWatch = true;
         return Adopt(model);
     }
 
-    private WizardScreen AnswerModelEnding(string key)
+    private SetupScreen AnswerModelEnding(string key)
     {
         //clear _droppedPartial before the switch, every option here removes the delete promise. a path added later must not leave it standing
         _droppedPartial = null;
@@ -2383,7 +2383,7 @@ internal sealed class SetupFlow(ISetupProbes probes)
     }
 
     //nothing is written here, the root is only a Writes intent. a folder typed and entered accepts the consent, a refusal keeps the screen
-    private WizardScreen TypedWeightsRoot(string typed)
+    private SetupScreen TypedWeightsRoot(string typed)
     {
         //treat an empty answer as no folder, accepting it would set an empty root as a Writes intent and the scaffold writes it
         if (string.IsNullOrWhiteSpace(typed)) return ModelConsent(_modelOffer!);
@@ -2414,7 +2414,7 @@ internal sealed class SetupFlow(ISetupProbes probes)
     }
 
     //start a fetch only on the fetch key, everything else goes to TypedWeightsRoot and back to this screen. never throw here, the screen offers the typed row itself
-    private WizardScreen AnswerModelConsent(string key)
+    private SetupScreen AnswerModelConsent(string key)
     {
         //send PickAnother to Search, the one place that shows the shelf again, so this screen cannot drift from the watch screen's copy
         if (key == PickAnother) return Search();
@@ -2428,7 +2428,7 @@ internal sealed class SetupFlow(ISetupProbes probes)
     }
 
     //run the fetch on a task the screen watches, a synchronous fetch leaves no clock turning and the progress bar cannot move
-    private WizardScreen StartModelFetch(ModelFetchOffer offer)
+    private SetupScreen StartModelFetch(ModelFetchOffer offer)
     {
         _modelFetchCancel = new CancellationTokenSource();
         var ct = _modelFetchCancel.Token;
@@ -2445,7 +2445,7 @@ internal sealed class SetupFlow(ISetupProbes probes)
     }
 
     //the fetch stopped (finished, dropped, paused or stopped by a key), its outcome picks the next screen
-    private WizardScreen AfterModelFetch(string answer)
+    private SetupScreen AfterModelFetch(string answer)
     {
         var fetch = _modelFetch!;
         _modelFetch = null;
@@ -2497,7 +2497,7 @@ internal sealed class SetupFlow(ISetupProbes probes)
     }
 
     //rescan the disk instead of composing a FoundModel from the offer, adopt refuses an incomplete set and only the disk can say it's complete
-    private WizardScreen AnswerModelArrived(string key)
+    private SetupScreen AnswerModelArrived(string key)
     {
         if (key != ModelArrivedNext) return Leave();
 
@@ -2511,7 +2511,7 @@ internal sealed class SetupFlow(ISetupProbes probes)
     }
 
     //offer what is already on this machine before proposing a download, an empty scan is normal rather than a failure
-    private WizardScreen Discover(string? extraRoot)
+    private SetupScreen Discover(string? extraRoot)
     {
         //keep the discovered list first on the plain face, it cannot bind m, hiding the list behind the key would delete it
         if (!CanSwitchSource)
@@ -2536,13 +2536,13 @@ internal sealed class SetupFlow(ISetupProbes probes)
     }
 
     //open the local shelf on an outage only when this machine has models, an empty machine gets the Hub's failure screen. scope it to the arrival only
-    private WizardScreen AfterDiscover() =>
+    private SetupScreen AfterDiscover() =>
         _searchCause is HubSearchCause.HubFailed && _discovered.Count > 0
             ? DiscoveredScreen(heading: null, notice: OutOfReach)
             : SearchScreen();
 
     //treat a typed .gguf as the model itself, sweep its folder and adopt the scan's row (a second FoundModel here could disagree)
-    private WizardScreen DiscoverTyped(string root)
+    private SetupScreen DiscoverTyped(string root)
     {
         _pickedFromLocal = true;
         //sweep a non-.gguf path as itself, and a .gguf's folder, a file path as a folder hides every model
@@ -2565,7 +2565,7 @@ internal sealed class SetupFlow(ISetupProbes probes)
     }
 
     //a typed .gguf the sweep found is adopted, and anything else answers with the local shelf and its invitation, so an empty folder says so
-    private WizardScreen AfterTyped(string root) =>
+    private SetupScreen AfterTyped(string root) =>
         root.EndsWith(".gguf", StringComparison.OrdinalIgnoreCase)
         && _discovered.FirstOrDefault(m => string.Equals(m.Path, root, StringComparison.OrdinalIgnoreCase)) is { } named
             ? Adopt(named)
@@ -2590,11 +2590,11 @@ internal sealed class SetupFlow(ISetupProbes probes)
     }
 
     //build the list over the last scan, the folder answer matches filenames against those results. set invitation only where the user asked for this shelf
-    private WizardScreen DiscoveredScreen(string? heading, string? notice = null, bool invitation = false)
+    private SetupScreen DiscoveredScreen(string? heading, string? notice = null, bool invitation = false)
     {
         //the empty shelf names where gatto looked and invites a folder, the user's models may live on a drive that was never scanned
         if (invitation && _discovered.Count == 0 && _scanRoots.Count > 0)
-            return Emit(new WizardScreen.Choice(
+            return Emit(new SetupScreen.Choice(
                 DiscoveredKey,
                 ModelTitle,
                 //the door types a folder and Esc reaches the Hub, so the shelf has no option rows
@@ -2611,8 +2611,8 @@ internal sealed class SetupFlow(ISetupProbes probes)
             {
                 if (_rows.Count > 0)
                     //put this on the narration channel rather than _emitted, a row queued behind the returned screen is never read
-                    _narrate.Add(new WizardScreen.Info("model.none",
-                        [new WizardRow("No models found on this machine yet"), .. LookedInRows()]));
+                    _narrate.Add(new SetupScreen.Info("model.none",
+                        [new SetupRow("No models found on this machine yet"), .. LookedInRows()]));
                 return SearchScreen();
             });
         }
@@ -2642,12 +2642,12 @@ internal sealed class SetupFlow(ISetupProbes probes)
                 g.Name,
                 $"{Gb((ulong)Math.Max(0, m.FileBytes))} {Glyphs.Dot} {System.IO.Path.GetDirectoryName(m.Path)}"));
 
-        return Emit(new WizardScreen.Choice(
+        return Emit(new SetupScreen.Choice(
             DiscoveredKey,
             heading ?? (groups.Count == 1 ? "Found a model already on this machine" : $"Found {groups.Count} models already on this machine"),
             options,
             //draw the notice in the body above the chips, where the Hub shelf puts its discovery line, so a shelf's reason always appears there
-            BodyRows: notice is { Length: > 0 } why ? [new WizardRow(why, Tone: RowTone.Aside)] : [],
+            BodyRows: notice is { Length: > 0 } why ? [new SetupRow(why, Tone: RowTone.Aside)] : [],
             //keep the door even when a chip empties the shelf, only the filter can empty it here. a null door and shelf make the face draw a numbered list
             Door: LocalShelfDoorPlaceholderOf(Glyphs),
             //draw the local list through the same shelf view as the Hub, only the source differs
@@ -2656,7 +2656,7 @@ internal sealed class SetupFlow(ISetupProbes probes)
     }
 
     //the fit check decides the shelf's rows. an empty result offers the ways that still work
-    private WizardScreen Search(IReadOnlyList<ModelRow>? keepIfEmpty = null, Func<WizardScreen>? then = null)
+    private SetupScreen Search(IReadOnlyList<ModelRow>? keepIfEmpty = null, Func<SetupScreen>? then = null)
     {
         //any search replaces a looked-up row
         _lookedUp = null;
@@ -2703,7 +2703,7 @@ internal sealed class SetupFlow(ISetupProbes probes)
     private sealed record ShelfLoad(
         ShelfSource Source, Task<ScanResult>? Scan, string? ScanRoot,
         Task<ShelfOutcome>? Search, CancellationTokenSource? Stop,
-        IReadOnlyList<ModelRow>? KeepIfEmpty, Func<WizardScreen> Then,
+        IReadOnlyList<ModelRow>? KeepIfEmpty, Func<SetupScreen> Then,
         Task? Other = null, string? Step = null,   //another wait the landing reads through Then, a typed repo id's lookup, with the step line that names it
         bool Opening = false,   //drawn on the start-up screen rather than the loading shelf
         Serving? Serving = null);   //the serving probe the landed shelf marks its loaded model from
@@ -2742,7 +2742,7 @@ internal sealed class SetupFlow(ISetupProbes probes)
     }
 
     //a sort, a local chip or a local a draws the same rows in another order or subset, so it asks the server nothing
-    private WizardScreen Rearranged(Func<WizardScreen> screen)
+    private SetupScreen Rearranged(Func<SetupScreen> screen)
     {
         _rearranging = true;
         try { return screen(); }
@@ -2761,8 +2761,8 @@ internal sealed class SetupFlow(ISetupProbes probes)
     private bool _stepAwaitsLoad;
 
     //start the scan, the search or both on the pool and draw the loading shelf at once. a scan already running can be carried over
-    private WizardScreen StartLoad(bool scan, string? scanRoot, bool search,
-        IReadOnlyList<ModelRow>? keepIfEmpty, Func<WizardScreen> then,
+    private SetupScreen StartLoad(bool scan, string? scanRoot, bool search,
+        IReadOnlyList<ModelRow>? keepIfEmpty, Func<SetupScreen> then,
         ShelfSource source = ShelfSource.Hub, Task<ScanResult>? scanning = null,
         Task? other = null, string? step = null, bool opening = false, bool serving = true)
     {
@@ -2801,16 +2801,16 @@ internal sealed class SetupFlow(ISetupProbes probes)
     }
 
     //the same load asked again with the controls as they are now, keeping the scan it already started
-    private WizardScreen RestartSearch(ShelfLoad load) =>
+    private SetupScreen RestartSearch(ShelfLoad load) =>
         StartLoad(scan: false, load.ScanRoot, search: true, load.KeepIfEmpty, load.Then, load.Source,
             scanning: load.Scan);
 
     //the shelf with every control in place and no rows yet. the face draws the purr and the step line from PollShelfLoad
-    private WizardScreen LoadingScreen()
+    private SetupScreen LoadingScreen()
     {
         if (_load is { Opening: true }) return StartingScreen();
         var hub = _load?.Source != ShelfSource.Local;
-        var screen = (WizardScreen.Choice)Emit(new WizardScreen.Choice(
+        var screen = (SetupScreen.Choice)Emit(new SetupScreen.Choice(
             ShelfLoadingKey,
             ModelTitle,
             [],
@@ -2829,8 +2829,8 @@ internal sealed class SetupFlow(ISetupProbes probes)
     }
 
     //the start-up screen: the cat, one sentence, and the purr and the step line the face draws beside them from PollShelfLoad
-    private WizardScreen StartingScreen() => Emit(new WizardScreen.Choice(
-            ShelfLoadingKey, null, [], BodyRows: [new WizardRow(StartingWait)], Watching: true)
+    private SetupScreen StartingScreen() => Emit(new SetupScreen.Choice(
+            ShelfLoadingKey, null, [], BodyRows: [new SetupRow(StartingWait)], Watching: true)
         { Hero = CatOf(Glyphs), Starting = true }, ShelfLoadingKey);
 
     //the start-up screen's sentence, whole in one place so a change of wording is one line
@@ -2887,7 +2887,7 @@ internal sealed class SetupFlow(ISetupProbes probes)
     }
 
     //every answer the loading shelf can give: its own landing, a chip or a term that restarts it, m, and the rest after a stop
-    private WizardScreen AnswerShelfLoading(string key)
+    private SetupScreen AnswerShelfLoading(string key)
     {
         if (_load is not { } load) return Search();
 
@@ -2939,13 +2939,13 @@ internal sealed class SetupFlow(ISetupProbes probes)
     }
 
     //apply what the load found on the flow's thread, then draw the screen it was started for
-    private WizardScreen Land(ShelfLoad load)
+    private SetupScreen Land(ShelfLoad load)
     {
         _load = null;
         if (load.Scan is { } scan) ApplyScan(Joined(scan, new ScanResult([], [])), load.ScanRoot);
         if (load.Search is { } search)
             ApplySearch(Joined(search, new ShelfOutcome([], 0, 0, 0, false, 0, [], null)), load.KeepIfEmpty);
-        WizardScreen shown;
+        SetupScreen shown;
         _servingNow = load.Serving is { } serving ? (Joined(serving.Id, null), Joined(serving.Path, null)) : null;
         try { shown = load.Then(); }
         finally { _servingNow = null; }
@@ -2968,7 +2968,7 @@ internal sealed class SetupFlow(ISetupProbes probes)
     }
 
     //draw the Hub shelf over whatever RunSearch last found
-    private WizardScreen SearchScreen()
+    private SetupScreen SearchScreen()
     {
         //keep the screen's own row budget, the engine's request cap is another component's number. the escape rows come out of the same budget
         var shown = Math.Min(_rows.Count, RowBudget);
@@ -3007,7 +3007,7 @@ internal sealed class SetupFlow(ISetupProbes probes)
 
 
         //say what these rows are first and the order second, keep a verdict word like best off the heading
-        return Emit(new WizardScreen.Choice(
+        return Emit(new SetupScreen.Choice(
             SearchKey,
             //the heading follows rows and the frame, so the typed-word sentence shows only where no shelf speaks
             Question: _rows.Count != 0 || HasLadder ? ModelTitle
@@ -3049,7 +3049,7 @@ internal sealed class SetupFlow(ISetupProbes probes)
     }
 
     //rescan on arrival, a download may have finished elsewhere since the first sweep. an old scan would deny the user their own file
-    private WizardScreen ToLocalShelf()
+    private SetupScreen ToLocalShelf()
     {
         //the sweep runs behind the local loading shelf where the face draws one, since a disk scan takes seconds
         if (LoadsShelfInBackground)
@@ -3237,15 +3237,15 @@ internal sealed class SetupFlow(ISetupProbes probes)
     private bool _carriedOver;
 
     //leave the root rows raw, the face is the sanitize seam, sanitizing here would be a second home for that rule
-    private IReadOnlyList<WizardRow> LookedInRows()
+    private IReadOnlyList<SetupRow> LookedInRows()
     {
         if (_scanRoots.Count == 0) return [];
-        return [.. new WizardRow[] { "", "gatto looked in:" }, .. RootRows()];
+        return [.. new SetupRow[] { "", "gatto looked in:" }, .. RootRows()];
     }
 
     //put the indent on the row rather than in the text, a wrapped path reads as two paths
-    private IReadOnlyList<WizardRow> RootRows() =>
-        [.. _scanRoots.Select(root => new WizardRow(root, Indent: 2))];
+    private IReadOnlyList<SetupRow> RootRows() =>
+        [.. _scanRoots.Select(root => new SetupRow(root, Indent: 2))];
 
     //the words are the user's, quoted and not paraphrased, quoting is what makes the sentence checkable by the person who typed it
     private string SearchEmptySentence() => $"nothing on Hugging Face answers \"{_search}\"";
@@ -3339,7 +3339,7 @@ internal sealed class SetupFlow(ISetupProbes probes)
     };
 
     //all branches end with the ways forward, an empty screen with no next step is where a wizard loses someone
-    private IReadOnlyList<WizardRow> EmptyRows(HubSearchCause? cause) => cause switch
+    private IReadOnlyList<SetupRow> EmptyRows(HubSearchCause? cause) => cause switch
     {
         //hardware line first, a user who reads the numbers sees arithmetic about their machine rather than an opinion about the models
         HubSearchCause.NothingFits =>
@@ -3385,14 +3385,14 @@ internal sealed class SetupFlow(ISetupProbes probes)
     ];
 
     //the count is the sweep's own, so the number and the shelf behind m cannot disagree. the two roads' wording differs on purpose
-    private static WizardRow DiscoveryRow(int found, bool inSession) =>
+    private static SetupRow DiscoveryRow(int found, bool inSession) =>
         new(inSession
                 ? $"gatto found {found} model{(found == 1 ? "" : "s")} on this machine not yet on its list, m shows them"
                 : $"gatto also found {found} model{(found == 1 ? "" : "s")} already on this machine, m shows them",
             Tone: RowTone.Aside, Keys: ["m"]);
 
     //no sweep means nothing to announce, no source switch means naming a key this face never binds
-    private IReadOnlyList<WizardRow> DiscoveryRows() =>
+    private IReadOnlyList<SetupRow> DiscoveryRows() =>
         OffersTheLocalShelf ? [DiscoveryRow(Announceable, _addRoad)] : [];
 
     //whether m has a local shelf with something on it, every m row reads this one predicate
@@ -3411,7 +3411,7 @@ internal sealed class SetupFlow(ISetupProbes probes)
     //one home for the ways out of an empty shelf, three branches offering them separately would drift
     private const string NextWays = "You can point gatto at a model you already have, or name one directly.";
 
-    private WizardScreen AnswerSearch(string key)
+    private SetupScreen AnswerSearch(string key)
     {
         //resuming goes to consent rather than straight to the transfer, the user agrees to the rest of the download. the fetch reads its own .part file
         if (key == ResumePausedFetch && probes.PausedFetches() is [{ } paused, ..]
@@ -3446,14 +3446,14 @@ internal sealed class SetupFlow(ISetupProbes probes)
         }
 
         if (key == TypeAnId || key == CtlSearch)
-            return Emit(new WizardScreen.Ask(
+            return Emit(new SetupScreen.Ask(
                 TypedIdKey,
                 "What is it called on Hugging Face?",
                 Validate: TypedIdProblem,
                 Placeholder: "Type or paste the id, e.g. org/model"), TypedIdKey);
 
         if (key == Elsewhere)
-            return Emit(new WizardScreen.Ask(
+            return Emit(new SetupScreen.Ask(
                 ScanPathKey,
                 "Which folder should gatto look in?",
                 Validate: t => Gatto.Roles.Serve.LlamaAssetSteering.NormalizePath(t).Length == 0 ? "Type a folder path" : null,
@@ -3467,14 +3467,14 @@ internal sealed class SetupFlow(ISetupProbes probes)
     }
 
     //remember the term before the walk, the empty screen quotes it and the shelf's controls rerun the search
-    private WizardScreen SearchFor(string text)
+    private SetupScreen SearchFor(string text)
     {
         _search = text.Length == 0 ? null : text;
         return Search();
     }
 
     //one classifier for both doors, so the two typing screens share one grammar
-    private WizardScreen AnswerTypedText(string typed)
+    private SetupScreen AnswerTypedText(string typed)
     {
         if (Gatto.Cli.Setup.Tui.TypedDoor.Classify(typed) == Gatto.Cli.Setup.Tui.DoorInput.Address) return AnswerAddress(typed);
         if (Gatto.Cli.Setup.Tui.TypedDoor.Classify(typed) == Gatto.Cli.Setup.Tui.DoorInput.Path)
@@ -3484,14 +3484,14 @@ internal sealed class SetupFlow(ISetupProbes probes)
     }
 
     //three outcomes, three sentences, a typo is not an outage
-    private WizardScreen AnswerTypedId(string typed)
+    private SetupScreen AnswerTypedId(string typed)
     {
         //classify what was typed before anything acts, search is the default, most of what gets typed is a search
         if (!HubUrl.TryParse(typed, out var reference)) return SearchFor(typed.Trim());
 
         if (reference is HubRef.Collection)
             //a collection is many models and gatto can't pick one, the sentence says what the link is
-            return Emit(new WizardScreen.Ask(
+            return Emit(new SetupScreen.Ask(
                 TypedIdKey,
                 "That's a collection, which is many models, open one of them and paste that instead",
                 Validate: TypedIdProblem,
@@ -3513,7 +3513,7 @@ internal sealed class SetupFlow(ISetupProbes probes)
     }
 
     //three outcomes of a typed repo id, three sentences, a typo is not an outage
-    private WizardScreen AnswerLookup(TypedIdOutcome outcome)
+    private SetupScreen AnswerLookup(TypedIdOutcome outcome)
     {
         switch (outcome)
         {
@@ -3522,7 +3522,7 @@ internal sealed class SetupFlow(ISetupProbes probes)
 
             case TypedIdOutcome.Malformed:
                 //the refusal names the shape of a valid name
-                return Emit(new WizardScreen.Ask(
+                return Emit(new SetupScreen.Ask(
                     TypedIdKey,
                     "That doesn't look like a Hugging Face name, they look like org/model, e.g. bartowski/Qwen3-8B-GGUF",
                     Validate: TypedIdProblem,
@@ -3530,7 +3530,7 @@ internal sealed class SetupFlow(ISetupProbes probes)
 
             //say it as a fact about the files, a verdict on the model is not allowed here
             case TypedIdOutcome.NoUsableQuant:
-                return Emit(new WizardScreen.Ask(
+                return Emit(new SetupScreen.Ask(
                     TypedIdKey,
                     "Found it, but none of its files fit this machine, try a smaller model",
                     Validate: TypedIdProblem,
@@ -3538,14 +3538,14 @@ internal sealed class SetupFlow(ISetupProbes probes)
 
             //say what the repo is, don't blame what the user typed
             case TypedIdOutcome.NoWeights:
-                return Emit(new WizardScreen.Ask(
+                return Emit(new SetupScreen.Ask(
                     TypedIdKey,
                     "Found it, but that repo publishes no weights, it holds no model to run",
                     Validate: TypedIdProblem,
                     Placeholder: "Type or paste the id, e.g. org/model"), TypedIdKey);
 
             case TypedIdOutcome.Unreachable u:
-                return Emit(new WizardScreen.Ask(
+                return Emit(new SetupScreen.Ask(
                     TypedIdKey,
                     u.Gated
                         ? "That one needs you to accept its licence on Hugging Face first"
@@ -3560,7 +3560,7 @@ internal sealed class SetupFlow(ISetupProbes probes)
     }
 
     //a typed repo id lands on the shelf as its one row, so the pane can choose another file before Enter goes forward with the row's pick
-    private WizardScreen LookedUp(ModelRow row)
+    private SetupScreen LookedUp(ModelRow row)
     {
         _lookedUp = row.RowFile?.RepoId ?? row.Model;
         _carriedOver = false;
@@ -3579,7 +3579,7 @@ internal sealed class SetupFlow(ISetupProbes probes)
     //after the pick: the download, and the watch
 
     //every pick ends on a screen that waits, an Info with nothing after it ends the run
-    private WizardScreen PickedFromHub(ModelRow row)
+    private SetupScreen PickedFromHub(ModelRow row)
     {
         Picked = row;
         _pickedFromLocal = false;
@@ -3592,19 +3592,19 @@ internal sealed class SetupFlow(ISetupProbes probes)
     }
 
     //the one road onto the browser watch, the cause is set on entry so no call site can forget it
-    private WizardScreen Watch(WatchCause why)
+    private SetupScreen Watch(WatchCause why)
     {
         _watchCause = why;
         return DownloadScreen(Picked!);
     }
 
     //the carried cause decides which sentence renders, each arm says only what it can claim
-    private WizardScreen DownloadScreen(ModelRow row)
+    private SetupScreen DownloadScreen(ModelRow row)
     {
         var files = WatchFiles(row);
         //use the larger of the two counts, a shard set may report one member against thirteen shards, undercounting leaves a partial model
         var count = Math.Max(files.Count, row.RowQuant!.ShardCount);
-        var rows = new List<WizardRow>
+        var rows = new List<SetupRow>
         {
             new(WatchCauseSentence(count, files.Count, row.RowQuant!.Bytes), RowTone.Aside),
             "",
@@ -3625,18 +3625,18 @@ internal sealed class SetupFlow(ISetupProbes probes)
         //the partial sentence replaces the standing one. a screen that just said one of two files is here owes an explanation first
         var here = files.Count(f => Arrived(f.Name));
         rows.Add(here > 0 && here < count
-            ? new WizardRow(PartialSentence(files, here, count), RowTone.Aside)
+            ? new SetupRow(PartialSentence(files, here, count), RowTone.Aside)
             : "gatto is watching for it, you don't need to press anything.");
 
         //say this only where the fingerprint cannot be checked, elsewhere the arrival line already tells it
         if (_watchCause == WatchCause.NoFingerprint)
-            rows.Add(new WizardRow("It will check the name and the size when a file lands, but "
+            rows.Add(new SetupRow("It will check the name and the size when a file lands, but "
                 + "without a published fingerprint it can't check the bytes.", RowTone.Aside));
 
         rows.Add("");
 
         //name where it is looking from the scan's own answer, say nothing yet only while nothing has arrived
-        rows.Add(new WizardRow("It is watching:",
+        rows.Add(new SetupRow("It is watching:",
             Tail: here > 0 ? "checking every few seconds" : "checking every few seconds, nothing yet"));
         rows.AddRange(RootRows());
 
@@ -3648,7 +3648,7 @@ internal sealed class SetupFlow(ISetupProbes probes)
             rows.Add(new("This can take hours on a big model. You can leave with Esc and run gatto "
                 + "setup again later, gatto will find the file.", Highlight: ["gatto setup"]));
 
-        return Emit(new WizardScreen.Choice(
+        return Emit(new SetupScreen.Choice(
             DownloadKey, ModelTitle, WatchOptions(row), BodyRows: rows, Watching: true,
             Door: $"type the path to the downloaded file or folder{Glyphs.Ellipsis}",
             ArrivedLabel: $"{Glyphs.Ok} {row.RowQuant!.FileName} arrived"), DownloadKey);
@@ -3813,7 +3813,7 @@ internal sealed class SetupFlow(ISetupProbes probes)
     private HubQuant? _watchingSet;
 
     //the watch driven by the user rather than a clock, an arrival adopts exactly as a discovered model so the two cannot diverge
-    private WizardScreen AnswerDownload(string key)
+    private SetupScreen AnswerDownload(string key)
     {
         if (Picked is not { } row) return Search();          //nothing to watch for, not reachable
         //read the _discovered the poll refreshed, a second scan could disagree with the first. a vanished file just returns to the watch
@@ -3858,7 +3858,7 @@ internal sealed class SetupFlow(ISetupProbes probes)
     }
 
     //the sibling of the common-folders watch, differing only in where it looks. a miss returns to the watch, which lists the folders it searched
-    private WizardScreen AnswerLandedPath(string root)
+    private SetupScreen AnswerLandedPath(string root)
     {
         var scan = probes.Scan(root);
         _discovered = scan.Found;
@@ -3901,17 +3901,17 @@ internal sealed class SetupFlow(ISetupProbes probes)
     }
 
     //the watch keeps watching, nothing adopted and nothing deleted. the file is the user's, unlike the fetch's mismatch which deletes what it pulled
-    private WizardScreen WrongFile(ModelRow row, FoundModel found, WatchCheck check)
+    private SetupScreen WrongFile(ModelRow row, FoundModel found, WatchCheck check)
     {
         //a collection expression because a spread inside an object initializer does not compile
-        List<WizardRow> rows =
+        List<SetupRow> rows =
         [
             new("A file with the right name is here, but it isn't the published one.",
                 RowTone.Aside, Glyph: RowGlyph.Bad),
             "",
             //the rows name what was actually compared, the fingerprint where published, otherwise the size. draw no row in a state where its claim cannot be true
             .. check.Expected is { Length: > 0 }
-                ? (IReadOnlyList<WizardRow>)
+                ? (IReadOnlyList<SetupRow>)
                 [
                     ModelFacts.Row("expected", Fingerprint.Short(Glyphs, check.Expected)
                         + $" {Glyphs.Dot} the file's fingerprint on Hugging Face"),
@@ -3926,14 +3926,14 @@ internal sealed class SetupFlow(ISetupProbes probes)
                         + $" {Glyphs.Dot} the file in " + Folder(found.Path)),
                 ],
             "",
-            new WizardRow("A broken copy looks like this, downloading it again usually fixes it. "
+            new SetupRow("A broken copy looks like this, downloading it again usually fixes it. "
                 + "gatto keeps watching.", RowTone.Aside),
             "",
-            new WizardRow("It is watching:", Tail: "checking every few seconds"),
+            new SetupRow("It is watching:", Tail: "checking every few seconds"),
             .. RootRows(),
         ];
 
-        return Emit(new WizardScreen.Choice(
+        return Emit(new SetupScreen.Choice(
             DownloadKey, ModelTitle, WatchOptions(row), BodyRows: rows, Watching: true,
             Door: $"type the path to the downloaded file or folder{Glyphs.Ellipsis}",
             ArrivedLabel: $"{Glyphs.Ok} {row.RowQuant!.FileName} arrived"), DownloadKey);
@@ -3952,7 +3952,7 @@ internal sealed class SetupFlow(ISetupProbes probes)
     }
 
     //a partial set never adopts, a model missing shards will not load. the k of n count says the download is progressing
-    private WizardScreen PartialSet(FoundModel model)
+    private SetupScreen PartialSet(FoundModel model)
     {
         var set = model.Set!;         //the bang is safe because IsComplete is false only when Set is non-null
         var folder = System.IO.Path.GetDirectoryName(model.Path) ?? "";
@@ -3962,24 +3962,24 @@ internal sealed class SetupFlow(ISetupProbes probes)
             //the match reads names only, the size stays the file's own byte count rather than zeroed
             ? new HubQuant(System.IO.Path.GetFileName(model.Path), model.FileBytes, null, set.Count)
             : null;
-        return Emit(new WizardScreen.Choice(
+        return Emit(new SetupScreen.Choice(
             PartialSetKey,
             $"Still arriving, {model.ShardsPresent} of {set.Count} files so far",
             [new ChoiceOption(PickAnother, "Pick a different model", Advances: false)],
             BodyRows:
             [
-                new WizardRow($"This model comes as {set.Count} files, and gatto needs all of them "
+                new SetupRow($"This model comes as {set.Count} files, and gatto needs all of them "
                     + "in the same folder before it can use any of them."),
                 "",
                 //leave it raw, the face sanitizes every row it renders, sanitizing here would be the rule's second home
-                new WizardRow($"  {folder}"),
+                new SetupRow($"  {folder}"),
                 "",
-                new WizardRow("gatto is watching for the rest, you don't need to press anything."),
+                new SetupRow("gatto is watching for the rest, you don't need to press anything."),
             ], Watching: true), PartialSetKey);
     }
 
     //a completed set reuses the download answer, so the same matcher that found it half-arrived adopts it. a discovery-only set re-enters Discover
-    private WizardScreen AnswerPartialSet(string key)
+    private SetupScreen AnswerPartialSet(string key)
     {
         if (key == PickAnother) return Search();
         return Picked is not null ? AnswerDownload(Landed) : Discover(extraRoot: null);
@@ -3991,7 +3991,7 @@ internal sealed class SetupFlow(ISetupProbes probes)
     private const string CheckTitle = "Can it run commands and edit files?";
 
     //offer after the scaffold's write, the audition starts its server from the written config
-    private WizardScreen OfferAudition(string modelId) //never on the connect road (no model to audition)
+    private SetupScreen OfferAudition(string modelId) //never on the connect road (no model to audition)
     {
         _modelId = modelId;
         //read once here for the whole step, the field's own comment says why
@@ -4007,7 +4007,7 @@ internal sealed class SetupFlow(ISetupProbes probes)
             return HeldScreen(holding, modelId);
         }
         //the ask comes before the explanation, body rows render above the question so both live in the body in that order
-        return Emit(new WizardScreen.Choice(
+        return Emit(new SetupScreen.Choice(
             AuditionOfferKey,
             CheckTitle,
             [
@@ -4031,7 +4031,7 @@ internal sealed class SetupFlow(ISetupProbes probes)
     }
 
     //state the cost before the answer, the check stops the answering model's server and the conversation re-reads after
-    private WizardScreen InSessionCheckAsk(string holding, string modelId) => Emit(new WizardScreen.Choice(
+    private SetupScreen InSessionCheckAsk(string holding, string modelId) => Emit(new SetupScreen.Choice(
         InSessionCheckKey,
         $"Check {modelId} now?",
         [
@@ -4043,15 +4043,15 @@ internal sealed class SetupFlow(ISetupProbes probes)
         BodyRows:
         [
             //the model is already added by the time this ask runs, the scaffold wrote first
-            new WizardRow($"{modelId} is added to gatto."),
+            new SetupRow($"{modelId} is added to gatto."),
             //name servers, that is what the record holds
-            new WizardRow($"The check runs it on the server, so {holding}'s server stops and "
+            new SetupRow($"The check runs it on the server, so {holding}'s server stops and "
                 + $"{modelId}'s starts in its place."),
             //one row only, gatto cannot see what a client of the server does
         ]),
         InSessionCheckKey);
 
-    private WizardScreen InSessionEnding()
+    private SetupScreen InSessionEnding()
     {
         //the add road never draws the summary (its first option starts gatto)
         return !_addRoad && _summaryOutcome is { } done ? SummaryScreen(done) : TerminalScreen();
@@ -4060,7 +4060,7 @@ internal sealed class SetupFlow(ISetupProbes probes)
     //don't name a screen option back, Answer intercepts that key before the screen dispatch
 
     //yes releases the held server, it is the ask's own promise. no must not touch the server, its sentence says nothing changes
-    private WizardScreen AnswerInSessionCheck(string key)
+    private SetupScreen AnswerInSessionCheck(string key)
     {
         if (key == AddAnother && _modelId is not null) return AddAnotherModel();
         if (_modelId is null || key != Yes) return Done();
@@ -4069,20 +4069,20 @@ internal sealed class SetupFlow(ISetupProbes probes)
     }
 
     //gatto audition refuses while a model holds the server, so the sentence offers it for after and names the model that must stop first
-    private WizardScreen HeldScreen(string holding, string modelId) => Emit(new WizardScreen.Choice(
+    private SetupScreen HeldScreen(string holding, string modelId) => Emit(new SetupScreen.Choice(
         AuditionHeldKey,
         CheckTitle,
         [new ChoiceOption(AuditionHeldNext, "next"),
          new ChoiceOption(AuditionHeldLeave, "leave", Advances: false)],
         BodyRows:
         [
-            new WizardRow("gatto can't check this model right now.", Glyph: RowGlyph.Warn),
+            new SetupRow("gatto can't check this model right now.", Glyph: RowGlyph.Warn),
             "",
             CheckFacts.Row("server", $"{holding} is running", lift: holding),
             CheckFacts.Cont($"checking {modelId} would unload it"),
             "",
             //accent the command rather than backtick it, the terminal shows the marks to the reader
-            new WizardRow($"The check couldn't run, so gatto can't judge this model yet. Once "
+            new SetupRow($"The check couldn't run, so gatto can't judge this model yet. Once "
                 + $"{holding} is no longer running, type gatto audition {modelId} in a terminal to "
                 + "run the same check.",
                 RowTone.Aside, Highlight: [$"gatto audition {modelId}"]),
@@ -4091,7 +4091,7 @@ internal sealed class SetupFlow(ISetupProbes probes)
         KeysOnly: true), AuditionHeldKey);
 
     //the only screen on this step that may name a cause, the header arithmetic decides it before any spawn
-    private WizardScreen IncompleteScreen(CheckStumble.Incomplete filed) => Emit(new WizardScreen.Choice(
+    private SetupScreen IncompleteScreen(CheckStumble.Incomplete filed) => Emit(new SetupScreen.Choice(
         AuditionIncompleteKey,
         CheckTitle,
         [
@@ -4100,7 +4100,7 @@ internal sealed class SetupFlow(ISetupProbes probes)
         ],
         BodyRows:
         [
-            new WizardRow("The model file is incomplete, gatto didn't try to load it.",
+            new SetupRow("The model file is incomplete, gatto didn't try to load it.",
                 Glyph: RowGlyph.Bad),
             "",
             CheckFacts.Row("file", filed.File, lift: filed.File),
@@ -4111,18 +4111,18 @@ internal sealed class SetupFlow(ISetupProbes probes)
                 $"{Gatto.Cli.SizeWords.Gb(filed.ExpectedBytes)} or more, the file's own header says so",
                 lift: $"{Gatto.Cli.SizeWords.Gb(filed.ExpectedBytes)} or more"),
             "",
-            new WizardRow("A download or copy that stopped early looks like this. The check couldn't "
+            new SetupRow("A download or copy that stopped early looks like this. The check couldn't "
                 + "run, so gatto can't judge this model yet, a complete copy of the same file may "
                 + "run fine.", RowTone.Aside),
         ]), AuditionIncompleteKey);
 
     //no cause here, the exhibit is the server's own last lines, one row each and wrapped, llama.cpp puts the reason at the end
-    private WizardScreen ExitedScreen(CheckStumble.Exited exited) => Emit(new WizardScreen.Choice(
+    private SetupScreen ExitedScreen(CheckStumble.Exited exited) => Emit(new SetupScreen.Choice(
         AuditionExitedKey, CheckTitle, EngineStumbleOptions,
         BodyRows: EngineStumbleRows(exited, exited.LastLines, exited.LogPath)),
         AuditionExitedKey);
 
-    private WizardScreen StoppedScreen(CheckStumble.Stopped stopped) => Emit(new WizardScreen.Choice(
+    private SetupScreen StoppedScreen(CheckStumble.Stopped stopped) => Emit(new SetupScreen.Choice(
         AuditionStoppedKey, CheckTitle, EngineStumbleOptions,
         BodyRows: EngineStumbleRows(stopped, stopped.LastLines, logPath: null),
         //tasks ran here, so the purr reports the watch that ran. the exited arm never started anything
@@ -4137,7 +4137,7 @@ internal sealed class SetupFlow(ISetupProbes probes)
         new ChoiceOption(Anyway, "Carry on, use it unchecked"),
     ];
 
-    private IReadOnlyList<WizardRow> EngineStumbleRows(
+    private IReadOnlyList<SetupRow> EngineStumbleRows(
         CheckStumble stumble, IReadOnlyList<string> lines, string? logPath)
     {
         var stopped = stumble is CheckStumble.Stopped;
@@ -4145,18 +4145,18 @@ internal sealed class SetupFlow(ISetupProbes probes)
 
         return
         [
-            new WizardRow(stopped
+            new SetupRow(stopped
                 ? "The server stopped while the check was running, nothing was measured."
                 : "The server exited while loading the model, nothing was measured.",
                 Glyph: RowGlyph.Bad),
             "",
             .. ModelRow(),
             .. done.Count > 0
-                ? (IReadOnlyList<WizardRow>)[CheckFacts.Row("done", string.Join($" {Glyphs.Dot} ", done))]
+                ? (IReadOnlyList<SetupRow>)[CheckFacts.Row("done", string.Join($" {Glyphs.Dot} ", done))]
                 : [],
             //an absent log is said rather than dropped, a killed server writes nothing and "no log" is itself a fact
             .. lines.Count > 0
-                ? (IReadOnlyList<WizardRow>)
+                ? (IReadOnlyList<SetupRow>)
                   [
                       //wide, because a narrower fact block folds the quote elsewhere, a visible diff on the screen whose job is quoting
                       CheckFacts.Row("last lines", lines[0], wide: true),
@@ -4164,21 +4164,21 @@ internal sealed class SetupFlow(ISetupProbes probes)
                   ]
                 : [CheckFacts.Row("last lines", "none, the server exited without writing anything")],
             .. logPath is { Length: > 0 } log
-                ? (IReadOnlyList<WizardRow>)[CheckFacts.Cont($"full log: {log}", wide: true)]
+                ? (IReadOnlyList<SetupRow>)[CheckFacts.Cont($"full log: {log}", wide: true)]
                 : [],
             "",
             stopped
-                ? new WizardRow("The check couldn't finish, so gatto can't judge this model yet. "
+                ? new SetupRow("The check couldn't finish, so gatto can't judge this model yet. "
                     + $"Type gatto serve start {_modelId} in a new terminal to see what the "
                     + "server does on its own.",
                     RowTone.Aside, Highlight: [$"gatto serve start {_modelId}"])
-                : new WizardRow("The check couldn't run, so gatto can't judge this model yet, the "
+                : new SetupRow("The check couldn't run, so gatto can't judge this model yet, the "
                     + "lines above are the server's own account of what happened.", RowTone.Aside),
         ];
     }
 
     //not a failure, the model just takes this long, so the question is real and the watch keeps running while it asks
-    private WizardScreen LoadAsk() => Emit(new WizardScreen.Choice(
+    private SetupScreen LoadAsk() => Emit(new SetupScreen.Choice(
         AuditionLoadAskKey,
         CheckTitle,
         [
@@ -4188,20 +4188,20 @@ internal sealed class SetupFlow(ISetupProbes probes)
         ],
         BodyRows:
         [
-            new WizardRow("The model has been loading for a while and hasn't answered yet.",
+            new SetupRow("The model has been loading for a while and hasn't answered yet.",
                 Glyph: RowGlyph.Warn),
             "",
             .. ModelRow(),
             CheckFacts.Row("server", "running, still loading"),
             "",
-            new WizardRow("A model that barely fits can take longer than this. gatto won't wait "
+            new SetupRow("A model that barely fits can take longer than this. gatto won't wait "
                 + "forever without asking, keep waiting, or carry on.", RowTone.Aside),
         ],
         Watching: true,
         FullPurr: true), AuditionLoadAskKey);
 
     //waiting again restarts nothing, same task and same clock. the other two cancel and join, the check must release the machine before the next screen
-    private WizardScreen AnswerLoadAsk(string answer)
+    private SetupScreen AnswerLoadAsk(string answer)
     {
         if (answer == KeepWaiting) return Running();
 
@@ -4217,11 +4217,11 @@ internal sealed class SetupFlow(ISetupProbes probes)
     }
 
     //one home for the model row, four screens share it and cannot disagree about whether it is there
-    private IReadOnlyList<WizardRow> ModelRow() =>
+    private IReadOnlyList<SetupRow> ModelRow() =>
         _modelFile is { Length: > 0 } file ? [CheckFacts.Row("model", file, file)] : [];
 
     //re-entered once the model and llama-server path are on disk, carrying the id the writer produced, null on the connect path
-    public WizardScreen ResumeAfterWrites(string? modelId)
+    public SetupScreen ResumeAfterWrites(string? modelId)
     {
         NeedsWritesApplied = false;
         _applied = true;      //from here on, saying nothing was written would be a lie
@@ -4253,7 +4253,7 @@ internal sealed class SetupFlow(ISetupProbes probes)
         };
     }
 
-    private WizardScreen AnswerAuditionOffer(string key) =>
+    private SetupScreen AnswerAuditionOffer(string key) =>
         _modelId is null ? Done()
         : key == AddAnother ? AddAnotherModel()
         : key == Yes ? StartAudition(_modelId)
@@ -4262,7 +4262,7 @@ internal sealed class SetupFlow(ISetupProbes probes)
         : Done();
 
     //run the load long-running like the check, a pool worker blocked on a cold load for minutes gets replaced on a timer
-    private WizardScreen StartTheOneLoad()
+    private SetupScreen StartTheOneLoad()
     {
         ResetCheck();
 
@@ -4274,13 +4274,13 @@ internal sealed class SetupFlow(ISetupProbes probes)
     }
 
     //one waiting screen for two roads, the copy differs because Esc abandons different deeds, here only the one reply
-    private WizardScreen Waiting() => Emit(new WizardScreen.Choice(
+    private SetupScreen Waiting() => Emit(new SetupScreen.Choice(
         AuditionWaitingKey,
         CheckTitle,
         [new ChoiceOption(SkipStop, "stop waiting", Advances: false)],
         BodyRows:
         [
-            new WizardRow("Nothing to do here, gatto starts the server, loads the model and asks it "
+            new SetupRow("Nothing to do here, gatto starts the server, loads the model and asks it "
                 + "one question.", RowTone.Aside),
             "",
             .. ModelRow(),
@@ -4294,19 +4294,19 @@ internal sealed class SetupFlow(ISetupProbes probes)
         AuditionWaitingKey);
 
     //claims only what the one load showed, commands were never judged, the speed row shares the stamp's composer so numbers cannot drift
-    private WizardScreen Answers(Gatto.Core.Acquire.ProveOutcome outcome) => Emit(new WizardScreen.Choice(
+    private SetupScreen Answers(Gatto.Core.Acquire.ProveOutcome outcome) => Emit(new SetupScreen.Choice(
         AuditionAnswersKey,
         CheckTitle,
         [new ChoiceOption(AnswersNext, "next"), new ChoiceOption(AnswersLeave, "leave", Advances: false)],
         BodyRows:
         [
-            new WizardRow("It loads and answers.", RowTone.Aside, Glyph: RowGlyph.Good,
+            new SetupRow("It loads and answers.", RowTone.Aside, Glyph: RowGlyph.Good,
                 Lift: ["It loads and answers."]),
             "",
             .. outcome.TokensPerSecond is { } rate
-                ? (IReadOnlyList<WizardRow>)[SpeedRow(rate), ""]
+                ? (IReadOnlyList<SetupRow>)[SpeedRow(rate), ""]
                 : [],
-            new WizardRow("The five tasks were skipped, so gatto hasn't judged whether it can run "
+            new SetupRow("The five tasks were skipped, so gatto hasn't judged whether it can run "
                 + $"commands or edit files, type gatto audition {_modelId} in a new terminal "
                 + "whenever you want that check.",
                 RowTone.Aside, Highlight: [$"gatto audition {_modelId}"]),
@@ -4316,7 +4316,7 @@ internal sealed class SetupFlow(ISetupProbes probes)
         PurredSinceWatch: true), AuditionAnswersKey);
 
     //stop means stop waiting, ProveIt owns one bounded request and takes no token, the load finishes into a result nobody reads
-    private WizardScreen AfterTheOneLoad(string answer)
+    private SetupScreen AfterTheOneLoad(string answer)
     {
         var loading = _loading!;
         _loading = null;
@@ -4334,7 +4334,7 @@ internal sealed class SetupFlow(ISetupProbes probes)
     }
 
     //run the check on a task so the screen keeps drawing. clear the finished tasks here so a second check starts clean
-    private WizardScreen StartAudition(string modelId)
+    private SetupScreen StartAudition(string modelId)
     {
         _auditionCancel = new CancellationTokenSource();
         var ct = _auditionCancel.Token;
@@ -4355,14 +4355,14 @@ internal sealed class SetupFlow(ISetupProbes probes)
     }
 
     //the live check screen, finished tasks are named and never ticked, its one option cancels so only the watch advances it
-    private WizardScreen Running() => Emit(new WizardScreen.Choice(
+    private SetupScreen Running() => Emit(new SetupScreen.Choice(
         AuditionRunningKey,
         CheckTitle,
         [new ChoiceOption(AuditionStop, "stop the check", Advances: false)],
         BodyRows:
         [
             //this model's server may already be up, don't narrate it as work still to come
-            new WizardRow(_serverAlreadyUp
+            new SetupRow(_serverAlreadyUp
                 ? $"Nothing to do here, {_modelId} is on the server now; gatto gives it the five "
                     + "tasks and watches what happens."
                 : "Nothing to do here, gatto starts the server, loads the model, gives it "
@@ -4382,7 +4382,7 @@ internal sealed class SetupFlow(ISetupProbes probes)
             + "the model stays set up"), AuditionRunningKey);
 
     //the join comes first, the run reports its moments from its own thread, reading them early gets a value that may not have arrived
-    private WizardScreen AfterAudition(string answer)
+    private SetupScreen AfterAudition(string answer)
     {
         //the watch also resolves for a question, judge which by the task's state (the clock would ask about a wait already over)
         if (answer == Landed && _audition is { IsCompleted: false } && LoadAskIsDue())
@@ -4425,7 +4425,7 @@ internal sealed class SetupFlow(ISetupProbes probes)
         {
             //the server arm changes the row and the title on the same key (two screens a row apart make the reader guess)
             var unavailable = check.Stumble as CheckStumble.Unavailable;
-            return Emit(new WizardScreen.Choice(
+            return Emit(new SetupScreen.Choice(
                 AuditionFailedKey,
                 unavailable is null
                     ? "Couldn't run the check just now"
@@ -4435,10 +4435,10 @@ internal sealed class SetupFlow(ISetupProbes probes)
                 BodyRows:
                 [
                     .. unavailable is { } u
-                        ? (IReadOnlyList<WizardRow>)[CheckFacts.Cont(u.Reason), ""]
+                        ? (IReadOnlyList<SetupRow>)[CheckFacts.Cont(u.Reason), ""]
                         : [],
                     //drop the gatto audition pointer on the server-stopped arm, the command refuses while another model holds the server
-                    new WizardRow(unavailable is null
+                    new SetupRow(unavailable is null
                         ? "Nothing was measured, so this says nothing about the model. "
                           + "gatto audition runs the same check whenever you want it."
                         : "Nothing was measured, so this says nothing about the model.",
@@ -4451,7 +4451,7 @@ internal sealed class SetupFlow(ISetupProbes probes)
         if (outcome == AuditionOutcome.Passed)
             return check.Facts is { } passed ? PassScreen(check, passed) : Done();
 
-        return Emit(new WizardScreen.Choice(
+        return Emit(new SetupScreen.Choice(
                 AuditionFailedKey,
                 //the header stays the step's question, the verdict lives in the body (two headers would ask two questions on one step)
                 CheckTitle,
@@ -4468,22 +4468,22 @@ internal sealed class SetupFlow(ISetupProbes probes)
 
 
     //the pass screen waits for an answer, and the recorded row drops when no badge was written
-    private WizardScreen PassScreen(AuditionCheck check, AuditionFacts f) => Emit(new WizardScreen.Choice(
+    private SetupScreen PassScreen(AuditionCheck check, AuditionFacts f) => Emit(new SetupScreen.Choice(
         AuditionPassedKey,
         CheckTitle,
         [new ChoiceOption(AuditionPassedNext, "next"),
          new ChoiceOption(AuditionPassedLeave, "leave", Advances: false)],
         BodyRows:
         [
-            new WizardRow(PassHeadline(f, Glyphs), RowTone.Aside, Glyph: RowGlyph.Good, Lift: [PassSentence]),
+            new SetupRow(PassHeadline(f, Glyphs), RowTone.Aside, Glyph: RowGlyph.Good, Lift: [PassSentence]),
             "",
             //name the tasks that didn't pass from the runner's own records, the tally can't say which. a cut task didn't run, a failed one gave the wrong result
             .. check.Tasks is { } ran && ran.Any(t => !t.Pass)
-                ? (IReadOnlyList<WizardRow>)[.. TaskRows([.. ran.Where(t => !t.Pass)]), ""]
+                ? (IReadOnlyList<SetupRow>)[.. TaskRows([.. ran.Where(t => !t.Pass)]), ""]
                 : [],
             .. StampRows(f),
             .. check.Recorded is { } on
-                ? (IReadOnlyList<WizardRow>)["", CheckFacts.Row("recorded",
+                ? (IReadOnlyList<SetupRow>)["", CheckFacts.Row("recorded",
                     $"the shelf shows it as tool-calling verified {Glyphs.Dot} {on:yyyy-MM-dd}")]
                 : [],
             //trailing blank, a KeysOnly screen has no option list, the last fact would sit on the footer rule
@@ -4493,17 +4493,17 @@ internal sealed class SetupFlow(ISetupProbes probes)
         PurredSinceWatch: true), AuditionPassedKey);
 
     //only next carries on, every other key leaves (the footer promises which deed happened)
-    private WizardScreen AnswerAuditionPassed(string key) =>
+    private SetupScreen AnswerAuditionPassed(string key) =>
         key == AuditionPassedNext ? Done() : Leave();
 
     //one row per task, the words are TaskWords' (the CLI report draws the same sentences). the mark is semantic, a skipped task is not a failed one
-    private static IReadOnlyList<WizardRow> TaskRows(IReadOnlyList<Gatto.Roles.Audition.AuditionTaskResult> tasks) =>
+    private static IReadOnlyList<SetupRow> TaskRows(IReadOnlyList<Gatto.Roles.Audition.AuditionTaskResult> tasks) =>
     [
         .. tasks.Select(t =>
         {
             var mark = t.Skipped ? RowGlyph.NotRun : t.Pass ? RowGlyph.Good : RowGlyph.Bad;
             var why = Gatto.Roles.Audition.TaskWords.Why(t);
-            return new WizardRow(
+            return new SetupRow(
                 why is { Length: > 0 } said ? $"{t.Label}, {said}" : t.Label,
                 //fact rows don't wrap (at 80 the longest is 79 cells, and a wrapped row breaks the mark column)
                 RowTone.Aside, Indent: 2, Glyph: mark, Lift: [t.Label], Wide: true);
@@ -4511,10 +4511,10 @@ internal sealed class SetupFlow(ISetupProbes probes)
     ];
 
     //failure body: the stamp, then the mitigation. the blank row exists only when the stamp does
-    private static IReadOnlyList<WizardRow> FailRows(AuditionCheck check, Gatto.Terminal.GlyphSet g)
+    private static IReadOnlyList<SetupRow> FailRows(AuditionCheck check, Gatto.Terminal.GlyphSet g)
     {
         var facts = check.Facts;
-        var rows = new List<WizardRow>
+        var rows = new List<SetupRow>
         {
             //the tally's denominator is what ran, 2 of 4 beside an unrun row, AuditionVerdict computes it
             new(FailHeadline(facts, g), RowTone.Aside, Glyph: RowGlyph.Bad, Lift: [FailSentence]),
@@ -4536,7 +4536,7 @@ internal sealed class SetupFlow(ISetupProbes probes)
     }
 
     //a failed check warns and recommends, then proceeds, saying no changes nothing about the write
-    private WizardScreen AnswerAuditionFailed(string key) =>
+    private SetupScreen AnswerAuditionFailed(string key) =>
         key == PickAnother ? Search() : Done();
 
     //resolve a typed number against the screen in front of the user. a refusal names that screen and its own row count
@@ -4551,7 +4551,7 @@ internal sealed class SetupFlow(ISetupProbes probes)
         return rows[at];
     }
 
-    private WizardScreen AnswerDiscovered(string key)
+    private SetupScreen AnswerDiscovered(string key)
     {
         //re-search the Hub rather than restoring a snapshot, a stale shelf prices against state nobody re-read
         if (key == CtlSource) return Search();
@@ -4598,7 +4598,7 @@ internal sealed class SetupFlow(ISetupProbes probes)
     }
 
     //the one completion point for a chosen model. a found file stays put, a wizard pick must not move 30 GB
-    private WizardScreen Adopt(FoundModel model)
+    private SetupScreen Adopt(FoundModel model)
     {
         //check completeness here and nowhere else, every route inherits the refusal. do it before the choice is announced
         if (!model.IsComplete) return PartialSet(model);
@@ -4610,9 +4610,9 @@ internal sealed class SetupFlow(ISetupProbes probes)
         {
             _modelId = existing;
             //tell them an existing model was found, it's why the next screen is not the one they expected
-            _narrate.Add(new WizardScreen.Info("model.reused",
+            _narrate.Add(new SetupScreen.Info("model.reused",
                 //in /model add the user is already inside gatto, the row says added there
-                [new WizardRow(_addRoad
+                [new SetupRow(_addRoad
                     ? $"{Glyphs.Ok} Already added as {existing}, using that model"
                     : $"{Glyphs.Ok} Already set up as {existing}, using that model")]));
             return Done();
@@ -4634,7 +4634,7 @@ internal sealed class SetupFlow(ISetupProbes probes)
     }
 
     //the arrival version of the move offer, same key and handler. move is first here, the screen just argued for it
-    private WizardScreen WatchArrived(FoundModel model, MoveOffer offer)
+    private SetupScreen WatchArrived(FoundModel model, MoveOffer offer)
     {
         _moveOffer = offer;
         var name = System.IO.Path.GetFileName(model.Path);
@@ -4643,7 +4643,7 @@ internal sealed class SetupFlow(ISetupProbes probes)
             //when there's no hash, name what was checked instead (one headline row in two states)
             : $"{name} arrived, name and size matching what Hugging Face lists.";
 
-        List<WizardRow> rows =
+        List<SetupRow> rows =
         [
             new(verified, RowTone.Aside, Glyph: RowGlyph.Good, Lift: [name]),
             "",
@@ -4659,10 +4659,10 @@ internal sealed class SetupFlow(ISetupProbes probes)
                     : $" {Glyphs.Dot} name and size match"), lift: extra.Name));
 
         rows.Add("");
-        rows.Add(new WizardRow("Downloads is where files land, not where models live, a cleared "
+        rows.Add(new SetupRow("Downloads is where files land, not where models live, a cleared "
             + "Downloads folder would take the model with it.", RowTone.Aside));
 
-        return Emit(new WizardScreen.Choice(
+        return Emit(new SetupScreen.Choice(
             MoveKey,
             ModelTitle,
             [new ChoiceOption(Yes, $"Move files into {offer.SuggestedDir}"),
@@ -4672,7 +4672,7 @@ internal sealed class SetupFlow(ISetupProbes probes)
     }
 
     //leaving it is first and the default (a multi-GB copy is a choice), another drive says copy with the size up front
-    private WizardScreen OfferMove(FoundModel model, bool replace)
+    private SetupScreen OfferMove(FoundModel model, bool replace)
     {
         _moveReplace = replace;
         //a file the watch waited for gets the arrival screen, it says what arrived before asking where it lives
@@ -4684,7 +4684,7 @@ internal sealed class SetupFlow(ISetupProbes probes)
         if (probes.MoveOfferFor(model.Path) is not { } offer) return OfferProjector(model, replace);
 
         _moveOffer = offer;
-        var rows = new List<WizardRow>
+        var rows = new List<SetupRow>
         {
             //state the fact and why it matters, don't tell the user they should move
             new("This model is in your Downloads folder, which Windows can be set to clean out "
@@ -4692,17 +4692,17 @@ internal sealed class SetupFlow(ISetupProbes probes)
         };
 
         if (offer.StorageSense == "armed") //storage sense informs, it never gates
-            rows.Add(new WizardRow("That cleanup is currently armed on this machine.", RowTone.Aside));
+            rows.Add(new SetupRow("That cleanup is currently armed on this machine.", RowTone.Aside));
 
         //an unmeasured size gets no size clause, 0 GB on a screen that prices the copy reads as free
         if (offer.CrossVolume)
-            rows.Add(new WizardRow(
+            rows.Add(new SetupRow(
                 offer.Bytes > 0
                     ? $"That folder is on another drive, so moving would COPY {SearchRow.Gb(offer.Bytes)}."
                     : "That folder is on another drive, so moving would COPY the file rather than rename it.",
                 RowTone.Aside));
 
-        return Emit(new WizardScreen.Choice(
+        return Emit(new SetupScreen.Choice(
             MoveKey,
             "Where should this model live?",
             [
@@ -4714,7 +4714,7 @@ internal sealed class SetupFlow(ISetupProbes probes)
     }
 
     //keep writes nothing, null would read as a stored intent, silence means leave it alone
-    private WizardScreen AnswerMove(string key)
+    private SetupScreen AnswerMove(string key)
     {
         _awaiting = null;
 
@@ -4725,7 +4725,7 @@ internal sealed class SetupFlow(ISetupProbes probes)
         }
 
         if (key == Elsewhere)
-            return Emit(new WizardScreen.Ask(
+            return Emit(new SetupScreen.Ask(
                 MovePathKey,
                 "Which folder?",
                 //the folder doesn't need to exist, adoption creates it. reject only an empty answer
@@ -4737,7 +4737,7 @@ internal sealed class SetupFlow(ISetupProbes probes)
         return OfferProjector(Selected!, _moveReplace);
     }
 
-    private WizardScreen AnswerMovePath(string typed)
+    private SetupScreen AnswerMovePath(string typed)
     {
         _awaiting = null;
         Writes = Writes with { MoveTo = typed };
@@ -4745,7 +4745,7 @@ internal sealed class SetupFlow(ISetupProbes probes)
     }
 
     //a projector sits beside the model, offer to add it. show what the pair costs to run, and only when adding it changes that
-    private WizardScreen OfferProjector(FoundModel model, bool replace)
+    private SetupScreen OfferProjector(FoundModel model, bool replace)
     {
         _projectorReplace = replace;
         //the watch already offered text-only while the encoder was on screen, don't ask the same question twice
@@ -4755,7 +4755,7 @@ internal sealed class SetupFlow(ISetupProbes probes)
             return OfferCustomBuild(model, replace);
 
         _projector = found.Path;
-        var rows = new List<WizardRow>
+        var rows = new List<SetupRow>
         {
             new($"Found {System.IO.Path.GetFileName(found.Path)} beside your model, "
                 + "that is what lets a model read images."),
@@ -4763,11 +4763,11 @@ internal sealed class SetupFlow(ISetupProbes probes)
 
         //warn only when the projector changes the fit, a screen that warns about everything trains users to skip warnings
         if (probes.PairFit(model.Path, found.Bytes) is { } fit && fit.Alone != fit.WithProjector)
-            rows.Add(new WizardRow(
+            rows.Add(new SetupRow(
                 $"Loading both together {SearchRow.FitWords(fit.WithProjector, Shape, Glyphs)}, "
                 + $"the model on its own {SearchRow.FitWords(fit.Alone, Shape, Glyphs)}.", RowTone.Aside));
 
-        return Emit(new WizardScreen.Choice(
+        return Emit(new SetupScreen.Choice(
             ProjectorKey,
             "Add vision to this model?",
             [
@@ -4779,7 +4779,7 @@ internal sealed class SetupFlow(ISetupProbes probes)
     }
 
     //yes writes the projector, no writes nothing (Back's Writes restore is what stops an abandoned choice)
-    private WizardScreen AnswerProjector(string key)
+    private SetupScreen AnswerProjector(string key)
     {
         _awaiting = null;
         if (key == Yes && _projector is { Length: > 0 } path)
@@ -4789,13 +4789,13 @@ internal sealed class SetupFlow(ISetupProbes probes)
     }
 
     //when the pinned build can't load this architecture, offer one that can, only this branch writes it. no is first and scaffolds anyway
-    private WizardScreen OfferCustomBuild(FoundModel model, bool replace)
+    private SetupScreen OfferCustomBuild(FoundModel model, bool replace)
     {
         _customBuildReplace = replace;
         var arch = probes.ArchitectureOf(model.Path);
         if (!ArchNote.NeedsAnotherBuild(arch)) return ScaffoldIntent(model, replace);
 
-        return Emit(new WizardScreen.Choice(
+        return Emit(new SetupScreen.Choice(
             CustomBuildKey,
             "Point this model at a different llama.cpp build?",
             [
@@ -4803,16 +4803,16 @@ internal sealed class SetupFlow(ISetupProbes probes)
                 new ChoiceOption(No, _addRoad ? "No, add it anyway" : "No, set the model up anyway"),
                 new ChoiceOption(Yes, "Yes, I have one"),
             ],
-            BodyRows: [.. ArchNote.AskRows(arch).Select(r => (WizardRow)r)]), CustomBuildKey);
+            BodyRows: [.. ArchNote.AskRows(arch).Select(r => (SetupRow)r)]), CustomBuildKey);
     }
 
     //yes opens the path ask, no writes nothing, Back's Writes restore keeps an abandoned answer off disk
-    private WizardScreen AnswerCustomBuild(string key)
+    private SetupScreen AnswerCustomBuild(string key)
     {
         _awaiting = null;
         if (key != Yes) return ScaffoldIntent(Selected!, _customBuildReplace);
 
-        return Emit(new WizardScreen.Ask(
+        return Emit(new SetupScreen.Ask(
             CustomBuildPathKey,
             "Where is that llama-server.exe?",
             Validate: LlamaPathComplaint,
@@ -4820,14 +4820,14 @@ internal sealed class SetupFlow(ISetupProbes probes)
     }
 
     //verify a per-model binary with the same probe and sentences as the global one (a wrong shape is wrong under any key)
-    private WizardScreen AnswerCustomBuildPath(string typed)
+    private SetupScreen AnswerCustomBuildPath(string typed)
     {
         _awaiting = null;
         var result = probes.VerifyLlamaServer(typed);
         if (LlamaProbeComplaint(result.Shape, probes.ChooseLlamaAsset()?.CudartZipName is not null,
                 steeredDoor: false, result.VcRuntimeAbsent, result.SiblingName)
             is { } complaint)
-            return Emit(new WizardScreen.Ask(
+            return Emit(new SetupScreen.Ask(
                 CustomBuildPathKey, complaint,
                 Validate: LlamaPathComplaint,
                 Placeholder: LlamaPathPlaceholder), CustomBuildPathKey);
@@ -4839,7 +4839,7 @@ internal sealed class SetupFlow(ISetupProbes probes)
     }
 
     //when the repo can't tell a second quant from a same-named model, ask the user. when adding is impossible the option is absent
-    private WizardScreen ModelCollision(string existingId, bool canAdd) => Emit(new WizardScreen.Choice(
+    private SetupScreen ModelCollision(string existingId, bool canAdd) => Emit(new SetupScreen.Choice(
         ModelCollisionKey,
         //call the weights a file here, the word model already means the setup
         $"You already have a model called {existingId}, set up for a different file",
@@ -4854,19 +4854,19 @@ internal sealed class SetupFlow(ISetupProbes probes)
         BodyRows:
         [
             //say what replacing costs, the model's own settings and tuning are gone
-            new WizardRow($"Replacing rewrites {existingId} for the file you just chose. Anything "
+            new SetupRow($"Replacing rewrites {existingId} for the file you just chose. Anything "
                 + "you tuned in that model, its settings, its system-append, is gone."),
         ]), ModelCollisionKey);
 
-    private WizardScreen AnswerModelCollision(string optionKey)
+    private SetupScreen AnswerModelCollision(string optionKey)
     {
         _awaiting = null;
         if (optionKey == UseExistingModel)
         {
             //keep the existing id and skip the scaffold, the chosen file simply isn't adopted
             _modelId = _clashingModelId;
-            _narrate.Add(new WizardScreen.Info("model.reused",
-                [new WizardRow($"{Glyphs.Ok} Keeping {_clashingModelId} as it is")]));
+            _narrate.Add(new SetupScreen.Info("model.reused",
+                [new SetupRow($"{Glyphs.Ok} Keeping {_clashingModelId} as it is")]));
             return Done();
         }
 
@@ -4877,7 +4877,7 @@ internal sealed class SetupFlow(ISetupProbes probes)
     }
 
     //skip the create screens, this model already has its projector and server. the id is passed so the file lands in that folder
-    private WizardScreen AddFileIntent(FoundModel model, string existingId)
+    private SetupScreen AddFileIntent(FoundModel model, string existingId)
     {
         Writes = Writes with
         {
@@ -4891,14 +4891,14 @@ internal sealed class SetupFlow(ISetupProbes probes)
     }
 
     //the joined file is inactive until yes, so ask either way. if the model is serving, say the running server keeps its file
-    private WizardScreen QuantFromNow(string modelId, string quant)
+    private SetupScreen QuantFromNow(string modelId, string quant)
     {
         //say what happened before asking about it (the file is already there, the question is about next)
-        _narrate.Add(new WizardScreen.Info("model.quantadded",
-            [new WizardRow($"{Glyphs.Ok} {quant} is added to {modelId}.")]));
+        _narrate.Add(new SetupScreen.Info("model.quantadded",
+            [new SetupRow($"{Glyphs.Ok} {quant} is added to {modelId}.")]));
 
         var serving = string.Equals(probes.LoadedModelId(), modelId, StringComparison.OrdinalIgnoreCase);
-        return Emit(new WizardScreen.Choice(
+        return Emit(new SetupScreen.Choice(
             QuantFromNowKey,
             SwapConfirm.QuantQuestion(modelId, quant),
             [
@@ -4907,15 +4907,15 @@ internal sealed class SetupFlow(ISetupProbes probes)
                 new ChoiceOption(No, $"No, keep {quant} on the list unused for now"),
             ],
             BodyRows: serving
-                ? [new WizardRow($"{modelId} is serving right now. This changes the setting: the "
+                ? [new SetupRow($"{modelId} is serving right now. This changes the setting: the "
                     + "running server keeps the file it started with until it restarts.")]
-                : [new WizardRow($"{quant} is on {modelId}'s list either way. This chooses which "
+                : [new SetupRow($"{quant} is on {modelId}'s list either way. This chooses which "
                     + "file it uses.")]),
             QuantFromNowKey);
     }
 
     //yes records an intent for the Done pause, no keeps the file and undoes nothing
-    private WizardScreen AnswerQuantFromNow(string optionKey)
+    private SetupScreen AnswerQuantFromNow(string optionKey)
     {
         _awaiting = null;
         if (optionKey == Yes && _joining is { } j)
@@ -4930,7 +4930,7 @@ internal sealed class SetupFlow(ISetupProbes probes)
     //the model intent in one place, replacing or not, so the collision branch can't drift on context, port or the pause
 
     //this records an intent and pauses for the writer. if a screen ever sits between an intent and its pause, add the back-walk test in the same commit
-    private WizardScreen ScaffoldIntent(FoundModel model, bool replace)
+    private SetupScreen ScaffoldIntent(FoundModel model, bool replace)
     {
         //use the computed context, a ceiling this machine can't hold is a model that fails to load
         Writes = Writes with
@@ -4948,7 +4948,7 @@ internal sealed class SetupFlow(ISetupProbes probes)
     //shared
 
     //last write, it names the default and arms the pause before prove-it
-    private WizardScreen Done()
+    private SetupScreen Done()
     {
         //belt for the roads that scaffolded nothing, the pause applies it. on the add road fill it only when no default exists, overwriting one erases the user's choice
         if (_modelId is { } id)
@@ -4959,11 +4959,11 @@ internal sealed class SetupFlow(ISetupProbes probes)
         //arm the pause on every arrival, even with nothing to write, reuse and collision paths write their default here only
         _resumeStage = ResumeStage.DonePause;
         NeedsWritesApplied = true;
-        return Emit(new WizardScreen.Info("default.ready", [$"Saving your choices{Glyphs.Ellipsis}"]), null);
+        return Emit(new SetupScreen.Info("default.ready", [$"Saving your choices{Glyphs.Ellipsis}"]), null);
     }
 
     //the write and the saving pause of Done, resumed to the shelf the model came from rather than to the prove load
-    private WizardScreen AddAnotherModel()
+    private SetupScreen AddAnotherModel()
     {
         var saving = Done();
         _resumeStage = ResumeStage.AnotherPause;
@@ -4971,7 +4971,7 @@ internal sealed class SetupFlow(ISetupProbes probes)
     }
 
     //the shelf comes back with the model on it and nothing behind it, its chips, lift, sort and search as the user left them
-    private WizardScreen BackForAnother()
+    private SetupScreen BackForAnother()
     {
         _added.Add((_modelId!, AddedHow));
         ResetForAnotherModel();
@@ -5037,10 +5037,10 @@ internal sealed class SetupFlow(ISetupProbes probes)
     }
 
     //prove-it runs after the write so the saved sentence is true. guard its one run by counting probe calls, a ran-already flag would hide the routing bug
-    private WizardScreen ProveScreen()
+    private SetupScreen ProveScreen()
     {
         //the marker promises a question, paths that ask nothing withdraw it, the two paths that ask still carry it
-        var firstQuestion = new WizardScreen.Info("step.first", [new WizardRow("First question")]);
+        var firstQuestion = new SetupScreen.Info("step.first", [new SetupRow("First question")]);
         _narrate.Add(firstQuestion);
         //a stranger's server can take a cold load's time, so watch it and let Esc stop. start the task once, the watch comes back to this same screen
         if (Path == SetupPath.Connect && _proved is null)
@@ -5066,17 +5066,17 @@ internal sealed class SetupFlow(ISetupProbes probes)
             //keep the held outcome so the summary's held row is reachable
             _summaryOutcome = outcome;
             _narrate.Remove(firstQuestion);
-            _narrate.Add(new WizardScreen.Info(ProveKey, [
-                new WizardRow($"{_modelId} is saved. {holding} is still the running server, so "
+            _narrate.Add(new SetupScreen.Info(ProveKey, [
+                new SetupRow($"{_modelId} is saved. {holding} is still the running server, so "
                     + "nothing has been asked of it yet."),
                 //only say it when the check step didn't already say it (the old whenever-you-want promise was false while a model holds the server)
                 .. _heldSaid
-                    ? (IReadOnlyList<WizardRow>)[]
-                    : [new WizardRow($"Once {holding} is no longer running, type gatto audition "
+                    ? (IReadOnlyList<SetupRow>)[]
+                    : [new SetupRow($"Once {holding} is no longer running, type gatto audition "
                         + $"{_modelId} in a terminal to run the check.",
                         Highlight: [$"gatto audition {_modelId}"])],
                 //one serve-restart sentence for both roads, the switch question the add branch promised no longer exists
-                new WizardRow($"gatto serve stop, then gatto serve start {_modelId} when you "
+                new SetupRow($"gatto serve stop, then gatto serve start {_modelId} when you "
                     + "want to run it.", Highlight: ["gatto serve stop", "gatto serve start"]),
             ]));
             return DoneStep();
@@ -5089,7 +5089,7 @@ internal sealed class SetupFlow(ISetupProbes probes)
             {
                 //narrate the close only on a face that doesn't draw the Choice's body rows, otherwise the user hears it twice
                 if (!FaceShowsChoiceBodyRows)
-                    _narrate.Add(new WizardScreen.Info(ProveKey, SuccessRows(outcome)));
+                    _narrate.Add(new SetupScreen.Info(ProveKey, SuccessRows(outcome)));
                 //the record prints this walk's facts, so the add road keeps its outcome too
                 _summaryOutcome = outcome;
                 //there's no REPL to start here, the consent question stays, it's asked once and only if unanswered
@@ -5101,7 +5101,7 @@ internal sealed class SetupFlow(ISetupProbes probes)
             {
                 //keep the outcome so the connect road reaches the summary too
                 _summaryOutcome = outcome;
-                return Emit(new WizardScreen.Choice(
+                return Emit(new SetupScreen.Choice(
                     ProveKey,
                     ConnectCheckTitle,
                     [new ChoiceOption(OpenRepl, "next"),
@@ -5109,16 +5109,16 @@ internal sealed class SetupFlow(ISetupProbes probes)
                     KeysOnly: true,
                     PurredMs: (long)outcome.FirstToken.TotalMilliseconds,
                     BodyRows: [
-                        new WizardRow("It answers.", RowTone.Aside, Glyph: RowGlyph.Good),
+                        new SetupRow("It answers.", RowTone.Aside, Glyph: RowGlyph.Good),
                         "",
                         ProveFacts.Row("server", _connectBaseUrl ?? ""),
                         .. _connectModel is { Length: > 0 } named
-                            ? (IReadOnlyList<WizardRow>)[ProveFacts.Row("model", Gatto.Core.Models.ServedModelName.Display(named))]
+                            ? (IReadOnlyList<SetupRow>)[ProveFacts.Row("model", Gatto.Core.Models.ServedModelName.Display(named))]
                             : [],
                         ProveFacts.Row("context",
                             $"{_connectContext:N0} {Glyphs.Dot} " + ContextNote()),
                         .. outcome.TokensPerSecond is { } rate
-                            ? (IReadOnlyList<WizardRow>)[ProveFacts.Speed(rate)]
+                            ? (IReadOnlyList<SetupRow>)[ProveFacts.Speed(rate)]
                             : [],
                         //trailing blank, a KeysOnly screen has no option list, the last fact would sit on the footer rule
                         "",
@@ -5132,7 +5132,7 @@ internal sealed class SetupFlow(ISetupProbes probes)
 
         _proveFailed = outcome;
         //the capability sentence speaks only of a stranger's server, our own llama-server is never the cause. give each fact its own row
-        var rows = new List<WizardRow> { outcome.Detail, "" };
+        var rows = new List<SetupRow> { outcome.Detail, "" };
         //the missing-capability sentence needs evidence, only 404 and 405 prove the chat route is absent. a reply in any other status proves the protocol is spoken
         if (_modelId is null && outcome.ServerAnswered is 404 or 405)
         {
@@ -5147,7 +5147,7 @@ internal sealed class SetupFlow(ISetupProbes probes)
         if (Path == SetupPath.Connect) return ConnectCheckFailed(outcome);
 
         //when the server never started, say that, a weaker headline sends the user to a model that was never loaded
-        return Emit(new WizardScreen.Choice(
+        return Emit(new SetupScreen.Choice(
             ProveKey,
             //in-session nothing was set up, the headline says the model is saved
             (outcome.StartFailed, _addRoad) switch
@@ -5164,17 +5164,17 @@ internal sealed class SetupFlow(ISetupProbes probes)
     }
 
     //the screen lists what was asked, a user who doesn't know that is looking at the wrong server, and it names the stop cost
-    private WizardScreen ConnectChecking() => Emit(new WizardScreen.Choice(
+    private SetupScreen ConnectChecking() => Emit(new SetupScreen.Choice(
         ProveKey,
         ConnectCheckTitle,
         [new ChoiceOption(ConnectCheckStop, "stop the check", Advances: false)],
         BodyRows: [
-            new WizardRow("Nothing to do here, gatto asks the server one small question and waits "
+            new SetupRow("Nothing to do here, gatto asks the server one small question and waits "
                 + "for the first word back.", RowTone.Aside),
             "",
             ProveFacts.Row("server", _connectBaseUrl ?? ""),
             .. _connectModel is { Length: > 0 } named
-                ? (IReadOnlyList<WizardRow>)[ProveFacts.Row("model", Gatto.Core.Models.ServedModelName.Display(named))]
+                ? (IReadOnlyList<SetupRow>)[ProveFacts.Row("model", Gatto.Core.Models.ServedModelName.Display(named))]
                 : [],
             ProveFacts.Row("asking", "\"Say OK.\", waiting for the first reply"),
             "",
@@ -5185,7 +5185,7 @@ internal sealed class SetupFlow(ISetupProbes probes)
         Legend: "the server stays set up, unchecked"), ProveKey);
 
     //branch on the status code, a message text is not evidence. offer try again only where asking twice could help
-    private WizardScreen ConnectCheckFailed(Gatto.Core.Acquire.ProveOutcome outcome)
+    private SetupScreen ConnectCheckFailed(Gatto.Core.Acquire.ProveOutcome outcome)
     {
         var (verdict, said, advice, canRetry) = outcome.ServerAnswered switch
         {
@@ -5218,7 +5218,7 @@ internal sealed class SetupFlow(ISetupProbes probes)
                            true),
         };
 
-        return Emit(new WizardScreen.Choice(
+        return Emit(new SetupScreen.Choice(
             ProveKey,
             ConnectCheckTitle,
             canRetry
@@ -5226,12 +5226,12 @@ internal sealed class SetupFlow(ISetupProbes probes)
                    new ChoiceOption(Finish, "Finish anyway, I'll look into it")]
                 : [new ChoiceOption(Finish, "Finish anyway, I'll look into it")],
             BodyRows: [
-                new WizardRow(verdict, RowTone.Aside, Glyph: RowGlyph.Bad),
+                new SetupRow(verdict, RowTone.Aside, Glyph: RowGlyph.Bad),
                 "",
                 ProveFacts.Row("server", _connectBaseUrl ?? ""),
                 ProveFacts.Row("said", said),
                 "",
-                new WizardRow(advice),
+                new SetupRow(advice),
             ]), ProveKey);
     }
 
@@ -5244,7 +5244,7 @@ internal sealed class SetupFlow(ISetupProbes probes)
     }
 
     //land somewhere, don't exit into a vanishing console: either gatto opens or the next command is on screen
-    private WizardScreen AnswerProve(string key)
+    private SetupScreen AnswerProve(string key)
     {
         RefuseUndrawn(key, "prove");
         _awaiting = null;
@@ -5267,7 +5267,7 @@ internal sealed class SetupFlow(ISetupProbes probes)
     }
 
     //the summary's two options go two places, it has its own key so no screen asks whether it is the summary
-    private WizardScreen AnswerSummary(string key)
+    private SetupScreen AnswerSummary(string key)
     {
         RefuseUndrawn(key, "summary");
         _awaiting = null;
@@ -5276,11 +5276,11 @@ internal sealed class SetupFlow(ISetupProbes probes)
     }
 
     //the done step's questions in one method, each call site tested. in session the install question is skipped, /model add must not offer to install
-    private WizardScreen DoneStep() =>
+    private SetupScreen DoneStep() =>
         (_addRoad ? null : InstallSegment()) ?? AfterTheInstallAsk();
 
     //the consent is asked last, once, an existing answer skips the ask (once comes from the probe's read)
-    private WizardScreen AfterTheInstallAsk()
+    private SetupScreen AfterTheInstallAsk()
     {
         //the one place that can say the install question is past, both roads arrive here
         _pastTheInstallAsk = true;
@@ -5288,8 +5288,8 @@ internal sealed class SetupFlow(ISetupProbes probes)
     }
 
     //the summary draws after both questions, its gatto row computes from the install answer and the config path exists only past the consent pause
-    private WizardScreen SummaryScreen(Gatto.Core.Acquire.ProveOutcome outcome) =>
-        Emit(new WizardScreen.Choice(
+    private SetupScreen SummaryScreen(Gatto.Core.Acquire.ProveOutcome outcome) =>
+        Emit(new SetupScreen.Choice(
             SummaryKey,
             //the setup line appears only here and there's no congratulations, the record itself is the celebration
             "gatto is set up.",
@@ -5303,7 +5303,7 @@ internal sealed class SetupFlow(ISetupProbes probes)
     //null means this walk draws no summary, the connect road, in-session and the held arm end their own way
     private Gatto.Core.Acquire.ProveOutcome? _summaryOutcome;
 
-    private WizardScreen UpdateAsk() => Emit(new WizardScreen.Choice(
+    private SetupScreen UpdateAsk() => Emit(new SetupScreen.Choice(
         UpdateKey,
         "Should gatto check for updates?",
         [
@@ -5313,18 +5313,18 @@ internal sealed class SetupFlow(ISetupProbes probes)
         ],
         BodyRows:
         [
-            new WizardRow("Once a week, gatto asks GitHub whether a newer release exists. "
+            new SetupRow("Once a week, gatto asks GitHub whether a newer release exists. "
                 + "Nothing about you or your machine is sent."),
             //a blank row separates the two paragraphs, without it they read as one block
             "",
             //say how to change it, a consent you can't revoke isn't consent
-            new WizardRow("Say no and gatto never contacts the network on its own. "
+            new SetupRow("Say no and gatto never contacts the network on its own. "
                 + "You can change it later with the update_check key in gatto.json."),
         ],
         //this screen has no default answer, the cursor must start from nothing
         NoDefault: true), UpdateKey);
 
-    private WizardScreen AnswerUpdate(string key)
+    private SetupScreen AnswerUpdate(string key)
     {
         _awaiting = null;
         Writes = Writes with { UpdateCheck = key == UpdateYes };
@@ -5332,68 +5332,68 @@ internal sealed class SetupFlow(ISetupProbes probes)
     }
 
     //write the consent answer before the terminal renders. can't arm the pause and return Terminal at once, the runner drops that return and done prints twice
-    private WizardScreen CloseWizard()
+    private SetupScreen CloseWizard()
     {
         _resumeStage = ResumeStage.ConsentPause;
         NeedsWritesApplied = true;
-        return Emit(new WizardScreen.Info("consent.ready", [$"Saving your answer{Glyphs.Ellipsis}"]), null);
+        return Emit(new SetupScreen.Info("consent.ready", [$"Saving your answer{Glyphs.Ellipsis}"]), null);
     }
 
     //the run-gatto-then-slash-model line, its id from what this walk added (one test pins it literally)
-    internal WizardRow AddRoadNextStep =>
+    internal SetupRow AddRoadNextStep =>
         new($"run gatto, then /model {_modelId} to use it",
             Highlight: ["gatto", $"/model {_modelId}"]);
 
     //the closing sentence reads what the install really did, a null InstallTo means many things, _installState tells them apart
-    internal WizardRow CompletionNextStep =>
+    internal SetupRow CompletionNextStep =>
         //the intent is consumed at the pause, check _installedTo too or an accepted install reads as declined
         (Writes.InstallTo ?? _installedTo) is not null
             //the new-terminal caveat is only true when the install was accepted
-            ? new WizardRow(
+            ? new SetupRow(
                 "A new terminal will find it; this one will not. When you're ready, open a new "
                 + "terminal in your project folder and type gatto. Have fun with your local model!",
                 Highlight: ["gatto"])
         : _installState switch
         {
             //already findable from any terminal, so the new-terminal caveat warns about a problem this user doesn't have
-            InstallState.Installed or InstallState.AlreadyInstalledElsewhere => new WizardRow(
+            InstallState.Installed or InstallState.AlreadyInstalledElsewhere => new SetupRow(
                 "Open a terminal in your project folder and type gatto. Have fun with your local "
                 + "model!", Highlight: ["gatto"]),
 
             //declined, so name where it runs from and offer gatto setup without pushing
-            InstallState.NotInstalled or InstallState.InstalledButNotOnPath => new WizardRow(
+            InstallState.NotInstalled or InstallState.InstalledButNotOnPath => new SetupRow(
                 $"gatto stays where it is, {probes.RunningFrom()}. Run it from there; gatto setup "
                 + "can install it later. Have fun with your local model!",
                 Highlight: ["gatto setup"]),
 
             //a dev build was never installable, so nothing here was declined
-            InstallState.DevBuild => new WizardRow(
+            InstallState.DevBuild => new SetupRow(
                 "Run gatto from where it is. Have fun with your local model!", Highlight: ["gatto"]),
 
-            _ => new WizardRow("Have fun with your local model!"),
+            _ => new SetupRow("Have fun with your local model!"),
         };
 
     //the closing line, read by both the done screen and the record, so one walk can't close twice
-    private WizardRow FinishedNextStep => _addRoad ? AddRoadNextStep : CompletionNextStep;
+    private SetupRow FinishedNextStep => _addRoad ? AddRoadNextStep : CompletionNextStep;
 
-    private WizardScreen TerminalScreen()
+    private SetupScreen TerminalScreen()
     {
         _finished = true;
         //in-session this screen carries nothing, the swap confirm is next. standalone keeps one deliberate blank before the closing line
-        return Emit(new WizardScreen.Terminal(
+        return Emit(new SetupScreen.Terminal(
             "done",
             //the blank returns on the add road, it ends at a shell prompt like setup's
             StartReplWhenDone ? [] : [""],
             //the starting line is true only while a server happens to be running, don't paper over the gap till auto-serve ships
-            NextStep: StartReplWhenDone ? new WizardRow($"Starting gatto{Glyphs.Ellipsis}")
+            NextStep: StartReplWhenDone ? new SetupRow($"Starting gatto{Glyphs.Ellipsis}")
                 : FinishedNextStep,
             Success: true), null);
     }
 
     //one stamp composer for the pass, failure and completion screens, drop every row whose fact is missing
-    private static IReadOnlyList<WizardRow> StampRows(AuditionFacts f)
+    private static IReadOnlyList<SetupRow> StampRows(AuditionFacts f)
     {
-        var rows = new List<WizardRow>();
+        var rows = new List<SetupRow>();
         //the quant gets lifted, its neighbour notes don't, the quant is what readers scan for
         if (f.Quant is { Length: > 0 } q) rows.Add(CheckFacts.Row("quant", q, lift: q));
         if (f.Sampling is { Length: > 0 } s) rows.Add(CheckFacts.Row("sampling", s));
@@ -5411,11 +5411,11 @@ internal sealed class SetupFlow(ISetupProbes probes)
     }
 
     //one number feeds figure and band words, rounded first so they match. the figure takes the accent, it's what readers turn into wait time
-    private static WizardRow SpeedRow(double rate)
+    private static SetupRow SpeedRow(double rate)
     {
         var shown = Math.Round(rate, 1);
         var figure = $"~{shown:0.#} tok/s";
-        return new WizardRow(
+        return new SetupRow(
             "speed".PadRight(CheckFacts.Column)
                 + $"{figure}, {Gatto.Roles.Audition.AuditionReport.SpeedNote(shown)}",
             RowTone.Aside, Hang: CheckFacts.Column, Highlight: [figure]);
@@ -5443,18 +5443,18 @@ internal sealed class SetupFlow(ISetupProbes probes)
 
 
     //the closing facts, each computed from the deed. a row drops when nothing measured it, no unknown and no blank
-    private IReadOnlyList<WizardRow> SuccessRows(Gatto.Core.Acquire.ProveOutcome outcome)
+    private IReadOnlyList<SetupRow> SuccessRows(Gatto.Core.Acquire.ProveOutcome outcome)
     {
         return Tui.Epilogue.Compose(WalkFacts(outcome), Tui.Epilogue.Face.Summary, Glyphs);
     }
 
     //the record from the same composer as the summary, empty when no summary was reached so the printer skips it
-    internal IReadOnlyList<WizardRow> RecordRows() =>
+    internal IReadOnlyList<SetupRow> RecordRows() =>
         //a crash keeps the last frame, only a real leave or a finished walk prints a record
         _summaryOutcome is not null || _left || _finished ? RecordFacts() : [];
 
     //a leave records with a null outcome, CheckRow says not-run. empty before the write pause, a walk with nothing on disk has no record
-    private IReadOnlyList<WizardRow> RecordFacts() =>
+    private IReadOnlyList<SetupRow> RecordFacts() =>
         _summaryOutcome is { } outcome
             ? Tui.Epilogue.Compose(WalkFacts(outcome), Tui.Epilogue.Face.Record, Glyphs)
         : _applied
@@ -5465,13 +5465,13 @@ internal sealed class SetupFlow(ISetupProbes probes)
     internal bool Left => _left;
 
     //the sentence a leave that wrote nothing prints. gatto model names the add command, gatto setup keeps its own
-    internal WizardRow? PrintedLeave =>
+    internal SetupRow? PrintedLeave =>
         _addRoad
-            ? new WizardRow($"nothing added {Glyphs.Dot} gatto model whenever you're ready", Highlight: ["gatto model"])
+            ? new SetupRow($"nothing added {Glyphs.Dot} gatto model whenever you're ready", Highlight: ["gatto model"])
             : LeaveStep;
 
     //gatto model's closing is one line per model added under the header, in the order added, like its nothing-added leave. empty on setup, before the writes, and on a throw
-    internal IReadOnlyList<WizardRow> AddedClosings
+    internal IReadOnlyList<SetupRow> AddedClosings
     {
         get
         {
@@ -5480,9 +5480,9 @@ internal sealed class SetupFlow(ISetupProbes probes)
             if (_modelId is { } current) added.Add((current, AddedHow));
             if (added.Count == 0) return [];
             //the earlier models have their own outcome words, and only the last row says how to use its model
-            var rows = added.SkipLast(1).Select(a => new WizardRow($"{a.Id} added{a.How}")).ToList();
+            var rows = added.SkipLast(1).Select(a => new SetupRow($"{a.Id} added{a.How}")).ToList();
             var (id, how) = added[^1];
-            rows.Add(new WizardRow($"{id} added{how} {Glyphs.Dot} "
+            rows.Add(new SetupRow($"{id} added{how} {Glyphs.Dot} "
                 + (_modelId is not null && _proveFailed is not null && _summaryOutcome is null
                     ? "gatto doctor checks everything and says what to fix"
                     : $"run gatto, then /model {id} to use it"),
@@ -5507,7 +5507,7 @@ internal sealed class SetupFlow(ISetupProbes probes)
         : ", not checked";
 
     //the flow picks the closing row, null on the road whose tail is a live countdown, it writes the tail itself
-    internal WizardRow? RecordClosing =>
+    internal SetupRow? RecordClosing =>
         StartReplWhenDone ? null
         : _left ? LeaveStep
         : FinishedNextStep;
@@ -5566,7 +5566,7 @@ internal sealed class SetupFlow(ISetupProbes probes)
             : null;
 
     //the machine fact row, one grammar across the four shapes. state one budget and say where it applies, promise nothing a record can't keep
-    private WizardRow? MachineRow()
+    private SetupRow? MachineRow()
     {
         if (probes.Hardware() is not { } hw) return null;
 
@@ -5603,7 +5603,7 @@ internal sealed class SetupFlow(ISetupProbes probes)
     }
 
     //the folder line reads the file's own directory, a config key never appears here. verified shows only when this walk verified it
-    private (WizardRow? Row, WizardRow? Folder) ModelRows()
+    private (SetupRow? Row, SetupRow? Folder) ModelRows()
     {
         if (_modelId is not { Length: > 0 } id) return (null, null);
         if (probes.ActiveModelFile(id) is not { } file) return (null, null);
@@ -5615,7 +5615,7 @@ internal sealed class SetupFlow(ISetupProbes probes)
     }
 
     //the found road drops the backend word from the engine row, only the truth fills it
-    private WizardRow? EngineRow()
+    private SetupRow? EngineRow()
     {
         if (_offer is { } offer)
             return SummaryFacts.Row("engine",
@@ -5631,7 +5631,7 @@ internal sealed class SetupFlow(ISetupProbes probes)
     }
 
     //the check row is a verdict sentence, no numbers. the arms must be tested in order, a held server is also a walk with no audition
-    private WizardRow CheckRow(Gatto.Core.Acquire.ProveOutcome? outcome, bool pointer = true)
+    private SetupRow CheckRow(Gatto.Core.Acquire.ProveOutcome? outcome, bool pointer = true)
     {
         //a connect server was only asked whether it answers, the row says just that
         if (Path == SetupPath.Connect)
@@ -5661,7 +5661,7 @@ internal sealed class SetupFlow(ISetupProbes probes)
     }
 
     //read the deed before the state, an accepted install is true whatever the probe said. only the installed form gets a glyph, facts get no verdict
-    private WizardRow GattoRow()
+    private SetupRow GattoRow()
     {
         //check the intent and the landed fact, the write set is cleared before this row draws
         if (Writes.InstallTo is { Length: > 0 } || _installedTo is { Length: > 0 }
@@ -5690,7 +5690,7 @@ internal sealed class SetupFlow(ISetupProbes probes)
     }
 
 
-    private WizardScreen Leave()
+    private SetupScreen Leave()
     {
         _awaiting = null;
 
@@ -5698,23 +5698,23 @@ internal sealed class SetupFlow(ISetupProbes probes)
         Writes = new WriteSet();
         //mark leaving before composing, LeavingRows and LeaveStep read it
         MarkLeaving();
-        return Emit(new WizardScreen.Terminal(
+        return Emit(new SetupScreen.Terminal(
             "left", LeavingRows, NextStep: LeaveStep, Success: true), null);
     }
 
     //the leave copy says what actually landed, silent before the writes, ownership after. one home because Esc shows this too
 
     //the leave's rows are the record on both roads
-    internal IReadOnlyList<WizardRow> LeavingRows => RecordFacts();
+    internal IReadOnlyList<SetupRow> LeavingRows => RecordFacts();
 
     //the sentence is what the frame draws, comma included, a test reads it against that golden
     internal const string NothingAddedText = "Nothing added, gatto model whenever you're ready";
 
     //the computed leave sentence sits in the next-step slot, it replaces the generic pair instead of adding a row
-    internal WizardRow? LeaveStep =>
+    internal SetupRow? LeaveStep =>
         !_addRoad ? Tui.Epilogue.LeaveSentence(Lead, _modelId, UnreachedQuestions())
         : _applied ? null
-        : new WizardRow(NothingAddedText, Highlight: ["gatto model"]);
+        : new SetupRow(NothingAddedText, Highlight: ["gatto model"]);
 
     //classify once from the same probe so the hardware sentence and the shelf agree. a null snapshot borrows CpuOnly, the shelf only asks discrete-or-not
     private Gatto.Core.Hardware.MachineShape Shape =>
@@ -5767,13 +5767,13 @@ internal sealed class SetupFlow(ISetupProbes probes)
         Gatto.Cli.SizeWords.Gb(bytes);
 
     //placeholder returned while pausing for the writer, the runner checks the pause flag first so it's never shown
-    private static readonly WizardScreen WritesPending = new WizardScreen.Info("writes.pending", []);
+    private static readonly SetupScreen WritesPending = new SetupScreen.Info("writes.pending", []);
 
     //stamp the strip at the one exit a screen can take. the key is an argument because the two exits know it differently
-    private WizardScreen Crossing(WizardScreen s, string stripKey) =>
+    private SetupScreen Crossing(SetupScreen s, string stripKey) =>
         s with { Strip = WalkSection.For(stripKey, Path, _addRoad) };
 
-    private WizardScreen Emit(WizardScreen s, string? awaiting)
+    private SetupScreen Emit(SetupScreen s, string? awaiting)
     {
         //every askable screen leaves with the back rule's answer, no screen author sets it
         s = WithBack(s);
@@ -5784,7 +5784,7 @@ internal sealed class SetupFlow(ISetupProbes probes)
         //only an awaited screen moves the leaving point, a write-pause screen is consumed before any face sees it
         if (awaiting is { Length: > 0 }) _lastShown = awaiting;
         //only drawn options constrain an answer, a watch is answered by resolving, so it holds no list
-        _awaitingOptions = s is WizardScreen.Choice { Options: { } opts, Watching: false }
+        _awaitingOptions = s is SetupScreen.Choice { Options: { } opts, Watching: false }
             ? [.. opts.Select(o => o.Key)]
             : null;
         return s;

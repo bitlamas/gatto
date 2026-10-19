@@ -8,8 +8,8 @@ public class SummaryContinuationTests
     private const string LongPath =
         @"C:\Users\somebody\AppData\Local\Temp\gatto-dump-1yerbv25.c3e\home1\Downloads\";
 
-    private static IReadOnlyList<string> Lines(WizardRow row, int width) =>
-        [.. WizardRows.Wrap(row, width, margin: 2, Gatto.Terminal.GlyphSet.Unicode).Select(s => s.Lead + s.Text)];
+    private static IReadOnlyList<string> Lines(SetupRow row, int width) =>
+        [.. SetupRows.Wrap(row, width, margin: 2, Gatto.Terminal.GlyphSet.Unicode).Select(s => s.Lead + s.Text)];
 
     [Fact]
     public void A_LABELLESS_ROW_DOES_NOT_OPEN_WITH_AN_EMPTY_LINE()
@@ -26,7 +26,7 @@ public class SummaryContinuationTests
     [Fact]
     public void A_ROW_THAT_IS_DELIBERATELY_BLANK_SURVIVES()
     {
-        var lines = Lines(new WizardRow(""), 80);
+        var lines = Lines(new SetupRow(""), 80);
 
         Assert.Single(lines);
         Assert.True(string.IsNullOrWhiteSpace(lines[0]));

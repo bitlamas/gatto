@@ -7,7 +7,7 @@ namespace Gatto.Tests.Setup.Tui;
 //the golden corpus wins on wording, but a footer verb must follow what its key does. the retry state stays a question screen with a typed address
 public class ConnectTests
 {
-    private static WizardProbes Probes(ConnectProbe? server = null, ConnectProbe? afterSkip = null,
+    private static FakeSetupProbes Probes(ConnectProbe? server = null, ConnectProbe? afterSkip = null,
         (int Port, string Model)? own = null) =>
         new()
         {
@@ -18,11 +18,11 @@ public class ConnectTests
         };
 
     //reach the screen through the flow, a hand-built screen would skip the probe that runs on the way in
-    private static WizardScreen.Choice Road(WizardProbes probes)
+    private static SetupScreen.Choice Road(FakeSetupProbes probes)
     {
         var flow = new SetupFlow(probes);
         flow.StartPastOpening();
-        return Assert.IsType<WizardScreen.Choice>(flow.Answer(SetupFlow.ForkConnect));
+        return Assert.IsType<SetupScreen.Choice>(flow.Answer(SetupFlow.ForkConnect));
     }
 
     //no answer is a normal state. the screen names ports by owner, so the user recognizes their own setup instead of gatto's defaults
@@ -75,12 +75,12 @@ public class ConnectTests
                 80, "server-80").Rows);
 
     //reach the pick through the flow, the pick exists only because a list came back. a composed screen would assert a model of the flow
-    private static WizardScreen.Choice Pick(WizardProbes probes)
+    private static SetupScreen.Choice Pick(FakeSetupProbes probes)
     {
         var flow = new SetupFlow(probes);
         flow.StartPastOpening();
         flow.Answer(SetupFlow.ForkConnect);
-        return Assert.IsType<WizardScreen.Choice>(flow.Answer(SetupFlow.Yes));
+        return Assert.IsType<SetupScreen.Choice>(flow.Answer(SetupFlow.Yes));
     }
 
     //gatto names a model in every request and cannot invent one, so the rows show the server's own strings. the list is whole, with arrows and no digits
@@ -96,11 +96,11 @@ public class ConnectTests
     public void THE_MODEL_NAME_ASK_RENDERS_AT_100() =>
         Golden.AssertEquals("s8", "model-name", 100,
             WalkRender.Ask(
-                Assert.IsType<WizardScreen.Ask>(AskFor(Probes(
+                Assert.IsType<SetupScreen.Ask>(AskFor(Probes(
                     server: new ConnectProbe("http://127.0.0.1:1234", [], 8192)))),
                 100, "model-name").Rows);
 
-    private static WizardScreen AskFor(WizardProbes probes)
+    private static SetupScreen AskFor(FakeSetupProbes probes)
     {
         var flow = new SetupFlow(probes);
         flow.StartPastOpening();
@@ -122,15 +122,15 @@ public class ConnectTests
     }
 
     //render whichever screen record the flow emitted, a cast to Choice would hide the record type. which record it is forms part of what the golden measures
-    private static IReadOnlyList<string> Rendered(WizardScreen s, int width, string key) => s switch
+    private static IReadOnlyList<string> Rendered(SetupScreen s, int width, string key) => s switch
     {
-        WizardScreen.Choice c => WalkRender.SettledFrame(c, width, key).Rows,
-        WizardScreen.Ask a => WalkRender.Ask(a, width, key).Rows,
+        SetupScreen.Choice c => WalkRender.SettledFrame(c, width, key).Rows,
+        SetupScreen.Ask a => WalkRender.Ask(a, width, key).Rows,
         _ => throw new InvalidOperationException($"{key}: the flow emitted {s.GetType().Name}"),
     };
 
     //reach the check the way the runner does, writes apply and then the flow resumes. a hand-built screen would assert a model of the measurement
-    private static WizardScreen Checked(WizardProbes probes)
+    private static SetupScreen Checked(FakeSetupProbes probes)
     {
         var flow = new SetupFlow(probes);
         flow.StartPastOpening();
@@ -140,11 +140,11 @@ public class ConnectTests
     }
 
     //this helper moves a live watch screen to its verdict when PollWatch resolves. do not copy it, a missed step pins a live frame
-    private static WizardScreen Settled(SetupFlow flow)
+    private static SetupScreen Settled(SetupFlow flow)
     {
         var screen = flow.ResumeAfterWrites(null);
         while (flow.NeedsWritesApplied) screen = flow.ResumeAfterWrites(null);
-        return screen is WizardScreen.Choice { Watching: true }
+        return screen is SetupScreen.Choice { Watching: true }
             ? flow.Answer(SetupFlow.OpenRepl)
             : screen;
     }
@@ -153,7 +153,7 @@ public class ConnectTests
     [Fact]
     public void THE_CHECK_THAT_ANSWERS_RENDERS_AT_100()
     {
-        var screen = Checked(new WizardProbes
+        var screen = Checked(new FakeSetupProbes
         {
             Llama = @"C:\llama\llama-server.exe",
             Server = new ConnectProbe(
@@ -166,9 +166,9 @@ public class ConnectTests
     }
 
     //the server listed models and reported no context, so the flow adds two more answers. the rows must read as what that flow decided
-    private static WizardScreen CheckedAfterPickAndContext(int width)
+    private static SetupScreen CheckedAfterPickAndContext(int width)
     {
-        var flow = new SetupFlow(new WizardProbes
+        var flow = new SetupFlow(new FakeSetupProbes
         {
             Llama = @"C:\llama\llama-server.exe",
             Server = new ConnectProbe("http://127.0.0.1:1234", LmsModels, null),
@@ -196,8 +196,8 @@ public class ConnectTests
             Rendered(CheckedAfterPickAndContext(80), 80, "answers-80"));
 
     //reach the failed check screen through the same flow as the passing one, so the failure is what the check measured
-    private static WizardScreen CheckFailed(Gatto.Core.Acquire.ProveOutcome outcome) =>
-        Checked(new WizardProbes
+    private static SetupScreen CheckFailed(Gatto.Core.Acquire.ProveOutcome outcome) =>
+        Checked(new FakeSetupProbes
         {
             Llama = @"C:\llama\llama-server.exe",
             Server = new ConnectProbe("http://127.0.0.1:1234", ["a-model"], 8192),
@@ -265,7 +265,7 @@ public class ConnectTests
     [Fact]
     public void THE_CHECK_WHILE_IT_RUNS_RENDERS_AT_100()
     {
-        var flow = new SetupFlow(new WizardProbes
+        var flow = new SetupFlow(new FakeSetupProbes
         {
             Llama = @"C:\llama\llama-server.exe",
             Server = new ConnectProbe("http://127.0.0.1:1234", [LmsModels[0]], 65536),
@@ -276,7 +276,7 @@ public class ConnectTests
         flow.Answer(SetupFlow.Yes);
         var resumed = flow.ResumeAfterWrites(null);
         while (flow.NeedsWritesApplied) resumed = flow.ResumeAfterWrites(null);
-        var watching = Assert.IsType<WizardScreen.Choice>(resumed);
+        var watching = Assert.IsType<SetupScreen.Choice>(resumed);
 
         Assert.True(watching.Watching, "the check must be a watched screen while it runs");
         Golden.AssertEquals("s8", "first-reply", 100,

@@ -12,7 +12,7 @@ public class HoverBandTests
 
     private static MouseEvent OverCell(int x, int y) => new(x, y, MouseKind.Move, MouseButton.None, 0, 0);
 
-    private static WizardScreen.Choice Consent() =>
+    private static SetupScreen.Choice Consent() =>
         new("consent", "Download llama.cpp?", [new("yes", "Download it"), new("no", "Not now", EscVerb: "not now")]);
 
     [Fact]
@@ -20,7 +20,7 @@ public class HoverBandTests
     {
         var c = Consent();
         var row = ShelfFixtures.Target(c, HitKind.OptionRow, index: 1);
-        var face = new WizardRig(120).TuiFaceEvents(Over(row), new KeyEvent(WizardRig.Enter));
+        var face = new SetupRig(120).TuiFaceEvents(Over(row), new KeyEvent(SetupRig.Enter));
         Assert.Equal(c.Options[1].Key, face.Choose(c));
     }
 
@@ -30,15 +30,15 @@ public class HoverBandTests
         var c = Consent();
         var word = ShelfFixtures.Target(c, HitKind.FooterKey, key: "Enter");
         string? before = null, on = null, after = null;
-        TuiWizardSurface? face = null;
+        TuiSetupSurface? face = null;
         string Footer() => face!.LastInked[^1];
-        face = new WizardRig(120).TuiFaceEvents(
+        face = new SetupRig(120).TuiFaceEvents(
             (Action)(() => before = Footer()),
             Over(word),
             (Action)(() => on = Footer()),
             OverCell(word.FirstCol, word.Row - 1),
             (Action)(() => after = Footer()),
-            new KeyEvent(WizardRig.Enter));
+            new KeyEvent(SetupRig.Enter));
 
         Assert.Equal(c.Options[0].Key, face.Choose(c));
         Assert.DoesNotContain("\u001b[48", before);
@@ -51,7 +51,7 @@ public class HoverBandTests
     {
         var shelf = ShelfFixtures.Shelf("unified");
         var row = ShelfFixtures.Target(shelf, HitKind.Row, index: 1);
-        var face = new WizardRig(120).TuiFaceEvents(Over(row), new KeyEvent(WizardRig.Enter));
+        var face = new SetupRig(120).TuiFaceEvents(Over(row), new KeyEvent(SetupRig.Enter));
         Assert.Equal(shelf.Options[0].Key, face.Choose(shelf));
     }
 }

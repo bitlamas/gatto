@@ -9,9 +9,9 @@ public class LocalDoorTests
 {
     private const string Notice = "gatto setup connects gatto to a server. This screen adds models.";
 
-    private static (SetupFlow Flow, WizardScreen.Choice Shelf, WizardProbes Probes) Local(bool addRoad)
+    private static (SetupFlow Flow, SetupScreen.Choice Shelf, FakeSetupProbes Probes) Local(bool addRoad)
     {
-        var probes = new WizardProbes
+        var probes = new FakeSetupProbes
         {
             Llama = @"C:\llama\llama-server.exe",
             Snapshot = ShelfFixtures.Snapshot("unified"),
@@ -19,7 +19,7 @@ public class LocalDoorTests
         };
         var flow = new SetupFlow(probes) { CanSwitchSource = true };
         if (addRoad) flow.StartAtModelSegment(); else flow.StartPastEngine();
-        return (flow, Assert.IsType<WizardScreen.Choice>(flow.Answer(SetupFlow.CtlSource)), probes);
+        return (flow, Assert.IsType<SetupScreen.Choice>(flow.Answer(SetupFlow.CtlSource)), probes);
     }
 
     [Fact]
@@ -53,7 +53,7 @@ public class LocalDoorTests
     {
         var (flow, shelf, probes) = Local(addRoad: true);
         var roots = probes.ScanRoots.Count;
-        var after = Assert.IsType<WizardScreen.Choice>(flow.Answer(ShelfControls.TypedAnswer("http://127.0.0.1:8080")));
+        var after = Assert.IsType<SetupScreen.Choice>(flow.Answer(ShelfControls.TypedAnswer("http://127.0.0.1:8080")));
         Assert.Equal(SetupFlow.DiscoveredKey, after.Key);
         Assert.Equal(Notice, after.Notice);
         Assert.Equal(roots, probes.ScanRoots.Count);

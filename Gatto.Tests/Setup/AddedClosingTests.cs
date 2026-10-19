@@ -9,9 +9,9 @@ public class AddedClosingTests
 {
     private const string Holder = "qwen3.6-35b-a3b";
 
-    private static (SetupFlow Flow, WizardProbes Probes) Started()
+    private static (SetupFlow Flow, FakeSetupProbes Probes) Started()
     {
-        var probes = new WizardProbes
+        var probes = new FakeSetupProbes
         {
             Llama = @"C:\llama\llama-server.exe",
             Snapshot = ShelfFixtures.Snapshot("unified"),
@@ -32,7 +32,7 @@ public class AddedClosingTests
         flow.Answer(row.ToString(System.Globalization.CultureInfo.InvariantCulture));
         var screen = flow.ResumeAfterWrites(id);
         while (flow.NeedsWritesApplied) screen = flow.ResumeAfterWrites(null);
-        Assert.Equal(SetupFlow.InSessionCheckKey, Assert.IsType<WizardScreen.Choice>(screen).Key);
+        Assert.Equal(SetupFlow.InSessionCheckKey, Assert.IsType<SetupScreen.Choice>(screen).Key);
         flow.Answer(SetupFlow.AddAnother);
         while (flow.NeedsWritesApplied) flow.ResumeAfterWrites(null);
     }
@@ -62,7 +62,7 @@ public class AddedClosingTests
         flow.Answer("0");
         var screen = flow.ResumeAfterWrites("alpha");
         while (flow.NeedsWritesApplied) screen = flow.ResumeAfterWrites(null);
-        Assert.Equal(SetupFlow.InSessionCheckKey, Assert.IsType<WizardScreen.Choice>(screen).Key);
+        Assert.Equal(SetupFlow.InSessionCheckKey, Assert.IsType<SetupScreen.Choice>(screen).Key);
         flow.MarkLeaving();
         var row = Assert.Single(flow.AddedClosings);
         Assert.Contains("you left before checking it", row.Text);

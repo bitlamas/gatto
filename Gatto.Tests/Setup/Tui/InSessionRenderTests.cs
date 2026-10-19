@@ -10,7 +10,7 @@ public class InSessionRenderTests
     private const string Incoming = "gemma-4-26B-A4B-it";
     private const string Serving = "qwen-qwen3.6-35b-a3b";
 
-    private static WizardProbes Probes() => new()
+    private static FakeSetupProbes Probes() => new()
     {
         Llama = @"C:\llama\llama-server.exe",
         ActiveFile = "gemma-4-26B-A4B-it-UD-Q4_K_M.gguf",
@@ -29,22 +29,22 @@ public class InSessionRenderTests
     private static readonly ConsoleKeyInfo Enter = new('\r', ConsoleKey.Enter, false, false, false);
 
     //press Enter, a numbered screen's first Esc may arm a chord and repaint so LastPainted holds that frame
-    private static IReadOnlyList<string> Painted(WizardScreen.Choice screen, int width)
+    private static IReadOnlyList<string> Painted(SetupScreen.Choice screen, int width)
     {
-        var f = new TuiWizardSurface(new RecordingSurface { Width = width }, new Keys([Enter]),
+        var f = new TuiSetupSurface(new RecordingSurface { Width = width }, new Keys([Enter]),
             new Gatto.Terminal.Theme(new Gatto.Terminal.TermCaps(true, true)),
             "0.5.0", "1a2b3c4", () => 0);
         f.Choose(screen);
         return f.LastPainted;
     }
 
-    private static WizardScreen.Choice CheckAsk()
+    private static SetupScreen.Choice CheckAsk()
     {
         var flow = new SetupFlow(Probes());
         flow.StartAtModelSegment();
         var screen = flow.ResumeAfterWrites(Incoming);
         while (flow.NeedsWritesApplied) screen = flow.ResumeAfterWrites(null);
-        return Assert.IsType<WizardScreen.Choice>(screen);
+        return Assert.IsType<SetupScreen.Choice>(screen);
     }
 
     //the 80-column frame is its own file in the corpus (the fold is what it is drawn to show)
@@ -87,7 +87,7 @@ public class InSessionRenderTests
     public void A_NARROWED_WINDOW_IS_REPAINTED_AT_ITS_NEW_WIDTH_WITHOUT_A_KEY()
     {
         var surface = new RecordingSurface { Width = 100, Height = 40, ReportsResize = true };
-        var face = new TuiWizardSurface(surface, new NarrowThenKeyAfterRepaint(surface, 80),
+        var face = new TuiSetupSurface(surface, new NarrowThenKeyAfterRepaint(surface, 80),
             new Gatto.Terminal.Theme(new Gatto.Terminal.TermCaps(true, true)), "0.5.0", "1a2b3c4", () => 0);
         try { face.Choose(CheckAsk()); }
         catch (InvalidOperationException) { }
@@ -104,9 +104,9 @@ public class InSessionRenderTests
     public void A_TYPED_ASK_IS_REPAINTED_AT_A_NARROWED_WIDTH_WITHOUT_A_KEY()
     {
         var surface = new RecordingSurface { Width = 100, Height = 40, ReportsResize = true };
-        var face = new TuiWizardSurface(surface, new NarrowThenKeyAfterRepaint(surface, 80),
+        var face = new TuiSetupSurface(surface, new NarrowThenKeyAfterRepaint(surface, 80),
             new Gatto.Terminal.Theme(new Gatto.Terminal.TermCaps(true, true)), "0.5.0", "1a2b3c4", () => 0);
-        try { face.Ask(new WizardScreen.Ask("t4.ask", "Which folder should gatto look in?", Validate: _ => null, Placeholder: "type a folder path")); }
+        try { face.Ask(new SetupScreen.Ask("t4.ask", "Which folder should gatto look in?", Validate: _ => null, Placeholder: "type a folder path")); }
         catch (InvalidOperationException) { }
 
         var frame = face.LastPainted;
@@ -149,9 +149,9 @@ public class InSessionRenderTests
         var screen = flow.ResumeAfterWrites(Incoming);
         while (flow.NeedsWritesApplied) screen = flow.ResumeAfterWrites(null);
         Assert.Equal(SetupFlow.InSessionCheckKey,
-            Assert.IsType<WizardScreen.Choice>(screen).Key);
+            Assert.IsType<SetupScreen.Choice>(screen).Key);
 
-        var running = Assert.IsType<WizardScreen.Choice>(flow.Answer(SetupFlow.Yes));
+        var running = Assert.IsType<SetupScreen.Choice>(flow.Answer(SetupFlow.Yes));
         Assert.Equal(SetupFlow.AuditionRunningKey, running.Key);
 
         var rows = WalkRender.Watching(running, 100, tick: null, nowMs: Purring(),

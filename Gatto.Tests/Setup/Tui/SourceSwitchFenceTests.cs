@@ -21,38 +21,38 @@ public class SourceSwitchFenceTests
         Params: 25_200_000_000);
 
     //an outage with models on disk, the route to the one m away row
-    private static WizardProbes Outage() => new()
+    private static FakeSetupProbes Outage() => new()
     {
         Rows = [],
-        Answer = _ => WizardProbes.Outcome([], HubSearchCause.HubFailed),
+        Answer = _ => FakeSetupProbes.Outcome([], HubSearchCause.HubFailed),
         Found = [OnDisk("one"), OnDisk("two")],
     };
 
     //a healthy Hub with models on disk, the route to the discovery line
-    private static WizardProbes Healthy() => new()
+    private static FakeSetupProbes Healthy() => new()
     {
         Rows = [HubRow()],
         Found = [OnDisk("one"), OnDisk("two")],
     };
 
     //every row both channels produce on both routes, plus the screens crossed, so the census is never empty
-    private static (List<WizardRow> Rows, List<WizardScreen> Screens) Walk(bool canSwitchSource)
+    private static (List<SetupRow> Rows, List<SetupScreen> Screens) Walk(bool canSwitchSource)
     {
-        List<WizardRow> rows = [];
-        List<WizardScreen> screens = [];
+        List<SetupRow> rows = [];
+        List<SetupScreen> screens = [];
 
         foreach (var probes in new[] { Outage(), Healthy() })
         {
             var flow = new SetupFlow(probes) { CanSwitchSource = canSwitchSource };
             var screen = Take(flow, flow.StartPastEngine());
 
-            if (screen is WizardScreen.Choice { Key: SetupFlow.DiscoveredKey })
+            if (screen is SetupScreen.Choice { Key: SetupFlow.DiscoveredKey })
                 Take(flow, flow.Answer(SetupFlow.CtlSource));
         }
 
         return (rows, screens);
 
-        WizardScreen Take(SetupFlow f, WizardScreen s)
+        SetupScreen Take(SetupFlow f, SetupScreen s)
         {
             screens.Add(s);
             rows.AddRange(RowsOf(s));
@@ -61,12 +61,12 @@ public class SourceSwitchFenceTests
         }
     }
 
-    private static IEnumerable<WizardRow> RowsOf(WizardScreen s) => s switch
+    private static IEnumerable<SetupRow> RowsOf(SetupScreen s) => s switch
     {
-        WizardScreen.Choice c => c.BodyRows ?? [],
-        WizardScreen.Info i => i.Rows,
-        WizardScreen.Ask a => a.BodyRows ?? [],
-        WizardScreen.Terminal t => t.Rows,
+        SetupScreen.Choice c => c.BodyRows ?? [],
+        SetupScreen.Info i => i.Rows,
+        SetupScreen.Ask a => a.BodyRows ?? [],
+        SetupScreen.Terminal t => t.Rows,
         _ => [],
     };
 
@@ -108,7 +108,7 @@ public class SourceSwitchFenceTests
                 string.Join("\n", rows.Select(r => r.Text)), StringComparison.Ordinal);
 
             Assert.Contains(screens, s =>
-                s is WizardScreen.Choice { Key: SetupFlow.SearchKey, Shelf.Rows.Count: > 0 });
+                s is SetupScreen.Choice { Key: SetupFlow.SearchKey, Shelf.Rows.Count: > 0 });
         }
     }
 

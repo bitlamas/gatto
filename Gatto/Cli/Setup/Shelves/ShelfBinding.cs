@@ -88,7 +88,7 @@ internal static class ShelfControls
     internal static string LiftAnswer() => SetupFlow.CtlLift;
 
     //whether this shelf can lift anything. an empty shelf offers nothing, but rows hidden by fit count even when none are shown
-    internal static bool OffersLift(WizardScreen.Choice c) =>
+    internal static bool OffersLift(SetupScreen.Choice c) =>
         c.Shelf is { } v && (v.Rows.Count > 0 || v.HiddenByFit > 0 || v.ShowAll || v.MoreBehind);
 
     //what the shelf's door answers with, the typed text wrapped the way a pick is. a typed 4096 and a row index are the same string
@@ -101,16 +101,16 @@ internal static class ShelfControls
             : null;
 
     //the question mark searches the Hub and nothing else, so a local shelf or one that fetched nothing offers no ?. the folder row on the local shelf stays a row
-    internal static bool OffersSearch(WizardScreen.Choice c) =>
+    internal static bool OffersSearch(SetupScreen.Choice c) =>
         c.Shelf is { NothingFetched: false, Source: ShelfSource.Hub };
 
     //whether the option at this index is the folder door, so the painter, the arrows and the digits agree on which index is skipped
-    internal static bool IsFolderDoor(WizardScreen.Choice c, int i) =>
+    internal static bool IsFolderDoor(SetupScreen.Choice c, int i) =>
         OffersFolderDoor(c) && i >= 0 && i < c.Options.Count
         && string.Equals(c.Options[i].Key, SetupFlow.Elsewhere, StringComparison.Ordinal);
 
     //whether this screen offers a folder row, read off its own options so the footer and the key arm agree. the Hub shelf only
-    internal static bool OffersFolderDoor(WizardScreen.Choice c) =>
+    internal static bool OffersFolderDoor(SetupScreen.Choice c) =>
         c.Shelf is { Source: ShelfSource.Hub }
         && c.Options.Any(o => string.Equals(o.Key, SetupFlow.Elsewhere, StringComparison.Ordinal));
 

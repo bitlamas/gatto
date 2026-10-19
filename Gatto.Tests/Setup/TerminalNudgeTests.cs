@@ -41,10 +41,10 @@ public class TerminalNudgeTests
     }
 
     //drive the flow to reach the screen, a screen built by hand proves nothing about arriving
-    private static WizardScreen.Choice Install(
+    private static SetupScreen.Choice Install(
         bool legacy, Gatto.Cli.Install.InstallState state = Gatto.Cli.Install.InstallState.NotInstalled)
     {
-        var flow = new SetupFlow(new WizardProbes
+        var flow = new SetupFlow(new FakeSetupProbes
         {
             LegacyConsole = legacy,
             Llama = @"C:\llama\llama-server.exe",
@@ -71,7 +71,7 @@ public class TerminalNudgeTests
         while (flow.NeedsWritesApplied) install = flow.ResumeAfterWrites(null);
 
         Assert.Equal(SetupFlow.InstallKey, ScreenKey.Of(install));
-        return Assert.IsType<WizardScreen.Choice>(install);
+        return Assert.IsType<SetupScreen.Choice>(install);
     }
 
     [Fact]

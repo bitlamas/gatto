@@ -5,7 +5,7 @@ using Gatto.Terminal;
 namespace Gatto.Tests.Setup;
 
 //a wizard surface must read keys through the session's prompter, a second reader on stdin would fight the input pump of a live session
-public class PrompterWizardSurfaceTests
+public class PrompterSetupSurfaceTests
 {
     //records every ask and replays the scripted answers.
     private sealed class FakePrompter(params string?[] answers) : IWizardPrompter
@@ -23,7 +23,7 @@ public class PrompterWizardSurfaceTests
         }
     }
 
-    private static WizardScreen.Choice Choice() => new(
+    private static SetupScreen.Choice Choice() => new(
         "k", "pick one",
         [new ChoiceOption("alpha", "The Alpha"), new ChoiceOption("beta", "The Beta")]);
 
@@ -36,9 +36,9 @@ public class PrompterWizardSurfaceTests
         {
             var sink = new StringWriter();
             //with no scripted answers the prompter returns null at the first question, as the Esc key does
-            var surface = new PrompterWizardSurface(new FakePrompter(), sink);
+            var surface = new PrompterSetupSurface(new FakePrompter(), sink);
 
-            SetupRunner.Run(new SetupFlow(new Gatto.Tests.Fakes.WizardProbes()), surface, out var added,
+            SetupRunner.Run(new SetupFlow(new Gatto.Tests.Fakes.FakeSetupProbes()), surface, out var added,
                 home, modelSegmentOnly: true);
 
             var text = sink.ToString();
@@ -68,7 +68,7 @@ public class PrompterWizardSurfaceTests
 
             var sink = new StringWriter();
             SetupRunner.Run(new SetupFlow(InSessionProbes(home, heldBy: "lfm2.5-1.2b-thinking")),
-                new PrompterWizardSurface(new FakePrompter(FirstRowLabel, SetupFlow.AddUncheckedLabel, "next"), sink),
+                new PrompterSetupSurface(new FakePrompter(FirstRowLabel, SetupFlow.AddUncheckedLabel, "next"), sink),
                 out _, home, modelSegmentOnly: true);
 
             Assert.Equal("qwen-before", Gatto.Core.Home.GattoConfig.Load(home).DefaultModel);
@@ -88,7 +88,7 @@ public class PrompterWizardSurfaceTests
 
             var sink = new StringWriter();
             SetupRunner.Run(new SetupFlow(InSessionProbes(home, heldBy: "lfm2.5-1.2b-thinking")),
-                new PrompterWizardSurface(new FakePrompter(FirstRowLabel, SetupFlow.AddUncheckedLabel, "next"), sink),
+                new PrompterSetupSurface(new FakePrompter(FirstRowLabel, SetupFlow.AddUncheckedLabel, "next"), sink),
                 out var added, home, modelSegmentOnly: true);
 
             Assert.NotNull(added);
@@ -114,7 +114,7 @@ public class PrompterWizardSurfaceTests
                 : new FakePrompter(FirstRowLabel);
             var sink = new StringWriter();
 
-            SetupRunner.Run(new SetupFlow(probes), new PrompterWizardSurface(prompter, sink),
+            SetupRunner.Run(new SetupFlow(probes), new PrompterSetupSurface(prompter, sink),
                 out _, home, modelSegmentOnly: true);
 
             //one pattern must catch both setup and set up, searching for one spelling alone is blind to the other
@@ -137,7 +137,7 @@ public class PrompterWizardSurfaceTests
                 FirstRowLabel, "Yes, check it", "Use it anyway", "Yes, check weekly");
             var sink = new StringWriter();
 
-            SetupRunner.Run(new SetupFlow(probes), new PrompterWizardSurface(prompter, sink),
+            SetupRunner.Run(new SetupFlow(probes), new PrompterSetupSurface(prompter, sink),
                 out var added, home, modelSegmentOnly: true);
 
             var text = sink.ToString();
@@ -152,7 +152,7 @@ public class PrompterWizardSurfaceTests
     }
 
     //builds the fixture for a full in-session /model add run, no recorded update consent so the consent question is really asked
-    private static Gatto.Tests.Fakes.WizardProbes InSessionProbes(string home, AuditionCheck? check = null,
+    private static Gatto.Tests.Fakes.FakeSetupProbes InSessionProbes(string home, AuditionCheck? check = null,
         string? existingModel = null, Gatto.Core.Acquire.ProveOutcome? prove = null,
         string? heldBy = null)
     {
@@ -163,7 +163,7 @@ public class PrompterWizardSurfaceTests
             kv.Str("general.architecture", "qwen3");
             kv.U32("qwen3.context_length", 4096);
         }));
-        return new Gatto.Tests.Fakes.WizardProbes
+        return new Gatto.Tests.Fakes.FakeSetupProbes
         {
             Llama = @"C:\llama\llama-server.exe",
             Found = [new Gatto.Core.Acquire.FoundModel(gguf, 4_000_000_000, null)],
@@ -215,7 +215,7 @@ public class PrompterWizardSurfaceTests
             var sink = new StringWriter();
             //a leftover answer from a removed step shifts every later answer, the script must match the screens as they stand
             var prompter = new FakePrompter(FirstRowLabel, "Yes, check it", "Yes, check weekly");
-            var surface = new PrompterWizardSurface(prompter, sink);
+            var surface = new PrompterSetupSurface(prompter, sink);
 
             SetupRunner.Run(new SetupFlow(InSessionProbes(home)), surface, out var added, home,
                 modelSegmentOnly: true);
@@ -262,7 +262,7 @@ public class PrompterWizardSurfaceTests
         {
             var sink = new StringWriter();
             var prompter = new FakePrompter(FirstRowLabel);
-            var surface = new PrompterWizardSurface(prompter, sink);
+            var surface = new PrompterSetupSurface(prompter, sink);
 
             SetupRunner.Run(new SetupFlow(InSessionProbes(home, existingModel: "qwen-already")),
                 surface, out _, home, modelSegmentOnly: true);
@@ -283,7 +283,7 @@ public class PrompterWizardSurfaceTests
         try
         {
             var prompter = new FakePrompter(FirstRowLabel);
-            var surface = new PrompterWizardSurface(prompter, new StringWriter());
+            var surface = new PrompterSetupSurface(prompter, new StringWriter());
 
             SetupRunner.Run(new SetupFlow(InSessionProbes(home, existingModel: "gemma-already")),
                 surface, out var added, home, modelSegmentOnly: true);
@@ -302,7 +302,7 @@ public class PrompterWizardSurfaceTests
         {
             var sink = new StringWriter();
             var prompter = new FakePrompter(FirstRowLabel, "Yes, check it", "Use it anyway", "Yes, check weekly");
-            var surface = new PrompterWizardSurface(prompter, sink);
+            var surface = new PrompterSetupSurface(prompter, sink);
 
             SetupRunner.Run(
                 new SetupFlow(InSessionProbes(home, check: new AuditionCheck(
@@ -337,7 +337,7 @@ public class PrompterWizardSurfaceTests
         {
             var sink = new StringWriter();
             var prompter = new FakePrompter(FirstRowLabel, "next");   //one answer spare, a script that runs out reads as leaving
-            var surface = new PrompterWizardSurface(prompter, sink);
+            var surface = new PrompterSetupSurface(prompter, sink);
 
             SetupRunner.Run(new SetupFlow(InSessionProbes(home, heldBy: "lfm2.5-1.2b-thinking")),
                 surface, out _, home, modelSegmentOnly: true);
@@ -364,9 +364,9 @@ public class PrompterWizardSurfaceTests
     public void AN_IN_SESSION_ASK_NEVER_PUTS_BACK_ABOVE_THE_BOX(bool withOffer, int expected)
     {
         var prompter = new FakePrompter("typed");
-        var surface = new PrompterWizardSurface(prompter, new StringWriter());
+        var surface = new PrompterSetupSurface(prompter, new StringWriter());
 
-        surface.Ask(new WizardScreen.Ask("k", "Where is that llama-server.exe?", _ => null,
+        surface.Ask(new SetupScreen.Ask("k", "Where is that llama-server.exe?", _ => null,
             Offer: withOffer ? new AskOffer("use the one I have", @"C:\llama") : null)
         { AllowBack = true });
 
@@ -384,7 +384,7 @@ public class PrompterWizardSurfaceTests
             var sink = new StringWriter();
             //the script answers by option label, so a reworded option fails this test loudly instead of moving past it
             var prompter = new FakePrompter(FirstRowLabel, "Skip the tasks, just make sure it answers");
-            var surface = new PrompterWizardSurface(prompter, sink);
+            var surface = new PrompterSetupSurface(prompter, sink);
 
             SetupRunner.Run(
                 new SetupFlow(InSessionProbes(home,
@@ -421,7 +421,7 @@ public class PrompterWizardSurfaceTests
         {
             var sink = new StringWriter();
             var prompter = new FakePrompter(FirstRowLabel, "Skip the tasks, just make sure it answers");
-            var surface = new PrompterWizardSurface(prompter, sink);
+            var surface = new PrompterSetupSurface(prompter, sink);
 
             SetupRunner.Run(
                 new SetupFlow(InSessionProbes(home,
@@ -441,7 +441,7 @@ public class PrompterWizardSurfaceTests
     {
         //the flow speaks keys and the prompter speaks labels, so the mapping lives here rather than in the flow
         var prompter = new FakePrompter("The Beta");
-        var surface = new PrompterWizardSurface(prompter, new StringWriter());
+        var surface = new PrompterSetupSurface(prompter, new StringWriter());
 
         Assert.Equal("beta", surface.Choose(Choice()));
         Assert.Single(prompter.Asked);
@@ -452,7 +452,7 @@ public class PrompterWizardSurfaceTests
     public void A_CHOICE_THAT_ALLOWS_BACK_OFFERS_THE_ROW_AND_MAPS_IT_TO_THE_BACK_KEY()
     {
         var prompter = new FakePrompter(SetupFace.BackOptionKey);
-        var surface = new PrompterWizardSurface(prompter, new StringWriter());
+        var surface = new PrompterSetupSurface(prompter, new StringWriter());
 
         var answer = surface.Choose(Choice() with { AllowBack = true });
 
@@ -467,9 +467,9 @@ public class PrompterWizardSurfaceTests
         //back is one extra row handed over last, so it takes part in the nine the widget numbers
         var many = Enumerable.Range(1, 12).Select(i => new ChoiceOption($"k{i}", $"Option {i}")).ToList();
         var prompter = new FakePrompter("Option 1");
-        var surface = new PrompterWizardSurface(prompter, new StringWriter());
+        var surface = new PrompterSetupSurface(prompter, new StringWriter());
 
-        surface.Choose(new WizardScreen.Choice("k", "pick one", many) { AllowBack = true });
+        surface.Choose(new SetupScreen.Choice("k", "pick one", many) { AllowBack = true });
 
         var offered = prompter.Asked[0].Options;
         Assert.Equal(many.Count + 1, offered.Count);
@@ -481,7 +481,7 @@ public class PrompterWizardSurfaceTests
     public void A_CHOICE_THAT_DOES_NOT_ALLOW_BACK_OFFERS_NO_SUCH_ROW()
     {
         var prompter = new FakePrompter("The Beta");
-        var surface = new PrompterWizardSurface(prompter, new StringWriter());
+        var surface = new PrompterSetupSurface(prompter, new StringWriter());
 
         surface.Choose(Choice());
 
@@ -494,8 +494,8 @@ public class PrompterWizardSurfaceTests
         //a validator expects a path, a number or a name, so running it on back would re-ask the screen forever. assert the validator was never called
         var validated = new List<string>();
         var prompter = new FakePrompter(SetupFace.BackOptionKey);
-        var surface = new PrompterWizardSurface(prompter, new StringWriter());
-        var ask = new WizardScreen.Ask("k", "how many?",
+        var surface = new PrompterSetupSurface(prompter, new StringWriter());
+        var ask = new SetupScreen.Ask("k", "how many?",
             Validate: t => { validated.Add(t); return "always complains"; },
             Offer: new AskOffer("Use 32768", "32768")) with { AllowBack = true };
 
@@ -512,7 +512,7 @@ public class PrompterWizardSurfaceTests
     public void BACKING_OUT_reads_as_null_rather_than_as_a_choice()
     {
         //leaving returns null, since a fallback to the first option would read a departure as a choice
-        var surface = new PrompterWizardSurface(new FakePrompter((string?)null), new StringWriter());
+        var surface = new PrompterSetupSurface(new FakePrompter((string?)null), new StringWriter());
         Assert.Null(surface.Choose(Choice()));
     }
 
@@ -523,7 +523,7 @@ public class PrompterWizardSurfaceTests
         var prompter = new FakePrompter("yes", "The Beta");
         var log = new StringWriter();
 
-        Assert.Equal("beta", new PrompterWizardSurface(prompter, log).Choose(Choice()));
+        Assert.Equal("beta", new PrompterSetupSurface(prompter, log).Choose(Choice()));
         Assert.Equal(2, prompter.Asked.Count);
         Assert.Contains("pick one of the options", log.ToString(), StringComparison.Ordinal);
     }
@@ -535,8 +535,8 @@ public class PrompterWizardSurfaceTests
         const string esc = "\u001b";
         var log = new StringWriter();
 
-        new PrompterWizardSurface(new FakePrompter("x"), log)
-            .Show(new WizardScreen.Info("k", [$"using evil{esc}[2Jname.gguf"]));
+        new PrompterSetupSurface(new FakePrompter("x"), log)
+            .Show(new SetupScreen.Info("k", [$"using evil{esc}[2Jname.gguf"]));
 
         Assert.DoesNotContain(esc, log.ToString(), StringComparison.Ordinal);
         Assert.Contains("evil[2Jname.gguf", log.ToString(), StringComparison.Ordinal);
@@ -548,9 +548,9 @@ public class PrompterWizardSurfaceTests
         //the validation rule lives on the screen, so the prompt and the check cannot drift on this surface
         var prompter = new FakePrompter("nope", "4096");
         var log = new StringWriter();
-        var surface = new PrompterWizardSurface(prompter, log);
+        var surface = new PrompterSetupSurface(prompter, log);
 
-        var answer = surface.Ask(new WizardScreen.Ask("k", "how many?",
+        var answer = surface.Ask(new SetupScreen.Ask("k", "how many?",
             Validate: t => int.TryParse(t, out _) ? null : "that needs to be a number"));
 
         Assert.Equal("4096", answer);
@@ -562,8 +562,8 @@ public class PrompterWizardSurfaceTests
     public void AN_ASK_offers_NO_OPTIONS_because_the_free_text_row_IS_the_answer()
     {
         var prompter = new FakePrompter("x");
-        new PrompterWizardSurface(prompter, new StringWriter())
-            .Ask(new WizardScreen.Ask("k", "type it", Validate: _ => null));
+        new PrompterSetupSurface(prompter, new StringWriter())
+            .Ask(new SetupScreen.Ask("k", "type it", Validate: _ => null));
 
         Assert.Empty(prompter.Asked[0].Options);
         Assert.NotNull(prompter.Asked[0].FreeTextLabel);
@@ -573,7 +573,7 @@ public class PrompterWizardSurfaceTests
     public void This_surface_NEVER_CONSTRUCTS_A_KEY_SOURCE_which_is_the_whole_point()
     {
         //no constructor parameter may read keys, since the session's input pump already owns stdin
-        var ctor = Assert.Single(typeof(PrompterWizardSurface).GetConstructors());
+        var ctor = Assert.Single(typeof(PrompterSetupSurface).GetConstructors());
         var paramTypes = ctor.GetParameters().Select(p => p.ParameterType).ToList();
 
         //the exact parameter list is pinned, so a new parameter must be an output or waiting seam. the cancellation seam must not throw and exit the process
@@ -586,7 +586,7 @@ public class PrompterWizardSurfaceTests
         foreach (var t in paramTypes)
             Assert.False(typeof(IKeySource).IsAssignableFrom(t) || t == typeof(TextReader)
                 || t.Name.Contains("Console", StringComparison.Ordinal),
-                $"PrompterWizardSurface must not be constructed with anything that can read keys: {t.Name}");
+                $"PrompterSetupSurface must not be constructed with anything that can read keys: {t.Name}");
     }
     //a run meets the held server twice, so only one of the two screens may explain it
     [Fact]
@@ -601,7 +601,7 @@ public class PrompterWizardSurfaceTests
                 FirstRowLabel, SetupFlow.AddUncheckedLabel, "next");
 
             SetupRunner.Run(new SetupFlow(InSessionProbes(home, heldBy: "lfm2.5-1.2b-thinking")),
-                new PrompterWizardSurface(prompter, sink), out _, home, modelSegmentOnly: true);
+                new PrompterSetupSurface(prompter, sink), out _, home, modelSegmentOnly: true);
 
             var narrated = sink.ToString();
             //the completion keeps its own news, the running server and the next step.
@@ -630,7 +630,7 @@ public class PrompterWizardSurfaceTests
                 false, "lfm2.5-1.2b-thinking is the running server", TimeSpan.Zero,
                 ServedByAnother: "lfm2.5-1.2b-thinking"));
 
-            SetupRunner.Run(new SetupFlow(probes), new PrompterWizardSurface(prompter, sink),
+            SetupRunner.Run(new SetupFlow(probes), new PrompterSetupSurface(prompter, sink),
                 out _, home, modelSegmentOnly: true);
 
             var narrated = sink.ToString();
@@ -652,7 +652,7 @@ public class PrompterWizardSurfaceTests
             var prompter = new FakePrompter(FirstRowLabel, "next");
 
             SetupRunner.Run(new SetupFlow(InSessionProbes(home, heldBy: "lfm2.5-1.2b-thinking")),
-                new PrompterWizardSurface(prompter, sink), out _, home, modelSegmentOnly: true);
+                new PrompterSetupSurface(prompter, sink), out _, home, modelSegmentOnly: true);
 
             var offered = EverythingOffered(prompter, sink);
 

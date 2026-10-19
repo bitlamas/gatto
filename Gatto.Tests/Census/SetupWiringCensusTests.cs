@@ -3,11 +3,11 @@ using System.Text;
 namespace Gatto.Tests.Census;
 
 //every wizard face built in production must be handed the resolved glyph set. the argument is optional, so no other guard sees an omission
-public class WizardWiringCensusTests
+public class SetupWiringCensusTests
 {
     //the three faces are listed by name. a suffix rule would gain silent exceptions the first time an unrelated class took the name
     private static readonly string[] Faces =
-        ["TuiWizardSurface", "PrompterWizardSurface", "SetupFace"];
+        ["TuiSetupSurface", "PrompterSetupSurface", "SetupFace"];
 
     //the wizard-face constructions that omit the glyph set, as face@offset entries. matching uses balanced parens, these calls span lines and nest calls
     internal static IReadOnlyList<string> Unwired(string text)
@@ -78,21 +78,21 @@ public class WizardWiringCensusTests
 
     //a known match for every spelling the source uses (testing one spelling alone would certify only the matcher's blind spot)
     [Theory]
-    [InlineData("var f = new TuiWizardSurface(surface, keys, theme, v, b);")]
-    [InlineData("var f = new Setup.Tui.TuiWizardSurface(surface, keys, theme, v, b);")]
-    [InlineData("var f = new Gatto.Cli.Setup.Tui.TuiWizardSurface(surface, keys, theme, v, b);")]
+    [InlineData("var f = new TuiSetupSurface(surface, keys, theme, v, b);")]
+    [InlineData("var f = new Setup.Tui.TuiSetupSurface(surface, keys, theme, v, b);")]
+    [InlineData("var f = new Gatto.Cli.Setup.Tui.TuiSetupSurface(surface, keys, theme, v, b);")]
     [InlineData("var f = new SetupFace(surface, theme, keys, output);")]
-    [InlineData("var f = new Setup.PrompterWizardSurface(prompter, w, theme);")]
-    [InlineData("var f = new TuiWizardSurface(\n    surface, keys, theme,\n    v, b,\n    pulse: p);")]
+    [InlineData("var f = new Setup.PrompterSetupSurface(prompter, w, theme);")]
+    [InlineData("var f = new TuiSetupSurface(\n    surface, keys, theme,\n    v, b,\n    pulse: p);")]
     public void THE_CENSUS_FIRES_ON_A_FACE_BUILT_WITHOUT_A_SET(string planted) =>
         Assert.NotEmpty(Unwired(planted));
 
     //a wired construction must not fire, including one that spans lines or holds a nested call
     [Theory]
-    [InlineData("var f = new TuiWizardSurface(surface, keys, theme, v, b, glyphs: g);")]
-    [InlineData("var f = new Setup.Tui.TuiWizardSurface(\n    surface, keys, theme, v, b,\n"
+    [InlineData("var f = new TuiSetupSurface(surface, keys, theme, v, b, glyphs: g);")]
+    [InlineData("var f = new Setup.Tui.TuiSetupSurface(\n    surface, keys, theme, v, b,\n"
                 + "    pulse: () => new TimerPurrPulse(),\n    glyphs: CommandBanner.GlyphsFor(home));")]
-    [InlineData("var s = \"new TuiWizardSurface(a, b)\";")]
+    [InlineData("var s = \"new TuiSetupSurface(a, b)\";")]
     [InlineData("var x = new Theme(caps);")]
     public void AND_IT_DOES_NOT_FIRE_ON_A_WIRED_ONE(string source) =>
         Assert.Empty(Unwired(source));
@@ -105,13 +105,13 @@ public class WizardWiringCensusTests
         var theme = new Gatto.Terminal.Theme(new Gatto.Terminal.TermCaps(true, true));
         var surface = new Gatto.Tests.Fakes.RecordingSurface { Width = 80 };
 
-        Gatto.Cli.Setup.IWizardSurface[] faces =
+        Gatto.Cli.Setup.ISetupSurface[] faces =
         [
             new Gatto.Cli.Setup.SetupFace(surface, theme, new NoKeys(), TextWriter.Null,
                 glyphs: ascii),
-            new Gatto.Cli.Setup.PrompterWizardSurface(new NoPrompter(), TextWriter.Null, theme,
+            new Gatto.Cli.Setup.PrompterSetupSurface(new NoPrompter(), TextWriter.Null, theme,
                 glyphs: ascii),
-            new Gatto.Cli.Setup.Tui.TuiWizardSurface(surface, new NoKeys(), theme, "0.5.0", "1a2b3c4",
+            new Gatto.Cli.Setup.Tui.TuiSetupSurface(surface, new NoKeys(), theme, "0.5.0", "1a2b3c4",
                 glyphs: ascii),
         ];
 

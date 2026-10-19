@@ -15,7 +15,7 @@ public class RowGlyphTests
         {
             Assert.False(string.IsNullOrEmpty(Glyphs.Of(glyph, glyphs: GlyphSet.Unicode)), $"{glyph} has no mark");
             //the ink Plain is real, but a status mark in the row's own colour is a check nobody sees
-            Assert.True(TuiWizardSurface.GlyphInk(glyph) != RunInk.Plain, $"{glyph} has no ink of its own");
+            Assert.True(TuiSetupSurface.GlyphInk(glyph) != RunInk.Plain, $"{glyph} has no ink of its own");
             seen++;
         }
 

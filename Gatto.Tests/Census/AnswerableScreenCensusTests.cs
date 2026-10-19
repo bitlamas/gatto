@@ -36,7 +36,7 @@ public class AnswerableScreenCensusTests
     {
         var found = new List<(string, string, string)>();
         var seen = new HashSet<string>(StringComparer.Ordinal);
-        foreach (Match m in Regex.Matches(src, @"new WizardScreen\.(Choice|Ask)\(\s*\r?\n?\s*([A-Za-z_][\w.]*)"))
+        foreach (Match m in Regex.Matches(src, @"new SetupScreen\.(Choice|Ask)\(\s*\r?\n?\s*([A-Za-z_][\w.]*)"))
         {
             var name = m.Groups[2].Value.Split('.')[^1];
             if (consts.TryGetValue(name, out var value) && seen.Add(value))
