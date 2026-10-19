@@ -53,11 +53,16 @@ file sealed class OneShotCompaction(
 {
     public string? LastFailure { get; private set; }
 
+    public Task<CompactionResult?> CompactAsync(
+        CompactionReason reason, string currentUserPrompt, ITurnObserver observer, CancellationToken ct) =>
+        CompactAsync(reason, currentUserPrompt, observer, 0, ct);
+
     public async Task<CompactionResult?> CompactAsync(
-        CompactionReason reason, string currentUserPrompt, ITurnObserver observer, CancellationToken ct)
+        CompactionReason reason, string currentUserPrompt, ITurnObserver observer, long traceParent, CancellationToken ct)
     {
-        var compactor = new Compactor(client, model, loop.RequestShape);
-        var summary = await compactor.SummarizeAsync(convo, observer, ct, windowTokens: window, ratio: usage.Ratio, midTurn: true);
+        var compactor = new Compactor(client, model, loop.RequestShape, loop.Trace);
+        var summary = await compactor.SummarizeAsync(convo, observer, ct, windowTokens: window, ratio: usage.Ratio, midTurn: true,
+            reason: reason.ToString(), traceParent: traceParent);
         LastFailure = compactor.LastFailure;
         if (summary is null) return null;
         var (rebuilt, _) = Compactor.RebuildMidTurn(summary, convo, currentUserPrompt, observer, sessions, recompose, dot);
@@ -126,9 +131,24 @@ public static class GattoApp
         public void Dispose() => ProbeDeadlineOverride.Value = null;
     }
 
+    //a test's trace switch, carried in its own async flow like the probe deadline, so a parallel test never writes a trace
+    private static readonly AsyncLocal<bool> TraceOverride = new();
+
+    internal static IDisposable TraceScope()
+    {
+        TraceOverride.Value = true;
+        return new TraceReset();
+    }
+
+    private sealed class TraceReset : IDisposable
+    {
+        public void Dispose() => TraceOverride.Value = false;
+    }
+
     //internal, so the harness's ctx never joins the public surface, and no default argument, which would make one-argument calls ambiguous
     internal static async Task<int> RunAsync(string[] argv, CommandContext? ctx)
     {
+        var launchedAt = Stopwatch.GetTimestamp();   //the launch span's start, read before any other work
         //first, before anything spawns a child, so a missing DLL kills the process instead of pinning it behind a dialog nobody sees
         Gatto.Core.ProcessErrorMode.FailFastOnMissingDll();
 
@@ -154,7 +174,7 @@ public static class GattoApp
 
         try
         {
-            return await RunInnerAsync(argv, ctx);
+            return await RunInnerAsync(argv, ctx, launchedAt);
         }
         catch (Exception ex)
         {
@@ -173,7 +193,7 @@ public static class GattoApp
             ? ask => SwapConfirm.Confirmed(Label(asker.AskOne(ask)))
             : null;
 
-    private static async Task<int> RunInnerAsync(string[] argv, CommandContext? ctx = null)
+    private static async Task<int> RunInnerAsync(string[] argv, CommandContext? ctx = null, long launchedAt = 0)
     {
         try { Console.OutputEncoding = System.Text.Encoding.UTF8; } catch (Exception) { }  //a legacy host may refuse this, and it is never fatal
 
@@ -241,16 +261,20 @@ public static class GattoApp
         }
 
         //config resolution runs before anything is created, so a launch that dies on a config error leaves the home untouched
+        var homeFrom = Stopwatch.GetTimestamp();
         GattoConfig config;
         try { config = GattoConfig.Load(home); }
         catch (GattoConfigException ex) { Console.Error.WriteLine(ex.Message); return 2; }
 
         GattoHome.EnsureInitialized(home);
+        var homeTicks = Stopwatch.GetTimestamp() - homeFrom;
         var rolesDir = Path.Combine(home, "roles");
         var modelsDir = Path.Combine(home, "models");
         //shipped files are written before anything reads them, a user edit survives, and a write failure warns rather than aborting the launch
+        var shippedFrom = Stopwatch.GetTimestamp();
         try { ShippedExtensions.EnsureWritten(home); }
         catch (Exception ex) { Console.Error.WriteLine($"! extension: could not write shipped files: {ex.Message}"); }
+        var shippedTicks = Stopwatch.GetTimestamp() - shippedFrom;
 
         //an id names the session's folder, so the process moves there first and every read below takes that folder
         string? continueById = null;
@@ -284,6 +308,17 @@ public static class GattoApp
         //null until the prompters are built below, so an extension that asks at load time gets the no-interactive-input error
         IUserPrompter? prompter = null;
         var sessions = new SessionStore(home, cwd);
+        //read once here like the wire log, and handed down, so nothing below reads the environment for it
+        var trace = TraceOverride.Value || Environment.GetEnvironmentVariable("GATTO_TRACE") == "1"
+            ? new Gatto.Core.Trace(launchedAt, DateTimeOffset.Now - Stopwatch.GetElapsedTime(launchedAt),
+                () => sessions.CurrentPath is { } tp ? SessionFiles.Sidecar(tp, SessionFiles.Trace) : null,
+                () => sessions.Identity.IdText,
+                GattoVersion.Build is { Length: > 0 } sha ? $"{GattoVersion.String}+{sha}" : GattoVersion.String,
+                Environment.ProcessId)
+            : Gatto.Core.Trace.Off;
+        sessions.Trace = trace;
+        var launchSpan = trace.OpenFrom(Gatto.Core.Trace.Launch, launchedAt);
+        long probeTicks = 0;
 
         //extensions
 
@@ -296,9 +331,7 @@ public static class GattoApp
             : null;
         var (extApi, ledger, _) = ExtensionHost.BuildApi(   //scripts get the guarded fetch and this session's citation ledger, which stays in memory until the session file exists
             home, cwd,
-            ledgerPath: () => sessions.CurrentPath is { } sp
-                ? Path.Combine(Path.GetDirectoryName(sp)!, Path.GetFileNameWithoutExtension(sp) + ".ledger.jsonl")
-                : null,
+            ledgerPath: () => sessions.CurrentPath is { } sp ? SessionFiles.Sidecar(sp, SessionFiles.Ledger) : null,
             prompter: () => prompter,
             log: extDiag,
             configSection: SectionReader(config.Raw),
@@ -411,7 +444,7 @@ public static class GattoApp
             tools.Register(new RecallMemoryTool());
         }
 
-        var hooks = new HookBus();
+        var hooks = new HookBus { Trace = trace };
         hooks.OnHandlerError += (evt, ex) => warn.Warn($"hook error ({evt}): {ex.Message}");
         //the theme is resolved on the interactive REPL path only, so a -p run stays byte-pure and never sends the background query
         ThemeMode themeMode = ThemeMode.Dark;
@@ -499,7 +532,8 @@ public static class GattoApp
                 { Timeout = System.Threading.Timeout.InfiniteTimeSpan },
             state.EndpointName, state.Endpoint, wireLog,
             //ask for progress only from a local llama-server with a known base URL
-            returnProgress: state.EndpointName == "local" && state.LaunchBaseUrl is not null);
+            returnProgress: state.EndpointName == "local" && state.LaunchBaseUrl is not null,
+            trace: trace);
         //a dropped attached image must warn the user, the sink paints a ♯ row in the REPL and stderr for -p
         client.OnImageUnavailable = m => warn.Warn(m);
         //every request on this client feeds the footer's cost and quota, run_agent children included since they share it
@@ -515,7 +549,9 @@ public static class GattoApp
         //cross-check /props at every launch and let the live answer win in both directions (it does not run on the endpoint gatto serves)
         if (!state.ServedHere() && state.LaunchBaseUrl is not null && !state.Cloud)
         {
+            var probeFrom = Stopwatch.GetTimestamp();
             var probedCtx = await ServeProbe.ProbeAsync(probeHttp, state.LaunchBaseUrl, CancellationToken.None, state.Endpoint.ApiKey, probeDeadline);
+            probeTicks += Stopwatch.GetTimestamp() - probeFrom;
             var resolved = ConnectContext.Resolve(state.ContextBudget, probedCtx?.NCtx);
             state.ContextBudget = resolved.Budget;
             //warn with the line Resolve returned, so the budget and the message cannot disagree
@@ -565,7 +601,9 @@ public static class GattoApp
                     LoadingLine.Over(loadingLine, glyphs, launchTheme), id => SizeWordsOnDiskOrNull(home, id),
                     CancellationToken.None);
             }
+            var loadedFrom = Stopwatch.GetTimestamp();
             var launchLoaded = await ServeProbe.ProbeAsync(probeHttp, state.LaunchBaseUrl, CancellationToken.None, state.Endpoint.ApiKey, probeDeadline);   //the chat client's own key, since /props sits behind the server's api key and a keyed server would read as unknown
+            probeTicks += Stopwatch.GetTimestamp() - loadedFrom;
             //computed once, so the refusal and the chip cannot end up describing two different servers
             var launchMismatch = ModelSwitch.DescribeProbe(state.Model, launchLoaded, modelsDir);
             state.LaunchServing = new ServingProbe(
@@ -625,7 +663,9 @@ public static class GattoApp
         //read after any start so -p and an auto-served launch both see the server, and only a server holding this model speaks for its window
         if (state.ServedHere() && state.Model is not null && state.LaunchBaseUrl is not null && !state.Cloud)
         {
+            var servedFrom = Stopwatch.GetTimestamp();
             var served = await ServeProbe.ProbeAsync(probeHttp, state.LaunchBaseUrl, CancellationToken.None, state.Endpoint.ApiKey, probeDeadline);
+            probeTicks += Stopwatch.GetTimestamp() - servedFrom;
             if (served is not null && ModelSwitch.DescribeProbe(state.Model, served, modelsDir) is null)
             {
                 var window = ModelWindow.Resolve(state.Model.Profile.Context, served.NCtx);
@@ -691,7 +731,7 @@ public static class GattoApp
 
         var loop = new AgentLoop(client, tools, hooks, toolCtx, state.ModelString, state.Comp.Sampling, state.Comp.ThinkingBody, state.ContextBudget,
             promptSuffix: state.Comp.ThinkingSuffix,
-            reasoningHistory: state.ReasoningHistory);
+            reasoningHistory: state.ReasoningHistory, trace: trace) { TraceRole = state.Role.Name };
         //the services the switches use, handed over once the loop exists, since the role resolves before any of them does
         state.UseServices(loop, runAgent, citationGate, probeHttp, probeDeadline, prompter, launchTheme);
 
@@ -725,6 +765,7 @@ public static class GattoApp
         var convo = new Conversation(state.Comp.SystemText, baseline: state.NextBaseline(state.Comp.Sources));
         convo.SetGattoRole(state.Role.Name);   //the launch role name, so messages from before a /role replay with their own tint
         string? resumedFrom = null;
+        var resumeSpan = continuePath is null ? default : trace.Open(Gatto.Core.Trace.Resume);
         if (continuePath is { } contPath && sessions.LoadPath(contPath) is { } prior)
         {
             //a resume is the same session, so its next file and its shell children carry the resumed one's identity
@@ -758,10 +799,13 @@ public static class GattoApp
             }
 
             //restore from the sidecar beside the resumed file, they stay in memory and a new save writes its own
-            ledger.RestoreFrom(Path.Combine(
-                Path.GetDirectoryName(contPath)!,
-                Path.GetFileNameWithoutExtension(contPath) + ".ledger.jsonl"));
+            ledger.RestoreFrom(SessionFiles.Sidecar(contPath, SessionFiles.Ledger));
             resumedFrom = SessionStamp(contPath);
+            //the count is gatto's estimate, the server's own arrives on the first request after this mark
+            resumeSpan.Set("records", prior.Count);
+            if (trace.Enabled) resumeSpan.Set("est_tokens", ContextBudget.Estimate(convo.Messages));
+            resumeSpan.Dispose();
+            trace.MarkResume();
 
             //printed on stdout, or on stderr under -p where stdout is model text by contract
             (args.Prompt is null ? Console.Out : Console.Error)
@@ -770,6 +814,18 @@ public static class GattoApp
             //computed once from the decision and the update that was set, never from a second comparison
             resumeLine = ResumeUpdate.Line(resumeDecision!, convo.PendingUpdate is null ? null : resumeDelta, goneFolder, cwd);
             if (args.Prompt is not null && resumeLine is not null) Console.Error.WriteLine(resumeLine);
+        }
+
+        //the launch span closes where the user can first act, before the -p turn or when the session first waits for input
+        void CloseLaunch()
+        {
+            static long Us(long ticks) => ticks * 1_000_000 / Stopwatch.Frequency;
+            launchSpan.Set("home_us", Us(homeTicks));
+            launchSpan.Set("shipped_us", Us(shippedTicks));
+            launchSpan.Set("context_files_us", Us(state.ContextFilesTicks));
+            launchSpan.Set("memory_us", Us(state.MemoryTicks));
+            launchSpan.Set("probe_us", Us(probeTicks));
+            launchSpan.Dispose();
         }
 
         if (args.Prompt is not null)   //the -p one-shot path
@@ -794,6 +850,7 @@ public static class GattoApp
                     : new OneShotCompaction(client, state.ModelString, loop, convo, state.ContextBudget, oneShotUsage, sessions, state.RecomposeSystem, glyphs.Dot),
                 oneShotUsage, oneShotArmedAt);
             if (resumedFrom is null) Gatto.Repl.Repl.SeedFirstMessage(convo, state.Role.FirstMessage);   //a resumed transcript already opened with it
+            CloseLaunch();
             try
             {
                 var r = await loop.RunTurnAsync(convo, args.Prompt, new OneShotObserver(), oneShotCts.Token);
@@ -811,6 +868,7 @@ public static class GattoApp
             finally
             {
                 Console.CancelKeyPress -= cancelHandler;   //a static event, so detach it and the handler cannot outlive this run
+                trace.Flush();
             }
         }
 
@@ -908,7 +966,9 @@ public static class GattoApp
                     () => ServeCommand.QuantServing(home, state.Model, config) is Gatto.Roles.Serve.ServingState.ServingThis,
                     Confirming(prompter))))
 ;
+        repl.OnReady = CloseLaunch;
         var replExit = await repl.RunAsync(CancellationToken.None);
+        trace.Flush();
 
         //the key stops only the server of a session on the local endpoint. a connect session never used the server this home records.
         InkedLine? serverLine = null;

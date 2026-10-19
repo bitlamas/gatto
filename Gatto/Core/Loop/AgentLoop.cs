@@ -42,8 +42,19 @@ public sealed class AgentLoop(
     JsonElement? samplingOverrides = null, JsonElement? bodyOverrides = null, int? budgetTokens = null,
     int? maxRounds = null, string? promptSuffix = null,
     ICompactionHandler? compaction = null, ContextUsageState? usageState = null, double? autoCompactAt = null,
-    ReasoningHistory reasoningHistory = ReasoningHistory.All)
+    ReasoningHistory reasoningHistory = ReasoningHistory.All, Trace? trace = null)
 {
+    private readonly Trace _trace = trace ?? Trace.Off;
+
+    //the loop's trace, which a compactor built for this loop writes its span to
+    public Trace Trace => _trace;
+
+    //the role name the turn span carries, set at launch and at each switch that changes the role, since the loop itself never sees one
+    public string TraceRole { get; set; } = "";
+
+    //the round the turn reached, read by the turn span when the turn ends in an exception
+    private int _traceRounds;
+
     //swap the overrides every later turn reads, without rebuilding the loop and losing its tools. budgetTokens stays out, the window has its own seam
     public void UpdateOverrides(string newModel, JsonElement? newSampling, JsonElement? newBody, string? newPromptSuffix = null)
     {
@@ -109,10 +120,38 @@ public sealed class AgentLoop(
     private ChatMessage[]? _lastSent;
     private ChatMessage[]? _lastSentFrom;
 
-    //images for this user turn, since the loop adds the user message and the caller cannot attach them itself
-    public async Task<TurnResult> RunTurnAsync(
+    //images for this user turn, since the loop adds the user message itself, and a run_agent child passes its tool span and role
+    public Task<TurnResult> RunTurnAsync(
         Conversation convo, string userMessage, ITurnObserver observer, CancellationToken ct,
-        IReadOnlyList<ImageRef>? images = null)
+        IReadOnlyList<ImageRef>? images = null, long traceParent = 0, string? agent = null) =>
+        _trace.Enabled
+            ? TracedTurnAsync(convo, userMessage, observer, ct, images, traceParent, agent)
+            : RunTurnCoreAsync(convo, userMessage, observer, ct, images, 0, agent);
+
+    private async Task<TurnResult> TracedTurnAsync(
+        Conversation convo, string userMessage, ITurnObserver observer, CancellationToken ct,
+        IReadOnlyList<ImageRef>? images, long traceParent, string? agent)
+    {
+        var span = _trace.Open(Trace.Turn, traceParent);
+        var seq = convo.Count;   //the user record's index among the chat records, which AddUser is about to append
+        TurnResult? result = null;
+        try { return result = await RunTurnCoreAsync(convo, userMessage, observer, ct, images, span.Id, agent); }
+        finally
+        {
+            //a child's conversation is never saved, so its turn names the role and carries no seq
+            if (agent is null) span.Set("seq", seq);
+            else span.Set("agent", agent);
+            span.Set("rounds", result?.Rounds ?? _traceRounds);
+            span.Set("result", result?.Outcome.ToString() ?? "Error");
+            span.Set("role", agent ?? TraceRole);
+            span.Set("model", model);
+            span.Dispose();
+        }
+    }
+
+    private async Task<TurnResult> RunTurnCoreAsync(
+        Conversation convo, string userMessage, ITurnObserver observer, CancellationToken ct,
+        IReadOnlyList<ImageRef>? images, long turnSpan, string? agent)
     {
         //an unarmed loop measures the server's count too, so a subagent's elision decides on it as a session's does
         usageState ??= new ContextUsageState();
@@ -136,17 +175,27 @@ public sealed class AgentLoop(
         while (true)
         {
             round++;
+            _traceRounds = round;
 
             var overhead = ContextBudget.EstimateTools(tools.Specs());   //the definitions ride every request, read per round so a /role swap is seen
             //an armed compaction decides on the uncut conversation and nothing new is cut, so elision runs only where no compaction is armed
             var armed = compaction is not null && !_autoCompactOff && autoCompactAt is not null;
             //reasoning ages first, before elision, and both passes shape only the request copy
             IReadOnlyList<ChatMessage> Uncut() => ContextBudget.ShapeReasoning(ContextBudget.ShapeUpdates(convo.Messages), reasoningHistory);
-            (IReadOnlyList<ChatMessage> Messages, int ElidedCount, bool StillOver, int ElidedThrough) ShapeRequest() => ContextBudget.Apply(
-                Uncut(),
-                budgetTokens,
-                ContextBudget.ElideBefore(roundStarts, turnUserIndex),
-                usageState?.Ratio ?? 1.0, usageState?.ElidedThrough ?? 0, overhead, extend: !armed);
+            (IReadOnlyList<ChatMessage> Messages, int ElidedCount, bool StillOver, int ElidedThrough) ShapeRequest()
+            {
+                using var span = _trace.Open(Trace.Shape, turnSpan);
+                var shapedNow = ContextBudget.Apply(
+                    Uncut(),
+                    budgetTokens,
+                    ContextBudget.ElideBefore(roundStarts, turnUserIndex),
+                    usageState?.Ratio ?? 1.0, usageState?.ElidedThrough ?? 0, overhead, extend: !armed);
+                span.Set("msgs", shapedNow.Messages.Count);
+                span.Set("elided", shapedNow.ElidedCount);
+                span.Set("elided_through", shapedNow.ElidedThrough);
+                span.Set("still_over", shapedNow.StillOver ? 1 : 0);
+                return shapedNow;
+            }
             roundStarts.Add(convo.Count);
             var shaped = ShapeRequest();
 
@@ -160,7 +209,7 @@ public sealed class AgentLoop(
                 //announce before the await, so the wait is explained while it happens. quote the same figure the trigger acted on, or the line names a different percentage
                 observer.OnWarning(
                     $"auto-compacting at {(int)Math.Round(100.0 * used / win)}% — summarizing the session, this can take a while");
-                var rebuilt = await compactor.CompactAsync(CompactionReason.Proactive, userMessage, observer, ct);
+                var rebuilt = await compactor.CompactAsync(CompactionReason.Proactive, userMessage, observer, turnSpan, ct);
                 if (rebuilt is not null)
                 {
                     convo.ReplaceAll(rebuilt.SystemText, rebuilt.Messages, rebuilt.Baseline);
@@ -220,7 +269,7 @@ public sealed class AgentLoop(
             try
             {
                 await foreach (var ev in client.StreamAsync(
-                    new ChatRequest(model, requestMessages, tools.Specs(), samplingOverrides, bodyOverrides), ct))
+                    new ChatRequest(model, requestMessages, tools.Specs(), samplingOverrides, bodyOverrides), turnSpan, ct))
                 {
                     switch (ev)
                     {
@@ -258,7 +307,7 @@ public sealed class AgentLoop(
                     usageState?.Record(actual, estimateAtRequest, requestMessages.Count);
                 //say it before the summarize, since the user just saw a request fail and silence would read as a hang
                 observer.OnWarning("context overflowed — compacting and retrying this turn");
-                var rebuilt = await compaction.CompactAsync(CompactionReason.Overflow, userMessage, observer, ct);
+                var rebuilt = await compaction.CompactAsync(CompactionReason.Overflow, userMessage, observer, turnSpan, ct);
                 if (rebuilt is null)
                 {
                     _autoCompactOff = true;
@@ -307,7 +356,7 @@ public sealed class AgentLoop(
             {
                 //a turn with no text and no calls records nothing, the chat template rejects an empty assistant message on every later replay
                 Warn("model returned an empty turn — nothing recorded");
-                await hooks.EmitMessageEndAsync(new HookPayload(AssistantText: cleanText));
+                await hooks.EmitMessageEndAsync(new HookPayload(AssistantText: cleanText), turnSpan);
                 return new TurnResult(TurnOutcome.Completed, finishReason, null, round, lastWarning);
             }
 
@@ -317,7 +366,7 @@ public sealed class AgentLoop(
 
             if (calls.Count == 0)
             {
-                await hooks.EmitMessageEndAsync(new HookPayload(AssistantText: cleanText));
+                await hooks.EmitMessageEndAsync(new HookPayload(AssistantText: cleanText), turnSpan);
                 return new TurnResult(TurnOutcome.Completed, finishReason, null, round, lastWarning);
             }
 
@@ -337,24 +386,37 @@ public sealed class AgentLoop(
                 return new TurnResult(TurnOutcome.Cancelled, finishReason, null, round, lastWarning);
             }
 
-            var run = new ToolCallRun(tools, hooks, toolContext);
+            var run = new ToolCallRun(tools, hooks, toolContext, _trace);
             for (var i = 0; i < calls.Count; i++)
             {
                 var call = calls[i];
                 //a stopped turn reaches no further call, so an esc at one prompt ends the round and no later call can prompt or run
                 if (ct.IsCancellationRequested) return CancelFrom(i);
                 observer.OnToolCallStart(call);
+                var toolSpan = _trace.Open(Trace.Tool, turnSpan);
+                toolSpan.Set("name", call.Name);
                 ToolResult result;
                 try
                 {
-                    result = await run.RunAsync(call, ct);
+                    result = await run.RunAsync(call, ct, toolSpan.Id);
                 }
                 catch (OperationCanceledException) when (ct.IsCancellationRequested)
                 {
+                    toolSpan.Dispose();
                     return CancelFrom(i);   //a cancel that lands mid-tool, Ctrl+C or esc
                 }
                 //a tool_result hook may rewrite the result the model reads, a throwing handler leaves it unchanged
-                result = await hooks.EmitToolResultAsync(new HookPayload(Call: call, Result: result));
+                using (var resultSpan = _trace.Open(Trace.ToolResult, toolSpan.Id))
+                {
+                    var ran = result;
+                    result = await hooks.EmitToolResultAsync(new HookPayload(Call: call, Result: result));
+                    resultSpan.Set("handlers", hooks.HandlerCount(HookEvent.ToolResult));
+                    resultSpan.Set("replaced", ReferenceEquals(ran, result) ? 0 : 1);
+                }
+                if (agent is null) toolSpan.Set("seq", convo.Count);   //the result record's index, which AddToolResult is about to append
+                toolSpan.Set("error", result.IsError ? 1 : 0);
+                if (_trace.Enabled) toolSpan.Set("result_bytes", System.Text.Encoding.UTF8.GetByteCount(result.Text));
+                toolSpan.Dispose();
                 convo.AddToolResult(call.Id, result);
                 //persist after AddToolResult, so a kill from here on still leaves the result on disk
                 Persist(convo, observer);

@@ -93,13 +93,20 @@ public sealed class ShellTool : ITool
 
         //the drains can still be blocked after the process exits, so wait a short grace and take what arrived. the turn must not wait on a reader that is still blocked
         var pipeHeld = false;
-        try
+        using (var drain = ctx.Trace.Open(Trace.ShellDrain, ctx.TraceParent))
         {
-            await Task.WhenAll(stdoutTask, stderrTask).WaitAsync(TimeSpan.FromMilliseconds(DrainGraceMs), ct);
-        }
-        catch (TimeoutException)
-        {
-            pipeHeld = true;
+            var drainFrom = ctx.Trace.Enabled ? Stopwatch.GetTimestamp() : 0;
+            try
+            {
+                await Task.WhenAll(stdoutTask, stderrTask).WaitAsync(TimeSpan.FromMilliseconds(DrainGraceMs), ct);
+            }
+            catch (TimeoutException)
+            {
+                pipeHeld = true;
+            }
+            drain.Set("exit", proc.ExitCode);
+            if (ctx.Trace.Enabled) drain.Set("drain_us", (Stopwatch.GetTimestamp() - drainFrom) * 1_000_000 / Stopwatch.Frequency);
+            drain.Set("background_child", pipeHeld ? 1 : 0);
         }
 
         string outText, errText;

@@ -12,6 +12,11 @@ public interface ICompactionHandler
     Task<CompactionResult?> CompactAsync(
         CompactionReason reason, string currentUserPrompt, ITurnObserver observer, CancellationToken ct);
 
+    //the same compaction under the turn span that triggered it, which a tracing handler hands its compactor and every other handler ignores
+    Task<CompactionResult?> CompactAsync(
+        CompactionReason reason, string currentUserPrompt, ITurnObserver observer, long traceParent, CancellationToken ct) =>
+        CompactAsync(reason, currentUserPrompt, observer, ct);
+
     //why the last null came back in words the user can read, or null when the handler cannot tell
     string? LastFailure => null;
 }

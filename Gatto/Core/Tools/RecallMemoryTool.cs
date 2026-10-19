@@ -59,9 +59,9 @@ public sealed class RecallMemoryTool : ITool
         var sessionsDir = Path.Combine(ctx.HomePath, "sessions");
         if (!Directory.Exists(sessionsDir)) return hits;   //no session was ever saved, so the empty result is right
 
-        //a ledger sidecar shares this folder and also ends in .jsonl, so it must not be read as a session
+        //a sidecar shares this folder and also ends in .jsonl, so it must not be read as a session
         var included = Directory.EnumerateFiles(sessionsDir, "*.jsonl")
-            .Where(f => !f.EndsWith(".ledger.jsonl", StringComparison.OrdinalIgnoreCase))
+            .Where(f => !SessionFiles.IsSidecar(f))
             .OrderBy(f => f, StringComparer.Ordinal)   //filenames embed UTC ticks, so ordinal order is chronological
             .Where(f => ClassifyScope(f, root) == Scope.InScope)
             .ToArray();

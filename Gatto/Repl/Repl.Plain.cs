@@ -55,6 +55,7 @@ public sealed partial class Repl
         var firstLine = true;
         while (!appCt.IsCancellationRequested)
         {
+            if (firstLine) Ready();
             Console.Write("\n> ");
             var line = Console.ReadLine();
             if (line is null) break;

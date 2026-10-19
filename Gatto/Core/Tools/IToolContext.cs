@@ -31,4 +31,8 @@ public interface IToolContext
 
     //the live session a shell child is told about, read at each call since /new and a resume change it. null where no session exists
     Gatto.Core.SessionIdentity? Session => null;
+
+    //the trace and the open tool.exec span, which the loop hands a tool per call only when tracing. no ambient span exists
+    Trace Trace => Trace.Off;
+    long TraceParent => 0;
 }

@@ -39,6 +39,7 @@ public class RealHttpClientCensusTests
         ["Gatto.Tests/Setup/HeldServerRestoreTests.cs"] = new(1, "the held port is a fake server's port or 41888, where nothing of this project listens"),
         ["Gatto.Tests/Setup/Tui/ModelFetchTests.cs"] = new(1, "the fetch refuses a quant with no digest before it sends any request"),
         ["Gatto.Tests/TornRoundLoadTests.cs"] = new(1, "the client targets the `BaseUrl` of a fake server on a port the test bound"),
+        ["Gatto.Tests/TraceRequestTests.cs"] = new(2, "each client targets the `BaseUrl` of a fake server on a port the test bound"),
         ["Gatto.Tests/WireLogTests.cs"] = new(3, "each client targets the `BaseUrl` of a fake server on a port the test bound"),
     };
 

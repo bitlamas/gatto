@@ -178,7 +178,7 @@ public sealed partial class Repl
         SetReasoningPassthrough(renderer, true);   //the dimmed summary streams as reasoning, so the preview filter must pass it through
         try
         {
-            fresh = await CompactAsync(new Compactor(client, modelName, loop.RequestShape), convo, sessions, recomposeSystem, renderer, ct,
+            fresh = await CompactAsync(new Compactor(client, modelName, loop.RequestShape, loop.Trace), convo, sessions, recomposeSystem, renderer, ct,
                 contextBudget: contextBudget, onSummary: s => capturedSummary = s,
                 doNotRepeat: doNotRepeat,
                 bankCandidates: ex =>

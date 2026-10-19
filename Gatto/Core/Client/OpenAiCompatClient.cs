@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using System.Net.Http.Headers;
 using System.Runtime.CompilerServices;
 using System.Text;
@@ -15,14 +16,16 @@ public sealed class OpenAiCompatClient : IChatClient, Gatto.Core.Client.ITokenCo
     private readonly IWireLog? wireLog;
     private readonly string? downHint;
     private readonly bool returnProgress;
+    private readonly Trace trace;
 
     //the deadline of each /props and counting probe, 2 s unless a test gives its fake server the room the suite's load takes
     internal TimeSpan ProbeDeadline { get; init; } = TimeSpan.FromSeconds(2);
 
     //demands a resolved BaseUrl, and downHint replaces the advice for an endpoint gatto built itself (the status branches keep the server's own words)
     public OpenAiCompatClient(HttpClient http, string endpointName, EndpointConfig endpoint,
-        IWireLog? wireLog = null, string? downHint = null, bool returnProgress = false)
+        IWireLog? wireLog = null, string? downHint = null, bool returnProgress = false, Trace? trace = null)
     {
+        this.trace = trace ?? Trace.Off;
         if (endpoint.BaseUrl is null)
             throw new GattoConfigException($"endpoint '{endpointName}' has no base_url resolved");
         this.http = http;
@@ -42,12 +45,26 @@ public sealed class OpenAiCompatClient : IChatClient, Gatto.Core.Client.ITokenCo
             ? $"server down — in another terminal, run: gatto serve start {model}"
             : $"endpoint {endpointName} unreachable — check network/base_url");
 
+    public IAsyncEnumerable<StreamEvent> StreamAsync(ChatRequest request, CancellationToken ct = default) =>
+        StreamAsync(request, 0, ct);
+
     public async IAsyncEnumerable<StreamEvent> StreamAsync(
-        ChatRequest request, [EnumeratorCancellation] CancellationToken ct = default)
+        ChatRequest request, long traceParent, [EnumeratorCancellation] CancellationToken ct)
     {
+        using var span = trace.Open(Trace.Request, traceParent);
+        var traced = trace.Enabled;
+        var sentAt = traced ? Stopwatch.GetTimestamp() : 0;
+        var chunks = 0;
+        long bytesIn = 0;
+        var firstToken = false;
         using var msg = new HttpRequestMessage(HttpMethod.Post,
             $"{baseUrl.TrimEnd('/')}/v1/chat/completions");
         var body = BuildBody(request, imageCache, OnImageUnavailable, returnProgress);
+        if (traced)
+        {
+            span.Set("bytes_out", Encoding.UTF8.GetByteCount(body));
+            if (trace.TakeResume()) span.Set("after_resume", 1);
+        }
         //tee the same string that becomes the body, so the log is diffable against what the server received
         if (wireLog is not null)
         {
@@ -73,6 +90,7 @@ public sealed class OpenAiCompatClient : IChatClient, Gatto.Core.Client.ITokenCo
         }
 
         using var _ = resp;
+        if (traced) span.Set("ttfb_us", Micros(sentAt));
         if (!resp.IsSuccessStatusCode)
         {
             //parse the whole body before truncating, the trailing n_ctx field sits past the display limit
@@ -119,6 +137,11 @@ public sealed class OpenAiCompatClient : IChatClient, Gatto.Core.Client.ITokenCo
                 yield break;
             }
 
+            if (traced)
+            {
+                chunks++;
+                bytesIn += Encoding.UTF8.GetByteCount(payload);
+            }
             if (payload == "[DONE]") continue;
             JsonDocument? doc = null;
             var malformed = false;
@@ -219,8 +242,25 @@ public sealed class OpenAiCompatClient : IChatClient, Gatto.Core.Client.ITokenCo
                 continue;
             }
 
+            if (traced && !firstToken && chunkEvents.Exists(e => e is StreamEvent.TextDelta or StreamEvent.ReasoningDelta))
+            {
+                firstToken = true;
+                span.Set("ttft_us", Micros(sentAt));
+            }
             foreach (var e in chunkEvents)
                 yield return e;
+        }
+
+        if (traced)
+        {
+            span.Set("chunks", chunks);
+            span.Set("bytes_in", bytesIn);
+            if (usage is not null)
+            {
+                span.Set("prompt_tokens", usage.PromptTokens);
+                span.Set("completion_tokens", usage.CompletionTokens);
+            }
+            if (timings is not null) SetTimings(span, timings);
         }
 
         if (finishReason is null)
@@ -239,6 +279,22 @@ public sealed class OpenAiCompatClient : IChatClient, Gatto.Core.Client.ITokenCo
         }
         yield return new StreamEvent.Finished(finishReason, usage, timings);
     }
+
+    private static long Micros(long since) => (Stopwatch.GetTimestamp() - since) * 1_000_000 / Stopwatch.Frequency;
+
+    //the four timings the reader joins on, copied as the server sent them and never converted to gatto's clock
+    private static void SetTimings(Span span, string timings)
+    {
+        try
+        {
+            using var doc = JsonDocument.Parse(timings);
+            foreach (var key in TracedTimings)
+                if (doc.RootElement.TryGetProperty(key, out var v)) span.Set(key, v);
+        }
+        catch (JsonException) { }
+    }
+
+    private static readonly string[] TracedTimings = ["cache_n", "prompt_n", "prompt_ms", "predicted_ms"];
 
     //add the endpoint's credential to the request, its header callback first, then ApiKey, then KeyEnv, and no header at all when none is set
     private Task AuthorizeAsync(HttpRequestMessage msg, CancellationToken ct) => EndpointAuth.ApplyAsync(msg, endpoint, endpointName, ct);

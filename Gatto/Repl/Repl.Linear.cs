@@ -19,6 +19,7 @@ public sealed partial class Repl
     private async Task<int> RunLinearLoopAsync(RichState s, LineEditor editor, DispatchQueue queue,
         ArmedChord chords, Gatto.Terminal.IClipboard clip, CancellationToken appCt)
     {
+        Ready();
         var idleView = new EditorView(new List<string> { "" }, 0, 0);
         var lastView = idleView;         //written and read only under the gate, see RedrawLocked
         //reads lastView by reference so it sees the current composer contents, and it is set before the first dispatch

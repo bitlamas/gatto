@@ -186,7 +186,7 @@ public static class ExtensionHost
                 committed.Add((ext, tool.Name, readClass));
             }
             foreach (var (evt, handler) in staged.Hooks)
-                hooks.On(MapEvent(evt), handler);   //tool_result maps to the observe-only hook event, OnToolResult is never wired
+                hooks.On(MapEvent(evt), handler, ext.Name);   //tool_result maps to the observe-only hook event, OnToolResult is never wired
 
             //a command collision refuses that one row and names the file, the rest of the extension stands. built-in wins, first file wins
             var file = Path.GetFileName(ext.Source.EntryPath);

@@ -325,15 +325,16 @@ public sealed partial class Repl(
 
     //the auto-compact body, it strips the memory scaffolding instead of banking it and leaves everything untouched on a null summary
     internal async Task<CompactionResult?> AutoCompactAsync(
-        CompactionReason reason, string currentUserPrompt, ITurnObserver observer, CancellationToken ct)
+        CompactionReason reason, string currentUserPrompt, ITurnObserver observer, CancellationToken ct, long traceParent = 0)
     {
         SetReasoningPassthrough(observer, true);             //the dimmed summary is not reasoning
         string? summary;
-        var compactor = new Compactor(client, modelName, loop.RequestShape);
+        var compactor = new Compactor(client, modelName, loop.RequestShape, loop.Trace);
         try
         {
             summary = await compactor.SummarizeAsync(
-                convo, observer, ct, windowTokens: contextBudget, ratio: _usageState.Ratio, midTurn: true);
+                convo, observer, ct, windowTokens: contextBudget, ratio: _usageState.Ratio, midTurn: true,
+                reason: reason.ToString(), traceParent: traceParent);
         }
         finally { SetReasoningPassthrough(observer, false); }
         _lastAutoCompactFailure = compactor.LastFailure;     //the loop's line names it when the summary is null
@@ -353,6 +354,10 @@ public sealed partial class Repl(
         public Task<CompactionResult?> CompactAsync(
             CompactionReason reason, string currentUserPrompt, ITurnObserver observer, CancellationToken ct)
             => repl.AutoCompactAsync(reason, currentUserPrompt, observer, ct);
+
+        public Task<CompactionResult?> CompactAsync(
+            CompactionReason reason, string currentUserPrompt, ITurnObserver observer, long traceParent, CancellationToken ct)
+            => repl.AutoCompactAsync(reason, currentUserPrompt, observer, ct, traceParent);
 
         public string? LastFailure => repl._lastAutoCompactFailure;
     }
@@ -606,6 +611,16 @@ public sealed partial class Repl(
         && Gatto.Core.Home.ProjectFileConfig.EffectiveAutoCompact(cwd, configured: true)
             ? configured
             : null;
+
+    //called once, when the session first waits for input, which is where the launch span closes
+    public Action? OnReady { get; set; }
+
+    private void Ready()
+    {
+        var ready = OnReady;
+        OnReady = null;
+        ready?.Invoke();
+    }
 
     public async Task<int> RunAsync(CancellationToken appCt)
     {

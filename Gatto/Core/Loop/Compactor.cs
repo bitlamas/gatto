@@ -8,8 +8,13 @@ using Gatto.Core.Session;
 namespace Gatto.Core.Loop;
 
 //session compaction, by /compact or automatic: a failed summary returns null, so the caller aborts and the session stays untouched. the loop's shape keeps the summary request on the server's cache
-public sealed class Compactor(IChatClient client, string model, RequestShape? shape = null)
+public sealed class Compactor(IChatClient client, string model, RequestShape? shape = null, Trace? trace = null)
 {
+    private readonly Trace _trace = trace ?? Trace.Off;
+
+    //the open compact span the summary requests go under, one field since a compactor serves one compaction
+    private long _traceSpan;
+
     //the summarizer prompt is compiled in, so a role or user text can't steer the summarizer off task
     private const string TemplatePrompt =
         "Summarize this session so it can be continued in a fresh context with nothing important " +
@@ -71,10 +76,32 @@ public sealed class Compactor(IChatClient client, string model, RequestShape? sh
         "What worked / what failed", "Environment gotchas learned", "Current state", NextStepHeading, MemoryPiggyback.Heading,
     };
 
-    //the summary from the whole conversation or a shortened copy, null means the caller aborts and leaves the session untouched
+    //the summary, or null so the caller aborts with the session untouched, and reason is Manual for /compact
     public async Task<string?> SummarizeAsync(
         Conversation convo, ITurnObserver observer, CancellationToken ct,
-        int? windowTokens = null, double ratio = 1.0, bool midTurn = false, string? doNotRepeat = null)
+        int? windowTokens = null, double ratio = 1.0, bool midTurn = false, string? doNotRepeat = null,
+        string reason = "Manual", long traceParent = 0)
+    {
+        using var span = _trace.Open(Trace.Compact, traceParent);
+        _traceSpan = span.Id;
+        if (_trace.Enabled)
+        {
+            span.Set("reason", reason);
+            span.Set("before_tokens", ContextBudget.Estimate(convo.Messages));
+        }
+        var summary = await SummarizeCoreAsync(convo, observer, ct, windowTokens, ratio, midTurn, doNotRepeat);
+        //the size after is the next request's prompt_tokens, so the span keeps the summary's own estimate
+        if (_trace.Enabled)
+        {
+            span.Set("summary_tokens", summary is null ? 0 : ContextBudget.Estimate([new ChatMessage("assistant", summary)]));
+            span.Set("ok", summary is null ? 0 : 1);
+        }
+        return summary;
+    }
+
+    private async Task<string?> SummarizeCoreAsync(
+        Conversation convo, ITurnObserver observer, CancellationToken ct,
+        int? windowTokens, double ratio, bool midTurn, string? doNotRepeat)
     {
         //one prompt local, so the measured length covers the primary attempt and the harsh retry alike
         var prompt = (midTurn ? TemplatePrompt + MidTurnAddendum : TemplatePrompt) + (doNotRepeat ?? "");
@@ -160,7 +187,7 @@ public sealed class Compactor(IChatClient client, string model, RequestShape? sh
             var request = shape is { } s
                 ? new ChatRequest(model, messages, withTools ? s.Tools : null, WithoutOutputLimits(s.SamplingOverrides), WithoutOutputLimits(s.BodyOverrides), ToolChoice: withTools && s.Tools.Count > 0 ? "none" : null)
                 : new ChatRequest(model, messages, Tools: null);
-            await foreach (var ev in client.StreamAsync(request, ct))
+            await foreach (var ev in client.StreamAsync(request, _traceSpan, ct))
             {
                 switch (ev)
                 {

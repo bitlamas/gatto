@@ -121,11 +121,12 @@ public sealed class RunAgentTool : ITool
         var subLoop = new AgentLoop(
             countingClient, subTools, subHooks, _parentCtx, model,
             samplingOverrides: sampling, bodyOverrides: body, budgetTokens: _contextBudget, maxRounds: role.Turns, promptSuffix: suffix,
-            reasoningHistory: _reasoningHistory);
+            reasoningHistory: _reasoningHistory, trace: ctx.Trace);
 
         var observer = new FinalTextObserver();
         var sw = Stopwatch.StartNew();
-        var result = await subLoop.RunTurnAsync(convo, task, observer, ct);
+        //the parent's trace and tool.exec span, so the child's spans land in the parent's sidecar under this call
+        var result = await subLoop.RunTurnAsync(convo, task, observer, ct, traceParent: ctx.TraceParent, agent: role.Name);
         sw.Stop();
 
         //the observer holds raw deltas, this text is model output so it is stripped here before it becomes a tool result
@@ -166,6 +167,13 @@ public sealed class RunAgentTool : ITool
         {
             onRound();
             return inner.StreamAsync(request, ct);
+        }
+
+        //forwarded whole, or a child's request spans would lose their parent
+        public IAsyncEnumerable<StreamEvent> StreamAsync(ChatRequest request, long traceParent, CancellationToken ct)
+        {
+            onRound();
+            return inner.StreamAsync(request, traceParent, ct);
         }
 
         public Task<int?> TryGetContextLengthAsync(CancellationToken ct = default) =>

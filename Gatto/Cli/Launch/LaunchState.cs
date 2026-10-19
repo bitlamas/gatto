@@ -78,6 +78,10 @@ internal sealed class LaunchState(
         _launchTheme = launchTheme;
     }
 
+    //the time every role resolution spent reading context files and the memory index, which the launch span reads once
+    internal long ContextFilesTicks;
+    internal long MemoryTicks;
+
     //the memory budget is the profile override, else gatto.json, else derived from the context window and clamped
     internal int MemoryBudget(Model? p) =>
         p?.Profile.MemoryIndexBudget
@@ -191,10 +195,14 @@ internal sealed class LaunchState(
             endpoint = ep;   //config requires an explicit base_url on a cloud endpoint
         }
 
+        var readFrom = System.Diagnostics.Stopwatch.GetTimestamp();
         var contextFiles = ContextFiles.Collect(
             cwd, config.ContextCompat, config.ContextHome ? Path.Combine(home, "GATTO.md") : null);
+        var memoryFrom = System.Diagnostics.Stopwatch.GetTimestamp();
+        ContextFilesTicks += memoryFrom - readFrom;
         //reloaded beside the context files at launch and on every /role, so the memory budget follows the model the role resolves to
         var memory = LoadMemory(model);
+        MemoryTicks += System.Diagnostics.Stopwatch.GetTimestamp() - memoryFrom;
         var comp = RoleComposition.Compose(role, model, contextFiles, endpoint.Thinking, cwd: cwd, date: DateTime.Now,
             memoryIndex: memory.Text, memoryTruncatedLines: memory.TruncatedLines, memoryNudge: memoryOn,
             policyLines: policyLines,
@@ -332,6 +340,7 @@ internal sealed class LaunchState(
                       $"'{Model!.Id}'. Restart gatto to switch models");
 
         Role = res.Role; Model = res.Model; Endpoint = res.Endpoint;
+        _loop.TraceRole = Role.Name;   //the next turn span names the role this switch armed
         EndpointName = res.EndpointName; ModelString = res.ModelString; Comp = res.Comp;
         RoleFiles = LoadRoleFiles();   //only on a switch that commits, since run_agent's description rides every request and a refused switch must move no prefix
         ArmSeatTools(Role);   //the manifest rides every request too, so only a committed switch may change it
@@ -375,6 +384,7 @@ internal sealed class LaunchState(
             }
             var systemBefore = LastComposedSystem;
             Role = switched.Role; Model = switched.Model; ModelString = switched.ModelString; Comp = switched.Comp;
+            _loop.TraceRole = Role.Name;   //a /model can swap the role too, so the next turn span follows it
             LastComposedSystem = Comp.SystemText;
             LastComposedSources = Comp.Sources;
             //re-derived for the new model by the launch's own expression, or a switch between shapes keeps the old map's toggle or levels

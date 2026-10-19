@@ -12,23 +12,35 @@ public enum HookEvent { ToolCall, ToolResult, MessageEnd, SessionSummary }
 public sealed class HookBus
 {
     private readonly List<Func<HookPayload, Task>> _toolCall = new();
-    private readonly List<Func<HookPayload, Task>> _messageEnd = new();
-    private readonly List<Func<HookPayload, Task>> _sessionSummary = new();
+    //the fail-open events keep each handler's owner, which the hook span names
+    private readonly List<(string Owner, Func<HookPayload, Task> Handler)> _messageEnd = new();
+    private readonly List<(string Owner, Func<HookPayload, Task> Handler)> _sessionSummary = new();
     //a tool_result handler returns a replacement, null leaves the result as it is
     private readonly List<Func<HookPayload, Task<ToolResult?>>> _toolResult = new();
     public event Action<HookEvent, Exception>? OnHandlerError;
 
+    //set once at launch, the hook spans of message_end and session_summary go here
+    public Trace Trace { get; set; } = Trace.Off;
+
     //true when a session_summary listener exists, a caller checks this before doing any summarization work
     public bool HasSessionSummaryListeners => _sessionSummary.Count > 0;
 
-    //observe only, a tool_result handler here can't change the result and sees it as earlier handlers left it
-    public void On(HookEvent evt, Func<HookPayload, Task> handler)
+    public int HandlerCount(HookEvent evt) => evt switch
+    {
+        HookEvent.ToolCall => _toolCall.Count,
+        HookEvent.ToolResult => _toolResult.Count,
+        HookEvent.MessageEnd => _messageEnd.Count,
+        _ => _sessionSummary.Count,
+    };
+
+    //observe only, a tool_result handler here can't change the result, and owner names the extension
+    public void On(HookEvent evt, Func<HookPayload, Task> handler, string owner = "gatto")
     {
         switch (evt)
         {
             case HookEvent.ToolCall: _toolCall.Add(handler); break;
-            case HookEvent.MessageEnd: _messageEnd.Add(handler); break;
-            case HookEvent.SessionSummary: _sessionSummary.Add(handler); break;
+            case HookEvent.MessageEnd: _messageEnd.Add((owner, handler)); break;
+            case HookEvent.SessionSummary: _sessionSummary.Add((owner, handler)); break;
             //run the observe-only handler and hand back no replacement
             case HookEvent.ToolResult: _toolResult.Add(async p => { await handler(p); return null; }); break;
         }
@@ -65,18 +77,24 @@ public sealed class HookBus
     }
 
     //fail open, a buggy handler contributes nothing and the session continues
-    public Task EmitMessageEndAsync(HookPayload p) => EmitOpenAsync(_messageEnd, HookEvent.MessageEnd, p);
+    public Task EmitMessageEndAsync(HookPayload p, long traceParent = 0) => EmitOpenAsync(_messageEnd, HookEvent.MessageEnd, p, traceParent);
 
     //fail open, a buggy summarizer contributes nothing and the session continues
-    public Task EmitSessionSummaryAsync(HookPayload p) => EmitOpenAsync(_sessionSummary, HookEvent.SessionSummary, p);
+    public Task EmitSessionSummaryAsync(HookPayload p, long traceParent = 0) => EmitOpenAsync(_sessionSummary, HookEvent.SessionSummary, p, traceParent);
 
-    private async Task EmitOpenAsync(List<Func<HookPayload, Task>> handlers, HookEvent evt, HookPayload p)
+    private async Task EmitOpenAsync(List<(string Owner, Func<HookPayload, Task> Handler)> handlers, HookEvent evt, HookPayload p, long traceParent)
     {
-        foreach (var h in handlers.ToArray())
-            try { await h(p); }
+        foreach (var (owner, h) in handlers.ToArray())
+        {
+            using var span = Trace.Open(Trace.Hook, traceParent);
+            span.Set("event", evt == HookEvent.MessageEnd ? "message_end" : "session_summary");
+            span.Set("extension", owner);
+            try { await h(p); span.Set("threw", 0); }
             catch (Exception ex)
             {
+                span.Set("threw", 1);
                 try { OnHandlerError?.Invoke(evt, ex); } catch { } //a listener that throws here must not break fail-open
             }
+        }
     }
 }

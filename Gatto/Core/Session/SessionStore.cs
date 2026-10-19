@@ -41,9 +41,13 @@ public sealed class SessionStore(string homePath, string cwd)
     //the live session, which every transcript of it names and every shell child reads
     public SessionIdentity Identity { get { lock (_saveLock) return _begun.Identity; } }
 
+    //flushed after each write and before each change of file, so the trace holds what the session file holds
+    public Trace Trace { get; set; } = Trace.Off;
+
     //a new session in a new file, which is what /new asks for
     public void StartNew()
     {
+        Trace.Flush();
         lock (_saveLock)
         {
             _currentFile = null;
@@ -54,6 +58,7 @@ public sealed class SessionStore(string homePath, string cwd)
     //a new file for the same session, which is what a compaction asks for, so the session keeps its id across the chain
     public void StartSuccessor()
     {
+        Trace.Flush();
         lock (_saveLock)
         {
             _currentFile = null;
@@ -76,16 +81,24 @@ public sealed class SessionStore(string homePath, string cwd)
     //rewrite the session file atomically from the given JSONL lines, ordered by the caller. core knows nothing about the display records, it writes lines
     public void WriteLines(IEnumerable<string> lines)
     {
-        lock (_saveLock)
+        using (var span = Trace.Open(Trace.SessionWrite))
         {
-            Directory.CreateDirectory(SessionsDir);
-            _currentFile ??= _begun.File;
-            var sb = new StringBuilder();
-            foreach (var line in lines) sb.AppendLine(line);
-            var tmp = _currentFile + ".tmp";
-            File.WriteAllText(tmp, sb.ToString());
-            File.Move(tmp, _currentFile, overwrite: true);
+            lock (_saveLock)
+            {
+                Directory.CreateDirectory(SessionsDir);
+                _currentFile ??= _begun.File;
+                var sb = new StringBuilder();
+                var count = 0;
+                foreach (var line in lines) { sb.AppendLine(line); count++; }
+                var tmp = _currentFile + ".tmp";
+                var text = sb.ToString();
+                File.WriteAllText(tmp, text);
+                File.Move(tmp, _currentFile, overwrite: true);
+                span.Set("lines", count);
+                if (Trace.Enabled) span.Set("bytes", Encoding.UTF8.GetByteCount(text));
+            }
         }
+        Trace.Flush();
     }
 
     //the one chat-record shape, so both writers produce byte-identical JSON. cwd goes only on the system record, and a null cwd writes nothing
@@ -387,11 +400,11 @@ public sealed class SessionStore(string homePath, string cwd)
     //how many session files exist for this store's cwd, which is the number gatto status shows
     public int CountForCwd() => SessionFilesForCwd().Count();
 
-    //the session files for this cwd, minus the ledger sidecars. a sidecar sorts after its session and would otherwise shadow it and inflate the count
+    //the session files for this cwd, minus the sidecars. a sidecar sorts after its session and would otherwise shadow it and inflate the count
     private IEnumerable<string> SessionFilesForCwd() =>
         Directory.Exists(SessionsDir)
             ? Directory.EnumerateFiles(SessionsDir, $"{CwdKey}-*.jsonl")
-                .Where(f => !f.EndsWith(".ledger.jsonl", StringComparison.OrdinalIgnoreCase))
+                .Where(f => !SessionFiles.IsSidecar(f))
             : Enumerable.Empty<string>();
 
     //the newest session file for this cwd, or null when there is none. read-only, so it leaves CurrentPath alone and the next Save still forks a fresh file
@@ -448,7 +461,7 @@ public sealed class SessionStore(string homePath, string cwd)
         return torn;
     }
 
-    //an id to a session path from the home alone, exact stem first then a unique prefix, across every cwd. zero or several matches refuse, and the ledger sidecars are left out
+    //an id to a session path from the home alone, exact stem first then a unique prefix, across every cwd. zero or several matches refuse, and the sidecars are left out
     public static string ResolvePathById(string home, string id)
     {
         var sessionsDir = Path.Combine(home, "sessions");
@@ -456,7 +469,7 @@ public sealed class SessionStore(string homePath, string cwd)
 
         var files = Directory.Exists(sessionsDir)
             ? Directory.EnumerateFiles(sessionsDir, "*.jsonl")
-                .Where(f => !f.EndsWith(".ledger.jsonl", StringComparison.OrdinalIgnoreCase))
+                .Where(f => !SessionFiles.IsSidecar(f))
                 .ToList()
             : new List<string>();
 

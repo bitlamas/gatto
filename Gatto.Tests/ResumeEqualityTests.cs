@@ -100,6 +100,23 @@ public sealed class ResumeEqualityTests : IDisposable
         Assert.Equal(earlier.GetProperty("tools").GetRawText(), later.GetProperty("tools").GetRawText());
     }
 
+    //the trace observes the request and never touches it, so a traced launch sends what an untraced one sends, and its resume keeps the prefix
+    [Fact]
+    public async Task A_traced_run_sends_the_bytes_an_untraced_run_sends()
+    {
+        await using var server = new FakeOpenAiServer();
+        Home(server);
+        await Run(server, "-p", "first");
+        using (GattoApp.TraceScope())
+        {
+            await Run(server, "-p", "first");
+            await Run(server, "-p", "second", "--continue");
+        }
+        Assert.Equal(server.RequestBodies[0].GetRawText(), server.RequestBodies[1].GetRawText());
+        AssertPrefix(server.RequestBodies[1], server.RequestBodies[2]);
+        Assert.Equal(2, Directory.GetFiles(Path.Combine(_home, "sessions"), "*.trace.jsonl").Length);
+    }
+
     [Fact]
     public async Task A_resume_with_nothing_changed_sends_the_same_prefix()
     {
