@@ -1,7 +1,7 @@
 //images persist by reference, and a moved or changed file shows a stub instead of different pixels
 using System.Text.Json;
 using Gatto.Core.Client;
-using Gatto.Core.Home;
+using Gatto.Core.Session;
 
 namespace Gatto.Tests;
 

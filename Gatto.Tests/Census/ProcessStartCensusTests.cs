@@ -20,8 +20,8 @@ public class ProcessStartCensusTests
     {
         ["Gatto/Cli/GattoApp.cs"] = 2,
         ["Gatto/Cli/UpdateSeam.cs"] = 1,
+        ["Gatto/Core/Acquire/LlamaServerProbe.cs"] = 1,
         ["Gatto/Core/Hardware/HardwareProbe.cs"] = 1,
-        ["Gatto/Core/Tools/LlamaServerProbe.cs"] = 1,
         ["Gatto/Core/Tools/ShellTool.cs"] = 1,
         ["Gatto/Roles/ServeManager.cs"] = 2,
     };

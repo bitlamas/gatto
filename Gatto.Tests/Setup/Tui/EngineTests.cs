@@ -1,5 +1,5 @@
 using Gatto.Cli.Setup;
-using Gatto.Core.Tools;
+using Gatto.Core.Acquire;
 using Gatto.Tests.Fakes;
 
 namespace Gatto.Tests.Setup.Tui;

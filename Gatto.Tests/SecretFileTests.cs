@@ -1,6 +1,7 @@
 using System.Runtime.Versioning;
 using System.Security.AccessControl;
 using System.Security.Principal;
+using Gatto.Core;
 using Gatto.Core.Home;
 
 namespace Gatto.Tests;

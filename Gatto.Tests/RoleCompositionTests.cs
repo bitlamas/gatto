@@ -88,7 +88,7 @@ public class RoleCompositionTests
         Assert.Equal("2026-01-02", Full(raw: false).Sources.Date);
 
         Composition On(DateTime day) => RoleComposition.Compose(Role(raw: true), Pk(), NoContext, null, cwd: @"C:\p", date: day);
-        var delta = Gatto.Core.Home.ResumePlan.Delta(On(new DateTime(2026, 1, 2)).Sources, On(new DateTime(2026, 1, 3)).Sources);
+        var delta = Gatto.Core.Session.ResumePlan.Delta(On(new DateTime(2026, 1, 2)).Sources, On(new DateTime(2026, 1, 3)).Sources);
         Assert.Null(delta.Date);
     }
 

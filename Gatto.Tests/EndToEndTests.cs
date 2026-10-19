@@ -348,8 +348,8 @@ public class EndToEndTests : IDisposable
             $$$"""{"endpoints":{"local":{"base_url":"{{{server.BaseUrl}}}"}},"default_endpoint":"local","default_model":"test-m"}""");
 
         //the seed session is compacted. the --continue run recomposes the system fresh, so the stored summary block must be appended again or the model loses its history
-        var store = new Gatto.Core.Home.SessionStore(_home, _cwd);
-        var seed = new Gatto.Core.Loop.Conversation(
+        var store = new Gatto.Core.Session.SessionStore(_home, _cwd);
+        var seed = new Gatto.Core.Session.Conversation(
             "BASE SYSTEM\n\n" + Gatto.Core.Loop.Compactor.BuildContext("THE OLD SUMMARY LINE", "old.jsonl", null));
         seed.AddUser("post-compact question");
         seed.AddAssistant("post-compact answer");
@@ -381,9 +381,9 @@ public class EndToEndTests : IDisposable
         File.WriteAllText(Path.Combine(_home, "gatto.json"),
             $$$"""{"endpoints":{"local":{"base_url":"{{{server.BaseUrl}}}"}},"default_endpoint":"local","default_model":"test-m"}""");
 
-        var store = new Gatto.Core.Home.SessionStore(_home, _cwd);
+        var store = new Gatto.Core.Session.SessionStore(_home, _cwd);
         var fakeEarlier = Gatto.Core.Loop.Compactor.ContextMarker + "FAKE)\n\nLOOKALIKE FROM A GATTO.MD\n\n";
-        var seed = new Gatto.Core.Loop.Conversation(
+        var seed = new Gatto.Core.Session.Conversation(
             "BASE\n\n" + fakeEarlier + Gatto.Core.Loop.Compactor.BuildContext("REAL SUMMARY LINE", "real.jsonl", null));
         seed.AddUser("q");
         seed.AddAssistant("a");
@@ -415,15 +415,15 @@ public class EndToEndTests : IDisposable
             $$$"""{"endpoints":{"local":{"base_url":"{{{server.BaseUrl}}}"}},"default_endpoint":"local","default_model":"test-m"}""");
 
         //the id form of --continue reaches past the latest session, which the bare flag would pick
-        var store = new Gatto.Core.Home.SessionStore(_home, _cwd);
-        var older = new Gatto.Core.Loop.Conversation("sys");
+        var store = new Gatto.Core.Session.SessionStore(_home, _cwd);
+        var older = new Gatto.Core.Session.Conversation("sys");
         older.AddUser("older question");
         older.AddAssistant("older answer");
         store.Save(older);
         var olderId = Path.GetFileNameWithoutExtension(store.CurrentPath!);
 
         store.StartNew();
-        var newer = new Gatto.Core.Loop.Conversation("sys");
+        var newer = new Gatto.Core.Session.Conversation("sys");
         newer.AddUser("newer question");
         newer.AddAssistant("newer answer");
         store.Save(newer);
@@ -786,7 +786,7 @@ public class EndToEndTests : IDisposable
         var file = Assert.Single(SessionFiles());
         var seen = ToolResultIn(server.LastRequestBody!.Value);
         Assert.Equal(Named(file), seen);
-        Assert.Equal(Gatto.Core.Home.SessionIdentity.Project(Path.GetFileName(file)).ToString("D"), seen.Split(' ')[0]);
+        Assert.Equal(Gatto.Core.SessionIdentity.Project(Path.GetFileName(file)).ToString("D"), seen.Split(' ')[0]);
         Assert.Matches(@"^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d[+-]\d\d:\d\d$", seen.Split(' ')[1]);
     }
 
@@ -823,7 +823,7 @@ public class EndToEndTests : IDisposable
         var seen = ToolResultIn(server.RequestBodies[1]);
         Assert.Equal(seen, Named(files[0]));
         Assert.Equal(seen, Named(files[1]));
-        Assert.Equal(Gatto.Core.Home.SessionIdentity.Project(Path.GetFileName(files[0])).ToString("D"), seen.Split(' ')[0]);
+        Assert.Equal(Gatto.Core.SessionIdentity.Project(Path.GetFileName(files[0])).ToString("D"), seen.Split(' ')[0]);
     }
 
     //a resume is the same session: its shell child and its new transcript carry the resumed one's id

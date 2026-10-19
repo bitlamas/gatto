@@ -1716,7 +1716,7 @@ internal sealed class SetupFlow(ISetupProbes probes)
             var result = probes.VerifyLlamaServer(engine.Path);
 
             //the screen names the exe that actually ran, and a use-it writes that one.
-            if (result.Shape is Gatto.Core.Tools.ProbeShape.ClassicServer && result.Build is { } build)
+            if (result.Shape is Gatto.Core.Acquire.ProbeShape.ClassicServer && result.Build is { } build)
                 return Found(result.Ran ?? engine.Path, build,
                     Gatto.Roles.LlamaAssetSteering.Classify(build, engine.GattoFolder));
 
@@ -1732,13 +1732,13 @@ internal sealed class SetupFlow(ISetupProbes probes)
 
 
     //the short note for why the sweep dropped a candidate, written for the record rather than for the user
-    private static string SweepSkipReason(Gatto.Core.Tools.ProbeResult result) => result.Shape switch
+    private static string SweepSkipReason(Gatto.Core.Acquire.ProbeResult result) => result.Shape switch
     {
-        Gatto.Core.Tools.ProbeShape.KnownSibling when result.SiblingName is { Length: > 0 } =>
+        Gatto.Core.Acquire.ProbeShape.KnownSibling when result.SiblingName is { Length: > 0 } =>
             "not the server",
-        Gatto.Core.Tools.ProbeShape.NotClassic => "it did not answer as the server",
-        Gatto.Core.Tools.ProbeShape.TimedOut => "it did not answer in time",
-        Gatto.Core.Tools.ProbeShape.DllNotFound => "this Windows could not load it",
+        Gatto.Core.Acquire.ProbeShape.NotClassic => "it did not answer as the server",
+        Gatto.Core.Acquire.ProbeShape.TimedOut => "it did not answer in time",
+        Gatto.Core.Acquire.ProbeShape.DllNotFound => "this Windows could not load it",
         _ => "gatto could not run it",
     };
 
@@ -2052,28 +2052,28 @@ internal sealed class SetupFlow(ISetupProbes probes)
 
     //the one home for what each probe shape means, shared by both verification paths. the cudart cause is certain only on the steered door
     private static string? LlamaProbeComplaint(
-        Gatto.Core.Tools.ProbeShape shape, bool cudartExpected, bool steeredDoor,
+        Gatto.Core.Acquire.ProbeShape shape, bool cudartExpected, bool steeredDoor,
         bool vcRuntimeAbsent, string? sibling) => shape switch
     {
-        Gatto.Core.Tools.ProbeShape.ClassicServer => null,
+        Gatto.Core.Acquire.ProbeShape.ClassicServer => null,
 
         //name the right file beside the wrong one, a release ships many programs that answer alike and the user is one edit away
-        Gatto.Core.Tools.ProbeShape.KnownSibling when sibling is { Length: > 0 } =>
+        Gatto.Core.Acquire.ProbeShape.KnownSibling when sibling is { Length: > 0 } =>
             $"That is {sibling}, the server is {Gatto.Core.Acquire.LlamaSiblings.ServerName} "
             + "in the same folder.",
 
         //check the runtime first, a missing Visual C++ runtime cannot be fixed by anything beside the exe
-        Gatto.Core.Tools.ProbeShape.DllNotFound when vcRuntimeAbsent =>
+        Gatto.Core.Acquire.ProbeShape.DllNotFound when vcRuntimeAbsent =>
             "That build needs the Microsoft Visual C++ runtime, and this Windows doesn't have it. "
             + "Install the 'Visual C++ Redistributable (x64)' from Microsoft.",
 
         //the measured exit code is the signal, with empty output streams.
-        Gatto.Core.Tools.ProbeShape.DllNotFound when cudartExpected && steeredDoor =>
+        Gatto.Core.Acquire.ProbeShape.DllNotFound when cudartExpected && steeredDoor =>
             "That build starts and immediately stops, its CUDA runtime is missing. "
             + "Extract the cudart zip into the SAME folder.",
 
         //name no cause without a discriminator, so the sentence states what was observed and offers a conditional hint.
-        Gatto.Core.Tools.ProbeShape.DllNotFound =>
+        Gatto.Core.Acquire.ProbeShape.DllNotFound =>
             "That build starts and immediately stops, Windows says a file it needs is missing. "
             + "Check that everything from the download was extracted into the same folder."
             + (cudartExpected
@@ -2081,18 +2081,18 @@ internal sealed class SetupFlow(ISetupProbes probes)
                 : ""),
 
         //three programs are called llama.cpp and only one shape works, so the sentence names the file to look for.
-        Gatto.Core.Tools.ProbeShape.NotClassic =>
+        Gatto.Core.Acquire.ProbeShape.NotClassic =>
             "That runs, but it isn't the llama-server gatto drives, some builds ship "
             + "a single combined program instead. Look for llama-server.exe specifically.",
 
-        Gatto.Core.Tools.ProbeShape.TimedOut =>
+        Gatto.Core.Acquire.ProbeShape.TimedOut =>
             "That didn't answer in time. If it's on a network drive, try a local copy.",
 
         _ => "Couldn't run that, check the path points at llama-server.exe itself.",
     };
 
     //two failure arms, re-checking the same path helps only when the file is right, otherwise the typed door is the only move
-    private WizardScreen Failed(Gatto.Core.Tools.ProbeShape shape, string sentence, string tested)
+    private WizardScreen Failed(Gatto.Core.Acquire.ProbeShape shape, string sentence, string tested)
     {
         _foundEngine = tested;
 
@@ -2105,7 +2105,7 @@ internal sealed class SetupFlow(ISetupProbes probes)
         ];
 
         //name the runtime shape explicitly, only there does re-checking the same path help. every other shape falls to the typed door
-        if (shape is Gatto.Core.Tools.ProbeShape.DllNotFound)
+        if (shape is Gatto.Core.Acquire.ProbeShape.DllNotFound)
             return Emit(new WizardScreen.Choice(
                 FailedKey,
                 EngineTitle,

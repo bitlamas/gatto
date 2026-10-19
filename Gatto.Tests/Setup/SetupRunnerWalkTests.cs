@@ -50,7 +50,7 @@ public class SetupRunnerWalkTests
         var flow = new SetupFlow(new Probes
         {
             Llama = null,
-            Verify = _ => new Gatto.Core.Tools.ProbeResult(Gatto.Core.Tools.ProbeShape.NotClassic, "d"),
+            Verify = _ => new Gatto.Core.Acquire.ProbeResult(Gatto.Core.Acquire.ProbeShape.NotClassic, "d"),
         });
 
         SetupRunner.Run(flow, surface, homePath: null);
@@ -72,7 +72,7 @@ public class SetupRunnerWalkTests
         var flow = new SetupFlow(new Probes
         {
             Llama = null,
-            Verify = _ => new Gatto.Core.Tools.ProbeResult(Gatto.Core.Tools.ProbeShape.NotClassic, "d"),
+            Verify = _ => new Gatto.Core.Acquire.ProbeResult(Gatto.Core.Acquire.ProbeShape.NotClassic, "d"),
         });
 
         Assert.Equal(0, SetupRunner.Run(flow, surface, homePath: null));
@@ -609,8 +609,8 @@ public class SetupRunnerWalkTests
         public (Gatto.Core.Models.FitRegime Alone, Gatto.Core.Models.FitRegime WithProjector)? PairFit(string p, long b) => null;
         public TypedIdOutcome EvaluateTypedId(string id) => new TypedIdOutcome.Ok(Row("someone/model"));
         public Gatto.Roles.LlamaAsset? ChooseLlamaAsset() => null;
-        public Gatto.Core.Tools.ProbeResult VerifyLlamaServer(string p) =>
-            new(Gatto.Core.Tools.ProbeShape.ClassicServer, "d",
+        public Gatto.Core.Acquire.ProbeResult VerifyLlamaServer(string p) =>
+            new(Gatto.Core.Acquire.ProbeShape.ClassicServer, "d",
                 //a ClassicServer must name its build, since the probe reads the shape from that banner. a shape without a build models an impossible machine
                 Build: Gatto.Roles.LlamaAssetSteering.PinnedRelease);
         public int ContextFor(string p) => 8192;

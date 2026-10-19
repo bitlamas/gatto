@@ -1,3 +1,4 @@
+using Gatto.Core;
 using Gatto.Core.Acquire;
 using Gatto.Core.Hardware;
 using Gatto.Core.Home;
@@ -1062,10 +1063,10 @@ internal sealed class LiveSetupProbes(string homePath, Gatto.Terminal.GlyphSet g
     //bounded at 10 s, a binary that never answers must not hang the wizard
 
     //resolve the path first, a folder is a legal answer, and report the path that was actually run
-    public Gatto.Core.Tools.ProbeResult VerifyLlamaServer(string exePath)
+    public Gatto.Core.Acquire.ProbeResult VerifyLlamaServer(string exePath)
     {
         var resolved = LlamaAssetSteering.ResolveServerExe(exePath);
-        return Gatto.Core.Tools.LlamaServerProbe.Run(resolved, TimeSpan.FromSeconds(10))
+        return Gatto.Core.Acquire.LlamaServerProbe.Run(resolved, TimeSpan.FromSeconds(10))
             with { Ran = resolved };
     }
 

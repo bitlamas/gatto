@@ -27,12 +27,12 @@ public class SetupFlowTests
         public Gatto.Roles.LlamaAsset? Asset { get; init; } =
             new("llama-b11071-bin-win-cuda-12.4-x64.zip", "cudart-llama-bin-win-cu12.4-x64.zip",
                 "an NVIDIA adapter", "CUDA");
-        public Gatto.Core.Tools.ProbeShape Shape { get; init; } = Gatto.Core.Tools.ProbeShape.ClassicServer;
+        public Gatto.Core.Acquire.ProbeShape Shape { get; init; } = Gatto.Core.Acquire.ProbeShape.ClassicServer;
         //the build the engine reports, when its shape reports one. null falls back to LlamaAssetSteering.PinnedRelease, the commonest real machine
         public string? Build { get; init; }
 
         //the swept engine's shape, when it differs from what a typed path gets. null means the two are the same
-        public Gatto.Core.Tools.ProbeShape? EngineShape { get; init; }
+        public Gatto.Core.Acquire.ProbeShape? EngineShape { get; init; }
 
         //what a fetch of the pinned release would be. null means the fixture says nothing about fetching, so the walk reaches the steering screen
         public EngineFetchOffer? Offer { get; init; }
@@ -139,13 +139,13 @@ public class SetupFlowTests
         //whether the Visual C++ runtime is missing, so a test can drive that case. false is the default, since a machine that has it is the ordinary one
         public bool VcRuntimeAbsent { get; init; }
 
-        public Gatto.Core.Tools.ProbeResult VerifyLlamaServer(string exePath)
+        public Gatto.Core.Acquire.ProbeResult VerifyLlamaServer(string exePath)
         {
             Asked.Add(nameof(VerifyLlamaServer));
             //derive the build from the shape, since production reads both from one banner. the swept engine and a typed path get separate shapes
             var shape = exePath == Llama && Llama is not null ? EngineShape ?? Shape : Shape;
-            return new Gatto.Core.Tools.ProbeResult(shape, "detail", VcRuntimeAbsent: VcRuntimeAbsent,
-                Build: shape == Gatto.Core.Tools.ProbeShape.ClassicServer
+            return new Gatto.Core.Acquire.ProbeResult(shape, "detail", VcRuntimeAbsent: VcRuntimeAbsent,
+                Build: shape == Gatto.Core.Acquire.ProbeShape.ClassicServer
                     ? Build ?? Gatto.Roles.LlamaAssetSteering.PinnedRelease
                     : null);
         }
@@ -449,7 +449,7 @@ public class SetupFlowTests
     [Fact]
     public void THE_STEERING_SCREEN_ASKS_FOR_THE_PATH_ITSELF_rather_than_for_a_keystroke()
     {
-        var flow = AtSteering(new FakeProbes { Llama = null, Shape = Gatto.Core.Tools.ProbeShape.ClassicServer });
+        var flow = AtSteering(new FakeProbes { Llama = null, Shape = Gatto.Core.Acquire.ProbeShape.ClassicServer });
         var steer = Assert.IsType<WizardScreen.Choice>(flow.Emitted[^1]);
 
         //the title names the step, the body asks for the path, and the connect row shares the screen with the typed area
@@ -2795,10 +2795,10 @@ ew.gguf", model.GgufPath);
         {
             Llama = @"C:\llama\llama-server.exe",
             //the machine's own engine is fine and only the typed per-model path is wrong, which is why the two shapes differ
-            EngineShape = Gatto.Core.Tools.ProbeShape.ClassicServer,
+            EngineShape = Gatto.Core.Acquire.ProbeShape.ClassicServer,
             Found = [new Gatto.Core.Acquire.FoundModel(@"D:\m\ling.gguf", 4_000_000_000, null)],
             Architecture = "futurearch",
-            Shape = Gatto.Core.Tools.ProbeShape.NotClassic,
+            Shape = Gatto.Core.Acquire.ProbeShape.NotClassic,
         });
         flow.Answer(SetupFlow.Yes);
 
@@ -3086,17 +3086,17 @@ ew.gguf", model.GgufPath);
     }
 
     [Theory]
-    [InlineData((int)Gatto.Core.Tools.ProbeShape.DllNotFound, "cuda runtime")]
-    [InlineData((int)Gatto.Core.Tools.ProbeShape.NotClassic, "combined program")]
-    [InlineData((int)Gatto.Core.Tools.ProbeShape.TimedOut, "answer in time")]
-    [InlineData((int)Gatto.Core.Tools.ProbeShape.Failed, "path points at")]
+    [InlineData((int)Gatto.Core.Acquire.ProbeShape.DllNotFound, "cuda runtime")]
+    [InlineData((int)Gatto.Core.Acquire.ProbeShape.NotClassic, "combined program")]
+    [InlineData((int)Gatto.Core.Acquire.ProbeShape.TimedOut, "answer in time")]
+    [InlineData((int)Gatto.Core.Acquire.ProbeShape.Failed, "path points at")]
     public void EACH_FAILURE_SHAPE_RENDERS_ITS_OWN_SENTENCE_driven_off_the_probe(int shape, string expected)
     {
         //each case is a ProbeShape value, and one generic sentence would send four shapes to the same dead end
         var flow = AtSteering(new FakeProbes
         {
             Llama = null,
-            Shape = (Gatto.Core.Tools.ProbeShape)shape,
+            Shape = (Gatto.Core.Acquire.ProbeShape)shape,
         });
 
         //read the sentence through FailureScreen, the retry case is a Choice and the typed case is an Ask with a null Label
@@ -3123,7 +3123,7 @@ ew.gguf", model.GgufPath);
             //on the download path the typed path is the arrived file, so the verified exe is the steered asset
             var flow = AtSteering(new FakeProbes
             {
-                Llama = null, Shape = Gatto.Core.Tools.ProbeShape.DllNotFound, Asset = asset,
+                Llama = null, Shape = Gatto.Core.Acquire.ProbeShape.DllNotFound, Asset = asset,
             });
             label = FailureScreen.Sentence(flow.Answer(ShelfControls.TypedAnswer(@"C:\llama\llama-server.exe")));
         }
@@ -3136,8 +3136,8 @@ ew.gguf", model.GgufPath);
                 Found = [new Gatto.Core.Acquire.FoundModel(@"D:\m\ling.gguf", 4_000_000_000, null)],
                 Architecture = "futurearch",
                 //the machine's own engine is fine, the missing dll belongs to the path the user types
-                EngineShape = Gatto.Core.Tools.ProbeShape.ClassicServer,
-                Shape = Gatto.Core.Tools.ProbeShape.DllNotFound,
+                EngineShape = Gatto.Core.Acquire.ProbeShape.ClassicServer,
+                Shape = Gatto.Core.Acquire.ProbeShape.DllNotFound,
                 Asset = asset,
             });
             flow.Answer(SetupFlow.Yes);   //yes opens the path ask.
@@ -3165,7 +3165,7 @@ ew.gguf", model.GgufPath);
         var flow = AtSteering(new FakeProbes
         {
             Llama = null,
-            Shape = Gatto.Core.Tools.ProbeShape.DllNotFound,
+            Shape = Gatto.Core.Acquire.ProbeShape.DllNotFound,
             Asset = asset,
             VcRuntimeAbsent = vcRuntimeAbsent,
         });
@@ -3182,7 +3182,7 @@ ew.gguf", model.GgufPath);
         var flow = AtSteering(new FakeProbes
         {
             Llama = null,
-            Shape = Gatto.Core.Tools.ProbeShape.ClassicServer,
+            Shape = Gatto.Core.Acquire.ProbeShape.ClassicServer,
             Found = [Model(@"D:\models\qwen.gguf")],
         });
 
@@ -3196,7 +3196,7 @@ ew.gguf", model.GgufPath);
     public void FINDING_LLAMA_CPP_COMPLETES_NOTHING_even_though_the_segment_succeeded()
     {
         //a segment that succeeds still completes nothing, so CreateModel and DefaultModel stay null
-        var flow = AtSteering(new FakeProbes { Llama = null, Shape = Gatto.Core.Tools.ProbeShape.ClassicServer });
+        var flow = AtSteering(new FakeProbes { Llama = null, Shape = Gatto.Core.Acquire.ProbeShape.ClassicServer });
         flow.Answer(ShelfControls.TypedAnswer(@"C:\llama\llama-server.exe"));
 
         Assert.Null(flow.Writes.CreateModel);
@@ -3265,7 +3265,7 @@ ew.gguf", model.GgufPath);
     [Fact]
     public void THE_VERIFIED_LLAMA_PATH_becomes_an_intent_rather_than_an_immediate_write()
     {
-        var flow = AtSteering(new FakeProbes { Llama = null, Shape = Gatto.Core.Tools.ProbeShape.ClassicServer });
+        var flow = AtSteering(new FakeProbes { Llama = null, Shape = Gatto.Core.Acquire.ProbeShape.ClassicServer });
         flow.Answer(ShelfControls.TypedAnswer(@"C:\llama\llama-server.exe"));
 
         Assert.Equal(@"C:\llama\llama-server.exe", flow.Writes.LlamaServer);
@@ -3677,7 +3677,7 @@ ew.gguf", model.GgufPath);
             : new SetupFlow(new FakeProbes
             {
                 Llama = @"C:\llama\llama-server.exe",
-                Shape = Gatto.Core.Tools.ProbeShape.NotClassic,
+                Shape = Gatto.Core.Acquire.ProbeShape.NotClassic,
                 Model = true,
             });
 

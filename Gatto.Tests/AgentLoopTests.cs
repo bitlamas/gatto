@@ -2,6 +2,7 @@ using System.Text.Json;
 using Gatto.Cli;
 using Gatto.Core.Client;
 using Gatto.Core.Loop;
+using Gatto.Core.Session;
 using Gatto.Core.Tools;
 using Gatto.Tests.Fakes;
 
@@ -973,8 +974,8 @@ public class AgentLoopTests
             .RunTurnAsync(convo, "next", new RecordingObserver(), CancellationToken.None);
         var last = before.Requests[^1].Messages;
 
-        var lines = convo.Messages.Select(m => Gatto.Core.Home.SessionStore.ChatJson(m)).ToList();
-        var restored = lines.Select(l => Gatto.Core.Home.SessionStore.ParseChatElement(JsonDocument.Parse(l).RootElement)).ToList();
+        var lines = convo.Messages.Select(m => Gatto.Core.Session.SessionStore.ChatJson(m)).ToList();
+        var restored = lines.Select(l => Gatto.Core.Session.SessionStore.ParseChatElement(JsonDocument.Parse(l).RootElement)).ToList();
         var resumed = new Conversation("s");
         resumed.Load(restored.Where(m => m.Role != "system"));
         var usage = new ContextUsageState();

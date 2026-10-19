@@ -3,9 +3,10 @@ using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
 using Gatto.Core.Client;
+using Gatto.Core.Home;
 using Gatto.Core.Loop;
 
-namespace Gatto.Core.Home;
+namespace Gatto.Core.Session;
 
 public sealed class SessionStore(string homePath, string cwd)
 {
@@ -257,10 +258,10 @@ public sealed class SessionStore(string homePath, string cwd)
     }
 
     //both fields or neither, an absent pair is a reply whose request went out uncut
-    private static Gatto.Core.Loop.ShapeMark? ReadShape(JsonElement el) =>
+    private static Gatto.Core.Client.ShapeMark? ReadShape(JsonElement el) =>
         el.TryGetProperty("elided_through", out var et) && et.ValueKind == JsonValueKind.Number
         && el.TryGetProperty("token_ratio", out var tr) && tr.ValueKind == JsonValueKind.Number
-            ? new Gatto.Core.Loop.ShapeMark(et.GetInt32(), tr.GetDouble())
+            ? new Gatto.Core.Client.ShapeMark(et.GetInt32(), tr.GetDouble())
             : null;
 
     //what a system record was composed from, written only when the conversation holds one
@@ -353,14 +354,14 @@ public sealed class SessionStore(string homePath, string cwd)
     public static SessionBaseline? LoadBaseline(string path) => BaselineOf(File.ReadLines(path));
 
     //an edit's view, or null when the record has none or it is malformed, since a view is display only
-    private static Gatto.Core.Tools.EditView? ReadView(JsonElement el)
+    private static Gatto.Core.Client.EditView? ReadView(JsonElement el)
     {
         if (!el.TryGetProperty("view", out var v) || v.ValueKind != JsonValueKind.Object) return null;
         if (!v.TryGetProperty("start", out var s) || !s.TryGetInt32(out var start)) return null;
         static string Str(JsonElement o, string key) => o.TryGetProperty(key, out var p) && p.ValueKind == JsonValueKind.String ? p.GetString()! : "";
         static string[] Arr(JsonElement o, string key) => o.TryGetProperty(key, out var p) && p.ValueKind == JsonValueKind.Array
             ? p.EnumerateArray().Where(e => e.ValueKind == JsonValueKind.String).Select(e => e.GetString()!).ToArray() : Array.Empty<string>();
-        return new Gatto.Core.Tools.EditView(start, Str(v, "head"), Str(v, "tail"), Arr(v, "before"), Arr(v, "after"));
+        return new Gatto.Core.Client.EditView(start, Str(v, "head"), Str(v, "tail"), Arr(v, "before"), Arr(v, "after"));
     }
 
     //the image references, or null when the record has none. a malformed entry is skipped so one bad record can't make a session unresumable

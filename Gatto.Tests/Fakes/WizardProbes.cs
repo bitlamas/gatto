@@ -249,10 +249,10 @@ internal sealed class WizardProbes : ISetupProbes
     }
 
     //the default verify answer names a pinned build (the real probe reads build and shape from one banner)
-    public Func<string, Gatto.Core.Tools.ProbeResult>? Verify { get; init; }
+    public Func<string, Gatto.Core.Acquire.ProbeResult>? Verify { get; init; }
 
-    public Gatto.Core.Tools.ProbeResult VerifyLlamaServer(string p) =>
-        Verify?.Invoke(p) ?? new(Gatto.Core.Tools.ProbeShape.ClassicServer, "d",
+    public Gatto.Core.Acquire.ProbeResult VerifyLlamaServer(string p) =>
+        Verify?.Invoke(p) ?? new(Gatto.Core.Acquire.ProbeShape.ClassicServer, "d",
             Build: Gatto.Roles.LlamaAssetSteering.PinnedRelease);
     public int ContextFor(string p) => 8192;
     //the default check result reports its facts, a bare verdict renders without the stamp block. set it for a failure outcome

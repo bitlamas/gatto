@@ -1,5 +1,6 @@
 using System.Globalization;
 using Gatto.Core;
+using Gatto.Core.Client;
 using Gatto.Core.Tools;
 using Gatto.Terminal;
 

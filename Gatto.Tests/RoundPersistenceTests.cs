@@ -1,6 +1,6 @@
 using Gatto.Core.Client;
-using Gatto.Core.Home;
 using Gatto.Core.Loop;
+using Gatto.Core.Session;
 using Gatto.Core.Tools;
 using Gatto.Tests.Fakes;
 

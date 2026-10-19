@@ -72,7 +72,7 @@ public static class ArgRouter
                     var level = i + 1 < argv.Length ? argv[++i] : throw new ArgumentException($"missing value for {argv[i]}");
                     //a bad level is a usage error here, before a config load or a launch can give it a second message
                     try { effort = Gatto.Roles.Thinking.Parse(level); }
-                    catch (Gatto.Core.Home.GattoConfigException ex) { throw new ArgumentException(ex.Message); }
+                    catch (Gatto.Core.GattoConfigException ex) { throw new ArgumentException(ex.Message); }
                     break;
                 case "--yes":
                     yes = true;

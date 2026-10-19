@@ -17,11 +17,11 @@ public sealed record ChatMessage(string Role, string? Content,
     //images the user attached, held as references, null when there are none so content stays a plain string
     IReadOnlyList<ImageRef>? Images = null,
     //where an edit landed in its file, display only, written to the session and never into a request
-    Gatto.Core.Tools.EditView? View = null,
+    Gatto.Core.Client.EditView? View = null,
     //the note a resume carried on this message, sent ahead of the typed text and never shown
-    Gatto.Core.Loop.SessionUpdate? Update = null,
+    Gatto.Core.Client.SessionUpdate? Update = null,
     //how the request that produced this reply was cut, set only when something was, so a resume cuts its first request the same way
-    Gatto.Core.Loop.ShapeMark? Shape = null);
+    Gatto.Core.Client.ShapeMark? Shape = null);
 public sealed record ChatRequest(string Model, IReadOnlyList<ChatMessage> Messages,
     IReadOnlyList<ToolSpec>? Tools = null,
     JsonElement? SamplingOverrides = null, JsonElement? BodyOverrides = null,

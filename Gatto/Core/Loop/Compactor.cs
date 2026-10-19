@@ -1,9 +1,9 @@
 using System.Text;
 using System.Text.Json;
 using Gatto.Core.Client;
-using Gatto.Core.Home;
 using Gatto.Core.Memory;
 using System.Linq;
+using Gatto.Core.Session;
 
 namespace Gatto.Core.Loop;
 

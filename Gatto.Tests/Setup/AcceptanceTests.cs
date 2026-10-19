@@ -43,8 +43,8 @@ public class AcceptanceTests
         public (Gatto.Core.Models.FitRegime Alone, Gatto.Core.Models.FitRegime WithProjector)? PairFit(string p, long b) => null;
         public TypedIdOutcome EvaluateTypedId(string id) => Typed;
         public Gatto.Roles.LlamaAsset? ChooseLlamaAsset() => new("z.zip", null, "a graphics card", "Vulkan");
-        public Gatto.Core.Tools.ProbeResult VerifyLlamaServer(string p) =>
-            new(Gatto.Core.Tools.ProbeShape.ClassicServer, "d",
+        public Gatto.Core.Acquire.ProbeResult VerifyLlamaServer(string p) =>
+            new(Gatto.Core.Acquire.ProbeShape.ClassicServer, "d",
                 //a ClassicServer answer names its build too, read from the same banner as the shape, or the flow skips the engine step
                 Build: Gatto.Roles.LlamaAssetSteering.PinnedRelease);
         public int ContextFor(string p) => Ctx;
@@ -235,8 +235,8 @@ public class AcceptanceTests
         public (Gatto.Core.Models.FitRegime Alone, Gatto.Core.Models.FitRegime WithProjector)? PairFit(string p, long b) => null;
         public TypedIdOutcome EvaluateTypedId(string id) => new TypedIdOutcome.Malformed();
         public Gatto.Roles.LlamaAsset? ChooseLlamaAsset() => null;
-        public Gatto.Core.Tools.ProbeResult VerifyLlamaServer(string p) =>
-            new(Gatto.Core.Tools.ProbeShape.ClassicServer, "d",
+        public Gatto.Core.Acquire.ProbeResult VerifyLlamaServer(string p) =>
+            new(Gatto.Core.Acquire.ProbeShape.ClassicServer, "d",
                 //a ClassicServer answer names its build too, read from the same banner as the shape, or the flow skips the engine step
                 Build: Gatto.Roles.LlamaAssetSteering.PinnedRelease);
         public int ContextFor(string p) => 4096;

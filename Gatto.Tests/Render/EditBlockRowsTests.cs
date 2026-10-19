@@ -1,3 +1,4 @@
+using Gatto.Core.Client;
 using Gatto.Core.Tools;
 using Gatto.Repl.Render;
 using Gatto.Terminal;

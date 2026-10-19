@@ -1,5 +1,6 @@
 using Gatto.Core.Client;
 using Gatto.Core.Loop;
+using Gatto.Core.Session;
 using Gatto.Repl.Render;
 using Gatto.Terminal;
 

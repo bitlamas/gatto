@@ -1,6 +1,7 @@
+using Gatto.Core.Client;
 using Gatto.Core.Loop;
 
-namespace Gatto.Core.Home;
+namespace Gatto.Core.Session;
 
 public enum ResumeReset { Folder, OlderSession, Model, Role, Tools, ReasoningHistory, Effort }
 

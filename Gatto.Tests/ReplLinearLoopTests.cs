@@ -1,6 +1,7 @@
 //the loop pieces are internal statics, so these tests can drive them without the private loop method
 using Gatto.Core.Client;
 using Gatto.Core.Loop;
+using Gatto.Core.Session;
 using Gatto.Core.Tools;
 using Gatto.Repl;
 using Gatto.Repl.Input;

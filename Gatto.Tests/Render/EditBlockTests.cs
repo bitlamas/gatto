@@ -138,7 +138,7 @@ public sealed class EditBlockTests
         r.EndTurn();
         Assert.Equal(closed, model.Items.OfType<ToolBlockItem>().Single().Collapsed);
 
-        var convo = new Gatto.Core.Loop.Conversation("sys");
+        var convo = new Gatto.Core.Session.Conversation("sys");
         convo.AddUser("go");
         convo.AddAssistant("", new[] { call });
         convo.AddToolResult(call.Id, result);
@@ -389,7 +389,7 @@ public sealed class EditBlockTests
         r.EndTurn();
         var live = model.Items.OfType<ToolBlockItem>().Single();
 
-        var convo = new Gatto.Core.Loop.Conversation("sys");
+        var convo = new Gatto.Core.Session.Conversation("sys");
         convo.AddUser("go");
         convo.AddAssistant("", new[] { call });
         convo.AddToolResult(call.Id, result);
@@ -433,7 +433,7 @@ public sealed class EditBlockTests
         r.EndTurn();
         var live = model.Items.OfType<ToolBlockItem>().Single();
 
-        var convo = new Gatto.Core.Loop.Conversation("sys");
+        var convo = new Gatto.Core.Session.Conversation("sys");
         convo.AddUser("go");
         convo.AddAssistant("", new[] { call });
         convo.AddToolResult(call.Id, Edited(view));

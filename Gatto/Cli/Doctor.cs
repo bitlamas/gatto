@@ -1,9 +1,11 @@
 using System.Globalization;
 using System.Text.Json;
+using Gatto.Core;
+using Gatto.Core.Acquire;
 using Gatto.Core.Home;
 using Gatto.Core.Memory;
 using Gatto.Core.Loop.Permissions;
-using Gatto.Core.Tools;
+using Gatto.Core.Session;
 using Gatto.Extensions;
 using Gatto.Roles;
 using Gatto.Terminal;

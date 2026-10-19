@@ -35,11 +35,11 @@ internal static class ModelId
     public static void Validate(string id)
     {
         if (string.IsNullOrWhiteSpace(id))
-            throw new Gatto.Core.Home.GattoConfigException("model id cannot be empty or whitespace");
+            throw new Gatto.Core.GattoConfigException("model id cannot be empty or whitespace");
         if (id is "." or ".." || id.Contains("..", StringComparison.Ordinal))
-            throw new Gatto.Core.Home.GattoConfigException($"model id '{id}' is not valid — must not contain '..'");
+            throw new Gatto.Core.GattoConfigException($"model id '{id}' is not valid — must not contain '..'");
         if (id.IndexOfAny(['/', '\\']) >= 0 || id.IndexOfAny(Path.GetInvalidFileNameChars()) >= 0)
-            throw new Gatto.Core.Home.GattoConfigException(
+            throw new Gatto.Core.GattoConfigException(
                 $"model id '{id}' is not valid — it becomes a directory name, so no path separators or special characters");
     }
 }

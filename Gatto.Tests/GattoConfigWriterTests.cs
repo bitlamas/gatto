@@ -2,6 +2,7 @@ using System.Linq;
 using System.Security.AccessControl;
 using System.Security.Principal;
 using System.Text.Json;
+using Gatto.Core;
 using Gatto.Core.Home;
 
 namespace Gatto.Tests;

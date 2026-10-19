@@ -1,5 +1,6 @@
 using System.Text.Json;
 using Gatto.Cli;
+using Gatto.Core;
 using Gatto.Core.Home;
 
 namespace Gatto.Tests;

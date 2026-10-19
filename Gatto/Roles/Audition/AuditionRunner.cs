@@ -5,6 +5,7 @@ using Gatto.Core.Client;
 using Gatto.Core.Home;
 using Gatto.Core.Loop;
 using Gatto.Core.Loop.Permissions;
+using Gatto.Core.Session;
 using Gatto.Core.Tools;
 
 namespace Gatto.Roles.Audition;

@@ -935,7 +935,7 @@ public class GattoAppTests : IDisposable
             IProgress<Gatto.Roles.Audition.AuditionProgress>? progress, CancellationToken ct) => throw new NotSupportedException();
         //a connect run reaches this before taking the choice, so this answers instead of throwing. gatto cannot price the machine, so it names no build
         public LlamaAsset? ChooseLlamaAsset() => null;
-        public Gatto.Core.Tools.ProbeResult VerifyLlamaServer(string exePath) => throw new NotSupportedException();
+        public Gatto.Core.Acquire.ProbeResult VerifyLlamaServer(string exePath) => throw new NotSupportedException();
         public int ContextFor(string ggufPath) => throw new NotSupportedException();
         public string? ExistingModelFor(string ggufPath) => throw new NotSupportedException();
         public string? Colliding { get; init; }

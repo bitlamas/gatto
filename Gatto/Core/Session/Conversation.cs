@@ -1,7 +1,7 @@
 using Gatto.Core.Client;
 using Gatto.Core.Tools;
 
-namespace Gatto.Core.Loop;
+namespace Gatto.Core.Session;
 
 public sealed class Conversation
 {

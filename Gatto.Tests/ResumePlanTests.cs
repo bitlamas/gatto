@@ -1,6 +1,8 @@
+using Gatto.Core.Client;
 using Gatto.Core.Home;
 using Gatto.Core.Loop;
 using Xunit;
+using Gatto.Core.Session;
 
 namespace Gatto.Tests;
 

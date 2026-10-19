@@ -1,6 +1,7 @@
 using System.Text;
 using System.Text.Json;
 using Gatto.Core.Client;
+using Gatto.Core.Session;
 using Gatto.Core.Tools;
 
 namespace Gatto.Core.Loop;

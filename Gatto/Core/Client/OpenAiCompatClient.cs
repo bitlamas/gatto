@@ -3,11 +3,10 @@ using System.Runtime.CompilerServices;
 using System.Text;
 using System.Text.Json;
 using System.Text.RegularExpressions;
-using Gatto.Core.Home;
 
 namespace Gatto.Core.Client;
 
-public sealed class OpenAiCompatClient : IChatClient, Gatto.Core.Loop.ITokenCounter
+public sealed class OpenAiCompatClient : IChatClient, Gatto.Core.Client.ITokenCounter
 {
     private readonly HttpClient http;
     private readonly string endpointName;

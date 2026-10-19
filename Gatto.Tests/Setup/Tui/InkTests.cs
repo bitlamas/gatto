@@ -468,8 +468,8 @@ public class InkTests
         var flow = new SetupFlow(new WizardProbes
         {
             Llama = exe,
-            Verify = _ => new Gatto.Core.Tools.ProbeResult(
-                Gatto.Core.Tools.ProbeShape.ClassicServer, "d",
+            Verify = _ => new Gatto.Core.Acquire.ProbeResult(
+                Gatto.Core.Acquire.ProbeShape.ClassicServer, "d",
                 Build: Gatto.Roles.LlamaAssetSteering.PinnedRelease),
         });
         var (s, f) = Face();
@@ -499,8 +499,8 @@ public class InkTests
         var flow = new SetupFlow(new WizardProbes
         {
             Llama = @"C:\llama\llama-b9848-bin-win-vulkan-x64\llama-server.exe",
-            Verify = _ => new Gatto.Core.Tools.ProbeResult(
-                Gatto.Core.Tools.ProbeShape.ClassicServer, "d", Build: "b9848"),
+            Verify = _ => new Gatto.Core.Acquire.ProbeResult(
+                Gatto.Core.Acquire.ProbeShape.ClassicServer, "d", Build: "b9848"),
         });
         var (s, f) = Face();
         f.Choose((WizardScreen.Choice)flow.StartPastOpening());

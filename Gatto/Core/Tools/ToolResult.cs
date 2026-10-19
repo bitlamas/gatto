@@ -1,3 +1,5 @@
+using Gatto.Core.Client;
+
 namespace Gatto.Core.Tools;
 
 //the view is display only, it travels beside the gloss and never into a request

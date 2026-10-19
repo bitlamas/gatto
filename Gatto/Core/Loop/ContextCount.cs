@@ -20,13 +20,6 @@ public sealed record ContextFigures(
     int? Window, int Total, bool Exact, bool FellBack, bool BeforeFirstRequest, double? AutoCompactAt,
     IReadOnlyList<ContextPart> Parts, ContextCache? Cache);
 
-//llama-server's two counting routes, the exact path of /context
-public interface ITokenCounter
-{
-    Task<int?> CountInputTokensAsync(ChatRequest request, CancellationToken ct);
-    Task<int?> TokenizeCountAsync(string text, CancellationToken ct);
-}
-
 //what the figures are built from: the composed prefix, the tools by source, the request last sent and the usage the loop measured
 public sealed record ContextInputs(
     string Model, string SystemText, IReadOnlyList<ContextPartText> SystemParts,

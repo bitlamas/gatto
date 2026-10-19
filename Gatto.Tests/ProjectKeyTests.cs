@@ -1,4 +1,5 @@
 using Gatto.Core.Home;
+using Gatto.Core.Session;
 
 namespace Gatto.Tests;
 

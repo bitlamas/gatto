@@ -172,8 +172,8 @@ public class FirstRunDoorTests : IDisposable
         public TypedIdOutcome EvaluateTypedId(string id) => new TypedIdOutcome.Unreachable(false);
         public Gatto.Roles.LlamaAsset? ChooseLlamaAsset() => new("z.zip", null, "a graphics card", "Vulkan");
         //report a build here, since the real probe reads shape and build from one banner and the flow skips the engine step without it
-        public Gatto.Core.Tools.ProbeResult VerifyLlamaServer(string p) =>
-            new(Gatto.Core.Tools.ProbeShape.ClassicServer, p,
+        public Gatto.Core.Acquire.ProbeResult VerifyLlamaServer(string p) =>
+            new(Gatto.Core.Acquire.ProbeShape.ClassicServer, p,
                 Build: Gatto.Roles.LlamaAssetSteering.PinnedRelease);
         public int ContextFor(string p) => 8192;
         public AuditionCheck RunAudition(string p, string? repoId, IProgress<Gatto.Roles.Audition.AuditionProgress>? progress, CancellationToken ct) =>

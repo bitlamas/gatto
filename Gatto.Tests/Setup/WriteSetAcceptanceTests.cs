@@ -397,8 +397,8 @@ public class WriteSetAcceptanceTests : IDisposable
         public (Gatto.Core.Models.FitRegime Alone, Gatto.Core.Models.FitRegime WithProjector)? PairFit(string p, long b) => null;
         public TypedIdOutcome EvaluateTypedId(string id) => new TypedIdOutcome.Unreachable(false);
         public Gatto.Roles.LlamaAsset? ChooseLlamaAsset() => new("z.zip", null, "a graphics card", "Vulkan");
-        public Gatto.Core.Tools.ProbeResult VerifyLlamaServer(string p) =>
-            new(Gatto.Core.Tools.ProbeShape.ClassicServer, p);
+        public Gatto.Core.Acquire.ProbeResult VerifyLlamaServer(string p) =>
+            new(Gatto.Core.Acquire.ProbeShape.ClassicServer, p);
         public int ContextFor(string p) => 8192;
         public AuditionCheck RunAudition(string p, string? repoId, IProgress<Gatto.Roles.Audition.AuditionProgress>? progress, CancellationToken ct) =>
             new(AuditionOutcome.Passed);

@@ -4,6 +4,7 @@ using System.Text.Json;
 using Gatto.Core;
 using Gatto.Core.Client;
 using Gatto.Core.Loop;
+using Gatto.Core.Session;
 using Gatto.Core.Tools;
 
 namespace Gatto.Roles.Agents;

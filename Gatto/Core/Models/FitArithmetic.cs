@@ -89,7 +89,7 @@ internal static class FitArithmetic
             weights -= table;
         }
         else if (streamedBytes is null
-            && (h.DeclaresPerLayerInput || Gatto.Core.Acquire.StreamedTensors.Load().Streams(h.Architecture)))
+            && (h.DeclaresPerLayerInput || Gatto.Core.Models.StreamedTensors.Load().Streams(h.Architecture)))
             assumed.Add("priced as the whole file: the per-layer input table was not read, and the engine keeps it off the GPU");
 
         return new FitEstimate(weights, kvBytes, unknown, assumed, table);

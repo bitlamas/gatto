@@ -1,7 +1,7 @@
 //a warning raised before Reset dies with the old transcript, so the ordering and replay are pinned here
 using Gatto.Core;
 using Gatto.Core.Client;
-using Gatto.Core.Loop;
+using Gatto.Core.Session;
 using Gatto.Repl.Input;
 using Gatto.Repl.Render;
 using Gatto.Repl.Term;

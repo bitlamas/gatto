@@ -2,6 +2,7 @@ using System.Text.Json;
 using Gatto.Core.Client;
 using Gatto.Core.Loop;
 using Gatto.Core.Loop.Permissions;
+using Gatto.Core.Session;
 using Gatto.Core.Tools;
 using Gatto.Roles;
 using Gatto.Roles.Agents;

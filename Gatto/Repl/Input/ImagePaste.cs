@@ -74,7 +74,7 @@ public static class ImagePaste
 
     //the media type by magic number, the same decider typed filenames use. anything unrecognised throws instead of sending a blob with a label that fits nothing
     private static (string Ext, string Media) Describe(byte[] bytes) =>
-        Gatto.Core.Tools.BinarySniff.Describe(bytes) switch
+        Gatto.Core.Client.BinarySniff.Describe(bytes) switch
         {
             "PNG image" => (".png", "image/png"),
             "JPEG image" => (".jpg", "image/jpeg"),

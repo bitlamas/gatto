@@ -1,7 +1,7 @@
 using System.Text.Json;
 using Gatto.Core.Models;
 
-namespace Gatto.Core.Acquire;
+namespace Gatto.Core.Models;
 
 //the tensors the pinned engine keeps off the GPU, by architecture, a list of data so a new architecture is a row
 internal sealed record StreamedTensors(

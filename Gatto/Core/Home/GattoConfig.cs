@@ -3,9 +3,6 @@ using Gatto.Core.Client;
 
 namespace Gatto.Core.Home;
 
-//the message is what the user sees, so it must read on its own, and a subclass must add facts without changing it
-public class GattoConfigException(string message) : Exception(message);
-
 //the shape every nested config section shares: present or absent, an object, strict about unknown keys, with per-key checks at the call site
 internal static class ConfigSection
 {

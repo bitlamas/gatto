@@ -1,4 +1,4 @@
-using Gatto.Core.Home;
+using Gatto.Core;
 using Gatto.Core.Models;
 
 namespace Gatto.Tests;

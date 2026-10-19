@@ -1,10 +1,9 @@
+using Gatto.Core.Client;
+
 namespace Gatto.Core.Tools;
 
 //the strings the tool replaced, after its alignment, and where the match starts in the file's text
 public sealed record EditMatch(string Old, string New, int Index);
-
-//the line the edit starts on, the rest of its first and last line, and up to three lines on each side, for display only
-public sealed record EditView(int Start, string Head, string Tail, IReadOnlyList<string> Before, IReadOnlyList<string> After);
 
 //the edit tool's match, shared with the permission gate so both find what the tool replaces, and the view of where it lands
 public static class EditLocate

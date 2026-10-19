@@ -31,7 +31,7 @@ public sealed class ShellTool : ITool
 
     //the PowerShell start settings, in one place a test can read. stdin is redirected and closed right away, so a command that reads it gets an EOF at once
     internal static ProcessStartInfo StartInfo(string command, string cwd,
-        Gatto.Core.Home.SessionIdentity? session = null)
+        Gatto.Core.SessionIdentity? session = null)
     {
         var psi = new ProcessStartInfo
         {
@@ -47,13 +47,13 @@ public sealed class ShellTool : ITool
         //the session is set per call, since /new and a resume change it inside one process. with none, an inherited value is removed rather than passed on
         if (session is { } live)
         {
-            psi.Environment[Gatto.Core.Home.SessionIdentity.IdVariable] = live.IdText;
-            psi.Environment[Gatto.Core.Home.SessionIdentity.StartVariable] = live.StartText;
+            psi.Environment[Gatto.Core.SessionIdentity.IdVariable] = live.IdText;
+            psi.Environment[Gatto.Core.SessionIdentity.StartVariable] = live.StartText;
         }
         else
         {
-            psi.Environment.Remove(Gatto.Core.Home.SessionIdentity.IdVariable);
-            psi.Environment.Remove(Gatto.Core.Home.SessionIdentity.StartVariable);
+            psi.Environment.Remove(Gatto.Core.SessionIdentity.IdVariable);
+            psi.Environment.Remove(Gatto.Core.SessionIdentity.StartVariable);
         }
         psi.ArgumentList.Add("-NoProfile");
         psi.ArgumentList.Add("-NonInteractive");

@@ -2,6 +2,7 @@ using System.Text.Json;
 using Gatto.Core.Client;
 using Gatto.Core.Home;
 using Gatto.Core.Loop;
+using Gatto.Core.Session;
 using Gatto.Repl.Render;
 using Gatto.Repl.Term;
 using Gatto.Terminal;

@@ -1,4 +1,5 @@
 using System.Text.Json;
+using Gatto.Core.Client;
 
 namespace Gatto.Core.Tools;
 

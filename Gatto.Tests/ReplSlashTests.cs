@@ -3,6 +3,7 @@ using System.Linq;
 using Gatto.Core.Client;
 using Gatto.Core.Loop;
 using Gatto.Core.Loop.Permissions;
+using Gatto.Core.Session;
 using Gatto.Core.Tools;
 using Gatto.Repl;
 using Gatto.Tests.Fakes;

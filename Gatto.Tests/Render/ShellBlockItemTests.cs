@@ -77,7 +77,7 @@ public sealed class ShellBlockItemTests
         var live = new ToolBlockItem("shell", ItemRender.CompactArgs(call.ArgumentsJson), ItemRender.ToolGloss(result, T, GlyphSet.Unicode), true, "coder")
             { Collapsed = true, FullResult = result.Text, FullArgs = ItemRender.FullArgsOf("shell", call.ArgumentsJson), RawGloss = result.Gloss };
 
-        var convo = new Gatto.Core.Loop.Conversation("sys");
+        var convo = new Gatto.Core.Session.Conversation("sys");
         convo.AddUser("go");
         convo.SetGattoRole("coder");
         convo.AddAssistant("", new[] { call });

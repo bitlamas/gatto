@@ -1,4 +1,4 @@
-using Gatto.Core.Loop;
+using Gatto.Core.Client;
 
 namespace Gatto.Tests.Fakes;
 

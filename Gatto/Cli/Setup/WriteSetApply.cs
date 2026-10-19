@@ -183,7 +183,7 @@ internal static class WriteSetApply
             try { exe = GattoConfig.Load(homePath).LlamaServer; }
             catch (Exception) { }   //a config that won't load leaves the model unpinned and noted, never unwritten
         return exe is { Length: > 0 }
-            ? Gatto.Core.Tools.LlamaServerProbe.DeviceNamed(exe, gpu, TimeSpan.FromSeconds(15))
+            ? Gatto.Core.Acquire.LlamaServerProbe.DeviceNamed(exe, gpu, TimeSpan.FromSeconds(15))
             : null;
     }
 }

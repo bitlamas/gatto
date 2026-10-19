@@ -2,7 +2,7 @@ using System.Security.Cryptography;
 using System.Text;
 using Gatto.Core.Client;
 
-namespace Gatto.Core.Loop;
+namespace Gatto.Core.Client;
 
 public sealed record ToolMark(string Name, string Sha256);
 public sealed record ContextFileMark(string Path, string Sha256);

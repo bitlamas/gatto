@@ -1,6 +1,6 @@
+using Gatto.Core;
 using Gatto.Core.Client;
-using Gatto.Core.Home;
-using Gatto.Core.Loop;
+using Gatto.Core.Session;
 
 namespace Gatto.Tests;
 
@@ -157,11 +157,11 @@ public class SessionStoreTests : IDisposable
         var plain = new ChatMessage("assistant", "hi");
         Assert.Equal("{\"role\":\"assistant\",\"content\":\"hi\"}", SessionStore.ChatJson(plain));
 
-        var json = SessionStore.ChatJson(plain with { Shape = new Gatto.Core.Loop.ShapeMark(37, 1.25) });
+        var json = SessionStore.ChatJson(plain with { Shape = new Gatto.Core.Client.ShapeMark(37, 1.25) });
         Assert.Contains("\"elided_through\":37", json);
         Assert.Contains("\"token_ratio\":1.25", json);
         using var doc = System.Text.Json.JsonDocument.Parse(json);
-        Assert.Equal(new Gatto.Core.Loop.ShapeMark(37, 1.25), SessionStore.ParseChatElement(doc.RootElement).Shape);
+        Assert.Equal(new Gatto.Core.Client.ShapeMark(37, 1.25), SessionStore.ParseChatElement(doc.RootElement).Shape);
         using var none = System.Text.Json.JsonDocument.Parse(SessionStore.ChatJson(plain));
         Assert.Null(SessionStore.ParseChatElement(none.RootElement).Shape);
     }

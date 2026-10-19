@@ -2,7 +2,7 @@ using System.Globalization;
 using System.Security.Cryptography;
 using System.Text;
 
-namespace Gatto.Core.Home;
+namespace Gatto.Core;
 
 //which session a transcript and a shell child belong to: the origin transcript's name projected to a GUID, and when the session began
 public sealed record SessionIdentity(Guid Id, DateTimeOffset Start)

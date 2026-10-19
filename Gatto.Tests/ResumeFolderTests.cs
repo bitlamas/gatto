@@ -1,6 +1,6 @@
 using System.Text.Json;
 using Gatto.Cli;
-using Gatto.Core.Home;
+using Gatto.Core.Session;
 using Gatto.Tests.Fakes;
 using Xunit;
 

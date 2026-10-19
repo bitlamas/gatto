@@ -128,7 +128,7 @@ internal interface ISetupProbes
     string? Sha256Of(string ggufPath) => null;
 
     //the shipped --version probe on the path the user just gave, run at once so a wrong download shows as it is typed
-    Gatto.Core.Tools.ProbeResult VerifyLlamaServer(string exePath);
+    Gatto.Core.Acquire.ProbeResult VerifyLlamaServer(string exePath);
 
     //the context gatto computes for a model on this machine. it is never the GGUF's trained ceiling, which would scaffold a model that cannot load here
     int ContextFor(string ggufPath);

@@ -2,9 +2,6 @@ using Gatto.Core.Client;
 
 namespace Gatto.Core.Loop;
 
-//the elision frontier and the token ratio a request went out with, kept on its reply's record so a resume shapes its first request the same way
-public sealed record ShapeMark(int ElidedThrough, double Ratio);
-
 //prompt-only tokens of the last round plus the estimate it went out with, cleared on compaction, /new and a model switch
 public sealed class ContextUsageState
 {

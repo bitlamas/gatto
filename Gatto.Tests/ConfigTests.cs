@@ -1,3 +1,4 @@
+using Gatto.Core;
 using Gatto.Core.Home;
 using Gatto.Tests.Support;
 using System.Text.Json;
@@ -921,7 +922,7 @@ public class UpdateCheckKeyTests : IDisposable
     [Fact]
     public void A_NON_BOOLEAN_IS_A_CONFIG_ERROR_never_a_silent_no()
     {
-        var ex = Assert.Throws<Gatto.Core.Home.GattoConfigException>(
+        var ex = Assert.Throws<Gatto.Core.GattoConfigException>(
             () => Load("{" + Base + ",\"update_check\":\"yes\"}"));
 
         Assert.Contains("update_check", ex.Message, StringComparison.Ordinal);
@@ -962,7 +963,7 @@ public class GlyphsKeyTests : IDisposable
     [Fact]
     public void AN_INVALID_VALUE_IS_REFUSED_AND_NAMES_THE_VALID_ONES()
     {
-        var ex = Assert.Throws<Gatto.Core.Home.GattoConfigException>(
+        var ex = Assert.Throws<Gatto.Core.GattoConfigException>(
             () => Load("{" + Base + ",\"glyphs\":\"emoji\"}"));
 
         Assert.Contains("glyphs", ex.Message, StringComparison.Ordinal);
@@ -972,7 +973,7 @@ public class GlyphsKeyTests : IDisposable
     [Fact]
     public void THE_WRONG_TYPE_IS_REFUSED()
     {
-        var ex = Assert.Throws<Gatto.Core.Home.GattoConfigException>(
+        var ex = Assert.Throws<Gatto.Core.GattoConfigException>(
             () => Load("{" + Base + ",\"glyphs\":true}"));
 
         Assert.Contains("glyphs", ex.Message, StringComparison.Ordinal);

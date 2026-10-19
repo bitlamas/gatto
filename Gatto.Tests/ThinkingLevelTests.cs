@@ -19,7 +19,7 @@ public class ThinkingLevelTests
     [Fact]
     public void Parse_Invalid_FriendlyError()
     {
-        var ex = Assert.Throws<Gatto.Core.Home.GattoConfigException>(() => Thinking.Parse("turbo"));
+        var ex = Assert.Throws<Gatto.Core.GattoConfigException>(() => Thinking.Parse("turbo"));
         Assert.Contains("xhigh", ex.Message);   //the message lists the valid values
     }
 
@@ -27,7 +27,7 @@ public class ThinkingLevelTests
     public void Parse_EmptyString_Throws()
     {
         //an empty string is a config mistake and must throw like any other unrecognized value (null means None)
-        var ex = Assert.Throws<Gatto.Core.Home.GattoConfigException>(() => Thinking.Parse(""));
+        var ex = Assert.Throws<Gatto.Core.GattoConfigException>(() => Thinking.Parse(""));
         Assert.Contains("xhigh", ex.Message);
     }
 
@@ -162,7 +162,7 @@ public class ThinkingLevelTests
     {
         //keys that differ only in case are the same level, so a duplicate must throw
         var map = Map(("Low", """{"a":1}"""), ("low", """{"a":2}"""));
-        var ex = Assert.Throws<Gatto.Core.Home.GattoConfigException>(() => Thinking.ResolveMap(map, ThinkingLevel.Low));
+        var ex = Assert.Throws<Gatto.Core.GattoConfigException>(() => Thinking.ResolveMap(map, ThinkingLevel.Low));
         Assert.Contains("more than once", ex.Message);
     }
 

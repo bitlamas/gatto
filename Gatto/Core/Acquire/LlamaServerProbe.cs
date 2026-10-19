@@ -1,6 +1,6 @@
 using System.Text.RegularExpressions;
 
-namespace Gatto.Core.Tools;
+namespace Gatto.Core.Acquire;
 
 public enum ProbeShape { ClassicServer, NotClassic, TimedOut, Failed, DllNotFound, KnownSibling }
 

@@ -1,4 +1,4 @@
-namespace Gatto.Core.Home;
+namespace Gatto.Core.Session;
 
 //the words a resume tells the model, one line per changed source in a fixed order, and a context file by its path only
 public static class ResumeUpdate

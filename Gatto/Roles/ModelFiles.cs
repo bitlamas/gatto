@@ -1,6 +1,6 @@
 using System.Text.Json;
 using System.Text.Json.Nodes;
-using Gatto.Core.Home;
+using Gatto.Core;
 
 namespace Gatto.Roles;
 

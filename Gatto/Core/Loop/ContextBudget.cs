@@ -1,4 +1,5 @@
 using Gatto.Core.Client;
+using Gatto.Core.Session;
 
 namespace Gatto.Core.Loop;
 

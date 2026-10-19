@@ -93,8 +93,8 @@ public class WizardVoiceTests
         public string? ExistingEndpointFor(string baseUrl) => ExistingEndpoint;
         public Gatto.Roles.LlamaAsset? ChooseLlamaAsset() =>
             new("z.zip", null, "a graphics card", "Vulkan");
-        public Gatto.Core.Tools.ProbeResult VerifyLlamaServer(string p) =>
-            new(Gatto.Core.Tools.ProbeShape.ClassicServer, "d",
+        public Gatto.Core.Acquire.ProbeResult VerifyLlamaServer(string p) =>
+            new(Gatto.Core.Acquire.ProbeShape.ClassicServer, "d",
                 //a ClassicServer probe must name its build, the real probe reads it from the same banner
                 Build: Gatto.Roles.LlamaAssetSteering.PinnedRelease);
         public int ContextFor(string p) => 8192;

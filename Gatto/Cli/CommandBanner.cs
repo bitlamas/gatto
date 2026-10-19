@@ -1,3 +1,4 @@
+using Gatto.Core;
 using Gatto.Core.Home;
 using Gatto.Repl;
 using Gatto.Roles;

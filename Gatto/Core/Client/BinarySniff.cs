@@ -1,4 +1,4 @@
-namespace Gatto.Core.Tools;
+namespace Gatto.Core.Client;
 
 //names the format of a file whose bytes the model can't use, binary alone would only tell it to give up
 public static class BinarySniff

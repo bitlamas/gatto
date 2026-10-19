@@ -6,6 +6,7 @@ using Gatto.Core.Home;
 using Gatto.Core.Loop;
 using Gatto.Core.Loop.Permissions;
 using Gatto.Core.Memory;
+using Gatto.Core.Session;
 using Gatto.Core.Tools;
 using Gatto.Repl.Input;
 using Gatto.Repl.Render;

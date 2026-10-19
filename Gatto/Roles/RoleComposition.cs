@@ -14,7 +14,7 @@ public sealed record Composition(
     string? ThinkingSuffix,
     bool RepairArmed,
     //the values the text was composed from, so a resume can say what changed without composing again
-    Gatto.Core.Loop.BaselineSources Sources,
+    Gatto.Core.Client.BaselineSources Sources,
     //the same text split by source, so /context can count each part
     IReadOnlyList<Gatto.Core.Loop.ContextPartText>? SystemParts = null);
 
@@ -136,13 +136,13 @@ public static class RoleComposition
             thinkingBody,
             thinkingSuffix,
             model?.Repair is not null,
-            new Gatto.Core.Loop.BaselineSources(
+            new Gatto.Core.Client.BaselineSources(
                 role.Raw ? null : date?.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture),   //a raw text holds no date, so a resume must not tell the model one
                 memoryIndex,
-                contextFiles.Select(f => new Gatto.Core.Loop.ContextFileMark(f.Path, Gatto.Core.Loop.BaselineMarks.Sha256Hex(f.Content))).ToList(),
-                policyOrdered.Select(p => new Gatto.Core.Loop.PolicyMark(p.Extension, p.Line)).ToList(),
-                Gatto.Core.Loop.BaselineMarks.Sha256Hex(role.Append ?? ""),
-                Gatto.Core.Loop.BaselineMarks.Sha256Hex(model?.SystemAppend ?? "")),
+                contextFiles.Select(f => new Gatto.Core.Client.ContextFileMark(f.Path, Gatto.Core.Client.BaselineMarks.Sha256Hex(f.Content))).ToList(),
+                policyOrdered.Select(p => new Gatto.Core.Client.PolicyMark(p.Extension, p.Line)).ToList(),
+                Gatto.Core.Client.BaselineMarks.Sha256Hex(role.Append ?? ""),
+                Gatto.Core.Client.BaselineMarks.Sha256Hex(model?.SystemAppend ?? "")),
             systemParts);
     }
 }

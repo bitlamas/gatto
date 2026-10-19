@@ -293,7 +293,7 @@ public sealed class GrepRowsTests
         r.EndTurn();
         var live = model.Items.OfType<ToolBlockItem>().Single();
 
-        var convo = new Gatto.Core.Loop.Conversation("sys");
+        var convo = new Gatto.Core.Session.Conversation("sys");
         convo.AddUser("go");
         convo.SetGattoRole("coder");
         convo.AddAssistant("", new[] { call });
