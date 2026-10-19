@@ -62,11 +62,16 @@ public class GlyphResolutionCensusTests
         return null;
     }
 
+    //the arms of the launch and the command files, keyed by file and method so two files' methods of one name stay apart
+    private static Dictionary<string, int> LaunchAndCommandCounts() =>
+        SourceTree.LaunchAndCommands()
+            .SelectMany(f => PerMethod(SourceTree.Read(f)).Select(kv => (Key: Path.GetFileName(f) + ":" + kv.Key, kv.Value)))
+            .ToDictionary(x => x.Key, x => x.Value);
+
     [Fact]
     public void NO_COMMAND_ARM_RESOLVES_THE_GLYPH_SET_TWICE()
     {
-        var counts = PerMethod(SourceTree.Read(
-            Path.Combine(SourceTree.RepoRoot(), "Gatto", "Cli", "GattoApp.cs")));
+        var counts = LaunchAndCommandCounts();
 
         var twice = counts.Where(c => c.Value > 1).OrderByDescending(c => c.Value).ToList();
 
@@ -80,12 +85,10 @@ public class GlyphResolutionCensusTests
     [Fact]
     public void AND_THE_CENSUS_CAN_SEE_THE_CALLS_IT_IS_COUNTING()
     {
-        var source = SourceTree.Read(
-            Path.Combine(SourceTree.RepoRoot(), "Gatto", "Cli", "GattoApp.cs"));
-        var counts = PerMethod(source);
+        var counts = LaunchAndCommandCounts();
 
         Assert.True(counts.Count > 20,
-            $"the member matcher found only {counts.Count} methods in GattoApp.cs");
+            $"the member matcher found only {counts.Count} methods in the launch and command files");
         Assert.True(counts.Values.Sum() >= 6,
             $"the census counted {counts.Values.Sum()} glyph resolutions, and there are at least six");
     }

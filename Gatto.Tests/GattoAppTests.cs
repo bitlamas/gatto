@@ -570,9 +570,9 @@ public class GattoAppTests : IDisposable
         var model = Gatto.Roles.Models.Model.Load(Path.Combine(_home, "models"), "test-model");
         var endpoint = new Gatto.Core.Client.EndpointConfig("http://127.0.0.1:9", Context: 32768);
 
-        Assert.Equal((false, (int?)32768), GattoApp.ServingFor(servedHere: false, model, endpoint, "http://127.0.0.1:9"));
-        Assert.Equal((true, (int?)8192), GattoApp.ServingFor(servedHere: true, model, endpoint, "http://127.0.0.1:9"));
-        Assert.Equal((false, (int?)32768), GattoApp.ServingFor(servedHere: false, null, endpoint, "http://127.0.0.1:9"));
+        Assert.Equal((false, (int?)32768), ServeCommand.ServingFor(servedHere: false, model, endpoint, "http://127.0.0.1:9"));
+        Assert.Equal((true, (int?)8192), ServeCommand.ServingFor(servedHere: true, model, endpoint, "http://127.0.0.1:9"));
+        Assert.Equal((false, (int?)32768), ServeCommand.ServingFor(servedHere: false, null, endpoint, "http://127.0.0.1:9"));
     }
 
     //the child must dispatch before GattoConfig.Load, which exits 2 on a bad config. a silent child reads as no vulkan loader, so the machine is priced CPU-only

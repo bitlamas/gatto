@@ -16,15 +16,17 @@ public class InSessionThemeProbeCensusTests
     [
         ("Gatto/Cli/CommandContext.cs", "CommandBanner.Chrome(home));", 1,
             "Production() builds the command surface — no REPL, no pump"),
-        ("Gatto/Cli/GattoApp.cs", "var theme = CommandBanner.Chrome(home);", 2,
-            "RunAuditionAsync and RunSetup — command entry points, identical text"),
-        ("Gatto/Cli/GattoApp.cs", "CommandBanner.Write(Console.Out, CommandBanner.Chrome(home),", 1,
+        ("Gatto/Cli/AuditionCommand.cs", "var theme = CommandBanner.Chrome(home);", 1,
+            "RunAuditionAsync — a command entry point"),
+        ("Gatto/Cli/Setup/SetupCommand.cs", "var theme = CommandBanner.Chrome(home);", 1,
+            "RunSetup — a command entry point"),
+        ("Gatto/Cli/Setup/SetupCommand.cs", "CommandBanner.Write(Console.Out, CommandBanner.Chrome(home),", 1,
             "RunModelAsync — a command entry point"),
         ("Gatto/Cli/GattoApp.cs",
             "themeMode = Theme.ResolveMode(config.Theme, rich, TermCaps.QueryBackgroundColor);", 1,
             "RunInnerAsync — ⬥ THE launch probe, and the one that must exist: it runs BEFORE the pump "
           + "is started, which is the ordering Repl.RunRichAsync documents"),
-        ("Gatto/Cli/GattoApp.cs",
+        ("Gatto/Cli/Setup/SetupCommand.cs",
             "new Theme(TermCaps.Detect(), Theme.ResolveMode(config.Theme, rich, TermCaps.QueryBackgroundColor)),", 1,
             "RunModelAsync — a command entry point"),
     ];

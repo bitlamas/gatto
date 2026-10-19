@@ -150,11 +150,11 @@ public class ModelSwitchDeedTests : IDisposable
         WriteModel(Serving, 9);
         var modelsDir = Path.Combine(_home, "models");
 
-        var (back, cannot) = GattoApp.RestoreTarget(modelsDir, Serving);
+        var (back, cannot) = ServeCommand.RestoreTarget(modelsDir, Serving);
         Assert.Equal(Serving, back?.Id);
         Assert.Null(cannot);
 
-        var (gone, why) = GattoApp.RestoreTarget(modelsDir, SessionModel);   //this model was never written, so the load must fail.
+        var (gone, why) = ServeCommand.RestoreTarget(modelsDir, SessionModel);   //this model was never written, so the load must fail.
         Assert.Null(gone);
         Assert.Contains("couldn't load " + SessionModel, why, StringComparison.Ordinal);
     }

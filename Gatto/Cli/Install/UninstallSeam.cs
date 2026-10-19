@@ -36,5 +36,5 @@ internal sealed record UninstallActs(
     Action<string> ArmSweeper)   //armed last, and it draws nothing
 {
     public static UninstallActs Production => new(
-        PathInstaller.Remove, Uninstall.RemoveTree, GattoApp.ArmSweeper);
+        PathInstaller.Remove, Uninstall.RemoveTree, UninstallCommand.ArmSweeper);
 }

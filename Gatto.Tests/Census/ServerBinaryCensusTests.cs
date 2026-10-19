@@ -5,8 +5,7 @@ public class ServerBinaryCensusTests
 {
     private const string Needle = "Profile.LlamaServer";
 
-    private static string Source() => File.ReadAllText(
-        Path.Combine(SourceTree.RepoRoot(), "Gatto", "Cli", "GattoApp.cs"));
+    private static string Source() => string.Concat(SourceTree.LaunchAndCommands().Select(File.ReadAllText));
 
     private static string[] Constructions(string src) =>
         [.. src.Split('\n').Where(l => l.Contains("new ServeManager(", StringComparison.Ordinal)
@@ -50,8 +49,8 @@ public class ServerBinaryCensusTests
     [Fact]
     public void THE_ONE_HOME_READS_THE_OVERRIDE_AND_THEN_THE_CONFIG()
     {
-        var src = Source();
-        var at = src.IndexOf("private static string ServerBinaryFor(", StringComparison.Ordinal);
+        var src = File.ReadAllText(Path.Combine(SourceTree.RepoRoot(), "Gatto", "Cli", "ServeCommand.cs"));
+        var at = src.IndexOf("internal static string ServerBinaryFor(", StringComparison.Ordinal);
         Assert.True(at > 0, "ServerBinaryFor is gone - the census above now certifies nothing");
 
         var body = src[at..src.IndexOf(';', at)];

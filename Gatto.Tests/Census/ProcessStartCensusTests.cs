@@ -18,7 +18,7 @@ public class ProcessStartCensusTests
     //a pin is a ceiling. lower it in the commit that removes a start, and raise it only after reading the new start at the code.
     private static readonly Dictionary<string, int> Pins = new(StringComparer.Ordinal)
     {
-        ["Gatto/Cli/GattoApp.cs"] = 2,
+        ["Gatto/Cli/Install/UninstallCommand.cs"] = 1,
         ["Gatto/Cli/Update/UpdateSeam.cs"] = 1,
         ["Gatto/Core/Acquire/LlamaServerProbe.cs"] = 1,
         ["Gatto/Core/Hardware/HardwareProbe.cs"] = 1,
@@ -31,7 +31,7 @@ public class ProcessStartCensusTests
     //a start named here is a decision. it counts against its file's pin but needs no bound of its own.
     private static readonly Exempt[] Exempts =
     [
-        new("Gatto/Cli/GattoApp.cs", "System.Diagnostics.Process.Start(psi);",
+        new("Gatto/Cli/Install/UninstallCommand.cs", "System.Diagnostics.Process.Start(psi);",
             "uninstall's self-delete helper waits for gatto to exit and then removes the install folder, so it must outlive gatto"),
     ];
 

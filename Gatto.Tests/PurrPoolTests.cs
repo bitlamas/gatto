@@ -204,7 +204,7 @@ public class PurrPoolTests
             if (n > 0) { callers.Add($"{rel} ({n})"); calls += n; }
         }
 
-        Assert.Equal(["Gatto/Cli/GattoApp.cs (3)"], callers);
+        Assert.Equal(["Gatto/Cli/GattoApp.cs (1)", "Gatto/Cli/Setup/SetupCommand.cs (2)"], callers);
         //the three calls are the one face of gatto setup and gatto model, its probes, and the session's
         Assert.Equal(3, calls);
     }

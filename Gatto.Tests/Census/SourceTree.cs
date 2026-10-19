@@ -27,6 +27,12 @@ internal static class SourceTree
             .Where(f => !HasFolderBelow(RepoRoot(), f, "obj", "bin"))
             .OrderBy(f => f, StringComparer.Ordinal)];
 
+    //the launch file and the six command files its command methods went to, the set two censuses read
+    public static IReadOnlyList<string> LaunchAndCommands() =>
+        [.. new[] { "Cli/GattoApp.cs", "Cli/ServeCommand.cs", "Cli/Install/UninstallCommand.cs", "Cli/Diagnose/DoctorCommand.cs",
+                    "Cli/AuditionCommand.cs", "Cli/Setup/SetupCommand.cs", "Cli/StatusCommand.cs" }
+            .Select(r => Path.Combine([RepoRoot(), "Gatto", .. r.Split('/')]))];
+
     //true when the file sits under the named folder of any product project.
     public static bool IsUnder(string file, params string[] folder) =>
         ProductProjects.Any(p => file.StartsWith(

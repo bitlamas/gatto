@@ -163,7 +163,7 @@ public class CommandWalkTests : IDisposable
         {
             var ctx = new CommandContext(screen, _home, Interactive: true, Themed,
                 Screen: surface, Keys: new ScriptedKeys(keys));
-            var exit = GattoApp.RunUninstall(ctx, site, acts.Seam);
+            var exit = UninstallCommand.RunUninstall(ctx, site, acts.Seam);
             Assert.Equal("", raw.ToString());        //the raw capture must stay empty on the uninstall screens too.
             return (screen.ToString(), surface.Text, acts, exit);
         }
@@ -318,7 +318,7 @@ public class CommandWalkTests : IDisposable
         try
         {
             var ctx = new CommandContext(screen, _home, Interactive: true, Themed);
-            var exit = await GattoApp.RunDoctorAsync(ctx,
+            var exit = await DoctorCommand.RunDoctorAsync(ctx,
                 new DoctorProbes(transport, _ => Task.FromResult<UpdateState?>(null)));
 
             Assert.Equal("", raw.ToString());              //the raw capture must stay empty on doctor too.

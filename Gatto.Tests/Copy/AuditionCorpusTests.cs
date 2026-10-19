@@ -10,7 +10,7 @@ public class AuditionCorpusTests
 {
     private static readonly EngineMarks Marks = EngineMarks.Unicode;
 
-    //mirrors GattoApp.InkFor, the mapping from meaning to colour, so the golden pins what Render composes under that seam
+    //mirrors AuditionCommand.InkFor, the mapping from meaning to colour, so the golden pins what Render composes under that seam
     private static Func<string, ReportInk, string>? PaintFor(CorpusMode mode)
     {
         var theme = CorpusDriver.ThemeFor(mode);

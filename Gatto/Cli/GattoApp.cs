@@ -4,6 +4,7 @@ using System.Text.Json;
 using Gatto.Cli.Diagnose;
 using Gatto.Cli.Install;
 using Gatto.Cli.Launch;
+using Gatto.Cli.Setup;
 using Gatto.Cli.Update;
 using Gatto.Core;
 using Gatto.Core.Client;
@@ -198,19 +199,19 @@ public static class GattoApp
             Console.WriteLine(CommandBanner.VersionLine(v.Version, v.Build, v.Dev));
             return 0;
         }
-        if (args.Command == "serve") return await RunServeAsync(args, ctx);
-        if (args.Command == "doctor") return await RunDoctorAsync(ctx);
-        if (args.Command == "status") return await RunStatusAsync(ctx);
-        if (args.Command == "model") return await RunModelAsync(args, ctx);
-        if (args.Command == "audition") return await RunAuditionAsync(args);
-        if (args.Command == "uninstall") return RunUninstall(ctx);
+        if (args.Command == "serve") return await ServeCommand.RunServeAsync(args, ctx);
+        if (args.Command == "doctor") return await DoctorCommand.RunDoctorAsync(ctx);
+        if (args.Command == "status") return await StatusCommand.RunStatusAsync(ctx);
+        if (args.Command == "model") return await SetupCommand.RunModelAsync(args, ctx);
+        if (args.Command == "audition") return await AuditionCommand.RunAuditionAsync(args);
+        if (args.Command == "uninstall") return UninstallCommand.RunUninstall(ctx);
         if (args.Command == "update")
             return await UpdateCommand.RunAsync(ctx ?? CommandContext.Production(), CancellationToken.None);
         //the wizard falls through to the launch path instead of returning, so the setup screen's start option really starts gatto
         var launchAfterSetup = false;
         if (args.Command == "setup")
         {
-            var (setupExit, thenLaunch) = RunSetup();
+            var (setupExit, thenLaunch) = SetupCommand.RunSetup();
             if (!thenLaunch) return setupExit;
             launchAfterSetup = true;
         }
@@ -239,7 +240,7 @@ public static class GattoApp
             var door = (ctx ?? CommandContext.Production()).Surface();
             door.Say("gatto isn't set up on this machine yet.");
             door.Blank();
-            var (offerExit, offerLaunch) = RunSetup();
+            var (offerExit, offerLaunch) = SetupCommand.RunSetup();
             if (!offerLaunch) return offerExit;
             launchAfterSetup = true;
         }
@@ -479,20 +480,14 @@ public static class GattoApp
             return loaded;
         }
 
-        //the bare launch runs the home's default_role, generalist when the key is absent
-        var launchRole = args.Role ?? config.DefaultRole ?? "generalist";
-        //a launched role whose file exists and fails to load runs default_role, else generalist, while an unknown name still exits 2
-        string? brokenName = null, brokenMessage = null;
-        if (RoleFile.ListNames(rolesDir).FirstOrDefault(n => string.Equals(n, launchRole, StringComparison.OrdinalIgnoreCase)) is { } onDisk)
+        var picked = LaunchRole.Resolve(args.Role, config.DefaultRole, RoleFile.ListNames(rolesDir), name =>
         {
-            try { RoleFile.Load(rolesDir, onDisk); }
-            catch (GattoConfigException ex)
-            {
-                var fallback = config.DefaultRole is { } dr && !string.Equals(dr, onDisk, StringComparison.OrdinalIgnoreCase) ? dr : "generalist";
-                if (string.Equals(fallback, onDisk, StringComparison.OrdinalIgnoreCase)) { Console.Error.WriteLine(ex.Message); return 2; }
-                (brokenName, brokenMessage, launchRole) = (onDisk, ex.Message, fallback);
-            }
-        }
+            try { RoleFile.Load(rolesDir, name); return null; }
+            catch (GattoConfigException ex) { return ex; }
+        });
+        if (picked.Refusal is { } refusal) { Console.Error.WriteLine(refusal); return 2; }
+        var launchRole = picked.Role;
+        string? brokenName = picked.BrokenName, brokenMessage = picked.BrokenMessage;
         RoleResolution launchRes;
         try { launchRes = ResolveRole(launchRole); }
         catch (GattoConfigException ex)
@@ -663,7 +658,7 @@ public static class GattoApp
         var probeHttp = new HttpClient(new SocketsHttpHandler { ConnectTimeout = probeDeadline })
             { Timeout = Timeout.InfiniteTimeSpan };
         //the model's window on a local endpoint, the endpoint's on a cloud one, and no enforcement when neither is configured
-        var contextBudget = ServingFor(ServedHere(), model, endpoint, launchBaseUrl).Window;
+        var contextBudget = ServeCommand.ServingFor(ServedHere(), model, endpoint, launchBaseUrl).Window;
         //cross-check /props at every launch and let the live answer win in both directions (it does not run on the endpoint gatto serves)
         if (!ServedHere() && launchBaseUrl is not null && !cloud)
         {
@@ -714,7 +709,7 @@ public static class GattoApp
             {
                 using var loadingLine = new TickLine(Console.Out, launchTheme is not null, blankBeforeFirst: true);
                 await AutoServeAsk.AwaitOursLoadingAsync(
-                    new ServeManager(home, ServerBinaryFor(model, config)), waitUri.Port,
+                    new ServeManager(home, ServeCommand.ServerBinaryFor(model, config)), waitUri.Port,
                     Gatto.Roles.Audition.AuditionRunner.ReadyBudget,
                     LoadingLine.Over(loadingLine, glyphs, launchTheme), id => SizeWordsOnDiskOrNull(home, id),
                     CancellationToken.None);
@@ -753,7 +748,7 @@ public static class GattoApp
         var autoServe = AutoServe.Decide(
             interactive: args.Prompt is null,
             //the one rule for whether gatto serves this endpoint, a folder on another endpoint never starts a server
-            gattoServesThisEndpoint: ServingFor(ServedHere(), model, endpoint, launchBaseUrl).GattoServes,
+            gattoServesThisEndpoint: ServeCommand.ServingFor(ServedHere(), model, endpoint, launchBaseUrl).GattoServes,
             serverAnswered: serverAlreadyUp,
             consent: model?.Profile.AutoServe,
             //the launch asker is pump-less, the /model add site keeps prompter where the pump is live
@@ -762,7 +757,7 @@ public static class GattoApp
         //the single caller, reached on the interactive launch only, so -p can never spawn a process
         if (autoServe is AutoServeAction.Serve && model is not null)   //an absent auto_serve means yes with nothing asked, and false still vetoes in the decision above
         {
-            var manager = new ServeManager(home, ServerBinaryFor(model, config));
+            var manager = new ServeManager(home, ServeCommand.ServerBinaryFor(model, config));
             //the start is watched on a live line, rich only under a theme. a plain launch gets the same rungs as committed lines, and a warning takes the line down first.
             using var startingLine = new TickLine(Console.Out, launchTheme is not null, blankBeforeFirst: true);
             //measured before the wait, so the last rung can name the size while the wait is still running
@@ -1090,7 +1085,7 @@ public static class GattoApp
 
             //captured before the swap, since model still names the outgoing one and the deed's confirm and failure message name it
             var outgoing = model;
-            var serveManager = new ServeManager(home, ServerBinaryFor(outgoing, config));
+            var serveManager = new ServeManager(home, ServeCommand.ServerBinaryFor(outgoing, config));
 
             //a delegate rather than the prompter, so the deed does not know which face answers (a driver can make it throw)
             Func<Gatto.Repl.Prompts.WizardAsk, string?>? deedAsk =
@@ -1102,8 +1097,8 @@ public static class GattoApp
             var deed = new ModelSwitchDeed.Seams(
                 Swap: (served, to) =>
                 {
-                    var (back, cannotRestore) = RestoreTarget(modelsDir, served);
-                    return SwapServerAsync(serveManager, back, to, warn.Warn, glyphs, cannotRestore)
+                    var (back, cannotRestore) = ServeCommand.RestoreTarget(modelsDir, served);
+                    return ServeCommand.SwapServerAsync(serveManager, back, to, warn.Warn, glyphs, cannotRestore)
                         .GetAwaiter().GetResult();
                 },
                 Start: m => AutoServeAsk.StartAndWaitAsync(serveManager, m, warn.Warn, CancellationToken.None, glyphs)
@@ -1502,7 +1497,7 @@ public static class GattoApp
             modelMarkLegend: !ServedHere() ? "current" : "weights loaded",
             //read at the moment a connection is lost, through the current model, so a /model switch is followed
             serverGone: () => model is { } served
-                ? ServeLines.GoneLine(new ServeManager(home, ServerBinaryFor(served, config)).Dead(served.Profile.Port), glyphs)
+                ? ServeLines.GoneLine(new ServeManager(home, ServeCommand.ServerBinaryFor(served, config)).Dead(served.Profile.Port), glyphs)
                 : null,
                     autoCompact: config.AutoCompact, permissions: permissions, listTools: listTools, listPolicy: listPolicy, commands: commands, memoryWarning: launchRes.MemoryTruncatedLines > 0 ? MemoryTruncationWarning(launchRes.MemoryTruncatedLines) : null, cloudNotice: cloudNotice, launchWarnings: launchWarnings, cloud: cloud, readUsage: usageMeter.Read, onUsageChanged: repaint => usageMeter.Changed = repaint,piggyback: piggyback, turnAbort: turnAbort,
             //a session with no model talks to a server gatto does not manage, so the notice says that instead of offering a model fix
@@ -1541,17 +1536,17 @@ public static class GattoApp
             //the bodies live in QuantEdit, which refuses before it asks (the confirm needs the wizard prompter and the serving state here)
             switchQuant: !ServedHere() || model is null ? null : (Func<string, string>)(name =>
                 QuantEdit.Switch(modelsDir, model, name,
-                    () => QuantServing(home, model, config) is Gatto.Roles.Serve.ServingState.ServingThis,
+                    () => ServeCommand.QuantServing(home, model, config) is Gatto.Roles.Serve.ServingState.ServingThis,
                     Confirming(prompter),
                     //the same stop, start and restore the model switch uses, so there is one copy of the hardest half
-                    restart: (previous, reloaded) => SwapServerAsync(
-                        new Gatto.Roles.Serve.ServeManager(home, ServerBinaryFor(reloaded, config)),
+                    restart: (previous, reloaded) => ServeCommand.SwapServerAsync(
+                        new Gatto.Roles.Serve.ServeManager(home, ServeCommand.ServerBinaryFor(reloaded, config)),
                         previous, reloaded, warn.Warn,
                         glyphs).GetAwaiter().GetResult())),
             //forgetting a file is its own command, the switch only changes which one is active
             removeQuant: !ServedHere() || model is null ? null : (Func<string, string>)(name =>
                 QuantEdit.Remove(modelsDir, model, name,
-                    () => QuantServing(home, model, config) is Gatto.Roles.Serve.ServingState.ServingThis,
+                    () => ServeCommand.QuantServing(home, model, config) is Gatto.Roles.Serve.ServingState.ServingThis,
                     Confirming(prompter))))
 ;
         var replExit = await repl.RunAsync(CancellationToken.None);
@@ -1638,8 +1633,6 @@ public static class GattoApp
         return "previous session";
     }
 
-    //routes start|stop|status to ServeManager, where start without a target falls back to gatto.json's default_model. a config error exits 2, anything else 1
-
     //the size words for a model id alone, null when this home cannot load the id
     private static string? SizeWordsOnDiskOrNull(string home, string modelId)
     {
@@ -1654,580 +1647,6 @@ public static class GattoApp
     }
 
     //the audition knows its model by id only, so it reads the size the same way every other site does
-    private static string? AuditionSize(string home, string modelId) => SizeWordsOnDiskOrNull(home, modelId);
-
-    private static async Task<int> RunServeAsync(ParsedArgs args, CommandContext? context = null)
-    {
-        var ctx = context ?? CommandContext.Production();
-        var home = ctx.Home;
-        GattoHome.EnsureInitialized(home);
-
-        GattoConfig config;
-        try { config = GattoConfig.Load(home); }
-        catch (GattoConfigException ex) { Console.Error.WriteLine(ex.Message); return 2; }
-
-        var manager = new ServeManager(home, config.LlamaServer ?? "");
-
-        //only serve status --json stays bare, a parser reads that one and a cat above the object breaks it
-        var framed = !(args.Subcommand == "status" && args.Json);
-        //the frame opens here and closes in the finally, and the glyph set is passed so a plain console does not draw tofu
-        var glyphs = CommandBanner.GlyphsFor(home);
-        if (framed)
-            CommandBanner.WriteHeader(ctx.Out, ctx.Theme,   //the header names the command only, the manager prints the model in the body
-                "serve " + (args.Subcommand ?? "status"), glyphs, ctx.Stamp);
-
-        //every word this command prints is composed here, so the manager can report a fact without knowing how it reads
-        var lines = new ServeLines(ctx.Surface(), glyphs);
-
-        try
-        {
-            switch (args.Subcommand)
-            {
-                case "start":
-                    var modelId = args.Target ?? config.DefaultModel
-                        ?? throw new GattoConfigException(
-                            "gatto serve start needs a model. Pass one (gatto serve start <model>) or set default_model in gatto.json");
-                    var model = Model.Load(Path.Combine(home, "models"), modelId);
-                    //print the exposure warning and continue, on stderr so redirecting a foreground start's log doesn't hide it
-                    if (ServeArgs.ExposureWarning(model.Profile) is { } exposure)
-                        Console.Error.WriteLine(exposure);
-                    //the loading row is for a wait the user watches, and a foreground start already has llama-server's own log on screen
-                    if (!args.Detach)
-                    {
-                        //the window is the server's while it runs, and Restore gives the old title back on every exit
-                        var title = TerminalTitle.Deed(Console.IsOutputRedirected);
-                        title?.Apply(TerminalTitle.Glyph + " llama-server");
-                        try { return await manager.StartAsync(model, lines, CancellationToken.None, foreground: true); }
-                        finally { title?.Restore(); }
-                    }
-                    {
-                        using var waitLine = new TickLine(ctx.Out, ctx.Theme is not null);
-                        var bytes = Gatto.Core.Acquire.ModelDiscovery.SetBytesOrNull(model.Profile.ActivePath);
-                        var words = bytes is { } size ? SizeWords.Gb(size, approx: true) : null;
-                        var row = LoadingLine.Over(waitLine, glyphs, ctx.Theme);
-                        var detached = new ServeLines(ctx.Surface(), glyphs,
-                            new StartWatch(e => row.Draw(e, model.Id, words), waitLine.Finish, words));
-                        var code = await manager.StartAsync(model, detached, CancellationToken.None);
-                        waitLine.Finish();
-                        return code;
-                    }
-                case "stop":
-                {
-                    //the body goes through ServeLines, so a raw write can't appear between the banner and the rows under it
-                    return await manager.StopAsync(lines, CancellationToken.None);
-                }
-                default: //the status arm, which a bare gatto serve also reaches (ArgRouter allows nothing else)
-                {
-                    //the --json path skips ServeLines and the banner, a parser has to get the object alone
-                    if (args.Json) return await manager.StatusJsonAsync(ctx.Out, CancellationToken.None);
-                    return await manager.StatusAsync(lines, CancellationToken.None);
-                }
-            }
-        }
-        catch (GattoConfigException ex) { Console.Error.WriteLine(ex.Message); return 2; }
-        finally
-        {
-            //the closing blank follows the same fact as the header above, so a json run writes none
-            if (framed) ctx.Surface().Close();
-        }
-    }
-
-    //exit 0 is a model that passed, 1 is a model that failed, 2 is a problem on our side. the local config catch keeps a harness fault from exiting 1
-    private static async Task<int> RunAuditionAsync(ParsedArgs args)
-    {
-        var home = GattoHome.Resolve();
-        GattoHome.EnsureInitialized(home);
-
-        //the closing blank goes through cli.Close in a finally, and frameOpen keeps a refusal before the header from leaving a blank with no header
-        var cli = new CliSurface(Console.Out, theme: null, glyphs: null);
-        var frameOpen = false;
-        try
-        {
-            var config = GattoConfig.Load(home);
-            var modelId = args.Target ?? config.DefaultModel
-                ?? throw new GattoConfigException(
-                    "gatto audition <model>: no model given and no \"default_model\" set in gatto.json");
-
-            //the theme and Sanitize enter here, since Cli may reach Repl and Roles takes both as parameters so it never does
-            var theme = CommandBanner.Chrome(home);   //output-only detection, so a redirect to a file stays byte-pure with one line per task
-            var paint = InkFor(theme);
-            //one glyph set is chosen for this run and shared by the header and the voice below
-            var glyphs = CommandBanner.GlyphsFor(home);
-            //no stamp on this header, RunAuditionAsync takes no CommandContext and threading one through would be a second seam
-            CommandBanner.WriteHeader(Console.Out, theme, "audition",   //the header names the command only, the report's own model row names the model
-                glyphs);
-            frameOpen = true;
-
-            using var console = new AuditionConsole(Console.Out, theme is not null, paint);
-            var verdict = await Gatto.Roles.Audition.AuditionRunner
-                .RunAsync(home, modelId, console, CancellationToken.None,
-                    engineMarks: CommandBanner.MarksFor(home),
-                    //the runner is in Roles and has no vocabulary, so a serve failure is reported through ServeLines handed in here
-                    serveVoice: w => new ServeLines(new CliSurface(w, null, glyphs), glyphs),
-                    //the runner commits each loading rung as a note, with the words taken from LoadingRow
-                    loadingWords: elapsed => LoadingRow.Words(elapsed, modelId, AuditionSize(home, modelId), glyphs));
-            console.Finish();       //the ticks come down before the report goes up
-
-            cli.Blank();
-            Console.WriteLine(Gatto.Roles.Audition.AuditionReport.Render(verdict, TermText.Sanitize,
-                CommandBanner.MarksFor(home), paint));
-
-            //both badge keys come off the verdict, and a model adopted off disk keeps a null repo id
-            Gatto.Roles.Audition.BadgeWriter.Write(home, verdict);
-            return verdict.Pass ? 0 : 1;
-        }
-        //indent the failure like every other line this command prints, a message at column 0 reads as gatto crashing
-        catch (GattoConfigException ex)
-        {
-            //the tail is printed as subordinate rows through CliSurface.Under, the one indent this layer writes
-            var err = new CliSurface(Console.Error, theme: null, glyphs: null);
-            err.Blank();
-            foreach (var line in ex.Message.Split('\n'))
-                err.Under(line.TrimEnd('\r'));
-            return 2;
-        }
-        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
-        {
-            //a disk failure is our problem, so it exits 2 instead of reading as a verdict about the model
-            Console.Error.WriteLine($"audition could not run: {ex.Message}");
-            return 2;
-        }
-        finally
-        {
-            if (frameOpen) cli.Close();
-        }
-    }
-
-    //routes gatto setup and gatto model, which differ only in modelSegmentOnly, so the lifecycle has one home and its order holds
-    private static (int Code, bool Launch) RunSetup(bool modelSegmentOnly = false, string? command = null)
-    {
-        if (Console.IsInputRedirected || Console.IsOutputRedirected)   //refused before the banner with exit 2 and a pointer to gatto doctor, since a wizard with nobody to answer would invent answers
-        {
-            Console.Error.WriteLine(
-                "gatto setup needs a terminal it can ask questions in. Run it directly rather than "
-                + "through a pipe or a script. To check an existing setup instead, run: gatto doctor");
-            return (2, false);
-        }
-
-        var home = GattoHome.Resolve();
-
-        //one glyph set for the run, asked once and handed to every painter
-        var glyphs = CommandBanner.GlyphsFor(home);
-
-        //nothing is written on the way in, the home appears at the first real write so looking at the wizard leaves nothing behind
-        var theme = CommandBanner.Chrome(home);
-
-        //the wizard prints no banner, but CommandBanner.Chrome still runs to resolve the theme the face needs
-
-        //the TUI face is the one this command builds, from the same flow the plain face got. the version is read off the build
-        var surface = new ConsoleSurface();
-        var chrome = theme ?? new Theme(TermCaps.Detect(), ThemeMode.Dark);
-        //the face defaults no timer, the pulse is passed in by name and disposed at the end. the glyph set is resolved here beside the theme and handed to the face
-        var wizardCommand = command ?? (modelSegmentOnly ? "gatto model" : "gatto setup");   //the words the user typed, so gatto model new is not reported as gatto model
-
-        //the wizard runs before the config loader and reads the mouse setting itself, alt_screen gates the REPL's mouse and not this
-        var input = Setup.WizardInput.For(Setup.WizardInput.MouseOf(home),
-            () => new ConsoleInputSource(new Win32ConsoleInputReader()), () => new KeyInputSource(new ConsoleKeySource()),
-            () => new ConsoleInputMode(new Win32ConsoleModeControl()), Setup.WizardInput.SystemDoubleClickMs);
-
-        using var face = new Setup.Tui.TuiWizardSurface(
-            surface, input.Source, chrome,
-            Gatto.Core.GattoVersion.String, Gatto.Core.GattoVersion.Build ?? "",
-            command: wizardCommand,
-            pulse: () => new Gatto.Terminal.TimerPurrPulse(),
-            glyphs: glyphs,
-            //the purr is drawn once here from the pool, so nothing a test constructs can reach the draw
-            fullPurr: Gatto.Repl.Render.Chrome.PurrFrames.RandomFromPool(),
-            doubleClickMs: input.DoubleClickMs);
-
-        //the wizard runs on the alt buffer and gives it back on every exit, WizardSession owns that lifecycle
-        var alt = new AltScreen(surface) { QuietWheel = input.QuietWheel };
-
-        //rich comes from the banner and the probes write into the face, so their lines reach the user at the epilogue
-        var probes = new Setup.LiveSetupProbes(home, face.Glyphs, face.Notes,
-            purrSet: Gatto.Repl.Render.Chrome.PurrFrames.RandomFromPool,
-            rich: theme is not null,
-            //these lines go to the console, Dispose runs after the record has printed
-            afterWalk: Console.Out,
-            working: face.Working);
-        var flow = new Setup.SetupFlow(probes);
-        using (probes)
-        {
-            //the scrollback is composed after the wizard returns, from the facts true then, with the width and the clock read here
-            var exit = Setup.WizardSession.Run(
-                alt, () => Setup.SetupRunner.Run(flow, face, home, modelSegmentOnly),
-                () => Setup.WizardSession.Scrollback(flow, () => face.LastPainted, surface.Width, face.Glyphs,
-                    VersionStamp.Running, DateOnly.FromDateTime(DateTime.Now), wizardCommand, theme),
-                Console.Out, notes: () => face.CapturedNotes, command: wizardCommand, inputMode: input.Mode);
-
-            //the shipped files are written after the wizard and only when the home exists, since writing them is what creates it
-            if (Directory.Exists(home))
-            {
-                try { ShippedExtensions.EnsureWritten(home); }
-                catch (Exception ex) { Console.Error.WriteLine($"! setup: could not write shipped files: {ex.Message}"); }
-            }
-
-            //the caller launches the REPL, and a server setup started stays up for the session
-            if (!flow.StartReplWhenDone) return (exit, false);   //false when entered at the model segment, which has no REPL to start
-
-            //the countdown runs after the record and before the REPL, as a live line (the record is composed once)
-            var cli = new CliSurface(Console.Out, theme, glyphs);
-            Setup.Tui.Countdown.Run(cli.Live, System.Threading.Thread.Sleep, glyphs: glyphs);
-            cli.Blank();   //ends the live line, so the next row starts at column zero
-            //the row is composed through the painter, so it degrades to the same plain sentence when theme is null
-            if (probes.HandOverServer())
-                cli.Row(
-                    ("the server stays up for this session", CliInk.Plain),
-                    ($" {glyphs.Dot} ", CliInk.Dim),
-                    CliSurface.Command("gatto serve stop"),
-                    (" when you're done.", CliInk.Plain));
-            return (exit, true);
-        }
-    }
-
-
-    //the previous model is restarted at most once, and false leaves the caller's session on the model it already had
-    private static async Task<bool> SwapServerAsync(
-        ServeManager manager, Gatto.Roles.Models.Model? previous, Gatto.Roles.Models.Model incoming, Action<string> say,
-        Gatto.Terminal.GlyphSet? glyphs, string? cannotRestore = null)
-    {
-        //the stop's rows go to NullServeListener, this path says what happened in its own sentence below
-        await manager.StopAsync(Gatto.Roles.Serve.NullServeListener.Instance, CancellationToken.None).ConfigureAwait(false);
-
-        if (await AutoServeAsk.StartAndWaitAsync(manager, incoming, say, CancellationToken.None, glyphs ?? Gatto.Terminal.GlyphSet.Unicode)
-            .ConfigureAwait(false)) return true;
-
-        if (previous is null)
-        {
-            //the reason the previous model did not load comes in cannotRestore, and it is said here
-            say(cannotRestore ?? "nothing is serving now. gatto serve start when you're ready.");
-            return false;
-        }
-
-        say($"loading {previous.Id} back{(glyphs ?? Gatto.Terminal.GlyphSet.Unicode).Ellipsis}");
-        if (await AutoServeAsk.StartAndWaitAsync(manager, previous, say, CancellationToken.None, glyphs ?? Gatto.Terminal.GlyphSet.Unicode)
-            .ConfigureAwait(false)) return false;
-
-        //with both models gone the sentence names a reboot, memory a dead process still holds is the likely cause
-        say($"couldn't restart {previous.Id} either; a reboot may be needed to reclaim GPU memory.");
-        return false;
-    }
-
-    //the model a failed /model swap puts back, loaded from the id the server held. a model that will not load returns the sentence to say in its place
-    internal static (Gatto.Roles.Models.Model? Model, string? CannotRestore) RestoreTarget(string modelsDir, string servedId)
-    {
-        try { return (Gatto.Roles.Models.Model.Load(modelsDir, servedId), null); }
-        catch (GattoConfigException ex)
-        {
-            return (null, $"couldn't load {servedId} to put it back: {ex.Message}. nothing is serving now. "
-                + "gatto serve start when you're ready.");
-        }
-    }
-
-
-    //interactive only, it refuses without a terminal. nothing is removed until the map and the PATH entry are in place, so gatto can always say what it did
-
-    //the context, the read-only site and the irreversible acts are three records. the deeds stay out of the rendering record, or a reader takes it for output only
-    internal static int RunUninstall(
-        CommandContext? context = null, UninstallSite? site = null, UninstallActs? acts = null)
-    {
-        var ctx = context ?? CommandContext.Production();
-        if (!ctx.Interactive)
-        {
-            Console.Error.WriteLine(
-                "gatto uninstall needs a terminal it can ask questions in. Run it directly rather "
-                + "than through a pipe or a script.");
-            return 2;
-        }
-
-        var home = ctx.Home;
-        var where = site ?? UninstallSite.Probe();
-        var deeds = acts ?? UninstallActs.Production;
-        var installDir = where.InstallDir;
-
-        //the full banner, written after the refusal so a piped run's error is the only thing it writes
-        var glyphs = CommandBanner.GlyphsFor(home);   //one glyph set per run, two painters must not disagree
-        CommandBanner.Write(ctx.Out, ctx.Theme, "uninstall", glyphs: glyphs,
-            stamp: ctx.Stamp);
-
-        //the theme is resolved once, the surface and the prompter both take it from the context
-        var cli = ctx.Surface();
-        var ask = ctx.Prompter();
-
-        //the screen offers to stop a running server, advice to run gatto serve stop afterwards is unfollowable once gatto is gone
-        ServeManager? serve = null;
-        Gatto.Roles.Serve.RunningInfo? running = null;
-        try
-        {
-            var cfg = GattoConfig.Load(home);
-            serve = new ServeManager(home, cfg.LlamaServer ?? "");
-            running = serve.DescribeRunning();
-        }
-        catch (Exception) { } //no readable config means nothing to say about a server
-
-        //the map is built from the same reads the deletion uses, a second set could disagree with what gets removed
-        string? llamaServer = null;
-        var models = new List<(string, string)>();
-        try
-        {
-            var config = GattoConfig.Load(home);
-            llamaServer = config.LlamaServer;
-            var modelsDir = Path.Combine(home, "models");
-            foreach (var id in Gatto.Roles.Models.Model.ListIds(modelsDir))
-            {
-                try { models.Add((id, Gatto.Roles.Models.Model.Load(modelsDir, id).Profile.ActivePath)); }
-                catch (GattoConfigException) { } //a model whose profile will not load is skipped rather than failing the whole map
-            }
-        }
-        catch (Exception) { } //a home with no readable config still has an exe and a PATH entry to remove
-
-        //both consent screens go through SelectPrompt, nothing here asks for a typed y or n
-        var consent = UninstallConsent.Ask(ask, home, running);
-        if (consent is null)
-        {
-            cli.Say(UninstallConsent.NothingRemoved);
-            cli.Close();
-            return 0;
-        }
-
-        var deleteHome = consent.Value.DeleteHome;
-
-        //the install facts come from the site probe. an absent exe or PATH entry prints no line, RemovesAnything is asked rather than assumed
-        var install = where.Facts;
-
-        //the caller reads whether a weights file has no model row and passes the fact in, the map never reads the disk
-        var map = Uninstall.Map(installDir, home, deleteHome, install, llamaServer, models,
-            consent.Value.StopServer ? running : null,
-            otherWeightFiles: Uninstall.HasUnnamedWeights(home, models));
-        cli.Blank();
-        UninstallConsent.WriteMap(cli, map);
-
-        //the sibling notice goes before the confirm, since it changes what a yes achieves. it stays outside the map, whose rows are all the confirm covers
-        if (deleteHome && Uninstall.SiblingNotice(where.SiblingGattos) is { } sibling)
-        {
-            cli.Blank();
-            cli.Say(sibling);
-        }
-
-        cli.Blank();
-
-        //a yes that removes nothing is a confirmation not worth asking for, and the map above has already printed
-        if (!Uninstall.RemovesAnything(map))
-        {
-            cli.Say("there is nothing to remove. This gatto is not installed on this machine.");
-            cli.Close();
-            return 0;
-        }
-
-        //the confirm covers the map printed above
-        if (!UninstallConsent.Confirm(ask))
-        {
-            cli.Say(UninstallConsent.NothingRemoved);
-            cli.Close();
-            return 0;
-        }
-
-        //the stop comes before anything is removed, so a declined one can name the running server
-        if (consent.Value.StopServer && serve is not null)
-        {
-            //the stop writes through the writer it is handed, so it gets ServeLines built over this screen's layer
-            serve.StopAsync(new ServeLines(cli, glyphs), CancellationToken.None)
-                .GetAwaiter().GetResult();
-        }
-        else if (running is { } left)
-            cli.Say(UninstallConsent.LeftRunning(left));
-
-        //remove the PATH entry first, so a failure here leaves an installed gatto rather than a dangling entry. the outcome is captured for the sentence below
-        var pathRemoved = false;
-        if (install.OnPath)
-        {
-            if (deeds.RemovePathEntry(installDir) is { } pathProblem)
-                Console.Error.WriteLine("! " + pathProblem);
-            else
-                pathRemoved = true;
-        }
-
-        if (deleteHome)
-        {
-            //every entry that would not go is reported on its own line. the keep set from the map is passed to the delete, so the weights files it promised stay
-            var treeFailures = deeds.RemoveTree(home, Uninstall.KeptUnder(map, home));
-            foreach (var failure in treeFailures)
-                Console.Error.WriteLine($"! couldn't remove {failure.Path}: {failure.Why}");
-
-            //the notice is added on top of the per-entry failures above
-            if (Uninstall.PartialRemovalNotice(home, treeFailures, where.SiblingGattos) is { } note)
-                cli.Say(note);
-        }
-
-        //the off-PATH sentence is said only when the entry was really removed, and it goes through cli.Say like the rest
-        if (pathRemoved) cli.Say("gatto is off your PATH.");
-        if (install.ExePresent)
-        {
-            cli.Say("the program file removes itself as this exits.");
-            deeds.ArmSweeper(installDir);
-        }
-        //the closing row for the banner above, on every path that printed one
-        cli.Close();
-        return 0;
-    }
-
-    //a detached shell waits for this process to exit, a running image cannot delete itself. armed last, and best-effort, a failed sweeper leaves one folder behind
-    internal static void ArmSweeper(string installDir)
-    {
-        try
-        {
-            var pid = Environment.ProcessId;
-            var psi = new System.Diagnostics.ProcessStartInfo("powershell.exe")
-            {
-                Arguments = "-NoProfile -WindowStyle Hidden -Command "
-                    + $"\"Wait-Process -Id {pid} -ErrorAction SilentlyContinue; "
-                    + $"Start-Sleep -Milliseconds 300; "
-                    + $"Remove-Item -LiteralPath '{installDir}' -Recurse -Force -ErrorAction SilentlyContinue\"",
-                UseShellExecute = false,
-                CreateNoWindow = true,
-            };
-            System.Diagnostics.Process.Start(psi);
-        }
-        catch (Exception)
-        {
-            Console.Error.WriteLine($"! couldn't remove {installDir} automatically. Delete it by hand.");
-        }
-    }
-
-    //the size of a model is the sum of its shards, so read ModelDiscovery.SetBytesOrNull rather than one file's length
-
-    //the probes' dispose lives in RunSetup, for gatto setup and for /model add
-
-    //maps ReportInk onto the theme, so the colour decision stays in Cli where Theme lives
-    private static Func<string, Gatto.Roles.Audition.ReportInk, string>? InkFor(Theme? theme) =>
-        theme is null ? null : (text, ink) => theme.Paint(text, ink switch
-        {
-            Gatto.Roles.Audition.ReportInk.Ok => Theme.Ok,
-            Gatto.Roles.Audition.ReportInk.Fail => Theme.Err,
-            Gatto.Roles.Audition.ReportInk.Accent => Theme.Accent,
-            _ => Theme.Dim,
-        });
-
-    //the engine half of the setup question, where FirstRunDoor asks about the model. it asks for the value only, and a config that will not load answers false
-    private static bool NoEngineIn(string home)
-    {
-        try { return string.IsNullOrWhiteSpace(GattoConfig.Load(home).LlamaServer); }
-        catch (GattoConfigException) { return false; }
-    }
-
-    //both refusals run before the banner, a cat above a usage error has already printed output
-    private static Task<int> RunModelAsync(ParsedArgs args, CommandContext? ctx = null)
-    {
-        //an argument or an unknown subcommand is refused, bare new still opens the shelf
-        if (args.Target is not null || (args.Subcommand is { } sub && sub != "new"))
-        {
-            Console.Error.WriteLine(
-                "gatto model takes no argument. Run gatto model, press m to list the models on this "
-                + "machine, and type the path to your .gguf there.");
-            Console.Error.WriteLine();
-            return Task.FromResult(2);
-        }
-
-        //read ctx?.Interactive rather than the console properties, which no test can inject. the first-run door reads the same expression, so the two cannot disagree
-        if (!(ctx?.Interactive ?? (!Console.IsInputRedirected && !Console.IsOutputRedirected)))
-        {
-            Console.Error.WriteLine(
-                "gatto model needs a terminal it can ask questions in. Run it directly rather than "
-                + "through a pipe or a script. To see the models you have, use /model inside a session.");
-            Console.Error.WriteLine();
-            return Task.FromResult(2);
-        }
-
-        var home = ctx?.Home ?? GattoHome.Resolve();
-
-        //both arms, NotConfigured never reads llama_server and the segment this enters skips the engine check
-        if (FirstRunDoor.NotConfigured(home) || NoEngineIn(home))
-        {
-            Console.Error.WriteLine(
-                "gatto model sets up a model on a machine that already has an engine. This one "
-                + "doesn't yet. Run gatto setup first.");
-            Console.Error.WriteLine();
-            return Task.FromResult(2);
-        }
-
-        //from here the command is the wizard at the model segment, with no EnsureInitialized, since opening it must not create a home
-        return Task.FromResult(RunSetup(modelSegmentOnly: true, command: ModelInvocation(args.Subcommand)).Code);   //no banner either, the alt buffer hides it and the restore would put it above the wizard's closing record
-    }
-
-    //the words that reached the wizard, kept for its header and title so new is not dropped
-    internal static string ModelInvocation(string? subcommand) =>
-        subcommand == "new" ? "gatto model new" : "gatto model";
-
-    //read-only, so a missing home is left for the checks to report. the HttpClient here is real, and the tests drive Doctor with their own probes
-
-    //internal so a test can drive it with its own records, the dispatch line above stays uncovered
-    internal static async Task<int> RunDoctorAsync(
-        CommandContext? context = null, DoctorProbes? outside = null)
-    {
-        var ctx = context ?? CommandContext.Production();
-        var probes = outside ?? DoctorProbes.Production;
-        var home = ctx.Home;
-        var cwd = Environment.CurrentDirectory;
-        using var http = DoctorClient(probes.Transport);
-        //the running-server row reads through ServeManager.DescribeRunning, which never spawns. an unreadable config leaves it null, and the config checks report that
-        Func<Gatto.Roles.Serve.RunningInfo?>? describe = null;
-        var configTheme = "auto";
-        try
-        {
-            var cfgForServe = GattoConfig.Load(home);
-            configTheme = cfgForServe.Theme;
-            var mgr = new ServeManager(home, cfgForServe.LlamaServer ?? "");
-            describe = () => mgr.DescribeRunning();
-        }
-        catch (GattoConfigException) { } //doctor's config checks own this failure
-
-        //colour follows stdout alone, doctor never reads a key. an unloadable config keeps the auto theme, so a broken gatto.json cannot stop doctor
-        var theme = ctx.Theme;
-        CommandBanner.WriteHeader(ctx.Out, theme, "doctor", CommandBanner.GlyphsFor(ctx.Home),
-            stamp: ctx.Stamp);
-        var code = await new Doctor(http, describeRunning: describe, theme: theme,
-            //the update check runs on a diagnostic's budget, 1s whole exchange and 500ms to connect
-            checkUpdate: probes.CheckUpdate)
-            .RunAsync(home, cwd, ctx.Out, CancellationToken.None);
-        ctx.Surface().Close();   //the frame's closing row, paired with the header above it
-        return code;
-    }
-
-    //the client the doctor reads through carries no timeout, each check holds its own deadline (internal so a test can read it)
-    internal static HttpClient DoctorClient(HttpMessageHandler transport) =>
-        new(transport) { Timeout = Timeout.InfiniteTimeSpan };
-
-    //routes gatto status to Status, read-only and with no EnsureInitialized like doctor
-    private static async Task<int> RunStatusAsync(CommandContext? context = null)
-    {
-        var ctx = context ?? CommandContext.Production();
-        var cwd = Environment.CurrentDirectory;
-        //untimed, the health read beneath status holds a 5s deadline of its own
-        using var http = new HttpClient(new SocketsHttpHandler { ConnectTimeout = TimeSpan.FromSeconds(5) })
-            { Timeout = Timeout.InfiniteTimeSpan };
-        //the one-line banner takes the glyph set so a host without those glyphs still draws the cat
-        CommandBanner.WriteHeader(ctx.Out, ctx.Theme, "status", CommandBanner.GlyphsFor(ctx.Home),
-            stamp: ctx.Stamp);
-        var code = await Status.RunAsync(ctx.Home, cwd, ctx.Out, http, CancellationToken.None);
-        ctx.Surface().Close();   //the frame's closing row, paired with the header above it
-        return code;
-    }
-
-    //whether gatto serves this endpoint and whose window sizes the session: a folder's port, auto_serve and context count only on the endpoint gatto serves
-    internal static (bool GattoServes, int? Window) ServingFor(bool servedHere, Gatto.Roles.Models.Model? model,
-        EndpointConfig endpoint, string? baseUrl) =>
-        servedHere && model is not null
-            ? (baseUrl is not null, model.Profile.Context)
-            : (false, endpoint.Context);
-
-    //the binary a server starts with, the model's override or else the config's. a manager built only to read takes the config's own
-    private static string ServerBinaryFor(Gatto.Roles.Models.Model? model, GattoConfig config) =>
-        model?.Profile.LlamaServer ?? config.LlamaServer ?? "";
-
-    //is this model the one the running server holds, asked once so a switch names it. the binary does not decide this, Serving reads serve.json
-
-    private static Gatto.Roles.Serve.ServingState QuantServing(
-        string home, Gatto.Roles.Models.Model model, GattoConfig config) =>
-        new Gatto.Roles.Serve.ServeManager(home, ServerBinaryFor(model, config)).Serving(model.Id);
+    internal static string? AuditionSize(string home, string modelId) => SizeWordsOnDiskOrNull(home, modelId);
 
 }

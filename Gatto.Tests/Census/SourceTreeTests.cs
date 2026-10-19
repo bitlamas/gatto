@@ -3,6 +3,22 @@ namespace Gatto.Tests.Census;
 //tests for the shared source-reading home itself. consumer tests only ask questions downstream, so none of them can fail in a way that points here
 public class SourceTreeTests
 {
+    //a command file outside the named list is read by neither census that uses it, so each one is listed or excluded here by name
+    [Fact]
+    public void EVERY_COMMAND_FILE_IN_CLI_IS_IN_THE_LAUNCH_LIST_OR_EXCLUDED_BY_NAME()
+    {
+        string[] excluded = ["Gatto/Cli/Hardware/MachineProbeCommand.cs", "Gatto/Cli/Update/UpdateCommand.cs"];
+        string Rel(string f) => Path.GetRelativePath(SourceTree.RepoRoot(), f).Replace('\\', '/');
+        var listed = SourceTree.LaunchAndCommands().ToList();
+        Assert.All(listed, f => Assert.True(File.Exists(f), $"{Rel(f)} is in the launch list and not on disk"));
+
+        var commands = SourceTree.ProductionFilesUnder("Cli").Where(f => Path.GetFileName(f).EndsWith("Command.cs", StringComparison.Ordinal)).Select(Rel).ToList();
+        Assert.True(commands.Count >= 7, $"the command-file match found {commands.Count} files, so the check below reads nothing");
+
+        var strays = commands.Except(listed.Select(Rel)).Except(excluded).ToList();
+        Assert.True(strays.Count == 0, "a command file is in neither the launch list nor the exclusions: " + string.Join(", ", strays));
+    }
+
     [Fact]
     public void COMMENTS_RETURNS_EVERY_COMMENT_AND_NO_STRING_THAT_LOOKS_LIKE_ONE()
     {

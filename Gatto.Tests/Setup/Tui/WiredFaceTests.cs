@@ -42,9 +42,9 @@ public class WiredFaceTests
     public void GATTO_SETUP_CONSTRUCTS_THE_TUI_FACE_ON_THE_ALT_SCREEN()
     {
         var source = Gatto.Tests.Census.SourceTree.Read(Path.Combine(
-            Gatto.Tests.Census.SourceTree.RepoRoot(), "Gatto", "Cli", "GattoApp.cs"));
-        var body = source[source.IndexOf("private static (int Code, bool Launch) RunSetup(", StringComparison.Ordinal)..];
-        //stop at the first closing brace in column four, a longer slice would answer about GattoApp's next member
+            Gatto.Tests.Census.SourceTree.RepoRoot(), "Gatto", "Cli", "Setup", "SetupCommand.cs"));
+        var body = source[source.IndexOf("internal static (int Code, bool Launch) RunSetup(", StringComparison.Ordinal)..];
+        //stop at the first closing brace in column four, a longer slice would answer about the next member
         body = body[..body.IndexOf("\n    }\n", StringComparison.Ordinal)];
 
         //one string only RunSetup says, so the slice is proven to be its body before the negative assertions
@@ -81,12 +81,12 @@ public class WiredFaceTests
     [Fact]
     public void THE_MODEL_ENTRY_NAMES_THE_WORDS_TYPED()
     {
-        Assert.Equal("gatto model", Gatto.Cli.GattoApp.ModelInvocation(null));
-        Assert.Equal("gatto model new", Gatto.Cli.GattoApp.ModelInvocation("new"));
+        Assert.Equal("gatto model", Gatto.Cli.Setup.SetupCommand.ModelInvocation(null));
+        Assert.Equal("gatto model new", Gatto.Cli.Setup.SetupCommand.ModelInvocation("new"));
 
         var source = Gatto.Tests.Census.SourceTree.Read(Path.Combine(
-            Gatto.Tests.Census.SourceTree.RepoRoot(), "Gatto", "Cli", "GattoApp.cs"));
-        var body = source[source.IndexOf("private static Task<int> RunModelAsync(", StringComparison.Ordinal)..];
+            Gatto.Tests.Census.SourceTree.RepoRoot(), "Gatto", "Cli", "Setup", "SetupCommand.cs"));
+        var body = source[source.IndexOf("internal static Task<int> RunModelAsync(", StringComparison.Ordinal)..];
         body = body[..body.IndexOf("\n    }\n", StringComparison.Ordinal)];
         Assert.Contains("gatto model takes no argument", body, StringComparison.Ordinal);   //the known match that shows the slice is this method's body
         Assert.Contains("RunSetup(modelSegmentOnly: true, command: ModelInvocation(args.Subcommand))", body,

@@ -22,7 +22,8 @@ public class SyncWaitCensusTests
     //a pin is a ceiling. lower it in the commit that removes a wait, and raise it only after reading the new wait at the code.
     private static readonly Dictionary<string, int> Pins = new(StringComparer.Ordinal)
     {
-        ["Gatto/Cli/GattoApp.cs"] = 8,
+        ["Gatto/Cli/GattoApp.cs"] = 7,
+        ["Gatto/Cli/Install/UninstallCommand.cs"] = 1,
         ["Gatto/Cli/Setup/LiveSetupProbes.cs"] = 20,
         ["Gatto/Cli/Setup/SetupFlow.cs"] = 11,
         ["Gatto/Cli/Setup/WriteSetApply.cs"] = 2,
@@ -195,7 +196,7 @@ public class SyncWaitCensusTests
         Assert.Contains(Offences(outside), o => o.StartsWith("Gatto/Cli/ServeLines.cs is pinned at 0 blocking waits and holds 1:", StringComparison.Ordinal));
 
         var overPin = tree.Select(f => f.Rel == "Gatto/Cli/GattoApp.cs" ? (f.Rel, f.Source + moved) : f).ToList();
-        Assert.Contains(Offences(overPin), o => o.StartsWith("Gatto/Cli/GattoApp.cs is pinned at 8 blocking waits and holds 9:", StringComparison.Ordinal));
+        Assert.Contains(Offences(overPin), o => o.StartsWith("Gatto/Cli/GattoApp.cs is pinned at 7 blocking waits and holds 8:", StringComparison.Ordinal));
 
         const string extraRead = "\ninternal static class Extra { internal static object? Read(HookPayload payload) => payload.Result; }\n";
         var overCeiling = tree.Select(f => f.Rel == "Gatto/Roles/CitationGate.cs" ? (f.Rel, f.Source + extraRead) : f).ToList();

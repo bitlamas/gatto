@@ -140,7 +140,7 @@ public class DoctorTests : IDisposable
     [Fact]
     public void THE_DOCTOR_CLIENT_CARRIES_NO_TIMEOUT()
     {
-        using var http = GattoApp.DoctorClient(new FakeHandler());
+        using var http = DoctorCommand.DoctorClient(new FakeHandler());
         Assert.Equal(Timeout.InfiniteTimeSpan, http.Timeout);
     }
 
