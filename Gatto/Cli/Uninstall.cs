@@ -119,8 +119,8 @@ internal static class Uninstall
 
     internal static string Word(UninstallMark mark) => mark switch
     {
-        UninstallMark.Removed => "removed",
-        UninstallMark.Stopped => "stopped",
+        UninstallMark.Removed => "goes",
+        UninstallMark.Stopped => "stops",
         _ => "stays",
     };
 

@@ -95,12 +95,12 @@ public class UninstallTests
     }
 
     [Fact]
-    public void THE_RENDERED_LINE_SAYS_REMOVED_OR_STAYS_in_words_not_symbols()
+    public void THE_RENDERED_LINE_SAYS_GOES_OR_STAYS_in_words_not_symbols()
     {
-        //the row says removed or stays in words, since a glyph legend is something to learn while deciding about 30 GB
+        //the row says goes or stays in words, since a glyph legend is something to learn while deciding about 30 GB
         var lines = Map(deleteHome: true).SelectMany(Uninstall.Rows).ToList();
 
-        Assert.Contains(lines, l => l.StartsWith("removed", StringComparison.Ordinal));
+        Assert.Contains(lines, l => l.StartsWith("goes ", StringComparison.Ordinal));
         Assert.Contains(lines, l => l.StartsWith("stays", StringComparison.Ordinal));
     }
 

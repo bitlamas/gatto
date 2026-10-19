@@ -160,10 +160,17 @@ public class UninstallConsentTests
     }
 
     [Fact]
+    public void THE_MARKS_READ_IN_THE_PRESENT_since_the_map_is_shown_before_anything_happens()
+    {
+        Assert.Equal(new[] { "goes", "stops", "stays" },
+            new[] { Uninstall.Word(UninstallMark.Removed), Uninstall.Word(UninstallMark.Stopped), Uninstall.Word(UninstallMark.Stays) });
+    }
+
+    [Fact]
     public void THE_MARK_COLUMN_IS_COMPUTED_FROM_THE_WORDS_not_typed_as_a_number()
     {
         //a hard-coded indent goes stale when another label arrives. the mark column must come from the longest word so the alignment cannot expire.
-        Assert.True(Uninstall.MarkColumn > "removed".Length);
+        Assert.True(Uninstall.MarkColumn > "stays".Length);
         foreach (var mark in Enum.GetValues<UninstallMark>())
             Assert.True(Uninstall.Word(mark).Length < Uninstall.MarkColumn);
     }
