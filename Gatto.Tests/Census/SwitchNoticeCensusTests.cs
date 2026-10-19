@@ -8,7 +8,7 @@ public class SwitchNoticeCensusTests
     public void THE_SUCCESSFUL_SWITCH_CARRIES_THE_NOTICE_FROM_SWAPCONFIRM()
     {
         var source = SourceTree.Read(Path.Combine(
-            SourceTree.RepoRoot(), "Gatto", "Cli", "GattoApp.cs"));
+            SourceTree.RepoRoot(), "Gatto", "Cli", "Launch", "LaunchState.cs"));
 
         //anchor on the result-building line, so a later miss means the call went, and the file is the right one
         Assert.Contains("return new ModelSwitchResult(true, outcome.ModelId,", source,

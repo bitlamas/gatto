@@ -1183,6 +1183,34 @@ public class GattoAppTests : IDisposable
         Assert.DoesNotContain("task_restate", names);
     }
 
+    //the citation gate follows the role: unarmed under a role without it, armed by a /role to one that names it
+    [Fact]
+    public async Task A_role_switch_to_a_role_naming_the_citation_gate_arms_it()
+    {
+        await using var server = new FakeOpenAiServer();
+        UseHome();
+        WriteConfig($$$"""{"endpoints":{"local":{"base_url":"{{{server.BaseUrl}}}"}},"default_endpoint":"local"}""");
+        WriteModel("test-model", port: 1235);
+        WriteRole("generalist", "{\"model\":\"test-model\"}");
+        WriteRole("researcher", "{\"model\":\"test-model\",\"gates\":[\"citations\"]}");
+
+        server.Enqueue(ToolCallThenStop("c1", "write_file", "{\"path\":\"a.txt\",\"content\":\"see https://made.up.test/page\"}"));
+        server.Enqueue(Completion("done"));
+        server.Enqueue(ToolCallThenStop("c2", "write_file", "{\"path\":\"b.txt\",\"content\":\"see https://made.up.test/page\"}"));
+        server.Enqueue(Completion("done"));
+
+        Console.SetIn(new StringReader("write one\n/role researcher\nwrite two\n/quit\n"));
+        Console.SetOut(new StringWriter());
+        Assert.Equal(0, await GattoApp.RunAsync(new[] { "--yes" }));
+
+        var toolMsgs = server.LastRequestBody!.Value.GetProperty("messages").EnumerateArray()
+            .Where(m => m.GetProperty("role").GetString() == "tool")
+            .Select(m => m.GetProperty("content").GetString()!).ToList();
+        Assert.Equal(2, toolMsgs.Count);
+        Assert.DoesNotContain("[citation gate]", toolMsgs[0]);
+        Assert.Contains("[citation gate] FABRICATED", toolMsgs[1]);
+    }
+
     [Fact]
     public async Task RoleSwitch_LocalModelChange_SameBaseUrl_IsRefused_NamingBothModelsAndRestart()
     {
@@ -1646,6 +1674,64 @@ public class GattoAppTests : IDisposable
         Assert.Contains("model: gemma-4-26b", output);
         Assert.Contains("role: coder", output);
         Assert.DoesNotContain("restart gatto", output);
+    }
+
+    //each switch moves state the next one reads, so a switch that kept a stale copy would send the old model's parts or map
+    [Fact]
+    public async Task A_MODEL_SWITCH_THEN_A_ROLE_SWITCH_THEN_EFFORT_READ_THE_SAME_STATE()
+    {
+        await using var server = new FakeOpenAiServer();
+        UseHome();
+        WriteConfig($$$"""
+            {"endpoints":{"listed":{"base_url":"{{{server.BaseUrl}}}","models":["alpha-model","beta-model"]}},
+             "default_endpoint":"listed","default_model":"alpha-model"}
+            """);
+        WriteModel("alpha-model", port: 65533, profileExtra: Qwen38ThinkingMap);
+        File.WriteAllText(Path.Combine(_home, "models", "alpha-model", "system-append.md"), "ALPHA-APPEND");
+        WriteModel("beta-model", port: 65533, profileExtra:
+            "\"thinking\":{\"low\":{\"chat_template_kwargs\":{\"reasoning_effort\":\"beta-low\"}},\"high\":{\"chat_template_kwargs\":{\"reasoning_effort\":\"beta-high\"}}}");
+        File.WriteAllText(Path.Combine(_home, "models", "beta-model", "system-append.md"), "BETA-APPEND");
+        WriteRole("generalist", "{}");
+        WriteRole("coder", "{\"append\":\"CODER-APPEND\",\"thinking\":\"high\"}");
+        for (var i = 0; i < 4; i++) server.Enqueue(Completion("ok"));
+
+        Console.SetIn(new StringReader("hi\n/model beta-model\nhi\n/role coder\nhi\n/effort low\nhi\n/quit\n"));
+        var stdout = new StringWriter();
+        Console.SetOut(stdout);
+        Assert.Equal(0, await GattoApp.RunAsync(Array.Empty<string>()));
+
+        var sent = server.RequestBodies.Where(b => b.TryGetProperty("messages", out _)).ToList();
+        Assert.Equal(4, sent.Count);
+        string Model(int i) => sent[i].GetProperty("model").GetString()!;
+        string System(int i) => sent[i].GetProperty("messages")[0].GetProperty("content").GetString()!;
+        string Effort(int i) => sent[i].GetProperty("chat_template_kwargs").GetProperty("reasoning_effort").GetString()!;
+
+        //the launch: alpha's parts and alpha's map at the default level
+        Assert.Equal("alpha-model", Model(0));
+        Assert.Contains("ALPHA-APPEND", System(0));
+        Assert.Equal("medium", Effort(0));
+
+        //the model switch: beta's parts replace alpha's, and the default level lands on the nearest one beta's map declares
+        Assert.Equal("beta-model", Model(1));
+        Assert.Contains("BETA-APPEND", System(1));
+        Assert.DoesNotContain("ALPHA-APPEND", System(1));
+        Assert.Equal("beta-low", Effort(1));
+
+        //the role switch keeps the session's model, adds the role's text, and takes the role's level through beta's map
+        Assert.Equal("beta-model", Model(2));
+        Assert.Contains("BETA-APPEND", System(2));
+        Assert.Contains("CODER-APPEND", System(2));
+        Assert.Equal("beta-high", Effort(2));
+
+        //the effort switch moves the level alone, through the map the model switch armed
+        Assert.Equal("beta-model", Model(3));
+        Assert.Equal(System(2), System(3));
+        Assert.Equal("beta-low", Effort(3));
+
+        var output = stdout.ToString();
+        Assert.Contains("model: beta-model", output);
+        Assert.Contains("role: coder", output);
+        Assert.Contains("effort: low", output);
     }
 
     //a model switch must reassign the chip from the new thinking map. a stale chip advertises a level that is never sent, and bare /effort shows it

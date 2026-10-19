@@ -28,7 +28,7 @@ public class LaunchRefusalCensusTests
     public void THE_MISMATCH_IS_COMPUTED_ONCE_AND_SHARED()
     {
         var src = Source();
-        const string call = "ModelSwitch.DescribeProbe(model, launchLoaded, modelsDir)";
+        const string call = "ModelSwitch.DescribeProbe(state.Model, launchLoaded, modelsDir)";
 
         Assert.Equal(1, Occurrences(src, call));
         //the count of one means nothing unless the counter can see a second call

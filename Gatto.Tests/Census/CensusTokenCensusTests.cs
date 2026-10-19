@@ -14,10 +14,11 @@ public class CensusTokenCensusTests
             foreach (var t in tokens) data.Add(census, file, t);
         }
 
-        Add("ContextWalkCallSiteCensusTests", "Gatto/Cli/GattoApp.cs", "class GattoApp");
+        Add("ContextWalkCallSiteCensusTests", "Gatto/Cli/Launch/LaunchState.cs", "class LaunchState");
         Add("LaunchRefusalCensusTests", "Gatto/Cli/GattoApp.cs", "ServeNotice.Refusing(", "return 1;");
         Add("PlainFaceCensusTests", "Gatto/Cli/Setup/SetupCommand.cs", "new Setup.Tui.TuiSetupSurface(");
         Add("ServerBinaryCensusTests", "Gatto/Cli/GattoApp.cs", "new ServeManager(", "config.LlamaServer");
+        Add("ServerBinaryCensusTests", "Gatto/Cli/Launch/LaunchState.cs", "new ServeManager(");
         Add("ServerBinaryCensusTests", "Gatto/Cli/ServeCommand.cs", "new ServeManager(", "config.LlamaServer");
         Add("ServerBinaryCensusTests", "Gatto/Cli/Install/UninstallCommand.cs", "new ServeManager(", "config.LlamaServer");
         Add("ServerBinaryCensusTests", "Gatto/Cli/Diagnose/DoctorCommand.cs", "new ServeManager(");

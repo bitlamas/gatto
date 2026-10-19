@@ -34,10 +34,10 @@ public class ContextWalkCallSiteCensusTests
         var sites = Sites();
         var total = sites.Sum(s => s.Count);
 
-        //the four calls in GattoApp serve launch and /role, the recompose, /model and a run_agent child. the doctor check runs the same call rather than a second copy of the logic
+        //the four calls in the launch state serve launch and /role, the recompose, /model and a run_agent child. the doctor check runs the same call rather than a second copy of the logic
         Assert.Equal(5, total);
         Assert.Equal(
-            new[] { ("Doctor.cs", 1), ("GattoApp.cs", 4) },
+            new[] { ("Doctor.cs", 1), ("LaunchState.cs", 4) },
             sites.OrderBy(s => s.File, StringComparer.Ordinal).ToArray());
     }
 
@@ -45,7 +45,7 @@ public class ContextWalkCallSiteCensusTests
     [Fact]
     public void THE_CENSUS_CAN_SEE_A_SIXTH_CALL_SITE()
     {
-        var planted = Sites(text => text.Contains("class GattoApp", StringComparison.Ordinal)
+        var planted = Sites(text => text.Contains("class LaunchState", StringComparison.Ordinal)
             ? text + "\nclass PlantedSixthSite { void M(string cwd) { var _ = "
                    + Call + "cwd, false, null); } }\n"
             : text);

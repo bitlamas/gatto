@@ -97,6 +97,25 @@ public class EndpointDefaultsLaunchTests : IDisposable
         Assert.Equal("m1", SentModel(server));
     }
 
+    //a continue with no -e goes back to the endpoint the session was recorded on, so the second question reaches that server and the default's stays unasked
+    [Fact]
+    public async Task A_continue_with_no_endpoint_goes_back_to_the_recorded_one()
+    {
+        await using var first = new FakeOpenAiServer();
+        await using var second = new FakeOpenAiServer();
+        WriteConfig("{\"endpoints\":{\"one\":{\"base_url\":\"" + first.BaseUrl + "\",\"models\":[\"m1\"]}," +
+            "\"two\":{\"base_url\":\"" + second.BaseUrl + "\",\"models\":[\"m2\"]}},\"default_endpoint\":\"one\"}");
+        WriteRole("generalist", "{}");
+        second.Enqueue(Completion("first"));
+        Assert.Equal(0, await GattoApp.RunAsync(new[] { "-e", "two", "-p", "first question" }));
+
+        second.Enqueue(Completion("second"));
+        Assert.Equal(0, await GattoApp.RunAsync(new[] { "--continue", "-p", "second question" }));
+        Assert.Equal(2, second.RequestBodies.Count(b => b.TryGetProperty("messages", out _)));
+        Assert.Equal("m2", SentModel(second));
+        Assert.DoesNotContain(first.RequestBodies, b => b.TryGetProperty("messages", out _));
+    }
+
     [Fact]
     public async Task A_default_endpoint_nobody_contributes_refuses_with_exit_2()
     {
