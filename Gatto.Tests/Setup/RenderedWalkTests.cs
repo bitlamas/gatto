@@ -554,7 +554,7 @@ public class RenderedWalkTests : IDisposable
         Assert.NotEmpty(Directory.GetDirectories(Path.Combine(home, "models")));
         //the config must point at the model the run wrote, this is the state where the model exists with nothing aimed at it
         Assert.Equal(
-            Assert.Single(Gatto.Roles.Model.ListIds(Path.Combine(home, "models"))),
+            Assert.Single(Gatto.Roles.Models.Model.ListIds(Path.Combine(home, "models"))),
             Gatto.Core.Home.GattoConfig.Load(home).DefaultModel);
 
         //assert the ruled sentence is present too, read it off the render where the writes applied
@@ -985,7 +985,7 @@ public class RenderedWalkTests : IDisposable
         Assert.NotNull(added);
         Assert.NotEqual("already-armed", added);
         //take the expected id from the disk the writer wrote, so the guard cannot agree with itself.
-        var scaffolded = Gatto.Roles.Model.ListIds(Path.Combine(home, "models"));
+        var scaffolded = Gatto.Roles.Models.Model.ListIds(Path.Combine(home, "models"));
         Assert.Equal(added, Assert.Single(scaffolded));
     }
 }

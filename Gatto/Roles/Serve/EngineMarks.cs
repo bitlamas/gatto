@@ -1,4 +1,4 @@
-namespace Gatto.Roles;
+namespace Gatto.Roles.Serve;
 
 //the marks an engine surface draws, handed in by the caller so Roles needs no terminal vocabulary, and only the four it draws
 public sealed record EngineMarks(string Ok, string Bad, string Dot, string Ellipsis)

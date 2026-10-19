@@ -2,6 +2,7 @@ using System.Text.Json;
 using Gatto.Core;
 using Gatto.Core.Client;
 using Gatto.Roles;
+using Gatto.Roles.Models;
 
 namespace Gatto.Tests;
 
@@ -404,10 +405,10 @@ public class ModelTests : IDisposable
     }
 
     [Theory]   //the default_effort field is the stored form of /effort, written by ModelDefaultEffort.Set and read back at composition time
-    [InlineData("none", Gatto.Roles.ThinkingLevel.None)]
-    [InlineData("low", Gatto.Roles.ThinkingLevel.Low)]
-    [InlineData("xhigh", Gatto.Roles.ThinkingLevel.XHigh)]
-    public void Load_reads_default_effort(string value, Gatto.Roles.ThinkingLevel expected)
+    [InlineData("none", Gatto.Roles.Models.ThinkingLevel.None)]
+    [InlineData("low", Gatto.Roles.Models.ThinkingLevel.Low)]
+    [InlineData("xhigh", Gatto.Roles.Models.ThinkingLevel.XHigh)]
+    public void Load_reads_default_effort(string value, Gatto.Roles.Models.ThinkingLevel expected)
     {
         WriteProfile("de", $$"""
             { "files": [{ "path": "m.gguf", "active": true }], "port": 1234, "context": 4096, "default_effort": "{{value}}" }

@@ -333,7 +333,7 @@ public class CheckTests
             new Gatto.Roles.Audition.AuditionVerdict(Pass: false, Disqualified: false, tasks,
                 new Gatto.Roles.Audition.AuditionStamp("v0.5.0", "m.gguf", "Q4_K_M", 8192, "defaults"),
                 TimeSpan.FromSeconds(9), 31.4),
-            s => s, Gatto.Roles.EngineMarks.Unicode);
+            s => s, Gatto.Roles.Serve.EngineMarks.Unicode);
 
         var said = 0;
         foreach (var task in tasks)

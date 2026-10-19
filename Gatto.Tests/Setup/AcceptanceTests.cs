@@ -42,11 +42,11 @@ public class AcceptanceTests
         public MoveOffer? MoveOfferFor(string p) => null;
         public (Gatto.Core.Models.FitRegime Alone, Gatto.Core.Models.FitRegime WithProjector)? PairFit(string p, long b) => null;
         public TypedIdOutcome EvaluateTypedId(string id) => Typed;
-        public Gatto.Roles.LlamaAsset? ChooseLlamaAsset() => new("z.zip", null, "a graphics card", "Vulkan");
+        public Gatto.Roles.Serve.LlamaAsset? ChooseLlamaAsset() => new("z.zip", null, "a graphics card", "Vulkan");
         public Gatto.Core.Acquire.ProbeResult VerifyLlamaServer(string p) =>
             new(Gatto.Core.Acquire.ProbeShape.ClassicServer, "d",
                 //a ClassicServer answer names its build too, read from the same banner as the shape, or the flow skips the engine step
-                Build: Gatto.Roles.LlamaAssetSteering.PinnedRelease);
+                Build: Gatto.Roles.Serve.LlamaAssetSteering.PinnedRelease);
         public int ContextFor(string p) => Ctx;
         public AuditionCheck RunAudition(string p, string? repoId, IProgress<Gatto.Roles.Audition.AuditionProgress>? progress, CancellationToken ct) =>
             new(AuditionOutcome.Passed);
@@ -55,10 +55,10 @@ public class AcceptanceTests
         public string? Colliding { get; init; }
         public string? ExistingEndpoint { get; init; }
         public string? ExistingModelFor(string ggufPath) => ExistingModel;
-        public (Gatto.Roles.IdClash Kind, string? Id) ClashFor(string ggufPath, string? incomingRepoId) =>
+        public (Gatto.Roles.Models.IdClash Kind, string? Id) ClashFor(string ggufPath, string? incomingRepoId) =>
             Colliding is { Length: > 0 }
-                ? (Gatto.Roles.IdClash.DifferentModel, Colliding)
-                : (Gatto.Roles.IdClash.Free, null);
+                ? (Gatto.Roles.Models.IdClash.DifferentModel, Colliding)
+                : (Gatto.Roles.Models.IdClash.Free, null);
         //the fake is an already-installed machine, so the flow runs after the install segment. the fixed path keeps the screen at a chosen state
         public string RunningFrom() => @"C:\Users\you\Downloads\gatto\gatto.exe";
 
@@ -213,7 +213,7 @@ public class AcceptanceTests
 
 
         public string RunningVersion() => Gatto.Core.GattoVersion.String;
-        public (Gatto.Roles.IdClash Kind, string? Id) ClashFor(string ggufPath, string? incomingRepoId) => (Gatto.Roles.IdClash.Free, null);
+        public (Gatto.Roles.Models.IdClash Kind, string? Id) ClashFor(string ggufPath, string? incomingRepoId) => (Gatto.Roles.Models.IdClash.Free, null);
         public string ConfigPath() => @"C:\home\gatto.json";
         public HardwareSnapshot? Hardware() => new(34359738368, 34093496320, GpuKind.Discrete, 8589934592);
 
@@ -234,11 +234,11 @@ public class AcceptanceTests
         public MoveOffer? MoveOfferFor(string p) => null;
         public (Gatto.Core.Models.FitRegime Alone, Gatto.Core.Models.FitRegime WithProjector)? PairFit(string p, long b) => null;
         public TypedIdOutcome EvaluateTypedId(string id) => new TypedIdOutcome.Malformed();
-        public Gatto.Roles.LlamaAsset? ChooseLlamaAsset() => null;
+        public Gatto.Roles.Serve.LlamaAsset? ChooseLlamaAsset() => null;
         public Gatto.Core.Acquire.ProbeResult VerifyLlamaServer(string p) =>
             new(Gatto.Core.Acquire.ProbeShape.ClassicServer, "d",
                 //a ClassicServer answer names its build too, read from the same banner as the shape, or the flow skips the engine step
-                Build: Gatto.Roles.LlamaAssetSteering.PinnedRelease);
+                Build: Gatto.Roles.Serve.LlamaAssetSteering.PinnedRelease);
         public int ContextFor(string p) => 4096;
         public AuditionCheck RunAudition(string p, string? repoId, IProgress<Gatto.Roles.Audition.AuditionProgress>? progress, CancellationToken ct) =>
             new(AuditionOutcome.Passed);

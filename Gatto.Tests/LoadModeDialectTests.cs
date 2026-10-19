@@ -1,7 +1,8 @@
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using Gatto.Core.Acquire;
-using Gatto.Roles;
+using Gatto.Roles.Models;
+using Gatto.Roles.Serve;
 
 namespace Gatto.Tests;
 

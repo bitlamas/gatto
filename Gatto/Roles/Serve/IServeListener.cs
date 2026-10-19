@@ -1,4 +1,4 @@
-namespace Gatto.Roles;
+namespace Gatto.Roles.Serve;
 
 //what a serve run reports, one method per event, in facts rather than sentences. two events that read differently are two methods
 public interface IServeListener

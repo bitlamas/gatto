@@ -5,7 +5,7 @@ using Gatto.Core.Acquire;
 using Gatto.Core.Home;
 using Gatto.Core.Tools;
 using Gatto.Repl;
-using Gatto.Roles;
+using Gatto.Roles.Serve;
 using Gatto.Terminal;
 
 namespace Gatto.Cli;

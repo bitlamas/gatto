@@ -2,7 +2,7 @@ using Gatto.Cli.Setup;
 using Gatto.Core.Acquire;
 using Gatto.Core.Client;
 using Gatto.Core.Models;
-using Gatto.Roles;
+using Gatto.Roles.Serve;
 using Gatto.Terminal;
 using System.Text.Json;
 

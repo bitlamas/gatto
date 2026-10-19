@@ -11,7 +11,7 @@ public class EngineTests
     private const string Exe = @"C:\llama\llama-b11071-bin-win-vulkan-x64\llama-server.exe";
 
     //the release is read through the constant rather than copied, so a moved pin moves this fixture and the golden is what disagrees
-    private static readonly string Pin = Gatto.Roles.LlamaAssetSteering.PinnedRelease;
+    private static readonly string Pin = Gatto.Roles.Serve.LlamaAssetSteering.PinnedRelease;
 
     //a machine with one engine on it, which answers as the pinned release
     private static SetupFlow Flow(string? build = null, string exe = Exe) =>
@@ -157,9 +157,9 @@ public class EngineTests
     public void EVERY_FOUND_STATE_RENDERS_AND_EVERY_OPTION_ON_IT_ANSWERS()
     {
         var builds = new[] { Pin, "b11137", "b9848", "laguna-2bd55d0" };
-        var states = builds.Select(b => Gatto.Roles.LlamaAssetSteering.Classify(b, null).ToString()).ToList();
+        var states = builds.Select(b => Gatto.Roles.Serve.LlamaAssetSteering.Classify(b, null).ToString()).ToList();
 
-        Assert.Equal(Enum.GetValues<Gatto.Roles.LlamaAssetSteering.FoundState>().Length, states.Distinct().Count());
+        Assert.Equal(Enum.GetValues<Gatto.Roles.Serve.LlamaAssetSteering.FoundState>().Length, states.Distinct().Count());
 
         foreach (var build in builds)
         {
@@ -246,7 +246,7 @@ public class EngineTests
         var flow = new SetupFlow(new WizardProbes
         {
             Llama = null,
-            Asset = new Gatto.Roles.LlamaAsset("z.zip", cudart ? "cudart.zip" : null, "a card", "CUDA"),
+            Asset = new Gatto.Roles.Serve.LlamaAsset("z.zip", cudart ? "cudart.zip" : null, "a card", "CUDA"),
             Verify = _ => new ProbeResult(shape, "d", VcRuntimeAbsent: vcAbsent),
         });
         flow.StartPastOpening();

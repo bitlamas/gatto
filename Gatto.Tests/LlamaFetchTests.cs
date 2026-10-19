@@ -125,10 +125,10 @@ public class LlamaFetchTests : IDisposable
     [Fact]
     public void THE_RELEASE_READ_IS_THE_PIN_NOT_LATEST()
     {
-        var url = LlamaFetch.ReleaseUrl(Gatto.Roles.LlamaAssetSteering.PinnedRelease);
+        var url = LlamaFetch.ReleaseUrl(Gatto.Roles.Serve.LlamaAssetSteering.PinnedRelease);
 
         Assert.Contains("ggml-org/llama.cpp", url, StringComparison.Ordinal);
-        Assert.EndsWith("/tags/" + Gatto.Roles.LlamaAssetSteering.PinnedRelease, url, StringComparison.Ordinal);
+        Assert.EndsWith("/tags/" + Gatto.Roles.Serve.LlamaAssetSteering.PinnedRelease, url, StringComparison.Ordinal);
         Assert.DoesNotContain("latest", url, StringComparison.Ordinal);
     }
 

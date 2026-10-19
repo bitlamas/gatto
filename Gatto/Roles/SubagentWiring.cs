@@ -2,7 +2,7 @@ using Gatto.Core.Loop;
 using Gatto.Core.Loop.Permissions;
 using Gatto.Core.Tools;
 
-namespace Gatto.Roles.Agents;
+namespace Gatto.Roles;
 
 //the one place the depth-1 rule is enforced, Builtins holds the six core tools so run_agent and ask_user are absent from every sub-agent registry
 public static class SubagentWiring

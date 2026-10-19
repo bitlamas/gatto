@@ -23,7 +23,7 @@ public class ProcessStartCensusTests
         ["Gatto/Core/Acquire/LlamaServerProbe.cs"] = 1,
         ["Gatto/Core/Hardware/HardwareProbe.cs"] = 1,
         ["Gatto/Core/Tools/ShellTool.cs"] = 1,
-        ["Gatto/Roles/ServeManager.cs"] = 2,
+        ["Gatto/Roles/Serve/ServeManager.cs"] = 2,
     };
 
     private sealed record Exempt(string File, string Marker, string Why);

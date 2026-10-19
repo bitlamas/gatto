@@ -1,6 +1,6 @@
 using Gatto.Cli.Setup;
 using Gatto.Core.Home;
-using Gatto.Roles;
+using Gatto.Roles.Serve;
 using Gatto.Terminal;
 
 namespace Gatto.Tests.Setup;

@@ -2,7 +2,7 @@ using System.Text.Json;
 using System.Text.RegularExpressions;
 using Gatto.Core;
 using Gatto.Core.Home;
-using Gatto.Roles.Agents;
+using Gatto.Roles.Models;
 using Gatto.Terminal;
 
 namespace Gatto.Roles;

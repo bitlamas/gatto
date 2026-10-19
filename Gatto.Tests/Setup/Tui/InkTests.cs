@@ -470,7 +470,7 @@ public class InkTests
             Llama = exe,
             Verify = _ => new Gatto.Core.Acquire.ProbeResult(
                 Gatto.Core.Acquire.ProbeShape.ClassicServer, "d",
-                Build: Gatto.Roles.LlamaAssetSteering.PinnedRelease),
+                Build: Gatto.Roles.Serve.LlamaAssetSteering.PinnedRelease),
         });
         var (s, f) = Face();
         f.Choose((WizardScreen.Choice)flow.StartPastOpening());

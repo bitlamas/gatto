@@ -118,7 +118,7 @@ public class UnknownKeyMessageTests
         File.WriteAllText(Path.Combine(dir, "profile.json"),
             """{"files": [{ "path": "C:\\w.gguf", "active": true }],"port":1235,"context":8192,"memory":{"enabled":false}}""");
 
-        var msg = Assert.Throws<GattoConfigException>(() => Gatto.Roles.Model.Load(models, "m1")).Message;
+        var msg = Assert.Throws<GattoConfigException>(() => Gatto.Roles.Models.Model.Load(models, "m1")).Message;
 
         Assert.Contains("unknown key in model 'm1' profile at ", msg);   //the caller's where string stays in the message
         Assert.Contains("memory: enabled", msg);

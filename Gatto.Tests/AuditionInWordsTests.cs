@@ -28,7 +28,7 @@ public class AuditionInWordsTests : IDisposable
         var verdict = new AuditionVerdict(Pass: false,
             Disqualified: shape == FailureShape.FabricatedResult, [task], Stamp(),
             TimeSpan.FromSeconds(9), 28.4);
-        return AuditionReport.Render(verdict, s => s, Gatto.Roles.EngineMarks.Unicode);
+        return AuditionReport.Render(verdict, s => s, Gatto.Roles.Serve.EngineMarks.Unicode);
     }
 
     //these six shapes have fixed sentences. the NoToolCall sentence ends in the verb of the task, so it has its own test
@@ -72,7 +72,7 @@ public class AuditionInWordsTests : IDisposable
         var verdict = new AuditionVerdict(Pass: false, Disqualified: false, [graded], Stamp(),
             TimeSpan.FromSeconds(9), 28.4);
 
-        Assert.Contains(ruled, AuditionReport.Render(verdict, s => s, Gatto.Roles.EngineMarks.Unicode), StringComparison.Ordinal);
+        Assert.Contains(ruled, AuditionReport.Render(verdict, s => s, Gatto.Roles.Serve.EngineMarks.Unicode), StringComparison.Ordinal);
     }
 
     //a result with no act is not a battery task, so the sentence gives the general fact rather than inventing a verb
@@ -128,7 +128,7 @@ public class AuditionInWordsTests : IDisposable
         var verdict = new AuditionVerdict(Pass: false, Disqualified: false,
             [ran, failed, never], Stamp(), TimeSpan.FromSeconds(9), 28.4);
 
-        var report = AuditionReport.Render(verdict, s => s, Gatto.Roles.EngineMarks.Unicode);
+        var report = AuditionReport.Render(verdict, s => s, Gatto.Roles.Serve.EngineMarks.Unicode);
 
         //a passing row with no shape has nothing to explain, so it gives no words.
         Assert.Null(TaskWords.Why(ran));

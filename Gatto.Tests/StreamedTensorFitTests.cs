@@ -150,7 +150,7 @@ public sealed class StreamedTensorFitTests : IDisposable
     public void THE_LIST_WAS_REVIEWED_AT_THE_PINNED_RELEASE()
     {
         var list = StreamedTensors.Load();
-        Assert.Equal(Gatto.Roles.LlamaAssetSteering.PinnedRelease, list.Release);
+        Assert.Equal(Gatto.Roles.Serve.LlamaAssetSteering.PinnedRelease, list.Release);
         Assert.Contains("per_layer_token_embd.weight", list.Names);
     }
 }

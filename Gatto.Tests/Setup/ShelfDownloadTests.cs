@@ -100,7 +100,7 @@ public sealed class ShelfDownloadTests : IDisposable
         Assert.True(flow.PollForDownload());
         flow.Answer(SetupFlow.Landed);
 
-        Assert.Equal(new Gatto.Roles.ModelSource("bartowski/m-i1-GGUF", "m.i1-Q4_K_M.gguf"), flow.Writes.CreateModel!.Source);
+        Assert.Equal(new Gatto.Roles.Models.ModelSource("bartowski/m-i1-GGUF", "m.i1-Q4_K_M.gguf"), flow.Writes.CreateModel!.Source);
 
         flow.ResumeAfterWrites("m");
         flow.Answer(SetupFlow.Yes);

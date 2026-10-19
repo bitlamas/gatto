@@ -3,6 +3,7 @@ using Gatto.Core.Acquire;
 using Gatto.Core.Client;
 using Gatto.Roles;
 using Gatto.Roles.Audition;
+using Gatto.Roles.Serve;
 
 namespace Gatto.Tests;
 
@@ -161,5 +162,5 @@ public class BadgeServerIdentityTests : IDisposable
         WallClock: TimeSpan.FromSeconds(25), DecodeTokS: 28.4);
 
     private static string Render(string? server) =>
-        AuditionReport.Render(Verdict(server), s => s, Gatto.Roles.EngineMarks.Unicode, (t, _) => t);
+        AuditionReport.Render(Verdict(server), s => s, Gatto.Roles.Serve.EngineMarks.Unicode, (t, _) => t);
 }

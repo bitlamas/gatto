@@ -20,7 +20,7 @@ public class TypedDoorCensusTests
     private const string Into = @"C:\Users\you\.gatto\llama\b10076\";
     private const string Zip = "llama-b10076-bin-win-vulkan-x64.zip";
 
-    private static readonly Gatto.Roles.LlamaAsset Pick = new(Zip, null, "an AMD discrete card", "Vulkan");
+    private static readonly Gatto.Roles.Serve.LlamaAsset Pick = new(Zip, null, "an AMD discrete card", "Vulkan");
     private static readonly EngineAsset Asset =
         new(Zip, "https://example.invalid/" + Zip, new string('a', 64), 214L * 1024 * 1024);
     private static readonly HubQuant Quant = new("m-Q4_K_M.gguf", 1_000_000_000, null);

@@ -4,7 +4,7 @@ using Gatto.Core.Client;
 using Gatto.Core.Home;
 using Gatto.Core.Memory;
 
-namespace Gatto.Roles;
+namespace Gatto.Roles.Models;
 
 //the decision core's answer, mapped by the caller into the record the Repl sees, with the model and composition null on failure
 internal sealed record ModelSwitchOutcome(

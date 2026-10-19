@@ -10,7 +10,7 @@ namespace Gatto.Tests.Setup.Tui;
 //llama.cpp is fetched by gatto, or the screen says exactly how. both screens must name the same folder, so the offline instruction points where gatto looks
 public class EngineFetchTests
 {
-    private static readonly string Pin = Gatto.Roles.LlamaAssetSteering.PinnedRelease;
+    private static readonly string Pin = Gatto.Roles.Serve.LlamaAssetSteering.PinnedRelease;
 
     //the generator's own fixture to the byte: an AMD card steered to Vulkan, the pinned release, and the folder gatto fetches into
     private const string Zip = "llama-b11071-bin-win-vulkan-x64.zip";
@@ -19,7 +19,7 @@ public class EngineFetchTests
     //exactly 214 MiB, so the row reads 214 MB the way the golden does (the arithmetic rather than 224395264, a number nobody can check)
     private const long Bytes = 214L * 1024 * 1024;
 
-    private static readonly Gatto.Roles.LlamaAsset Pick =
+    private static readonly Gatto.Roles.Serve.LlamaAsset Pick =
         new(Zip, null, "an AMD discrete card", "Vulkan");
 
     private static readonly EngineAsset Asset =
@@ -29,7 +29,7 @@ public class EngineFetchTests
     private static WizardProbes Probes(
         EngineAsset? asset = null,
         Func<EnginePair, EngineFetch>? fetch = null,
-        Gatto.Roles.LlamaAsset? pick = null,
+        Gatto.Roles.Serve.LlamaAsset? pick = null,
         bool offering = true) =>
         new()
         {
@@ -75,7 +75,7 @@ public class EngineFetchTests
         new()
         {
             Llama = null,
-            Asset = new Gatto.Roles.LlamaAsset(CudaZip, CudartZip, "an NVIDIA card", "CUDA 12.4"),
+            Asset = new Gatto.Roles.Serve.LlamaAsset(CudaZip, CudartZip, "an NVIDIA card", "CUDA 12.4"),
             Offer = new EngineFetchOffer(Into, new EnginePair(
                 new EngineAsset(CudaZip, "https://example.invalid/" + CudaZip, new string('a', 64),
                     268L * 1024 * 1024),
@@ -195,7 +195,7 @@ public class EngineFetchTests
     [Fact]
     public void A_CUDA_PICK_REACHES_THE_CONSENT_AND_ITS_COMPANION_IS_ON_THE_SCREEN()
     {
-        var pick = new Gatto.Roles.LlamaAsset(Zip, "cudart-12.4.zip", "an NVIDIA card", "CUDA");
+        var pick = new Gatto.Roles.Serve.LlamaAsset(Zip, "cudart-12.4.zip", "an NVIDIA card", "CUDA");
         var flow = new SetupFlow(new WizardProbes
         {
             Llama = null,

@@ -2,6 +2,7 @@ using System.Globalization;
 using System.Text.Json;
 using Gatto.Core.Tools;
 using Gatto.Roles;
+using Gatto.Roles.Models;
 
 namespace Gatto.Tests;
 

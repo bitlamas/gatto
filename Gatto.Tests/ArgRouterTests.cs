@@ -275,8 +275,8 @@ public class ArgRouterTests
     [Fact]
     public void THE_EFFORT_FLAG_TAKES_A_LEVEL_BEFORE_OR_AFTER_THE_PROMPT()
     {
-        Assert.Equal(Gatto.Roles.ThinkingLevel.High, ArgRouter.Parse(["--effort", "high", "-p", "hi"]).Effort);
-        Assert.Equal(Gatto.Roles.ThinkingLevel.Max, ArgRouter.Parse(["-e", "openrouter", "-p", "hi", "--effort", "max"]).Effort);
+        Assert.Equal(Gatto.Roles.Models.ThinkingLevel.High, ArgRouter.Parse(["--effort", "high", "-p", "hi"]).Effort);
+        Assert.Equal(Gatto.Roles.Models.ThinkingLevel.Max, ArgRouter.Parse(["-e", "openrouter", "-p", "hi", "--effort", "max"]).Effort);
         Assert.Null(ArgRouter.Parse(["-p", "hi"]).Effort);
     }
 

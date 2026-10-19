@@ -1,6 +1,6 @@
 using Gatto.Core.Client;
-using Gatto.Roles;
 using System.Text.Json;
+using Gatto.Roles.Models;
 
 namespace Gatto.Tests;
 

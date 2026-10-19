@@ -1,6 +1,6 @@
 using Gatto.Cli;
-using Gatto.Roles;
 using Gatto.Roles.Audition;
+using Gatto.Roles.Serve;
 using Gatto.Terminal;
 
 namespace Gatto.Tests.Copy;

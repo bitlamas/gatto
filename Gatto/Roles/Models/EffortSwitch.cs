@@ -1,4 +1,4 @@
-namespace Gatto.Roles;
+namespace Gatto.Roles.Models;
 
 //resolves /effort: parse the level and name it
 public static class EffortSwitch

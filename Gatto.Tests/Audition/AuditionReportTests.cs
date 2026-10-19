@@ -31,7 +31,7 @@ public class AuditionReportTests : IDisposable
             TimeSpan.FromSeconds(25), 28.4);
     }
 
-    private static string Render(AuditionVerdict v) => AuditionReport.Render(v, s => s, Gatto.Roles.EngineMarks.Unicode);
+    private static string Render(AuditionVerdict v) => AuditionReport.Render(v, s => s, Gatto.Roles.Serve.EngineMarks.Unicode);
 
     [Fact]
     public void A_PASS_writes_a_record_that_Lookup_reads_back_as_a_badge()
@@ -248,7 +248,7 @@ public class AuditionReportTests : IDisposable
         var hostile = $"evil{esc}[2Jname.gguf";
 
         var text = AuditionReport.Render(Verdict(pass: true, model: hostile),
-            s => s.Replace(esc, "", StringComparison.Ordinal), Gatto.Roles.EngineMarks.Unicode,
+            s => s.Replace(esc, "", StringComparison.Ordinal), Gatto.Roles.Serve.EngineMarks.Unicode,
             (s, ink) => esc + (ink == ReportInk.Ok ? "[32m" : "[2m") + s + esc + "[0m");
 
         Assert.Contains(esc + "[32m✓ tool-calling verified", text, StringComparison.Ordinal);  //the escape of the painter must survive.
@@ -389,7 +389,7 @@ public class AuditionReportTests : IDisposable
     [Fact]
     public void The_RATE_wears_the_accent_so_the_eye_finds_it_without_reading_the_block()
     {
-        var text = AuditionReport.Render(Verdict(pass: true), s => s, Gatto.Roles.EngineMarks.Unicode,
+        var text = AuditionReport.Render(Verdict(pass: true), s => s, Gatto.Roles.Serve.EngineMarks.Unicode,
             (s, ink) => ink == ReportInk.Accent ? $"[{s}]" : s);
 
         Assert.Contains("[~28 tok/s]", text, StringComparison.Ordinal);
@@ -444,7 +444,7 @@ public class AuditionReportTests : IDisposable
         {
             called.Add(s);
             return s.Replace(esc, "").Replace(bel, "");
-        }, Gatto.Roles.EngineMarks.Unicode);
+        }, Gatto.Roles.Serve.EngineMarks.Unicode);
 
         Assert.Contains(hostile, called);              //the sanitizer must receive the model name.
         //use an ordinal comparison for control characters, a culture-sensitive one gives them zero weight and the assertions pass either way
@@ -480,7 +480,7 @@ public class AuditionReportTests : IDisposable
             "template default (the model's thinking setting is not applied by this check)");
         var verdict = new AuditionVerdict(true, false, [], stamp, TimeSpan.FromSeconds(9), 42.0);
 
-        var text = AuditionReport.Render(verdict, s => s, Gatto.Roles.EngineMarks.Unicode, (t, _) => t);
+        var text = AuditionReport.Render(verdict, s => s, Gatto.Roles.Serve.EngineMarks.Unicode, (t, _) => t);
 
         Assert.Contains("thinking", text, StringComparison.Ordinal);
         Assert.Contains("not applied by this check", text, StringComparison.Ordinal);
@@ -493,7 +493,7 @@ public class AuditionReportTests : IDisposable
         var stamp = new AuditionStamp("abc1234", "m.gguf", "Q4_K_M", 8192, "defaults");
         var verdict = new AuditionVerdict(true, false, [], stamp, TimeSpan.FromSeconds(9), 42.0);
 
-        var text = AuditionReport.Render(verdict, s => s, Gatto.Roles.EngineMarks.Unicode, (t, _) => t);
+        var text = AuditionReport.Render(verdict, s => s, Gatto.Roles.Serve.EngineMarks.Unicode, (t, _) => t);
 
         Assert.DoesNotContain("thinking", text, StringComparison.Ordinal);
     }

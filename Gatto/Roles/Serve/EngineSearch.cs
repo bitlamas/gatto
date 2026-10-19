@@ -1,4 +1,4 @@
-namespace Gatto.Roles;
+namespace Gatto.Roles.Serve;
 
 //an engine found on disk. the GattoFolder field is set when gatto fetched that folder, and null when gatto can't say where the engine came from
 internal readonly record struct FoundEngine(string Path, string? Build, string? GattoFolder = null);

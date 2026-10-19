@@ -1,6 +1,6 @@
 using System.Text;
 
-namespace Gatto.Roles;
+namespace Gatto.Roles.Models;
 
 //the notes sit next to profile.json by convention, the profile must not reference the file (Model.Load throws on unknown keys)
 internal static class TuningNotes

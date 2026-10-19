@@ -242,7 +242,7 @@ public class FamiliesTests
     //an engine bump brings new architectures and new models, so it fails here until someone re-reads the qwen tier pin and restamps it
     [Fact]
     public void THE_TIER_PIN_WAS_RE_READ_AT_THE_ENGINE_PIN() =>
-        Assert.Equal(Gatto.Roles.LlamaAssetSteering.PinnedRelease, F.CurrentTierRelease);
+        Assert.Equal(Gatto.Roles.Serve.LlamaAssetSteering.PinnedRelease, F.CurrentTierRelease);
 
     //the landing's newest prefix and the tier pin are one fact with two owners, so a test holds them equal
     [Fact]

@@ -378,7 +378,7 @@ public class AuditionRunnerTests
         Assert.All(ran, t => Assert.Contains(FailureShape.StoppedAtCap, t.Shapes));
         Assert.All(ran, t => Assert.DoesNotContain(FailureShape.Stalled, t.Shapes));
         Assert.False(verdict.Pass);
-        Assert.Contains("still generating", AuditionReport.Render(verdict, s => s, Gatto.Roles.EngineMarks.Unicode));
+        Assert.Contains("still generating", AuditionReport.Render(verdict, s => s, Gatto.Roles.Serve.EngineMarks.Unicode));
     }
 
     [Fact]
@@ -396,7 +396,7 @@ public class AuditionRunnerTests
 
         //record the silence that expired, this model spoke so the gap between tokens ran out
         Assert.All(ran, t => Assert.Equal(TimeSpan.FromMilliseconds(150), t.Silence));
-        Assert.Contains("nothing came back", AuditionReport.Render(verdict, s => s, Gatto.Roles.EngineMarks.Unicode));
+        Assert.Contains("nothing came back", AuditionReport.Render(verdict, s => s, Gatto.Roles.Serve.EngineMarks.Unicode));
     }
 
     [Fact]
@@ -451,7 +451,7 @@ public class AuditionRunnerTests
             Assert.False(t.Failed);
         }
 
-        var report = AuditionReport.Render(verdict, s => s, Gatto.Roles.EngineMarks.Unicode);
+        var report = AuditionReport.Render(verdict, s => s, Gatto.Roles.Serve.EngineMarks.Unicode);
         Assert.Contains("stopped early", report);
         Assert.Contains("not run", report);
 
@@ -494,7 +494,7 @@ public class AuditionRunnerTests
 
         Assert.All(verdict.Tasks, t => Assert.DoesNotContain(FailureShape.StoppedAtCap, t.Shapes));
         Assert.All(verdict.Tasks, t => Assert.DoesNotContain(FailureShape.Stalled, t.Shapes));
-        Assert.DoesNotContain("stopped early", AuditionReport.Render(verdict, s => s, Gatto.Roles.EngineMarks.Unicode));
+        Assert.DoesNotContain("stopped early", AuditionReport.Render(verdict, s => s, Gatto.Roles.Serve.EngineMarks.Unicode));
         Assert.True(verdict.Pass);
     }
 
@@ -674,7 +674,7 @@ public class AuditionRunnerTests
             AuditionRunner.StampFor(ModelWith("m.gguf", sampling: """{"temperature":0.7}"""), null).SamplingNote);
     }
 
-    private static Gatto.Roles.Model ModelWith(string fileName, string? sampling, int context = 8192, string? extra = null)
+    private static Gatto.Roles.Models.Model ModelWith(string fileName, string? sampling, int context = 8192, string? extra = null)
     {
         var dir = Path.Combine(Path.GetTempPath(), "gatto-modeltest-" + Guid.NewGuid().ToString("N"), "p");
         Directory.CreateDirectory(dir);
@@ -685,7 +685,7 @@ public class AuditionRunnerTests
             + (sampling is null ? "" : $",\"sampling\":{sampling}")
             + (extra is null ? "" : "," + extra) + "}";
         File.WriteAllText(Path.Combine(dir, "profile.json"), json);
-        return Gatto.Roles.Model.Load(Path.GetDirectoryName(dir)!, "p");
+        return Gatto.Roles.Models.Model.Load(Path.GetDirectoryName(dir)!, "p");
     }
 
     [Fact]

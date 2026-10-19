@@ -6,7 +6,7 @@ namespace Gatto.Tests.Cli;
 //the consent path runs through its ask seam, so the most destructive action is exercised without a human at a keyboard.
 public class UninstallConsentTests
 {
-    private static Gatto.Roles.RunningInfo Running(int pid = 31416) =>
+    private static Gatto.Roles.Serve.RunningInfo Running(int pid = 31416) =>
         new("lfm2.5-1.2b-thinking", 1235, "2026-08-17T00:00:00Z", pid);
 
     //the scripted ask records the questions and options it was given. a screen nobody sees is a consent nobody gave, so the questions are half the subject.
@@ -25,7 +25,7 @@ public class UninstallConsentTests
     }
 
     private static IReadOnlyList<OwnedItem> Map(bool deleteHome = false, int models = 1,
-        Gatto.Roles.RunningInfo? stopping = null) =>
+        Gatto.Roles.Serve.RunningInfo? stopping = null) =>
         Uninstall.Map(
             @"C:\install", @"C:\home", deleteHome,
             new InstallFacts(ExePresent: true, ExeBytes: 1_000_000, OnPath: true),

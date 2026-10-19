@@ -41,7 +41,7 @@ internal static class WriteSetApply
             //a second quant joins the model it belongs to: the file list gains an entry and nothing else moves. it is added inactive
             if (writes.CreateModel is { AddToModelId: { Length: > 0 } joins } add)
             {
-                Gatto.Roles.ModelFiles.Add(
+                Gatto.Roles.Models.ModelFiles.Add(
                     System.IO.Path.Combine(homePath, "models"), joins, add.GgufPath);
                 //the completion point is the model the file joined, so the run ends on the model the user asked for
                 modelId = joins;
@@ -57,7 +57,7 @@ internal static class WriteSetApply
                         moveNote = string.Join(" ", new[] { moveNote, $"llama-server did not list {gpu}, so the new model is not pinned to it "
                             + "and may run on another GPU. Its profile takes \"-dev\" and the device name in extra_args." }.OfType<string>());
                 }
-                modelId = Gatto.Roles.ModelScaffold.Create(
+                modelId = Gatto.Roles.Models.ModelScaffold.Create(
                     System.IO.Path.Combine(homePath, "models"), p.GgufPath, p.Port, p.Id, p.Context,
                     //true only when the collision screen answered "replace"
                     p.Replace,
@@ -74,7 +74,7 @@ internal static class WriteSetApply
         try
         {
             if (writes.ActivateFile is { } pick)
-                Gatto.Roles.ModelFiles.SetActive(
+                Gatto.Roles.Models.ModelFiles.SetActive(
                     System.IO.Path.Combine(homePath, "models"), pick.ModelId, pick.Quant);
         }
         catch (Exception ex) { return $"couldn't switch the file: {ex.Message}"; }

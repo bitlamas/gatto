@@ -52,7 +52,7 @@ public class LlamaSiblingTests : IDisposable
     //the sibling list must move with the pinned release, or it names files that release lacks and misses its new ones
     [Fact]
     public void THE_LIST_WAS_READ_FROM_THE_RELEASE_GATTO_PINS() =>
-        Assert.Equal(Gatto.Roles.LlamaAssetSteering.PinnedRelease, LlamaSiblings.Load().Release);
+        Assert.Equal(Gatto.Roles.Serve.LlamaAssetSteering.PinnedRelease, LlamaSiblings.Load().Release);
 
     //the floor comes from a real count, which keeps a barely-parsed resource from passing as a complete list
     [Fact]

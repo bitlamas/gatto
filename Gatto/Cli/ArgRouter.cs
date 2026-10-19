@@ -8,7 +8,7 @@ public sealed record ParsedArgs(
     //only serve status reads this, every other command leaves it false
     bool Json = false,
     string? Endpoint = null,
-    Gatto.Roles.ThinkingLevel? Effort = null);
+    Gatto.Roles.Models.ThinkingLevel? Effort = null);
 
 public static class ArgRouter
 {
@@ -24,7 +24,7 @@ public static class ArgRouter
         //null when no bare word was typed, the launch resolves it against gatto.json
         string? role = null;
         string? model = null, prompt = null, continueId = null, endpoint = null;
-        Gatto.Roles.ThinkingLevel? effort = null;
+        Gatto.Roles.Models.ThinkingLevel? effort = null;
         var cont = false;
         var yes = false;
 
@@ -71,7 +71,7 @@ public static class ArgRouter
                 case "--effort":
                     var level = i + 1 < argv.Length ? argv[++i] : throw new ArgumentException($"missing value for {argv[i]}");
                     //a bad level is a usage error here, before a config load or a launch can give it a second message
-                    try { effort = Gatto.Roles.Thinking.Parse(level); }
+                    try { effort = Gatto.Roles.Models.Thinking.Parse(level); }
                     catch (Gatto.Core.GattoConfigException ex) { throw new ArgumentException(ex.Message); }
                     break;
                 case "--yes":

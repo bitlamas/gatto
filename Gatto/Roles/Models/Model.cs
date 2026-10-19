@@ -4,7 +4,7 @@ using Gatto.Core.Client;
 using Gatto.Core.Home;
 using Gatto.Core.Loop;
 
-namespace Gatto.Roles;
+namespace Gatto.Roles.Models;
 
 //one file of a model. exactly one is Active, checked at load, and the quant name is a label off the file name
 public sealed record ModelFile(string Path, string? Quant, bool Active);

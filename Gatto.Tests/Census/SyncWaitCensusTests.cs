@@ -1,6 +1,7 @@
 using System.Text.RegularExpressions;
 using Gatto.Core.Loop;
 using Gatto.Roles;
+using Gatto.Roles.Serve;
 
 namespace Gatto.Tests.Census;
 
@@ -41,7 +42,7 @@ public class SyncWaitCensusTests
         new("Gatto/Cli/ServeLines.cs", "outcome", typeof(ServeManager.StopOutcome), 2),
         new("Gatto/Core/Loop/HookBus.cs", "p", typeof(HookPayload), 2),
         new("Gatto/Roles/CitationGate.cs", "payload", typeof(HookPayload), 1),
-        new("Gatto/Roles/ServeManager.cs", "Stop(listener)", typeof(ServeManager.StopOutcome), 1),
+        new("Gatto/Roles/Serve/ServeManager.cs","Stop(listener)", typeof(ServeManager.StopOutcome), 1),
     ];
 
     private static List<(string Rel, string Source)> ProductionTree() =>

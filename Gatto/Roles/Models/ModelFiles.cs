@@ -2,7 +2,7 @@ using System.Text.Json;
 using System.Text.Json.Nodes;
 using Gatto.Core;
 
-namespace Gatto.Roles;
+namespace Gatto.Roles.Models;
 
 //edit the profile as a document so the user's other keys keep their shape, and re-load through Model.Load first so the schema refuses early
 internal static class ModelFiles

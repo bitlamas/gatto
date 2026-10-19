@@ -72,7 +72,7 @@ public class WriteSetApplyTests : IDisposable
         var landed = Path.Combine(dest, modelId!, "tiny.gguf");
         Assert.True(File.Exists(landed));
         Assert.False(File.Exists(src));
-        Assert.Equal(landed, Gatto.Roles.Model.Load(Path.Combine(_home, "models"), modelId!).Profile.ActivePath);
+        Assert.Equal(landed, Gatto.Roles.Models.Model.Load(Path.Combine(_home, "models"), modelId!).Profile.ActivePath);
     }
 
     //the move is declined by default, so the file stays where it is
@@ -88,7 +88,7 @@ public class WriteSetApplyTests : IDisposable
 
         Assert.Null(note);
         Assert.True(File.Exists(src));
-        Assert.Equal(src, Gatto.Roles.Model.Load(Path.Combine(_home, "models"), modelId!).Profile.ActivePath);
+        Assert.Equal(src, Gatto.Roles.Models.Model.Load(Path.Combine(_home, "models"), modelId!).Profile.ActivePath);
     }
 
     //only a blocked destination is forced here, which ModelAdoption refuses before copying (the mid-copy failure is covered in ModelAdoptionTests)
@@ -110,7 +110,7 @@ public class WriteSetApplyTests : IDisposable
         //the model points at the original file, which is still there
         Assert.NotNull(modelId);
         Assert.True(File.Exists(src));
-        Assert.Equal(src, Gatto.Roles.Model.Load(Path.Combine(_home, "models"), modelId!).Profile.ActivePath);
+        Assert.Equal(src, Gatto.Roles.Models.Model.Load(Path.Combine(_home, "models"), modelId!).Profile.ActivePath);
 
         //the failure is not silent
         Assert.NotNull(note);
@@ -139,7 +139,7 @@ public class WriteSetApplyTests : IDisposable
             },
             out var modelId, out _));
 
-        var model = Gatto.Roles.Model.Load(Path.Combine(_home, "models"), modelId!);
+        var model = Gatto.Roles.Models.Model.Load(Path.Combine(_home, "models"), modelId!);
         //the projector goes into the same per-model folder as the weights
         Assert.Equal(Path.Combine(dest, modelId!, "mmproj-tiny.gguf"), model.Profile.MmProj);
         Assert.True(File.Exists(Path.Combine(dest, modelId!, "mmproj-tiny.gguf")));
@@ -161,7 +161,7 @@ public class WriteSetApplyTests : IDisposable
 
         Assert.Null(WriteSetApply.Apply(_home, writes, out var modelId));
 
-        var model = Gatto.Roles.Model.Load(Path.Combine(_home, "models"), modelId!);
+        var model = Gatto.Roles.Models.Model.Load(Path.Combine(_home, "models"), modelId!);
         Assert.Equal(@"C:\forks\bailing\llama-server.exe", model.Profile.LlamaServer);
     }
 
@@ -174,7 +174,7 @@ public class WriteSetApplyTests : IDisposable
 
         Assert.Null(WriteSetApply.Apply(_home, writes, out var modelId));
 
-        Assert.Null(Gatto.Roles.Model.Load(Path.Combine(_home, "models"), modelId!).Profile.LlamaServer);
+        Assert.Null(Gatto.Roles.Models.Model.Load(Path.Combine(_home, "models"), modelId!).Profile.LlamaServer);
     }
 
     [Fact]
@@ -302,7 +302,7 @@ public class WriteSetApplyTests : IDisposable
             out var joined));
 
         Assert.Equal(id, joined);                     //the apply reports the model that was joined
-        var profile = Gatto.Roles.Model.Load(Path.Combine(_home, "models"), id!).Profile;
+        var profile = Gatto.Roles.Models.Model.Load(Path.Combine(_home, "models"), id!).Profile;
         Assert.Equal(2, profile.Files.Count);
         Assert.Equal("Q4_K_M", profile.Files.Single(f => f.Active).Quant);
     }
@@ -325,7 +325,7 @@ public class WriteSetApplyTests : IDisposable
         Assert.Null(WriteSetApply.Apply(
             _home, new WriteSet { ActivateFile = (id!, "Q6_K") }, out _));
 
-        var profile = Gatto.Roles.Model.Load(Path.Combine(_home, "models"), id!).Profile;
+        var profile = Gatto.Roles.Models.Model.Load(Path.Combine(_home, "models"), id!).Profile;
         Assert.Equal("Q6_K", profile.Files.Single(f => f.Active).Quant);
         Assert.Equal(2, profile.Files.Count);          //activating keeps the other file in the profile
     }

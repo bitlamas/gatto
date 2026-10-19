@@ -3,7 +3,7 @@ using Gatto.Core;
 using Gatto.Core.Acquire;
 using Gatto.Core.Models;
 
-namespace Gatto.Roles;
+namespace Gatto.Roles.Models;
 
 //each member is the decision the screen must take: a matching repo adds, a proven different repo collides, anything less than proof asks
 public enum IdClash

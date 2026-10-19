@@ -56,16 +56,16 @@ public class UnmappedScreenTests : IDisposable
         public MoveOffer? MoveOfferFor(string p) => Move;
         public (Gatto.Core.Models.FitRegime Alone, Gatto.Core.Models.FitRegime WithProjector)? PairFit(string p, long b) => null;
         public TypedIdOutcome EvaluateTypedId(string id) => new TypedIdOutcome.Unreachable(false);
-        public Gatto.Roles.LlamaAsset? ChooseLlamaAsset() => new("z.zip", null, "a graphics card", "Vulkan");
+        public Gatto.Roles.Serve.LlamaAsset? ChooseLlamaAsset() => new("z.zip", null, "a graphics card", "Vulkan");
         public Gatto.Core.Acquire.ProbeResult VerifyLlamaServer(string p) =>
             new(Gatto.Core.Acquire.ProbeShape.ClassicServer, "d",
                 //a ClassicServer names its build in the same banner the probe reads the shape from. faking one without the other makes the run skip the engine step
-                Build: Gatto.Roles.LlamaAssetSteering.PinnedRelease);
+                Build: Gatto.Roles.Serve.LlamaAssetSteering.PinnedRelease);
         public int ContextFor(string p) => 8192;
         public AuditionCheck RunAudition(string p, string? repoId, IProgress<Gatto.Roles.Audition.AuditionProgress>? progress, CancellationToken ct) =>
             new(AuditionOutcome.Passed);
         public string? ExistingModelFor(string ggufPath) => null;
-        public (Gatto.Roles.IdClash Kind, string? Id) ClashFor(string ggufPath, string? incomingRepoId) => (Gatto.Roles.IdClash.Free, null);
+        public (Gatto.Roles.Models.IdClash Kind, string? Id) ClashFor(string ggufPath, string? incomingRepoId) => (Gatto.Roles.Models.IdClash.Free, null);
         //a fixed fake path, so the screen renders the state the test chose rather than the exe running the tests
         public string RunningFrom() => @"C:\Users\you\Downloads\gatto\gatto.exe";
 
@@ -162,7 +162,7 @@ public class UnmappedScreenTests : IDisposable
         Assert.Contains("stays where it is", face.Text("move.incomplete"), StringComparison.Ordinal);
         //the model is in place anyway, which is the point of degrading rather than aborting
         Assert.True(File.Exists(src));
-        Assert.NotEmpty(Gatto.Roles.Model.ListIds(Path.Combine(_home, "models")));
+        Assert.NotEmpty(Gatto.Roles.Models.Model.ListIds(Path.Combine(_home, "models")));
     }
 
     //the architecture is bailingmoe3, a real one the pinned build cannot load, so the custom-build offer fires. the fixture agrees with the shipped architecture set
@@ -189,13 +189,13 @@ public class UnmappedScreenTests : IDisposable
         public MoveOffer? MoveOfferFor(string p) => _inner.MoveOfferFor(p);
         public (Gatto.Core.Models.FitRegime Alone, Gatto.Core.Models.FitRegime WithProjector)? PairFit(string p, long b) => _inner.PairFit(p, b);
         public TypedIdOutcome EvaluateTypedId(string id) => _inner.EvaluateTypedId(id);
-        public Gatto.Roles.LlamaAsset? ChooseLlamaAsset() => _inner.ChooseLlamaAsset();
+        public Gatto.Roles.Serve.LlamaAsset? ChooseLlamaAsset() => _inner.ChooseLlamaAsset();
         public Gatto.Core.Acquire.ProbeResult VerifyLlamaServer(string p) => _inner.VerifyLlamaServer(p);
         public int ContextFor(string p) => _inner.ContextFor(p);
         public AuditionCheck RunAudition(string p, string? repoId, IProgress<Gatto.Roles.Audition.AuditionProgress>? progress, CancellationToken ct) =>
         _inner.RunAudition(p, repoId, progress, ct);
         public string? ExistingModelFor(string g) => _inner.ExistingModelFor(g);
-        public (Gatto.Roles.IdClash Kind, string? Id) ClashFor(string ggufPath, string? incomingRepoId) =>
+        public (Gatto.Roles.Models.IdClash Kind, string? Id) ClashFor(string ggufPath, string? incomingRepoId) =>
             _inner.ClashFor(ggufPath, incomingRepoId);
         //a fixed fake path, so the screen renders the state the test chose rather than the exe running the tests
         public string RunningFrom() => @"C:\Users\you\Downloads\gatto\gatto.exe";

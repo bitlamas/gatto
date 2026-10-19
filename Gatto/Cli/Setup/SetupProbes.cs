@@ -30,8 +30,8 @@ internal interface ISetupProbes
     string? LlamaServerPath();
 
     //every engine on this machine. the default derives from LlamaServerPath rather than returning empty (Build stays null until the probe that runs the exe fills it)
-    IReadOnlyList<Gatto.Roles.FoundEngine> EngineSweep() =>
-        LlamaServerPath() is { Length: > 0 } p ? [new Gatto.Roles.FoundEngine(p, null)] : [];
+    IReadOnlyList<Gatto.Roles.Serve.FoundEngine> EngineSweep() =>
+        LlamaServerPath() is { Length: > 0 } p ? [new Gatto.Roles.Serve.FoundEngine(p, null)] : [];
 
     //whether a launch would resolve a model today. true on a re-run with a working config, so the model segment skips instead of asking
     bool HasResolvableModel();
@@ -77,7 +77,7 @@ internal interface ISetupProbes
     bool ReleaseHeldServer() => false;
 
     //which llama.cpp asset this machine wants, or null when the hardware could not be read. an unreadable machine is never steered to one of thirteen builds
-    Gatto.Roles.LlamaAsset? ChooseLlamaAsset();
+    Gatto.Roles.Serve.LlamaAsset? ChooseLlamaAsset();
 
     //what a fetch of the pinned llama.cpp release would put on this machine. null means this probe cannot fetch, and a missing asset is the offline arm
     Gatto.Cli.Setup.EngineFetchOffer? EngineOffer() => null;
@@ -156,7 +156,7 @@ internal interface ISetupProbes
     //the model id this file would take when a different file already has it, or null. null also covers an id ExistingModelFor already claimed
 
     //what adopting this file means for the model whose id it would take. a match adds, a proven difference collides, and anything less asks
-    (Gatto.Roles.IdClash Kind, string? Id) ClashFor(string ggufPath, string? incomingRepoId);
+    (Gatto.Roles.Models.IdClash Kind, string? Id) ClashFor(string ggufPath, string? incomingRepoId);
 
     //the model already on gatto's list with a file of this name, or null. the repo answers, and the file name only for a model with no repo, all in one place
     string? ModelForHubRow(string repoId, string ggufFileName) => null;

@@ -13,7 +13,7 @@ internal static class UninstallConsent
     internal const string NothingRemoved = "nothing was removed.";
 
     //the follow-up has to be possible from Task Manager, so never name gatto serve stop here
-    internal static string LeftRunning(Gatto.Roles.RunningInfo running) =>
+    internal static string LeftRunning(Gatto.Roles.Serve.RunningInfo running) =>
         $"llama-server for {running.Model} is still running on port {running.Port} — "
         + $"end process {running.Pid} from Task Manager when you want it stopped.";
 
@@ -22,7 +22,7 @@ internal static class UninstallConsent
 
     //screens 1 and 2 here, and null means the user left at either of them
     internal static (bool StopServer, bool DeleteHome)? Ask(
-        Asker ask, string home, Gatto.Roles.RunningInfo? running)
+        Asker ask, string home, Gatto.Roles.Serve.RunningInfo? running)
     {
         var stop = false;
         if (running is { } live)

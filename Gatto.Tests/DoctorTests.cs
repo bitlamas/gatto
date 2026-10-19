@@ -1297,7 +1297,7 @@ public class DoctorTests : IDisposable
         WriteGreenHome();
         var doctor = new Doctor(HealthyClient(),
             probeBinary: _ => new ProbeResult(ProbeShape.ClassicServer, "version: 10076 (fake)"),
-            describeRunning: () => new Gatto.Roles.RunningInfo("test-model", Port, DateTime.UtcNow.AddHours(-2).ToString("o")));
+            describeRunning: () => new Gatto.Roles.Serve.RunningInfo("test-model", Port, DateTime.UtcNow.AddHours(-2).ToString("o")));
         var output = new StringWriter();
 
         var exit = await doctor.RunAsync(_home, _cwd, output, CancellationToken.None);
@@ -1332,7 +1332,7 @@ public class DoctorTests : IDisposable
 
         var doctor = new Doctor(HealthyClient(),
             probeBinary: _ => new ProbeResult(ProbeShape.ClassicServer, "version: 10076 (fake)"),
-            describeRunning: () => new Gatto.Roles.RunningInfo("test-model", Port, DateTime.UtcNow.AddHours(-2).ToString("o")));
+            describeRunning: () => new Gatto.Roles.Serve.RunningInfo("test-model", Port, DateTime.UtcNow.AddHours(-2).ToString("o")));
         var output = new StringWriter();
 
         await doctor.RunAsync(_home, _cwd, output, CancellationToken.None);
@@ -1435,7 +1435,7 @@ public class DoctorTests : IDisposable
     private static Theme RichTheme() => new(new TermCaps(Rich: true, TrueColor: true));
 
     private static Doctor NewThemedDoctor(
-        HttpClient http, Theme theme, Func<Gatto.Roles.RunningInfo?>? describeRunning = null) =>
+        HttpClient http, Theme theme, Func<Gatto.Roles.Serve.RunningInfo?>? describeRunning = null) =>
         new(http,
             probeBinary: _ => new ProbeResult(ProbeShape.ClassicServer, "version: 10076 (fake)"),
             describeRunning: describeRunning,
@@ -1474,7 +1474,7 @@ public class DoctorTests : IDisposable
         var output = new StringWriter();
 
         await NewThemedDoctor(HealthyClient(), theme,
-                describeRunning: () => new Gatto.Roles.RunningInfo(
+                describeRunning: () => new Gatto.Roles.Serve.RunningInfo(
                     "test-model", Port, DateTime.UtcNow.AddHours(-2).ToString("o")))
             .RunAsync(_home, _cwd, output, CancellationToken.None);
 

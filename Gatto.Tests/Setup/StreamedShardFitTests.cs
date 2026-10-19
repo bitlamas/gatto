@@ -69,15 +69,15 @@ public sealed class StreamedShardFitTests : IDisposable
     public void THE_SCAFFOLD_WRITES_LAZY_MMAP_FOR_A_MARKED_SET_ONLY()
     {
         var models = Path.Combine(_dir, "models");
-        var marked = Gatto.Roles.ModelScaffold.Create(models, Set("marked", marked: true, 1_490_000_000), port: 1235, id: "marked");
-        var plain = Gatto.Roles.ModelScaffold.Create(models, Set("plain", marked: false, 1_490_000_000), port: 1235, id: "plain");
+        var marked = Gatto.Roles.Models.ModelScaffold.Create(models, Set("marked", marked: true, 1_490_000_000), port: 1235, id: "marked");
+        var plain = Gatto.Roles.Models.ModelScaffold.Create(models, Set("plain", marked: false, 1_490_000_000), port: 1235, id: "plain");
 
-        var markedArgs = Gatto.Roles.Model.Load(models, marked).Profile.ExtraArgs;
-        var plainArgs = Gatto.Roles.Model.Load(models, plain).Profile.ExtraArgs;
+        var markedArgs = Gatto.Roles.Models.Model.Load(models, marked).Profile.ExtraArgs;
+        var plainArgs = Gatto.Roles.Models.Model.Load(models, plain).Profile.ExtraArgs;
         Assert.Equal(["-np", "1", "-fa", "on", "-lm", "mmap", "--lazy-mode", "on", "--jinja", "--no-context-shift", "--cache-reuse", "0"], markedArgs);
         Assert.Equal(["-np", "1", "-fa", "on", "-lm", "none", "--jinja", "--no-context-shift", "--cache-reuse", "0"], plainArgs);
 
-        var pin = int.Parse(Gatto.Roles.LlamaAssetSteering.PinnedRelease[1..]);
+        var pin = int.Parse(Gatto.Roles.Serve.LlamaAssetSteering.PinnedRelease[1..]);
         Assert.Equal(markedArgs, LoadModeDialect.Load().Rewrite(markedArgs, pin));
         Assert.Equal(plainArgs, LoadModeDialect.Load().Rewrite(plainArgs, pin));
     }

@@ -1,6 +1,7 @@
 using Gatto.Core.Acquire;
 using Gatto.Roles;
 using Gatto.Roles.Audition;
+using Gatto.Roles.Models;
 
 namespace Gatto.Tests;
 

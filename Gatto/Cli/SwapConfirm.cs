@@ -1,5 +1,5 @@
 using Gatto.Repl;
-using Gatto.Roles;
+using Gatto.Roles.Models;
 
 namespace Gatto.Cli;
 

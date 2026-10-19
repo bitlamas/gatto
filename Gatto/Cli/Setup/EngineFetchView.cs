@@ -23,7 +23,7 @@ internal static class EngineFetchView
 
     //what the fetch is checked against, in a short and a long form. keep the claim in both, since this row is why an in-app fetch beats a hand download
     private static string From(int width, GlyphSet? glyphs) =>
-        Gatto.Roles.LlamaAssetSteering.RepoLabel
+        Gatto.Roles.Serve.LlamaAssetSteering.RepoLabel
         + (width < CompactBelow ? $" {G(glyphs)} digest-checked"
             : $" {G(glyphs)} checked against GitHub's own digest");
 
@@ -56,7 +56,7 @@ internal static class EngineFetchView
                         byHand + $" {G(glyphs)} the CUDA runtime it needs", lift: byHand)]
                     : [],
                 //the release page rather than the asset's link, since a stale link leaves the user stuck
-                Row("from", Gatto.Roles.LlamaAssetSteering.ReleasePageLabel),
+                Row("from", Gatto.Roles.Serve.LlamaAssetSteering.ReleasePageLabel),
                 Row("extract to", v.Into),
             ];
 

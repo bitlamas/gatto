@@ -1,5 +1,6 @@
 using Gatto.Roles;
 using Gatto.Roles.Agents;
+using Gatto.Roles.Models;
 
 namespace Gatto.Tests;
 

@@ -1,7 +1,8 @@
 using System.Globalization;
 using System.Text.Json;
+using Gatto.Roles.Models;
 
-namespace Gatto.Roles;
+namespace Gatto.Roles.Serve;
 
 //turns a model profile into llama-server argv, pure and deterministic, so nothing spawns or writes here
 public static class ServeArgs

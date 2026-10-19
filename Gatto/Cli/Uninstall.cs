@@ -37,7 +37,7 @@ internal static class Uninstall
     public static IReadOnlyList<OwnedItem> Map(
         string installDir, string home, bool deleteHome, InstallFacts install,
         string? llamaServerPath, IReadOnlyList<(string Id, string ModelPath)> models,
-        Gatto.Roles.RunningInfo? stopping = null, bool otherWeightFiles = false)
+        Gatto.Roles.Serve.RunningInfo? stopping = null, bool otherWeightFiles = false)
     {
         var items = new List<OwnedItem>();
 

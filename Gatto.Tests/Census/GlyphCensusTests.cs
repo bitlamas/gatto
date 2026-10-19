@@ -18,7 +18,7 @@ public class GlyphCensusTests
     private static readonly (string File, string Why)[] Exempt =
     [
         ("Gatto.Terminal/GlyphSet.cs", "IS the table; its literals are the two sets"),
-        ("Gatto/Roles/EngineMarks.cs", "the table's second home, for Roles: it cannot reach "
+        ("Gatto/Roles/Serve/EngineMarks.cs","the table's second home, for Roles: it cannot reach "
             + "GlyphSet without the first Roles-to-Repl edge, so its Unicode fallback is the "
             + "same kind of literal GlyphSet.cs carries"),
         ("Gatto/Repl/Cats.cs", "the Unicode set's ROLE data: the coder's and oracle's CATS, drawings "

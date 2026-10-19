@@ -8,6 +8,8 @@ using Gatto.Core.Loop.Permissions;
 using Gatto.Core.Session;
 using Gatto.Extensions;
 using Gatto.Roles;
+using Gatto.Roles.Models;
+using Gatto.Roles.Serve;
 using Gatto.Terminal;
 
 namespace Gatto.Cli;
@@ -16,7 +18,7 @@ namespace Gatto.Cli;
 public sealed class Doctor(
     HttpClient http,
     Func<string, ProbeResult>? probeBinary = null,
-    Func<Gatto.Roles.RunningInfo?>? describeRunning = null,
+    Func<Gatto.Roles.Serve.RunningInfo?>? describeRunning = null,
     Theme? theme = null,
     //the update fetch is injected like every outside-world seam here, null adds no line so the test suite stays hermetic
     Func<CancellationToken, Task<UpdateState?>>? checkUpdate = null,

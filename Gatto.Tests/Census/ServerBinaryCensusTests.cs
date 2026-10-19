@@ -10,7 +10,7 @@ public class ServerBinaryCensusTests
 
     private static string[] Constructions(string src) =>
         [.. src.Split('\n').Where(l => l.Contains("new ServeManager(", StringComparison.Ordinal)
-            || l.Contains("new Gatto.Roles.ServeManager(", StringComparison.Ordinal))];
+            || l.Contains("new Gatto.Roles.Serve.ServeManager(", StringComparison.Ordinal))];
 
     [Fact]
     public void NO_SERVE_MANAGER_IS_BUILT_FROM_A_HAND_ROLLED_BINARY()
@@ -31,7 +31,7 @@ public class ServerBinaryCensusTests
     public void AND_THE_CENSUS_CAN_SEE_THE_LINE_THAT_SHIPPED()
     {
         var planted = Source()
-            + "\n        var oops = new Gatto.Roles.ServeManager(home, reloaded.Profile.LlamaServer ?? \"\");\n";
+            + "\n        var oops = new Gatto.Roles.Serve.ServeManager(home, reloaded.Profile.LlamaServer ?? \"\");\n";
 
         Assert.Contains(Constructions(planted), l => l.Contains(Needle, StringComparison.Ordinal));
     }

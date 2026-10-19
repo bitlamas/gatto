@@ -3,7 +3,7 @@ using System.Text.Json.Nodes;
 using Gatto.Core;
 using Gatto.Core.Client;
 
-namespace Gatto.Roles;
+namespace Gatto.Roles.Models;
 
 public enum ThinkingLevel { None = 0, Low = 1, Medium = 2, High = 3, XHigh = 4, Max = 5 }
 

@@ -1,7 +1,7 @@
 using Gatto.Core.Client;
 using Gatto.Core.Session;
-using Gatto.Roles;
 using System.Text.Json;
+using Gatto.Roles.Serve;
 
 namespace Gatto.Tests;
 

@@ -1,6 +1,6 @@
 using Gatto.Core.Hardware;
 
-namespace Gatto.Roles;
+namespace Gatto.Roles.Serve;
 
 //the hardware fact is a noun phrase and the build name a bare adjective, so both drop into a sentence. a non-null CudartZipName brings the CUDA runtime too
 internal sealed record LlamaAsset(

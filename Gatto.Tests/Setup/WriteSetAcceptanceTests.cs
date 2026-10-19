@@ -33,7 +33,7 @@ public class WriteSetAcceptanceTests : IDisposable
         Assert.Contains("done", face.Keys);
 
         //the model on disk, with its sibling files beside it
-        var models = Gatto.Roles.Model.ListIds(Path.Combine(_home, "models"));
+        var models = Gatto.Roles.Models.Model.ListIds(Path.Combine(_home, "models"));
         var modelId = Assert.Single(models);
         Assert.True(File.Exists(Path.Combine(_home, "models", modelId, "profile.json")));
         Assert.True(File.Exists(Path.Combine(_home, "models", modelId, "tuning.txt")));
@@ -62,7 +62,7 @@ public class WriteSetAcceptanceTests : IDisposable
         Assert.Contains("done", face.Keys);
 
         //the same disk assertions as the llama walk, the landing changed and the destination did not
-        var modelId = Assert.Single(Gatto.Roles.Model.ListIds(Path.Combine(_home, "models")));
+        var modelId = Assert.Single(Gatto.Roles.Models.Model.ListIds(Path.Combine(_home, "models")));
         Assert.Equal(@"C:\llama\llama-server.exe", Str("llama_server"));
         Assert.Equal(modelId, DefaultModelOnDisk());
         TheConsentAnswerReachedDisk();
@@ -88,7 +88,7 @@ public class WriteSetAcceptanceTests : IDisposable
         SetupRunner.Run(new SetupFlow(probes), face, _home);
 
         Assert.Contains("done", face.Keys);
-        Assert.Empty(Gatto.Roles.Model.ListIds(Path.Combine(_home, "models")));
+        Assert.Empty(Gatto.Roles.Models.Model.ListIds(Path.Combine(_home, "models")));
 
         //assert the invariant, the config can never name an endpoint that is not in the map
         var endpoint = Str("default_endpoint");
@@ -114,7 +114,7 @@ public class WriteSetAcceptanceTests : IDisposable
         Assert.Equal("already-set-up", DefaultModelOnDisk());
 
         //reuse means no second model for the same weights
-        Assert.Empty(Gatto.Roles.Model.ListIds(Path.Combine(_home, "models")));
+        Assert.Empty(Gatto.Roles.Models.Model.ListIds(Path.Combine(_home, "models")));
         TheConsentAnswerReachedDisk();
     }
 
@@ -131,7 +131,7 @@ public class WriteSetAcceptanceTests : IDisposable
 
         Assert.Contains("done", face.Keys);
         Assert.Equal("same-name-different-file", DefaultModelOnDisk());
-        Assert.Empty(Gatto.Roles.Model.ListIds(Path.Combine(_home, "models")));
+        Assert.Empty(Gatto.Roles.Models.Model.ListIds(Path.Combine(_home, "models")));
         TheConsentAnswerReachedDisk();
     }
 
@@ -150,7 +150,7 @@ public class WriteSetAcceptanceTests : IDisposable
 
         SetupRunner.Run(new SetupFlow(probes), face, _home);
 
-        var modelId = Assert.Single(Gatto.Roles.Model.ListIds(Path.Combine(_home, "models")));
+        var modelId = Assert.Single(Gatto.Roles.Models.Model.ListIds(Path.Combine(_home, "models")));
         Assert.Equal(modelId, DefaultModelOnDisk());      //the setup is complete even though the run left early
         Assert.Null(Flag("update_check"));               //the unanswered question must not be written to disk
 
@@ -396,17 +396,17 @@ public class WriteSetAcceptanceTests : IDisposable
         public MoveOffer? MoveOfferFor(string p) => null;
         public (Gatto.Core.Models.FitRegime Alone, Gatto.Core.Models.FitRegime WithProjector)? PairFit(string p, long b) => null;
         public TypedIdOutcome EvaluateTypedId(string id) => new TypedIdOutcome.Unreachable(false);
-        public Gatto.Roles.LlamaAsset? ChooseLlamaAsset() => new("z.zip", null, "a graphics card", "Vulkan");
+        public Gatto.Roles.Serve.LlamaAsset? ChooseLlamaAsset() => new("z.zip", null, "a graphics card", "Vulkan");
         public Gatto.Core.Acquire.ProbeResult VerifyLlamaServer(string p) =>
             new(Gatto.Core.Acquire.ProbeShape.ClassicServer, p);
         public int ContextFor(string p) => 8192;
         public AuditionCheck RunAudition(string p, string? repoId, IProgress<Gatto.Roles.Audition.AuditionProgress>? progress, CancellationToken ct) =>
             new(AuditionOutcome.Passed);
         public string? ExistingModelFor(string ggufPath) => Existing;
-        public (Gatto.Roles.IdClash Kind, string? Id) ClashFor(string ggufPath, string? incomingRepoId) =>
+        public (Gatto.Roles.Models.IdClash Kind, string? Id) ClashFor(string ggufPath, string? incomingRepoId) =>
             Colliding is { Length: > 0 }
-                ? (Gatto.Roles.IdClash.DifferentModel, Colliding)
-                : (Gatto.Roles.IdClash.Free, null);
+                ? (Gatto.Roles.Models.IdClash.DifferentModel, Colliding)
+                : (Gatto.Roles.Models.IdClash.Free, null);
         //a fixed fake path, so the screen renders at a chosen state instead of reporting whatever exe runs the tests
         public string RunningFrom() => @"C:\Users\you\Downloads\gatto\gatto.exe";
 

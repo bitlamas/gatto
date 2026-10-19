@@ -6,6 +6,7 @@ using Gatto.Core.Client;
 using Gatto.Core.Loop;
 using Gatto.Core.Session;
 using Gatto.Core.Tools;
+using Gatto.Roles.Serve;
 
 namespace Gatto.Roles.Agents;
 

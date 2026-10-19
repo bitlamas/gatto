@@ -1,5 +1,6 @@
 using System.Text;
 using Gatto.Core;
+using Gatto.Roles.Serve;
 
 namespace Gatto.Roles.Audition;
 
@@ -34,7 +35,7 @@ internal static class AuditionReport
     {
         if (buildInfo is not { Length: > 0 } b) return null;
 
-        var pin = Gatto.Roles.LlamaAssetSteering.PinnedRelease;
+        var pin = Gatto.Roles.Serve.LlamaAssetSteering.PinnedRelease;
         var ours = string.Equals(b, pin, StringComparison.Ordinal)
                    || b.StartsWith(pin + "-", StringComparison.Ordinal);
 

@@ -1,7 +1,7 @@
 using Gatto.Core;
 using Gatto.Repl.Render;
-using Gatto.Roles;
 using Gatto.Roles.Agents;
+using Gatto.Roles.Serve;
 
 namespace Gatto.Tests;
 

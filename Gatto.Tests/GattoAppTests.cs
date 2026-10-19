@@ -1,3 +1,5 @@
+using Gatto.Roles.Models;
+using Gatto.Roles.Serve;
 using Gatto.Tests.Setup;
 using System.Text.Json;
 using Gatto.Cli;
@@ -565,7 +567,7 @@ public class GattoAppTests : IDisposable
     {
         UseHome();
         WriteModel("test-model", port: 1, profileExtra: "\"auto_serve\":true");
-        var model = Gatto.Roles.Model.Load(Path.Combine(_home, "models"), "test-model");
+        var model = Gatto.Roles.Models.Model.Load(Path.Combine(_home, "models"), "test-model");
         var endpoint = new Gatto.Core.Client.EndpointConfig("http://127.0.0.1:9", Context: 32768);
 
         Assert.Equal((false, (int?)32768), GattoApp.ServingFor(servedHere: false, model, endpoint, "http://127.0.0.1:9"));
@@ -939,10 +941,10 @@ public class GattoAppTests : IDisposable
         public int ContextFor(string ggufPath) => throw new NotSupportedException();
         public string? ExistingModelFor(string ggufPath) => throw new NotSupportedException();
         public string? Colliding { get; init; }
-        public (Gatto.Roles.IdClash Kind, string? Id) ClashFor(string ggufPath, string? incomingRepoId) =>
+        public (Gatto.Roles.Models.IdClash Kind, string? Id) ClashFor(string ggufPath, string? incomingRepoId) =>
             Colliding is { Length: > 0 }
-                ? (Gatto.Roles.IdClash.DifferentModel, Colliding)
-                : (Gatto.Roles.IdClash.Free, null);
+                ? (Gatto.Roles.Models.IdClash.DifferentModel, Colliding)
+                : (Gatto.Roles.Models.IdClash.Free, null);
         //this fake models a machine where gatto is installed, so this flow runs after install. the path is fixed, so the screen shows a chosen state
         public string RunningFrom() => @"C:\Users\you\Downloads\gatto\gatto.exe";
 

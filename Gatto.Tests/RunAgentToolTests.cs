@@ -6,6 +6,7 @@ using Gatto.Core.Session;
 using Gatto.Core.Tools;
 using Gatto.Roles;
 using Gatto.Roles.Agents;
+using Gatto.Roles.Models;
 using Gatto.Tests.Fakes;
 
 namespace Gatto.Tests;

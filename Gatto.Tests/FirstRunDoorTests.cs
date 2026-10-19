@@ -117,7 +117,7 @@ public class FirstRunDoorTests : IDisposable
         SetupRunner.Run(new SetupFlow(probes), new Answers([.. WalkOpening.PastEngine, "0"]), _home);
 
         Assert.True(Directory.Exists(_home));
-        Assert.NotEmpty(Gatto.Roles.Model.ListIds(Path.Combine(_home, "models")));
+        Assert.NotEmpty(Gatto.Roles.Models.Model.ListIds(Path.Combine(_home, "models")));
     }
 
     private FoundModel Model()
@@ -170,16 +170,16 @@ public class FirstRunDoorTests : IDisposable
         public MoveOffer? MoveOfferFor(string p) => null;
         public (Gatto.Core.Models.FitRegime Alone, Gatto.Core.Models.FitRegime WithProjector)? PairFit(string p, long b) => null;
         public TypedIdOutcome EvaluateTypedId(string id) => new TypedIdOutcome.Unreachable(false);
-        public Gatto.Roles.LlamaAsset? ChooseLlamaAsset() => new("z.zip", null, "a graphics card", "Vulkan");
+        public Gatto.Roles.Serve.LlamaAsset? ChooseLlamaAsset() => new("z.zip", null, "a graphics card", "Vulkan");
         //report a build here, since the real probe reads shape and build from one banner and the flow skips the engine step without it
         public Gatto.Core.Acquire.ProbeResult VerifyLlamaServer(string p) =>
             new(Gatto.Core.Acquire.ProbeShape.ClassicServer, p,
-                Build: Gatto.Roles.LlamaAssetSteering.PinnedRelease);
+                Build: Gatto.Roles.Serve.LlamaAssetSteering.PinnedRelease);
         public int ContextFor(string p) => 8192;
         public AuditionCheck RunAudition(string p, string? repoId, IProgress<Gatto.Roles.Audition.AuditionProgress>? progress, CancellationToken ct) =>
             new(AuditionOutcome.Passed);
         public string? ExistingModelFor(string ggufPath) => null;
-        public (Gatto.Roles.IdClash Kind, string? Id) ClashFor(string ggufPath, string? incomingRepoId) => (Gatto.Roles.IdClash.Free, null);
+        public (Gatto.Roles.Models.IdClash Kind, string? Id) ClashFor(string ggufPath, string? incomingRepoId) => (Gatto.Roles.Models.IdClash.Free, null);
         //return a fixed path, so the screen shows a chosen state rather than the gatto.exe that happens to run the tests
         public string RunningFrom() => @"C:\Users\you\Downloads\gatto\gatto.exe";
 

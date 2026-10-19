@@ -24,7 +24,7 @@ public class SetupFlowTests
         public TypedIdOutcome TypedId { get; init; } = new TypedIdOutcome.Unreachable(false);
         public List<string> TypedIds { get; } = [];
         public AuditionOutcome Audition { get; init; } = AuditionOutcome.Passed;
-        public Gatto.Roles.LlamaAsset? Asset { get; init; } =
+        public Gatto.Roles.Serve.LlamaAsset? Asset { get; init; } =
             new("llama-b11071-bin-win-cuda-12.4-x64.zip", "cudart-llama-bin-win-cu12.4-x64.zip",
                 "an NVIDIA adapter", "CUDA");
         public Gatto.Core.Acquire.ProbeShape Shape { get; init; } = Gatto.Core.Acquire.ProbeShape.ClassicServer;
@@ -134,7 +134,7 @@ public class SetupFlowTests
             return TypedId;
         }
 
-        public Gatto.Roles.LlamaAsset? ChooseLlamaAsset() { Asked.Add(nameof(ChooseLlamaAsset)); return Asset; }
+        public Gatto.Roles.Serve.LlamaAsset? ChooseLlamaAsset() { Asked.Add(nameof(ChooseLlamaAsset)); return Asset; }
 
         //whether the Visual C++ runtime is missing, so a test can drive that case. false is the default, since a machine that has it is the ordinary one
         public bool VcRuntimeAbsent { get; init; }
@@ -146,7 +146,7 @@ public class SetupFlowTests
             var shape = exePath == Llama && Llama is not null ? EngineShape ?? Shape : Shape;
             return new Gatto.Core.Acquire.ProbeResult(shape, "detail", VcRuntimeAbsent: VcRuntimeAbsent,
                 Build: shape == Gatto.Core.Acquire.ProbeShape.ClassicServer
-                    ? Build ?? Gatto.Roles.LlamaAssetSteering.PinnedRelease
+                    ? Build ?? Gatto.Roles.Serve.LlamaAssetSteering.PinnedRelease
                     : null);
         }
 
@@ -169,17 +169,17 @@ public class SetupFlowTests
 
         public string? ExistingModelFor(string ggufPath) { AskedModelFor.Add(ggufPath); return ExistingModel; }
         //defaults to DifferentModel, so a fixture that sets nothing still means two models to choose between
-        public Gatto.Roles.IdClash ClashKind { get; init; } = Gatto.Roles.IdClash.DifferentModel;
+        public Gatto.Roles.Models.IdClash ClashKind { get; init; } = Gatto.Roles.Models.IdClash.DifferentModel;
 
         //the id of the model whose weights are loaded, or null for none. null is the default, since a fresh machine serves nothing.
         public string? Loaded { get; init; }
 
         public string? LoadedModelId() => Loaded;
 
-        public (Gatto.Roles.IdClash Kind, string? Id) ClashFor(string ggufPath, string? incomingRepoId) =>
+        public (Gatto.Roles.Models.IdClash Kind, string? Id) ClashFor(string ggufPath, string? incomingRepoId) =>
             Colliding is { Length: > 0 }
                 ? (ClashKind, Colliding)
-                : (Gatto.Roles.IdClash.Free, null);
+                : (Gatto.Roles.Models.IdClash.Free, null);
         //the fakes assume gatto is already installed, so each walk starts after the install segment.
 
         //installed by default, so a test that sets nothing starts after the install segment
@@ -1101,7 +1101,7 @@ public class SetupFlowTests
         var flow = new SetupFlow(new FakeProbes
         {
             Llama = null, Model = true,
-            Asset = new Gatto.Roles.LlamaAsset(
+            Asset = new Gatto.Roles.Serve.LlamaAsset(
                 "llama-b11071-bin-win-vulkan-x64.zip", null, "an AMD discrete card", "Vulkan"),
             Offer = new EngineFetchOffer(@"C:\Users\you\.gatto\llama\b11071\", new EnginePair(
                 new EngineAsset("llama-b11071-bin-win-vulkan-x64.zip", "https://example.invalid/z",
@@ -1210,7 +1210,7 @@ public class SetupFlowTests
     }
 
     private static SetupFlow AdoptingWithCollision(string? colliding, string? existing = null,
-        Gatto.Roles.IdClash kind = Gatto.Roles.IdClash.DifferentModel)
+        Gatto.Roles.Models.IdClash kind = Gatto.Roles.Models.IdClash.DifferentModel)
     {
         var flow = new SetupFlow(new FakeProbes
         {
@@ -1248,7 +1248,7 @@ ew.gguf", 4_000_000_000, null)],
     [Fact]
     public void A_PROVEN_SECOND_QUANT_JOINS_WITHOUT_ASKING_ANYTHING()
     {
-        var flow = AdoptingWithCollision("gemma-4-e4b-it", kind: Gatto.Roles.IdClash.SameModel);
+        var flow = AdoptingWithCollision("gemma-4-e4b-it", kind: Gatto.Roles.Models.IdClash.SameModel);
 
         flow.Answer("0");
 
@@ -1265,7 +1265,7 @@ ew.gguf", 4_000_000_000, null)],
     [Fact]
     public void WHEN_GATTO_CANNOT_TELL_THE_SCREEN_OFFERS_JOINING()
     {
-        var flow = AdoptingWithCollision("gemma-4-e4b-it", kind: Gatto.Roles.IdClash.CannotTell);
+        var flow = AdoptingWithCollision("gemma-4-e4b-it", kind: Gatto.Roles.Models.IdClash.CannotTell);
 
         var screen = Assert.IsType<WizardScreen.Choice>(flow.Answer("0"));
 
@@ -1279,7 +1279,7 @@ ew.gguf", 4_000_000_000, null)],
     [Fact]
     public void AN_UNREADABLE_HOLDER_IS_NOT_OFFERED_A_JOIN()
     {
-        var flow = AdoptingWithCollision("gemma-4-e4b-it", kind: Gatto.Roles.IdClash.HolderUnreadable);
+        var flow = AdoptingWithCollision("gemma-4-e4b-it", kind: Gatto.Roles.Models.IdClash.HolderUnreadable);
 
         var screen = Assert.IsType<WizardScreen.Choice>(flow.Answer("0"));
 
@@ -1290,7 +1290,7 @@ ew.gguf", 4_000_000_000, null)],
     [Fact]
     public void ANSWERING_THE_JOIN_RECORDS_THE_SAME_INTENT_AS_THE_PROVEN_CASE()
     {
-        var flow = AdoptingWithCollision("gemma-4-e4b-it", kind: Gatto.Roles.IdClash.CannotTell);
+        var flow = AdoptingWithCollision("gemma-4-e4b-it", kind: Gatto.Roles.Models.IdClash.CannotTell);
         flow.Answer("0");
 
         flow.Answer(SetupFlow.AddAsFile);
@@ -1309,7 +1309,7 @@ ew.gguf", 4_000_000_000, null)],
             Llama = @"C:\llama\llama-server.exe",
             Found = [new Gatto.Core.Acquire.FoundModel(@"D:\w\gemma-Q6_K.gguf", 4_000_000_000, null)],
             Colliding = "gemma-4-e4b-it",
-            ClashKind = Gatto.Roles.IdClash.SameModel,
+            ClashKind = Gatto.Roles.Models.IdClash.SameModel,
             Loaded = loaded,
             Context = 8192,
         });
@@ -1410,7 +1410,7 @@ ew.gguf", 4_000_000_000, null)],
     [Fact]
     public void AND_REPLACE_STILL_REPLACES_RATHER_THAN_JOINING()
     {
-        var flow = AdoptingWithCollision("gemma-4-e4b-it", kind: Gatto.Roles.IdClash.CannotTell);
+        var flow = AdoptingWithCollision("gemma-4-e4b-it", kind: Gatto.Roles.Models.IdClash.CannotTell);
         flow.Answer("0");
 
         flow.Answer(SetupFlow.ReplaceModel);
@@ -3060,7 +3060,7 @@ ew.gguf", model.GgufPath);
         var flow = new SetupFlow(new FakeProbes
         {
             Llama = null,
-            Asset = new Gatto.Roles.LlamaAsset(
+            Asset = new Gatto.Roles.Serve.LlamaAsset(
                 "llama-b11071-bin-win-vulkan-x64.zip", null, "an AMD discrete card", "Vulkan"),
             Offer = new EngineFetchOffer(@"C:\Users\you\.gatto\llama\b11071\", null),
         });
@@ -3114,8 +3114,8 @@ ew.gguf", model.GgufPath);
         bool steeredDoor, bool cudaSteer, string mustSay, string mustNotSay)
     {
         var asset = cudaSteer
-            ? new Gatto.Roles.LlamaAsset("llama-cuda.zip", "cudart-cu12.zip", "an NVIDIA adapter", "CUDA")
-            : new Gatto.Roles.LlamaAsset("llama-vulkan.zip", null, "an AMD adapter", "Vulkan");
+            ? new Gatto.Roles.Serve.LlamaAsset("llama-cuda.zip", "cudart-cu12.zip", "an NVIDIA adapter", "CUDA")
+            : new Gatto.Roles.Serve.LlamaAsset("llama-vulkan.zip", null, "an AMD adapter", "Vulkan");
 
         string label;
         if (steeredDoor)
@@ -3158,8 +3158,8 @@ ew.gguf", model.GgufPath);
         bool vcRuntimeAbsent, bool cudaSteer, string mustSay, string mustNotSay)
     {
         var asset = cudaSteer
-            ? new Gatto.Roles.LlamaAsset("llama-cuda.zip", "cudart-cu12.zip", "an NVIDIA adapter", "CUDA")
-            : new Gatto.Roles.LlamaAsset("llama-vulkan.zip", null, "an AMD adapter", "Vulkan");
+            ? new Gatto.Roles.Serve.LlamaAsset("llama-cuda.zip", "cudart-cu12.zip", "an NVIDIA adapter", "CUDA")
+            : new Gatto.Roles.Serve.LlamaAsset("llama-vulkan.zip", null, "an AMD adapter", "Vulkan");
 
         //the steered path is the common case, gatto proposed the build and it will not start
         var flow = AtSteering(new FakeProbes
@@ -3415,7 +3415,7 @@ ew.gguf", model.GgufPath);
 
         //this branch must say where to get the build, and the url is the steering module's own constant, a retyped copy would drift
         Assert.Contains(unreadable,
-            r => r.Text == Gatto.Roles.LlamaAssetSteering.ReleasePage);
+            r => r.Text == Gatto.Roles.Serve.LlamaAssetSteering.ReleasePage);
     }
 
     [Fact]
@@ -3457,7 +3457,7 @@ ew.gguf", model.GgufPath);
             new Gatto.Core.Hardware.HardwareSnapshot(34_359_738_368, 17_179_869_184,
                 unified ? Gatto.Core.Hardware.GpuKind.Integrated : Gatto.Core.Hardware.GpuKind.Discrete,
                 8_589_934_592, vendor), 0, Gatto.Core.Hardware.BudgetBound.None);
-        var asset = Gatto.Roles.LlamaAssetSteering.Choose(hw);
+        var asset = Gatto.Roles.Serve.LlamaAssetSteering.Choose(hw);
 
         //the consent sentence has one home and three screens, and this is the screen a readable machine reaches.
         var flow = new SetupFlow(new FakeProbes
@@ -3623,7 +3623,7 @@ ew.gguf", model.GgufPath);
         {
             //the model already exists, so the only gap is llama.cpp and the flow stops at the engine step.
             Llama = null, Model = true,
-            Asset = new Gatto.Roles.LlamaAsset(
+            Asset = new Gatto.Roles.Serve.LlamaAsset(
                 "llama-b11071-bin-win-vulkan-x64.zip", null, "an AMD discrete card", "Vulkan"),
             Offer = new EngineFetchOffer(@"C:\Users\you\.gatto\llama\b11071\", null),
         });
@@ -3646,7 +3646,7 @@ ew.gguf", model.GgufPath);
         var flow = new SetupFlow(new FakeProbes
         {
             Llama = null, Model = true,
-            Asset = new Gatto.Roles.LlamaAsset(
+            Asset = new Gatto.Roles.Serve.LlamaAsset(
                 "llama-b11071-bin-win-cuda-12.4-x64.zip", "cudart-llama-bin-win-cuda-12.4-x64.zip",
                 "an NVIDIA adapter", "CUDA"),
             Offer = new EngineFetchOffer(@"C:\Users\you\.gatto\llama\b11071\", null),

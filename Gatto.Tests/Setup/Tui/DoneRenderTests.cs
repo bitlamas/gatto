@@ -20,7 +20,7 @@ public class DoneRenderTests
     private const long Bytes = 18_146_586_624L;   //16.9 GiB, the size the frame shows
 
     //the engine-fetch fixture, pinned release, Vulkan build for an AMD card and the fetch folder. the summary's engine row names all three.
-    private static readonly string Pin = Gatto.Roles.LlamaAssetSteering.PinnedRelease;
+    private static readonly string Pin = Gatto.Roles.Serve.LlamaAssetSteering.PinnedRelease;
     private static readonly string EngineZip = $"llama-{Pin}-bin-win-vulkan-x64.zip";
     private static readonly string EngineInto = $@"C:\Users\you\.gatto\llama\{Pin}\";
 
@@ -37,7 +37,7 @@ public class DoneRenderTests
             //an engine on the machine sends the run down the found path, so the fetch path must have none
             Llama = fetchEngine ? null : @"C:\llama\llama-b11071-bin-win-vulkan-x64\llama-server.exe",
             Asset = fetchEngine
-                ? new Gatto.Roles.LlamaAsset(EngineZip, null, "an AMD discrete card", "Vulkan")
+                ? new Gatto.Roles.Serve.LlamaAsset(EngineZip, null, "an AMD discrete card", "Vulkan")
                 : new WizardProbes().Asset,
             Offer = fetchEngine
                 ? new EngineFetchOffer(EngineInto, new EnginePair(

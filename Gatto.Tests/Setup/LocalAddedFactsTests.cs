@@ -35,7 +35,7 @@ public class LocalAddedFactsTests : IDisposable
         Assert.Null(WriteSetApply.Apply(_home, new WriteSet
         {
             CreateModel = new WriteSet.Model(gguf, Port: 1235, Context: 8192,
-                Source: new Gatto.Roles.ModelSource("unsloth/tiny-GGUF", "tiny.gguf")),
+                Source: new Gatto.Roles.Models.ModelSource("unsloth/tiny-GGUF", "tiny.gguf")),
             Projector = projector,
         }, out var id));
 

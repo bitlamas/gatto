@@ -128,7 +128,7 @@ public class ServeNoticeTests
     [Theory]
     [InlineData("Stopped", "qwen3.6-35b", true, "llama-server stopped · qwen3.6-35b unloaded")]
     [InlineData("Stopped", "qwen3.6-35b", false, "llama-server stopped · qwen3.6-35b unloaded")]
-    [InlineData("Stopped", Gatto.Roles.ServeManager.UnknownModelId, true, "llama-server stopped")]
+    [InlineData("Stopped", Gatto.Roles.Serve.ServeManager.UnknownModelId, true, "llama-server stopped")]
     [InlineData("NotServing", null, true,
         "gatto won't close a server gatto didn't start.")]
     [InlineData("Stale", "p", true,
@@ -137,7 +137,7 @@ public class ServeNoticeTests
         "that pid isn't gatto's server anymore, so gatto is leaving it alone.")]
     public void The_line_after_a_quit_names_only_the_stop_that_happened(string result, string? model, bool hadServer, string expected)
     {
-        var line = ServeLines.AtExit.AfterStop(new(Enum.Parse<Gatto.Roles.ServeManager.StopResult>(result), model, 6000, null), hadServer, GlyphSet.Unicode);
+        var line = ServeLines.AtExit.AfterStop(new(Enum.Parse<Gatto.Roles.Serve.ServeManager.StopResult>(result), model, 6000, null), hadServer, GlyphSet.Unicode);
         Assert.NotNull(line);
         Assert.Equal(expected, line.Text);
         Assert.False(line.WentWrong);
@@ -149,12 +149,12 @@ public class ServeNoticeTests
     [InlineData("Stale")]
     [InlineData("NotOurs")]
     public void No_line_when_the_session_had_no_server_and_nothing_stopped(string result) =>
-        Assert.Null(ServeLines.AtExit.AfterStop(new(Enum.Parse<Gatto.Roles.ServeManager.StopResult>(result), "p", 6000, null), sessionHadServer: false, GlyphSet.Unicode));
+        Assert.Null(ServeLines.AtExit.AfterStop(new(Enum.Parse<Gatto.Roles.Serve.ServeManager.StopResult>(result), "p", 6000, null), sessionHadServer: false, GlyphSet.Unicode));
 
     [Fact]
     public void A_failed_kill_went_wrong_and_names_the_pid_and_the_way_out()
     {
-        var line = ServeLines.AtExit.AfterStop(new(Gatto.Roles.ServeManager.StopResult.KillFailed, "p", 6000, "Access is denied."), sessionHadServer: false, GlyphSet.Unicode);
+        var line = ServeLines.AtExit.AfterStop(new(Gatto.Roles.Serve.ServeManager.StopResult.KillFailed, "p", 6000, "Access is denied."), sessionHadServer: false, GlyphSet.Unicode);
         Assert.NotNull(line);
         Assert.True(line.WentWrong);
         Assert.Equal("could not stop llama-server, pid 6000: Access is denied. Stop it with gatto serve stop, or end it in Task Manager.", line.Text);

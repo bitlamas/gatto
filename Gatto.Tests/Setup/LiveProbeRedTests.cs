@@ -81,7 +81,7 @@ public class LiveProbeRedTests : IDisposable
         //these are the audition's own first two steps, reading the config and loading the model
         var config = Gatto.Core.Home.GattoConfig.Load(_home);
         Assert.Equal(@"C:\llama\llama-server.exe", config.LlamaServer);
-        var model = Gatto.Roles.Model.Load(Path.Combine(_home, "models"), modelId!);
+        var model = Gatto.Roles.Models.Model.Load(Path.Combine(_home, "models"), modelId!);
         Assert.Equal(4096, model.Profile.Context);
     }
 
@@ -160,7 +160,7 @@ public class LiveProbeRedTests : IDisposable
         var exited = Assert.IsType<CheckStumble.Exited>(LiveSetupProbes.StumbleFrom(died, _home));
         Assert.Equal(["boom"], exited.LastLines);
         //the log path comes from ServeManager, this file doesn't spell it again
-        Assert.Equal(Gatto.Roles.ServeManager.LogPathFor(_home), exited.LogPath);
+        Assert.Equal(Gatto.Roles.Serve.ServeManager.LogPathFor(_home), exited.LogPath);
 
         Assert.Empty(Assert.IsType<CheckStumble.Stopped>(
             LiveSetupProbes.StumbleFrom(stopped, _home)).LastLines);

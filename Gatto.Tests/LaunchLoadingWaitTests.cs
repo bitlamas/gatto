@@ -1,5 +1,5 @@
 using Gatto.Cli;
-using Gatto.Roles;
+using Gatto.Roles.Serve;
 using Gatto.Terminal;
 using Gatto.Tests.Fakes;
 

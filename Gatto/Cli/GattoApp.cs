@@ -16,6 +16,8 @@ using Gatto.Repl.Input;
 using Gatto.Repl.Render;
 using Gatto.Roles;
 using Gatto.Roles.Agents;
+using Gatto.Roles.Models;
+using Gatto.Roles.Serve;
 using Gatto.Terminal;
 
 namespace Gatto.Cli;
@@ -903,8 +905,8 @@ public static class GattoApp
 
         //hoisted above switchRole and switchModel, so their rebuilds read the toggle state and the footer keeps the capability
         var reasoningMap = model?.Profile.Thinking ?? endpoint.Thinking;
-        var binaryOn = Gatto.Roles.Thinking.BinaryOnLevel(reasoningMap);   //the map's single on-level, for a Toggle model only
-        var thinkCap = Gatto.Roles.Thinking.CapabilityOf(reasoningMap, launchServing?.Capability ?? ThinkCapability.None);   //the map decides: one on-level is a Toggle, two or more are Levels, and no map falls to the template sniff
+        var binaryOn = Gatto.Roles.Models.Thinking.BinaryOnLevel(reasoningMap);   //the map's single on-level, for a Toggle model only
+        var thinkCap = Gatto.Roles.Models.Thinking.CapabilityOf(reasoningMap, launchServing?.Capability ?? ThinkCapability.None);   //the map decides: one on-level is a Toggle, two or more are Levels, and no map falls to the template sniff
 
         //a Toggle model stores its choice in the same ModelDefaultEffort slot, on as the map's on-level and off as None
         bool DefaultThinkOn(Model? m) =>
@@ -913,7 +915,7 @@ public static class GattoApp
 
         //the seam /effort, /role and /model drive: map bodies when there is a map, the generic enable_thinking kwarg otherwise
         (JsonElement? Body, string? Suffix) ToggleEntry(bool on) => binaryOn is { } onLevel
-            ? Gatto.Roles.Thinking.ToggleBody(reasoningMap, onLevel, on)   //map bodies, and ToggleBody guards an empty on-body
+            ? Gatto.Roles.Models.Thinking.ToggleBody(reasoningMap, onLevel, on)   //map bodies, and ToggleBody guards an empty on-body
             : (ThinkCapabilitySniff.EnableThinkingBody(on), null);
         string ApplyToggle(bool on)
         {
@@ -1038,8 +1040,8 @@ public static class GattoApp
                 lastComposedSources = comp.Sources;
                 //re-derived for the new model by the launch's own expression, or a switch between shapes keeps the old map's toggle or levels
                 reasoningMap = model?.Profile.Thinking ?? endpoint.Thinking;
-                binaryOn = Gatto.Roles.Thinking.BinaryOnLevel(reasoningMap);
-                thinkCap = Gatto.Roles.Thinking.CapabilityOf(reasoningMap, launchServing?.Capability ?? ThinkCapability.None);
+                binaryOn = Gatto.Roles.Models.Thinking.BinaryOnLevel(reasoningMap);
+                thinkCap = Gatto.Roles.Models.Thinking.CapabilityOf(reasoningMap, launchServing?.Capability ?? ThinkCapability.None);
                 if (thinkCap == ThinkCapability.Toggle) { thinkOn = DefaultThinkOn(model); ApplyToggle(thinkOn); }
                 else
                 {
@@ -1141,9 +1143,9 @@ public static class GattoApp
 
             //re-derived for the new model, or a switch between shapes would re-apply the old map's toggle body over the new one
             reasoningMap = model.Profile.Thinking ?? endpoint.Thinking;
-            binaryOn = Gatto.Roles.Thinking.BinaryOnLevel(reasoningMap);
+            binaryOn = Gatto.Roles.Models.Thinking.BinaryOnLevel(reasoningMap);
             //a failed probe leaves a model with no map inert, a model with a map is decided by the map either way
-            thinkCap = Gatto.Roles.Thinking.CapabilityOf(reasoningMap, loaded?.Capability ?? ThinkCapability.None);   //before the ApplyToggle below, and a map decides the capability whatever the server's template says
+            thinkCap = Gatto.Roles.Models.Thinking.CapabilityOf(reasoningMap, loaded?.Capability ?? ThinkCapability.None);   //before the ApplyToggle below, and a map decides the capability whatever the server's template says
             //the incoming model's own persisted default decides what thinkOn starts as
             if (thinkCap == ThinkCapability.Toggle) { thinkOn = DefaultThinkOn(model); ApplyToggle(thinkOn); }
 
@@ -1525,7 +1527,7 @@ public static class GattoApp
             {
                 try
                 {
-                    return [.. Gatto.Roles.Model.Load(modelsDir, model.Id).Profile.Files
+                    return [.. Gatto.Roles.Models.Model.Load(modelsDir, model.Id).Profile.Files
                         .Select(f => (f.Quant ?? Path.GetFileNameWithoutExtension(f.Path), f.Active))];
                 }
                 //a profile that went unloadable mid-session returns an empty list, this must not take the REPL down
@@ -1534,17 +1536,17 @@ public static class GattoApp
             //the bodies live in QuantEdit, which refuses before it asks (the confirm needs the wizard prompter and the serving state here)
             switchQuant: !ServedHere() || model is null ? null : (Func<string, string>)(name =>
                 QuantEdit.Switch(modelsDir, model, name,
-                    () => QuantServing(home, model, config) is Gatto.Roles.ServingState.ServingThis,
+                    () => QuantServing(home, model, config) is Gatto.Roles.Serve.ServingState.ServingThis,
                     Confirming(prompter),
                     //the same stop, start and restore the model switch uses, so there is one copy of the hardest half
                     restart: (previous, reloaded) => SwapServerAsync(
-                        new Gatto.Roles.ServeManager(home, ServerBinaryFor(reloaded, config)),
+                        new Gatto.Roles.Serve.ServeManager(home, ServerBinaryFor(reloaded, config)),
                         previous, reloaded, warn.Warn,
                         glyphs).GetAwaiter().GetResult())),
             //forgetting a file is its own command, the switch only changes which one is active
             removeQuant: !ServedHere() || model is null ? null : (Func<string, string>)(name =>
                 QuantEdit.Remove(modelsDir, model, name,
-                    () => QuantServing(home, model, config) is Gatto.Roles.ServingState.ServingThis,
+                    () => QuantServing(home, model, config) is Gatto.Roles.Serve.ServingState.ServingThis,
                     Confirming(prompter))))
 ;
         var replExit = await repl.RunAsync(CancellationToken.None);
@@ -1554,7 +1556,7 @@ public static class GattoApp
         if (config.StopServerOnExit && ServedHere() && model is not null && launchBaseUrl is not null)
         {
             var stopped = ServeLines.AtExit.AfterStop(
-                new ServeManager(home, config.LlamaServer ?? "").Stop(Gatto.Roles.NullServeListener.Instance),
+                new ServeManager(home, config.LlamaServer ?? "").Stop(Gatto.Roles.Serve.NullServeListener.Instance),
                 serverAlreadyUp, glyphs);
             //a failed stop is a real failure, so it goes to the warning sink and no server line is shown
             if (stopped is { WentWrong: true }) warn.Warn(stopped.Text);
@@ -1638,7 +1640,7 @@ public static class GattoApp
     {
         try
         {
-            var model = Gatto.Roles.Model.Load(Path.Combine(home, "models"), modelId);
+            var model = Gatto.Roles.Models.Model.Load(Path.Combine(home, "models"), modelId);
             return Gatto.Core.Acquire.ModelDiscovery.SetBytesOrNull(model.Profile.ActivePath) is { } bytes
                 ? SizeWords.Gb(bytes, approx: true)
                 : null;
@@ -1881,11 +1883,11 @@ public static class GattoApp
 
     //the previous model is restarted at most once, and false leaves the caller's session on the model it already had
     private static async Task<bool> SwapServerAsync(
-        ServeManager manager, Gatto.Roles.Model? previous, Gatto.Roles.Model incoming, Action<string> say,
+        ServeManager manager, Gatto.Roles.Models.Model? previous, Gatto.Roles.Models.Model incoming, Action<string> say,
         Gatto.Terminal.GlyphSet? glyphs, string? cannotRestore = null)
     {
         //the stop's rows go to NullServeListener, this path says what happened in its own sentence below
-        await manager.StopAsync(Gatto.Roles.NullServeListener.Instance, CancellationToken.None).ConfigureAwait(false);
+        await manager.StopAsync(Gatto.Roles.Serve.NullServeListener.Instance, CancellationToken.None).ConfigureAwait(false);
 
         if (await AutoServeAsk.StartAndWaitAsync(manager, incoming, say, CancellationToken.None, glyphs ?? Gatto.Terminal.GlyphSet.Unicode)
             .ConfigureAwait(false)) return true;
@@ -1907,9 +1909,9 @@ public static class GattoApp
     }
 
     //the model a failed /model swap puts back, loaded from the id the server held. a model that will not load returns the sentence to say in its place
-    internal static (Gatto.Roles.Model? Model, string? CannotRestore) RestoreTarget(string modelsDir, string servedId)
+    internal static (Gatto.Roles.Models.Model? Model, string? CannotRestore) RestoreTarget(string modelsDir, string servedId)
     {
-        try { return (Gatto.Roles.Model.Load(modelsDir, servedId), null); }
+        try { return (Gatto.Roles.Models.Model.Load(modelsDir, servedId), null); }
         catch (GattoConfigException ex)
         {
             return (null, $"couldn't load {servedId} to put it back: {ex.Message}. nothing is serving now. "
@@ -1949,7 +1951,7 @@ public static class GattoApp
 
         //the screen offers to stop a running server, advice to run gatto serve stop afterwards is unfollowable once gatto is gone
         ServeManager? serve = null;
-        Gatto.Roles.RunningInfo? running = null;
+        Gatto.Roles.Serve.RunningInfo? running = null;
         try
         {
             var cfg = GattoConfig.Load(home);
@@ -1966,9 +1968,9 @@ public static class GattoApp
             var config = GattoConfig.Load(home);
             llamaServer = config.LlamaServer;
             var modelsDir = Path.Combine(home, "models");
-            foreach (var id in Gatto.Roles.Model.ListIds(modelsDir))
+            foreach (var id in Gatto.Roles.Models.Model.ListIds(modelsDir))
             {
-                try { models.Add((id, Gatto.Roles.Model.Load(modelsDir, id).Profile.ActivePath)); }
+                try { models.Add((id, Gatto.Roles.Models.Model.Load(modelsDir, id).Profile.ActivePath)); }
                 catch (GattoConfigException) { } //a model whose profile will not load is skipped rather than failing the whole map
             }
         }
@@ -2163,7 +2165,7 @@ public static class GattoApp
         var cwd = Environment.CurrentDirectory;
         using var http = DoctorClient(probes.Transport);
         //the running-server row reads through ServeManager.DescribeRunning, which never spawns. an unreadable config leaves it null, and the config checks report that
-        Func<Gatto.Roles.RunningInfo?>? describe = null;
+        Func<Gatto.Roles.Serve.RunningInfo?>? describe = null;
         var configTheme = "auto";
         try
         {
@@ -2207,20 +2209,20 @@ public static class GattoApp
     }
 
     //whether gatto serves this endpoint and whose window sizes the session: a folder's port, auto_serve and context count only on the endpoint gatto serves
-    internal static (bool GattoServes, int? Window) ServingFor(bool servedHere, Gatto.Roles.Model? model,
+    internal static (bool GattoServes, int? Window) ServingFor(bool servedHere, Gatto.Roles.Models.Model? model,
         EndpointConfig endpoint, string? baseUrl) =>
         servedHere && model is not null
             ? (baseUrl is not null, model.Profile.Context)
             : (false, endpoint.Context);
 
     //the binary a server starts with, the model's override or else the config's. a manager built only to read takes the config's own
-    private static string ServerBinaryFor(Gatto.Roles.Model? model, GattoConfig config) =>
+    private static string ServerBinaryFor(Gatto.Roles.Models.Model? model, GattoConfig config) =>
         model?.Profile.LlamaServer ?? config.LlamaServer ?? "";
 
     //is this model the one the running server holds, asked once so a switch names it. the binary does not decide this, Serving reads serve.json
 
-    private static Gatto.Roles.ServingState QuantServing(
-        string home, Gatto.Roles.Model model, GattoConfig config) =>
-        new Gatto.Roles.ServeManager(home, ServerBinaryFor(model, config)).Serving(model.Id);
+    private static Gatto.Roles.Serve.ServingState QuantServing(
+        string home, Gatto.Roles.Models.Model model, GattoConfig config) =>
+        new Gatto.Roles.Serve.ServeManager(home, ServerBinaryFor(model, config)).Serving(model.Id);
 
 }

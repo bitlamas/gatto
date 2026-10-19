@@ -121,9 +121,9 @@ internal sealed class WizardProbes : ISetupProbes
     public TypedIdOutcome EvaluateTypedId(string id) =>
         Typed?.Invoke(id) ?? new TypedIdOutcome.Unreachable(false);
     //the asset a test can steer. the default has no cudart companion, so the complaint about it is hidden from every fake
-    public Gatto.Roles.LlamaAsset? Asset { get; init; } = new("z.zip", null, "a graphics card", "Vulkan");
+    public Gatto.Roles.Serve.LlamaAsset? Asset { get; init; } = new("z.zip", null, "a graphics card", "Vulkan");
 
-    public Gatto.Roles.LlamaAsset? ChooseLlamaAsset() => Asset;
+    public Gatto.Roles.Serve.LlamaAsset? ChooseLlamaAsset() => Asset;
     //the fetch offer this fake's machine would get. null means the browser-steered screen, so a test about the fetch sets it
     public EngineFetchOffer? Offer { get; init; }
 
@@ -253,7 +253,7 @@ internal sealed class WizardProbes : ISetupProbes
 
     public Gatto.Core.Acquire.ProbeResult VerifyLlamaServer(string p) =>
         Verify?.Invoke(p) ?? new(Gatto.Core.Acquire.ProbeShape.ClassicServer, "d",
-            Build: Gatto.Roles.LlamaAssetSteering.PinnedRelease);
+            Build: Gatto.Roles.Serve.LlamaAssetSteering.PinnedRelease);
     public int ContextFor(string p) => 8192;
     //the default check result reports its facts, a bare verdict renders without the stamp block. set it for a failure outcome
     public AuditionCheck Audition { get; init; } =
@@ -367,7 +367,7 @@ internal sealed class WizardProbes : ISetupProbes
     public string? Colliding { get; init; }
 
     //which kind of id clash the collision is. the default is two different models, which is the clash screen with no add offer
-    public Gatto.Roles.IdClash ClashKind { get; init; } = Gatto.Roles.IdClash.DifferentModel;
+    public Gatto.Roles.Models.IdClash ClashKind { get; init; } = Gatto.Roles.Models.IdClash.DifferentModel;
     public string? ExistingEndpoint { get; init; }
     //per-path answers, for when two rows must be marked differently. the map wins over the scalar, so existing fixtures still mark both
     public Dictionary<string, string> Existing { get; } = new(StringComparer.OrdinalIgnoreCase);
@@ -403,8 +403,8 @@ internal sealed class WizardProbes : ISetupProbes
         return Existing.TryGetValue(ggufPath, out var id) ? id : ExistingModel;
     }
     //the verdict for the id clash. the held id comes from Colliding and its kind from ClashKind, with no collision answering free
-    public (Gatto.Roles.IdClash Kind, string? Id) ClashFor(string ggufPath, string? incomingRepoId) =>
-        Colliding is { Length: > 0 } ? (ClashKind, Colliding) : (Gatto.Roles.IdClash.Free, null);
+    public (Gatto.Roles.Models.IdClash Kind, string? Id) ClashFor(string ggufPath, string? incomingRepoId) =>
+        Colliding is { Length: > 0 } ? (ClashKind, Colliding) : (Gatto.Roles.Models.IdClash.Free, null);
 
     public string? ModelForHubRow(string repoId, string ggufFileName)
     {

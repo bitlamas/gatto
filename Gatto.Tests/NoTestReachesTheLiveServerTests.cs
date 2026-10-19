@@ -19,7 +19,7 @@ public class NoTestReachesTheLiveServerTests
             "an unknown role, a role with no model at all, an eagerly-validated bad thinking-map name, " +
             "a role that selects the 'cloudy' endpoint instead of 'local', the backstop test (crashes on " +
             "EnsureInitialized's directory scaffold before config is ever used for a connection), and " +
-            "ModelSwitchBaseUrl, which only ever feeds Gatto.Roles.ModelSwitch.Switch's pure core with a " +
+            "ModelSwitchBaseUrl, which only ever feeds Gatto.Roles.Models.ModelSwitch.Switch's pure core with a " +
             "synthesized probe result, never a live HTTP call — each verified individually in the fix"),
         ("GattoConfigWriterTests.cs", "no HttpClient, no GattoApp.RunAsync, no ServeProbe — config-shape assertions only"),
         ("ModelSwitchTests.cs", "no HttpClient, no GattoApp.RunAsync, no ServeProbe — config-shape assertions only"),

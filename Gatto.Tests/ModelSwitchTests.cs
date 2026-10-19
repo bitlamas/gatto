@@ -2,6 +2,7 @@ using System.Text.Json;
 using Gatto.Core.Client;
 using Gatto.Core.Home;
 using Gatto.Roles;
+using Gatto.Roles.Models;
 
 namespace Gatto.Tests;
 

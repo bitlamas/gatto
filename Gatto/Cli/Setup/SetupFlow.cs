@@ -1199,14 +1199,14 @@ internal sealed class SetupFlow(ISetupProbes probes)
             QuantFromNowKey => AnswerQuantFromNow(answer),
             ProjectorKey => AnswerProjector(answer),
             MoveKey => AnswerMove(answer),
-            MovePathKey => AnswerMovePath(Gatto.Roles.LlamaAssetSteering.NormalizePath(answer)),
+            MovePathKey => AnswerMovePath(Gatto.Roles.Serve.LlamaAssetSteering.NormalizePath(answer)),
             CustomBuildKey => AnswerCustomBuild(answer),
             CustomBuildPathKey =>
-                AnswerCustomBuildPath(Gatto.Roles.LlamaAssetSteering.NormalizePath(answer)),
+                AnswerCustomBuildPath(Gatto.Roles.Serve.LlamaAssetSteering.NormalizePath(answer)),
             ModelPickKey => FinishConnect(_connectEndpointName!, answer),
             ModelNameKey => FinishConnect(_connectEndpointName!, answer.Trim()),
             DiscoveredKey => AnswerDiscovered(answer),
-            ScanPathKey => DiscoverTyped(Gatto.Roles.LlamaAssetSteering.NormalizePath(answer)),
+            ScanPathKey => DiscoverTyped(Gatto.Roles.Serve.LlamaAssetSteering.NormalizePath(answer)),
             SearchKey => AnswerSearch(answer),
             ShelfLoadingKey => AnswerShelfLoading(answer),
             //route the typed-id ask through the same classifier, it gets the path handling too
@@ -1245,9 +1245,9 @@ internal sealed class SetupFlow(ISetupProbes probes)
             //one arm serves every engine screen with a typed path, one deed: check the exe the user pointed at. the guard tests typed, so a stray key falls to the throw
             (SteerKey or FoundKey or ConsentKey or FallbackKey or FailedKey)
                 when ShelfControls.Untyped(answer) is { } typedPath =>
-                VerifyLlama(Gatto.Roles.LlamaAssetSteering.NormalizePath(typedPath)),
+                VerifyLlama(Gatto.Roles.Serve.LlamaAssetSteering.NormalizePath(typedPath)),
             //the LlamaPathKey screen is an ask, its answer is free text and needs no unwrap
-            LlamaPathKey => VerifyLlama(Gatto.Roles.LlamaAssetSteering.NormalizePath(answer)),
+            LlamaPathKey => VerifyLlama(Gatto.Roles.Serve.LlamaAssetSteering.NormalizePath(answer)),
 
             //a caller answering when nothing waits is a caller bug, so this arm throws. the message names the screen, a waiting screen with no dispatch arm also arrives here
             _ => throw new InvalidOperationException(
@@ -1668,7 +1668,7 @@ internal sealed class SetupFlow(ISetupProbes probes)
         gattoFetches,
         offer.Pick.ZipName,
         offer.Assets is { } a ? SizeWords.Auto(a.Server.Size) : null,
-        Gatto.Roles.LlamaAssetSteering.PinnedRelease,
+        Gatto.Roles.Serve.LlamaAssetSteering.PinnedRelease,
         offer.Into,
         //take the companion from the pick rather than the release read, a runtime is a fact about the machine. the offline arm has no release read to consult
         offer.Pick.CudartZipName,
@@ -1703,7 +1703,7 @@ internal sealed class SetupFlow(ISetupProbes probes)
         "Use a server you start yourself, LM Studio, Ollama, or another";
 
     //the one home for the opening fact of why this machine gets this build, both variables highlighted
-    private static WizardRow SteeringRow(Gatto.Roles.LlamaAsset asset) =>
+    private static WizardRow SteeringRow(Gatto.Roles.Serve.LlamaAsset asset) =>
         new($"According to your hardware, {asset.HardwareFact}, you need the {asset.BuildName} build.",
             Highlight: [asset.HardwareFact, asset.BuildName]);
 
@@ -1718,7 +1718,7 @@ internal sealed class SetupFlow(ISetupProbes probes)
             //the screen names the exe that actually ran, and a use-it writes that one.
             if (result.Shape is Gatto.Core.Acquire.ProbeShape.ClassicServer && result.Build is { } build)
                 return Found(result.Ran ?? engine.Path, build,
-                    Gatto.Roles.LlamaAssetSteering.Classify(build, engine.GattoFolder));
+                    Gatto.Roles.Serve.LlamaAssetSteering.Classify(build, engine.GattoFolder));
 
             //an exe that fails verification is not a found engine, the sweep is gatto's guess. a skipped engine goes into a note instead of a screen
             _narrate.Add(new WizardScreen.Info(EngineSkippedKey,
@@ -1743,15 +1743,15 @@ internal sealed class SetupFlow(ISetupProbes probes)
     };
 
     //the found screen states three facts and offers the two roads out. it asks nothing about whether the engine exists, the title already asks which build to run
-    private WizardScreen Found(string path, string build, Gatto.Roles.LlamaAssetSteering.FoundState state)
+    private WizardScreen Found(string path, string build, Gatto.Roles.Serve.LlamaAssetSteering.FoundState state)
     {
         //hold the exe the screen named, a second sweep at answer time could disagree with the row the user saw
         _foundEngine = path;
         //hold the build for the same reason as the path, the summary must report the build the user saw
         _foundBuild = build;
 
-        var pin = Gatto.Roles.LlamaAssetSteering.PinnedRelease;
-        var name = Gatto.Roles.LlamaAssetSteering.ReleaseName(build);
+        var pin = Gatto.Roles.Serve.LlamaAssetSteering.PinnedRelease;
+        var name = Gatto.Roles.Serve.LlamaAssetSteering.ReleaseName(build);
 
         //build the door row once for all four arms, so one ruled label cannot drift into four spellings.
         ChoiceOption door = new(ForkConnect, ConnectDoorLabel);
@@ -1760,23 +1760,23 @@ internal sealed class SetupFlow(ISetupProbes probes)
         //keep the first option as the default, so the order carries the choice and no flag can disagree with the rows
         (string Tail, IReadOnlyList<ChoiceOption> Options, string? Note) arm = state switch
         {
-            Gatto.Roles.LlamaAssetSteering.FoundState.Exact =>
+            Gatto.Roles.Serve.LlamaAssetSteering.FoundState.Exact =>
                 ($" {Glyphs.Dot} the release gatto is tested with",
                  (IReadOnlyList<ChoiceOption>)[use, door], null),
 
-            Gatto.Roles.LlamaAssetSteering.FoundState.Newer =>
+            Gatto.Roles.Serve.LlamaAssetSteering.FoundState.Newer =>
                 ($", newer than {pin}, the release gatto is tested with",
                  [use, new ChoiceOption(FoundFetch, $"Fetch {pin}, the tested release, instead"), door], null),
 
             //state the two builds and leave the reader to draw the relation. a sentence that calls one older reads as a verdict on a build the user chose.
-            Gatto.Roles.LlamaAssetSteering.FoundState.Older =>
+            Gatto.Roles.Serve.LlamaAssetSteering.FoundState.Older =>
                 ($" {Glyphs.Dot} {pin}, the release gatto is tested with",
                  [new ChoiceOption(FoundFetch, $"Fetch {pin}, the tested release"),
                   new ChoiceOption(FoundUse, "Keep the one that's here"), door],
                  "Newer models sometimes need a newer engine, the shelf's \"runs on this machine\" "
                  + "answers assume the tested release."),
 
-            Gatto.Roles.LlamaAssetSteering.FoundState.Fork =>
+            Gatto.Roles.Serve.LlamaAssetSteering.FoundState.Fork =>
                 ($", not a release gatto recognises; the tested one is {pin}",
                  [use, new ChoiceOption(FoundFetch, $"Fetch {pin}, the tested release, instead"), door], null),
 
@@ -1823,7 +1823,7 @@ internal sealed class SetupFlow(ISetupProbes probes)
     }
 
     //what a fetch of the pinned release would be here, or null when there is none. a null asset means GitHub did not answer
-    private sealed record Offer(Gatto.Roles.LlamaAsset Pick, string Into, EnginePair? Assets);
+    private sealed record Offer(Gatto.Roles.Serve.LlamaAsset Pick, string Into, EnginePair? Assets);
 
     //ask whether this machine can be fetched for, the only machine without a fetch is one gatto cannot read, it can name no build
     private Offer? FetchableOffer() =>
@@ -1944,7 +1944,7 @@ internal sealed class SetupFlow(ISetupProbes probes)
             EngineFacts.Row("fetched", zipName + $" {Glyphs.Dot} digest matched", lift: zipName),
             EngineFacts.Row("into", offer.Into),
             EngineFacts.Row(EngineFacts.Checked,
-                $"{Gatto.Roles.EngineSearch.ExeName} ran, the path gatto writes to its config is "
+                $"{Gatto.Roles.Serve.EngineSearch.ExeName} ran, the path gatto writes to its config is "
                 + "the .exe that ran"),
             //keep the closing blank, without it the last fact sits directly on the footer rule
             "",
@@ -2018,7 +2018,7 @@ internal sealed class SetupFlow(ISetupProbes probes)
                 "",
                 //name where to get a build, this branch has the least to go on. the url comes straight from LlamaAssetSteering
                 new("All builds:", RowTone.Aside),
-                new(Gatto.Roles.LlamaAssetSteering.ReleasePage, RowTone.Aside),
+                new(Gatto.Roles.Serve.LlamaAssetSteering.ReleasePage, RowTone.Aside),
                 "",
                 "Once you're done, type the path below.",
             ]),
@@ -2029,7 +2029,7 @@ internal sealed class SetupFlow(ISetupProbes probes)
 
     //the one home for the path rule, shared by the three screens that ask for a path.
     private static string? LlamaPathComplaint(string typed) =>
-        Gatto.Roles.LlamaAssetSteering.NormalizePath(typed).Length == 0
+        Gatto.Roles.Serve.LlamaAssetSteering.NormalizePath(typed).Length == 0
             ? "Paste the path to llama-server.exe"
             : null;
 
@@ -2099,7 +2099,7 @@ internal sealed class SetupFlow(ISetupProbes probes)
         IReadOnlyList<WizardRow> body =
         [
             //accent the exe name inside the sentence, it is the word to look for, and the highlight skips a span that is absent
-            new WizardRow(sentence, Highlight: [Gatto.Roles.EngineSearch.ExeName], Glyph: RowGlyph.Bad),
+            new WizardRow(sentence, Highlight: [Gatto.Roles.Serve.EngineSearch.ExeName], Glyph: RowGlyph.Bad),
             "",
             EngineFacts.Row(EngineFacts.Tested, tested),
         ];
@@ -2385,7 +2385,7 @@ internal sealed class SetupFlow(ISetupProbes probes)
         //treat an empty answer as no folder, accepting it would set an empty root as a Writes intent and the scaffold writes it
         if (string.IsNullOrWhiteSpace(typed)) return ModelConsent(_modelOffer!);
 
-        var root = Gatto.Roles.LlamaAssetSteering.NormalizePath(typed);
+        var root = Gatto.Roles.Serve.LlamaAssetSteering.NormalizePath(typed);
         var offer = _modelOffer!;
 
         if (TooSmall(offer, root) is { } refusal)
@@ -3453,7 +3453,7 @@ internal sealed class SetupFlow(ISetupProbes probes)
             return Emit(new WizardScreen.Ask(
                 ScanPathKey,
                 "Which folder should gatto look in?",
-                Validate: t => Gatto.Roles.LlamaAssetSteering.NormalizePath(t).Length == 0 ? "Type a folder path" : null,
+                Validate: t => Gatto.Roles.Serve.LlamaAssetSteering.NormalizePath(t).Length == 0 ? "Type a folder path" : null,
                 Placeholder: @"Type or paste the folder, e.g. C:\models"),
                 ScanPathKey);
 
@@ -3475,7 +3475,7 @@ internal sealed class SetupFlow(ISetupProbes probes)
     {
         if (Gatto.Cli.Setup.Tui.TypedDoor.Classify(typed) == Gatto.Cli.Setup.Tui.DoorInput.Address) return AnswerAddress(typed);
         if (Gatto.Cli.Setup.Tui.TypedDoor.Classify(typed) == Gatto.Cli.Setup.Tui.DoorInput.Path)
-            return DiscoverTyped(Gatto.Roles.LlamaAssetSteering.NormalizePath(typed));
+            return DiscoverTyped(Gatto.Roles.Serve.LlamaAssetSteering.NormalizePath(typed));
 
         return AnswerTypedId(typed);
     }
@@ -3843,7 +3843,7 @@ internal sealed class SetupFlow(ISetupProbes probes)
 
         //a wrapped answer from the door is the path, normalize it with the shared rule. an empty answer falls through to the rescan and does nothing
         if (ShelfControls.Untyped(key) is { } door
-            && Gatto.Roles.LlamaAssetSteering.NormalizePath(door) is { Length: > 0 } typed)
+            && Gatto.Roles.Serve.LlamaAssetSteering.NormalizePath(door) is { Length: > 0 } typed)
             return AnswerLandedPath(typed);
 
         var rescan = probes.Scan(null);
@@ -4582,7 +4582,7 @@ internal sealed class SetupFlow(ISetupProbes probes)
 
         //the typed answer is a folder, read it through Untyped (a numeral typed in the door and a row index are the same string)
         if (ShelfControls.Untyped(key) is { } typedAnswer
-            && Gatto.Roles.LlamaAssetSteering.NormalizePath(typedAnswer) is { Length: > 0 } typedRoot)
+            && Gatto.Roles.Serve.LlamaAssetSteering.NormalizePath(typedAnswer) is { Length: > 0 } typedRoot)
             return DiscoverTyped(typedRoot);
 
         //the key names a group of the same scan, and the file is resolved by path: the pane's choice, else the row's file
@@ -4621,10 +4621,10 @@ internal sealed class SetupFlow(ISetupProbes probes)
         {
             _clashingModelId = held;
             //a second quant joins its model in silence, no screen for a question with one real answer
-            if (clash == Gatto.Roles.IdClash.SameModel) return AddFileIntent(model, held);
+            if (clash == Gatto.Roles.Models.IdClash.SameModel) return AddFileIntent(model, held);
 
             //the add option shows only when gatto can't tell, you can't add to a model that won't load
-            return ModelCollision(held, canAdd: clash == Gatto.Roles.IdClash.CannotTell);
+            return ModelCollision(held, canAdd: clash == Gatto.Roles.Models.IdClash.CannotTell);
         }
 
         return OfferMove(model, replace: false);
@@ -4726,7 +4726,7 @@ internal sealed class SetupFlow(ISetupProbes probes)
                 MovePathKey,
                 "Which folder?",
                 //the folder doesn't need to exist, adoption creates it. reject only an empty answer
-                Validate: t => Gatto.Roles.LlamaAssetSteering.NormalizePath(t).Length == 0
+                Validate: t => Gatto.Roles.Serve.LlamaAssetSteering.NormalizePath(t).Length == 0
                     ? "Type or paste a folder path"
                     : null,
                 Placeholder: @"Type or paste the folder, e.g. D:\models"), MovePathKey);
@@ -4921,8 +4921,8 @@ internal sealed class SetupFlow(ISetupProbes probes)
     }
 
     //the repo a model came from, only for the file the user picked. the id and the clash check both read this one answer
-    private Gatto.Roles.ModelSource? SourceOf(FoundModel model) =>
-        Picked is { RowFile: { } file, RowQuant: { } quant } && Answers(model, quant) ? new Gatto.Roles.ModelSource(file.RepoId, quant.FileName) : null;
+    private Gatto.Roles.Models.ModelSource? SourceOf(FoundModel model) =>
+        Picked is { RowFile: { } file, RowQuant: { } quant } && Answers(model, quant) ? new Gatto.Roles.Models.ModelSource(file.RepoId, quant.FileName) : null;
 
     //the model intent in one place, replacing or not, so the collision branch can't drift on context, port or the pause
 
@@ -5616,7 +5616,7 @@ internal sealed class SetupFlow(ISetupProbes probes)
     {
         if (_offer is { } offer)
             return SummaryFacts.Row("engine",
-                $"llama.cpp {Gatto.Roles.LlamaAssetSteering.PinnedRelease} {Glyphs.Dot} {offer.Pick.BuildName}"
+                $"llama.cpp {Gatto.Roles.Serve.LlamaAssetSteering.PinnedRelease} {Glyphs.Dot} {offer.Pick.BuildName}"
                 + $" {Glyphs.Dot} {offer.Into}");
 
         if (_llamaPath is { Length: > 0 } exe && _foundBuild is { Length: > 0 } build)

@@ -158,10 +158,10 @@ public class CommandCorpusTests : IDisposable
             var line = server switch
             {
                 "stopped" => Gatto.Cli.ServeLines.AtExit.AfterStop(
-                    new(Gatto.Roles.ServeManager.StopResult.Stopped, CorpusFacts.ModelId, CorpusFacts.Pid, null),
+                    new(Gatto.Roles.Serve.ServeManager.StopResult.Stopped, CorpusFacts.ModelId, CorpusFacts.Pid, null),
                     sessionHadServer: true, CorpusDriver.Glyphs)!.Words,
                 "nothing" => Gatto.Cli.ServeLines.AtExit.AfterStop(
-                    new(Gatto.Roles.ServeManager.StopResult.NotServing, null, null, null),
+                    new(Gatto.Roles.Serve.ServeManager.StopResult.NotServing, null, null, null),
                     sessionHadServer: true, CorpusDriver.Glyphs)!.Words,
                 "hint" => ServeNotice.ExitHint(true, 102_400_000_000, CorpusDriver.Glyphs),
                 _ => null,

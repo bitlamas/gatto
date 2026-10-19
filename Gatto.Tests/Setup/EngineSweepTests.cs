@@ -1,5 +1,5 @@
-using Gatto.Roles;
 using Xunit;
+using Gatto.Roles.Serve;
 using Gatto.Terminal;
 
 namespace Gatto.Tests.Setup;

@@ -193,7 +193,7 @@ public class SetupRunnerWalkTests
         Assert.True(flow.PollForDownload());
         flow.Answer(SetupFlow.Landed);
 
-        Assert.Equal(new Gatto.Roles.ModelSource("org/a", "model-Q4_K_M.gguf"), flow.Writes.CreateModel!.Source);
+        Assert.Equal(new Gatto.Roles.Models.ModelSource("org/a", "model-Q4_K_M.gguf"), flow.Writes.CreateModel!.Source);
 
         var found = new SetupFlow(new Probes { Found = [new FoundModel(@"D:\m\qwen.gguf", 4_000_000_000, null)] });
         found.StartPastEngine();
@@ -586,7 +586,7 @@ public class SetupRunnerWalkTests
 
 
         public string RunningVersion() => Gatto.Core.GattoVersion.String;
-        public (Gatto.Roles.IdClash Kind, string? Id) ClashFor(string ggufPath, string? incomingRepoId) => (Gatto.Roles.IdClash.Free, null);
+        public (Gatto.Roles.Models.IdClash Kind, string? Id) ClashFor(string ggufPath, string? incomingRepoId) => (Gatto.Roles.Models.IdClash.Free, null);
         public IReadOnlyList<ModelRow> Rows { get; init; } = [];
 
         public HardwareSnapshot? Hardware() => new(34359738368, 34093496320, GpuKind.Discrete, 8589934592);
@@ -608,11 +608,11 @@ public class SetupRunnerWalkTests
         public MoveOffer? MoveOfferFor(string p) => null;
         public (Gatto.Core.Models.FitRegime Alone, Gatto.Core.Models.FitRegime WithProjector)? PairFit(string p, long b) => null;
         public TypedIdOutcome EvaluateTypedId(string id) => new TypedIdOutcome.Ok(Row("someone/model"));
-        public Gatto.Roles.LlamaAsset? ChooseLlamaAsset() => null;
+        public Gatto.Roles.Serve.LlamaAsset? ChooseLlamaAsset() => null;
         public Gatto.Core.Acquire.ProbeResult VerifyLlamaServer(string p) =>
             new(Gatto.Core.Acquire.ProbeShape.ClassicServer, "d",
                 //a ClassicServer must name its build, since the probe reads the shape from that banner. a shape without a build models an impossible machine
-                Build: Gatto.Roles.LlamaAssetSteering.PinnedRelease);
+                Build: Gatto.Roles.Serve.LlamaAssetSteering.PinnedRelease);
         public int ContextFor(string p) => 8192;
         public AuditionCheck RunAudition(string p, string? repoId, IProgress<Gatto.Roles.Audition.AuditionProgress>? progress, CancellationToken ct) =>
             new(AuditionOutcome.Passed);

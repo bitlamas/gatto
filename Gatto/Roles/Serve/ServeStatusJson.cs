@@ -4,7 +4,7 @@ using System.Text.RegularExpressions;
 using Gatto.Core.Client;
 using Gatto.Core.Session;
 
-namespace Gatto.Roles;
+namespace Gatto.Roles.Serve;
 
 //the formatter behind serve status --json. offload, fallback or OOM fields stay out (the probe reports none of them)
 public static class ServeStatusJson

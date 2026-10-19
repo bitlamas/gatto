@@ -1,7 +1,6 @@
 using Gatto.Core;
 using Gatto.Core.Home;
 using Gatto.Repl;
-using Gatto.Roles;
 using Gatto.Terminal;
 
 namespace Gatto.Cli;
@@ -10,7 +9,7 @@ namespace Gatto.Cli;
 internal static class CommandBanner
 {
     //the four marks come from the resolved glyph set, one composition point so an engine row and the banner stay in one vocabulary
-    public static Gatto.Roles.EngineMarks MarksFor(string home)
+    public static Gatto.Roles.Serve.EngineMarks MarksFor(string home)
     {
         var g = GlyphsFor(home);
         return new(g.Ok, g.Bad, g.Dot, g.Ellipsis);

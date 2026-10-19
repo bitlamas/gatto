@@ -1,5 +1,5 @@
 using Gatto.Core.Client;
-using Gatto.Roles;
+using Gatto.Roles.Models;
 using Gatto.Tests.Census;
 
 namespace Gatto.Tests;

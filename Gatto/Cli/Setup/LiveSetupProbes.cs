@@ -2,7 +2,8 @@ using Gatto.Core;
 using Gatto.Core.Acquire;
 using Gatto.Core.Hardware;
 using Gatto.Core.Home;
-using Gatto.Roles;
+using Gatto.Roles.Models;
+using Gatto.Roles.Serve;
 
 namespace Gatto.Cli.Setup;
 
@@ -10,11 +11,11 @@ namespace Gatto.Cli.Setup;
 internal sealed class LiveSetupProbes(string homePath, Gatto.Terminal.GlyphSet glyphs,
     TextWriter? notes = null, bool rich = false,
     Func<ProbeOutcome>? readHardware = null, string? downloadsDir = null,
-    Func<int, Gatto.Roles.ServeManager.IServeProcess?>? serverLookup = null,
+    Func<int, Gatto.Roles.Serve.ServeManager.IServeProcess?>? serverLookup = null,
     //null means pool index 0, GattoApp passes the real draw, and a test that builds a probe can't reach randomness
     Func<Gatto.Repl.Render.PurrFrames>? purrSet = null,
     //the factory is what lets a test watch the manager's stop path, null keeps each site's own construction
-    Func<Gatto.Roles.ServeManager>? managerFactory = null,
+    Func<Gatto.Roles.Serve.ServeManager>? managerFactory = null,
     //null keeps the runner's ten-minute budget, a test shortens it rather than letting its fake server die, which stops the double-start guard firing
     TimeSpan? readyBudget = null,
     //where Dispose's own lines go, the note sink is not read again after the record is printed, so null means the notes writer
@@ -30,16 +31,16 @@ internal sealed class LiveSetupProbes(string homePath, Gatto.Terminal.GlyphSet g
     private readonly Gatto.Terminal.GlyphSet _glyphs = glyphs;
 
     //the factory wins when one is injected, and lookup stays on the serving read alone so stop and describe keep their own pids
-    private Gatto.Roles.ServeManager Manager(GattoConfig config,
-        Func<int, Gatto.Roles.ServeManager.IServeProcess?>? lookup = null) =>
-        managerFactory?.Invoke() ?? new Gatto.Roles.ServeManager(homePath, config.LlamaServer ?? "", lookup);
+    private Gatto.Roles.Serve.ServeManager Manager(GattoConfig config,
+        Func<int, Gatto.Roles.Serve.ServeManager.IServeProcess?>? lookup = null) =>
+        managerFactory?.Invoke() ?? new Gatto.Roles.Serve.ServeManager(homePath, config.LlamaServer ?? "", lookup);
 
     //the size the model's active file comes to, null when the id names nothing loadable and the rung drops the size
     private string? SizeWordsOrNull(string modelId)
     {
         try
         {
-            var model = Gatto.Roles.Model.Load(Path.Combine(homePath, "models"), modelId);
+            var model = Gatto.Roles.Models.Model.Load(Path.Combine(homePath, "models"), modelId);
             return Gatto.Core.Acquire.ModelDiscovery.SetBytesOrNull(model.Profile.ActivePath) is { } bytes
                 ? SizeWords.Gb(bytes, approx: true)
                 : null;
@@ -53,7 +54,7 @@ internal sealed class LiveSetupProbes(string homePath, Gatto.Terminal.GlyphSet g
             loading is null ? null : new StartWatch(loading, () => { }));
 
     //passes every event of a start through and keeps whether the poll saw the server ready, so a line can say what the poll saw
-    private sealed class StartOutcome(Gatto.Roles.IServeListener inner) : Gatto.Roles.IServeListener
+    private sealed class StartOutcome(Gatto.Roles.Serve.IServeListener inner) : Gatto.Roles.Serve.IServeListener
     {
         public bool SawReady { get; private set; }
 
@@ -75,16 +76,16 @@ internal sealed class LiveSetupProbes(string homePath, Gatto.Terminal.GlyphSet g
         public void DiedOnStatus(string model, int pid, int? exitCode, string? exitedAt, IReadOnlyList<string>? tail) =>
             inner.DiedOnStatus(model, pid, exitCode, exitedAt, tail);
         public void Status(string model, int port, int pid, bool healthy) => inner.Status(model, port, pid, healthy);
-        public void PumpFault(Gatto.Roles.ServeLogFault fault) => inner.PumpFault(fault);
+        public void PumpFault(Gatto.Roles.Serve.ServeLogFault fault) => inner.PumpFault(fault);
     }
 
     //the server this wizard started and therefore must stop, a server that was already running belongs to somebody else
-    private Gatto.Roles.ServeManager? _started;
+    private Gatto.Roles.Serve.ServeManager? _started;
 
     //one server lives from here to Dispose, shared by the audition and prove-it. the return is null while serving, or a short reason the caller must use
 
     //the one read of the serving fact, and an unreadable machine answers Idle rather than throwing
-    private Gatto.Roles.ServingState Serving(string modelId)
+    private Gatto.Roles.Serve.ServingState Serving(string modelId)
     {
         if (_started is not null) return _started.Serving(modelId);   //ours, this wizard run started it
         try
@@ -93,7 +94,7 @@ internal sealed class LiveSetupProbes(string homePath, Gatto.Terminal.GlyphSet g
             //the lookup is null in production and the manager asks the OS, a test passes one to avoid a live llama-server process
             return Manager(config, serverLookup).Serving(modelId);
         }
-        catch (Exception) { return new Gatto.Roles.ServingState.Idle(); }
+        catch (Exception) { return new Gatto.Roles.Serve.ServingState.Idle(); }
     }
 
     //the id of the other model being served, taken from the ServingOther record rather than compared as a string
@@ -145,7 +146,7 @@ internal sealed class LiveSetupProbes(string homePath, Gatto.Terminal.GlyphSet g
     internal static CheckStumble StumbleFrom(
         Gatto.Roles.Audition.AuditionRunner.AuditionStumbleException ex, string homePath) =>
         ex.Kind == Gatto.Roles.Audition.AuditionStumbleKind.ExitedWhileLoading
-            ? new CheckStumble.Exited(ex.LastLines, Gatto.Roles.ServeManager.LogPathFor(homePath))
+            ? new CheckStumble.Exited(ex.LastLines, Gatto.Roles.Serve.ServeManager.LogPathFor(homePath))
             : new CheckStumble.Stopped(ex.LastLines);
 
     //every failure answers null, and the floor comes from the header the predicate read rather than being recomputed here
@@ -188,7 +189,7 @@ internal sealed class LiveSetupProbes(string homePath, Gatto.Terminal.GlyphSet g
                 servingOther: r => (Start: false, Why: (string?)$"{r.Model} is the running server"));
             if (!answer.Start) return answer.Why;
 
-            var model = Gatto.Roles.Model.Load(System.IO.Path.Combine(homePath, "models"), modelId);
+            var model = Gatto.Roles.Models.Model.Load(System.IO.Path.Combine(homePath, "models"), modelId);
             working?.Invoke();
 
             var log = new StringWriter();
@@ -214,7 +215,7 @@ internal sealed class LiveSetupProbes(string homePath, Gatto.Terminal.GlyphSet g
                 },
                 CancellationToken.None).GetAwaiter().GetResult();
 
-            if (readiness != Gatto.Roles.ServerReadiness.Ready)
+            if (readiness != Gatto.Roles.Serve.ServerReadiness.Ready)
                 Note($"{modelId} has not answered yet, the next step may not reach it");
         }
         //a slow server is not a failed start, so the note stays on the transcript for a caller that fails later
@@ -298,8 +299,8 @@ internal sealed class LiveSetupProbes(string homePath, Gatto.Terminal.GlyphSet g
         try
         {
             var config = GattoConfig.Load(homePath);
-            Gatto.Roles.Model model;
-            try { model = Gatto.Roles.Model.Load(Path.Combine(homePath, "models"), id); }
+            Gatto.Roles.Models.Model model;
+            try { model = Gatto.Roles.Models.Model.Load(Path.Combine(homePath, "models"), id); }
             catch (GattoConfigException ex)
             {
                 Say(line, $"couldn't put {id} back: {ex.Message}");
@@ -363,8 +364,8 @@ internal sealed class LiveSetupProbes(string homePath, Gatto.Terminal.GlyphSet g
     //the configured llama-server only when the file is on disk, a configured path to a deleted file is not satisfied
 
     //hands EngineSearch the machine's real roots, and the drive root comes from SystemDirectory so Windows on another letter still sweeps
-    public IReadOnlyList<Gatto.Roles.FoundEngine> EngineSweep() =>
-        Gatto.Roles.EngineSearch.Find(
+    public IReadOnlyList<Gatto.Roles.Serve.FoundEngine> EngineSweep() =>
+        Gatto.Roles.Serve.EngineSearch.Find(
             (Environment.GetEnvironmentVariable("PATH") ?? "").Split(Path.PathSeparator,
                 StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries),
             Path.Combine(homePath, "llama"),
@@ -620,16 +621,16 @@ internal sealed class LiveSetupProbes(string homePath, Gatto.Terminal.GlyphSet g
 
     //the look-up forwards to the one map the other call sites read, so modeled means one thing here
     public string? ExistingModelFor(string ggufPath) =>
-        Gatto.Roles.ModelScaffold.ModelFor(System.IO.Path.Combine(homePath, "models"), ggufPath);
+        Gatto.Roles.Models.ModelScaffold.ModelFor(System.IO.Path.Combine(homePath, "models"), ggufPath);
 
     //a forwarder on purpose, the clash rule lives in ModelScaffold beside the slugging it is about
-    public (Gatto.Roles.IdClash Kind, string? Id) ClashFor(string ggufPath, string? incomingRepoId) =>
-        Gatto.Roles.ModelScaffold.ClashFor(
+    public (Gatto.Roles.Models.IdClash Kind, string? Id) ClashFor(string ggufPath, string? incomingRepoId) =>
+        Gatto.Roles.Models.ModelScaffold.ClashFor(
             System.IO.Path.Combine(homePath, "models"), ggufPath, incomingRepoId);
 
     //a forwarder on purpose, the rule reads the same map as its neighbour and lives in ModelScaffold
     public string? ModelForHubRow(string repoId, string ggufFileName) =>
-        Gatto.Roles.ModelScaffold.ModelForHubRow(
+        Gatto.Roles.Models.ModelScaffold.ModelForHubRow(
             System.IO.Path.Combine(homePath, "models"), repoId, ggufFileName);
 
     //the address a launch would talk to, the endpoint's base_url or else the default model's own port, null when neither reads
@@ -838,10 +839,10 @@ internal sealed class LiveSetupProbes(string homePath, Gatto.Terminal.GlyphSet g
         public void Report((long Done, long Total) value) => onReport(value);
     }
 
-    public Gatto.Roles.LlamaAsset? ChooseLlamaAsset()
+    public Gatto.Roles.Serve.LlamaAsset? ChooseLlamaAsset()
     {
         if (Hardware() is not { } snapshot) return null;
-        return Gatto.Roles.LlamaAssetSteering.Choose(
+        return Gatto.Roles.Serve.LlamaAssetSteering.Choose(
             Gatto.Core.Hardware.HardwareClassifier.Classify(snapshot));
     }
 
@@ -1208,7 +1209,7 @@ internal sealed class LiveSetupProbes(string homePath, Gatto.Terminal.GlyphSet g
             var baseUrl = ep.BaseUrl;
             if (baseUrl is null && (modelId ?? config.DefaultModel) is { } id)
             {
-                var model = Gatto.Roles.Model.Load(System.IO.Path.Combine(homePath, "models"), id);
+                var model = Gatto.Roles.Models.Model.Load(System.IO.Path.Combine(homePath, "models"), id);
                 baseUrl = $"http://127.0.0.1:{model.Profile.Port}";
             }
             if (baseUrl is null) return new ProveOutcome(false, "no endpoint is configured to talk to", TimeSpan.Zero);

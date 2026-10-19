@@ -33,14 +33,14 @@ public class ActiveModelFileTests
         GattoHome.EnsureInitialized(_home);
         var gguf = Path.Combine(_home, "tiny.gguf");
         File.Copy(Fixture("tiny.gguf"), gguf);
-        var source = new Gatto.Roles.ModelSource("org/tiny-GGUF", "tiny.gguf");
+        var source = new Gatto.Roles.Models.ModelSource("org/tiny-GGUF", "tiny.gguf");
 
         Assert.Null(WriteSetApply.Apply(
             _home,
             new WriteSet { CreateModel = new WriteSet.Model(gguf, Port: 1235, Context: 8192, Source: source) },
             out var modelId));
 
-        Assert.Equal(source, Gatto.Roles.Model.Load(Path.Combine(_home, "models"), modelId!).Profile.Source);
+        Assert.Equal(source, Gatto.Roles.Models.Model.Load(Path.Combine(_home, "models"), modelId!).Profile.Source);
     }
 
     [Fact]

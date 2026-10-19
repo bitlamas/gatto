@@ -73,10 +73,10 @@ public class WizardVoiceTests
         public string? Colliding { get; init; }
         public string? ExistingEndpoint { get; init; }
         public string? ExistingModelFor(string ggufPath) => ExistingModel;
-        public (Gatto.Roles.IdClash Kind, string? Id) ClashFor(string ggufPath, string? incomingRepoId) =>
+        public (Gatto.Roles.Models.IdClash Kind, string? Id) ClashFor(string ggufPath, string? incomingRepoId) =>
             Colliding is { Length: > 0 }
-                ? (Gatto.Roles.IdClash.DifferentModel, Colliding)
-                : (Gatto.Roles.IdClash.Free, null);
+                ? (Gatto.Roles.Models.IdClash.DifferentModel, Colliding)
+                : (Gatto.Roles.Models.IdClash.Free, null);
         //these fakes model an installed gatto, and RunningFrom is a fixed path so the screen renders a chosen state
         public string RunningFrom() => @"C:\Users\you\Downloads\gatto\gatto.exe";
 
@@ -91,12 +91,12 @@ public class WizardVoiceTests
         public bool? UpdateConsent() => UpdateAnswered;
         public bool? UpdateAnswered { get; init; } = false;
         public string? ExistingEndpointFor(string baseUrl) => ExistingEndpoint;
-        public Gatto.Roles.LlamaAsset? ChooseLlamaAsset() =>
+        public Gatto.Roles.Serve.LlamaAsset? ChooseLlamaAsset() =>
             new("z.zip", null, "a graphics card", "Vulkan");
         public Gatto.Core.Acquire.ProbeResult VerifyLlamaServer(string p) =>
             new(Gatto.Core.Acquire.ProbeShape.ClassicServer, "d",
                 //a ClassicServer probe must name its build, the real probe reads it from the same banner
-                Build: Gatto.Roles.LlamaAssetSteering.PinnedRelease);
+                Build: Gatto.Roles.Serve.LlamaAssetSteering.PinnedRelease);
         public int ContextFor(string p) => 8192;
         public Gatto.Core.Acquire.ProveOutcome ProveIt(string? id,
             IProgress<Gatto.Roles.Audition.AuditionProgress>? progress = null) => new(true, "hi", TimeSpan.FromSeconds(1));

@@ -1,6 +1,7 @@
 using System.Text.Json;
 using Gatto.Cli;
 using Gatto.Roles;
+using Gatto.Roles.Models;
 using Gatto.Tests.Census;
 using Gatto.Tests.Fakes;
 

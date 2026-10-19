@@ -175,14 +175,14 @@ public class AsciiReplFrameTests
     [Fact]
     public void THE_AUDITION_REPORT_DRAWS_THE_MARKS_IT_IS_HANDED()
     {
-        var ascii = new Gatto.Roles.EngineMarks(
+        var ascii = new Gatto.Roles.Serve.EngineMarks(
             GlyphSet.Ascii.Ok, GlyphSet.Ascii.Bad, GlyphSet.Ascii.Dot, GlyphSet.Ascii.Ellipsis);
 
         Assert.Equal(GlyphSet.Ascii.Ok, ascii.Ok);
-        Assert.Equal(GlyphSet.Unicode.Ok, Gatto.Roles.EngineMarks.Unicode.Ok);
-        Assert.Equal(GlyphSet.Unicode.Bad, Gatto.Roles.EngineMarks.Unicode.Bad);
-        Assert.Equal(GlyphSet.Unicode.Dot, Gatto.Roles.EngineMarks.Unicode.Dot);
-        Assert.Equal(GlyphSet.Unicode.Ellipsis, Gatto.Roles.EngineMarks.Unicode.Ellipsis);
+        Assert.Equal(GlyphSet.Unicode.Ok, Gatto.Roles.Serve.EngineMarks.Unicode.Ok);
+        Assert.Equal(GlyphSet.Unicode.Bad, Gatto.Roles.Serve.EngineMarks.Unicode.Bad);
+        Assert.Equal(GlyphSet.Unicode.Dot, Gatto.Roles.Serve.EngineMarks.Unicode.Dot);
+        Assert.Equal(GlyphSet.Unicode.Ellipsis, Gatto.Roles.Serve.EngineMarks.Unicode.Ellipsis);
     }
 
     //an option that sets no key answers its label, so label comparisons never move

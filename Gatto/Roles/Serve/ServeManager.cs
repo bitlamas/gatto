@@ -5,8 +5,9 @@ using System.Text.Json;
 using Gatto.Core;
 using Gatto.Core.Client;
 using Gatto.Core.Home;
+using Gatto.Roles.Models;
 
-namespace Gatto.Roles;
+namespace Gatto.Roles.Serve;
 
 //this layer reports through IServeListener and composes no sentence, since the wording belongs to the layer that paints it
 public sealed class ServeManager

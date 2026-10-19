@@ -2,7 +2,7 @@ using System.Text.Json;
 using System.Text.Json.Nodes;
 using Gatto.Core;
 
-namespace Gatto.Roles;
+namespace Gatto.Roles.Models;
 
 //edit profile.json as a document (re-serialising would reshape keys this class doesn't own). the caller passes the level that actually resolved on the map
 internal static class ModelDefaultEffort

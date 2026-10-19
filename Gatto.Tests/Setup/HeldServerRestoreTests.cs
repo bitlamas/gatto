@@ -1,7 +1,7 @@
 using System.Diagnostics;
 using Gatto.Cli.Setup;
 using Gatto.Cli.Setup.Tui;
-using Gatto.Roles;
+using Gatto.Roles.Serve;
 using Gatto.Terminal;
 using Gatto.Tests.Fakes;
 

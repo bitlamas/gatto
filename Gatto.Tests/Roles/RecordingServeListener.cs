@@ -1,4 +1,4 @@
-using Gatto.Roles;
+using Gatto.Roles.Serve;
 
 namespace Gatto.Tests.Roles;
 

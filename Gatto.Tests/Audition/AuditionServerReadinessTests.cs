@@ -1,8 +1,8 @@
 using System.Diagnostics;
 using System.Text.Json;
 using Gatto.Core;
-using Gatto.Roles;
 using Gatto.Roles.Audition;
+using Gatto.Roles.Serve;
 
 namespace Gatto.Tests.Audition;
 
@@ -269,7 +269,7 @@ public class AuditionServerReadinessTests : IDisposable
     }
 
     //a test that reads the words of a serve failure hands the runner one built by the layer that paints them. the default reports the facts and says nothing
-    private static Gatto.Roles.IServeListener Voice(TextWriter w) =>
+    private static Gatto.Roles.Serve.IServeListener Voice(TextWriter w) =>
         new Gatto.Cli.ServeLines(
             new Gatto.Cli.CliSurface(w, null, Gatto.Terminal.GlyphSet.Unicode),
             Gatto.Terminal.GlyphSet.Unicode);
