@@ -1,4 +1,5 @@
 using Gatto.Cli;
+using Gatto.Cli.Launch;
 using Gatto.Roles.Serve;
 using Gatto.Terminal;
 using Gatto.Tests.Fakes;

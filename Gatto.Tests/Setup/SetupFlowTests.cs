@@ -1,4 +1,5 @@
 using Gatto.Cli.Setup;
+using Gatto.Cli.Setup.Shelves;
 using Gatto.Core.Hardware;
 using Gatto.Terminal;
 using Gatto.Tests.Fakes;
@@ -183,11 +184,11 @@ public class SetupFlowTests
         //the fakes assume gatto is already installed, so each walk starts after the install segment.
 
         //installed by default, so a test that sets nothing starts after the install segment
-        public Gatto.Cli.InstallState Install { get; init; } = Gatto.Cli.InstallState.Installed;
+        public Gatto.Cli.Install.InstallState Install { get; init; } = Gatto.Cli.Install.InstallState.Installed;
         //the running location the screen reports. a fixed path keeps the render the same, where the real executable would change it
         public string RunningFrom() => @"C:\Users\you\Downloads\gatto\gatto.exe";
 
-        public (Gatto.Cli.InstallState State, string Dir) InstallStatus() => (Install, @"C:\Programs\gatto");
+        public (Gatto.Cli.Install.InstallState State, string Dir) InstallStatus() => (Install, @"C:\Programs\gatto");
 
         public string? Installed;
         public string? InstalledVersion() => Installed;
@@ -371,7 +372,7 @@ public class SetupFlowTests
         var screen = Assert.IsType<WizardScreen.Choice>(new SetupFlow(probes).StartPastEngine());
 
         //render through the TUI widget, since the structure cell exists only there. the plain face's labels show no such cell
-        var table = string.Join("\n", Gatto.Cli.Setup.Tui.Shelf
+        var table = string.Join("\n", Gatto.Cli.Setup.Shelves.Shelf
             .Table(screen.Shelf!, row: -1, focused: false, glyphs: GlyphSet.Unicode).Select(r => r.Text));
 
         Assert.Contains("MoE A4B", table, StringComparison.Ordinal);
@@ -1652,7 +1653,7 @@ ew.gguf", model.GgufPath);
         Assert.False(toWelcome.AllowBack);                //the welcome is the first screen, so there is nothing to go back to
     }
 
-    private static SetupFlow FlowWithInstall(Gatto.Cli.InstallState state) =>
+    private static SetupFlow FlowWithInstall(Gatto.Cli.Install.InstallState state) =>
         FlowWithInstall(state, null);
 
     //drive the flow to the install question without asserting where it sits, since each test asserts the screen and what an answer records
@@ -1665,12 +1666,12 @@ ew.gguf", model.GgufPath);
     }
 
     //the running version is GattoVersion.String, so a fixture sets the installed version from that value
-    private static SetupFlow FlowWithInstall(Gatto.Cli.InstallState state, string? installed) =>
+    private static SetupFlow FlowWithInstall(Gatto.Cli.Install.InstallState state, string? installed) =>
         new(new FakeProbes { Install = state, Installed = installed });
 
     //an engine, a model and a settled audition reach the install question, so keep this fixture beside the bare one that skips it
     private static SetupFlow WalkableFlowWithInstall(
-        Gatto.Cli.InstallState state, string? installed = null) =>
+        Gatto.Cli.Install.InstallState state, string? installed = null) =>
         new(new FakeProbes
         {
             Install = state,
@@ -1684,7 +1685,7 @@ ew.gguf", model.GgufPath);
     [Fact]
     public void A_NEWER_RUNNING_GATTO_OFFERS_TO_UPDATE_THE_INSTALLED_COPY()
     {
-        var flow = WalkableFlowWithInstall(Gatto.Cli.InstallState.AlreadyInstalledElsewhere, installed: "0.3.9");
+        var flow = WalkableFlowWithInstall(Gatto.Cli.Install.InstallState.AlreadyInstalledElsewhere, installed: "0.3.9");
 
         var first = Assert.IsType<WizardScreen.Choice>(AtTheInstallQuestion(flow));
 
@@ -1703,7 +1704,7 @@ ew.gguf", model.GgufPath);
     [Fact]
     public void THE_UPDATE_OFFER_CAN_ACTUALLY_BE_ANSWERED_and_records_the_copy()
     {
-        var flow = WalkableFlowWithInstall(Gatto.Cli.InstallState.AlreadyInstalledElsewhere, installed: "0.3.9");
+        var flow = WalkableFlowWithInstall(Gatto.Cli.Install.InstallState.AlreadyInstalledElsewhere, installed: "0.3.9");
         Assert.IsType<WizardScreen.Choice>(AtTheInstallQuestion(flow));
 
         var next = flow.Answer(SetupFlow.InstallYes);
@@ -1718,7 +1719,7 @@ ew.gguf", model.GgufPath);
     [Fact]
     public void LEAVING_THE_INSTALLED_COPY_ALONE_WALKS_ON_AND_WRITES_NOTHING()
     {
-        var flow = WalkableFlowWithInstall(Gatto.Cli.InstallState.AlreadyInstalledElsewhere, installed: "0.3.9");
+        var flow = WalkableFlowWithInstall(Gatto.Cli.Install.InstallState.AlreadyInstalledElsewhere, installed: "0.3.9");
         Assert.IsType<WizardScreen.Choice>(AtTheInstallQuestion(flow));
 
         var next = flow.Answer(SetupFlow.InstallNo);
@@ -1734,7 +1735,7 @@ ew.gguf", model.GgufPath);
     [Fact]
     public void NO_OFFER_WHEN_THE_INSTALLED_COPY_IS_THE_SAME_VERSION()
     {
-        var flow = FlowWithInstall(Gatto.Cli.InstallState.AlreadyInstalledElsewhere,
+        var flow = FlowWithInstall(Gatto.Cli.Install.InstallState.AlreadyInstalledElsewhere,
             installed: Gatto.Core.GattoVersion.String);
 
         Assert.Equal(PastTheOpening, Key(flow.StartPastOpening()));
@@ -1747,7 +1748,7 @@ ew.gguf", model.GgufPath);
     [InlineData("nonsense")]
     public void NO_OFFER_WHEN_THE_RUNNING_IMAGE_IS_NOT_STRICTLY_NEWER(string? installed)
     {
-        var flow = WalkableFlowWithInstall(Gatto.Cli.InstallState.AlreadyInstalledElsewhere, installed);
+        var flow = WalkableFlowWithInstall(Gatto.Cli.Install.InstallState.AlreadyInstalledElsewhere, installed);
 
         var first = AtTheInstallQuestion(flow);
 
@@ -1760,7 +1761,7 @@ ew.gguf", model.GgufPath);
     [Fact]
     public void SITE_TWO_WITH_A_NEWER_IMAGE_STILL_COPIES()
     {
-        var flow = WalkableFlowWithInstall(Gatto.Cli.InstallState.InstalledButNotOnPath, installed: "0.3.9");
+        var flow = WalkableFlowWithInstall(Gatto.Cli.Install.InstallState.InstalledButNotOnPath, installed: "0.3.9");
         AtTheInstallQuestion(flow);
 
         flow.Answer(SetupFlow.InstallYes);
@@ -1775,7 +1776,7 @@ ew.gguf", model.GgufPath);
     [InlineData(null)]
     public void SITE_TWO_REPAIRS_WITHOUT_COPYING_WHEN_THE_IMAGE_IS_NOT_NEWER(string? installed)
     {
-        var flow = WalkableFlowWithInstall(Gatto.Cli.InstallState.InstalledButNotOnPath, installed);
+        var flow = WalkableFlowWithInstall(Gatto.Cli.Install.InstallState.InstalledButNotOnPath, installed);
         var first = Assert.IsType<WizardScreen.Choice>(AtTheInstallQuestion(flow));
 
         Assert.Equal("Fix that for me", first.Options[0].Label);
@@ -1795,7 +1796,7 @@ ew.gguf", model.GgufPath);
     public void SITE_TWO_SAYS_SAME_VERSION_RATHER_THAN_NAMING_ONE_VERSION_TWICE()
     {
         //the fixture derives the version, since a literal here fails at the next bump instead of at a defect
-        var flow = WalkableFlowWithInstall(Gatto.Cli.InstallState.InstalledButNotOnPath,
+        var flow = WalkableFlowWithInstall(Gatto.Cli.Install.InstallState.InstalledButNotOnPath,
             installed: Gatto.Core.GattoVersion.String);
         var first = Assert.IsType<WizardScreen.Choice>(AtTheInstallQuestion(flow));
 
@@ -1810,7 +1811,7 @@ ew.gguf", model.GgufPath);
     [Fact]
     public void SITE_TWO_STILL_NAMES_BOTH_VERSIONS_WHEN_THEY_DIFFER()
     {
-        var flow = WalkableFlowWithInstall(Gatto.Cli.InstallState.InstalledButNotOnPath, installed: "0.9.9");
+        var flow = WalkableFlowWithInstall(Gatto.Cli.Install.InstallState.InstalledButNotOnPath, installed: "0.9.9");
         var first = Assert.IsType<WizardScreen.Choice>(AtTheInstallQuestion(flow));
 
         var body = string.Join(" ", (first.BodyRows ?? []).Select(r => r.Text));
@@ -1822,7 +1823,7 @@ ew.gguf", model.GgufPath);
     [Fact]
     public void SITE_ONE_EMITS_NO_INSTALL_HEADING_because_the_question_sits_inside_the_done_step()
     {
-        var flow = WalkableFlowWithInstall(Gatto.Cli.InstallState.AlreadyInstalledElsewhere, installed: "0.3.9");
+        var flow = WalkableFlowWithInstall(Gatto.Cli.Install.InstallState.AlreadyInstalledElsewhere, installed: "0.3.9");
 
         var first = Assert.IsType<WizardScreen.Choice>(AtTheInstallQuestion(flow));
 
@@ -1835,7 +1836,7 @@ ew.gguf", model.GgufPath);
     [Fact]
     public void A_DEV_BUILD_GETS_ITS_SENTENCE_AND_NOT_THE_INSTALL_HEADING()
     {
-        var flow = WalkableFlowWithInstall(Gatto.Cli.InstallState.DevBuild);
+        var flow = WalkableFlowWithInstall(Gatto.Cli.Install.InstallState.DevBuild);
 
         AtTheInstallQuestion(flow);
 
@@ -1848,7 +1849,7 @@ ew.gguf", model.GgufPath);
     [Fact]
     public void A_DEV_BUILD_IS_TOLD_WHY_THE_INSTALL_STEP_IS_SKIPPED()
     {
-        var flow = WalkableFlowWithInstall(Gatto.Cli.InstallState.DevBuild);
+        var flow = WalkableFlowWithInstall(Gatto.Cli.Install.InstallState.DevBuild);
 
         var first = AtTheInstallQuestion(flow);
 
@@ -1866,7 +1867,7 @@ ew.gguf", model.GgufPath);
     [Fact]
     public void AN_INSTALLED_GATTO_WALKS_THE_SEGMENT_GREEN_and_goes_straight_to_the_fork()
     {
-        var flow = WalkableFlowWithInstall(Gatto.Cli.InstallState.Installed);
+        var flow = WalkableFlowWithInstall(Gatto.Cli.Install.InstallState.Installed);
 
         var first = AtTheInstallQuestion(flow);
 
@@ -1879,7 +1880,7 @@ ew.gguf", model.GgufPath);
     [Fact]
     public void A_MACHINE_WITH_NO_GATTO_INSTALLED_IS_OFFERED_ONE()
     {
-        var flow = WalkableFlowWithInstall(Gatto.Cli.InstallState.NotInstalled);
+        var flow = WalkableFlowWithInstall(Gatto.Cli.Install.InstallState.NotInstalled);
 
         var first = Assert.IsType<WizardScreen.Choice>(AtTheInstallQuestion(flow));
 
@@ -1894,7 +1895,7 @@ ew.gguf", model.GgufPath);
     public void INSTALLED_BUT_UNREACHABLE_OFFERS_TO_FINISH_not_to_install_again()
     {
         //the half-done state needs its own wording, since the copy exists and the path entry does not and asking to install would misstate both
-        var flow = WalkableFlowWithInstall(Gatto.Cli.InstallState.InstalledButNotOnPath);
+        var flow = WalkableFlowWithInstall(Gatto.Cli.Install.InstallState.InstalledButNotOnPath);
 
         var first = Assert.IsType<WizardScreen.Choice>(AtTheInstallQuestion(flow));
 
@@ -1913,7 +1914,7 @@ ew.gguf", model.GgufPath);
     public void SAYING_YES_ACCUMULATES_INTENT_and_installs_nothing_yet()
     {
         //a machine change follows write-at-the-end too, so leaving after this screen installs nothing
-        var flow = WalkableFlowWithInstall(Gatto.Cli.InstallState.NotInstalled);
+        var flow = WalkableFlowWithInstall(Gatto.Cli.Install.InstallState.NotInstalled);
         AtTheInstallQuestion(flow);
 
         var next = flow.Answer(SetupFlow.InstallYes);
@@ -1925,7 +1926,7 @@ ew.gguf", model.GgufPath);
     [Fact]
     public void SAYING_NO_CARRIES_ON_TO_THE_FORK_with_nothing_recorded()
     {
-        var flow = WalkableFlowWithInstall(Gatto.Cli.InstallState.NotInstalled);
+        var flow = WalkableFlowWithInstall(Gatto.Cli.Install.InstallState.NotInstalled);
         AtTheInstallQuestion(flow);
 
         var next = flow.Answer(SetupFlow.InstallNo);
@@ -3756,7 +3757,7 @@ ew.gguf", model.GgufPath);
     {
         //both halves of the move are asserted, a line that leaves one screen and never arrives is worse than one that never moved
         var install = Assert.IsType<WizardScreen.Choice>(
-            AtTheInstallQuestion(WalkableFlowWithInstall(Gatto.Cli.InstallState.NotInstalled)));
+            AtTheInstallQuestion(WalkableFlowWithInstall(Gatto.Cli.Install.InstallState.NotInstalled)));
         var body = string.Join(" ", install.BodyRows!.Select(r => r.Text));
 
         Assert.Contains("from", body, StringComparison.Ordinal);
@@ -3789,7 +3790,7 @@ ew.gguf", model.GgufPath);
     public void THE_THREE_STEP_MARKERS_ARE_QUESTIONLESS_SO_THEY_COMMIT_AND_STAY()
     {
         //step markers are named rather than counted, and a marker with no question is never collapsed so the heading stays in the scrollback
-        var flow = FlowWithInstall(Gatto.Cli.InstallState.NotInstalled);
+        var flow = FlowWithInstall(Gatto.Cli.Install.InstallState.NotInstalled);
         flow.StartPastOpening();
 
         var marker = Assert.Single(flow.TakeNarration());
@@ -3800,7 +3801,7 @@ ew.gguf", model.GgufPath);
         //reading the narration once empties the channel, so a marker cannot render twice.
         Assert.Empty(flow.TakeNarration());
 
-        var installed = FlowWithInstall(Gatto.Cli.InstallState.Installed);
+        var installed = FlowWithInstall(Gatto.Cli.Install.InstallState.Installed);
         installed.StartPastOpening();
         Assert.Equal("step.model", Assert.Single(installed.TakeNarration()).Key);
     }

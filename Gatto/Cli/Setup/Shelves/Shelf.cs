@@ -3,7 +3,7 @@ using Gatto.Core.Hardware;
 using Gatto.Core.Models;
 using Gatto.Terminal;
 
-namespace Gatto.Cli.Setup.Tui;
+namespace Gatto.Cli.Setup.Shelves;
 
 //composed here and painted by ScreenPainter, so the shelf is a screen like any other rather than a second wizard
 internal static class Shelf

@@ -3,7 +3,7 @@ using Gatto.Core.Hardware;
 using Gatto.Core.Models;
 using Gatto.Terminal;
 
-namespace Gatto.Cli.Setup.Tui;
+namespace Gatto.Cli.Setup.Shelves;
 
 //one file as the pane lists it: the quant, its size, the fit verdict FitArithmetic reached and the file it names. a file with no token has a null quant and is still listed
 internal readonly record struct PaneFile(string? Quant, long Bytes, FitRegime Fit, FileRef? File = null,

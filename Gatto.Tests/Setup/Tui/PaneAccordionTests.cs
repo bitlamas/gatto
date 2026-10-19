@@ -1,4 +1,5 @@
 using Gatto.Cli.Setup;
+using Gatto.Cli.Setup.Shelves;
 using Gatto.Cli.Setup.Tui;
 using Gatto.Core.Acquire;
 using Gatto.Core.Hardware;
@@ -43,8 +44,8 @@ public class PaneAccordionTests
 
     private static IEnumerable<ConsoleKeyInfo> TabToFiles(WizardScreen.Choice c)
     {
-        var ring = Gatto.Cli.Setup.Tui.Shelf.Regions(c.Shelf!, 120, 0, c.Door is not null).ToList();
-        var steps = (ring.IndexOf(Region.Files) - ring.IndexOf(Gatto.Cli.Setup.Tui.Shelf.Opening(c.Shelf!)) + ring.Count) % ring.Count;
+        var ring = Gatto.Cli.Setup.Shelves.Shelf.Regions(c.Shelf!, 120, 0, c.Door is not null).ToList();
+        var steps = (ring.IndexOf(Region.Files) - ring.IndexOf(Gatto.Cli.Setup.Shelves.Shelf.Opening(c.Shelf!)) + ring.Count) % ring.Count;
         return Enumerable.Repeat(Key(ConsoleKey.Tab), steps);
     }
 

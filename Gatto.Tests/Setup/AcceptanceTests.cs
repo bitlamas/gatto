@@ -62,8 +62,8 @@ public class AcceptanceTests
         //the fake is an already-installed machine, so the flow runs after the install segment. the fixed path keeps the screen at a chosen state
         public string RunningFrom() => @"C:\Users\you\Downloads\gatto\gatto.exe";
 
-        public (Gatto.Cli.InstallState State, string Dir) InstallStatus() =>
-            (Gatto.Cli.InstallState.Installed, @"C:\Programs\gatto");
+        public (Gatto.Cli.Install.InstallState State, string Dir) InstallStatus() =>
+            (Gatto.Cli.Install.InstallState.Installed, @"C:\Programs\gatto");
 
         public string? InstalledVersion() => null;
 
@@ -206,8 +206,8 @@ public class AcceptanceTests
         //the fake reports a fresh home, so no model id collides. the fixed exe path keeps the screen at a chosen state
         public string RunningFrom() => @"C:\Users\you\Downloads\gatto\gatto.exe";
 
-        public (Gatto.Cli.InstallState State, string Dir) InstallStatus() =>
-            (Gatto.Cli.InstallState.Installed, @"C:\Programs\gatto");
+        public (Gatto.Cli.Install.InstallState State, string Dir) InstallStatus() =>
+            (Gatto.Cli.Install.InstallState.Installed, @"C:\Programs\gatto");
 
         public string? InstalledVersion() => null;
 

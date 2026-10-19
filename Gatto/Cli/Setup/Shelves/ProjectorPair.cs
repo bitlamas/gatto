@@ -1,7 +1,7 @@
 using Gatto.Core.Hardware;
 using Gatto.Core.Models;
 
-namespace Gatto.Cli.Setup;
+namespace Gatto.Cli.Setup.Shelves;
 
 //price the resulting regime rather than the increment, and feed the estimate the model's header
 internal static class ProjectorPair

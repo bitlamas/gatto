@@ -2,6 +2,7 @@ using System.IO.Compression;
 using System.Net;
 using System.Security.Cryptography;
 using Gatto.Cli;
+using Gatto.Cli.Update;
 
 namespace Gatto.Tests;
 

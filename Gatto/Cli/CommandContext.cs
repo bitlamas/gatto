@@ -1,3 +1,4 @@
+using Gatto.Cli.Install;
 using Gatto.Core.Home;
 using Gatto.Terminal;
 

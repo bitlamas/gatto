@@ -1,6 +1,6 @@
 using System.Text.Json;
 
-namespace Gatto.Cli;
+namespace Gatto.Cli.Update;
 
 //the cached result of the last update check, and the weekly gate reads CheckedAt rather than its own clock
 public sealed record UpdateState(DateTimeOffset CheckedAt, string? Latest, bool Security);

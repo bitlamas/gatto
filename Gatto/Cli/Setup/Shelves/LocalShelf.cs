@@ -2,7 +2,7 @@ using Gatto.Core.Acquire;
 using Gatto.Core.Hardware;
 using Gatto.Core.Models;
 
-namespace Gatto.Cli.Setup;
+namespace Gatto.Cli.Setup.Shelves;
 
 //a local file as a shelf row, priced like the Hub shelf and with the Hub-only fields left empty
 internal static class LocalShelf
@@ -55,17 +55,17 @@ internal static class LocalShelf
     internal static string PathOf(FileRef f) => System.IO.Path.Combine(f.RepoId, f.Path);
 
     //the pane's folder lines and the folded frame's file, each file priced by FitOf as its row is. a row whose file no rule chose draws no pick mark
-    public static Gatto.Cli.Setup.Tui.ModelFacts FactsFor(LocalGroup g, FoundModel rowFile, bool ruled, HardwareClass? hw,
+    public static Gatto.Cli.Setup.Shelves.ModelFacts FactsFor(LocalGroup g, FoundModel rowFile, bool ruled, HardwareClass? hw,
         int ctxForFit = 4096, Gatto.Terminal.HaveMark have = Gatto.Terminal.HaveMark.None, string? haveId = null,
         string? publisher = null)
     {
         var dir = System.IO.Path.GetDirectoryName(rowFile.Path);
-        Gatto.Cli.Setup.Tui.PaneFile Line(FoundModel f) => new(QuantToken.Of(f.Path), f.FileBytes, FitOf(f, hw, ctxForFit),
+        Gatto.Cli.Setup.Shelves.PaneFile Line(FoundModel f) => new(QuantToken.Of(f.Path), f.FileBytes, FitOf(f, hw, ctxForFit),
             FileRefOf(f), Tag: f.Set is { IsSet: true } ? FilesWords(f) : null);
-        var publishers = Folders(g).Select(f => new Gatto.Cli.Setup.Tui.PanePublisher(f.Folder, [.. f.Files.Select(Line)],
+        var publishers = Folders(g).Select(f => new Gatto.Cli.Setup.Shelves.PanePublisher(f.Folder, [.. f.Files.Select(Line)],
             FileRefOf(f.Files.Contains(rowFile) ? rowFile : f.Files.FirstOrDefault(x => x.IsComplete) ?? f.Files[0]),
             Marked: ruled && f.Files.Contains(rowFile))).ToList();
-        return new Gatto.Cli.Setup.Tui.ModelFacts(
+        return new Gatto.Cli.Setup.Shelves.ModelFacts(
             Structure: rowFile.Header is { } h ? ModelStructure.Cell(h) : null,
             Experts: rowFile.Header is { } eh ? ModelStructure.Experts(eh) : null,
             //the folded frame steps through the row's folder, the face starts it on the row's file

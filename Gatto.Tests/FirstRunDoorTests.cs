@@ -1,4 +1,5 @@
 using Gatto.Cli;
+using Gatto.Cli.Install;
 using Gatto.Cli.Setup;
 using Gatto.Core.Acquire;
 using Gatto.Core.Hardware;

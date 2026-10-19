@@ -1,4 +1,4 @@
-namespace Gatto.Cli;
+namespace Gatto.Cli.Launch;
 
 //the model a launch takes once the explicit choices are known, one order for every endpoint so a cloud and a local launch cannot disagree
 internal static class LaunchModel

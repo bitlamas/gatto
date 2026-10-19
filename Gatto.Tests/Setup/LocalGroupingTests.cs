@@ -1,4 +1,5 @@
 using Gatto.Cli.Setup;
+using Gatto.Cli.Setup.Shelves;
 using Gatto.Core.Acquire;
 
 namespace Gatto.Tests.Setup;

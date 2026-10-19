@@ -1,9 +1,10 @@
 using Gatto.Cli.Setup;
+using Gatto.Cli.Setup.Shelves;
 using Gatto.Core.Acquire;
 using Gatto.Core.Hardware;
 using Gatto.Core.Models;
 using Gatto.Terminal;
-using Shelf = Gatto.Cli.Setup.Tui.Shelf;
+using Shelf = Gatto.Cli.Setup.Shelves.Shelf;
 
 namespace Gatto.Tests.Setup;
 

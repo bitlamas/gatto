@@ -13,8 +13,8 @@ internal static class WriteSetApply
     public static string? Apply(string homePath, WriteSet writes, out string? modelId, out string? moveNote,
         Func<string, string?>? addToPath = null, Func<string, string, string?>? copyExe = null)   //test seams, so a suite never writes the real PATH, and production passes null for both
     {
-        var pathDeed = addToPath ?? Gatto.Cli.PathInstaller.Add;
-        var copyDeed = copyExe ?? Gatto.Cli.SelfInstall.Apply;
+        var pathDeed = addToPath ?? Gatto.Cli.Install.PathInstaller.Add;
+        var copyDeed = copyExe ?? Gatto.Cli.Install.SelfInstall.Apply;
         modelId = null;
         moveNote = null;
 
@@ -135,7 +135,7 @@ internal static class WriteSetApply
             //the repair-only case: findability is fixed and nothing is copied, so it stays an else if on the install branch
             else if (writes.PathOnly)
             {
-                if (pathDeed(Gatto.Cli.SelfInstall.DefaultDir()) is { } repairProblem)
+                if (pathDeed(Gatto.Cli.Install.SelfInstall.DefaultDir()) is { } repairProblem)
                     return repairProblem;
             }
         }

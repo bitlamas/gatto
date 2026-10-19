@@ -1,6 +1,6 @@
 using System.IO.Compression;
 
-namespace Gatto.Cli;
+namespace Gatto.Cli.Update;
 
 //the client is untimed and the deadline is Stall, no bytes for that long kills it. downloads go in the home's update folder, swept on every launch
 internal static class UpdateDownload

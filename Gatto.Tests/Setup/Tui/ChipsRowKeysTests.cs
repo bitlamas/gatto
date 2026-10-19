@@ -1,4 +1,5 @@
 using Gatto.Cli.Setup;
+using Gatto.Cli.Setup.Shelves;
 using Gatto.Cli.Setup.Tui;
 using Gatto.Core.Acquire;
 using Gatto.Core.Hardware;
@@ -35,14 +36,14 @@ public class ChipsRowKeysTests
     }
 
     private static IReadOnlyList<Region> Regions(WizardScreen.Choice c) =>
-        Gatto.Cli.Setup.Tui.Shelf.Regions(c.Shelf!, 100, 0, c.Door is not null);
+        Gatto.Cli.Setup.Shelves.Shelf.Regions(c.Shelf!, 100, 0, c.Door is not null);
 
     //the chips are one row, so an arrow there has nothing to move
     [Fact]
     public void THE_ARROWS_ARE_INERT_IN_THE_CHIPS_ROW()
     {
         var c = Shelf();
-        var opening = Gatto.Cli.Setup.Tui.Shelf.Opening(c.Shelf!);
+        var opening = Gatto.Cli.Setup.Shelves.Shelf.Opening(c.Shelf!);
 
         var (answer, _) = WalkRender.Answered(c, 100,
         [

@@ -1,4 +1,4 @@
-namespace Gatto.Cli;
+namespace Gatto.Cli.Launch;
 
 //a local model's window is what its server gives one request, which is less than the profile's context when the server splits it across slots
 internal static class ModelWindow

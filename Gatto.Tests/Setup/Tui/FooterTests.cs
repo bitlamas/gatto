@@ -1,4 +1,5 @@
 using Gatto.Cli.Setup;
+using Gatto.Cli.Setup.Shelves;
 using Gatto.Cli.Setup.Tui;
 using Gatto.Terminal;
 
@@ -105,7 +106,7 @@ public class FooterTests
     public void The_sweep_would_CATCH_a_keys_row_too_wide_for_the_floor()
     {
         //every region a shelf can offer, so Shelf.Keys returns every key one can draw
-        var every = Gatto.Cli.Setup.Tui.Shelf.Keys(
+        var every = Gatto.Cli.Setup.Shelves.Shelf.Keys(
             new FocusRing([Region.Families, Region.List, Region.Search]),
             ShelfSource.Hub, searchKey: true, lift: true);
 

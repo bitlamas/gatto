@@ -1,4 +1,5 @@
 using Gatto.Cli.Setup;
+using Gatto.Cli.Setup.Shelves;
 using Gatto.Core.Acquire;
 using Gatto.Core.Models;
 using Gatto.Terminal;
@@ -23,13 +24,13 @@ public class SearchRowTests
 
     //the pane answers what this row is, drive the production path so the tests can't pass against an unreachable screen
     private static string Pane(ModelRow r) =>
-        string.Join(" · ", Gatto.Cli.Setup.Tui.Pane
+        string.Join(" · ", Gatto.Cli.Setup.Shelves.Pane
             .Rows(r, null, Discrete, 100, glyphs: GlyphSet.Unicode).Select(x => x.Text));
 
     //a badge is set only by the local shelf, so its words are read off the local pane
     private static string LocalPane(ModelRow r) =>
-        string.Join(" · ", Gatto.Cli.Setup.Tui.Pane
-            .Rows(r, new Gatto.Cli.Setup.Tui.ModelFacts(LocalPath: @"D:\models"), Discrete, 100, glyphs: GlyphSet.Unicode)
+        string.Join(" · ", Gatto.Cli.Setup.Shelves.Pane
+            .Rows(r, new Gatto.Cli.Setup.Shelves.ModelFacts(LocalPath: @"D:\models"), Discrete, 100, glyphs: GlyphSet.Unicode)
             .Select(x => x.Text));
 
     //the tier line answers how these rows fit, drive it through ShelfBinding so the claim stays about what reaches a screen

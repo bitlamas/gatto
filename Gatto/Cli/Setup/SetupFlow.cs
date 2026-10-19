@@ -1,4 +1,7 @@
+using Gatto.Cli.Install;
+using Gatto.Cli.Setup.Shelves;
 using Gatto.Cli.Setup.Tui;
+using Gatto.Cli.Update;
 using Gatto.Core.Acquire;
 using Gatto.Terminal;
 
@@ -3143,7 +3146,7 @@ internal sealed class SetupFlow(ISetupProbes probes)
     ];
 
     //read every field off the row, hardware passed in once per screen, a null structure renders an empty cell and never a guess
-    private Tui.ModelFacts FactsFor(ModelRow r, string? loadedId,
+    private Shelves.ModelFacts FactsFor(ModelRow r, string? loadedId,
         Gatto.Core.Hardware.HardwareClass? hw)
     {
         //ask the repo first, the file name only when there is no repo. carry the id too, the pane names it and a second ask could drift
@@ -3159,16 +3162,16 @@ internal sealed class SetupFlow(ISetupProbes probes)
     }
 
     //every publisher priced the way QuantsOf prices the row's, the row's own publisher taking the row's file as its pick
-    internal static IReadOnlyList<Tui.PanePublisher>? PublishersOf(ModelRow r,
+    internal static IReadOnlyList<Shelves.PanePublisher>? PublishersOf(ModelRow r,
         Gatto.Core.Hardware.HardwareClass? hw)
     {
         if (hw is not { } machine || r.Publishers.Count == 0) return null;
-        return [.. r.Publishers.Select((offer, i) => new Tui.PanePublisher(offer.Org, FilesOf(r, offer, machine),
+        return [.. r.Publishers.Select((offer, i) => new Shelves.PanePublisher(offer.Org, FilesOf(r, offer, machine),
             i == r.RowPublisher ? r.RowFile : offer.Pick))];
     }
 
     //price every file the row's publisher holds across its repos, a file with no token included, null when the trees gave none
-    internal static IReadOnlyList<Tui.PaneFile>? QuantsOf(ModelRow r,
+    internal static IReadOnlyList<Shelves.PaneFile>? QuantsOf(ModelRow r,
         Gatto.Core.Hardware.HardwareClass? hw)
     {
         if (hw is not { } machine || (r.RowOffer ?? r.Publishers.FirstOrDefault()) is not { } offer) return null;
@@ -3178,13 +3181,13 @@ internal sealed class SetupFlow(ISetupProbes probes)
     }
 
     //keep the repos' own order, the renderer sorts. a file is named by reference, since two repos of one publisher can both hold a Q4_K_M
-    private static IReadOnlyList<Tui.PaneFile> FilesOf(ModelRow r, PublisherOffer offer,
+    private static IReadOnlyList<Shelves.PaneFile> FilesOf(ModelRow r, PublisherOffer offer,
         Gatto.Core.Hardware.HardwareClass machine) =>
-        Tui.PaneFile.Tagged([.. offer.Repos.SelectMany(repo => HubSearch.Candidates(repo.Quants, r.Params)
-            .Select(q => new Tui.PaneFile(
+        Shelves.PaneFile.Tagged([.. offer.Repos.SelectMany(repo => HubSearch.Candidates(repo.Quants, r.Params)
+            .Select(q => new Shelves.PaneFile(
                 QuantToken.Of(q.FileName),
                 q.Bytes,
-                HubSearch.FitOf(q.Bytes, r.NativeCtx, machine, Tui.Pane.KvContext, r.Arch, q.StreamedBytes),
+                HubSearch.FitOf(q.Bytes, r.NativeCtx, machine, Shelves.Pane.KvContext, r.Arch, q.StreamedBytes),
                 new FileRef(offer.Org, repo.RepoId, q.RepoPath))))]);
 
     //apply the choice once, by replacing the row's file and its regime. an unresolvable reference leaves the old file standing
@@ -3199,7 +3202,7 @@ internal sealed class SetupFlow(ISetupProbes probes)
         var publisher = row.Publishers.ToList().FindIndex(p => string.Equals(p.Org, file.Publisher, StringComparison.OrdinalIgnoreCase));
         var fit = probes.Hardware() is { } snapshot
             ? HubSearch.FitOf(chosen.Bytes, row.NativeCtx, Gatto.Core.Hardware.HardwareClassifier.Classify(snapshot),
-                Tui.Pane.KvContext, row.Arch, chosen.StreamedBytes)
+                Shelves.Pane.KvContext, row.Arch, chosen.StreamedBytes)
             : row.Fit;
         _rows = [.. _rows.Select((r, i) => i == at
             ? r with { RowFile = file, Fit = fit, RowPublisher = publisher >= 0 ? publisher : r.RowPublisher }
@@ -3282,7 +3285,7 @@ internal sealed class SetupFlow(ISetupProbes probes)
             return pricedOut
                 ? $"No {family} model fits this machine's memory {Glyphs.Dot} {held}"
                 : $"No {family} model on this shelf {Glyphs.Dot} {held}";
-        if (Gatto.Cli.Setup.Tui.Shelf.FamilyClause(hiddenByFamily) is { } elsewhere)
+        if (Gatto.Cli.Setup.Shelves.Shelf.FamilyClause(hiddenByFamily) is { } elsewhere)
             return $"No {family} model on this shelf {Glyphs.Dot} {elsewhere}";
         return $"No {family} model on this shelf";
     }

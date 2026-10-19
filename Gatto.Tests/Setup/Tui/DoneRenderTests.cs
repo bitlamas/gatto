@@ -26,7 +26,7 @@ public class DoneRenderTests
 
     //the fixture fetches its model, since the frame says verified, and each parameter reaches one of the other frames
     internal static WizardProbes Machine(bool? consent, HardwareSnapshot? snapshot = null,
-        bool fetchEngine = false, Gatto.Cli.InstallState install = Gatto.Cli.InstallState.Installed,
+        bool fetchEngine = false, Gatto.Cli.Install.InstallState install = Gatto.Cli.Install.InstallState.Installed,
         AuditionCheck? audition = null, bool block = false, string? heldBy = null,
         ProveOutcome? prove = null)
     {
@@ -85,7 +85,7 @@ public class DoneRenderTests
     //drives a run to the done step and returns the first screen it shows. only the combinations the frames use are driven, the check answers were printed from a run.
     internal static (SetupFlow Flow, WizardScreen Screen) DoneStep(
         bool? consent, HardwareSnapshot? snapshot = null, bool fetchEngine = false,
-        Gatto.Cli.InstallState install = Gatto.Cli.InstallState.Installed,
+        Gatto.Cli.Install.InstallState install = Gatto.Cli.Install.InstallState.Installed,
         AuditionCheck? audition = null, bool block = false, string[]? check = null,
         string? heldBy = null, string? installAnswer = null, bool inSession = false,
         ProveOutcome? prove = null)
@@ -174,8 +174,8 @@ public class DoneRenderTests
         string frame, string? installName, bool struggled)
     {
         var install = installName is null
-            ? (struggled ? Gatto.Cli.InstallState.NotInstalled : Gatto.Cli.InstallState.Installed)
-            : Enum.Parse<Gatto.Cli.InstallState>(installName);
+            ? (struggled ? Gatto.Cli.Install.InstallState.NotInstalled : Gatto.Cli.Install.InstallState.Installed)
+            : Enum.Parse<Gatto.Cli.Install.InstallState>(installName);
 
         var road = frame switch
         {
@@ -247,7 +247,7 @@ public class DoneRenderTests
             Server = new Gatto.Core.Acquire.ConnectProbe(
                 "http://127.0.0.1:1234", ["qwen/qwen3-30b-a3b-2507"], reported),
             Prove = new Gatto.Core.Acquire.ProveOutcome(true, "OK", TimeSpan.FromSeconds(6)),
-            Install = Gatto.Cli.InstallState.Installed,
+            Install = Gatto.Cli.Install.InstallState.Installed,
             Config = @"C:\Users\you\.gatto\gatto.json",
             UpdateAnswered = true,
         });
@@ -399,7 +399,7 @@ public class DoneRenderTests
         {
             Llama = @"C:\llama\llama-b11071-bin-win-vulkan-x64\llama-server.exe",
             ActiveFile = Gguf,
-            Install = Gatto.Cli.InstallState.Installed,
+            Install = Gatto.Cli.Install.InstallState.Installed,
             UpdateAnswered = true,
             ActiveModel = (Weights + @"\" + Gguf, Bytes),
             Audition = new AuditionCheck(
@@ -464,7 +464,7 @@ public class DoneRenderTests
         {
             Llama = @"C:\llama\llama-b11071-bin-win-vulkan-x64\llama-server.exe",
             ActiveFile = "gemma-4-26B-A4B-it-UD-Q4_K_M.gguf",
-            Install = Gatto.Cli.InstallState.NotInstalled,
+            Install = Gatto.Cli.Install.InstallState.NotInstalled,
             UpdateAnswered = null,
             Audition = new AuditionCheck(
                 AuditionOutcome.Passed,

@@ -1,6 +1,10 @@
 using System.Diagnostics;
 using System.Text;
 using System.Text.Json;
+using Gatto.Cli.Diagnose;
+using Gatto.Cli.Install;
+using Gatto.Cli.Launch;
+using Gatto.Cli.Update;
 using Gatto.Core;
 using Gatto.Core.Client;
 using Gatto.Core.Home;

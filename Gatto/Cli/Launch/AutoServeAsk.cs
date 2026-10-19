@@ -2,7 +2,7 @@ using Gatto.Repl;
 using Gatto.Roles.Models;
 using Gatto.Roles.Serve;
 
-namespace Gatto.Cli;
+namespace Gatto.Cli.Launch;
 
 //starts a model's server and waits for it, reporting progress as it goes
 internal static class AutoServeAsk

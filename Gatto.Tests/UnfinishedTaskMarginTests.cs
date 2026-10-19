@@ -110,8 +110,8 @@ public class UnfinishedTaskMarginTests : IDisposable
             10, false);
 
         //assert on the pane the shelf really draws, a surface nobody calls proves nothing
-        var detail = string.Join(" · ", Gatto.Cli.Setup.Tui.Pane
-            .Rows(row, new Gatto.Cli.Setup.Tui.ModelFacts(LocalPath: @"D:\models"), Gatto.Core.Hardware.MachineShape.Discrete, 100,
+        var detail = string.Join(" · ", Gatto.Cli.Setup.Shelves.Pane
+            .Rows(row, new Gatto.Cli.Setup.Shelves.ModelFacts(LocalPath: @"D:\models"), Gatto.Core.Hardware.MachineShape.Discrete, 100,
                 glyphs: Gatto.Terminal.GlyphSet.Unicode).Select(x => x.Text));
 
         Assert.Contains("4 of 5 tasks, one unfinished", detail, StringComparison.Ordinal);
@@ -129,8 +129,8 @@ public class UnfinishedTaskMarginTests : IDisposable
             new Badge("o/m", new DateOnly(2026, 8, 13), "abc", "vendor", Passed: 5, Ran: 5), 10, false);
 
         //assert on the pane the shelf really draws, a surface nobody calls proves nothing
-        var detail = string.Join(" · ", Gatto.Cli.Setup.Tui.Pane
-            .Rows(row, new Gatto.Cli.Setup.Tui.ModelFacts(LocalPath: @"D:\models"), Gatto.Core.Hardware.MachineShape.Discrete, 100,
+        var detail = string.Join(" · ", Gatto.Cli.Setup.Shelves.Pane
+            .Rows(row, new Gatto.Cli.Setup.Shelves.ModelFacts(LocalPath: @"D:\models"), Gatto.Core.Hardware.MachineShape.Discrete, 100,
                 glyphs: Gatto.Terminal.GlyphSet.Unicode).Select(x => x.Text));
 
         Assert.Contains("tool-calling verified", detail, StringComparison.Ordinal);

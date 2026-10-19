@@ -1,5 +1,6 @@
 using System.Globalization;
 using Gatto.Cli;
+using Gatto.Cli.Launch;
 using Gatto.Roles.Models;
 using Gatto.Roles.Serve;
 using Gatto.Terminal;

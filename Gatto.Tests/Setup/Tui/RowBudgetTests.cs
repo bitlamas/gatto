@@ -1,4 +1,5 @@
 using Gatto.Cli.Setup;
+using Gatto.Cli.Setup.Shelves;
 using Gatto.Cli.Setup.Tui;
 using Gatto.Core.Acquire;
 using Gatto.Core.Hardware;
@@ -88,7 +89,7 @@ public class RowBudgetTests
 
         Assert.Equal(4, shelf.Rows.Count);
         Assert.Equal(8, shelf.MoreBelow);
-        Assert.Contains("1–4 of 12", Gatto.Cli.Setup.Tui.Shelf.CountLine(shelf, glyphs: GlyphSet.Unicode), StringComparison.Ordinal);
+        Assert.Contains("1–4 of 12", Gatto.Cli.Setup.Shelves.Shelf.CountLine(shelf, glyphs: GlyphSet.Unicode), StringComparison.Ordinal);
 
         //this twin uses a bigger budget over the same rows, since a shelf hard-coded to four would pass the half above
         var wide = ShelfOf(new SetupFlow(Spy([], rows)) { RowBudget = 20 });

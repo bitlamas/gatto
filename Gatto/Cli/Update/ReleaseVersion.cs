@@ -1,6 +1,6 @@
 using System.Text.RegularExpressions;
 
-namespace Gatto.Cli;
+namespace Gatto.Cli.Update;
 
 //an ordered release version, so update tells a newer candidate from an older republished tag. v?N.N.N only, except this process's own version
 

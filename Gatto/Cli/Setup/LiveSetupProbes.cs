@@ -1,3 +1,5 @@
+using Gatto.Cli.Install;
+using Gatto.Cli.Setup.Shelves;
 using Gatto.Core;
 using Gatto.Core.Acquire;
 using Gatto.Core.Hardware;
@@ -575,12 +577,12 @@ internal sealed class LiveSetupProbes(string homePath, Gatto.Terminal.GlyphSet g
         {
             if (request.Search is { } typed && !string.IsNullOrWhiteSpace(typed))
                 return HubSearch.TypedSearchAsync(Hub(), UploaderAllowlist.Load(), Families.Load(), typed.Trim(), hw,
-                    Tui.Pane.KvContext, cts.Token, _trees, request.Lifted, caller: ct).GetAwaiter().GetResult();
+                    Shelves.Pane.KvContext, cts.Token, _trees, request.Lifted, caller: ct).GetAwaiter().GetResult();
 
             var key = LitKey(request.Lit);
             var landing = request.Lifted && _landing is { } l && l.Lit == key ? l.Rows : null;
             var outcome = ShelfSearch.AssembleAsync(Hub(), UploaderAllowlist.Load(), Families.Load(), request.Lit, hw,
-                Tui.Pane.KvContext, request.Lifted, cts.Token, memo: _trees, progress: progress, landing: landing, caller: ct)
+                Shelves.Pane.KvContext, request.Lifted, cts.Token, memo: _trees, progress: progress, landing: landing, caller: ct)
                 .GetAwaiter().GetResult();
             if (!request.Lifted) _landing = (key, outcome.Rows);
             return outcome;
@@ -601,10 +603,10 @@ internal sealed class LiveSetupProbes(string homePath, Gatto.Terminal.GlyphSet g
 
             //look a typed id up directly, the allowlist shapes browsing and never limits what a user may name. the fit window is the pane's own value
             var lookup = HubSearch.LookupModelAsync(
-                new HubClient(http), repoId, hw, Tui.Pane.KvContext, cts.Token).GetAwaiter().GetResult();
+                new HubClient(http), repoId, hw, Shelves.Pane.KvContext, cts.Token).GetAwaiter().GetResult();
 
             //the floor decides the pick and never what a user may take, so a named repo whose every file sits under it is priced lifted
-            if (lookup.Row is { RowFile: null } bare) lookup = (ShelfSearch.Lifted(bare, hw, Tui.Pane.KvContext), false);
+            if (lookup.Row is { RowFile: null } bare) lookup = (ShelfSearch.Lifted(bare, hw, Shelves.Pane.KvContext), false);
 
             //a null row means the repo answered with nothing usable (a failed request throws instead), and the outcome type says which nothing
             return TypedIdOutcome.For(lookup);
@@ -854,9 +856,9 @@ internal sealed class LiveSetupProbes(string homePath, Gatto.Terminal.GlyphSet g
         var into = Gatto.Cli.LlamaFetch.DirFor(homePath, LlamaAssetSteering.PinnedRelease);
         try
         {
-            using var http = Gatto.Cli.UpdateDownload.Client(TimeSpan.FromSeconds(10));
+            using var http = Gatto.Cli.Update.UpdateDownload.Client(TimeSpan.FromSeconds(10));
             using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(10));
-            var release = Gatto.Cli.UpdateCheck.FetchAsync(
+            var release = Gatto.Cli.Update.UpdateCheck.FetchAsync(
                     http, Gatto.Cli.LlamaFetch.ReleaseUrl(LlamaAssetSteering.PinnedRelease),
                     DateTimeOffset.UtcNow, cts.Token)
                 .GetAwaiter().GetResult();
@@ -1020,13 +1022,13 @@ internal sealed class LiveSetupProbes(string homePath, Gatto.Terminal.GlyphSet g
         IProgress<FetchTick>? progress = null,
         CancellationToken ct = default)
     {
-        var staging = Gatto.Cli.UpdateDownload.Dir(homePath);
+        var staging = Gatto.Cli.Update.UpdateDownload.Dir(homePath);
         var into = Gatto.Cli.LlamaFetch.DirFor(homePath, LlamaAssetSteering.PinnedRelease);
         //one or two files, so a tick can say file 1 of 2 without asking again
         var count = assets.Companion is null ? 1 : 2;
         try
         {
-            using var http = Gatto.Cli.UpdateDownload.Client(TimeSpan.FromSeconds(10));
+            using var http = Gatto.Cli.Update.UpdateDownload.Client(TimeSpan.FromSeconds(10));
 
             //the order lives in Land, a helper the suite can drive, this method supplies only the network and the disk
             return Gatto.Cli.LlamaFetch.Land(assets, Get,
@@ -1038,8 +1040,8 @@ internal sealed class LiveSetupProbes(string homePath, Gatto.Terminal.GlyphSet g
                 var index = ReferenceEquals(a, assets.Server) ? 1 : 2;
                 //start the clock when this file does, a stopwatch over the pair would count the second file's wait as progress
                 var started = System.Diagnostics.Stopwatch.StartNew();
-                var zip = Gatto.Cli.UpdateDownload.FetchAsync(
-                        http, new Gatto.Cli.ReleaseAsset(a.ZipName, a.Url, a.Sha256, a.Size),
+                var zip = Gatto.Cli.Update.UpdateDownload.FetchAsync(
+                        http, new Gatto.Cli.Update.ReleaseAsset(a.ZipName, a.Url, a.Sha256, a.Size),
                         staging,
                         progress: progress is null ? null : new Sink(p => progress.Report(
                             new FetchTick(a.ZipName, index, count, p.Done, p.Total,
@@ -1048,7 +1050,7 @@ internal sealed class LiveSetupProbes(string homePath, Gatto.Terminal.GlyphSet g
                     .GetAwaiter().GetResult();
 
                 //verify both halves, an absent digest refuses as loudly as a wrong one
-                return Gatto.Cli.UpdateDownload.VerifyAsync(zip, a.Sha256, ct,
+                return Gatto.Cli.Update.UpdateDownload.VerifyAsync(zip, a.Sha256, ct,
                     LlamaAssetSteering.ReleasePage).GetAwaiter().GetResult() is { } bad
                     ? new(null, bad)
                     : new(zip, null);
@@ -1058,7 +1060,7 @@ internal sealed class LiveSetupProbes(string homePath, Gatto.Terminal.GlyphSet g
         {
             return new(null, $"gatto couldn't download the engine: {ex.Message}");
         }
-        finally { Gatto.Cli.UpdateDownload.Sweep(homePath); }
+        finally { Gatto.Cli.Update.UpdateDownload.Sweep(homePath); }
     }
 
     //bounded at 10 s, a binary that never answers must not hang the wizard

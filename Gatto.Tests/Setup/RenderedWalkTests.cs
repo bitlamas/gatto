@@ -72,7 +72,7 @@ public class RenderedWalkTests : IDisposable
     private static Probes SteeredProbes(
         string home,
         AuditionCheck? audition = null,
-        Gatto.Cli.InstallState? install = null,
+        Gatto.Cli.Install.InstallState? install = null,
         ConnectProbe? server = null,
         Func<ModelSearchRequest, ShelfOutcome>? answer = null,
         Func<string, TypedIdOutcome>? typed = null,
@@ -102,7 +102,7 @@ public class RenderedWalkTests : IDisposable
             Llama = @"C:\llama\llama-server.exe",
             Audition = audition ?? new AuditionCheck(
                 AuditionOutcome.Passed, new AuditionFacts("Q4_K_M", "greedy", "off", 42.5, 5, 5)),
-            Install = install ?? Gatto.Cli.InstallState.Installed,
+            Install = install ?? Gatto.Cli.Install.InstallState.Installed,
             Server = server,
             Answer = answer,
             Typed = typed,
@@ -384,7 +384,7 @@ public class RenderedWalkTests : IDisposable
     internal static Probes ProbesForDump(
         string home,
         AuditionCheck? audition = null,
-        Gatto.Cli.InstallState? install = null,
+        Gatto.Cli.Install.InstallState? install = null,
         ConnectProbe? server = null,
         Func<ModelSearchRequest, ShelfOutcome>? answer = null,
         Func<string, TypedIdOutcome>? typed = null,
@@ -477,7 +477,7 @@ public class RenderedWalkTests : IDisposable
     public void THE_DEV_BUILD_REFUSAL_IS_NARRATED_and_the_walk_carries_on()
     {
         var home = NewHome();
-        var probes = SteeredProbes(home, install: Gatto.Cli.InstallState.DevBuild);
+        var probes = SteeredProbes(home, install: Gatto.Cli.Install.InstallState.DevBuild);
         var rig = new WizardRig(80);
         _walkHome = home;
         SetupRunner.Run(new SetupFlow(probes), rig.Face(
@@ -772,7 +772,7 @@ public class RenderedWalkTests : IDisposable
 
         //assert the shelf also says nothing has been verified, which makes the absent tick a fact about the register
         var seen = Squash(string.Join(" ", rig.Frames));
-        Assert.Contains(Squash(Gatto.Cli.Setup.ShelfBinding.UnmeasuredShelf), seen, StringComparison.Ordinal);
+        Assert.Contains(Squash(Gatto.Cli.Setup.Shelves.ShelfBinding.UnmeasuredShelf), seen, StringComparison.Ordinal);
     }
 
     private WizardRig ShelfTyped(int width, Func<string, TypedIdOutcome> typed,
@@ -811,7 +811,7 @@ public class RenderedWalkTests : IDisposable
     public void THE_HALF_DONE_INSTALL_OFFERS_TO_FIX_IT_without_naming_PATH(int width)
     {
         var home = NewHome();
-        var probes = SteeredProbes(home, install: Gatto.Cli.InstallState.InstalledButNotOnPath);
+        var probes = SteeredProbes(home, install: Gatto.Cli.Install.InstallState.InstalledButNotOnPath);
         var rig = new WizardRig(width);
         _walkHome = home;
         //the repair screen is the first question of the done step, so the run must reach it, and answering 2 leaves the machine alone
@@ -907,7 +907,7 @@ public class RenderedWalkTests : IDisposable
         string stateName, bool accepted, string mustSay, string mustNotSay)
     {
         //the theory takes the install state as a name, InstallState is internal and an xunit theory method must be public
-        var state = Enum.Parse<Gatto.Cli.InstallState>(stateName);
+        var state = Enum.Parse<Gatto.Cli.Install.InstallState>(stateName);
         var home = NewHome();
         var flow = new SetupFlow(SteeredProbes(home, install: state));
         var rig = new WizardRig(80);
@@ -925,7 +925,7 @@ public class RenderedWalkTests : IDisposable
     public void THE_ACCEPTED_SENTENCE_SURVIVES_THE_WRITE_PAUSE()
     {
         var home = NewHome();
-        var flow = new SetupFlow(SteeredProbes(home, install: Gatto.Cli.InstallState.NotInstalled));
+        var flow = new SetupFlow(SteeredProbes(home, install: Gatto.Cli.Install.InstallState.NotInstalled));
         var rig = new WizardRig(80);
 
         SetupRunner.Run(flow, rig.Face([.. WalkAnsweringInstall('1'), Esc]), home);

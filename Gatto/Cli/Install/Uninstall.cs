@@ -1,4 +1,4 @@
-namespace Gatto.Cli;
+namespace Gatto.Cli.Install;
 
 //one row of the uninstall map: something on this machine, and whether uninstalling removes it
 internal sealed record OwnedItem(string What, string Where, UninstallMark Mark, long? Bytes = null,   //three marks, since a stopped process is neither removed nor kept

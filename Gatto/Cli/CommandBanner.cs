@@ -1,3 +1,4 @@
+using Gatto.Cli.Install;
 using Gatto.Core;
 using Gatto.Core.Home;
 using Gatto.Repl.Render.Chrome;

@@ -1,3 +1,4 @@
+using Gatto.Cli.Launch;
 using Gatto.Repl;
 using Gatto.Repl.Prompts;
 using Gatto.Roles.Models;

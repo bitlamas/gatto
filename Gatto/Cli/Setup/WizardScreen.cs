@@ -1,3 +1,4 @@
+using Gatto.Cli.Setup.Shelves;
 using Gatto.Core.Acquire;
 using Gatto.Terminal;
 

@@ -1,5 +1,6 @@
 using System.Net;
 using Gatto.Cli;
+using Gatto.Cli.Update;
 
 namespace Gatto.Tests;
 

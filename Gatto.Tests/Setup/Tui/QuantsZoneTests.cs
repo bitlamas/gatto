@@ -1,4 +1,5 @@
 using Gatto.Cli.Setup;
+using Gatto.Cli.Setup.Shelves;
 using Gatto.Cli.Setup.Tui;
 using Gatto.Core.Acquire;
 using Gatto.Core.Hardware;
@@ -103,9 +104,9 @@ public class QuantsZoneTests
     public void THE_RING_GAINS_THE_FILES_ZONE_ONLY_WHEN_THERE_ARE_FILES()
     {
         var withFiles = Shelf();
-        Assert.True(Gatto.Cli.Setup.Tui.Shelf.HasFiles(withFiles.Shelf!, 0));
+        Assert.True(Gatto.Cli.Setup.Shelves.Shelf.HasFiles(withFiles.Shelf!, 0));
         Assert.Contains(Region.Files,
-            Gatto.Cli.Setup.Tui.Shelf.Regions(withFiles.Shelf!, 100, 0, withFiles.Door is not null));
+            Gatto.Cli.Setup.Shelves.Shelf.Regions(withFiles.Shelf!, 100, 0, withFiles.Door is not null));
 
         IReadOnlyList<ModelRow> bare = [Row("unsloth/a").WithFiles([])];
         var without = Assert.IsType<WizardScreen.Choice>(new SetupFlow(new WizardProbes
@@ -114,9 +115,9 @@ public class QuantsZoneTests
             Answer = _ => WizardProbes.Outcome(bare, null),
         }).StartPastEngine());
 
-        Assert.False(Gatto.Cli.Setup.Tui.Shelf.HasFiles(without.Shelf!, 0));
+        Assert.False(Gatto.Cli.Setup.Shelves.Shelf.HasFiles(without.Shelf!, 0));
         Assert.DoesNotContain(Region.Files,
-            Gatto.Cli.Setup.Tui.Shelf.Regions(without.Shelf!, 100, 0, without.Door is not null));
+            Gatto.Cli.Setup.Shelves.Shelf.Regions(without.Shelf!, 100, 0, without.Door is not null));
     }
 
     //pin the ring's whole order, since a membership check passes on any arrangement of the same zones
@@ -127,7 +128,7 @@ public class QuantsZoneTests
 
         Assert.Equal(
             [Region.Families, Region.List, Region.Files, Region.Search],
-            Gatto.Cli.Setup.Tui.Shelf.Regions(screen.Shelf!, 100, 0, screen.Door is not null));
+            Gatto.Cli.Setup.Shelves.Shelf.Regions(screen.Shelf!, 100, 0, screen.Door is not null));
     }
 
     //assert the row's own PickedQuant, since every consumer downstream reads it (a pick that changed only the pane would agree with itself)

@@ -445,12 +445,12 @@ internal sealed class WizardProbes : ISetupProbes
     public string RunningFrom() => @"C:\Users\you\Downloads\gatto\gatto.exe";
 
     //settable for the tests that need another install state. the default is installed
-    public Gatto.Cli.InstallState Install { get; init; } = Gatto.Cli.InstallState.Installed;
+    public Gatto.Cli.Install.InstallState Install { get; init; } = Gatto.Cli.Install.InstallState.Installed;
 
     //settable, since the summary line names this directory on the installed-elsewhere branch
     public string InstalledDir { get; init; } = @"C:\Programs\gatto";
 
-    public (Gatto.Cli.InstallState State, string Dir) InstallStatus() =>
+    public (Gatto.Cli.Install.InstallState State, string Dir) InstallStatus() =>
         (Install, InstalledDir);
 
     //settable, since the answer compares this against the running image, and a fixed value would leave one arm undriven

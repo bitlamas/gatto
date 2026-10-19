@@ -3,7 +3,7 @@ using Gatto.Core.Models;
 using Gatto.Repl.Render;
 using Gatto.Terminal;
 
-namespace Gatto.Cli.Setup;
+namespace Gatto.Cli.Setup.Shelves;
 
 //how much of the shelf survives the width. each step drops the least decisive thing, so size and quant merge first and the measured marks go last
 internal enum ShelfStage

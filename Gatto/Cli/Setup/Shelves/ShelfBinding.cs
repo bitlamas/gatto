@@ -5,7 +5,7 @@ using Gatto.Repl.Prompts;
 using Gatto.Repl.Render;
 using Gatto.Terminal;
 
-namespace Gatto.Cli.Setup;
+namespace Gatto.Cli.Setup.Shelves;
 
 //the shelf as data for the face, passed on a Choice so the flow stays pure. the Rows list is the shown slice, with the cap already applied
 
@@ -20,7 +20,7 @@ internal sealed record ShelfView(
     int Total = 0, int HiddenOlder = 0, int MoreBelow = 0, bool ShowAll = false,
     int HiddenNewer = 0,
     IReadOnlyList<string>? Empty = null,
-    IReadOnlyList<Gatto.Cli.Setup.Tui.ModelFacts>? Facts = null,
+    IReadOnlyList<Gatto.Cli.Setup.Shelves.ModelFacts>? Facts = null,
     ShelfSource Source = ShelfSource.Hub,
     string? Folder = null,
     int HiddenByFamily = 0,
@@ -39,7 +39,7 @@ internal sealed record ShelfView(
     public bool NothingFetched => Rows.Count == 0 && Families is not { Count: > 0 };
 
     //the facts list must hold one entry per row, and it throws when it does not. assign Rows before Facts in a with, since an initializer runs in source order
-    public IReadOnlyList<Gatto.Cli.Setup.Tui.ModelFacts>? Facts
+    public IReadOnlyList<Gatto.Cli.Setup.Shelves.ModelFacts>? Facts
     {
         get => _facts;
         init => _facts = value is null || value.Count == Rows.Count ? value
@@ -48,7 +48,7 @@ internal sealed record ShelfView(
                 nameof(Facts));
     }
 
-    private readonly IReadOnlyList<Gatto.Cli.Setup.Tui.ModelFacts>? _facts = Facts is null
+    private readonly IReadOnlyList<Gatto.Cli.Setup.Shelves.ModelFacts>? _facts = Facts is null
         || Facts.Count == Rows.Count ? Facts
         : throw new ArgumentException(
             $"a shelf carries one ModelFacts per row: {Rows.Count} rows, {Facts.Count} facts",

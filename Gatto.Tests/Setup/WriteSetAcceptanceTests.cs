@@ -1,5 +1,6 @@
 using System.Text.Json.Nodes;
 using Gatto.Cli.Setup;
+using Gatto.Cli.Setup.Shelves;
 using Gatto.Core.Acquire;
 using Gatto.Core.Hardware;
 using Gatto.Core.Home;
@@ -410,8 +411,8 @@ public class WriteSetAcceptanceTests : IDisposable
         //a fixed fake path, so the screen renders at a chosen state instead of reporting whatever exe runs the tests
         public string RunningFrom() => @"C:\Users\you\Downloads\gatto\gatto.exe";
 
-        public (Gatto.Cli.InstallState State, string Dir) InstallStatus() =>
-            (Gatto.Cli.InstallState.Installed, @"C:\Programs\gatto");
+        public (Gatto.Cli.Install.InstallState State, string Dir) InstallStatus() =>
+            (Gatto.Cli.Install.InstallState.Installed, @"C:\Programs\gatto");
 
         public string? InstalledVersion() => null;
 

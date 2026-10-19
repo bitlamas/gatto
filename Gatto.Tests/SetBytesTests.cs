@@ -99,7 +99,7 @@ public class SetBytesTests : IDisposable
         ("Gatto/Core/Acquire/ModelAdoption.cs", "measures ONE file per copy: the loop is already "
             + "over ShardSiblings and each arrival is verified by its own size"),
         ("Gatto/Core/Acquire/HubFetch.cs", "a .part's own bytes, which is what resume needs"),
-        ("Gatto/Cli/Uninstall.cs", "the gatto EXE's size, which is one file by definition"),
+        ("Gatto/Cli/Install/Uninstall.cs", "the gatto EXE's size, which is one file by definition"),
         ("Gatto/Core/Loop/Permissions/PermissionGate.cs", "the size of the one file a write would replace, never a model"),
     ];
 
@@ -139,7 +139,7 @@ public class SetBytesTests : IDisposable
     [InlineData("Gatto/Core/Acquire/ModelDiscovery.cs")]
     [InlineData("Gatto/Core/Acquire/ModelAdoption.cs")]
     [InlineData("Gatto/Core/Acquire/HubFetch.cs")]
-    [InlineData("Gatto/Cli/Uninstall.cs")]
+    [InlineData("Gatto/Cli/Install/Uninstall.cs")]
     public void AND_EVERY_EXEMPT_FILE_REALLY_CARRIES_THE_READ_IT_IS_EXEMPT_FOR(string rel)
     {
         Assert.Contains(rel, Exempt.Select(e => e.File));

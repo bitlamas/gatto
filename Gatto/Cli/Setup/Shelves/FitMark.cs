@@ -2,7 +2,7 @@ using Gatto.Core.Hardware;
 using Gatto.Core.Models;
 using Gatto.Terminal;
 
-namespace Gatto.Cli.Setup.Tui;
+namespace Gatto.Cli.Setup.Shelves;
 
 //a fit verdict as the shelf says it: a glyph and one short word. a fixed nine-cell width beside a model name, so the longer FitWords wording cannot go here
 internal readonly record struct FitMark(string Glyph, string Word, RunInk Ink)

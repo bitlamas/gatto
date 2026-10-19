@@ -1,4 +1,4 @@
-namespace Gatto.Cli;
+namespace Gatto.Cli.Install;
 
 //the PATH edit as a pure function, so every byte but the appended entry survives. nothing is expanded, so a %USERPROFILE% the user wrote stays as it is
 internal static class UserPath

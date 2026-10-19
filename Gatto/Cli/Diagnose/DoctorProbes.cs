@@ -1,4 +1,6 @@
-namespace Gatto.Cli;
+using Gatto.Cli.Update;
+
+namespace Gatto.Cli.Diagnose;
 
 //doctor's two windows on the network, so a test can drive doctor with no live call. separate from CommandContext, a network concern gets its own name
 internal sealed record DoctorProbes(

@@ -2,7 +2,7 @@ using Gatto.Core.Hardware;
 using Gatto.Core.Acquire;
 using Gatto.Core.Models;
 
-namespace Gatto.Cli.Setup;
+namespace Gatto.Cli.Setup.Shelves;
 
 //the row's words (name, size, fit, badge, context) and nothing more, and the badge says what was measured rather than recommending
 internal static class SearchRow

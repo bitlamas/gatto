@@ -1,5 +1,6 @@
 using System.IO.Compression;
 using Gatto.Cli;
+using Gatto.Cli.Update;
 using Gatto.Repl.Prompts;
 using Gatto.Terminal;
 

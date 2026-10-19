@@ -1,4 +1,4 @@
-namespace Gatto.Cli;
+namespace Gatto.Cli.Install;
 
 //the read-only probe side of an uninstall, with sibling gattos read from the machine and the deeds in UninstallActs
 internal sealed record UninstallSite(

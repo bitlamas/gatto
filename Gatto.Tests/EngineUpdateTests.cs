@@ -1,6 +1,8 @@
 using System.Text.Json;
 using Gatto.Cli;
+using Gatto.Cli.Diagnose;
 using Gatto.Cli.Setup;
+using Gatto.Cli.Update;
 using Gatto.Core.Acquire;
 using Gatto.Core.Tools;
 using Gatto.Repl.Prompts;

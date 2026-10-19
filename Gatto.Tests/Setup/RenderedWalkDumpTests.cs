@@ -60,13 +60,13 @@ public class RenderedWalkDumpTests : IDisposable
                      .. Enumerable.Repeat(WizardRig.Digit('1'), 6)])),
 
             new("install-dev-build", "the first of the three install renders",
-                () => Steered(h => RenderedWalkTests.ProbesForDump(h, install: Gatto.Cli.InstallState.DevBuild),
+                () => Steered(h => RenderedWalkTests.ProbesForDump(h, install: Gatto.Cli.Install.InstallState.DevBuild),
                     [.. WalkOpening.Keys, WizardRig.Digit('1'), WizardRig.Enter,
                      WizardRig.Digit('1'), WizardRig.Digit('1'), WizardRig.Digit('1')])),
 
             new("install-half-done", "the second install render, the repair offer",
                 () => Steered(h => RenderedWalkTests.ProbesForDump(h,
-                        install: Gatto.Cli.InstallState.InstalledButNotOnPath),
+                        install: Gatto.Cli.Install.InstallState.InstalledButNotOnPath),
                     [.. WalkOpening.Keys, WizardRig.Digit('1'), WizardRig.Enter,
                      WizardRig.Digit('1'), WizardRig.Digit('1'), WizardRig.Digit('1'),
                      WizardRig.Digit('1')])),

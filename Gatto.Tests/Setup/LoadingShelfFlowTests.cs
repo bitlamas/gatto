@@ -1,4 +1,5 @@
 using Gatto.Cli.Setup;
+using Gatto.Cli.Setup.Shelves;
 using Gatto.Core.Acquire;
 using Gatto.Core.Models;
 using Gatto.Tests.Fakes;
@@ -295,7 +296,7 @@ public class LoadingShelfFlowTests
             var local = Assert.IsType<WizardScreen.Choice>(flow.Answer(SetupFlow.CtlSource));
 
             Assert.Equal(SetupFlow.ShelfLoadingKey, local.Key);
-            Assert.Equal(Gatto.Cli.Setup.ShelfSource.Local, local.Shelf!.Source);
+            Assert.Equal(Gatto.Cli.Setup.Shelves.ShelfSource.Local, local.Shelf!.Source);
             Assert.True(Asked(hub)[0].Token.IsCancellationRequested);
             //the held search no longer decides the landing, so the watch resolves on the scan alone
             Assert.True(SpinUntil(flow.PollWatch));
@@ -661,7 +662,7 @@ public class LoadingShelfFlowTests
             var loading = Assert.IsType<WizardScreen.Choice>(flow.Answer(SetupFlow.CtlSource));
 
             Assert.Equal(SetupFlow.ShelfLoadingKey, loading.Key);
-            Assert.Equal(Gatto.Cli.Setup.ShelfSource.Local, loading.Shelf!.Source);
+            Assert.Equal(Gatto.Cli.Setup.Shelves.ShelfSource.Local, loading.Shelf!.Source);
             Assert.Equal("looking for models on this machine…", flow.PollShelfLoad()!.Value.Step);
             hold.Set();
             Assert.True(SpinUntil(flow.PollWatch));

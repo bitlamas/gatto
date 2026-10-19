@@ -1,3 +1,4 @@
+using Gatto.Cli.Update;
 using Gatto.Roles.Models;
 using Gatto.Roles.Serve;
 using Gatto.Tests.Setup;
@@ -947,8 +948,8 @@ public class GattoAppTests : IDisposable
         //this fake models a machine where gatto is installed, so this flow runs after install. the path is fixed, so the screen shows a chosen state
         public string RunningFrom() => @"C:\Users\you\Downloads\gatto\gatto.exe";
 
-        public (Gatto.Cli.InstallState State, string Dir) InstallStatus() =>
-            (Gatto.Cli.InstallState.Installed, @"C:\Programs\gatto");
+        public (Gatto.Cli.Install.InstallState State, string Dir) InstallStatus() =>
+            (Gatto.Cli.Install.InstallState.Installed, @"C:\Programs\gatto");
 
         public string? InstalledVersion() => null;
 

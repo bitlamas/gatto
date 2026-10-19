@@ -1,5 +1,6 @@
 using Gatto.Cli;
 using Gatto.Cli.Setup;
+using Gatto.Cli.Update;
 using Gatto.Core.Acquire;
 using Gatto.Core.Tools;
 using Gatto.Tests.Fakes;

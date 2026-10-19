@@ -379,7 +379,7 @@ public class EpilogueTests
     public void THE_RECORDS_CLOSING_SENTENCE_MATCHES_THE_INSTALL_DEED(string frame, string answer)
     {
         var (flow, _) = DoneRenderTests.DoneStep(consent: true, snapshot: Unified, fetchEngine: true,
-            install: Gatto.Cli.InstallState.NotInstalled, installAnswer: answer);
+            install: Gatto.Cli.Install.InstallState.NotInstalled, installAnswer: answer);
 
         var lines = Epilogue.Lines(flow.RecordRows(), "0.5.0", "1a2b3c4",
             new DateOnly(2026, 8, 25), flow.CompletionNextStep, width: 100, glyphs: GlyphSet.Unicode);
@@ -396,7 +396,7 @@ public class EpilogueTests
     {
         //check: [] stops the run on the offer, and consent: null leaves the update question unreached, which is what the frames draw
         var (flow, _) = DoneRenderTests.DoneStep(consent: null, snapshot: Unified, fetchEngine: true,
-            install: Gatto.Cli.InstallState.NotInstalled, check: []);
+            install: Gatto.Cli.Install.InstallState.NotInstalled, check: []);
         flow.MarkLeaving();
 
         var lines = Epilogue.Lines(flow.RecordRows(), "0.5.0", "1a2b3c4",
@@ -410,7 +410,7 @@ public class EpilogueTests
     public void THE_RECORD_FOLDS_AT_EIGHTY_COLUMNS()
     {
         var (flow, _) = DoneRenderTests.DoneStep(consent: true, snapshot: Unified, fetchEngine: true,
-            install: Gatto.Cli.InstallState.NotInstalled, installAnswer: SetupFlow.InstallYes);
+            install: Gatto.Cli.Install.InstallState.NotInstalled, installAnswer: SetupFlow.InstallYes);
 
         var lines = Epilogue.Lines(flow.RecordRows(), "0.5.0", "1a2b3c4",
             new DateOnly(2026, 8, 25), flow.CompletionNextStep, width: 80, glyphs: GlyphSet.Unicode);

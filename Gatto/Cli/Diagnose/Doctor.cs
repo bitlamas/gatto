@@ -1,5 +1,7 @@
 using System.Globalization;
 using System.Text.Json;
+using Gatto.Cli.Install;
+using Gatto.Cli.Update;
 using Gatto.Core;
 using Gatto.Core.Acquire;
 using Gatto.Core.Home;
@@ -12,7 +14,7 @@ using Gatto.Roles.Models;
 using Gatto.Roles.Serve;
 using Gatto.Terminal;
 
-namespace Gatto.Cli;
+namespace Gatto.Cli.Diagnose;
 
 //every failed line ends with a fix to type, one line per check, and a single failure makes the exit non-zero
 public sealed class Doctor(

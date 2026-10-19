@@ -1,5 +1,7 @@
 using System.Net;
 using Gatto.Cli;
+using Gatto.Cli.Diagnose;
+using Gatto.Cli.Update;
 using Gatto.Core.Acquire;
 using Gatto.Core.Tools;
 using Gatto.Terminal;

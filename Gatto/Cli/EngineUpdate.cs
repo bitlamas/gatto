@@ -1,6 +1,8 @@
 using System.Text.Json;
 using System.Text.Json.Nodes;
+using Gatto.Cli.Diagnose;
 using Gatto.Cli.Setup;
+using Gatto.Cli.Update;
 using Gatto.Core.Acquire;
 using Gatto.Core.Home;
 using Gatto.Core.Tools;

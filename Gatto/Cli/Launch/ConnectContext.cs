@@ -1,4 +1,4 @@
-namespace Gatto.Cli;
+namespace Gatto.Cli.Launch;
 
 //the context budget and the line that says so, from one call so the sentence cannot drift from the value the session took
 internal readonly record struct ContextResolution(int? Budget, string? Line);

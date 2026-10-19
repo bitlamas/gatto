@@ -1,7 +1,7 @@
 using Gatto.Repl.Prompts;
 using Gatto.Terminal;
 
-namespace Gatto.Cli;
+namespace Gatto.Cli.Install;
 
 //the three consent screens ask through SelectPrompt, and the ask is a seam so a test can drive the logic or draw the screens
 internal static class UninstallConsent

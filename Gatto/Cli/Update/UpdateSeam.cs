@@ -1,7 +1,8 @@
+using Gatto.Cli.Install;
 using Gatto.Repl.Prompts;
 using Gatto.Terminal;
 
-namespace Gatto.Cli;
+namespace Gatto.Cli.Update;
 
 //what gatto update reads about this machine, gathered once before it decides anything. the reads are here and the writes sit in UpdateActs
 internal sealed record UpdateSite(

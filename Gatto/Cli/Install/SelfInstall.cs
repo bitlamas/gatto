@@ -1,4 +1,4 @@
-namespace Gatto.Cli;
+namespace Gatto.Cli.Install;
 
 //where this gatto stands relative to being installed
 internal enum InstallState

@@ -69,8 +69,8 @@ public class UnmappedScreenTests : IDisposable
         //a fixed fake path, so the screen renders the state the test chose rather than the exe running the tests
         public string RunningFrom() => @"C:\Users\you\Downloads\gatto\gatto.exe";
 
-        public (Gatto.Cli.InstallState State, string Dir) InstallStatus() =>
-            (Gatto.Cli.InstallState.Installed, @"C:\Programs\gatto");
+        public (Gatto.Cli.Install.InstallState State, string Dir) InstallStatus() =>
+            (Gatto.Cli.Install.InstallState.Installed, @"C:\Programs\gatto");
 
         public string? InstalledVersion() => null;
 
@@ -200,7 +200,7 @@ public class UnmappedScreenTests : IDisposable
         //a fixed fake path, so the screen renders the state the test chose rather than the exe running the tests
         public string RunningFrom() => @"C:\Users\you\Downloads\gatto\gatto.exe";
 
-        public (Gatto.Cli.InstallState State, string Dir) InstallStatus() => _inner.InstallStatus();
+        public (Gatto.Cli.Install.InstallState State, string Dir) InstallStatus() => _inner.InstallStatus();
 
         public string? InstalledVersion() => null;
 

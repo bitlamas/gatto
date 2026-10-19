@@ -1,3 +1,4 @@
+using Gatto.Cli.Setup.Shelves;
 using Gatto.Cli.Setup.Tui;
 using Gatto.Core.Acquire;
 using Gatto.Core.Hardware;

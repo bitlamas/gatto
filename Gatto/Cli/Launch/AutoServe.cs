@@ -1,4 +1,4 @@
-namespace Gatto.Cli;
+namespace Gatto.Cli.Launch;
 
 //what a launch does about a local server that isn't answering
 internal enum AutoServeAction

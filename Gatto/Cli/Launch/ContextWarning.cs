@@ -1,4 +1,4 @@
-namespace Gatto.Cli;
+namespace Gatto.Cli.Launch;
 
 //fires when the resolved budget is null, the same condition that gates elision, the compact offer and auto-compaction
 internal static class ContextWarning

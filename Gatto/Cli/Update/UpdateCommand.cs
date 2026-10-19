@@ -1,4 +1,6 @@
-namespace Gatto.Cli;
+using Gatto.Cli.Install;
+
+namespace Gatto.Cli.Update;
 
 //check, ask, verify, replace. every refusal happens before the download starts, and exit codes are 0 for nothing changed, 1 for a refusal, 2 for usage
 internal static class UpdateCommand

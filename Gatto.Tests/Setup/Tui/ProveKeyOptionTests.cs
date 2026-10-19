@@ -64,7 +64,7 @@ public class ProveKeyOptionTests
         {
             Llama = @"C:\llama\llama-server.exe",
             ActiveFile = "gemma-4-26B-A4B-it-UD-Q4_K_M.gguf",
-            Install = Gatto.Cli.InstallState.Installed,
+            Install = Gatto.Cli.Install.InstallState.Installed,
             Audition = new AuditionCheck(
                 AuditionOutcome.Passed,
                 new AuditionFacts("Q4_K_M", "defaults", "template default", 31.4, 5, 5),

@@ -1,4 +1,5 @@
 using Gatto.Cli.Setup;
+using Gatto.Cli.Setup.Shelves;
 using Gatto.Core.Acquire;
 using Gatto.Core.Hardware;
 using Gatto.Tests.Fakes;
@@ -579,8 +580,8 @@ public class SetupRunnerWalkTests
         //these fakes model a fresh home, where no model id is taken by another file. a fixed RunningFrom path lets a screen render a chosen state
         public string RunningFrom() => @"C:\Users\you\Downloads\gatto\gatto.exe";
 
-        public (Gatto.Cli.InstallState State, string Dir) InstallStatus() =>
-            (Gatto.Cli.InstallState.Installed, @"C:\Programs\gatto");
+        public (Gatto.Cli.Install.InstallState State, string Dir) InstallStatus() =>
+            (Gatto.Cli.Install.InstallState.Installed, @"C:\Programs\gatto");
 
         public string? InstalledVersion() => null;
 
@@ -659,7 +660,7 @@ public class SetupRunnerWalkTests
 
         var probes = new Probes
         {
-            Install = Gatto.Cli.InstallState.DevBuild,
+            Install = Gatto.Cli.Install.InstallState.DevBuild,
             Llama = @"C:\llama\llama-server.exe",
             Found = [new FoundModel(gguf, 4_000_000_000, null)],
             Audition = new AuditionCheck(

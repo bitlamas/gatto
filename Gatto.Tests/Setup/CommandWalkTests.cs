@@ -1,6 +1,9 @@
 using System.Net;
 using System.Text;
 using Gatto.Cli;
+using Gatto.Cli.Diagnose;
+using Gatto.Cli.Install;
+using Gatto.Cli.Update;
 using Gatto.Terminal;
 using Gatto.Tests.Fakes;
 

@@ -1,6 +1,6 @@
 using Microsoft.Win32;
 
-namespace Gatto.Cli;
+namespace Gatto.Cli.Install;
 
 //the complete new value and whether it goes back as REG_EXPAND_SZ. a value holding %VARS% must keep that kind, or its variables freeze at today's expansion
 internal readonly record struct PathWrite(string Value, bool Expandable);

@@ -42,7 +42,7 @@ public class TerminalNudgeTests
 
     //drive the flow to reach the screen, a screen built by hand proves nothing about arriving
     private static WizardScreen.Choice Install(
-        bool legacy, Gatto.Cli.InstallState state = Gatto.Cli.InstallState.NotInstalled)
+        bool legacy, Gatto.Cli.Install.InstallState state = Gatto.Cli.Install.InstallState.NotInstalled)
     {
         var flow = new SetupFlow(new WizardProbes
         {
@@ -99,7 +99,7 @@ public class TerminalNudgeTests
     [Fact]
     public void THE_REPAIR_BRANCH_CARRIES_THE_SAME_ASIDE()
     {
-        var screen = Install(legacy: true, Gatto.Cli.InstallState.InstalledButNotOnPath);
+        var screen = Install(legacy: true, Gatto.Cli.Install.InstallState.InstalledButNotOnPath);
 
         Assert.Contains(screen.BodyRows ?? [],
             r => r.Text.Contains(Sentence, StringComparison.Ordinal));
@@ -112,7 +112,7 @@ public class TerminalNudgeTests
     [Fact]
     public void AND_THE_REPAIR_BRANCH_STAYS_QUIET_ON_A_MODERN_HOST() =>
         Assert.DoesNotContain(
-            Install(legacy: false, Gatto.Cli.InstallState.InstalledButNotOnPath).BodyRows ?? [],
+            Install(legacy: false, Gatto.Cli.Install.InstallState.InstalledButNotOnPath).BodyRows ?? [],
             r => r.Text.Contains("Windows Terminal", StringComparison.Ordinal));
 
     //every other guard drives the fake, so this reads the live probe's source (a known match and a known miss come first)

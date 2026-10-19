@@ -1,4 +1,5 @@
 using Gatto.Cli;
+using Gatto.Cli.Launch;
 using Gatto.Core.Client;
 
 namespace Gatto.Tests;

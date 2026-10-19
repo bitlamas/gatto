@@ -80,7 +80,7 @@ internal static class ShelfFixtures
             Answer = request => live.SearchModels(request, null, CancellationToken.None),
             Found = found ?? [],
         };
-        var flow = new SetupFlow(probes) { CanSwitchSource = true, RowBudget = Gatto.Cli.Setup.Tui.Shelf.RowBudget(30) };
+        var flow = new SetupFlow(probes) { CanSwitchSource = true, RowBudget = Gatto.Cli.Setup.Shelves.Shelf.RowBudget(30) };
         return (flow, entry == Entry.Setup ? flow.StartPastEngine() : flow.StartAtModelSegment());
     }
 
@@ -102,7 +102,7 @@ internal static class ShelfFixtures
     }
 
     //a target of the frame the rig's face paints at this size after these keys, read off its hit map so a press lands where the user would click
-    public static Gatto.Cli.Setup.Tui.HitTarget Target(WizardScreen.Choice c, Gatto.Cli.Setup.Tui.HitKind kind, int index = -1,
+    public static Gatto.Cli.Setup.Tui.HitTarget Target(WizardScreen.Choice c, Gatto.Cli.Setup.HitKind kind, int index = -1,
         string? key = null, int width = 120, int height = 0, params ConsoleKeyInfo[] keys) =>
         Targets(c, width, height, keys).Single(t => t.Tag.Kind == kind
             && (index < 0 || t.Tag.Index == index) && (key is null || t.Tag.Key == key));
@@ -167,8 +167,8 @@ internal static class ShelfFixtures
     //the keys that open the selected row's publisher from the list: Tab round the ring to the files, then Enter
     public static ConsoleKeyInfo[] OpenKeys(WizardScreen.Choice shelf, int width = 120)
     {
-        var ring = Gatto.Cli.Setup.Tui.Shelf.Regions(shelf.Shelf!, width, 0, shelf.Door is not null).ToList();
-        var tabs = (ring.IndexOf(Region.Files) - ring.IndexOf(Gatto.Cli.Setup.Tui.Shelf.Opening(shelf.Shelf!)) + ring.Count) % ring.Count;
+        var ring = Gatto.Cli.Setup.Shelves.Shelf.Regions(shelf.Shelf!, width, 0, shelf.Door is not null).ToList();
+        var tabs = (ring.IndexOf(Region.Files) - ring.IndexOf(Gatto.Cli.Setup.Shelves.Shelf.Opening(shelf.Shelf!)) + ring.Count) % ring.Count;
         return [.. Enumerable.Repeat(new ConsoleKeyInfo('\0', ConsoleKey.Tab, false, false, false), tabs),
             new ConsoleKeyInfo('\0', ConsoleKey.Enter, false, false, false)];
     }
