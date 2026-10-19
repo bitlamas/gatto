@@ -43,7 +43,7 @@ public sealed class GattoApi
     //bump on any additive change to this surface, the extension cache hash includes the version so a host upgrade recompiles every .csx
     public const string HostApiVersion = "6";
 
-    private static readonly Regex NameRx = new("^[a-z0-9_]+$", RegexOptions.Compiled);
+    private static readonly Regex NameRx = new(@"\A[a-z0-9_]+\z", RegexOptions.Compiled);   //a dollar anchor also matches before a final newline
     private static readonly string[] ValidEvents = { "tool_call", "tool_result", "message_end", "session_summary" };
 
     //the character budget for a policy line, measured from the shipped prompt lines (each one sits in every session's prefix)

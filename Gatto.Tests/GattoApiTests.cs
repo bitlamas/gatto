@@ -73,6 +73,7 @@ public class GattoApiTests
     [InlineData("has-dash")]
     [InlineData("has space")]
     [InlineData("")]
+    [InlineData("read\n")]   //a dollar anchor alone lets a trailing newline through
     public void Register_RejectsBadName(string name)
     {
         var api = MakeApi();

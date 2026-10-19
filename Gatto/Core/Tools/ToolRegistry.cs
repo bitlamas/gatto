@@ -5,7 +5,7 @@ namespace Gatto.Core.Tools;
 
 public sealed partial class ToolRegistry
 {
-    [GeneratedRegex("^[a-z0-9_]+$")]
+    [GeneratedRegex(@"\A[a-z0-9_]+\z")]   //a dollar anchor also matches before a final newline
     private static partial Regex NamePattern();
 
     private readonly Dictionary<string, ITool> _tools = new();

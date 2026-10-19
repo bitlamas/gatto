@@ -89,6 +89,7 @@ public class ToolRegistryTests
     [InlineData("Bad-Name")]
     [InlineData("")]
     [InlineData("has space")]
+    [InlineData("read\n")]
     public void Rejects_invalid_names(string name)
     {
         var reg = new ToolRegistry();

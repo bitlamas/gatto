@@ -211,4 +211,15 @@ public sealed class ContributedEndpointTests
         api.BeginExtension("x");
         Assert.Throws<InvalidOperationException>(() => api.Endpoint("acme", "https://cloud.example.test/api", models: models));
     }
+
+    [Theory]
+    [InlineData("Acme")]
+    [InlineData("acme\n")]
+    public void An_endpoint_name_outside_lowercase_snake_case_fails_the_load(string name)
+    {
+        var api = ExtensionHostTests.NewApi(out _, out _);
+        api.BeginExtension("x");
+        var ex = Assert.Throws<InvalidOperationException>(() => api.Endpoint(name, "https://cloud.example.test/api"));
+        Assert.Equal($"endpoint name '{name}' must match [a-z0-9_]+", ex.Message);
+    }
 }
