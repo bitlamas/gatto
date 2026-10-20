@@ -112,13 +112,15 @@ internal static class CommandBanner
             ? "gatto " + version + " (" + tail + ")"
             : "gatto " + version;
 
-    //the banner and REPL frame: a dot separator and a leading v, with BannerDevMarker because this surface stays BMP-only
+    //the banner and REPL frame: a dot separator, a leading v and the glyph set's dev mark, so an ASCII host draws no star after the sha
     public static string DottedVersion(string version, string build, bool dev,
-        Gatto.Terminal.GlyphSet? glyphs) =>
-        Gatto.Core.GattoVersion.BuildTail(build, dev, Gatto.Core.GattoVersion.BannerDevMarker)
-                is { Length: > 0 } tail
-            ? "v" + version + " " + (glyphs ?? Gatto.Terminal.GlyphSet.Unicode).Dot + " " + tail
+        Gatto.Terminal.GlyphSet? glyphs)
+    {
+        var g = glyphs ?? Gatto.Terminal.GlyphSet.Unicode;
+        return Gatto.Core.GattoVersion.BuildTail(build, dev, " " + g.DevBuild) is { Length: > 0 } tail
+            ? "v" + version + " " + g.Dot + " " + tail
             : "v" + version;
+    }
 
     //a development build is a launcher with its dll beside it, which dotnet build produces and a single-file publish does not
     public static bool IsDevBuild() => SelfInstall.IsFrameworkDependent(Environment.ProcessPath);

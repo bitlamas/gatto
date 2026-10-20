@@ -35,6 +35,8 @@ public sealed class ChromeTicker(ChromePainter painter, object gate, ISlotsReade
     private int _polling;   //0/1 latch so at most one poll is in flight
     //set by any streamed delta and by MarkStreaming on a tool call, so the prefill row ends when the model starts emitting
     private int _emitted;
+    //the ticker's own fields as its last paint left them. every other state change repaints itself, so a tick that changes none of these has nothing to show
+    private (string? Purr, string? Wait, bool Blink)? _painted;
 
     //the last prompt_progress chunk of the request, and 0 means none arrived so the prefill row keeps using /slots
     private long _streamTotal;
@@ -183,6 +185,7 @@ public sealed class ChromeTicker(ChromePainter painter, object gate, ISlotsReade
             _maxDown = 0;
             _promptEstimate = promptTokensEstimate;
             _lastPollMs = -1;
+            _painted = null;
             _wait.Restart();
             _clock = Stopwatch.StartNew();
             _cts = new CancellationTokenSource();
@@ -267,6 +270,10 @@ public sealed class ChromeTicker(ChromePainter painter, object gate, ISlotsReade
                         painter.State.ToolWait = null;
                         painter.State.BlinkOn = ms / 500 % 2 == 0;
                     }
+                    //a panel's waiting row moves once a second, and ten full frames a second of the same rows cost the terminal 35 KB a second under conpty
+                    var tick = (painter.State.PurrText, painter.State.ToolWait, painter.State.BlinkOn);
+                    if (_painted == tick) continue;
+                    _painted = tick;
                     try { painter.Repaint(); }
                     catch (Exception ex) { _faulted = true; fault = ex; return; }
                 }

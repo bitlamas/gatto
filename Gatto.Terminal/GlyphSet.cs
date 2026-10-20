@@ -55,7 +55,7 @@ public sealed class GlyphSet
     public static GlyphSet Unicode { get; } = new()
     {
         Ok = "\u2713", Bad = "\u2717", Warn = "\u26a0", Vision = "\u25c8", Prompt = "\u276f",
-        Loaded = "\u25cf", Rule = "\u2500", Dot = "\u00b7", OtherBuild = "\u25b3", NotRun = "\u2013",
+        Loaded = "\u25cf", Rule = "\u2500", Dot = "\u00b7", OtherBuild = "\u25b3", NotRun = "\u2013", DevBuild = "\u2726",
         Cat = UnicodeCat, Face = "(^\u00b7 \u00b7^)\u27c6",
         Waiting = "(^\u00b7 \u00b7^)\u222b", Empty = "(^\u00b7_\u00b7^)\uff89",
         Header = "(^\u00b7 \u00b7^)\u2cca",
@@ -75,7 +75,7 @@ public sealed class GlyphSet
     public static GlyphSet Ascii { get; } = new()
     {
         Ok = "+", Bad = "x", Warn = "!", Vision = "*", Prompt = ">",
-        Loaded = "o", Rule = "-", Dot = ".", OtherBuild = "^", NotRun = "-",
+        Loaded = "o", Rule = "-", Dot = ".", OtherBuild = "^", NotRun = "-", DevBuild = "*",
         Cat = AsciiCat, Face = AsciiFace, Waiting = AsciiWaiting, Empty = AsciiEmpty,
         Header = AsciiHeader,
         Ellipsis = "...", MidEllipsis = "...",
@@ -115,6 +115,9 @@ public sealed class GlyphSet
 
     //the pinned llama.cpp build can't load this architecture
     public required string OtherBuild { get; init; }
+
+    //the mark after the banner's build sha on a development build. BMP on the Unicode side, since the banner stays BMP-only and --version keeps the astral one
+    public required string DevBuild { get; init; }
 
     //a task nobody asked for. this is an EN dash, em dashes must never appear on screen
     public required string NotRun { get; init; }

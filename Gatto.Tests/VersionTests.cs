@@ -96,6 +96,16 @@ public class VersionTests
         Assert.Equal("gatto 0.4.1 (build b4c778b 👾)", version);
     }
 
+    //an ASCII host draws the whole banner from the ASCII set, the dev mark after the sha included
+    [Fact]
+    public void AN_ASCII_BANNER_WEARS_AN_ASCII_DEV_MARK()
+    {
+        var banner = Gatto.Cli.CommandBanner.DottedVersion("0.4.1", "b4c778b", dev: true, glyphs: GlyphSet.Ascii);
+
+        Assert.Equal("v0.4.1 . build b4c778b *", banner);
+        Assert.All(banner, c => Assert.True(c < 0x80, $"the ASCII banner holds U+{(int)c:X4}"));
+    }
+
     [Fact]
     public void A_RELEASE_BUILD_WEARS_NO_MARKER_AT_EITHER_SITE()
     {

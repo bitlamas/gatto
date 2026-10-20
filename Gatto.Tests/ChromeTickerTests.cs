@@ -367,6 +367,50 @@ public class ChromeTickerTests
         Assert.Null(painter.State.ToolWait);
     }
 
+    private static int Frames(RecordingSurface surface, object gate)
+    {
+        string text;
+        lock (gate) text = surface.Text;
+        var n = 0;
+        for (var at = text.IndexOf(Ansi.SyncStart, StringComparison.Ordinal); at >= 0; at = text.IndexOf(Ansi.SyncStart, at + 1, StringComparison.Ordinal)) n++;
+        return n;
+    }
+
+    [Fact]
+    public async Task PanelUp_PaintsOnlyWhenTheWaitingRowMoves()
+    {
+        //the waiting row moves once a second, so a panel held for 2.5 s paints a few frames and not the ten a second the tick runs at
+        var (surface, painter, gate) = NewPainter();
+        lock (gate)
+        {
+            painter.State.Tool = ("write_file", "test\\yahoo2.txt");
+            painter.State.PanelRows = new[] { "  Do you want to proceed?", "❯ 1. Yes" };
+        }
+        var ticker = new ChromeTicker(painter, gate);
+        ticker.StartTurn(Cats.Face(GlyphSet.Unicode));
+        var sw = Stopwatch.StartNew();
+        while (sw.ElapsedMilliseconds < 2500) await Task.Delay(20);
+        var frames = Frames(surface, gate);
+        ticker.StopTurn(repaint: false);
+
+        Assert.InRange(frames, 1, 5);
+    }
+
+    [Fact]
+    public async Task NoPanel_ThePurrStillPaintsEachOfItsFrames()
+    {
+        //the purr's frame advances every 140 ms, so skipping an unchanged tick still paints most ticks of a running turn
+        var (surface, painter, gate) = NewPainter();
+        var ticker = new ChromeTicker(painter, gate);
+        ticker.StartTurn(Cats.Face(GlyphSet.Unicode));
+        var sw = Stopwatch.StartNew();
+        while (sw.ElapsedMilliseconds < 1500) await Task.Delay(20);
+        var frames = Frames(surface, gate);
+        ticker.StopTurn(repaint: false);
+
+        Assert.True(frames >= 6, $"a running turn painted {frames} frames in 1.5 s");
+    }
+
     [Fact]
     public async Task PanelUp_Clears_PurrResumesOnTheNextTick()
     {

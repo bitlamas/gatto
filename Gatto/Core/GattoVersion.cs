@@ -44,9 +44,6 @@ public static class GattoVersion
     //the marker a development build appends to its sha, so two open REPLs can be told apart
     public const string DevMarker = " 👾";
 
-    //the banner's dev marker, a different glyph on purpose (the banner stays BMP-only, --version keeps DevMarker)
-    public const string BannerDevMarker = " ✦";
-
     //the build stamp on its own (--version asserts the parenthesised form), so each call site keeps its own frame and passes its own marker
     public static string BuildTail(string build, bool dev, string marker = DevMarker) =>
         build.Length > 0 ? "build " + build + (dev ? marker : "") : "";
