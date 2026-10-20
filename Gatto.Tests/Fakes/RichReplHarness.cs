@@ -157,7 +157,9 @@ public sealed class RichReplHarness
         string? defaultRole = null, Func<string, RoleSwitchResult>? switchRole = null,
         //the launched role and its file's colours and rows, the generalist with none as a bare launch from a fresh home
         string roleName = "generalist", (RgbColor Dark, RgbColor? Light)? roleTint = null, IReadOnlyList<string>? roleCat = null,
-        string? firstMessage = null)
+        string? firstMessage = null,
+        //the loop's trace, absent as an untraced session, so a test can read what a traced rich turn wrote
+        Gatto.Core.Trace? trace = null)
     {
         Surface = new VtScreenSurface(width, height);
         _tap = new TappedSurface(Surface);
@@ -165,7 +167,7 @@ public sealed class RichReplHarness
         Convo = new Conversation(systemPrompt);
 
         var loop = Loop = new AgentLoop(Client, tools ?? new ToolRegistry(), hooks ?? new HookBus(),
-            new TestToolContext(cwd), "test-model");
+            new TestToolContext(cwd), "test-model", trace: trace);
 
         _repl = new Gatto.Repl.Repl(
             loop, Convo, roleName: roleName, modelName: "test-model",

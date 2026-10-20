@@ -651,7 +651,7 @@ public sealed partial class Repl
                 //build the renderer through the launch builder, and let the tail closure read the convo field since /new and /compact reassign it
                 var next = BuildSessionRenderer(s.Painter, s.Surface, s.Theme, roleName, s.Ticker, s.Gate,
                     s.OnUsage, reasoning, () => convo.Messages.Count > 0 ? convo.Messages[^1] : null,
-                    s.Glyphs);
+                    s.Glyphs, loop.Trace);
                 next.AdoptTranscriptState(s.Renderer);     //hand the new renderer what the scrollback last ended with
                 next.OnDegraded = s.OnDegraded;            //the loop's degrade latch too (both or neither)
                 next.OnContextChanged = s.OnContextChanged;   //the mid-turn footer refresh too (both or neither)

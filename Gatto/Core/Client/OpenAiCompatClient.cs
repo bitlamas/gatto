@@ -242,7 +242,8 @@ public sealed class OpenAiCompatClient : IChatClient, Gatto.Core.Client.ITokenCo
                 continue;
             }
 
-            if (traced && !firstToken && chunkEvents.Exists(e => e is StreamEvent.TextDelta or StreamEvent.ReasoningDelta))
+            //the first token is the first thing the model wrote, a tool call included, since an agent round often opens with one
+            if (traced && !firstToken && chunkEvents.Exists(e => e is StreamEvent.TextDelta or StreamEvent.ReasoningDelta or StreamEvent.ToolCallDelta))
             {
                 firstToken = true;
                 span.Set("ttft_us", Micros(sentAt));

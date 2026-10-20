@@ -58,6 +58,7 @@ public sealed class RenderStreamBaselineTests(ITestOutputHelper output)
             }
 
         table.AppendLine("stream: run | chunks read | first chunk bytes | allocated bytes/chunk after the first, mean max | chunks off-thread | gen0 over replay");
+        await ClientReplay(sse);   //unprinted, the first replay's counts move with whatever ran before it in the process
         for (var run = 1; run <= Runs; run++)
         {
             var s = await ClientReplay(sse);
@@ -71,11 +72,13 @@ public sealed class RenderStreamBaselineTests(ITestOutputHelper output)
 
     private sealed record RenderRun(IReadOnlyList<(long Bytes, int Writes, double Ms)> Rows, int Gen0, bool SawLastWords);
 
-    //the session's own renderer over a counted screen, the ticker never started, so every write comes from a delta
+    //the session's own renderer over the counting surface a traced session uses, the ticker never started, so every write comes from a delta
     private static async Task<RenderRun> RenderReplay(string sse, int width)
     {
         var screen = new VtScreenSurface(width, Height);
         var surface = new CountingSurface(screen);
+        var file = Path.Combine(Path.GetTempPath(), $"gatto-baseline-{Guid.NewGuid():N}.trace.jsonl");
+        using var trace = new Gatto.Core.Trace(Stopwatch.GetTimestamp(), DateTimeOffset.Now, () => file, () => "baseline", "test", 1);
         var gate = new object();
         var model = new TranscriptModel("generalist");
         var status = new StatusInfo(@"C:\proj", "qwen", "generalist", new CtxState(), @"C:\Users\x");
@@ -87,21 +90,30 @@ public sealed class RenderStreamBaselineTests(ITestOutputHelper output)
         var ticker = new ChromeTicker(painter, gate);
         var convo = new Conversation("sys");
         var renderer = Gatto.Repl.Repl.BuildSessionRenderer(painter, surface, T, "generalist", ticker, gate,
-            null, ReasoningMode.Collapsed, () => convo.Messages.Count > 0 ? convo.Messages[^1] : null, GlyphSet.Unicode);
-        var meter = new Meter(renderer, surface);
+            null, ReasoningMode.Collapsed, () => convo.Messages.Count > 0 ? convo.Messages[^1] : null, GlyphSet.Unicode, trace);
         var loop = new AgentLoop(Client(sse), new ToolRegistry(), new HookBus(),
-            new TestToolContext(Path.GetTempPath()), "m");
+            new TestToolContext(Path.GetTempPath()), "m", trace: trace);
 
         renderer.BeginTurn();
         var gen0 = GC.CollectionCount(0);
-        var result = await loop.RunTurnAsync(convo, "go", meter, default);
+        var result = await loop.RunTurnAsync(convo, "go", renderer, default);
         gen0 = GC.CollectionCount(0) - gen0;
         renderer.EndTurn();
+        trace.Flush();
 
         Assert.Equal(TurnOutcome.Completed, result.Outcome);
         var seen = string.Join(" ", string.Join(" ", screen.Viewport.Select(TermText.StripAnsiForWidth))
             .Split(' ', StringSplitOptions.RemoveEmptyEntries));   //rows rejoined, since the phrase may wrap
-        return new RenderRun(meter.Rows, gen0, seen.Contains(LastWords, StringComparison.Ordinal));
+        var spans = File.ReadAllLines(file).Skip(1).Select(l => JsonDocument.Parse(l).RootElement.Clone()).ToList();
+        File.Delete(file);
+        var turn = spans.Single(s => s.GetProperty("s").GetString() == "turn").GetProperty("id").GetInt64();
+        var deltas = spans.Where(s => s.GetProperty("s").GetString() == "delta").ToList();
+        //every delta hangs under its turn, a wrapper that dropped the turn's id would leave them at 0
+        Assert.All(deltas, d => Assert.Equal(turn, d.GetProperty("p").GetInt64()));
+        Assert.InRange(deltas.Sum(d => d.GetProperty("bytes").GetInt64()), 1, surface.Bytes);   //the turn's opening and closing paints are no delta's
+        var rows = deltas.Select(d => (d.GetProperty("bytes").GetInt64(), (int)d.GetProperty("repaints").GetInt64(),
+            d.GetProperty("d").GetInt64() / 1000.0)).ToList();
+        return new RenderRun(rows, gen0, seen.Contains(LastWords, StringComparison.Ordinal));
     }
 
     private sealed record StreamRun(IReadOnlyList<long> PerChunk, int OffThread, int Gen0);
@@ -138,46 +150,6 @@ public sealed class RenderStreamBaselineTests(ITestOutputHelper output)
 
         protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken ct) =>
             Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK) { Content = new StreamContent(new MemoryStream(_bytes)) });
-    }
-
-    //counts what the painter writes, one write per repaint, since the compositor writes each frame whole
-    private sealed class CountingSurface(VtScreenSurface inner) : ITermSurface
-    {
-        public long Bytes { get; private set; }
-        public int Writes { get; private set; }
-        public int Width => inner.Width;
-        public int Height => inner.Height;
-
-        public void Write(string s)
-        {
-            Bytes += Encoding.UTF8.GetByteCount(s);
-            Writes++;
-            inner.Write(s);
-        }
-    }
-
-    //times each delta through the renderer and reads what the surface took during it
-    private sealed class Meter(StreamRenderer inner, CountingSurface surface) : ITurnObserver
-    {
-        public List<(long Bytes, int Writes, double Ms)> Rows { get; } = [];
-
-        private void Measure(Action a)
-        {
-            var bytes = surface.Bytes;
-            var writes = surface.Writes;
-            var start = Stopwatch.GetTimestamp();
-            a();
-            Rows.Add((surface.Bytes - bytes, surface.Writes - writes, Stopwatch.GetElapsedTime(start).TotalMilliseconds));
-        }
-
-        public void OnTextDelta(string text) => Measure(() => inner.OnTextDelta(text));
-        public void OnReasoningDelta(string text) => Measure(() => inner.OnReasoningDelta(text));
-        public void OnToolCallDelta(string? name = null, string? partialArguments = null) => ((ITurnObserver)inner).OnToolCallDelta(name, partialArguments);
-        public void OnPromptProgress(long total, long processed) => ((ITurnObserver)inner).OnPromptProgress(total, processed);
-        public void OnToolCallStart(ToolCall call) => inner.OnToolCallStart(call);
-        public void OnToolResult(ToolCall call, ToolResult result) => inner.OnToolResult(call, result);
-        public void OnWarning(string message) => inner.OnWarning(message);
-        public void OnUsage(Usage usage) => inner.OnUsage(usage);
     }
 
     private static double Percentile(List<double> sorted, double p) =>

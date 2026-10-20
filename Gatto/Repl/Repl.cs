@@ -530,9 +530,9 @@ public sealed partial class Repl(
     internal static StreamRenderer BuildSessionRenderer(
         ChromePainter painter, ITermSurface surface, Theme theme, string roleName, ChromeTicker ticker,
         object gate, Action<Usage>? onUsage, ReasoningMode reasoning, Func<ChatMessage?> convoTail,
-        GlyphSet? glyphs) =>
+        GlyphSet? glyphs, Gatto.Core.Trace? trace = null) =>
         new(painter, surface, theme, roleName, ticker, gate, onUsage, reasoning,
-            model: painter.Model, convoTail: convoTail, glyphs: glyphs);
+            model: painter.Model, convoTail: convoTail, glyphs: glyphs, trace: trace);
 
     //long enough to read a short sentence, and gone before it starts to look stuck
     private const int PasteHintSeconds = 4;

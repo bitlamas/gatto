@@ -20,7 +20,9 @@ public sealed partial class Repl
         //the pump starts here and only here, the composer needs it running continuously, and the fallback covers a directly built Repl
         var keys = pump ?? new InputPump(new KeyInputSource(new ConsoleKeySource()));
         keys.Start();
-        var surface = termSurface ?? new ConsoleSurface();
+        ITermSurface surface = termSurface ?? new ConsoleSurface();
+        //only a traced session counts its writes, so an untraced one paints through the surface it always had
+        if (loop.Trace.Enabled) surface = new CountingSurface(surface);
         var theme = new Theme(caps, themeMode);
         if (roleTint is { } launchTint) theme.SetRoleTint(roleName, launchTint.Dark, launchTint.Light);   //told before anything paints
         var ctx = new CtxState { ContextWindow = configContext ?? await client.TryGetContextLengthAsync(appCt) };
@@ -62,7 +64,7 @@ public sealed partial class Repl
         });
         var renderer = BuildSessionRenderer(painter, surface, theme, roleName, ticker, gate,
             OnUsageAccumulate, reasoning, () => convo.Messages.Count > 0 ? convo.Messages[^1] : null,
-            _glyphs);
+            _glyphs, loop.Trace);
         //scroll keys move the viewport and the pump consumes them even while a modal prompt holds focus, each paint runs under the gate
         keys.SetScrollSink(sk =>
         {

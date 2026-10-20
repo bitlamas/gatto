@@ -66,6 +66,25 @@ public class TraceRequestTests : IDisposable
         Assert.Equal(1, req.GetProperty("after_resume").GetInt32());
     }
 
+    //a round that opens with a tool call still has a first token, or the headline is empty for most agent rounds
+    [Fact]
+    public async Task A_round_that_opens_with_a_tool_call_has_a_first_token()
+    {
+        await using var s = new FakeOpenAiServer();
+        s.Enqueue(new FakeResponse(Frames: new[]
+        {
+            "data: {\"choices\":[{\"index\":0,\"delta\":{\"tool_calls\":[{\"index\":0,\"id\":\"c1\",\"function\":{\"name\":\"echo\",\"arguments\":\"{}\"}}]},\"finish_reason\":null}]}\n\n",
+            Chunk("{}", finish: "tool_calls"),
+            "data: [DONE]\n\n",
+        }));
+        using var trace = NewTrace();
+        var client = new OpenAiCompatClient(new HttpClient(), "local", new EndpointConfig(s.BaseUrl), trace: trace);
+        await foreach (var _ in client.StreamAsync(new ChatRequest("m", [new ChatMessage("user", "hi")]))) { }
+        trace.Flush();
+        var req = Named(Spans(), "request").Single();
+        Assert.True(req.GetProperty("ttft_us").GetInt64() >= req.GetProperty("ttfb_us").GetInt64());
+    }
+
     [Fact]
     public async Task Only_the_first_request_after_a_resume_is_marked()
     {

@@ -96,7 +96,7 @@ public sealed class StreamRenderer : ITurnObserver
         ChromeTicker ticker, object gate, Action<Usage>? onUsage = null,
         ReasoningMode reasoning = ReasoningMode.Collapsed, Func<DateTime>? now = null,
         TranscriptModel? model = null, Func<ChatMessage?>? convoTail = null,
-        GlyphSet? glyphs = null)
+        GlyphSet? glyphs = null, Gatto.Core.Trace? trace = null)
     {
         _painter = painter; _surface = surface; _theme = theme; _role = roleName;
         _ticker = ticker; _gate = gate; _onUsage = onUsage;
@@ -104,6 +104,30 @@ public sealed class StreamRenderer : ITurnObserver
         _model = model; _convoTail = convoTail; _glyphs = glyphs ?? GlyphSet.Unicode;
         //detects a dead painter here, a /role swap hands the new renderer the same instance. otherwise every later commit writes nowhere
         _degraded = !painter.Alive;
+        _trace = trace ?? Gatto.Core.Trace.Off;
+        _counter = _trace.Enabled ? surface as CountingSurface : null;   //a traced session wraps the surface the painter writes to
+    }
+
+    private readonly Gatto.Core.Trace _trace;
+    private readonly CountingSurface? _counter;
+    private long _turnSpan;
+
+    public void OnTurnSpan(long id) => _turnSpan = id;
+
+    //the counters before a delta, zeros when untraced, so the span reads what the surface took during it
+    private (long Bytes, long Writes, long Ticks) Counts() =>
+        _counter is { } c ? (c.Bytes, c.Writes, c.WriteTicks) : default;
+
+    private void CloseDelta(Gatto.Core.Span span, string kind, int chars, (long Bytes, long Writes, long Ticks) before)
+    {
+        if (!_trace.Enabled) return;
+        var after = Counts();
+        span.Set("kind", kind);
+        span.Set("chars", chars);
+        span.Set("repaints", after.Writes - before.Writes);
+        span.Set("bytes", after.Bytes - before.Bytes);
+        span.Set("write_us", (after.Ticks - before.Ticks) * 1_000_000 / System.Diagnostics.Stopwatch.Frequency);
+        span.Dispose();
     }
 
     //turn bracket
@@ -181,6 +205,9 @@ public sealed class StreamRenderer : ITurnObserver
 
     public void OnTextDelta(string text)
     {
+        //opened first, so the span covers the whole call, the sanitize and the gate's wait included
+        var span = _trace.Open(Gatto.Core.Trace.Delta, _turnSpan);
+        var before = Counts();
         //strip ESC, CR and the other C0 bytes before anything measures or paints them. a newline survives, it commits a line
         text = TermText.SanitizeProse(text);
         _ticker.AddTokenChars(text.Length);
@@ -194,10 +221,13 @@ public sealed class StreamRenderer : ITurnObserver
                 PaintTail();
             },
             () => _surface.Write(text));
+        CloseDelta(span, "text", text.Length, before);
     }
 
     public void OnReasoningDelta(string text)
     {
+        var span = _trace.Open(Gatto.Core.Trace.Delta, _turnSpan);
+        var before = Counts();
         //sanitize the reasoning delta too, so ESC and CR reach neither the painter nor the fallback
         text = TermText.SanitizeProse(text);
         _ticker.AddTokenChars(text.Length);
@@ -212,10 +242,19 @@ public sealed class StreamRenderer : ITurnObserver
                 PaintTail();
             },
             () => _surface.Write(text));
+        CloseDelta(span, "reasoning", text.Length, before);
     }
 
     //nothing to paint here (the purr is the ticker's), but an open prose line is finished once a tool call starts, so commit it
-    public void OnToolCallDelta(string? name = null, string? partialArguments = null) => Guarded(
+    public void OnToolCallDelta(string? name = null, string? partialArguments = null)
+    {
+        var span = _trace.Open(Gatto.Core.Trace.Delta, _turnSpan);
+        var before = Counts();
+        ToolCallDelta(name, partialArguments);
+        CloseDelta(span, "tool_call", partialArguments?.Length ?? 0, before);   //the arguments streamed so far, which each chunk resends whole
+    }
+
+    private void ToolCallDelta(string? name, string? partialArguments) => Guarded(
         () =>
         {
             //the model is emitting, so the purr must not say it is reading context while tool arguments stream

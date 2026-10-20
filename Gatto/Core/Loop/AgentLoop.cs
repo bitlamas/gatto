@@ -31,6 +31,8 @@ public interface ITurnObserver
     void OnToolCallDelta(string? name = null, string? partialArguments = null) { }
     //the server's prefill progress for the request in flight, and only the rich renderer shows it
     void OnPromptProgress(long total, long processed) { }
+    //the traced turn's span, told before the first round, so a renderer can open its delta spans under it
+    void OnTurnSpan(long id) { }
     void OnToolCallStart(ToolCall call);
     void OnToolResult(ToolCall call, ToolResult result);
     void OnWarning(string message);
@@ -133,6 +135,7 @@ public sealed class AgentLoop(
         IReadOnlyList<ImageRef>? images, long traceParent, string? agent)
     {
         var span = _trace.Open(Trace.Turn, traceParent);
+        observer.OnTurnSpan(span.Id);
         var seq = convo.Count;   //the user record's index among the chat records, which AddUser is about to append
         TurnResult? result = null;
         try { return result = await RunTurnCoreAsync(convo, userMessage, observer, ct, images, span.Id, agent); }

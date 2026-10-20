@@ -21,6 +21,7 @@ public sealed class Trace : IDisposable
     public const string SessionWrite = "session.write";
     public const string Resume = "resume";
     public const string Launch = "launch";
+    public const string Delta = "delta";
 
     //the one disabled instance, so a caller with no trace still holds a non-null one
     public static readonly Trace Off = new();
