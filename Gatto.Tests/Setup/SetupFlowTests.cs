@@ -1343,6 +1343,30 @@ ew.gguf", 4_000_000_000, null)],
         Assert.Equal(("gemma-4-e4b-it", "Q6_K"), flow.Writes.ActivateFile);
     }
 
+    //gatto model's join ends on the closing record, and a join that never names its model prints /model and gatto audition with no id
+    [Fact]
+    public void A_JOIN_ON_THE_ADD_ROAD_NAMES_THE_MODEL_IT_JOINED()
+    {
+        var flow = new SetupFlow(new FakeProbes
+        {
+            Llama = @"C:\llama\llama-server.exe",
+            Found = [new Gatto.Core.Acquire.FoundModel(@"D:\w\gemma-Q6_K.gguf", 4_000_000_000, null)],
+            Colliding = "gemma-4-e4b-it",
+            ClashKind = Gatto.Roles.Models.IdClash.SameModel,
+            Context = 8192,
+        });
+        flow.StartAtModelSegment();
+        flow.Answer("0");
+        Assert.Equal(SetupFlow.QuantFromNowKey, Key(flow.ResumeAfterWrites("gemma-4-e4b-it")));
+
+        flow.Answer(SetupFlow.No);
+        while (flow.NeedsWritesApplied) flow.ResumeAfterWrites(null);
+
+        var said = string.Join(" ", flow.RecordRows().Select(r => r.Text));
+        Assert.Contains("gatto audition gemma-4-e4b-it", said, StringComparison.Ordinal);
+        Assert.Contains("/model gemma-4-e4b-it", flow.AddRoadNextStep.Text, StringComparison.Ordinal);
+    }
+
     //the model got its check when it was created. after a join only the new file is undecided, so the resume asks about the quant
     [Fact]
     public void A_JOIN_RESUMES_ON_THE_QUANT_QUESTION()

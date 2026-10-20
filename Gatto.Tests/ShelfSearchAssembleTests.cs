@@ -521,6 +521,25 @@ public class ShelfSearchAssembleTests
         Assert.Equal("ddh0_gemma-3-40b", named!.Model);
     }
 
+    //a tagged repo whose name drops the source's is a derivative, so its row keeps its own name on both roads
+    [Fact]
+    public async Task A_RENAMED_DERIVATIVE_KEEPS_ITS_OWN_NAME()
+    {
+        var hub = new FakeShelfHub().Source("Qwen/Qwen3.6-27B")
+            .Conversion("Qwen/Qwen3.6-27B", "prism-ml/Bonsai-27B-gguf", 27 * B, 5, "qwen35",
+                files: ("Bonsai-27B-Q1_0.gguf", 3.8));
+        var (row, _) = await HubSearch.LookupModelAsync(Client(hub), "prism-ml/Bonsai-27B-gguf",
+            ShelfMachines.Apu8060S, 8192, CancellationToken.None);
+        Assert.Equal("Bonsai-27B", row!.Model);
+
+        var browse = QwenLadder();
+        browse.Conversion("Qwen/Qwen3.8-27B", "bartowski/someone_Bonsai-27B-GGUF", 27 * B, 500, "qwen35",
+            files: ("Bonsai-27B-Q4_K_M.gguf", 12));
+        var o = await Run(browse, Qwen, ShelfMachines.Apu8060S);
+        Assert.Contains(o.Rows, r => r.Model == "someone_Bonsai-27B");
+        Assert.DoesNotContain(o.Rows.Single(r => r.Model == "Qwen3.8-27B").Publishers, p => p.Org == "bartowski");
+    }
+
     //an untagged repo in a typed search is named for its repo less the -GGUF a conversion adds, and the org inside the name stays
     [Fact]
     public async Task A_TYPED_SEARCH_DROPS_THE_GGUF_SUFFIX()

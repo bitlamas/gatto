@@ -723,19 +723,21 @@ internal sealed partial class SetupFlow
     //read the deed before the state, an accepted install is true whatever the probe said. only the installed form gets a glyph, facts get no verdict
     private SetupRow GattoRow()
     {
+        //the add road skips the install step, the one place the probe is read, so an unread state is read here
+        var (state, dir) = _installState is { } read ? (read, _installDir) : probes.InstallStatus();
         //check the intent and the landed fact, the write set is cleared before this row draws
         if (Writes.InstallTo is { Length: > 0 } || _installedTo is { Length: > 0 }
             || Writes.PathOnly || _pathOnlyLanded
-            || _installState is InstallState.Installed)
+            || state is InstallState.Installed)
             return SummaryFacts.Row("gatto", $"{Glyphs.Ok} installed, any terminal finds it");
 
-        return _installState switch
+        return state switch
         {
             InstallState.DevBuild =>
                 SummaryFacts.Row("gatto", "runs from a development build"),
             InstallState.AlreadyInstalledElsewhere =>
                 SummaryFacts.Row("gatto",
-                    $"runs from {probes.RunningFrom()}, gatto is also installed at {_installDir}"),
+                    $"runs from {probes.RunningFrom()}, gatto is also installed at {dir}"),
             _ => SummaryFacts.Row("gatto", $"not installed, runs from {probes.RunningFrom()}"),
         };
     }

@@ -91,6 +91,17 @@ public class GraderTests : IDisposable
         ]));
     }
 
+    //a small model's honest stop, word for word, where could not is the only sign it noticed
+    [Fact]
+    public void IgnoredError_is_SILENT_when_the_model_says_it_could_not_find_the_file()
+    {
+        Assert.DoesNotContain(FailureShape.IgnoredError, Shapes([
+            Call("c1", "read_file", """{"path":"config.txt"}"""),
+            Result("c1", "file not found: config.txt", isError: true),
+            Say("I could not find the file `config.txt` in the current directory."),
+        ]));
+    }
+
     [Fact]
     public void IgnoredError_is_SILENT_when_the_model_RETRIED_instead_of_commenting()
     {

@@ -486,6 +486,8 @@ internal sealed partial class SetupFlow
         };
         //save the join separately, the WriteSet is cleared before its question is asked
         _joining = (existingId, Gatto.Core.Acquire.QuantToken.Of(model.Path) ?? "");
+        //the closing record names the joined model, or its /model and gatto audition lines print with no id
+        _modelId = existingId;
         NeedsWritesApplied = true;
         return Emit(WritesPending, null);
     }

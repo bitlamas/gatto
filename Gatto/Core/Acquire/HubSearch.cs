@@ -138,7 +138,7 @@ internal static class HubSearch
         var tree = await client.WithStreamedAsync(
             await client.TreeAsync(repoId, ct).ConfigureAwait(false), listing, ct,
             couldMove: TableCouldMove(listing, hw, ctxForFit)).ConfigureAwait(false);
-        var row = ShelfSearch.Price(ModelNameOf(listing.QuantizedFrom ?? listing.RepoId), null, 0, null, [(listing, tree)],
+        var row = ShelfSearch.Price(ModelNameOf(SourceOf(listing)), null, 0, null, [(listing, tree)],
             Families.Load(), hw, ctxForFit, lifted: false);
 
         //the kind is read from the file the row shows, or the one the floor-lifted re-price will show, as every shelf row reads its own
@@ -194,7 +194,7 @@ internal static class HubSearch
 
         //a tagged repo joins its source's model, an untagged one is a model of its own, and the trees go to the most downloaded first
         var groups = servable
-            .GroupBy(l => l.QuantizedFrom ?? l.RepoId, StringComparer.OrdinalIgnoreCase)
+            .GroupBy(SourceOf, StringComparer.OrdinalIgnoreCase)
             .OrderByDescending(g => g.Sum(l => l.Downloads))
             .ToList();
         var trees = new System.Collections.Concurrent.ConcurrentDictionary<string, HubTree>(StringComparer.OrdinalIgnoreCase);
@@ -285,6 +285,14 @@ internal static class HubSearch
         const string Gguf = "-GGUF";
         return name.Length > Gguf.Length && name.EndsWith(Gguf, StringComparison.OrdinalIgnoreCase) ? name[..^Gguf.Length] : name;
     }
+
+    //a tagged repo is its source's conversion only when its own name holds the source's name, a derivative renamed on the Hub is a model of its own
+    internal static bool NameHoldsSource(string repoId, string source) =>
+        Squeezed(ModelNameOf(repoId)).Contains(Squeezed(ModelNameOf(source)), StringComparison.Ordinal);
+
+    //the id a repo's row is named and grouped by, its tagged source or itself
+    internal static string SourceOf(HubListing listing) =>
+        listing.QuantizedFrom is { } source && NameHoldsSource(listing.RepoId, source) ? source : listing.RepoId;
 
     //lifted admits the unfittable tier and unlifted drops a model where nothing fits. both keep the quality floor unless the floor itself is lifted
     internal static (HubQuant Quant, FitRegime Fit)? Pick(

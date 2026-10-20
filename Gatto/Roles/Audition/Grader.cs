@@ -20,7 +20,7 @@ internal static class Grader
     //words that mean the model noticed a problem, used only to suppress IgnoredError, an unlisted phrasing costs a missed fire
     private static readonly string[] ErrorWords =
         ["error", "fail", "wrong", "missing", "absent", "cannot", "unable", "refused",
-         "not found", "no such", "does not exist", "blocked", "denied", "timed out",
+         "not found", "no such", "does not exist", "could not", "blocked", "denied", "timed out",
          //the "n't" entry covers every negation contraction, over-suppression is the safe direction here
          "n't"];
 

@@ -178,6 +178,31 @@ public class InstallOnDoneTests
         Assert.Contains("runs from a development build", GattoRow(flow), StringComparison.Ordinal);
     }
 
+    //gatto model takes the add road, which skips the install question, so the row reads the probe or an installed gatto reads as not installed
+    [Fact]
+    public void THE_ADD_ROAD_STATES_THE_INSTALL_IT_NEVER_ASKED_ABOUT()
+    {
+        var probes = Machine(InstallState.Installed);
+        probes.Found = [new(@"C:\m\gemma-4-26B-A4B-it-UD-Q4_K_M.gguf", 5, null)];
+        var flow = new SetupFlow(probes);
+        flow.StartAtModelSegment();
+        flow.Answer("0");
+        var screen = flow.ResumeAfterWrites("gemma-4-26B-A4B-it");
+        while (flow.NeedsWritesApplied) screen = flow.ResumeAfterWrites(null);
+        Assert.Equal(SetupFlow.AuditionOfferKey, ScreenKey.Of(screen));
+        flow.Answer(SetupFlow.Yes);
+        Assert.True(SpinWait.SpinUntil(flow.PollWatch, TimeSpan.FromSeconds(10)),
+            "the check never finished, so the walk never reached the done step");
+        Assert.Equal(SetupFlow.AuditionPassedKey, ScreenKey.Of(flow.Answer(SetupFlow.Landed)));
+
+        Drive(flow, SetupFlow.AuditionPassedNext);
+
+        //the add road ends on the closing record, not on the summary screen, so the row is read from the record
+        var row = flow.RecordRows().Single(r => r.Text.StartsWith("gatto", StringComparison.Ordinal)).Text;
+        Assert.DoesNotContain(flow.Emitted, s => ScreenKey.Of(s) == SetupFlow.InstallKey);
+        Assert.Contains("installed, any terminal finds it", row, StringComparison.Ordinal);
+    }
+
     //the DoneStep seam has three call sites, and each one is named here
 
     //site C is AnswerProve, the ordinary success, already driven by the state frames above, so it needs no test of its own
