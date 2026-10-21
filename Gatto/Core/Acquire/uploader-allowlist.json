@@ -14,13 +14,22 @@
     "are the ones a pick could take. microsoft, nvidia and CohereLabs: their models sit in no family",
     "on the chip row, so browsing never shows them.",
     "",
+    "ADDED 2026-10-20: prism-ml, for the 1-bit and ternary Bonsai conversions of qwen 3.6. By the",
+    "Hub's download counts that day, prism-ml/Bonsai-27B-gguf held 346,174 against unsloth's",
+    "Qwen3.6-27B-GGUF 430,219, and its ternary repo 2,999,667. Its Q1_0 files run on Vulkan with",
+    "the pinned llama.cpp, all layers on an 8 GB card. The quant floor keeps Q1_0 behind show all,",
+    "and the fork-only PQ2_0 and PTQ1_0 files carry no quant name gatto reads, so they never list.",
+    "Held the same day: its draft heads (-dspark-, -DFlash2-) sit mid-name and were priced as models.",
+    "Joined 2026-10-21, once model-kinds.json drops those heads at any position and a PQ2_0 file",
+    "whose name ends in its MTP part's Q8_0 reads no quant either, so it never lists as a Q8_0.",
+    "",
     "EXCLUDED, RULED 2026-08-10 (not pending, not an oversight - do not re-add at a dated review",
     "without a new argument): TheBloke. gatto selects for models that TOOL-CALL RELIABLY and behave",
     "agentically, and that capability did not exist in the 2024 models this org converted. Re-add",
     "only if someone shows those conversions tool-call reliably through gatto's loop - which is a",
     "measurement, not an opinion: that is exactly what `audition` answers."
   ],
-  "reviewed": "2026-10-07",
+  "reviewed": "2026-10-21",
   "orgs": [
     "unsloth",
     "lmstudio-community",
@@ -28,6 +37,7 @@
     "bartowski",
     "google",
     "Qwen",
-    "mistralai"
+    "mistralai",
+    "prism-ml"
   ]
 }

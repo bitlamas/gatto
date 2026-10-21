@@ -105,6 +105,23 @@ public class QuantTokenTests
     public void A_TOKEN_AFTER_ANY_UNDERSCORE_IS_READ(string name, string? token) =>
         Assert.Equal(token, QuantToken.Of(name));
 
+    //a family gatto does not read, met first, is the file's quant. the census of 277 repos found 2 such files in 2,752, both a PQ2_0 model whose MTP part is Q8_0
+    [Theory]
+    [InlineData("Ternary-Bonsai-2-9B-PQ2_0-MTP-Q8_0.gguf", null)]
+    [InlineData("Ternary-Bonsai-2-4B-PQ2_0-MTP-Q8_0.gguf", null)]
+    [InlineData("Ternary-Bonsai-2-9B-PQ2_0.gguf", null)]
+    [InlineData("Ternary-Bonsai-2-27B-PTQ1_0.gguf", null)]
+    [InlineData("Kimi-K3-UD-TQ1_0.gguf", null)]
+    //the rows around them keep their token: a real 1-bit file and a model whose own name carries MTP
+    [InlineData("Bonsai-27B-Q1_0.gguf", "Q1_0")]
+    [InlineData("Qwen3.6-27B-MTP-Q8_0.gguf", "Q8_0")]
+    public void A_FOREIGN_QUANT_MET_FIRST_IS_THE_FILES_QUANT(string name, string? token)
+    {
+        Assert.Equal(token, QuantToken.Of(name));
+        //the head before the token is found the same way, so a file that names no quant has no head either
+        Assert.Equal(token is null, QuantToken.HeadBefore(name) is null);
+    }
+
     //the floor reads one number per token: the bits after Q or IQ, or the float width
     [Theory]
     [InlineData("Q4_K_M", 4)] [InlineData("IQ4_XS", 4)] [InlineData("Q4_0", 4)]

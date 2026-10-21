@@ -5,7 +5,7 @@ namespace Gatto.Core.Acquire;
 //a deny-set, since an allow-set would hide every tag the Hub invents next. llama.cpp loads these architectures, so the supported set cannot catch them
 internal sealed record ModelKinds(
     string Reviewed, IReadOnlySet<string> UnservableKinds, IReadOnlySet<string> EmbeddingArchitectures,
-    IReadOnlySet<string> SidecarLeading, IReadOnlySet<string> SidecarAnywhere)
+    IReadOnlySet<string> SidecarLeading, IReadOnlySet<string> SidecarAnyPosition, IReadOnlySet<string> SidecarAnywhere)
 {
     private const string ResourceName = "Gatto.Core.Acquire.model-kinds.json";
 
@@ -24,7 +24,7 @@ internal sealed record ModelKinds(
         using var doc = JsonDocument.Parse(s);
         var reviewed = doc.RootElement.TryGetProperty("reviewed", out var r) ? r.GetString() ?? "" : "";
         return new ModelKinds(reviewed, Set(doc, "unservable_kinds"), Set(doc, "embedding_architectures"),
-            Set(doc, "file_sidecar_leading"), Set(doc, "file_sidecar_anywhere"));
+            Set(doc, "file_sidecar_leading"), Set(doc, "file_sidecar_any_position"), Set(doc, "file_sidecar_anywhere"));
 
         static IReadOnlySet<string> Set(JsonDocument doc, string name)
         {

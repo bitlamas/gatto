@@ -6,11 +6,11 @@ namespace Gatto.Tests;
 public class UploaderAllowlistTests
 {
     [Fact]
-    public void THE_ALLOWLIST_IS_THE_SEVEN_OF_THE_REVIEW()
+    public void THE_ALLOWLIST_IS_THE_EIGHT_OF_THE_REVIEW()
     {
         var a = UploaderAllowlist.Load();
-        Assert.Equal(["unsloth", "lmstudio-community", "ggml-org", "bartowski", "google", "Qwen", "mistralai"], a.Orgs);
-        Assert.Equal("2026-10-07", a.ReviewedDate);
+        Assert.Equal(["unsloth", "lmstudio-community", "ggml-org", "bartowski", "google", "Qwen", "mistralai", "prism-ml"], a.Orgs);
+        Assert.Equal("2026-10-21", a.ReviewedDate);
     }
 
     //excluded, since its converted models predate reliable tool calls, and a review must not re-add it unargued

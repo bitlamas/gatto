@@ -13,6 +13,9 @@ internal static class QuantToken
         $@"^(?:I?Q\d+(?:_(?:{string.Join('|', Qualifiers)}))*|BF16|F16|F32|MXFP4(?:_MOE)?)$",   //MXFP4 is the only quant some mixture-of-experts repositories ship
         RegexOptions.IgnoreCase | RegexOptions.Compiled);
 
+    //a quant family gatto does not read (PQ2_0, PTQ1_0, TQ1_0). met first, it is the file's quant, so a later Q8_0 names a part and not the file
+    private static readonly Regex Foreign = new(@"^[A-Z]+Q\d+(?:_[A-Z0-9]+)*$", RegexOptions.IgnoreCase | RegexOptions.Compiled);
+
     //split on - and ., the underscore belongs to the token, and a segment that doesn't match is omitted rather than guessed
     public static string? Of(string modelPath)
     {
@@ -30,6 +33,7 @@ internal static class QuantToken
             if (Shape.IsMatch(segment)) return segment.ToUpperInvariant();
             for (var i = segment.IndexOf('_'); i >= 0; i = segment.IndexOf('_', i + 1))   //from the first underscore, so 26B_q4_0 reads q4_0 before 0
                 if (Shape.IsMatch(segment[(i + 1)..])) return segment[(i + 1)..].ToUpperInvariant();
+            if (Foreign.IsMatch(segment)) return null;
         }
 
         return null;
@@ -54,6 +58,7 @@ internal static class QuantToken
                 return stem[..(string.Equals(prev, "UD", StringComparison.OrdinalIgnoreCase) && prevStart >= 0 ? prevStart : start)];
             for (var u = segment.IndexOf('_'); u >= 0; u = segment.IndexOf('_', u + 1))
                 if (Shape.IsMatch(segment[(u + 1)..])) return stem[..(start + u)];
+            if (Foreign.IsMatch(segment)) return null;
             prev = segment;
             prevStart = start;
             start = i + 1;

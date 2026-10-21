@@ -53,6 +53,10 @@ public class SidecarCandidateTests
     [InlineData("imatrix_unsloth.gguf", "unsloth, every imatrix repo")]
     [InlineData("Qwen_Qwen3.6-35B-A3B-imatrix.gguf", "bartowski's convention — the token is at the END")]
     [InlineData("Llama3.3-8B-Instruct-Heretic.imatrix.gguf", "mradermacher's convention — dot-separated")]
+    [InlineData("Bonsai-27B-dspark-Q4_1.gguf", "prism-ml/Bonsai-27B-gguf: 1.66 GB, 0.53 bits/weight, architecture dspark, past both guards")]
+    [InlineData("Ternary-Bonsai-27B-dspark-bf16.gguf", "prism-ml/Ternary-Bonsai-27B-gguf: 6.79 GB, architecture dspark")]
+    [InlineData("Ternary-Bonsai-2-9B-DFlash2-Q8_0.gguf", "prism-ml/Ternary-Bonsai-2-9B-gguf: architecture dflash, the word with a version digit")]
+    [InlineData("Ternary-Bonsai-2-4B-DFlash2-BF16.gguf", "prism-ml/Ternary-Bonsai-2-4B-gguf: architecture dflash, 782M")]
     public void A_MEASURED_SIDECAR_KIND_IS_NOT_A_CANDIDATE(string fileName, string provenance) =>
         Assert.True(ModelDiscovery.IsCompanionArtifact(fileName), provenance);
 
@@ -65,6 +69,13 @@ public class SidecarCandidateTests
     //a token in the middle is part of the model name, so this row keeps such a model on the shelf
     [InlineData("Qwen3.5-35B-A3B-MTP-UD-Q4_K_M.gguf")]
     [InlineData("gemma-4-26B-A4B-it-mtp-tuned-Q4_K_M.gguf")]
+    //a mid-name MTP was a model in all 6 rows of the 277-repo census, its MTP layer inside the file
+    [InlineData("Qwen3.6-27B-MTP-Q8_0.gguf")]
+    [InlineData("Qwen3.6-35B-A3B-MTP-BF16.gguf")]
+    [InlineData("Ternary-Bonsai-2-9B-PQ2_0-MTP-Q8_0.gguf")]
+    //draft names a real 0.5B model, and a longer word that starts with a head word is not that word
+    [InlineData("alamios_Mistral-Small-3.1-DRAFT-0.5B-Q4_K_M.gguf")]
+    [InlineData("dsparkle-7B-Q4_K_M.gguf")]
     public void A_REAL_QUANT_IS_NEVER_MISTAKEN_FOR_A_SIDECAR(string fileName) =>
         Assert.False(ModelDiscovery.IsCompanionArtifact(fileName));
 
@@ -95,6 +106,21 @@ public class SidecarCandidateTests
             Assert.False(ModelDiscovery.IsCompanionArtifact(q.FileName), $"{q.FileName} is a sidecar"));
         Assert.All(tree.Projectors, p => Assert.Contains("mmproj", p.FileName, StringComparison.OrdinalIgnoreCase));
         Assert.Equal(4, tree.Quants.Count);      //the sidecars are dropped, so four quants remain
+        Assert.True(tree.HasProjector);
+    }
+
+    //the tree prism-ml ships for its 27B, so the heads named after the model leave before anything prices them
+    [Fact]
+    public async Task A_HEAD_NAMED_AFTER_ITS_MODEL_LEAVES_THE_TREE()
+    {
+        var tree = await Tree(
+            [("Bonsai-27B-F16.gguf", 53_800_000_000L),
+             ("Bonsai-27B-Q1_0.gguf", 3_800_000_000L),
+             ("Bonsai-27B-dspark-Q4_1.gguf", 1_790_000_000L),
+             ("Bonsai-27B-dspark-bf16.gguf", 7_290_000_000L),
+             ("Bonsai-27B-mmproj-Q8_0.gguf", 629_246_880L)]);
+
+        Assert.Equal(["Bonsai-27B-F16.gguf", "Bonsai-27B-Q1_0.gguf"], tree.Quants.Select(q => q.FileName).Order());
         Assert.True(tree.HasProjector);
     }
 

@@ -103,10 +103,17 @@ internal static class ModelDiscovery
         var tokens = stem.Split('-', '_', '.');
         if (tokens.Length == 0) return false;
 
-        //leading tokens for the head kinds, anywhere for imatrix. never a bare Contains, since a token in the middle is part of a model's name
+        //leading tokens for mtp and eagle3, any position for the heads named after their model, anywhere for imatrix. never a bare Contains, since a mid-name mtp is a model
         var kinds = Kinds.Value;
-        return kinds.SidecarLeading.Contains(tokens[0]) || tokens.Any(kinds.SidecarAnywhere.Contains);
+        return kinds.SidecarLeading.Contains(tokens[0])
+            || tokens.Any(t => kinds.SidecarAnyPosition.Any(w => IsWordOrNumbered(t, w)))
+            || tokens.Any(kinds.SidecarAnywhere.Contains);
     }
+
+    //the word itself or the word and a version number, so DFlash2 is read as dflash and dflashy is not
+    private static bool IsWordOrNumbered(string token, string word) =>
+        token.StartsWith(word, StringComparison.OrdinalIgnoreCase)
+        && token.AsSpan(word.Length).IndexOfAnyExceptInRange('0', '9') < 0;
 
     //half a bit per weight, since no real quantization goes below 1.5 bits. null params pass silently, which is why the names stay the first signal
     public static bool IsTooSmallToBeQuantization(long bytes, long? paramCount) =>
