@@ -250,10 +250,10 @@ internal static partial class ShelfSearch
                 if (!byModel.TryGetValue(model, out var list)) byModel[model] = list = [];
                 list.Add(repo);
             }
-            //a renamed derivative gets a row of its own, so the source's row lists only the files that are the source's
+            //a renamed derivative is another maker's model, so the chip keeps only conversions under the source's name and search still reaches the rest
             foreach (var (source, found) in bySource.Zip(conversions))
                 foreach (var repo in found ?? [])
-                    Keep(HubSearch.NameHoldsSource(repo.RepoId, source.ModelKey) ? source.ModelKey : HubSearch.ModelNameOf(repo.RepoId), repo);
+                    if (HubSearch.NameHoldsSource(repo.RepoId, source.ModelKey)) Keep(source.ModelKey, repo);
             foreach (var (model, repo) in builds) Keep(model, repo);
 
             //on a machine with no card an older generation is read only where it could be fast, which the listing's total already says

@@ -57,6 +57,29 @@ public class HubClientTests
     }
 
     [Fact]
+    public async Task A_gguf_block_read_from_a_projector_or_a_draft_head_keeps_none_of_its_facts()
+    {
+        //the hub's shape for two real repos and a head in mixed case, each carrying the companion's count where the model's belongs, and one model beside them
+        var handler = new StubHandler(_ => Json("["
+            + "{\"id\":\"p/Bonsai-4B-gguf\",\"gguf\":{\"total\":782004736,\"architecture\":\"dflash\",\"context_length\":262144}},"
+            + "{\"id\":\"p/Head-9B-gguf\",\"gguf\":{\"total\":1470621184,\"architecture\":\"DSpark\",\"context_length\":262144,\"causal\":true}},"
+            + "{\"id\":\"g/Qwen-27B-MTP-GGUF\",\"gguf\":{\"total\":460730096,\"architecture\":\"clip\"}},"
+            + "{\"id\":\"u/Qwen-9B-GGUF\",\"gguf\":{\"total\":8953803264,\"architecture\":\"qwen35\",\"context_length\":262144}}]"));
+        var rows = await new HubClient(Client(handler)).ListAsync("org", 0, long.MaxValue, CancellationToken.None);
+
+        Assert.Equal(4, rows.Count);
+        foreach (var companion in rows.Take(3))
+        {
+            Assert.Null(companion.Params);
+            Assert.Null(companion.Arch);
+            Assert.Null(companion.NativeCtx);
+            Assert.Null(companion.Causal);
+        }
+        Assert.Equal(8953803264L, rows[3].Params);
+        Assert.Equal("qwen35", rows[3].Arch);
+    }
+
+    [Fact]
     public async Task The_request_carries_the_measured_shape_with_exactly_one_author()
     {
         //the hub accepts only one author= value. two author entries return zero results, so each org needs its own request or the search comes back empty

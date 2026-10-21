@@ -521,9 +521,9 @@ public class ShelfSearchAssembleTests
         Assert.Equal("ddh0_gemma-3-40b", named!.Model);
     }
 
-    //a tagged repo whose name drops the source's is a derivative, so its row keeps its own name on both roads
+    //a tagged repo whose name drops the source's is a derivative, so a lookup names its row for itself and the family chip shows it nowhere
     [Fact]
-    public async Task A_RENAMED_DERIVATIVE_KEEPS_ITS_OWN_NAME()
+    public async Task A_RENAMED_DERIVATIVE_KEEPS_ITS_OWN_NAME_AND_STAYS_OFF_THE_CHIP()
     {
         var hub = new FakeShelfHub().Source("Qwen/Qwen3.6-27B")
             .Conversion("Qwen/Qwen3.6-27B", "prism-ml/Bonsai-27B-gguf", 27 * B, 5, "qwen35",
@@ -536,7 +536,7 @@ public class ShelfSearchAssembleTests
         browse.Conversion("Qwen/Qwen3.8-27B", "bartowski/someone_Bonsai-27B-GGUF", 27 * B, 500, "qwen35",
             files: ("Bonsai-27B-Q4_K_M.gguf", 12));
         var o = await Run(browse, Qwen, ShelfMachines.Apu8060S);
-        Assert.Contains(o.Rows, r => r.Model == "someone_Bonsai-27B");
+        Assert.DoesNotContain(o.Rows, r => r.Model.Contains("Bonsai", StringComparison.Ordinal));
         Assert.DoesNotContain(o.Rows.Single(r => r.Model == "Qwen3.8-27B").Publishers, p => p.Org == "bartowski");
     }
 

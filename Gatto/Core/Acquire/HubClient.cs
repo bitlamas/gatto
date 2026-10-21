@@ -292,7 +292,7 @@ internal sealed class HubClient(HttpClient http, TimeProvider? clock = null)
         long? ctx = null;
         long? total = null;
         bool? causal = null;
-        if (el.TryGetProperty("gguf", out var gguf) && gguf.ValueKind == JsonValueKind.Object)
+        if (el.TryGetProperty("gguf", out var gguf) && gguf.ValueKind == JsonValueKind.Object && !DescribesCompanion(gguf))
         {
             if (gguf.TryGetProperty("architecture", out var a) && a.ValueKind == JsonValueKind.String)
                 arch = a.GetString();
@@ -317,6 +317,13 @@ internal sealed class HubClient(HttpClient http, TimeProvider? clock = null)
         return new HubListing(
             id.GetString()!, arch, ctx, IsGated(el), downloads, modified, total, tag, causal, QuantizedFromOf(el));
     }
+
+    //the hub fills the gguf block from one file it chose, and a projector or a draft head there describes that file, so its facts stay unknown
+    private static bool DescribesCompanion(JsonElement gguf) =>
+        gguf.TryGetProperty("architecture", out var a) && a.ValueKind == JsonValueKind.String
+        && a.GetString() is { } arch && Kinds.Value.CompanionArchitectures.Contains(arch);
+
+    private static readonly Lazy<ModelKinds> Kinds = new(ModelKinds.Load);
 
     private const string QuantizedTag = "base_model:quantized:";
 

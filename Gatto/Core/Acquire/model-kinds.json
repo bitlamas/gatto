@@ -116,11 +116,22 @@
     "mtp STAYS LEADING, measured: a mid-name MTP was a MODEL in all 6 rows that carry one, among them",
     "ggml-org/Qwen3.6-27B-MTP-GGUF (866 tensors, its own MTP layer inside) and prism-ml's",
     "Ternary-Bonsai-2-9B-PQ2_0-MTP-Q8_0.gguf (a full model with one extra block). eagle3 appears",
-    "leading only. draft is NOT a head word: a real 0.5B model is named Mistral-Small-3.1-DRAFT-0.5B."
+    "leading only. draft is NOT a head word: a real 0.5B model is named Mistral-Small-3.1-DRAFT-0.5B.",
+    "",
+    "COMPANION ARCHITECTURES, 2026-10-21. The Hub's gguf block on a listing (total, architecture,",
+    "context_length, causal) is read from ONE file the Hub chose, and in a repo that ships a",
+    "projector or a draft head beside the model it can be that file. Census of every GGUF repo of",
+    "the eight approved orgs, 3,068 repos: 8 carried a companion architecture, dflash 6 and clip 2,",
+    "each reporting the companion's count as the model's. prism-ml/Ternary-Bonsai-2-4B-gguf read",
+    "782M, ggml-org/Qwen3.6-27B-MTP-GGUF read 461M (its mmproj file), and",
+    "unsloth/NVIDIA-Nemotron-3.5-Super-VL-120B-A12B-GGUF read 1.6B. A listing whose block names one",
+    "of these keeps none of its four facts. dspark listed on no repo; it is here for its measured",
+    "head header above. muse-spark and spark2_5 are real models and stay out."
   ],
   "file_sidecar_leading": ["mtp", "eagle3"],
   "file_sidecar_any_position": ["dflash", "dspark"],
   "file_sidecar_anywhere": ["imatrix"],
+  "companion_architectures": ["clip", "dflash", "dspark"],
   "embedding_architectures": [
     "bert",
     "modern-bert",

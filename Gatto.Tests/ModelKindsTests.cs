@@ -94,6 +94,7 @@ public class ModelKindsTests
         Assert.Matches(@"^\d{4}-\d{2}-\d{2}$", Kinds.Reviewed);
         Assert.NotEmpty(Kinds.UnservableKinds);
         Assert.NotEmpty(Kinds.EmbeddingArchitectures);
+        Assert.NotEmpty(Kinds.CompanionArchitectures);
     }
 
     [Fact]
