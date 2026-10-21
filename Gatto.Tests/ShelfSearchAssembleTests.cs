@@ -521,7 +521,7 @@ public class ShelfSearchAssembleTests
         Assert.Equal("ddh0_gemma-3-40b", named!.Model);
     }
 
-    //a tagged repo whose name drops the source's is a derivative, so a lookup names its row for itself and the family chip shows it nowhere
+    //a derivative keeps its own name on a lookup and stays off the family chip
     [Fact]
     public async Task A_RENAMED_DERIVATIVE_KEEPS_ITS_OWN_NAME_AND_STAYS_OFF_THE_CHIP()
     {
@@ -588,7 +588,7 @@ public class ShelfSearchAssembleTests
         Assert.Equal("q-Q4_K_M.gguf", row.RowFile!.Path);
     }
 
-    //a typed search keeps the floor under a too: a adds the model too big above the floor, and a model all under it stays out
+    //a adds the too-big model and the one all under the floor, that one with the floor lifted
     [Fact]
     public async Task A_TYPED_SEARCH_UNDER_THE_FLOOR()
     {
@@ -603,9 +603,40 @@ public class ShelfSearchAssembleTests
 
         var lifted = await HubSearch.TypedSearchAsync(Client(Hub()), UploaderAllowlist.Load(), F, "heretic",
             ShelfMachines.Apu8060S, 8192, CancellationToken.None, lifted: true);
-        Assert.Equal(["fine-heretic", "huge-heretic"], lifted.Rows.Select(r => r.Model));
-        Assert.Equal("h-Q3_K_M.gguf", lifted.Rows[1].RowFile!.Path);
+        Assert.Equal(["tiny-heretic", "fine-heretic", "huge-heretic"], lifted.Rows.Select(r => r.Model));
+        Assert.Equal("t-IQ2_XXS.gguf", lifted.Rows[0].RowFile!.Path);
+        Assert.Equal("h-Q3_K_M.gguf", lifted.Rows[2].RowFile!.Path);
         Assert.False(lifted.MoreBehindA);
+    }
+
+    //a model all under the floor is the only thing behind a, and a still shows
+    [Fact]
+    public async Task A_MODEL_ALL_UNDER_THE_FLOOR_ALONE_IS_BEHIND_A()
+    {
+        static FakeShelfHub Hub() => new FakeShelfHub()
+            .Untagged("unsloth/tiny-heretic-GGUF", 27 * B, 50, "qwen35", ("t-IQ2_XXS.gguf", 8))
+            .Untagged("unsloth/fine-heretic-GGUF", 9 * B, 40, "qwen35", ("f-Q4_K_M.gguf", 5.5));
+        var plain = await HubSearch.TypedSearchAsync(Client(Hub()), UploaderAllowlist.Load(), F, "heretic",
+            ShelfMachines.Apu8060S, 8192, CancellationToken.None);
+        Assert.Equal(["fine-heretic"], plain.Rows.Select(r => r.Model));
+        Assert.True(plain.MoreBehindA);
+    }
+
+    //two orgs' copies of one model share a row, tagged or not
+    [Fact]
+    public async Task ONE_MODEL_IS_ONE_ROW_ACROSS_ORGS()
+    {
+        var hub = new FakeShelfHub()
+            .Conversion("nvidia/Nemo-Light-30B-A3B-BF16", "unsloth/Nemo-Light-30B-A3B-GGUF", 30 * B, 500, "qwen35moe",
+                files: ("u-Q4_K_M.gguf", 18))
+            .Conversion("nvidia/Nemo-Light-30B-A3B-BF16", "bartowski/Nemo-Light-30B-A3B-GGUF", 30 * B, 300, "qwen35moe",
+                files: ("b-Q4_K_M.gguf", 18))
+            .Untagged("lmstudio-community/Nemo-Light-30B-A3B-GGUF", 30 * B, 200, "qwen35moe", ("l-Q4_K_M.gguf", 18));
+        var o = await HubSearch.TypedSearchAsync(Client(hub), UploaderAllowlist.Load(), F, "nemo-light",
+            ShelfMachines.Apu8060S, 8192, CancellationToken.None);
+        var row = Assert.Single(o.Rows);
+        Assert.Equal("Nemo-Light-30B-A3B", row.Model);
+        Assert.Equal(["bartowski", "lmstudio-community", "unsloth"], row.Publishers.Select(p => p.Org).Order(StringComparer.Ordinal));
     }
 
     //a deadline that cuts the header reads leaves the priced rows their kind, read after it on a bound of their own

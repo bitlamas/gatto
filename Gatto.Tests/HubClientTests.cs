@@ -59,7 +59,7 @@ public class HubClientTests
     [Fact]
     public async Task A_gguf_block_read_from_a_projector_or_a_draft_head_keeps_none_of_its_facts()
     {
-        //the hub's shape for two real repos and a head in mixed case, each carrying the companion's count where the model's belongs, and one model beside them
+        //three blocks read from a companion (one in mixed case) and one from a model
         var handler = new StubHandler(_ => Json("["
             + "{\"id\":\"p/Bonsai-4B-gguf\",\"gguf\":{\"total\":782004736,\"architecture\":\"dflash\",\"context_length\":262144}},"
             + "{\"id\":\"p/Head-9B-gguf\",\"gguf\":{\"total\":1470621184,\"architecture\":\"DSpark\",\"context_length\":262144,\"causal\":true}},"

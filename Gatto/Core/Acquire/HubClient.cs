@@ -318,7 +318,7 @@ internal sealed class HubClient(HttpClient http, TimeProvider? clock = null)
             id.GetString()!, arch, ctx, IsGated(el), downloads, modified, total, tag, causal, QuantizedFromOf(el));
     }
 
-    //the hub fills the gguf block from one file it chose, and a projector or a draft head there describes that file, so its facts stay unknown
+    //the hub reads the gguf block from one file it picks, and a projector or draft head there is not the model
     private static bool DescribesCompanion(JsonElement gguf) =>
         gguf.TryGetProperty("architecture", out var a) && a.ValueKind == JsonValueKind.String
         && a.GetString() is { } arch && Kinds.Value.CompanionArchitectures.Contains(arch);

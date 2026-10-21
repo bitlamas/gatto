@@ -192,9 +192,9 @@ internal static class HubSearch
             servable.Add(l);
         }
 
-        //a tagged repo joins its source's model, an untagged one is a model of its own, and the trees go to the most downloaded first
+        //one row per model name, two orgs' copies share it. trees go most downloaded first
         var groups = servable
-            .GroupBy(SourceOf, StringComparer.OrdinalIgnoreCase)
+            .GroupBy(l => ModelNameOf(SourceOf(l)), StringComparer.OrdinalIgnoreCase)
             .OrderByDescending(g => g.Sum(l => l.Downloads))
             .ToList();
         var trees = new System.Collections.Concurrent.ConcurrentDictionary<string, HubTree>(StringComparer.OrdinalIgnoreCase);
@@ -236,13 +236,20 @@ internal static class HubSearch
 
         //a adds the unfittable tier here too, and a group with no fitting file above the floor is what a promises
         var priced = groups
-            .Select(g => ShelfSearch.Price(ModelNameOf(g.Key), null, 0, null,
+            .Select(g => ShelfSearch.Price(g.Key, null, 0, null,
                 [.. g.Where(l => trees.ContainsKey(l.RepoId)).Select(l => (l, trees[l.RepoId]))],
                 families, hw, ctxForFit, lifted))
             .Where(r => r.Publishers.Count > 0)
             .ToList();
+        //all under the floor means no pick, a brings it in with the floor lifted
+        var underTheFloor = priced
+            .Where(r => r.RowFile is null && !ShelfSearch.TooBigAboveTheFloor(r))
+            .Select(r => ShelfSearch.Lifted(r, hw, ctxForFit))
+            .Where(r => r.RowFile is not null)
+            .ToList();
         //the shown rows read their headers as the shelf's do, before the order, since a memory row's active count comes from it
-        IReadOnlyList<ModelRow> rows = await ShelfSearch.WithStructureAsync([.. priced.Where(r => r.RowFile is not null)], client, memo,
+        IReadOnlyList<ModelRow> rows = await ShelfSearch.WithStructureAsync(
+            [.. priced.Where(r => r.RowFile is not null), .. lifted ? underTheFloor : []], client, memo,
             async read =>
             {
                 try { await gate.WaitAsync(ct).ConfigureAwait(false); }
@@ -260,7 +267,8 @@ internal static class HubSearch
         return new ShelfOutcome(ordered,
             ordered.Count(r => r.Fit == FitRegime.FitsGpu), ordered.Count(r => r.Fit == FitRegime.FitsRamOnly),
             ordered.Count(r => r.Fit == FitRegime.DoesNotFit),
-            MoreBehindA: !lifted && priced.Any(ShelfSearch.TooBigAboveTheFloor), hiddenByKind, fullPage, cause, ct.IsCancellationRequested);
+            MoreBehindA: !lifted && (priced.Any(ShelfSearch.TooBigAboveTheFloor) || underTheFloor.Count > 0),
+            hiddenByKind, fullPage, cause, ct.IsCancellationRequested);
     }
 
     //the rows one listing request answers at most

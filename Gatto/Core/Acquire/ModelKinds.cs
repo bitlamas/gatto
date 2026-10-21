@@ -6,7 +6,7 @@ namespace Gatto.Core.Acquire;
 internal sealed record ModelKinds(
     string Reviewed, IReadOnlySet<string> UnservableKinds, IReadOnlySet<string> EmbeddingArchitectures,
     IReadOnlySet<string> SidecarLeading, IReadOnlySet<string> SidecarAnyPosition, IReadOnlySet<string> SidecarAnywhere,
-    IReadOnlySet<string> CompanionArchitectures)   //a projector's or a draft head's general.architecture, never a model's
+    IReadOnlySet<string> CompanionArchitectures)   //a projector's or draft head's architecture, never a model's
 {
     private const string ResourceName = "Gatto.Core.Acquire.model-kinds.json";
 

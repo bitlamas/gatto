@@ -110,7 +110,7 @@ internal static partial class ShelfSearch
     private static bool IsFast(ModelRow r, bool noCard) =>
         noCard ? r.Params is { } p && p < FastOnCpuBelow : r.Fit == FitRegime.FitsGpu;
 
-    //a model with no pick but a file above the floor, which a shows as too big. a model whose files are all under the floor has no row either way
+    //no pick but a file above the floor, which a shows as too big. all under the floor is not this one
     internal static bool TooBigAboveTheFloor(ModelRow r) =>
         r.RowFile is null
         && r.Publishers.SelectMany(p => p.Repos)
@@ -250,7 +250,7 @@ internal static partial class ShelfSearch
                 if (!byModel.TryGetValue(model, out var list)) byModel[model] = list = [];
                 list.Add(repo);
             }
-            //a renamed derivative is another maker's model, so the chip keeps only conversions under the source's name and search still reaches the rest
+            //a renamed derivative is another maker's model, it stays off the chip (search still finds it)
             foreach (var (source, found) in bySource.Zip(conversions))
                 foreach (var repo in found ?? [])
                     if (HubSearch.NameHoldsSource(repo.RepoId, source.ModelKey)) Keep(source.ModelKey, repo);
