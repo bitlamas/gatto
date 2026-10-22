@@ -1341,6 +1341,52 @@ public class AgentLoopTests
             convo.Messages.First(m => m.Role == "tool").Content);           //tool text must pass through the loop verbatim.
     }
 
+    //the think tag goes and the words around it stay as the model said them, the repeated sentence included
+    [Fact]
+    public async Task A_think_tag_in_the_answer_is_stripped_and_counted()
+    {
+        var (loop, client, _, convo, obs) = Setup();
+        client.EnqueueTurn(
+            new StreamEvent.TextDelta("Wrote it.\n</think>\n\nWrote it."),
+            new StreamEvent.Finished("stop", null));
+
+        await loop.RunTurnAsync(convo, "hi", obs, default);
+
+        var last = convo.Messages[^1];
+        Assert.Equal("Wrote it.\n\n\nWrote it.", last.Content);
+        Assert.Equal(1, last.Stripped);
+    }
+
+    //the strip runs before the empty-turn check, so an answer that was only think tags is an empty turn
+    [Fact]
+    public async Task An_answer_of_think_tags_alone_is_an_empty_turn()
+    {
+        var (loop, client, _, convo, obs) = Setup();
+        client.EnqueueTurn(new StreamEvent.TextDelta("<think></think>"), new StreamEvent.Finished("stop", null));
+
+        await loop.RunTurnAsync(convo, "hi", obs, default);
+
+        Assert.DoesNotContain(convo.Messages, m => m.Role == "assistant");
+        Assert.Contains(obs.Warnings, w => w.Contains("empty turn"));
+    }
+
+    //a tool call's arguments are the write channel and a tool result is no model output, so the tags pass both untouched
+    [Fact]
+    public async Task Think_tags_in_a_tool_call_argument_and_its_result_pass_through()
+    {
+        var (loop, client, _, convo, obs) = Setup(new EchoTool());
+        client.EnqueueTurn(
+            new StreamEvent.ToolCallReady(new ToolCall("c1", "echo", "{\"msg\":\"<think>x</think>\"}")),
+            new StreamEvent.Finished("tool_calls", null));
+        client.EnqueueTurn(new StreamEvent.TextDelta("done"), new StreamEvent.Finished("stop", null));
+
+        await loop.RunTurnAsync(convo, "hi", obs, default);
+
+        var call = convo.Messages.First(m => m.Role == "assistant").ToolCalls!.Single();
+        Assert.Equal("{\"msg\":\"<think>x</think>\"}", call.ArgumentsJson);
+        Assert.Equal("echo: <think>x</think>", convo.Messages.First(m => m.Role == "tool").Content);
+    }
+
     [Fact]
     public async Task Strip_warning_fires_once_per_session_but_counts_stamp_every_record()
     {

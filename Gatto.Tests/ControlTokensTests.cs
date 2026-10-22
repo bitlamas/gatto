@@ -9,6 +9,8 @@ public sealed class ControlTokensTests
     [InlineData("<|tool_calls_section_end|>")]
     [InlineData("<|tool_call_begin|>")]
     [InlineData("<|tool_call_end|>")]
+    [InlineData("<think>")]
+    [InlineData("</think>")]
     public void Strips_each_allowlisted_token(string token)
     {
         var (text, count) = ControlTokens.Strip($"before {token} after");
@@ -41,6 +43,9 @@ public sealed class ControlTokensTests
     [InlineData("<|tool_call|>")]                 //the row tests a spelling close to an allowlisted token.
     [InlineData("<|tool_call_beg")]               //the row covers a partial token left by a stream drop.
     [InlineData("tool_call_begin")]               //the row has the name without its delimiters.
+    [InlineData("<thinking>")]                    //the row has a longer tag that only begins like the think tag.
+    [InlineData("< /think>")]                     //the row has the tag broken by a space.
+    [InlineData("a < b and b > c")]               //the row has comparison text that reaches the slow path and matches nothing.
     public void Leaves_non_allowlisted_text_untouched(string input)
     {
         var (text, count) = ControlTokens.Strip(input);
@@ -55,6 +60,9 @@ public sealed class ControlTokensTests
         var (text, count) = ControlTokens.Strip(input);
         Assert.Same(input, text);
         Assert.Equal(0, count);
+        //text with a '<' that matches nothing comes back as the same instance too
+        var compare = "a < b";
+        Assert.Same(compare, ControlTokens.Strip(compare).Text);
         var (empty, n) = ControlTokens.Strip("");
         Assert.Equal("", empty);
         Assert.Equal(0, n);

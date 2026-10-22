@@ -11,12 +11,15 @@ public static class ControlTokens
         "<|tool_calls_section_end|>",
         "<|tool_call_begin|>",
         "<|tool_call_end|>",
+        //a think tag a template left in the answer, seen once ending an answer and splitting a repeated sentence
+        "<think>",
+        "</think>",
     };
 
     //when nothing matches, the same string instance comes back with 0, so the common case never allocates
     public static (string Text, int Count) Strip(string text)
     {
-        if (text.Length == 0 || !text.Contains("<|", StringComparison.Ordinal)) return (text, 0);
+        if (text.Length == 0 || !text.Contains('<')) return (text, 0);
         var sb = new StringBuilder(text.Length);
         var count = 0;
         var i = 0;

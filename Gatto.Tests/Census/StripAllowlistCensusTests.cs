@@ -7,12 +7,14 @@ namespace Gatto.Tests.Census;
 //the strip removes exact strings only. a pattern would also match the chat template tokens inside real tool results, and those must stay byte for byte
 public class StripAllowlistCensusTests
 {
-    private static readonly string[] Four =
+    private static readonly string[] Six =
     [
         "<|tool_calls_section_begin|>",
         "<|tool_calls_section_end|>",
         "<|tool_call_begin|>",
         "<|tool_call_end|>",
+        "<think>",
+        "</think>",
     ];
 
     private static readonly Regex PatternUse = new(@"\bRegex\b|\bRegularExpressions\b|\bGeneratedRegex\b", RegexOptions.Compiled);
@@ -27,11 +29,11 @@ public class StripAllowlistCensusTests
 
     //a token joins the list only after it was seen leaking from a model, and this census moves in the same commit
     [Fact]
-    public void THE_STRIP_ALLOWLIST_IS_EXACTLY_THE_FOUR_OBSERVED_TOKENS()
+    public void THE_STRIP_ALLOWLIST_IS_EXACTLY_THE_SIX_OBSERVED_TOKENS()
     {
         var field = typeof(ControlTokens).GetField("Allowlist", BindingFlags.NonPublic | BindingFlags.Static);
         Assert.True(field is not null, "`ControlTokens` no longer holds an `Allowlist` field, so this census reads nothing");
-        Assert.Equal(Four, (string[])field!.GetValue(null)!);
+        Assert.Equal(Six, (string[])field!.GetValue(null)!);
     }
 
     [Fact]
