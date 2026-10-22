@@ -98,6 +98,7 @@ public sealed partial class Repl(
     //the finished sentence for an over-budget memory index, printed once after the banner. a later re-truncation goes through the warn sink instead
     string? memoryWarning = null,
     string? cloudNotice = null,   //said once per home, the first time a session runs on a cloud endpoint
+    string? wildNotice = null,   //wild on or forbidden at this launch, which a resume says for itself
     string? servedNotice = null,   //the launch found a server holding something other than the default, and the launch screen goes unread once a server is up
     //the launch lines in arrival order, said after the banner: the sink's warnings on the rich face only, the wild notice on both. null says none
     IReadOnlyList<string>? launchWarnings = null,

@@ -263,6 +263,7 @@ public sealed partial class Repl
         if (servedNotice is not null) renderer.CommitSystem(servedNotice, transient: true);   //what this launch found serving, which the next resume says for itself
         //the list as it stands now, a warning raised between here and the route below still reaches stderr alone
         foreach (var w in LaunchWarningsNow()) renderer.CommitSystem(w);
+        if (wildNotice is not null) renderer.CommitSystem(wildNotice, transient: true);   //this launch's wild state, never saved, so a resume shows only its own
 
         //fire on resumedFrom alone, a compact-then-quit session has no chat turns even though its context was loaded
         if (resumedFrom is not null)

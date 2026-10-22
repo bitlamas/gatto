@@ -23,6 +23,7 @@ public sealed partial class Repl
         if (cloudNotice is not null) Console.WriteLine($"{_glyphs.Sharp} " + cloudNotice);
         if (servedNotice is not null) Console.WriteLine($"{_glyphs.Sharp} " + servedNotice);
         foreach (var w in LaunchWarningsNow()) Console.WriteLine($"{_glyphs.Sharp} " + TermText.Sanitize(w));   //an extension's error text reaches this list, so strip it like OnWarning does
+        if (wildNotice is not null) Console.WriteLine($"{_glyphs.Sharp} " + wildNotice);
 
         var renderer = new PlainRenderer(reasoning, _glyphs);
         //the resumedFrom flag on its own still prints the marker, a compact-then-quit session has no turns to replay

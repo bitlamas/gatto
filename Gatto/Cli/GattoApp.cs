@@ -892,9 +892,10 @@ public static class GattoApp
             }
         }
 
-        //said after the banner with the launch warnings, a line written before it is under the alt screen
-        if (WildNotice(permissions, wildState, config.Wild) is { } wildNotice)
-            launchWarnings.Add(wildState.On ? $"{wildNotice} {glyphs.Dot} /safe to turn off" : wildNotice);
+        //said after the banner with the launch warnings, a line written before it is under the alt screen. its own row, since it is this launch's state and never saved
+        string? wildLaunchNotice = WildNotice(permissions, wildState, config.Wild) is { } wildNotice
+            ? (wildState.On ? $"{wildNotice} {glyphs.Dot} /safe to turn off" : wildNotice)
+            : null;
 
         //the one helper /role and /model also read, so a rebuild matches the launch footer
         string? initialThinkingName = state.ThinkingFooterName();
@@ -936,7 +937,7 @@ public static class GattoApp
             serverGone: () => state.Model is { } served
                 ? ServeLines.GoneLine(new ServeManager(home, ServeCommand.ServerBinaryFor(served, config)).Dead(served.Profile.Port), glyphs)
                 : null,
-                    autoCompact: config.AutoCompact, permissions: permissions, listTools: listTools, listPolicy: listPolicy, commands: commands, memoryWarning: launchRes.MemoryTruncatedLines > 0 ? MemoryTruncationWarning(launchRes.MemoryTruncatedLines) : null, cloudNotice: cloudNotice, servedNotice: servedInSession && servedLine is not null ? TermText.Sanitize(ServeNotice.Text(servedLine)) : null, launchWarnings: launchWarnings, cloud: state.Cloud, readUsage: usageMeter.Read, onUsageChanged: repaint => usageMeter.Changed = repaint,piggyback: piggyback, turnAbort: turnAbort,
+                    autoCompact: config.AutoCompact, permissions: permissions, listTools: listTools, listPolicy: listPolicy, commands: commands, memoryWarning: launchRes.MemoryTruncatedLines > 0 ? MemoryTruncationWarning(launchRes.MemoryTruncatedLines) : null, cloudNotice: cloudNotice, wildNotice: wildLaunchNotice, servedNotice: servedInSession && servedLine is not null ? TermText.Sanitize(ServeNotice.Text(servedLine)) : null, launchWarnings: launchWarnings, cloud: state.Cloud, readUsage: usageMeter.Read, onUsageChanged: repaint => usageMeter.Changed = repaint,piggyback: piggyback, turnAbort: turnAbort,
             //a session with no model talks to a server gatto does not manage, so the notice says that instead of offering a model fix
             unmanagedNotice: !state.ServedHere() && state.Endpoint.Models is not { Count: > 0 } && !state.Cloud ? UnmanagedSession.ModelUnavailable(state.LaunchBaseUrl) : null,
             cloudSwitchHint: unlistedRemote && state.Cloud ? CloudSwitchHint(state.EndpointName) : null,

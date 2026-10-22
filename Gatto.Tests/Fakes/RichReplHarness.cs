@@ -163,7 +163,9 @@ public sealed class RichReplHarness
         //the session store, absent as a session that saves nothing, so a test can open a resumed identity or read a name
         SessionStore? sessions = null,
         //the line the launch says when the server held something other than the default, absent as a launch on the default
-        string? servedNotice = null)
+        string? servedNotice = null,
+        //the wild line the launch says, absent as a launch with wild off and nothing forbidding it
+        string? wildNotice = null)
     {
         Surface = new VtScreenSurface(width, height);
         _tap = new TappedSurface(Surface);
@@ -204,7 +206,7 @@ public sealed class RichReplHarness
             contextInputs: contextInputs,
             chrome: chrome,
             commands: commands,
-            launchWarnings: launchWarnings, servedNotice: servedNotice,
+            launchWarnings: launchWarnings, servedNotice: servedNotice, wildNotice: wildNotice,
             clipboardImageSource: clipboardImages,
             roleTint: roleTint, roleCat: roleCat, firstMessage: firstMessage);
     }
