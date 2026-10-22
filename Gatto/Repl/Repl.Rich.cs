@@ -105,7 +105,7 @@ public sealed partial class Repl
         //a toggle-capable model's footer reads thinking on or off, so take the effective toggle-ness from GattoApp rather than the capability alone
         var status = new StatusInfo(cwd, modelName, roleName, ctx,
             Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), Wild: wild?.On == true,
-            Thinking: thinkingName, Serving: serving, ThinkingToggle: thinkingToggle, Cloud: cloud);
+            Thinking: thinkingName, ThinkingToggle: thinkingToggle, Cloud: cloud);
         var frame = new InputFrame(surface, theme, DisplayRole(), status, _glyphs, KnownCommands);
         var focusTaught = false;   //the one-shot teaser for the first collapsed reasoning block, set once it has fired
 
@@ -127,7 +127,7 @@ public sealed partial class Repl
             {
                 Model = modelName, Role = roleName, Branch = GitBranch.Read(cwd),
                 TokensUp = tokensUp, TokensDown = tokensDown, Wild = wild?.On == true, Thinking = thinkingName,
-                Serving = serving, ThinkingToggle = thinkingToggle, FocusHint = focusHint,
+                ThinkingToggle = thinkingToggle, FocusHint = focusHint,
                 //an expired arm yields null at repaint so the chord hint vanishes on its own, and the paste hint wins over it
                 ChordHint = LivePasteHint() ?? chords.Hint,
                 Quota = usage.Quota, Cost = usage.Cost,
@@ -259,6 +259,7 @@ public sealed partial class Repl
         //the memory-truncation notice, a system row right after the banner and above any resumed transcript
         if (memoryWarning is not null) renderer.CommitSystem(memoryWarning);
         if (cloudNotice is not null) renderer.CommitSystem(cloudNotice);
+        if (servedNotice is not null) renderer.CommitSystem(servedNotice);
         //the list as it stands now, a warning raised between here and the route below still reaches stderr alone
         foreach (var w in LaunchWarningsNow()) renderer.CommitSystem(w);
 

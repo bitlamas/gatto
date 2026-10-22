@@ -551,7 +551,7 @@ public class ReplProbeSeamTests : IDisposable
 
     private static Gatto.Repl.Repl ReplWith(
         string modelName = "gemma-4-26b", int? contextBudget = null, Conversation? convo = null,
-        ServingProbe? launchServing = null, Func<ServingProbe>? probeServing = null)
+        Func<ServingProbe>? probeServing = null)
     {
         var client = new FakeChatClient();
         for (var i = 0; i < 5; i++)
@@ -561,7 +561,7 @@ public class ReplProbeSeamTests : IDisposable
             loop, convo ?? new Conversation("sys"), "generalist", modelName, null, client, null, contextBudget,
             Path.GetTempPath(),
             () => Composed.Text("sys"), _ => new RoleSwitchResult(false, "", null, null, "unused"),
-            launchServing: launchServing, probeServing: probeServing);
+            probeServing: probeServing);
     }
 
     private static async Task<string> Feed(Gatto.Repl.Repl repl, string input)
@@ -571,61 +571,6 @@ public class ReplProbeSeamTests : IDisposable
         Console.SetIn(new StringReader(input + "\n/quit\n"));
         await repl.RunAsync(CancellationToken.None);
         return sw.ToString();
-    }
-
-    [Fact]
-    public void Construction_SeedsServingFromLaunchServing()
-    {
-        //the app probes once at launch, so the chip is already set before the first turn
-        var repl = ReplWith(launchServing: new ServingProbe("gemma-4-26b", null));
-        Assert.Equal("gemma-4-26b", repl.ServingForTest);
-    }
-
-    [Fact]
-    public void Construction_NoLaunchServing_ServingStartsNull()
-    {
-        var repl = ReplWith();
-        Assert.Null(repl.ServingForTest);
-    }
-
-    [Fact]
-    public async Task Turn_ReProbes_ChipClearsWhenTheServerCatchesUp()
-    {
-        //a mismatch shows the chip, and the next turn's re-probe clears it once the server agrees
-        var serving = new[] { "qwen3.6-35b" };   //the fake probe reads this cell, so the test can change the answer.
-        var repl = ReplWith(modelName: "gemma-4-26b", probeServing: () => new ServingProbe(serving[0], null));
-
-        await Feed(repl, "hello");
-        Assert.Equal("qwen3.6-35b", repl.ServingForTest);
-
-        serving[0] = null!;   //a null mismatch now stands for a server that agrees
-        await Feed(repl, "hello again");
-        Assert.Null(repl.ServingForTest);
-    }
-
-    [Fact]
-    public async Task Turn_ProbeReturnsUnknown_NeverPaintsAMismatch_EvenAfterAPriorOne()
-    {
-        //an unknown probe must clear the chip and never leave or invent a mismatch
-        var serving = new[] { "gemma-4-26b" };
-        var repl = ReplWith(modelName: "qwen3.6-35b", probeServing: () => new ServingProbe(serving[0], null));
-
-        await Feed(repl, "hello");
-        Assert.Equal("gemma-4-26b", repl.ServingForTest);   //a genuine mismatch is on the chip before the unknown probe
-
-        serving[0] = null!;   //null here stands for a probe that could not answer
-        await Feed(repl, "hello again");
-        Assert.Null(repl.ServingForTest);   //an unknown probe result is never reported as a mismatch.
-    }
-
-    [Fact]
-    public async Task Turn_NoProbeServingClosure_LeavesServingUntouched_NeverThrows()
-    {
-        var repl = ReplWith(launchServing: new ServingProbe("gemma-4-26b", null), probeServing: null);
-
-        await Feed(repl, "hello");
-
-        Assert.Equal("gemma-4-26b", repl.ServingForTest);   //with no probe closure the launch chip is left as it was
     }
 
     [Fact]
@@ -649,7 +594,7 @@ public class ReplProbeSeamTests : IDisposable
         //a hand-started server may run a smaller window than the model declares, so the probed window binds and the warning names it
         var convo = new Conversation(new string('x', 5000));   //5000 chars is about 1250 tokens, from the chars÷4 estimate
         var repl = ReplWith(modelName: "gemma-4-26b", contextBudget: 1_000_000, convo: convo,
-            probeServing: () => new ServingProbe(null, 1000));
+            probeServing: () => new ServingProbe(1000));
 
         var output = await Feed(repl, "hello");
 

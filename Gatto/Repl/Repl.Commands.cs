@@ -551,7 +551,6 @@ public sealed partial class Repl
         switchNotice = result.Message;
         modelName = result.ModelId;
         contextBudget = result.ContextBudget;
-        serving = result.ServingMismatch;
         probedNCtx = result.ProbedNCtx;
         thinkingName = result.ThinkingName;   //null when the new model has no map, the chip hides
         thinkingToggle = result.ThinkingIsToggle;   //a /model switch can change the reasoning shape (binary or levels)

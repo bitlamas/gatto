@@ -184,7 +184,7 @@ public sealed class RichReplHarness
             modeControl: modeControl,
             termSurface: _tap,
             //the blind-model guard reads this. false means no mmproj, and gatto must refuse to send image parts
-            probeServing: () => new Gatto.Repl.ServingProbe(null, null,
+            probeServing: () => new Gatto.Repl.ServingProbe(null,
                 Gatto.Core.Client.ThinkCapability.None, visionAvailable),
             dumpOnExit: dumpOnExit,
             turnAbort: turnAbort,

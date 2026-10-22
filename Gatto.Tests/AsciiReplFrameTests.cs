@@ -41,9 +41,6 @@ public class AsciiReplFrameTests
             InputFrame.BuildTopRule("coder", width, Plain, wild: true, glyphs: GlyphSet.Ascii));
         NoOwnedMark("the status line",
             InputFrame.BuildStatusLine(Status(), width, Plain, glyphs: GlyphSet.Ascii));
-        NoOwnedMark("the status line with a serving mismatch",
-            InputFrame.BuildStatusLine(Status() with { Serving = "gemma-4-26b" }, width, Plain,
-                glyphs: GlyphSet.Ascii));
     }
 
     [Fact]
@@ -51,8 +48,6 @@ public class AsciiReplFrameTests
     {
         Assert.Contains('\u2500', InputFrame.BuildTopRule("coder", 100, Plain, glyphs: GlyphSet.Unicode));
         Assert.Contains('\u00b7', InputFrame.BuildStatusLine(Status(), 100, Plain, glyphs: GlyphSet.Unicode));
-        Assert.Contains('\u26a0', InputFrame.BuildStatusLine(Status() with { Serving = "gemma-4-26b" },
-            100, Plain, glyphs: GlyphSet.Unicode));
     }
 
     //the streamed table gets no guard here, its border is box glyphs outside the table (converting the horizontal alone would draw half-ascii borders)

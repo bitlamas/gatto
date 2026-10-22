@@ -402,12 +402,24 @@ public static class GattoApp
                 : $"this session was recorded on endpoint '{recordedEndpoint}', which no longer exists. Endpoints: {string.Join(", ", endpoints.Keys.OrderBy(k => k, StringComparer.Ordinal))}");
             return 2;
         }
-        //set once from the launch resolution, so a refused /role and a later /effort cannot change what shell children read
-        Environment.SetEnvironmentVariable("GATTO_ENDPOINT", launchRes.EndpointName);
-        Environment.SetEnvironmentVariable("GATTO_MODEL", launchRes.ModelString);
-        Environment.SetEnvironmentVariable("GATTO_EFFORT", EffortSwitch.Name(launchRes.Comp.Thinking));
-        state.Role = launchRes.Role;
-        state.Model = launchRes.Model;
+        //run for the launch resolution and again when the launch arms the model a server already holds
+        void Adopt(RoleResolution r)
+        {
+            //set from the launch resolution only, so a refused /role and a later /effort cannot change what shell children read
+            Environment.SetEnvironmentVariable("GATTO_ENDPOINT", r.EndpointName);
+            Environment.SetEnvironmentVariable("GATTO_MODEL", r.ModelString);
+            Environment.SetEnvironmentVariable("GATTO_EFFORT", EffortSwitch.Name(r.Comp.Thinking));
+            state.Role = r.Role;
+            state.Model = r.Model;
+            state.Endpoint = r.Endpoint;
+            state.EndpointName = r.EndpointName;
+            state.ModelString = r.ModelString;
+            state.Comp = r.Comp;
+            //the prefix RecomposeSystem falls back to when a mid-session .gatto.json edit is malformed, so it holds the last one that composed
+            state.LastComposedSystem = state.Comp.SystemText;
+            state.LastComposedSources = state.Comp.Sources;
+        }
+        Adopt(launchRes);
         //both halves of memory consent in one nullable, so with memory off nothing banks and nothing reads
         PiggybackSeam? piggyback = memoryOn
             ? new(Bank: cands => MemoryPiggyback.BankCandidates(MemoryDir.FindProjectRoot(cwd), cands),
@@ -417,13 +429,6 @@ public static class GattoApp
         //seeded with the launch reading, so the first reload after the banner does not repeat the over-budget line
         if (launchRes.MemoryTruncatedLines > 0)
             state.MemoryNag.ShouldWarn(state.MemoryBudget(state.Model), launchRes.MemoryTruncatedLines);
-        state.Endpoint = launchRes.Endpoint;
-        state.EndpointName = launchRes.EndpointName;
-        state.ModelString = launchRes.ModelString;
-        state.Comp = launchRes.Comp;
-        //the prefix RecomposeSystem falls back to when a mid-session .gatto.json edit is malformed, so it holds the last one that composed
-        state.LastComposedSystem = state.Comp.SystemText;
-        state.LastComposedSources = state.Comp.Sources;
         //the base URL the client below is built for, /role refuses any switch that resolves to another one
         state.LaunchBaseUrl = state.Endpoint.BaseUrl;
         //a cloud endpoint is no llama-server, so nothing below sends it a /props probe
@@ -513,6 +518,70 @@ public static class GattoApp
                 replPicker = new PlainListPicker(Console.Out, glyphs);
             }
         }
+        //each probe holds a 2 second deadline of its own unless a test scoped a longer one
+        var probeDeadline = ProbeDeadlineOverride.Value ?? TimeSpan.FromSeconds(2);
+        //a separate client for the probes, untimed like every client, its connect bounded by the same deadline
+        var probeHttp = new HttpClient(new SocketsHttpHandler { ConnectTimeout = probeDeadline })
+            { Timeout = Timeout.InfiniteTimeSpan };
+
+        //launch probe
+
+        //a bare launch arms the shelf model the server holds, before the client, the window and the thinking are built from the default
+        var serverAlreadyUp = false;
+        long? servedBytes = null;
+        (string, CliInk)[]? servedLine = null;
+        var servedInSession = false;
+        if (state.ServedHere() && state.Model is not null && state.LaunchBaseUrl is not null)   //a one-shot probes too, since it is one bounded read and never a start
+        {
+            //a loading server of ours answers nothing, so wait for it on a live line first, or the launch asks for a second start. -p keeps stdout for the model and reads it as unanswered
+            if (args.Prompt is null && Uri.TryCreate(state.LaunchBaseUrl, UriKind.Absolute, out var waitUri))
+            {
+                using var loadingLine = new TickLine(Console.Out, launchTheme is not null, blankBeforeFirst: true);
+                await AutoServeAsk.AwaitOursLoadingAsync(
+                    new ServeManager(home, ServeCommand.ServerBinaryFor(state.Model, config)), waitUri.Port,
+                    Gatto.Roles.Audition.AuditionRunner.ReadyBudget,
+                    LoadingLine.Over(loadingLine, glyphs, launchTheme), id => SizeWordsOnDiskOrNull(home, id),
+                    CancellationToken.None);
+            }
+            var loadedFrom = Stopwatch.GetTimestamp();
+            var launchLoaded = await ServeProbe.ProbeAsync(probeHttp, state.LaunchBaseUrl, CancellationToken.None, state.Endpoint.ApiKey, probeDeadline);   //the chat client's own key, since /props sits behind the server's api key and a keyed server would read as unknown
+            probeTicks += Stopwatch.GetTimestamp() - loadedFrom;
+            //computed once, so the refusal and the arm cannot end up describing two different servers
+            var launchMismatch = ModelSwitch.DescribeProbe(state.Model, launchLoaded, modelsDir);
+            state.LaunchServing = new ServingProbe(launchLoaded?.NCtx, launchLoaded?.Capability ?? ThinkCapability.None, launchLoaded?.Vision);
+
+            //an explicit -m against a server holding another model refuses, and -m X attaches to X
+            if (args.Model is not null && launchMismatch is not null)   //the mismatch comes from DescribeProbe, where unknown never counts as one
+            {
+                Console.Error.WriteLine(ServeNotice.Refusing(launchLoaded?.ModelPath));
+                return 1;
+            }
+
+            if (launchLoaded is not null)
+            {
+                serverAlreadyUp = true;
+                servedBytes = Gatto.Core.Acquire.ModelDiscovery.SetBytesOrNull(launchLoaded.ModelPath);   //the exit hint's size, read off the served file
+                var port = new Uri(state.LaunchBaseUrl).Port;
+                var defaultId = state.Model.Id;
+                var unnamed = Model.MatchesLoaded(state.Model, launchLoaded) is null;
+                //an unclaimed file or a model on another port has no profile to arm here, so the default stays and the line says what the server holds
+                servedLine = unnamed ? ServeNotice.UsingNoFile(defaultId, port)
+                    : launchMismatch is not { } held ? ServeNotice.Using(defaultId, port)
+                    : !held.OnTheShelf ? ServeNotice.UsingOffShelf(defaultId, port, held.Name)
+                    : state.ResolveServed(launchRole, held.Name) is { } servedRes ? Arm(servedRes, port)
+                    : ServeNotice.UsingOtherPort(defaultId, port, held.Name);
+                //the launch screen goes unread once a server is up, so anything other than the default being served is said inside the session
+                servedInSession = unnamed || launchMismatch is not null;
+            }
+        }
+
+        //the claimed model's resolution replaces the default's before anything is built from it
+        (string, CliInk)[] Arm(RoleResolution res, int port)
+        {
+            Adopt(res);
+            return ServeNotice.Using(res.ModelString, port);
+        }
+
         var toolCtx = new AppToolContext(cwd, home, prompter, sessions);
         var permissions = PermissionStore.Load(home, cwd, out var permWarning);   //a corrupt permissions file loads as no grants, so every mutating tool prompts, with a warning
         if (permWarning is not null) Console.Error.WriteLine($"! {permWarning}");
@@ -539,11 +608,6 @@ public static class GattoApp
         //every request on this client feeds the footer's cost and quota, run_agent children included since they share it
         var usageMeter = new UsageMeter(state.Endpoint.Quota);
         client.OnUsage = u => _ = usageMeter.Record(u);
-        //each probe holds a 2 second deadline of its own unless a test scoped a longer one
-        var probeDeadline = ProbeDeadlineOverride.Value ?? TimeSpan.FromSeconds(2);
-        //a separate client for the probes, untimed like every client, its connect bounded by the same deadline
-        var probeHttp = new HttpClient(new SocketsHttpHandler { ConnectTimeout = probeDeadline })
-            { Timeout = Timeout.InfiniteTimeSpan };
         //the model's window on a local endpoint, the endpoint's on a cloud one, and no enforcement when neither is configured
         state.ContextBudget = ServeCommand.ServingFor(state.ServedHere(), state.Model, state.Endpoint, state.LaunchBaseUrl).Window;
         //cross-check /props at every launch and let the live answer win in both directions (it does not run on the endpoint gatto serves)
@@ -584,54 +648,10 @@ public static class GattoApp
         //a model property, so a cloud endpoint with no model takes the default
         state.ReasoningHistory = state.Model?.Profile.ReasoningHistory ?? ReasoningHistory.All;
 
-        //launch probe
-
-        //one source for the exit hint and the reuse line, so both agree about what is loaded
-        var serverAlreadyUp = false;
-        long? servedBytes = null;
-        if (args.Prompt is null && state.ServedHere() && state.Model is not null && state.LaunchBaseUrl is not null)   //interactive only, since -p never reads the result, and with no local model or base URL the chip is absent
-        {
-            //a loading server of ours answers nothing, so wait for it on a live line first, or the launch asks for a second start
-            if (Uri.TryCreate(state.LaunchBaseUrl, UriKind.Absolute, out var waitUri))
-            {
-                using var loadingLine = new TickLine(Console.Out, launchTheme is not null, blankBeforeFirst: true);
-                await AutoServeAsk.AwaitOursLoadingAsync(
-                    new ServeManager(home, ServeCommand.ServerBinaryFor(state.Model, config)), waitUri.Port,
-                    Gatto.Roles.Audition.AuditionRunner.ReadyBudget,
-                    LoadingLine.Over(loadingLine, glyphs, launchTheme), id => SizeWordsOnDiskOrNull(home, id),
-                    CancellationToken.None);
-            }
-            var loadedFrom = Stopwatch.GetTimestamp();
-            var launchLoaded = await ServeProbe.ProbeAsync(probeHttp, state.LaunchBaseUrl, CancellationToken.None, state.Endpoint.ApiKey, probeDeadline);   //the chat client's own key, since /props sits behind the server's api key and a keyed server would read as unknown
-            probeTicks += Stopwatch.GetTimestamp() - loadedFrom;
-            //computed once, so the refusal and the chip cannot end up describing two different servers
-            var launchMismatch = ModelSwitch.DescribeProbe(state.Model, launchLoaded, modelsDir);
-            state.LaunchServing = new ServingProbe(
-                launchMismatch?.Name, launchLoaded?.NCtx,
-                launchLoaded?.Capability ?? ThinkCapability.None, launchLoaded?.Vision,
-                launchMismatch?.OnTheShelf ?? false);
-
-            //an explicit -m against a server holding another model refuses, while a bare gatto opens on what runs and -m X attaches to X
-            if (args.Model is not null && launchMismatch is not null)   //the mismatch comes from DescribeProbe, where unknown never counts as one
-            {
-                Console.Error.WriteLine(ServeNotice.Refusing(launchLoaded?.ModelPath));
-                return 1;
-            }
-
-            //say once that gatto is reusing what it found, so a user who left a server up knows nothing started behind their back
-            if (launchLoaded is not null)
-            {
-                serverAlreadyUp = true;
-                servedBytes = Gatto.Core.Acquire.ModelDiscovery.SetBytesOrNull(launchLoaded.ModelPath);   //every input is observed, the served file's size and serve.json for the age, and a server gatto did not start has no age
-                //a server already up is a normal event, so it is said through SayReusing rather than the warning sink
-                ServeNotice.SayReusing(
-                    new CliSurface(Console.Out, launchTheme, glyphs), glyphs,
-                    launchLoaded.ModelPath,
-                    new ServeManager(home, config.LlamaServer ?? "").DescribeRunning()?.Started,
-                    DateTimeOffset.Now,
-                    servedBytes);
-            }
-        }
+        //said after the launch's warnings, so a user who left a server up knows nothing started behind their back. a line the session says is not said here too
+        if (servedLine is not null && (args.Prompt is not null || !servedInSession))
+            ServeNotice.SayUsing(new CliSurface(args.Prompt is null ? Console.Out : Console.Error, launchTheme, glyphs),
+                glyphs, servedLine, blank: args.Prompt is null);   //stderr under -p, where stdout is the model's text
 
         //non-interactive has no prompter to ask with and the table refuses on its own, so a scripted run cannot spawn a server
         var autoServe = AutoServe.Decide(
@@ -916,7 +936,7 @@ public static class GattoApp
             serverGone: () => state.Model is { } served
                 ? ServeLines.GoneLine(new ServeManager(home, ServeCommand.ServerBinaryFor(served, config)).Dead(served.Profile.Port), glyphs)
                 : null,
-                    autoCompact: config.AutoCompact, permissions: permissions, listTools: listTools, listPolicy: listPolicy, commands: commands, memoryWarning: launchRes.MemoryTruncatedLines > 0 ? MemoryTruncationWarning(launchRes.MemoryTruncatedLines) : null, cloudNotice: cloudNotice, launchWarnings: launchWarnings, cloud: state.Cloud, readUsage: usageMeter.Read, onUsageChanged: repaint => usageMeter.Changed = repaint,piggyback: piggyback, turnAbort: turnAbort,
+                    autoCompact: config.AutoCompact, permissions: permissions, listTools: listTools, listPolicy: listPolicy, commands: commands, memoryWarning: launchRes.MemoryTruncatedLines > 0 ? MemoryTruncationWarning(launchRes.MemoryTruncatedLines) : null, cloudNotice: cloudNotice, servedNotice: servedInSession && servedLine is not null ? TermText.Sanitize(ServeNotice.Text(servedLine)) : null, launchWarnings: launchWarnings, cloud: state.Cloud, readUsage: usageMeter.Read, onUsageChanged: repaint => usageMeter.Changed = repaint,piggyback: piggyback, turnAbort: turnAbort,
             //a session with no model talks to a server gatto does not manage, so the notice says that instead of offering a model fix
             unmanagedNotice: !state.ServedHere() && state.Endpoint.Models is not { Count: > 0 } && !state.Cloud ? UnmanagedSession.ModelUnavailable(state.LaunchBaseUrl) : null,
             cloudSwitchHint: unlistedRemote && state.Cloud ? CloudSwitchHint(state.EndpointName) : null,

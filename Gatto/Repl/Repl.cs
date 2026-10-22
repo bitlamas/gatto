@@ -22,20 +22,20 @@ public sealed record RoleSwitchResult(bool Success, string RoleName, string? Mod
     //set by ApplyRoleSwitch alone, true when the switch opened the conversation with the new role's first message
     bool Opened = false);
 
-//the outcome of a /model switch. the mismatch field names loaded weights only when they disagree, and the context field is the window the server allocated
+//the outcome of a /model switch. the context field is the window the server allocated
 public sealed record ModelSwitchResult(
     bool Success, string ModelId, string? SystemText, int? ContextBudget,
-    string? Message, string? ServingMismatch, int? ProbedNCtx, string? ThinkingName = null,
+    string? Message, int? ProbedNCtx, string? ThinkingName = null,
     //the new model reasons through a toggle, so the footer reads thinking on|off and a /model switch can change that shape
     bool ThinkingIsToggle = false,
     //the new model has no reasoning switch at all, so bare /effort checks this before offering a level
     bool ThinkingIsUnavailable = false,
     SessionBaseline? Baseline = null);
 
-//one probe answer: a null mismatch means agreement or an unknown reading. vision blocks only on a definite false, and the shelf flag says the name can be typed
-public sealed record ServingProbe(string? Mismatch, int? NCtx,
+//one probe answer, every field null or none when the server did not answer. vision blocks only on a definite false
+public sealed record ServingProbe(int? NCtx,
     Gatto.Core.Client.ThinkCapability Capability = Gatto.Core.Client.ThinkCapability.None,
-    bool? Vision = null, bool MismatchIsOnTheShelf = false);
+    bool? Vision = null);
 
 //the result of an /effort switch, with the clamped level name for the footer. the message field is the line to print, including whether the level was saved
 public sealed record EffortResult(bool Success, string? LevelName, string Message, ThinkingMark? Thinking = null);
@@ -98,6 +98,7 @@ public sealed partial class Repl(
     //the finished sentence for an over-budget memory index, printed once after the banner. a later re-truncation goes through the warn sink instead
     string? memoryWarning = null,
     string? cloudNotice = null,   //said once per home, the first time a session runs on a cloud endpoint
+    string? servedNotice = null,   //the launch found a server holding something other than the default, and the launch screen goes unread once a server is up
     //the launch lines in arrival order, said after the banner: the sink's warnings on the rich face only, the wild notice on both. null says none
     IReadOnlyList<string>? launchWarnings = null,
     bool cloud = false,           //the footer's mark before the model, fixed for the session since the endpoint is
@@ -242,16 +243,6 @@ public sealed partial class Repl(
     //the context-fit warning latch, cleared when the estimate drops back under the armed model's budget so a new crossing warns again
     private bool _contextFitWarned;
 
-    //the mismatch id the last serving warning named, so a new server still speaks instead of a bool going quiet
-    private string? _servingSaid;
-
-    //whether the serving model is one the user can name with /model, set from the same probe answer as serving
-    private bool servingOnTheShelf;
-
-
-    //the model the server has loaded when it disagrees with the armed model, null on agreement or an unanswered probe
-    private string? serving = launchServing?.Mismatch;
-
     //the window the server actually allocated (null when the probe could not answer), read as min(declared, probed) by the fit warning
     private int? probedNCtx = launchServing?.NCtx;
 
@@ -263,9 +254,6 @@ public sealed partial class Repl(
 
     //test seam for the armed model id, the same field a /model or /role switch mutates
     internal string ModelNameForTest => modelName;
-
-    //test seam for the serving mismatch id, null when the armed model and the server's loaded weights agree
-    internal string? ServingForTest => serving;
 
     //test seam for the live conversation, so a test can check the rebuilt system prompt a compact adopted
     internal Conversation ConversationForTest => convo;
@@ -306,18 +294,6 @@ public sealed partial class Repl(
     //true when a budget is enforced, the estimate is at or above 85% of it, and the offer has not already fired
     public static bool ShouldOfferCompact(int estimateTokens, int? budgetTokens, bool alreadyOffered) =>
         !alreadyOffered && budgetTokens is int b && b > 0 && estimateTokens >= b * OfferFraction;
-
-    //says that another model is serving, once per transition and before the fit warning, naming no cause
-    private void MaybeSaySomethingElseIsServing(ITurnObserver renderer)
-    {
-        if (serving is not { Length: > 0 } running) { _servingSaid = null; return; }
-        if (string.Equals(running, _servingSaid, StringComparison.Ordinal)) return;
-
-        //the /model remedy appears only when the running id names a shelf model, a file stem that no shelf row claims is dropped
-        renderer.OnWarning($"the server is running {running} now, this session is on {Gatto.Core.Models.ServedModelName.Display(modelName)}"
-            + (servingOnTheShelf ? $" — /model {running} to use it" : ""));
-        _servingSaid = running;
-    }
 
     //true when the estimate is strictly over the armed model's window and this crossing has not been reported
     public static bool ShouldWarnContextFit(int estimateTokens, int? budgetTokens, bool alreadyWarned) =>
@@ -406,17 +382,10 @@ public sealed partial class Repl(
         }
     }
 
-    //probes the server once per turn before the request goes, and assigns the result even when it is null so a stale chip clears
+    //probes the server once per turn before the request goes, and assigns the window even when it is null so a stale reading clears
     private void RefreshServingBeforeTurn(ITurnObserver renderer)
     {
-        if (probeServing is not null)
-        {
-            var probe = probeServing();
-            serving = probe.Mismatch;
-            servingOnTheShelf = probe.MismatchIsOnTheShelf;
-            probedNCtx = probe.NCtx;
-        }
-        MaybeSaySomethingElseIsServing(renderer);
+        if (probeServing is not null) probedNCtx = probeServing().NCtx;
         MaybeWarnContextFit(renderer);
     }
 

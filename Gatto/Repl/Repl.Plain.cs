@@ -21,6 +21,7 @@ public sealed partial class Repl
         //the same system line the rich path commits, printed literally here, plain has no renderer to hang the marker on
         if (memoryWarning is not null) Console.WriteLine($"{_glyphs.Sharp} " + memoryWarning);
         if (cloudNotice is not null) Console.WriteLine($"{_glyphs.Sharp} " + cloudNotice);
+        if (servedNotice is not null) Console.WriteLine($"{_glyphs.Sharp} " + servedNotice);
         foreach (var w in LaunchWarningsNow()) Console.WriteLine($"{_glyphs.Sharp} " + TermText.Sanitize(w));   //an extension's error text reaches this list, so strip it like OnWarning does
 
         var renderer = new PlainRenderer(reasoning, _glyphs);

@@ -81,7 +81,7 @@ internal static class ModelSwitch
         //name the loaded weights by the model id that claims them, since a 90-character path is illegible, and fall back to the file name
         var claimed = Model.ListIds(modelsDir)
             .Select(id => { try { return Model.Load(modelsDir, id); } catch (Exception) { return null; } })
-            .FirstOrDefault(p => p is not null && Model.MatchesLoaded(p, loaded) == true);
+            .FirstOrDefault(p => p is not null && Claims(p, loaded));
 
         //the name and whether it is on the shelf come out of this one listing, so no caller asks the shelf again
         var servingId = claimed
@@ -90,6 +90,11 @@ internal static class ModelSwitch
 
         return servingId is { Length: > 0 } name ? new ServingName(name, claimed is not null) : null;
     }
+
+    //a quant is a setting, so any file of the model's list claims the served weights, not the active one only
+    private static bool Claims(Model p, LoadedModel? loaded) =>
+        Model.MatchesLoaded(p, loaded) == true
+        || loaded?.ModelPath is { Length: > 0 } held && p.Profile.Files.Any(f => Same(f.Path, held));
 
     //the loaded name and whether a user can type it, since a file stem names no model and offering it would be false
     internal readonly record struct ServingName(string Name, bool OnTheShelf);

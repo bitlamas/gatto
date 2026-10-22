@@ -37,13 +37,13 @@ internal static class ModelSwitchDeed
                     serving.Model == outgoing.Id
                         ? $"staying on {outgoing.Id}"
                         : $"keeping {serving.Model} running",
-                    null, null, null);
+                    null, null);
 
             if (!seams.Swap(serving.Model, outcome.Model!))
                 //the failed swap leaves the session untouched, and the message names the target because a bool can't say whether the restore worked
                 return new ModelSwitchResult(false, outcome.ModelId, null, null,
                     $"stayed on {outgoing?.Id ?? "the current model"}, and tried to put {serving.Model} back on the server, see above",
-                    null, null, null);
+                    null, null);
 
             return null;
         }

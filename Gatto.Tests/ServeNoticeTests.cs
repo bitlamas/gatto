@@ -3,102 +3,59 @@ using Gatto.Terminal;
 
 namespace Gatto.Tests;
 
-//a clause appears only when its input did, the reader would act on a guessed one
+//every fact on these lines comes from the probe, the reader would act on a guessed one
 public class ServeNoticeTests
 {
-    private static readonly DateTimeOffset Now = new(2026, 8, 13, 12, 0, 0, TimeSpan.Zero);
-    private static string Iso(TimeSpan ago) => Now.Subtract(ago).ToString("o");
-
-    //drive the line through SayReusing, its only exit, so the test asserts the shape production can write
-    private static string Reusing(string? servedModelPath, string? startedIso, DateTimeOffset now,
-        long? sizeBytes)
+    //drive the line through SayUsing, its only exit, so the test asserts the shape production can write
+    private static string Using((string, CliInk)[] line, bool blank = true)
     {
         var w = new StringWriter();
-        ServeNotice.SayReusing(new CliSurface(w, null, glyphs: GlyphSet.Unicode), GlyphSet.Unicode,
-            servedModelPath, startedIso, now, sizeBytes);
-        var rows = w.ToString().Replace("\r\n", "\n").Split('\n', StringSplitOptions.RemoveEmptyEntries);
-        //the header glyph opens the first row, the sentence under test is the rest of it
+        ServeNotice.SayUsing(new CliSurface(w, null, glyphs: GlyphSet.Unicode), GlyphSet.Unicode, line, blank);
+        var text = w.ToString().Replace("\r\n", "\n");
+        var rows = text.Split('\n', StringSplitOptions.RemoveEmptyEntries);
+        //one row only, the header glyph opens it and the sentence under test is the rest
+        Assert.Single(rows);
         Assert.StartsWith(GlyphSet.Unicode.Header + " ", rows[0], StringComparison.Ordinal);
-        return string.Join(" | ", rows.Select((r, i) => i == 0 ? r[(GlyphSet.Unicode.Header.Length + 1)..] : r));
+        Assert.Equal(blank, text.StartsWith('\n'));
+        return rows[0][(GlyphSet.Unicode.Header.Length + 1)..];
     }
 
     [Fact]
-    public void Reusing_names_the_SERVED_model_its_age_and_its_size()
-    {
-        var line = Reusing(@"D:\models\qwen3.6-35b-Q6_K.gguf", Iso(TimeSpan.FromHours(2)),
-            Now, sizeBytes: 27_000_000_000);
+    public void THE_ARMED_MODEL_IS_THE_SERVED_ONE() =>
+        Assert.Equal("using qwen3.5-9b, served on :1238", Using(ServeNotice.Using("qwen3.5-9b", 1238)));
 
-        Assert.Equal("reusing llama-server started 2h ago | qwen3.6-35b-Q6_K.gguf · ~25.1 GB", line);
-    }
+    //the session paints its own row, so it takes the words with no ink
+    [Fact]
+    public void THE_SESSION_ROW_IS_THE_SAME_WORDS() =>
+        Assert.Equal("using qwen3.5-9b, served on :1238", ServeNotice.Text(ServeNotice.Using("qwen3.5-9b", 1238)));
 
     [Fact]
-    public void Reusing_NAMES_WHAT_THE_PROBE_SERVES_not_what_a_model_expects()
-    {
-        //the serving chip reports when the model's own model_path disagrees with the file the probe serves
-        var line = Reusing(@"D:\models\gemma-4-26B.gguf", Iso(TimeSpan.FromMinutes(5)),
-            Now, sizeBytes: 20_000_000_000);
-
-        Assert.Contains("gemma-4-26B.gguf", line, StringComparison.Ordinal);
-    }
+    public void A_FILE_NO_SHELF_MODEL_CLAIMS_KEEPS_THE_DEFAULT_AND_NAMES_THE_FILE() =>
+        Assert.Equal("using qwen3.6-35b-a3b, the server on :1238 holds mystery-Q4_K_M, not on the shelf",
+            Using(ServeNotice.UsingOffShelf("qwen3.6-35b-a3b", 1238, "mystery-Q4_K_M")));
 
     [Fact]
-    public void A_SERVER_GATTO_DID_NOT_START_has_no_age_to_report_and_claims_none()
-    {
-        //a serve.json from another program carries no start time, an age would be a made-up fact
-        var line = Reusing(@"D:\m\x.gguf", startedIso: null, Now, sizeBytes: 1_000_000_000);
-
-        Assert.Equal("reusing the llama-server already running | x.gguf · ~0.9 GB", line);
-        Assert.DoesNotContain("ago", line, StringComparison.Ordinal);
-    }
+    public void A_SHELF_MODEL_ON_ANOTHER_PORT_KEEPS_THE_DEFAULT_AND_NAMES_THE_MODEL() =>
+        Assert.Equal("using qwen3.6-35b-a3b, the server on :1238 holds qwen3.5-9b",
+            Using(ServeNotice.UsingOtherPort("qwen3.6-35b-a3b", 1238, "qwen3.5-9b")));
 
     [Fact]
-    public void AN_UNMEASURABLE_FILE_gets_no_size_clause_rather_than_a_zero()
-    {
-        var line = Reusing(@"D:\m\x.gguf", Iso(TimeSpan.FromHours(3)), Now, sizeBytes: null);
+    public void A_SERVER_THAT_NAMES_NO_FILE_IS_NOT_SAID_TO_SERVE_THE_DEFAULT() =>
+        Assert.Equal("using qwen3.6-35b-a3b, the server on :1238 does not name its file",
+            Using(ServeNotice.UsingNoFile("qwen3.6-35b-a3b", 1238)));
 
-        Assert.Equal("reusing llama-server started 3h ago | x.gguf", line);
-        Assert.DoesNotContain("GB", line, StringComparison.Ordinal);
-    }
-
-    [Theory]
-    [InlineData("not a timestamp")]
-    [InlineData("")]
-    public void A_TIMESTAMP_THAT_WILL_NOT_PARSE_drops_the_clause(string started)
-    {
-        Assert.DoesNotContain("ago", Reusing(@"D:\m\x.gguf", started, Now, 1), StringComparison.Ordinal);
-    }
-
+    //a one-shot writes it to stderr beside its other launch lines, which open with no blank row
     [Fact]
-    public void A_CLOCK_THAT_WENT_BACKWARDS_does_not_produce_a_negative_age()
-    {
-        //a start time in the future is a clock change, so no age clause is written
-        var line = Reusing(@"D:\m\x.gguf", Now.AddHours(4).ToString("o"), Now, 1);
-
-        //assert the whole line, a check for a minus sign would trip on the hyphen in llama-server
-        Assert.Equal("reusing the llama-server already running | x.gguf · <0.1 GB", line);
-    }
+    public void UNDER_P_THE_LINE_HAS_NO_BLANK_ROW_ABOVE_IT() =>
+        Assert.Equal("using qwen3.5-9b, served on :1238", Using(ServeNotice.Using("qwen3.5-9b", 1238), blank: false));
 
     [Fact]
     public void A_SIZE_THAT_ROUNDS_TO_ZERO_SAYS_SO_rather_than_reading_as_nothing_loaded()
     {
         //a size that rounds to zero must read <0.1 GB, since ~0 GB claims nothing is loaded
-        Assert.Contains("<0.1 GB", Reusing(@"D:\m\x.gguf", null, Now, 1), StringComparison.Ordinal);
         Assert.Contains("<0.1 GB", ServeNotice.ExitHint(true, 40_000_000, GlyphSet.Unicode)!.Text, StringComparison.Ordinal);
         //a real size still reads with its normal figure, so the zero guard did not change every size.
         Assert.Contains("~25.1 GB", ServeNotice.ExitHint(true, 27_000_000_000, GlyphSet.Unicode)!.Text, StringComparison.Ordinal);
-    }
-
-    [Theory]
-    [InlineData(30, "moments ago")]
-    [InlineData(60 * 7, "7m ago")]
-    [InlineData(60 * 60 * 5, "5h ago")]
-    [InlineData(60 * 60 * 24 * 3, "3d ago")]
-    public void The_age_is_coarse_because_nobody_needs_seconds_to_recognise_their_own_server(
-        int secondsAgo, string expected)
-    {
-        Assert.Contains(expected,
-            Reusing(@"D:\m\x.gguf", Iso(TimeSpan.FromSeconds(secondsAgo)), Now, 1),
-            StringComparison.Ordinal);
     }
 
     [Fact]

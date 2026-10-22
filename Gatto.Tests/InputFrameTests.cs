@@ -244,30 +244,6 @@ public class InputFrameTests
     }
 
     [Fact]
-    public void StatusLine_WithServingMismatch_RendersTheWarningChip()
-    {
-        var s = Status() with { Model = "gemma-4-26b", Serving = "qwen3.6-35b" };
-        var text = StripSgr(InputFrame.BuildStatusLine(s, 120, T, glyphs: GlyphSet.Unicode));
-        Assert.Contains("gemma-4-26b", text);
-        Assert.Contains("serving qwen3.6-35b", text);
-    }
-
-    [Fact]
-    public void StatusLine_WithoutMismatch_RendersNoChip()
-    {
-        var s = Status() with { Model = "gemma-4-26b", Serving = null };
-        Assert.DoesNotContain("serving", StripSgr(InputFrame.BuildStatusLine(s, 120, T, glyphs: GlyphSet.Unicode)));
-    }
-
-    [Fact]
-    public void StatusLine_ServingMismatch_UsesTheThemesWarnTint()
-    {
-        var s = Status() with { Model = "gemma-4-26b", Serving = "qwen3.6-35b" };
-        var line = InputFrame.BuildStatusLine(s, 120, T, glyphs: GlyphSet.Unicode);
-        Assert.Contains(Ansi.Fg(Theme.Warn, true) + " ⚠ serving qwen3.6-35b", line, StringComparison.Ordinal);
-    }
-
-    [Fact]
     public void StatusLine_LongCwd_DegradesToLastSegment_OneRow()
     {
         //a cwd too long for the footer keeps the ellipsis, the separator and the last segment, so the row stays one line

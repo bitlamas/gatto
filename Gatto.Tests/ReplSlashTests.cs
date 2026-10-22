@@ -805,7 +805,7 @@ public class ReplModelSlashTests : IDisposable
     public async Task SlashModel_WithModelName_ArmsItAndReportsSuccess()
     {
         var repl = ReplWith(switchModel: (id, _) => new ModelSwitchResult(
-            true, id, "new system text", 131072, null, null, null));
+            true, id, "new system text", 131072, null, null));
 
         var output = await Feed(repl, "/model gemma-4-26b");
 
@@ -820,7 +820,7 @@ public class ReplModelSlashTests : IDisposable
         var baseline = new SessionBaseline(5, "generalist", "gemma-4-26b", "all", new ThinkingMark("medium", null), new List<ToolMark>(),
             new BaselineSources(null, null, new List<ContextFileMark>(), new List<PolicyMark>(), "r", "m"));
         var repl = ReplWith(convo: convo, switchModel: (id, _) => new ModelSwitchResult(
-            true, id, "new system text", 131072, null, null, null, Baseline: baseline));
+            true, id, "new system text", 131072, null, null, Baseline: baseline));
 
         await Feed(repl, "/model gemma-4-26b");
 
@@ -832,7 +832,7 @@ public class ReplModelSlashTests : IDisposable
     public async Task SlashModel_ALandedSwitchWithAMessage_SaysItInsteadOfTheModelLine()
     {
         var repl = ReplWith(switchModel: (id, _) => new ModelSwitchResult(
-            true, id, "sys", 131072, "now on " + id + ", everything said so far is read again", null, null));
+            true, id, "sys", 131072, "now on " + id + ", everything said so far is read again", null));
 
         var output = await Feed(repl, "/model gemma-4-26b");
 
@@ -845,7 +845,7 @@ public class ReplModelSlashTests : IDisposable
     public async Task SlashModel_ALandedSwitchWithNoMessage_StillSaysTheModelLine()
     {
         var repl = ReplWith(switchModel: (id, _) => new ModelSwitchResult(
-            true, id, "sys", 131072, null, null, null));
+            true, id, "sys", 131072, null, null));
 
         Assert.Contains("model: gemma-4-26b", await Feed(repl, "/model gemma-4-26b"));
     }
@@ -855,34 +855,12 @@ public class ReplModelSlashTests : IDisposable
     {
         var repl = ReplWith(
             modelName: "qwen3.6-35b",
-            switchModel: (id, _) => new ModelSwitchResult(false, id, null, null, "no model 'zzz'", null, null));
+            switchModel: (id, _) => new ModelSwitchResult(false, id, null, null, "no model 'zzz'", null));
 
         var output = await Feed(repl, "/model zzz");
 
         Assert.Contains("no model 'zzz'", output);
         Assert.Equal("qwen3.6-35b", repl.ModelNameForTest);   //a failed switch must not change the model name.
-    }
-
-    [Fact]
-    public async Task SlashModel_Mismatch_SurfacesTheServingModel()
-    {
-        var repl = ReplWith(switchModel: (id, _) => new ModelSwitchResult(
-            true, id, "sys", 131072, null, "qwen3.6-35b", null));
-
-        await Feed(repl, "/model gemma-4-26b");
-
-        Assert.Equal("qwen3.6-35b", repl.ServingForTest);
-    }
-
-    [Fact]
-    public async Task SlashModel_NoMismatch_ServingStaysNull()
-    {
-        var repl = ReplWith(switchModel: (id, _) => new ModelSwitchResult(
-            true, id, "sys", 131072, null, null, null));
-
-        await Feed(repl, "/model gemma-4-26b");
-
-        Assert.Null(repl.ServingForTest);
     }
 
     [Fact]
@@ -892,7 +870,7 @@ public class ReplModelSlashTests : IDisposable
         var convo = new Conversation("sys");
         convo.AddUser(new string('x', 400));   //400 chars is about 100 tokens, from the chars÷4 estimate
         var repl = ReplWith(convo: convo, switchModel: (id, _) => new ModelSwitchResult(
-            true, id, "sys", 131072, null, null, ProbedNCtx: 50));
+            true, id, "sys", 131072, null, ProbedNCtx: 50));
 
         var output = await Feed(repl, "/model gemma-4-26b");
 
@@ -905,7 +883,7 @@ public class ReplModelSlashTests : IDisposable
     {
         //a bare /model whose picker cancels must change nothing, say nothing and throw nothing
         var called = false;
-        var repl = ReplWith(switchModel: (id, _) => { called = true; return new ModelSwitchResult(true, id, "s", 1, null, null, null); });
+        var repl = ReplWith(switchModel: (id, _) => { called = true; return new ModelSwitchResult(true, id, "s", 1, null, null); });
 
         var output = await Feed(repl, "/model");
 
@@ -941,7 +919,7 @@ public class ReplModelSlashTests : IDisposable
         //the add flow moved to gatto model, so both old add verbs must still answer with the moved line
         var switched = new List<string>();
         var repl = ReplWith(
-            switchModel: (id, _) => { switched.Add(id); return new ModelSwitchResult(true, id, "s", 1, null, null, null); });
+            switchModel: (id, _) => { switched.Add(id); return new ModelSwitchResult(true, id, "s", 1, null, null); });
 
         var output = await Feed(repl, typed);
 
@@ -987,7 +965,7 @@ public class ReplModelSlashTests : IDisposable
         var switched = false;
         var notice = Gatto.Cli.UnmanagedSession.ModelUnavailable("http://127.0.0.1:1234");
         var repl = ReplWith(
-            switchModel: (id, _) => { switched = true; return new ModelSwitchResult(true, id, "s", 1, null, null, null); },
+            switchModel: (id, _) => { switched = true; return new ModelSwitchResult(true, id, "s", 1, null, null); },
             unmanagedNotice: notice);
 
         var output = await Feed(repl, "/model gemma-4-26b");
@@ -1036,7 +1014,7 @@ public class ReplModelSlashTests : IDisposable
                 new PickerItem("qwen3.6-35b", "qwen3.6-35b  256k", Marked: false, Current: true),
             ],
             picker: FakePickerChoosing(0),   //the fake picker answers with the gemma row.
-            switchModel: (id, _) => new ModelSwitchResult(true, id, "sys", 131072, null, null, null));
+            switchModel: (id, _) => new ModelSwitchResult(true, id, "sys", 131072, null, null));
 
         await Feed(repl, "/model");
         Assert.Equal("gemma-4-26b", repl.ModelNameForTest);
@@ -1199,7 +1177,7 @@ public class ReplModelSlashTests : IDisposable
             switchModel: (id, answered) =>
             {
                 wasAnswered = answered;
-                return new ModelSwitchResult(true, id, "s", 1, null, null, null);
+                return new ModelSwitchResult(true, id, "s", 1, null, null);
             });
 
         await Feed(repl, "/model gemma-4-e4b");

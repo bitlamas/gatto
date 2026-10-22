@@ -115,13 +115,12 @@ public class CommandCorpusTests : IDisposable
 
     //each notice renders through its own call site, since a convenient writer pins an indent no user sees
     [Fact]
-    public void THE_REUSE_NOTICE_GOES_THROUGH_THE_COMMAND_SURFACE()
+    public void THE_SERVED_MODEL_NOTICE_GOES_THROUGH_THE_COMMAND_SURFACE()
     {
         var w = new StringWriter();
         var cli = new CliSurface(w, CorpusDriver.ThemeFor(CorpusMode.Dark), CorpusDriver.Glyphs);
-        ServeNotice.SayReusing(cli, CorpusDriver.Glyphs, @"C:\weights\" + CorpusFacts.LongModelId + ".gguf",
-            CorpusFacts.Now.AddMinutes(-7).ToString("O"), CorpusFacts.Now, 102_400_000_000);
-        CopyGolden.Check("notice-reusing", CorpusDriver.Visible(w.ToString()));
+        ServeNotice.SayUsing(cli, CorpusDriver.Glyphs, ServeNotice.Using(CorpusFacts.LongModelId, 1235), blank: true);
+        CopyGolden.Check("notice-using", CorpusDriver.Visible(w.ToString()));
     }
 
     //the refusal is written bare to stderr, with no surface and no ink
@@ -324,7 +323,7 @@ public class CommandCorpusTests : IDisposable
     //each row names the golden it owes, and the manifest asserts that golden is absent, so a covered surface with a stale row fails
     private static readonly (string Golden, string Who)[] Owed =
     [
-        ("launch-preamble", "no single emitter exists, and the reuse line alone is pinned as notice-reusing"),
+        ("launch-preamble", "no single emitter exists, and the served-model line alone is pinned as notice-using"),
         //the checks read the real cwd and home, so a golden needs those reads behind a seam first
         ("doctor-funnel", "the checks read the real cwd and home; a golden needs those reads behind a seam"),
         ("status-funnel", "same"),
@@ -346,7 +345,7 @@ public class CommandCorpusTests : IDisposable
         "header-oneliner-Dark", "header-oneliner-Light", "header-oneliner-Plain",
         "header-banner-Dark", "header-banner-Light", "header-banner-Plain",
         "writer-rows-Dark", "writer-rows-Light", "writer-rows-Plain",
-        "notice-reusing", "notice-bare-stderr",
+        "notice-using", "notice-bare-stderr",
         "exit-block-quit-stopped-Dark", "exit-block-quit-stopped-Plain",
         "exit-block-quit-still-loaded-Dark", "exit-block-quit-still-loaded-Plain",
         "exit-block-quit-nothing-closed-Dark", "exit-block-quit-nothing-closed-Plain",

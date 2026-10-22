@@ -44,7 +44,7 @@ internal sealed class LaunchState(
     internal bool Cloud;
     internal int? ContextBudget;
     internal ReasoningHistory ReasoningHistory;
-    //one bounded read of /props through the same DescribeProbe as /model, so launch, /model and the per-turn probe agree on a mismatch
+    //one bounded read of /props at launch, for the window, the vision bit and the thinking capability
     internal ServingProbe? LaunchServing;
     internal IReadOnlyDictionary<string, JsonElement?>? ReasoningMap;
     internal ThinkingLevel? BinaryOn;
@@ -236,20 +236,34 @@ internal sealed class LaunchState(
     //a delegate to the Repl, so it never references Gatto.Roles, and it reads the model and base URL a /model switch left
     internal ServingProbe ProbeServing()
     {
-        if (LaunchBaseUrl is null || Cloud) return new ServingProbe(null, null);
+        if (LaunchBaseUrl is null || Cloud) return new ServingProbe(null);
         //a session gatto does not serve reads only the server's vision bit, since there is no served model to compare
         if (!ServedHere() || Model is null)
         {
             var connectLoaded = ServeProbe.ProbeAsync(_probeHttp, LaunchBaseUrl, CancellationToken.None, Endpoint.ApiKey, _probeDeadline)
                 .GetAwaiter().GetResult();
-            return new ServingProbe(null, connectLoaded?.NCtx, ThinkCapability.None, connectLoaded?.Vision);   //an unanswered probe leaves Vision null, which is unknown, so the refusal on false lets the attach go
+            return new ServingProbe(connectLoaded?.NCtx, ThinkCapability.None, connectLoaded?.Vision);   //an unanswered probe leaves Vision null, which is unknown, so the refusal on false lets the attach go
         }
         var loaded = ServeProbe.ProbeAsync(_probeHttp, LaunchBaseUrl, CancellationToken.None, Endpoint.ApiKey, _probeDeadline)
             .GetAwaiter().GetResult();
-        var named = ModelSwitch.DescribeProbe(Model, loaded, modelsDir);
-        return new ServingProbe(named?.Name, loaded?.NCtx,
-            loaded?.Capability ?? ThinkCapability.None, loaded?.Vision,
-            named?.OnTheShelf ?? false);
+        return new ServingProbe(loaded?.NCtx, loaded?.Capability ?? ThinkCapability.None, loaded?.Vision);
+    }
+
+    //the launch's resolution for the model the server holds, by the route a by-name /model takes, or null with nothing moved when it resolves to another address
+    internal RoleResolution? ResolveServed(string roleName, string servedId)
+    {
+        var previous = SessionModel;
+        SessionModel = servedId;
+        RoleResolution res;
+        try { res = ResolveRole(roleName); }
+        catch (GattoConfigException) { SessionModel = previous; return null; }
+        //a model whose profile names another port would send every request where no server answered
+        if (!string.Equals(res.Endpoint.BaseUrl, LaunchBaseUrl, StringComparison.OrdinalIgnoreCase))
+        {
+            SessionModel = previous;
+            return null;
+        }
+        return res;
     }
 
     internal static ThinkingMark ThinkingOf(Composition c) => new(c.Thinking.ToString().ToLowerInvariant(), c.ThinkingBody?.GetRawText());
@@ -371,7 +385,7 @@ internal sealed class LaunchState(
         {
             if (Endpoint.Models is { Count: > 0 } offered && !offered.Contains(requestedModel, StringComparer.Ordinal))
                 return new ModelSwitchResult(false, requestedModel, null, null,
-                    $"endpoint {EndpointName} has no model '{requestedModel}'. Models: {string.Join(", ", offered)}", null, null, null);
+                    $"endpoint {EndpointName} has no model '{requestedModel}'. Models: {string.Join(", ", offered)}", null, null);
             //re-resolved for the new name, so its folder's parts replace the old one's and a model with no folder drops them
             var previousSession = SessionModel;
             SessionModel = requestedModel;
@@ -380,7 +394,7 @@ internal sealed class LaunchState(
             catch (GattoConfigException ex)
             {
                 SessionModel = previousSession;
-                return new ModelSwitchResult(false, requestedModel, null, null, ex.Message, null, null, null);
+                return new ModelSwitchResult(false, requestedModel, null, null, ex.Message, null, null);
             }
             var systemBefore = LastComposedSystem;
             Role = switched.Role; Model = switched.Model; ModelString = switched.ModelString; Comp = switched.Comp;
@@ -403,13 +417,13 @@ internal sealed class LaunchState(
             //the system text changes only when a folder's parts came or went, else only the baseline moves so a later continue finds the model the session ended on
             return new ModelSwitchResult(true, requestedModel,
                 string.Equals(systemBefore, Comp.SystemText, StringComparison.Ordinal) ? null : Comp.SystemText,
-                ContextBudget, null, null, null,
+                ContextBudget, null, null,
                 ThinkingFooterName(), ThinkCap == ThinkCapability.Toggle, ThinkingUnavailable(), NextBaseline(LastComposedSources));
         }
 
         //refused here as well as at the Repl's gate, so a remote endpoint never reaches the serving machinery below
         if (route == SwitchRoute.Refuse)
-            return new ModelSwitchResult(false, requestedModel, null, null, UnmanagedSession.ModelUnavailable(LaunchBaseUrl), null, null, null);
+            return new ModelSwitchResult(false, requestedModel, null, null, UnmanagedSession.ModelUnavailable(LaunchBaseUrl), null, null);
 
         IReadOnlyList<(string Path, string Content)> contextFiles;
         //a malformed .gatto.json fails the switch and leaves the session as it was, nothing is armed yet
@@ -420,7 +434,7 @@ internal sealed class LaunchState(
         }
         catch (GattoConfigException ex)
         {
-            return new ModelSwitchResult(false, requestedModel, null, null, ex.Message, null, null, null);
+            return new ModelSwitchResult(false, requestedModel, null, null, ex.Message, null, null);
         }
 
         //the index is re-read against the model being switched to, so the load is a delegate rather than a value read up front
@@ -430,7 +444,7 @@ internal sealed class LaunchState(
             memoryNudge: memoryOn);
         if (!outcome.Success || outcome.Model is null || outcome.Composition is null)
             return new ModelSwitchResult(false, outcome.ModelId, outcome.SystemText, outcome.ContextBudget,
-                outcome.Message, null, null, null);   //no probe on a failed switch, nothing changed
+                outcome.Message, null, null);   //no probe on a failed switch, nothing changed
 
         //captured before the swap, since model still names the outgoing one and the deed's confirm and failure message name it
         var outgoing = Model;
@@ -479,7 +493,7 @@ internal sealed class LaunchState(
         //only after the switch is committed, a failed load or persist never reaches this line
         var loaded = ServeProbe.ProbeAsync(_probeHttp, LaunchBaseUrl!, CancellationToken.None, Endpoint.ApiKey, _probeDeadline)   //only after the persist succeeded, so a doomed switch spends no round trip
             .GetAwaiter().GetResult();
-        var mismatch = ModelSwitch.DescribeProbe(outcome.Model, loaded, modelsDir)?.Name;
+        var mismatch = ModelSwitch.DescribeProbe(outcome.Model, loaded, modelsDir);
         //the incoming model's server may split its context across slots too, the launch rule again
         if (loaded is not null && mismatch is null)
         {
@@ -501,7 +515,7 @@ internal sealed class LaunchState(
         //adds a line on success, since outcome.Message is null there, and outgoing names the model the session was on
         return new ModelSwitchResult(true, outcome.ModelId, outcome.SystemText, ContextBudget,
             SwapConfirm.SwitchNotice(confirmed, outgoing?.Id, outcome.ModelId) ?? outcome.Message,
-            mismatch, loaded?.NCtx, ThinkingFooterName(), ThinkCap == ThinkCapability.Toggle,
+            loaded?.NCtx, ThinkingFooterName(), ThinkCap == ThinkCapability.Toggle,
             ThinkingUnavailable(), NextBaseline(Comp.Sources));
     }
 

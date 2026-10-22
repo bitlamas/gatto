@@ -6,11 +6,11 @@ using Gatto.Terminal;
 
 namespace Gatto.Repl.Input;
 
-//a snapshot of the status line's facts. the Serving field names the model the server actually loaded, and paints as a warning chip while the two differ
+//a snapshot of the status line's facts
 public sealed record StatusInfo(
     string Cwd, string Model, string Role, CtxState Ctx, string UserProfile,
     string? Branch = null, long TokensUp = 0, long TokensDown = 0, bool Wild = false,
-    string? Thinking = null, string? Serving = null, bool ThinkingToggle = false,
+    string? Thinking = null, bool ThinkingToggle = false,
     string? FocusHint = null,   //the Ctrl+↑/↓/R keymap, shown while focus is active (or as the first-collapse teaser)
     string? ChordHint = null,   //the live Esc·Esc / Ctrl+C·Ctrl+C hint, drawn in the top rule's label slot
     bool Cloud = false,         //the endpoint is in the cloud, and the mark stands before the model
@@ -315,13 +315,10 @@ public sealed class InputFrame(ITermSurface surface, Theme theme, string? role, 
             parts.Add(new Part(branch, theme.Paint(branch, Theme.Dim)));
         }
 
-        //the serving chip rides on the model part and is never shed, so a long session still sees which model it runs
         var effort = EffortWord(s.Thinking, s.ThinkingToggle);
         var model = (s.Cloud ? g.Cloud + " " : "") + ModelText(Gatto.Core.Models.ServedModelName.Display(s.Model), rung, g)
             + (effort is null ? "" : $" ({effort})");
-        var chip = s.Serving is null ? "" : $" {g.Warn} serving {s.Serving}";
-        parts.Add(new Part(model + chip,
-            theme.Paint(model, Theme.Dim) + (chip.Length == 0 ? "" : theme.Paint(chip, Theme.Warn))));
+        parts.Add(new Part(model, theme.Paint(model, Theme.Dim)));
 
         if (rung < DropTokens && (s.TokensUp != 0 || s.TokensDown != 0))
         {

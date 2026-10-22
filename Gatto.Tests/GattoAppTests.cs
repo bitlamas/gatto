@@ -2628,9 +2628,9 @@ public class GattoAppTests : IDisposable
     //mirror the production order, decide first and probe after a successful switch. probeReports synthesizes what a real probe returns, with no HTTP
     private sealed record SwitchHarnessResult(
         bool Success, string ModelId, string? SystemText, int? ContextBudget,
-        string? Message, string? ServingMismatch);
+        string? Message);
 
-    private SwitchHarnessResult RunSwitchModel(string home, string requestedModel, string? probeReports = null)
+    private SwitchHarnessResult RunSwitchModel(string home, string requestedModel)
     {
         var config = GattoConfig.Load(home);
         var role = RoleFile.Load(Path.Combine(home, "roles"), "generalist");
@@ -2641,16 +2641,14 @@ public class GattoAppTests : IDisposable
             modelsDir, home, requestedModel, role, Array.Empty<(string, string)>(), null, baseUrl);
         if (!outcome.Success || outcome.Model is null)
             return new SwitchHarnessResult(outcome.Success, outcome.ModelId, outcome.SystemText,
-                outcome.ContextBudget, outcome.Message, null);
+                outcome.ContextBudget, outcome.Message);
 
         //the harness goes straight from the decision to persisting, since it has no server to swap. persisting is a step of its own, after the decision
         if (ModelSwitch.Persist(home, "local", outcome.Model.Id) is { } problem)
-            return new SwitchHarnessResult(false, outcome.ModelId, null, null, problem, null);
+            return new SwitchHarnessResult(false, outcome.ModelId, null, null, problem);
 
-        var loaded = probeReports is null ? null : new LoadedModel(ModelPathFor(probeReports), 8192);
-        var mismatch = ModelSwitch.DescribeProbe(outcome.Model, loaded, modelsDir)?.Name;
         return new SwitchHarnessResult(true, outcome.ModelId, outcome.SystemText,
-            outcome.ContextBudget, outcome.Message, mismatch);
+            outcome.ContextBudget, outcome.Message);
     }
 
     [Fact]
@@ -2694,56 +2692,6 @@ public class GattoAppTests : IDisposable
 
         var cfg = JsonDocument.Parse(File.ReadAllText(Path.Combine(home, "gatto.json"))).RootElement;
         Assert.Equal("gemma-4-26b", cfg.GetProperty("defaults").GetProperty("local").GetProperty("model").GetString());
-    }
-
-    [Fact]
-    public void SwitchModel_ProbeSaysDifferentWeights_ReportsMismatch()
-    {
-        var home = HomeWithModels("qwen3.6-35b", "gemma-4-26b");
-        var result = RunSwitchModel(home, "gemma-4-26b", probeReports: "qwen3.6-35b");
-
-        Assert.True(result.Success);                       //a mismatch is reported but never blocks the switch.
-        Assert.Equal("qwen3.6-35b", result.ServingMismatch);
-    }
-
-    [Fact]
-    public void SwitchModel_ProbeUnavailable_NoMismatchClaimed()
-    {
-        var home = HomeWithModels("qwen3.6-35b", "gemma-4-26b");
-        var result = RunSwitchModel(home, "gemma-4-26b", probeReports: null);   //the null argument stands for a server that did not answer
-
-        Assert.True(result.Success);
-        Assert.Null(result.ServingMismatch);   //unknown is not a mismatch: no claim is made when the server did not answer.
-    }
-
-    //this mirrors the launch probe's path and calls the same DescribeProbe production uses. no live HTTP runs, a test-only seam would be needed to see the chip
-    private StatusInfo LaunchAndReadStatus(string home, string? probeReports)
-    {
-        var role = RoleFile.Load(Path.Combine(home, "roles"), "generalist");
-        var modelsDir = Path.Combine(home, "models");
-        var model = role.Model is null ? null : Model.Load(modelsDir, role.Model);
-
-        var loaded = probeReports is null ? null : new LoadedModel(ModelPathFor(probeReports), 8192);
-        var serving = model is null ? null : ModelSwitch.DescribeProbe(model, loaded, modelsDir)?.Name;
-
-        return new StatusInfo(_cwd, model?.Id ?? "?", role.Name, new CtxState(), _home, Serving: serving);
-    }
-
-    [Fact]
-    public void Launch_ServerHoldsDifferentWeights_ChipIsSetFromTheFirstFrame()
-    {
-        //the server holds gemma-4-26b while a bare gatto resolves to the default qwen3.6-35b
-        var home = HomeWithModels("qwen3.6-35b", "gemma-4-26b");
-        var status = LaunchAndReadStatus(home, probeReports: "gemma-4-26b");
-        Assert.Equal("gemma-4-26b", status.Serving);
-    }
-
-    [Fact]
-    public void Launch_ServerDown_NoChip()
-    {
-        var home = HomeWithModels("qwen3.6-35b");
-        var status = LaunchAndReadStatus(home, probeReports: null);   //the null argument means no server answered
-        Assert.Null(status.Serving);   //unknown is never reported as a mismatch or shown as a chip.
     }
 
     //a server that splits its context across slots gives each request less than the profile, and -p elides and compacts against that
@@ -2912,6 +2860,199 @@ public class GattoAppTests : IDisposable
         Assert.Equal(0, exit);
         //the assertion must use without -m, which only the refusal prints. the hint gatto serve stop also prints on an attaching launch, so it cannot stand for a refusal
         Assert.DoesNotContain("without -m", stderr.ToString(), StringComparison.Ordinal);
+        Assert.Contains($"using model-y, served on :{new Uri(server.BaseUrl).Port}", stdout.ToString(), StringComparison.Ordinal);
+    }
+
+    //a profile written whole, so a test can give a model its own window, port or second quant
+    private void WriteProfile(string id, string json)
+    {
+        var dir = Path.Combine(_home, "models", id);
+        Directory.CreateDirectory(dir);
+        File.WriteAllText(Path.Combine(dir, "profile.json"), json);
+    }
+
+    //a -p launch on the local endpoint whose server answers /props with the given body, so the request names the model the launch armed
+    private async Task<(int Exit, string Stdout, string Stderr, FakeOpenAiServer Server)> OneShotAgainst(
+        string? props, bool pinnedBaseUrl = true, params string[] extraArgs)
+    {
+        var server = new FakeOpenAiServer();
+        UseHome();
+        var port = new Uri(server.BaseUrl).Port;
+        var local = pinnedBaseUrl ? $$$"""{"base_url":"{{{server.BaseUrl}}}"}""" : "{}";
+        WriteConfig($$$"""{"endpoints":{"local":{{{local}}}},"default_endpoint":"local","default_model":"model-x"}""");
+        WriteRole("generalist", "{}");
+        //auto_serve off, so an unanswered probe can never start a process on this machine
+        WriteProfile("model-x", $$$"""{"files":[{"path":"model-x.gguf","active":true}],"port":{{{port}}},"context":8192,"auto_serve":false}""");
+        WriteProfile("model-y", $$$"""{"files":[{"path":"model-y.gguf","active":true},{"path":"model-y-q8.gguf"}],"port":{{{(pinnedBaseUrl ? port : 1)}}},"context":16384,"auto_serve":false}""");
+        if (props is not null) server.PropsResponse = new FakeResponse(Body: props);
+        server.Enqueue(Completion("answer"));
+        var stdout = new StringWriter();
+        var stderr = new StringWriter();
+        Console.SetOut(stdout);
+        Console.SetError(stderr);
+        var exit = await GattoApp.RunAsync([.. extraArgs, "-p", "hi"]);
+        return (exit, stdout.ToString(), stderr.ToString(), server);
+    }
+
+    private static string ModelOf(FakeOpenAiServer server) => server.LastRequestBody!.Value.GetProperty("model").GetString()!;
+
+    //the server holds a shelf model other than the default, so the launch arms that one and its window, and says so on stderr under -p
+    [Fact]
+    public async Task A_LAUNCH_ARMS_THE_SHELF_MODEL_THE_SERVER_HOLDS()
+    {
+        using var probeRoom = GattoApp.ProbeDeadlineScope(TimeSpan.FromSeconds(30));   //the assertions read the probe's answer, so the suite's load must not turn them into a race
+        var (exit, stdout, stderr, server) = await OneShotAgainst(
+            """{"model_path":"model-y.gguf","default_generation_settings":{"n_ctx":4096}}""");
+        await using var owned = server;
+
+        Assert.Equal(0, exit);
+        Assert.Equal("model-y", ModelOf(server));
+        Assert.Contains($"using model-y, served on :{new Uri(server.BaseUrl).Port}", stderr, StringComparison.Ordinal);
+        Assert.DoesNotContain("using model-y", stdout, StringComparison.Ordinal);
+        //the window line reads the armed profile, so model-y's 16384 proves the window was built from the served model
+        Assert.Contains("the profile says 16384", stderr, StringComparison.Ordinal);
+        var session = Directory.GetFiles(Path.Combine(_home, "sessions"), "*.jsonl").Single(f => !f.EndsWith(".ledger.jsonl", StringComparison.Ordinal));
+        Assert.Equal("model-y", Gatto.Core.Session.SessionStore.LoadBaseline(session)!.Model);
+    }
+
+    //the same arm interactively, said once and inside the session, since the launch screen goes unread once a server is up
+    [Fact]
+    public async Task AN_INTERACTIVE_LAUNCH_ARMS_THE_SERVED_MODEL_AND_SAYS_ONE_LINE()
+    {
+        await using var server = new FakeOpenAiServer();
+        using var probeRoom = GattoApp.ProbeDeadlineScope(TimeSpan.FromSeconds(30));   //the assertions read the probe's answer, so the suite's load must not turn them into a race
+        UseHome();
+        WriteConfig($$$"""{"endpoints":{"local":{"base_url":"{{{server.BaseUrl}}}"}},"default_endpoint":"local","default_model":"model-x"}""");
+        WriteRole("generalist", "{}");
+        WriteModelWithOwnFile("model-x", port: 1);
+        WriteModelWithOwnFile("model-y", port: 1);
+        server.PropsResponse = new FakeResponse(Body: """{"model_path": "model-y.gguf"}""");
+        server.Enqueue(Completion("answer"));
+        var stdout = new StringWriter();
+        var stderr = new StringWriter();
+        Console.SetIn(new StringReader("hello\n/quit\n"));
+        Console.SetOut(stdout);
+        Console.SetError(stderr);
+
+        Assert.Equal(0, await GattoApp.RunAsync(Array.Empty<string>()));
+
+        Assert.Equal("model-y", ModelOf(server));
+        var text = stdout.ToString() + stderr.ToString();
+        var line = Assert.Single(text.Split('\n'), l => l.Contains("using model-y", StringComparison.Ordinal));
+        Assert.Contains($"using model-y, served on :{new Uri(server.BaseUrl).Port}", line, StringComparison.Ordinal);
+        //the session's own opening line comes first, so the line is one the session says and not the launch screen
+        Assert.True(stdout.ToString().IndexOf("(/quit to exit", StringComparison.Ordinal) is >= 0 and var opened
+            && stdout.ToString().IndexOf("using model-y", StringComparison.Ordinal) > opened, "the line is not inside the session");
+        Assert.DoesNotContain("the server is running", text, StringComparison.Ordinal);
+        Assert.DoesNotContain("reusing", text, StringComparison.Ordinal);
+    }
+
+    //the default being served is no news, so its line stays on the launch screen and the session says nothing about it
+    [Fact]
+    public async Task A_LAUNCH_ON_THE_SERVED_DEFAULT_SAYS_NOTHING_INSIDE_THE_SESSION()
+    {
+        await using var server = new FakeOpenAiServer();
+        using var probeRoom = GattoApp.ProbeDeadlineScope(TimeSpan.FromSeconds(30));   //the assertions read the probe's answer, so the suite's load must not turn them into a race
+        UseHome();
+        WriteConfig($$$"""{"endpoints":{"local":{"base_url":"{{{server.BaseUrl}}}"}},"default_endpoint":"local","default_model":"model-x"}""");
+        WriteRole("generalist", "{}");
+        WriteModelWithOwnFile("model-x", port: 1);
+        WriteModelWithOwnFile("model-y", port: 1);
+        server.PropsResponse = new FakeResponse(Body: """{"model_path": "model-x.gguf"}""");
+        var stdout = new StringWriter();
+        Console.SetIn(new StringReader("/quit\n"));
+        Console.SetOut(stdout);
+        Console.SetError(new StringWriter());
+
+        Assert.Equal(0, await GattoApp.RunAsync(Array.Empty<string>()));
+
+        var text = stdout.ToString();
+        var at = text.IndexOf($"using model-x, served on :{new Uri(server.BaseUrl).Port}", StringComparison.Ordinal);
+        Assert.True(at >= 0, "the launch line is missing");
+        Assert.True(at < text.IndexOf("(/quit to exit", StringComparison.Ordinal), "the default's line moved inside the session");
+        Assert.Single(text.Split('\n'), l => l.Contains("using model-x", StringComparison.Ordinal));
+    }
+
+    //a quant is a setting, so a file of model-y's list that is not the active one still arms model-y
+    [Fact]
+    public async Task A_NON_ACTIVE_QUANT_CLAIMS_ITS_MODEL()
+    {
+        using var probeRoom = GattoApp.ProbeDeadlineScope(TimeSpan.FromSeconds(30));   //the assertions read the probe's answer, so the suite's load must not turn them into a race
+        var (exit, _, stderr, server) = await OneShotAgainst("""{"model_path":"model-y-q8.gguf"}""");
+        await using var owned = server;
+
+        Assert.Equal(0, exit);
+        Assert.Equal("model-y", ModelOf(server));
+        Assert.Contains("using model-y, served on", stderr, StringComparison.Ordinal);
+        Assert.DoesNotContain("not on the shelf", stderr, StringComparison.Ordinal);
+    }
+
+    //a file no profile claims has no profile to arm, so the default stays and the one line names the file
+    [Fact]
+    public async Task A_FILE_OFF_THE_SHELF_KEEPS_THE_DEFAULT()
+    {
+        using var probeRoom = GattoApp.ProbeDeadlineScope(TimeSpan.FromSeconds(30));   //the assertions read the probe's answer, so the suite's load must not turn them into a race
+        var (exit, _, stderr, server) = await OneShotAgainst("""{"model_path":"stranger-Q4_K_M.gguf"}""");
+        await using var owned = server;
+
+        Assert.Equal(0, exit);
+        Assert.Equal("model-x", ModelOf(server));
+        Assert.Contains($"using model-x, the server on :{new Uri(server.BaseUrl).Port} holds stranger-Q4_K_M, not on the shelf", stderr, StringComparison.Ordinal);
+    }
+
+    //model-y declares another port and no base_url is pinned, so arming it would send every request where no server answered
+    [Fact]
+    public async Task A_SHELF_MODEL_ON_ANOTHER_PORT_KEEPS_THE_DEFAULT()
+    {
+        using var probeRoom = GattoApp.ProbeDeadlineScope(TimeSpan.FromSeconds(30));   //the assertions read the probe's answer, so the suite's load must not turn them into a race
+        var (exit, _, stderr, server) = await OneShotAgainst("""{"model_path":"model-y.gguf"}""", pinnedBaseUrl: false);
+        await using var owned = server;
+
+        Assert.Equal(0, exit);
+        Assert.Equal("model-x", ModelOf(server));
+        Assert.Contains($"using model-x, the server on :{new Uri(server.BaseUrl).Port} holds model-y", stderr, StringComparison.Ordinal);
+        Assert.DoesNotContain("not on the shelf", stderr, StringComparison.Ordinal);
+    }
+
+    //a server that names no file cannot be matched, so the line never says it serves the default
+    [Fact]
+    public async Task A_SERVER_THAT_NAMES_NO_FILE_KEEPS_THE_DEFAULT()
+    {
+        using var probeRoom = GattoApp.ProbeDeadlineScope(TimeSpan.FromSeconds(30));   //the assertions read the probe's answer, so the suite's load must not turn them into a race
+        var (exit, _, stderr, server) = await OneShotAgainst("""{"default_generation_settings":{"n_ctx":8192}}""");
+        await using var owned = server;
+
+        Assert.Equal(0, exit);
+        Assert.Equal("model-x", ModelOf(server));
+        Assert.Contains($"using model-x, the server on :{new Uri(server.BaseUrl).Port} does not name its file", stderr, StringComparison.Ordinal);
+        Assert.DoesNotContain("served on", stderr, StringComparison.Ordinal);
+    }
+
+    //an unanswered probe arms nothing and says nothing about a server
+    [Fact]
+    public async Task AN_UNANSWERED_PROBE_CHANGES_NOTHING()
+    {
+        var (exit, _, stderr, server) = await OneShotAgainst(props: null);
+        await using var owned = server;
+
+        Assert.Equal(0, exit);
+        Assert.True(server.PropsCalled, "the probe must have run, or the silence proves nothing");
+        Assert.Equal("model-x", ModelOf(server));
+        Assert.DoesNotContain("using model-", stderr, StringComparison.Ordinal);
+    }
+
+    //a one-shot probes now, so -m X against a server holding Y refuses there as it does interactively
+    [Fact]
+    public async Task DashM_UNDER_P_WHILE_ANOTHER_MODEL_SERVES_REFUSES()
+    {
+        using var probeRoom = GattoApp.ProbeDeadlineScope(TimeSpan.FromSeconds(30));   //the assertions read the probe's answer, so the suite's load must not turn them into a race
+        var (exit, stdout, stderr, server) = await OneShotAgainst("""{"model_path":"model-y.gguf"}""", true, "-m", "model-x");
+        await using var owned = server;
+
+        Assert.Equal(1, exit);
+        Assert.Contains(ServeNotice.Refusing("model-y.gguf"), stderr, StringComparison.Ordinal);
+        Assert.Equal("", stdout);
+        Assert.Equal(0, server.RequestCount);
     }
 
     //with the key on, a quit calls the stop, which deletes an unreadable record. with the key off the record stays, and no server means no stop
@@ -3015,9 +3156,9 @@ public class GattoAppTests : IDisposable
         Assert.True(File.Exists(record), "a connect session removed the record of the local server");
     }
 
-    //the reuse line must price the whole shard set, model_path names one shard only. it runs the real launch, the defect was the number the site computes
+    //the exit hint must price the whole shard set, model_path names one shard only. it runs the real launch, the defect was the number the site computes
     [Fact]
-    public async Task THE_REUSE_LINE_PRICES_THE_WHOLE_SHARD_SET()
+    public async Task THE_EXIT_HINT_PRICES_THE_WHOLE_SHARD_SET()
     {
         await using var server = new FakeOpenAiServer();
         using var probeRoom = GattoApp.ProbeDeadlineScope(TimeSpan.FromSeconds(30));   //the assertions read the probe's answer, so the suite's load must not turn them into a race
@@ -3037,7 +3178,7 @@ public class GattoAppTests : IDisposable
 
         WriteConfig($$$"""
             {"endpoints":{"local":{"base_url":"{{{server.BaseUrl}}}"}},
-             "default_endpoint":"local","default_model":"model-x"}
+             "default_endpoint":"local","default_model":"model-x","stop_server_on_exit":false}
             """);
         WriteRole("generalist", "{}");
         WriteModelWithOwnFile("model-x", port: 1);
@@ -3053,9 +3194,8 @@ public class GattoAppTests : IDisposable
         var text = stdout.ToString();
 
         Assert.Equal(0, exit);
-        //assert the reuse line first, so the size checks cannot pass vacuously.
-        Assert.Contains("reusing the llama-server", text, StringComparison.Ordinal);
-        Assert.Contains("~0.2 GB", text, StringComparison.Ordinal);
+        //assert the hint first, so the size checks cannot pass vacuously.
+        Assert.Contains("model still loaded (~0.2 GB)", text, StringComparison.Ordinal);
         Assert.DoesNotContain("<0.1 GB", text, StringComparison.Ordinal);
     }
 
