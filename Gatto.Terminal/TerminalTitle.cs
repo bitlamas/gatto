@@ -18,6 +18,9 @@ public sealed class TerminalTitle : ITerminalTitle
             ? "gatto " + Glyph
             : "gatto " + Glyph + " " + role.Trim();
 
+    //a named session's tab is the glyph and the name, nothing else
+    public static string Named(string name) => Glyph + " " + name.Trim();
+
     //the tab names the folder it works in, glyph first. a drive root has no file name, so fall back to the trimmed root rather than an empty tab
     public static string Project(string cwd)
     {

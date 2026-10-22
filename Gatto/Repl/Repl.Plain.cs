@@ -87,6 +87,7 @@ public sealed partial class Repl
                 convo = new Conversation(composed.Text, baseline: composed.Baseline);
                 convo.SetGattoRole(roleName);          //every record after a reset carries the running role, as the launch's do
                 sessions?.StartNew();                  //the next save starts a new session file and leaves the old transcript alone
+                sessionName = null;                    //the name belongs to the session /new ends
                 _offered = false;                      //a fresh session, so the 85% offer can fire again
                 _usageState.Clear();                   //the old usage reading describes the conversation that just ended
                 loop.ResetStripWarning();              //a fresh session reports its own first leak
@@ -146,6 +147,11 @@ public sealed partial class Repl
                     Console.WriteLine();
                 }
                 if (ok) Console.WriteLine(CompactedLine());
+                continue;
+            }
+            if (SlashGate.TryMatchCommand(trimmedLine, "/name", out var nameArg))
+            {
+                if (NameCommand(nameArg) is { } answer) Console.WriteLine($"{_glyphs.Sharp} " + answer);
                 continue;
             }
             if (trimmedLine == "/role" || trimmedLine.StartsWith("/role ", StringComparison.Ordinal))

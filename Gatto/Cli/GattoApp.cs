@@ -820,7 +820,7 @@ public static class GattoApp
 
             //restore from the sidecar beside the resumed file, they stay in memory and a new save writes its own
             ledger.RestoreFrom(SessionFiles.Sidecar(contPath, SessionFiles.Ledger));
-            resumedFrom = SessionStamp(contPath);
+            resumedFrom = sessions.Identity.Name is { } resumedName ? $"{resumedName} ({SessionStamp(contPath)})" : SessionStamp(contPath);   //a named session is resumed by its name
             //the count is gatto's estimate, the server's own arrives on the first request after this mark
             resumeSpan.Set("records", prior.Count);
             if (trace.Enabled) resumeSpan.Set("est_tokens", ContextBudget.Estimate(convo.Messages));

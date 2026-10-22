@@ -37,6 +37,7 @@ public static class SlashCommands
         new("/help", "", "show this table", BypassesQueue: true),
         new("/new", "", "reset the conversation"),
         new("/role", "[name]", "show or switch role"),
+        new("/name", "[text]", "name this session, on the composer and the tab"),
         //quant is named here so a verb the dispatch accepts is findable in /help. add stays out, since its only outcome is a sentence pointing at gatto model
         new("/model", "[name|quant]", "show or switch the model, or manage its files"),
         //a toggle-only model gets the same verb, with a picker offering just none and on

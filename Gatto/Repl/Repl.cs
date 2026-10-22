@@ -255,6 +255,32 @@ public sealed partial class Repl(
     //test seam for the armed model id, the same field a /model or /role switch mutates
     internal string ModelNameForTest => modelName;
 
+    //the name /name gave this session, read from the identity so a resumed session opens with its own, and dropped by /new
+    private string? sessionName = sessions?.Identity.Name;
+
+    internal string? SessionNameForTest => sessionName;
+
+    internal const string NameUsage = "usage: /name <text>";
+
+    //the rest of the line trimmed, one pair of double quotes around the whole of it dropped. a control character or nothing left refuses
+    internal static (string? Name, string? Refusal) ParseName(string arg)
+    {
+        var text = arg.Trim();
+        if (text.Length >= 2 && text[0] == '"' && text[^1] == '"') text = text[1..^1].Trim();
+        return text.Length == 0 || text.Any(char.IsControl) ? (null, NameUsage) : (text, null);
+    }
+
+    //the row /name answers with: the name held when bare, or the usage. a name it sets is shown by the composer and the tab, so it commits no row, and it never reaches the model, so no prefix moves
+    private string? NameCommand(string arg)
+    {
+        if (arg.Trim().Length == 0) return sessionName is { } held ? "name: " + held : "no name";
+        var (name, refusal) = ParseName(arg);
+        if (name is null) return refusal!;
+        sessionName = name;
+        sessions?.Name(name);
+        return null;
+    }
+
     //test seam for the live conversation, so a test can check the rebuilt system prompt a compact adopted
     internal Conversation ConversationForTest => convo;
 

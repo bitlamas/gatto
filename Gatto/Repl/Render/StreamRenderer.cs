@@ -404,7 +404,10 @@ public sealed class StreamRenderer : ITurnObserver
     }
 
     //the ♯ system line: a blank-separated, Warn-painted gutter block. while a tool bullet is chrome the line is buffered and flushed after the block
-    public void CommitSystem(string message)
+    public void CommitSystem(string message) => CommitSystem(message, transient: false);
+
+    //a transient row is shown and never saved, for a fact about this launch alone
+    public void CommitSystem(string message, bool transient)
     {
         message = TermText.Sanitize(message);
         Guarded(
@@ -418,7 +421,7 @@ public sealed class StreamRenderer : ITurnObserver
                 if (_inReasoning) CloseReasoningBlock();
                 else FlushOpenLine();
                 if (_last != LastWrite.None) _blankPending = true;
-                _model?.Append(new SystemLineItem(message, After()));   //append before the paint
+                _model?.Append(new SystemLineItem(message, After()) { Transient = transient });   //append before the paint
                 CommitRows(GutterWrap.Rows(_theme.Paint($"{_glyphs.Sharp}", Theme.Warn) + " ", $"{_glyphs.Sharp} ", message,
                     _surface.Width, s => _theme.Paint(s, Theme.Warn)).ToList());
                 _last = LastWrite.Text;

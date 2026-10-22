@@ -6,6 +6,8 @@ public sealed class AltScreen(ITermSurface surface, ITerminalTitle? title = null
     private bool _entered;
     private bool _restored;
     private bool _final;   //once the folder title is applied, every later Retitle (a /role swap) is ignored
+    private bool _named;   //a named session's tab is the name, and no role or folder title overwrites it
+    private string? _unnamed;   //the title the unnamed sequence holds, put back when the name goes
 
     //null when this session has no tab worth titling (a redirected stream, or a console that refuses). the alt screen defaults the title, it knows every leave path
     private readonly ITerminalTitle? _title = title ?? TerminalTitle.Deed(Console.IsOutputRedirected);
@@ -22,13 +24,17 @@ public sealed class AltScreen(ITermSurface surface, ITerminalTitle? title = null
         if (_entered) return;
         _entered = true;
         surface.Write(Ansi.AltScreenEnter + (QuietWheel ? Ansi.AlternateScrollOff : "") + (hideCursor ? Ansi.HideCursor : ""));
-        if (windowTitle is not null) _title?.Apply(windowTitle);
+        if (windowTitle is null) return;
+        _unnamed = windowTitle;
+        if (!_named) _title?.Apply(windowTitle);
     }
 
     //change the tab mid-session, called when the role changes. a no-op outside the alt screen, so a plain-mode session never touches a title it never set
     public void Retitle(string windowTitle)
     {
-        if (Active && !_final) _title?.Apply(windowTitle);
+        if (!Active || _final) return;
+        _unnamed = windowTitle;
+        if (!_named) _title?.Apply(windowTitle);
     }
 
     //applies the title once and latches the tab, so every later Retitle is ignored. a no-op outside the alt screen, like Retitle
@@ -36,7 +42,24 @@ public sealed class AltScreen(ITermSurface surface, ITerminalTitle? title = null
     {
         if (!Active || _final) return;
         _final = true;
-        _title?.Apply(windowTitle);
+        _unnamed = windowTitle;
+        if (!_named) _title?.Apply(windowTitle);
+    }
+
+    //a name takes the tab past both latches and holds it, and null gives the tab back to the title the unnamed sequence reached
+    public void Name(string? windowTitle)
+    {
+        if (!Active) return;
+        if (windowTitle is not null)
+        {
+            _named = true;
+            _title?.Apply(windowTitle);
+        }
+        else if (_named)
+        {
+            _named = false;
+            if (_unnamed is { } back) _title?.Apply(back);
+        }
     }
 
     //dismiss the alt buffer and restore the main screen, showing the cursor in case a compositor left it hidden. idempotent, and a no-op if Enter never ran

@@ -23,7 +23,7 @@ public static class TranscriptStore
         var leading = new List<EventItem>();
         foreach (var it in model.Items)
         {
-            if (it is CommandEchoItem { Transient: true }) continue;   //session-local chrome, so it is never saved
+            if (it is CommandEchoItem { Transient: true } or SystemLineItem { Transient: true }) continue;   //session-local chrome, so it is never saved
             if (it is EventItem ev)
             {
                 //an event anchored to the system record is written leading, since the system record is never displayed and a leading event survives ReplaceSystem swapping it

@@ -535,6 +535,8 @@ public sealed partial class Repl
                     fresh.SetGattoRole(roleName);          //every record after a reset carries the running role, as the launch's do
                     convo = fresh;
                     sessions?.StartNew();
+                    sessionName = null;                    //the name belongs to the session /new ends
+                    s.Painter.AltScreen.Name(null);        //and the tab goes back to what the unnamed sequence holds
                     _offered = false;                      //a fresh session, so the 85% offer may fire again
                     _usageState.Clear();                   //the old reading describes a conversation that is gone
                     loop.ResetStripWarning();              //a fresh session reports its own first leak
@@ -621,6 +623,14 @@ public sealed partial class Repl
                 SaveSession(sessions, s.Painter.Model, convo);
                 s.Painter.Repaint();
             }
+            return false;
+        }
+        if (SlashGate.TryMatchCommand(trimmed, "/name", out var nameArg))
+        {
+            if (NameCommand(nameArg) is { } answer) s.Renderer.CommitSystem(answer);
+            //the tab and the composer read the name now, past the folder latch
+            if (sessionName is { } named) s.Painter.AltScreen.Name(TerminalTitle.Named(named));
+            s.Refresh();
             return false;
         }
         if (trimmed == "/role" || trimmed.StartsWith("/role ", StringComparison.Ordinal))

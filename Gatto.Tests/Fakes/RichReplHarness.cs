@@ -159,7 +159,11 @@ public sealed class RichReplHarness
         string roleName = "generalist", (RgbColor Dark, RgbColor? Light)? roleTint = null, IReadOnlyList<string>? roleCat = null,
         string? firstMessage = null,
         //the loop's trace, absent as an untraced session, so a test can read what a traced rich turn wrote
-        Gatto.Core.Trace? trace = null)
+        Gatto.Core.Trace? trace = null,
+        //the session store, absent as a session that saves nothing, so a test can open a resumed identity or read a name
+        SessionStore? sessions = null,
+        //the line the launch says when the server held something other than the default, absent as a launch on the default
+        string? servedNotice = null)
     {
         Surface = new VtScreenSurface(width, height);
         _tap = new TappedSurface(Surface);
@@ -171,7 +175,7 @@ public sealed class RichReplHarness
 
         _repl = new Gatto.Repl.Repl(
             loop, Convo, roleName: roleName, modelName: "test-model",
-            sessions: null, client: Client, configContext: 8192, contextBudget: contextBudget, cwd: cwd,
+            sessions: sessions, client: Client, configContext: 8192, contextBudget: contextBudget, cwd: cwd,
             permissions: permissions,
             //the closure is assigned after construction so it can see the harness. a test sets it to make the recompose warn or count calls.
             recomposeSystem: () => Composed.Text(Recompose?.Invoke() ?? systemPrompt),
@@ -200,7 +204,7 @@ public sealed class RichReplHarness
             contextInputs: contextInputs,
             chrome: chrome,
             commands: commands,
-            launchWarnings: launchWarnings,
+            launchWarnings: launchWarnings, servedNotice: servedNotice,
             clipboardImageSource: clipboardImages,
             roleTint: roleTint, roleCat: roleCat, firstMessage: firstMessage);
     }

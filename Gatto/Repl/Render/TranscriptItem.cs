@@ -372,6 +372,9 @@ public sealed record ListingItem(TableSpec Spec, ChatMessage? After) : EventItem
 
 public sealed record SystemLineItem(string Text, ChatMessage? After) : EventItem(After)
 {
+    //a row about this launch alone, never saved, so a resumed session does not replay it under its own launch's row
+    public bool Transient { get; init; }
+
     protected override IReadOnlyList<string> RenderBody(int width, Theme theme, GlyphSet? glyphs) =>
         ItemRender.SystemRows(Text, theme, width, glyphs);
 

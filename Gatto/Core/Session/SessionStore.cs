@@ -72,6 +72,12 @@ public sealed class SessionStore(string homePath, string cwd)
         lock (_saveLock) _begun = (_begun.File, identity);
     }
 
+    //the name rides the identity, so a successor and a resume carry it and /new drops it. the next save writes it
+    public void Name(string? name)
+    {
+        lock (_saveLock) _begun = (_begun.File, _begun.Identity with { Name = name });
+    }
+
     public void Save(Conversation convo)
     {
         var identity = Identity;
@@ -199,6 +205,7 @@ public sealed class SessionStore(string homePath, string cwd)
                 {
                     w.WriteString("session_id", identity.IdText);
                     w.WriteString("session_start", identity.StartText);
+                    if (identity.Name is { } sessionName) w.WriteString("session_name", sessionName);
                 }
             }
             if (m.Ts is not null) w.WriteString("ts", m.Ts.Value.ToUniversalTime().ToString("o"));
@@ -461,7 +468,7 @@ public sealed class SessionStore(string homePath, string cwd)
         return torn;
     }
 
-    //an id to a session path from the home alone, exact stem first then a unique prefix, across every cwd. zero or several matches refuse, and the sidecars are left out
+    //an id to a session path from the home alone, exact stem first, then a session name whole and in any case, then a unique prefix, across every cwd. zero or several matches refuse, and the sidecars are left out
     public static string ResolvePathById(string home, string id)
     {
         var sessionsDir = Path.Combine(home, "sessions");
@@ -478,6 +485,18 @@ public sealed class SessionStore(string homePath, string cwd)
             string.Equals(Path.GetFileNameWithoutExtension(f), trimmed, StringComparison.Ordinal));
         if (exact is not null) return exact;
 
+        //a compaction's successor and a resume share one identity, so the name names one session and the newest file of it is the one to resume
+        var named = files
+            .Select(f => (File: f, Identity: SafeIdentityOf(f)))
+            .Where(x => string.Equals(x.Identity?.Name, id, StringComparison.OrdinalIgnoreCase))
+            .GroupBy(x => x.Identity!.Id)
+            .ToList();
+        if (named.Count == 1)
+            return named[0].OrderByDescending(x => File.GetLastWriteTimeUtc(x.File)).First().File;
+        if (named.Count > 1)
+            throw new GattoConfigException(
+                $"--continue {id}: names {named.Count} saved sessions, give the id of the one to continue");
+
         var prefixMatches = files
             .Where(f => Path.GetFileNameWithoutExtension(f).StartsWith(trimmed, StringComparison.Ordinal))
             .ToList();
@@ -487,6 +506,14 @@ public sealed class SessionStore(string homePath, string cwd)
                 $"--continue {id}: matches {prefixMatches.Count} saved sessions — use a longer id to disambiguate");
 
         throw new GattoConfigException($"--continue {id}: no saved session matches this id");
+    }
+
+    //a file another process holds or one that went away reads as no identity, so one such file never fails a resume by name
+    private static SessionIdentity? SafeIdentityOf(string path)
+    {
+        try { return IdentityOf(path); }
+        catch (IOException) { return null; }
+        catch (UnauthorizedAccessException) { return null; }
     }
 
     //the session a file belongs to, from its system record. a file written before the record named its session is its own origin: its name and its first time
@@ -501,7 +528,7 @@ public sealed class SessionStore(string homePath, string cwd)
                 using var doc = JsonDocument.Parse(line);
                 var el = doc.RootElement;
                 if (el.TryGetProperty("role", out var r) && r.GetString() == "system"
-                    && SessionIdentity.Parse(Text(el, "session_id"), Text(el, "session_start")) is { } named)
+                    && SessionIdentity.Parse(Text(el, "session_id"), Text(el, "session_start"), Text(el, "session_name")) is { } named)
                     return named;
                 if (first is null && Text(el, "ts") is { } ts
                     && DateTimeOffset.TryParse(ts, CultureInfo.InvariantCulture, DateTimeStyles.None, out var at))

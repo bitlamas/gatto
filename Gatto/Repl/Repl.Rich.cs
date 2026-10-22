@@ -105,7 +105,7 @@ public sealed partial class Repl
         //a toggle-capable model's footer reads thinking on or off, so take the effective toggle-ness from GattoApp rather than the capability alone
         var status = new StatusInfo(cwd, modelName, roleName, ctx,
             Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), Wild: wild?.On == true,
-            Thinking: thinkingName, ThinkingToggle: thinkingToggle, Cloud: cloud);
+            Thinking: thinkingName, ThinkingToggle: thinkingToggle, Cloud: cloud, SessionName: sessionName);
         var frame = new InputFrame(surface, theme, DisplayRole(), status, _glyphs, KnownCommands);
         var focusTaught = false;   //the one-shot teaser for the first collapsed reasoning block, set once it has fired
 
@@ -125,7 +125,7 @@ public sealed partial class Repl
             var usage = readUsage?.Invoke() ?? (null, null);
             status = status with
             {
-                Model = modelName, Role = roleName, Branch = GitBranch.Read(cwd),
+                Model = modelName, Role = roleName, Branch = GitBranch.Read(cwd), SessionName = sessionName,
                 TokensUp = tokensUp, TokensDown = tokensDown, Wild = wild?.On == true, Thinking = thinkingName,
                 ThinkingToggle = thinkingToggle, FocusHint = focusHint,
                 //an expired arm yields null at repaint so the chord hint vanishes on its own, and the paste hint wins over it
@@ -252,6 +252,7 @@ public sealed partial class Repl
         altScreen.QuietWheel = !mouseEnabled;   //no mouse capture, so the wheel must not arrive as the composer's arrow keys
         //the tab title is composed from the same roleName the banner prints, so the two cannot drift
         altScreen.Enter(TerminalTitle.For(roleName));
+        if (sessionName is { } resumedName) altScreen.Name(TerminalTitle.Named(resumedName));   //a resumed session opens with its own name on the tab
 
         //the banner is the transcript's first item
         model.Append(BannerItem(theme, roleName, roleCat, modelName, versionLine, _glyphs));
@@ -259,7 +260,7 @@ public sealed partial class Repl
         //the memory-truncation notice, a system row right after the banner and above any resumed transcript
         if (memoryWarning is not null) renderer.CommitSystem(memoryWarning);
         if (cloudNotice is not null) renderer.CommitSystem(cloudNotice);
-        if (servedNotice is not null) renderer.CommitSystem(servedNotice);
+        if (servedNotice is not null) renderer.CommitSystem(servedNotice, transient: true);   //what this launch found serving, which the next resume says for itself
         //the list as it stands now, a warning raised between here and the route below still reaches stderr alone
         foreach (var w in LaunchWarningsNow()) renderer.CommitSystem(w);
 

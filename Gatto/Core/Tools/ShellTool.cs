@@ -49,11 +49,14 @@ public sealed class ShellTool : ITool
         {
             psi.Environment[Gatto.Core.SessionIdentity.IdVariable] = live.IdText;
             psi.Environment[Gatto.Core.SessionIdentity.StartVariable] = live.StartText;
+            if (live.Name is { } name) psi.Environment[Gatto.Core.SessionIdentity.NameVariable] = name;
+            else psi.Environment.Remove(Gatto.Core.SessionIdentity.NameVariable);
         }
         else
         {
             psi.Environment.Remove(Gatto.Core.SessionIdentity.IdVariable);
             psi.Environment.Remove(Gatto.Core.SessionIdentity.StartVariable);
+            psi.Environment.Remove(Gatto.Core.SessionIdentity.NameVariable);
         }
         psi.ArgumentList.Add("-NoProfile");
         psi.ArgumentList.Add("-NonInteractive");

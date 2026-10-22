@@ -15,7 +15,8 @@ public sealed record StatusInfo(
     string? ChordHint = null,   //the live Esc·Esc / Ctrl+C·Ctrl+C hint, drawn in the top rule's label slot
     bool Cloud = false,         //the endpoint is in the cloud, and the mark stands before the model
     Gatto.Core.Client.QuotaReading? Quota = null,
-    decimal? Cost = null);      //the session sum of what the provider reported as cost, null when it reported none
+    decimal? Cost = null,       //the session sum of what the provider reported as cost, null when it reported none
+    string? SessionName = null);   //the name /name gave the session, which takes the word gatto's place on the top rule
 
 //the composed rows and the caret's row and column. the Composer field is the layout a mouse gesture must map through, null in an unframed frame
 public sealed record FrameLayout(
@@ -55,7 +56,7 @@ public sealed class InputFrame(ITermSurface surface, Theme theme, string? role, 
 
         if (framed)
         {
-            var (topR, topV) = TopRuleCore(role, status.Wild, width, theme, status.ChordHint, _glyphs);
+            var (topR, topV) = TopRuleCore(role, status.Wild, width, theme, status.ChordHint, _glyphs, status.SessionName);
             rendered.Add(topR);
             visibleRows.Add(topV);
             screenRows.Add(UnicodeWidth.Rows(topV, width));
@@ -206,13 +207,13 @@ public sealed class InputFrame(ITermSurface surface, Theme theme, string? role, 
     }
 
     public static string BuildTopRule(string? role, int width, Theme theme, bool wild = false, string? hint = null,
-        GlyphSet? glyphs = null) =>
-        TopRuleCore(role, wild, width, theme, hint, glyphs).rendered;
+        GlyphSet? glyphs = null, string? name = null) =>
+        TopRuleCore(role, wild, width, theme, hint, glyphs, name).rendered;
 
     //the ANSI-free half of TopRuleCore, so a test can measure the top rule's width
     public static string BuildTopRuleVisible(string? role, int width, Theme theme, bool wild = false, string? hint = null,
-        GlyphSet? glyphs = null) =>
-        TopRuleCore(role, wild, width, theme, hint, glyphs).visible;
+        GlyphSet? glyphs = null, string? name = null) =>
+        TopRuleCore(role, wild, width, theme, hint, glyphs, name).visible;
 
     public static string BuildStatusLine(StatusInfo s, int width, Theme theme, GlyphSet? glyphs) =>
         StatusCore(s, width, theme, glyphs).rendered;
@@ -227,18 +228,21 @@ public sealed class InputFrame(ITermSurface surface, Theme theme, string? role, 
 
     //one place builds the top rule. the live hint borrows the label slot so the chrome block keeps its height, and a wide label truncates rather than wrapping
     private static (string rendered, string visible) TopRuleCore(string? role, bool wild, int width, Theme theme,
-        string? hint = null, GlyphSet? glyphs = null)
+        string? hint = null, GlyphSet? glyphs = null, string? name = null)
     {
         var g = glyphs ?? GlyphSet.Unicode;
         var sep = SepOf(g);
-        var labelVisible = hint ?? ("gatto" + (role is null ? "" : sep + role) + (wild ? sep + "wild" : ""));
+        //a named session leads with the tab's glyph and the name, the glyph only where the glyph set draws beyond ASCII
+        var mark = name is null || g == GlyphSet.Ascii ? "" : TerminalTitle.Glyph + " ";
+        var lead = name ?? "gatto";
+        var labelVisible = hint ?? (mark + lead + (role is null ? "" : sep + role) + (wild ? sep + "wild" : ""));
         //the 4 cells of overhead: two spaces around the label and the 2-cell closing rule
         var dashes = width - UnicodeWidth.Of(labelVisible) - 4;
         if (dashes < 0) dashes = 0;
         var dashStr = RuleOf(g, dashes);
         var labelRendered = hint is not null
             ? theme.Paint(hint, Theme.Accent)
-            : theme.Paint("gatto", Theme.Accent, bold: true)
+            : mark + theme.Paint(lead, Theme.Accent, bold: true)
                 + (role is null ? "" : theme.Paint(sep, Theme.Dim) + theme.Paint(role, theme.RoleTint(role)))
                 + (wild ? theme.Paint(sep, Theme.Dim) + theme.Paint("wild", Theme.Err) : "");
         var rendered = theme.Paint(dashStr, Theme.Rule) + " " + labelRendered + " " + theme.Paint(RuleOf(g, 2), Theme.Rule);
