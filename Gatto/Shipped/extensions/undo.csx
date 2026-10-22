@@ -22,8 +22,6 @@ var n = 0;
 //the n of each row a call wrote, held from its tool_call to its tool_result. the call id is the server's and may repeat, so it never reaches the disk
 var pending = new Dictionary<string, List<int>>(StringComparer.Ordinal);
 var sync = new object();
-//a path outside the folder is named once a session, a second write to it says nothing new
-var toldOutside = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
 //a full path, a leading ~ the user's folder as gatto's file tools read it, and whether it is under the working folder, compared whole segments
 Func<string, string> full = p =>
@@ -77,14 +75,8 @@ Action<string, string, string> snapshot = (callId, tool, given) =>
     string f;
     try { f = full(given); }
     catch (Exception ex) { Gatto.Log($"undo: {given}: {ex.Message}"); return; }
-    if (!inside(f))
-    {
-        bool first;
-        lock (sync) first = toldOutside.Add(f);
-        if (first) Gatto.Log($"undo: unsnapshotted: outside folder: {given}");
-        return;
-    }
-    if (Directory.Exists(f)) { Gatto.Log($"undo: unsnapshotted: directory: {given}"); return; }
+    //a path outside the folder, a directory or a file above the cap is past the limits the description states once, so it is passed over in silence
+    if (!inside(f) || Directory.Exists(f)) return;
     lock (sync)
     {
         try
@@ -98,7 +90,7 @@ Action<string, string, string> snapshot = (callId, tool, given) =>
             if (File.Exists(f))
             {
                 var len = new FileInfo(f).Length;
-                if (len > MaxFileBytes) { Gatto.Log($"undo: unsnapshotted: {given} is {len} bytes, above the cap"); return; }
+                if (len > MaxFileBytes) return;
                 var name = $"{n + 1}-{Path.GetFileName(f)}";
                 Directory.CreateDirectory(myFolder);
                 File.Copy(f, Path.Combine(myFolder, name), overwrite: true);
@@ -141,10 +133,7 @@ Gatto.On("tool_call", payload =>
         try { targets = shellTargets(cmd); }
         catch (Exception ex) { Gatto.Log($"undo: shell: {ex.Message}"); return Task.CompletedTask; }
         foreach (var (p, why) in targets)
-        {
-            if (why.Length > 0) Gatto.Log($"undo: unsnapshotted: {why}: {p}");
-            else snapshot(call.Id, "shell", p);
-        }
+            if (why.Length == 0) snapshot(call.Id, "shell", p);
     }
     return Task.CompletedTask;
 });

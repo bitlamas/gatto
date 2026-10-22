@@ -142,13 +142,13 @@ public sealed class UndoExtensionTests(UndoScriptFolder script) : IClassFixture<
     }
 
     [Fact]
-    public async Task A_FILE_ABOVE_THE_CAP_IS_SKIPPED_AND_LOGGED()
+    public async Task A_FILE_ABOVE_THE_CAP_IS_SKIPPED_AND_LOGS_NOTHING()
     {
         var (hooks, _) = Load();
         var target = Path.Combine(_cwd, "big.bin");
         using (var fs = new FileStream(target, FileMode.Create)) fs.SetLength(50L * 1024 * 1024 + 1);
         await hooks.EmitToolCallAsync(new HookPayload(Call: Call("c1", "write_file", Args(("path", "big.bin"), ("content", "x")))));
-        Assert.Single(_log, l => l.Contains("big.bin", StringComparison.Ordinal));
+        Assert.Empty(_log);
         Assert.False(Directory.Exists(Path.Combine(_home, "undo")));
     }
 
@@ -311,16 +311,20 @@ public sealed class UndoExtensionTests(UndoScriptFolder script) : IClassFixture<
         Assert.Empty(await ShellPaths(hooks, command));
     }
 
+    //a target past the limits the description states is passed over with no line, and the hook returns, so the command runs
     [Theory]
-    [InlineData("Remove-Item sub -Recurse", "directory")]
-    [InlineData("git checkout -- a.txt", "git")]
-    [InlineData("Remove-Item *.tmp", "wildcard")]
-    public async Task A_DIRECTORY_OR_GIT_TARGET_IS_LOGGED_BY_KIND(string command, string why)
+    [InlineData("Remove-Item sub -Recurse")]
+    [InlineData("git checkout -- a.txt")]
+    [InlineData("Remove-Item *.tmp")]
+    [InlineData("outside")]
+    public async Task A_SHELL_TARGET_PAST_THE_LIMITS_IS_NOT_COPIED_AND_LOGS_NOTHING(string command)
     {
         var (hooks, _) = Load();
         Directory.CreateDirectory(Path.Combine(_cwd, "sub"));
-        await ShellPaths(hooks, command);
-        Assert.Contains(_log, l => l.Contains($"unsnapshotted: {why}", StringComparison.Ordinal));
+        var outside = Path.Combine(_home, "o.txt");
+        File.WriteAllText(outside, "o");
+        Assert.Empty(await ShellPaths(hooks, command == "outside" ? $"Set-Content '{outside}' x" : command));
+        Assert.Empty(_log);
     }
 
     [Fact]
@@ -337,28 +341,18 @@ public sealed class UndoExtensionTests(UndoScriptFolder script) : IClassFixture<
         Assert.Equal("ran", marks[2]);
     }
 
+    //a file tool's write outside the folder or onto a directory is not copied and says nothing, however often it comes
     [Fact]
-    public async Task A_TARGET_OUTSIDE_THE_FOLDER_IS_LOGGED_AND_NOT_COPIED()
-    {
-        var (hooks, _) = Load();
-        var outside = Path.Combine(_home, "o.txt");
-        File.WriteAllText(outside, "o");
-        Assert.Empty(await ShellPaths(hooks, $"Set-Content '{outside}' x"));
-        Assert.Contains(_log, l => l.Contains("unsnapshotted: outside folder", StringComparison.Ordinal));
-    }
-
-    //the same path written again says nothing new, and another path outside still gets its line
-    [Fact]
-    public async Task A_PATH_OUTSIDE_THE_FOLDER_IS_LOGGED_ONCE_A_SESSION()
+    public async Task A_FILE_WRITE_OUTSIDE_THE_FOLDER_OR_ONTO_A_DIRECTORY_IS_NOT_COPIED_AND_LOGS_NOTHING()
     {
         var (hooks, _) = Load();
         var o = Path.Combine(_home, "o.txt");
-        var p = Path.Combine(_home, "p.txt");
-        foreach (var (id, path) in new[] { ("c1", o), ("c2", o.ToUpperInvariant()), ("c3", p), ("c4", o) })
+        Directory.CreateDirectory(Path.Combine(_cwd, "sub"));
+        foreach (var (id, path) in new[] { ("c1", o), ("c2", o.ToUpperInvariant()), ("c3", Path.Combine(_home, "p.txt")), ("c4", "sub") })
             await hooks.EmitToolCallAsync(new HookPayload(Call: Call(id, "write_file", Args(("path", path), ("content", "x")))));
 
-        Assert.Single(_log, l => l.Contains("outside folder", StringComparison.Ordinal) && l.EndsWith(o, StringComparison.OrdinalIgnoreCase));
-        Assert.Single(_log, l => l.Contains("outside folder", StringComparison.Ordinal) && l.EndsWith(p, StringComparison.Ordinal));
+        Assert.False(Directory.Exists(Path.Combine(_home, "undo")));
+        Assert.Empty(_log);
     }
 
     //a write the tool sends to the user's folder is outside the project, never a folder named ~ inside it
@@ -369,7 +363,7 @@ public sealed class UndoExtensionTests(UndoScriptFolder script) : IClassFixture<
         await hooks.EmitToolCallAsync(new HookPayload(Call: Call("c1", "write_file", Args(("path", "~/gatto-undo-t/t.txt"), ("content", "x")))));
 
         Assert.False(Directory.Exists(Path.Combine(_home, "undo")));
-        Assert.Contains(_log, l => l.Contains("outside folder: ~/gatto-undo-t/t.txt", StringComparison.Ordinal));
+        Assert.Empty(_log);
     }
 
     private static async Task<string> Run(CommandRegistry commands, string arg)
