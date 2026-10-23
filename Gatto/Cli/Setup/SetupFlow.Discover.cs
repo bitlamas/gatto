@@ -535,12 +535,14 @@ internal sealed partial class SetupFlow
     private SetupScreen ScaffoldIntent(FoundModel model, bool replace)
     {
         //use the computed context, a ceiling this machine can't hold is a model that fails to load
+        var context = probes.ContextFor(model.Path, Writes.Projector);
         Writes = Writes with
         {
             CreateModel = new WriteSet.Model(model.Path, Port: DefaultPort,
-                Context: probes.ContextFor(model.Path), Replace: replace,
+                Context: context, Replace: replace,
                 Source: SourceOf(model),
-                PinGpu: probes.ServeOnlyGpu()),
+                PinGpu: probes.ServeOnlyGpu(),
+                GpuLayers: probes.SplitLayersFor(model.Path, context, Writes.Projector)),
         };
         //pause for the writer before offering anything, no screen may audition a model that isn't on disk yet
         NeedsWritesApplied = true;

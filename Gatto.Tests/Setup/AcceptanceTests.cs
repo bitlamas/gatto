@@ -27,6 +27,8 @@ public class AcceptanceTests
         public HardwareNames HardwareNames() => default;
         public string? ServeOnly { get; init; }
         public string? ServeOnlyGpu() => ServeOnly;
+        public int? Split { get; init; }
+        public int? SplitLayersFor(string ggufPath, int context, string? projectorPath = null) => Split;
         public string? LlamaServerPath() => Llama;
         public bool HasResolvableModel() => false;
         public ConnectProbe? ProbeServer(IReadOnlyList<int>? skip = null) => Server;
@@ -91,6 +93,19 @@ public class AcceptanceTests
         flow.Answer("0");
 
         Assert.Equal(gpu, flow.Writes.CreateModel!.PinGpu);
+    }
+
+    //a split's layer count rides the model intent to the writer, and a model that fits whole carries none, so the profile takes every layer
+    [Theory]
+    [InlineData(12)]
+    [InlineData(null)]
+    public void THE_MODEL_INTENT_CARRIES_A_SPLITS_LAYER_COUNT(int? layers)
+    {
+        var flow = new SetupFlow(new Probes { Rows = [], Found = [Local(@"D:\m\qwen.gguf")], Split = layers });
+        flow.StartPastEngine();
+        flow.Answer("0");
+
+        Assert.Equal(layers, flow.Writes.CreateModel!.GpuLayers);
     }
 
     [Fact]

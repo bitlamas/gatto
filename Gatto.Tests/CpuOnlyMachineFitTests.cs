@@ -38,6 +38,7 @@ public class CpuOnlyMachineFitTests
         var e = FitArithmetic.Estimate(Header(), 20_000_000_000, 4096, KvCacheKind.F16);
         var regime = FitArithmetic.Judge(e, CpuOnly(64_000_000_000UL, gpuBudget: 80_000_000_000UL));
         Assert.NotEqual(FitRegime.FitsGpu, regime);
+        Assert.NotEqual(FitRegime.FitsSplit, regime);
         Assert.Equal(FitRegime.FitsRamOnly, regime);
     }
 

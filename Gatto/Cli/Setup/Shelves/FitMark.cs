@@ -23,6 +23,8 @@ internal static class FitMarks
         {
         FitRegime.FitsGpu when shape == MachineShape.Discrete => new(g.Ok, "GPU", RunInk.Ok),
         FitRegime.FitsGpu => new(g.Ok, "fits", RunInk.Ok),
+        //a split exists only beside a discrete card, so it has no word for the other shapes
+        FitRegime.FitsSplit => new(g.Warn, "GPU+RAM", RunInk.Warn),
         FitRegime.FitsRamOnly when shape == MachineShape.Discrete => new(g.Warn, "RAM", RunInk.Warn),
         FitRegime.FitsRamOnly => new(g.Ok, "fits", RunInk.Ok),
         FitRegime.DoesNotFit => new(g.Bad, "too big", RunInk.Warn),
@@ -34,11 +36,11 @@ internal static class FitMarks
     //whether the shelf has a runs column at all. only a discrete card splits on the card from system memory, so elsewhere the column is decoration
     public static bool HasRunsColumn(MachineShape shape) => shape == MachineShape.Discrete;
 
-    //what sits right of the footer's keys: the runs marks on a discrete card, elsewhere fewer params = faster speaks for the column
-    public static Legend LegendFor(MachineShape shape, GlyphSet? glyphs) =>
+    //what sits right of the footer's keys: the runs marks on a discrete card, elsewhere fewer params = faster speaks for the column. the split's mark is named only when a row carries it, since the search never prices one
+    public static Legend LegendFor(MachineShape shape, GlyphSet? glyphs, bool split = false) =>
         HasRunsColumn(shape)
             ? new Legend(string.Join($" {(glyphs ?? GlyphSet.Unicode).Dot} ",
-                new[] { FitRegime.FitsGpu, FitRegime.FitsRamOnly }
+                (split ? new[] { FitRegime.FitsGpu, FitRegime.FitsSplit, FitRegime.FitsRamOnly } : [FitRegime.FitsGpu, FitRegime.FitsRamOnly])
                     .Select(f => Of(f, shape, glyphs).Text)))
             : new Legend("fewer params = faster");
 }

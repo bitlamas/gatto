@@ -377,7 +377,7 @@ internal sealed partial class SetupFlow
                 //take the ladder from the families table, the chip order is recorded in families.json and a second copy could drift
                 Families: Families.Load().Ladder, Family: LitChip(), Lit: _lit, SmallestFirst: _smallestFirst,
                 CarriedOver: _carriedOver, HiddenByKind: _hiddenByKind, MoreBehind: _moreBehind,
-                OnCard: _counted?.OnCard ?? 0, InMemory: _counted?.InMemory ?? 0, TooBig: _counted?.TooBig ?? 0,
+                OnCard: _counted?.OnCard ?? 0, InMemory: _counted?.InMemory ?? 0, TooBig: _counted?.TooBig ?? 0, Split: _counted?.Split ?? 0,
                 Cut: _counted?.Cut ?? false, RateLimitedFor: _counted?.RateLimitedFor, RateLimited: _counted?.RateLimited ?? false,
                 //count what the budget left off from the rows this search produced, a budget-sized count could report rows that never existed
                 Total: _rows.Count,
@@ -923,7 +923,7 @@ internal sealed partial class SetupFlow
         int Is(Gatto.Core.Models.FitRegime fit) => row.Fit == fit ? 1 : 0;
         _counted = new ShelfOutcome(_rows,
             Is(Gatto.Core.Models.FitRegime.FitsGpu), Is(Gatto.Core.Models.FitRegime.FitsRamOnly), Is(Gatto.Core.Models.FitRegime.DoesNotFit),
-            MoreBehindA: false, HiddenByKind: 0, FullPageOrgs: [], Cause: null);
+            MoreBehindA: false, HiddenByKind: 0, FullPageOrgs: [], Cause: null, Split: Is(Gatto.Core.Models.FitRegime.FitsSplit));
         _stoodOnAShelf = true;
         return SearchScreen();
     }

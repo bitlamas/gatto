@@ -134,6 +134,12 @@ internal interface ISetupProbes
     //the context gatto computes for a model on this machine. it is never the GGUF's trained ceiling, which would scaffold a model that cannot load here
     int ContextFor(string ggufPath);
 
+    //the same ladder with the projector chosen beside the model, which a split's layers are counted with
+    int ContextFor(string ggufPath, string? projectorPath) => ContextFor(ggufPath);
+
+    //the layers the card holds when this file at this context is a split, which the profile takes as gpu_layers. null when it fits whole, does not fit, or a reading failed
+    int? SplitLayersFor(string ggufPath, int context, string? projectorPath = null) => null;
+
     //ask the configured setup to actually say something, against what was written. a config never exercised is as unproven as a fresh install
     Gatto.Core.Acquire.ProveOutcome ProveIt(string? modelId,
         IProgress<Gatto.Roles.Audition.AuditionProgress>? progress = null);

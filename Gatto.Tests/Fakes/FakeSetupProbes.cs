@@ -255,6 +255,9 @@ internal sealed class FakeSetupProbes : ISetupProbes
         Verify?.Invoke(p) ?? new(Gatto.Core.Acquire.ProbeShape.ClassicServer, "d",
             Build: Gatto.Roles.Serve.LlamaAssetSteering.PinnedRelease);
     public int ContextFor(string p) => 8192;
+    //the split a test hands the write, null as a model that fits whole
+    public int? SplitLayers { get; set; }
+    public int? SplitLayersFor(string p, int context, string? projectorPath = null) => SplitLayers;
     //the default check result reports its facts, a bare verdict renders without the stamp block. set it for a failure outcome
     public AuditionCheck Audition { get; init; } =
         new(AuditionOutcome.Passed, new AuditionFacts("Q4_K_M", "greedy", "off", 42.5, 5, 5));

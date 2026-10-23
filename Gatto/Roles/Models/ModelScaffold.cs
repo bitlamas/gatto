@@ -41,7 +41,8 @@ public static class ModelScaffold
     //writes profile.json under modelsDir\<id> and returns the id. throws when the model exists, the GGUF can't be read or the id isn't a usable folder name
     public static string Create(string modelsDir, string ggufPath, int port, string? id = null,
         int? context = null, bool replace = false, string? projector = null,
-        string? llamaServer = null, ModelSource? source = null, string? device = null)
+        string? llamaServer = null, ModelSource? source = null, string? device = null,
+        int? gpuLayers = null)   //a split's layer count, null for a model that fits whole
     {
         var resolved = ResolveShardOne(Path.GetFullPath(ggufPath));
 
@@ -94,7 +95,7 @@ public static class ModelScaffold
             if (!string.IsNullOrWhiteSpace(projector)) w.WriteString("mmproj", projector);
             //no llama_server key without a binary, so gatto never asks the server manager to spawn nothing
             if (!string.IsNullOrWhiteSpace(llamaServer)) w.WriteString("llama_server", llamaServer);
-            w.WriteNumber("gpu_layers", 99);
+            w.WriteNumber("gpu_layers", gpuLayers ?? 99);
             w.WriteString("cache_type_k", "q8_0");
             w.WriteString("cache_type_v", "q8_0");
             w.WriteStartArray("extra_args");

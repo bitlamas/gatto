@@ -44,6 +44,7 @@ internal static class SearchRow
             MachineShape.UnifiedWithShare => "fits in the graphics share",
             _ => "fits in memory",
         },
+        FitRegime.FitsSplit => "on the card and in memory",
         FitRegime.FitsRamOnly => shape switch
         {
             MachineShape.Discrete => $"fits in memory {g.Dot} slower",

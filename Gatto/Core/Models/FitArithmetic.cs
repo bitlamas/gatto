@@ -8,9 +8,11 @@ internal enum KvCacheKind { F16, Q8_0 }
 internal sealed record FitEstimate(
     long WeightsBytes, long KvCacheBytes,
     IReadOnlyList<string> UnknownTerms, IReadOnlyList<string> AssumedTerms,
-    long StreamedBytes = 0);   //the table taken off the weights, which still sits in system memory
+    long StreamedBytes = 0,   //the table taken off the weights, which still sits in system memory
+    long? Blocks = null);   //the header's block count, every layer the weights split over, null when it is not plausible
 
-internal enum FitRegime { FitsGpu, FitsRamOnly, DoesNotFit, Unknown }
+//a split puts some layers on the card and the rest in system memory, the card's share priced with the whole KV cache beside it
+internal enum FitRegime { FitsGpu, FitsSplit, FitsRamOnly, DoesNotFit, Unknown }
 
 //fit is computed from the file's own terms rather than tabulated, so it cannot go stale. it errs conservative, since a failed load is worse than a wrong pick
 internal static class FitArithmetic
@@ -41,6 +43,7 @@ internal static class FitArithmetic
         var assumed = new List<string>();
 
         var blocks = Plausible(h.BlockCount, MaxBlockCount);
+        var layers = blocks;
         if (blocks is null) unknown.Add("block_count");
         //full attention comes every interval blocks, so the cache covers blocks / interval layers. an interval past the block count prices every block
         else if (Plausible(h.FullAttentionInterval, blocks.Value) is { } interval)
@@ -92,7 +95,7 @@ internal static class FitArithmetic
             && (h.DeclaresPerLayerInput || Gatto.Core.Models.StreamedTensors.Load().Streams(h.Architecture)))
             assumed.Add("priced as the whole file: the per-layer input table was not read, and the engine keeps it off the GPU");
 
-        return new FitEstimate(weights, kvBytes, unknown, assumed, table);
+        return new FitEstimate(weights, kvBytes, unknown, assumed, table, layers);
     }
 
     //the declared key and value lengths, which some models make unequal. the fallback rounds head_dim up, since truncating would underestimate
@@ -139,8 +142,25 @@ internal static class FitArithmetic
                 _ => table <= (long)hw.RamBudgetBytes,
             };
             if (needed <= (long)gpuBudget && beside) return FitRegime.FitsGpu;
+            if (SplitLayers(e, hw) is not null) return FitRegime.FitsSplit;
             if (needed + table <= (long)hw.RamBudgetBytes) return FitRegime.FitsRamOnly;
             return FitRegime.DoesNotFit;
+        }
+    }
+
+    //the layers the card holds beside the whole KV cache, at least one, with the rest of the weights in system memory. a discrete card only, and never on a term the header left unknown
+    public static int? SplitLayers(FitEstimate e, HardwareClass hw)
+    {
+        if (hw.Topology != MemoryTopology.Discrete || e.UnknownTerms.Count > 0 || e.Blocks is not { } blocks) return null;
+        var perLayer = e.WeightsBytes / blocks;
+        var room = (long)hw.GpuBudgetBytes - e.KvCacheBytes;
+        if (perLayer <= 0 || room < perLayer) return null;
+        checked
+        {
+            var n = Math.Min(room / perLayer, blocks);
+            //the floor of the per-layer share leaves the rounding with the remainder, which errs toward memory
+            var rest = e.WeightsBytes - n * perLayer;
+            return rest + e.StreamedBytes <= (long)hw.RamBudgetBytes ? (int)n : null;
         }
     }
 }

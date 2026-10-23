@@ -142,7 +142,8 @@ internal static class LocalShelf
     //the Hub's pick over local files with the local pricer: the floor, then the card's best, memory's best, and the smallest of the rest. no hardware means one tier, so the quant decides alone
     private static FoundModel? Picked(IReadOnlyList<FoundModel> files, HardwareClass? hw, int ctxForFit, long? totalParams)
     {
-        FoundModel? gpu = null, ram = null, over = null, any = null;
+        FoundModel? gpu = null, split = null, ram = null, over = null, any = null;
+        var splitLayers = 0;
         foreach (var f in files)
         {
             var q = QuantOf(f);
@@ -152,12 +153,15 @@ internal static class LocalShelf
             switch (hw is null ? FitRegime.Unknown : FitOf(f, hw, ctxForFit))
             {
                 case FitRegime.FitsGpu when Better(gpu): gpu = f; break;
+                //the split that puts the most layers on the card, the quant breaking a tie
+                case FitRegime.FitsSplit when SplitOf(f, hw!, ctxForFit) is { } n && (split is null || n > splitLayers || n == splitLayers && Better(split)):
+                    split = f; splitLayers = n; break;
                 case FitRegime.FitsRamOnly when Better(ram): ram = f; break;
                 case FitRegime.DoesNotFit when over is null || HubSearch.Smaller(q, QuantOf(over)): over = f; break;
                 case FitRegime.Unknown when Better(any): any = f; break;
             }
         }
-        return gpu ?? ram ?? over ?? any;
+        return gpu ?? split ?? ram ?? over ?? any;
     }
 
     private static HubQuant QuantOf(FoundModel f) => new(Path.GetFileName(f.Path), f.FileBytes, null, StreamedBytes: f.StreamedBytes);
@@ -167,6 +171,10 @@ internal static class LocalShelf
         m.Header is { } h && hw is { } machine
             ? FitArithmetic.Judge(FitArithmetic.Estimate(h, m.FileBytes, ctxForFit, KvCacheKind.F16, m.StreamedBytes), machine)
             : FitRegime.Unknown;
+
+    //the layers a split file puts on the card, from the same estimate its regime came from, null when it is no split
+    internal static int? SplitOf(FoundModel m, HardwareClass hw, int ctxForFit) =>
+        m.Header is { } h ? FitArithmetic.SplitLayers(FitArithmetic.Estimate(h, m.FileBytes, ctxForFit, KvCacheKind.F16, m.StreamedBytes), hw) : null;
 
     //strip the shard suffix and the extension, so every file of a set ends up with one name
     internal static string StemOf(string fileName)

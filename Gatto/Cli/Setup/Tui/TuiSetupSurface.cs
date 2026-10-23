@@ -1633,7 +1633,7 @@ internal sealed class TuiSetupSurface : ISetupSurface, IDisposable
         //what sits right of the keys: a screen's own sentence, which is drawn whole or not at all, or the shelf's marks
         Legend: c.Legend is { Length: > 0 } said ? new Legend(said)
             //a shelf that fetched nothing draws no legend either, since there are no marks to explain, while an empty search keeps one
-            : c.Shelf is { NothingFetched: false, Loading: false } lv ? FitMarks.LegendFor(lv.Shape, _glyphs) : null,
+            : c.Shelf is { NothingFetched: false, Loading: false } lv ? FitMarks.LegendFor(lv.Shape, _glyphs, lv.Rows.Any(r => r.Fit == Gatto.Core.Models.FitRegime.FitsSplit)) : null,
         //the armed sentence belongs to the screen: leaving setup costs nothing, and a stopped fetch prices what has landed. either chord names the same price
         Armed: _chord.ArmedAt(_nowMs()) switch
         {

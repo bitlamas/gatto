@@ -112,14 +112,15 @@ internal static class HubSearch
     //six Hub requests in flight at once, one gate for both halves of the search. a politeness bound, and a parameter so a test can run at one
     internal const int HubConcurrency = 6;
 
-    //fit as a display tier: GPU, RAM, unknown, then does not fit, since an uncomputed fit is a weaker claim than a failed one
+    //fit as a display tier: GPU, the split, RAM, unknown, then does not fit, since an uncomputed fit is a weaker claim than a failed one
     private static int TierOf(FitRegime fit) => fit switch
     {
         FitRegime.FitsGpu => 0,
-        FitRegime.FitsRamOnly => 1,
+        FitRegime.FitsSplit => 1,
+        FitRegime.FitsRamOnly => 2,
         //the Unknown rank sits above DoesNotFit, since a weaker claim must not sit below a definite one. a local file whose GGUF header can't be read produces it
-        FitRegime.DoesNotFit => 3,
-        _ => 2,
+        FitRegime.DoesNotFit => 4,
+        _ => 3,
     };
 
     //one quant per model, the best that fits the GPU then RAM, and no row when nothing fits, and inside a tier the knee
@@ -268,7 +269,7 @@ internal static class HubSearch
             ordered.Count(r => r.Fit == FitRegime.FitsGpu), ordered.Count(r => r.Fit == FitRegime.FitsRamOnly),
             ordered.Count(r => r.Fit == FitRegime.DoesNotFit),
             MoreBehindA: !lifted && (priced.Any(ShelfSearch.TooBigAboveTheFloor) || underTheFloor.Count > 0),
-            hiddenByKind, fullPage, cause, ct.IsCancellationRequested);
+            hiddenByKind, fullPage, cause, ct.IsCancellationRequested, Split: ordered.Count(r => r.Fit == FitRegime.FitsSplit));
     }
 
     //the rows one listing request answers at most
@@ -314,7 +315,7 @@ internal static class HubSearch
         long? totalParams, bool lifted, string? arch = null, bool floorLifted = false)
     {
         //the context window is resolved inside FitOf, so one place decides what a quant is priced at
-        (T Item, FitRegime Fit)? bestGpu = null, bestRam = null, bestUnfit = null;
+        (T Item, FitRegime Fit)? bestGpu = null, bestSplit = null, bestRam = null, bestUnfit = null;
 
         foreach (var item in items)
         {
@@ -326,6 +327,8 @@ internal static class HubSearch
             {
                 case FitRegime.FitsGpu when bestGpu is not { } g || Beats(q, quantOf(g.Item)):
                     bestGpu = (item, FitRegime.FitsGpu); break;
+                case FitRegime.FitsSplit when bestSplit is not { } s || Beats(q, quantOf(s.Item)):
+                    bestSplit = (item, FitRegime.FitsSplit); break;
                 case FitRegime.FitsRamOnly when bestRam is not { } r || Beats(q, quantOf(r.Item)):
                     bestRam = (item, FitRegime.FitsRamOnly); break;
                 //the unfittable tier keeps the smallest quant, the one that misses by least, where the tiers above keep the best one that fits
@@ -335,7 +338,7 @@ internal static class HubSearch
             }
         }
         //the fit filter is a removable default: unlifted, a model where nothing fits yields null and never becomes a row
-        return bestGpu ?? bestRam ?? (lifted ? bestUnfit : null);
+        return bestGpu ?? bestSplit ?? bestRam ?? (lifted ? bestUnfit : null);
     }
 
     //inside a regime: the band, then the band's own range largest first, then above it smallest first, then below it largest first. equal bytes fall to the name, so list order never decides

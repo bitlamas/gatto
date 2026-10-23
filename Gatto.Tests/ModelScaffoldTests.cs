@@ -136,6 +136,18 @@ public class ModelScaffoldTests : IDisposable
         Assert.Contains("--jinja", root.GetProperty("extra_args").EnumerateArray().Select(e => e.GetString()));
     }
 
+    //a split pick writes the layers the card holds, so the server offloads what the arithmetic priced and not every layer it can
+    [Fact]
+    public void Create_WritesTheSplitsLayerCount()
+    {
+        var id = ModelScaffold.Create(_dir, Fixture("tiny.gguf"), port: 1235, gpuLayers: 12);
+
+        var root = JsonDocument.Parse(
+            File.ReadAllText(Path.Combine(_dir, id, "profile.json"))).RootElement;
+
+        Assert.Equal(12, root.GetProperty("gpu_layers").GetInt32());
+    }
+
     //sampling and thinking come from the model card, so both keys stay out of the profile. a guess there is worse than the llama.cpp default
     [Fact]
     public void Create_OmitsSamplingAndThinking()

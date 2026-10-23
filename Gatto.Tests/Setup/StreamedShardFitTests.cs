@@ -101,10 +101,16 @@ public sealed class StreamedShardFitTests : IDisposable
     public void THE_CONTEXT_LADDER_SUBTRACTS_THE_TABLE_OF_A_MARKED_SET()
     {
         using var probes = Probes();
-        var marked = probes.ContextFor(Set("marked", marked: true, 1_400_000_000));
-        var plain = probes.ContextFor(Set("plain", marked: false, 1_400_000_000));
+        var markedSet = Set("marked", marked: true, 1_400_000_000);
+        var plainSet = Set("plain", marked: false, 1_400_000_000);
+        var marked = probes.ContextFor(markedSet);
+        var plain = probes.ContextFor(plainSet);
 
-        Assert.True(marked > plain, $"the marked set took {marked} and the plain set took {plain}; the ladder is not subtracting the table");
+        //a split is a fit, so both sets reach the top rung. the table shows in where each runs there: the marked set whole on the card, the plain one split
+        Assert.Equal(32768, marked);
+        Assert.Equal(32768, plain);
+        Assert.Null(probes.SplitLayersFor(markedSet, marked));
+        Assert.NotNull(probes.SplitLayersFor(plainSet, plain));
     }
 
     //the test drives ModelDiscovery.Scan, which hands the table to LocalShelf.Row

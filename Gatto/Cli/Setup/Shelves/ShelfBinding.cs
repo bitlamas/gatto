@@ -31,6 +31,7 @@ internal sealed record ShelfView(
     bool MoreBehind = false,   //the engine said a would show more than this shelf
     bool? SmallestFirst = null,   //the params sort, null while the engine's order stands
     int OnCard = 0, int InMemory = 0, int TooBig = 0,   //the engine's count of each regime, which the lifted count row reads
+    int Split = 0,   //the rows split between the card and memory, counted beside the three above
     bool Cut = false, int? RateLimitedFor = null, bool RateLimited = false,   //why the search stopped short, and the server's seconds when it named them
     int MoreAbove = 0,   //the rows the face's window scrolled past, so a row's index on the full shelf is MoreAbove plus its place here
     bool? Groups = null)   //the full shelf's grouping, set by the window so a slice holding one group still names it

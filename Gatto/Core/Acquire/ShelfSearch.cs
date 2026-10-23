@@ -11,7 +11,8 @@ internal sealed record ShelfOutcome(
     bool MoreBehindA, int HiddenByKind, IReadOnlyList<string> FullPageOrgs,
     HubSearchCause? Cause, bool Cut = false,   //cut is a stop at the deadline or the rate-limit reserve
     int? RateLimitedFor = null,   //the server's seconds to the window's reset, null when it named none
-    bool RateLimited = false);   //a 429 answered or the reserve was reached
+    bool RateLimited = false,   //a 429 answered or the reserve was reached
+    int Split = 0);   //the rows split between the card and memory
 
 //what the shelf asks for: the lit families, whether a lifted the floor and the generations, or a typed search that replaces both
 internal sealed record ModelSearchRequest(
@@ -103,7 +104,8 @@ internal static partial class ShelfSearch
             ordered.Count(r => r.Fit == FitRegime.FitsRamOnly),
             ordered.Count(r => r.Fit == FitRegime.DoesNotFit),
             !lifted && moreBehind, search.HiddenByKind, [],
-            ordered.Count > 0 ? null : search.CauseOf(), search.Stopped, search.RateLimitedFor, search.RateLimited);
+            ordered.Count > 0 ? null : search.CauseOf(), search.Stopped, search.RateLimitedFor, search.RateLimited,
+            ordered.Count(r => r.Fit == FitRegime.FitsSplit));
     }
 
     //fast is the card, and on a machine with no card a total under 20B
@@ -116,9 +118,11 @@ internal static partial class ShelfSearch
         && r.Publishers.SelectMany(p => p.Repos)
             .Any(x => HubSearch.Candidates(x.Quants, r.Params).Any(q => QuantToken.AtFloor(q.FileName, r.Params, lifted: false)));
 
-    //the card largest first, then memory by the parameters read per token, smallest first, a model with no active count last by total
+    //the card largest first, then the split the same way, then memory by the parameters read per token, smallest first, a model with no active count last by total
     internal static IReadOnlyList<ModelRow> ByWhereItRuns(IReadOnlyList<ModelRow> rows) =>
         [.. rows.Where(r => r.Fit == FitRegime.FitsGpu).OrderByDescending(r => r.Params ?? 0).ThenBy(r => r.Generation)
+                .ThenBy(r => r.Model, StringComparer.Ordinal),
+            .. rows.Where(r => r.Fit == FitRegime.FitsSplit).OrderByDescending(r => r.Params ?? 0).ThenBy(r => r.Generation)
                 .ThenBy(r => r.Model, StringComparer.Ordinal),
             .. rows.Where(r => r.Fit == FitRegime.FitsRamOnly)
                 .OrderBy(r => r.Active is null)
@@ -128,7 +132,7 @@ internal static partial class ShelfSearch
 
     //one list by regime, then largest first, a tie to the newer generation
     internal static IReadOnlyList<ModelRow> Flat(IReadOnlyList<ModelRow> rows) =>
-        [.. rows.OrderBy(r => r.Fit switch { FitRegime.FitsGpu => 0, FitRegime.FitsRamOnly => 1, _ => 2 })
+        [.. rows.OrderBy(r => r.Fit switch { FitRegime.FitsGpu => 0, FitRegime.FitsSplit => 1, FitRegime.FitsRamOnly => 2, _ => 3 })
             .ThenByDescending(r => r.Params ?? 0)
             .ThenBy(r => r.Generation)
             .ThenBy(r => r.Model, StringComparer.Ordinal)];
@@ -396,7 +400,7 @@ internal static partial class ShelfSearch
             var facts = await FactsAsync(file.RepoId, quant, client, memo, ask, ct).ConfigureAwait(false);
             if (facts is null) return row;
             var active = row.Active;
-            if (active is null && row.Fit == FitRegime.FitsRamOnly)
+            if (active is null && row.Fit is FitRegime.FitsRamOnly or FitRegime.FitsSplit)
                 active = facts.Cell == "dense" ? row.Params
                     : facts.Cell is { } cell && cell.StartsWith("MoE ", StringComparison.Ordinal) ? ActiveOf(cell[4..]) : null;
             return row with { Structure = facts.Cell, Experts = facts.Experts, Active = active };

@@ -140,4 +140,61 @@ public class FitArithmeticTests
         Assert.Equal(FitRegime.DoesNotFit,                       //the widened 5 GB estimate exceeds the 6 GB budget.
             FitArithmetic.Judge(e, Gpu(6_000_000_000UL, 0UL)));  //the budget holds the plain 5 GB, so only the widened margin makes it fail.
     }
+
+    private const long GiB = 1L << 30;
+
+    //32 blocks of 8 GiB of weights, a quarter GiB a layer, and a 1 GiB f16 cache: 32 blocks, 8192 tokens, 8 kv heads, 256 head lengths, 2 bytes
+    private static FitEstimate Splittable(long? blocks = 32) => FitArithmetic.Estimate(
+        Full() with { BlockCount = blocks, KeyLength = 128, ValueLength = 128, HeadCountKv = 8 }, 8 * GiB, 8192, KvCacheKind.F16);
+
+    private static HardwareClass Card(long gpuBudget, long ramBudget) => new(
+        MemoryTopology.Discrete, ShareKind.None, (ulong)gpuBudget, (ulong)ramBudget,
+        new HardwareSnapshot(0UL, 1UL, GpuKind.Discrete, (ulong)gpuBudget), 0, BudgetBound.None);
+
+    [Fact]
+    public void A_CARD_TOO_SMALL_FOR_THE_WHOLE_MODEL_HOLDS_THE_LAYERS_BESIDE_THE_CACHE()
+    {
+        var e = Splittable();
+        Assert.Equal(GiB, e.KvCacheBytes);
+
+        //three GiB beside the cache holds twelve quarter-GiB layers, and the other five GiB fit system memory
+        Assert.Equal(FitRegime.FitsSplit, FitArithmetic.Judge(e, Card(4 * GiB, 16 * GiB)));
+        Assert.Equal(12, FitArithmetic.SplitLayers(e, Card(4 * GiB, 16 * GiB)));
+    }
+
+    [Fact]
+    public void A_CARD_THAT_HOLDS_IT_ALL_IS_NO_SPLIT()
+    {
+        Assert.Equal(FitRegime.FitsGpu, FitArithmetic.Judge(Splittable(), Card(16 * GiB, 16 * GiB)));
+    }
+
+    [Fact]
+    public void A_REMAINDER_SYSTEM_MEMORY_CANNOT_HOLD_IS_NO_SPLIT()
+    {
+        //the card holds three GiB of weights and the other five do not fit four GiB of memory, nor does the whole model
+        Assert.Null(FitArithmetic.SplitLayers(Splittable(), Card(4 * GiB, 4 * GiB)));
+        Assert.Equal(FitRegime.DoesNotFit, FitArithmetic.Judge(Splittable(), Card(4 * GiB, 4 * GiB)));
+    }
+
+    [Fact]
+    public void WITHOUT_A_BLOCK_COUNT_THERE_IS_NO_SPLIT()
+    {
+        var e = Splittable(blocks: null);
+
+        Assert.Null(FitArithmetic.SplitLayers(e, Card(4 * GiB, 16 * GiB)));
+        Assert.Equal(FitRegime.FitsRamOnly, FitArithmetic.Judge(e, Card(4 * GiB, 16 * GiB)));
+    }
+
+    [Fact]
+    public void A_CARD_THAT_HOLDS_NO_LAYER_BESIDE_THE_CACHE_IS_NO_SPLIT()
+    {
+        Assert.Equal(FitRegime.FitsRamOnly, FitArithmetic.Judge(Splittable(), Card(GiB + GiB / 8, 16 * GiB)));
+    }
+
+    [Fact]
+    public void A_UNIFIED_POOL_HAS_NO_SPLIT()
+    {
+        Assert.Null(FitArithmetic.SplitLayers(Splittable(), Gpu(4UL * (ulong)GiB, 16UL * (ulong)GiB)));
+        Assert.Equal(FitRegime.FitsRamOnly, FitArithmetic.Judge(Splittable(), Gpu(4UL * (ulong)GiB, 16UL * (ulong)GiB)));
+    }
 }

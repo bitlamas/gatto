@@ -26,6 +26,20 @@ public class ProjectorPairTests
         new(MemoryTopology.Discrete, ShareKind.None, gpu, ram,
             new HardwareSnapshot(0UL, 1UL, GpuKind.Discrete, 0UL), 0, BudgetBound.None);
 
+    //the projector can move a model from the card to a split, and a split is a regime of its own the screen warns about
+    [Fact]
+    public void A_PAIR_THAT_SPLITS_COSTS_A_REGIME()
+    {
+        const long GiB = 1L << 30;
+        //48 blocks at 8192 tokens cache 1.5 GiB. beside it a 4 GiB card holds 2 GiB of weights whole, and of 3 GiB it holds 40 of 48 layers
+        var hw = Machine(4UL << 30, 32UL << 30);
+
+        Assert.Equal(FitRegime.FitsGpu, FitArithmetic.Judge(FitArithmetic.Estimate(ModelHeader(), 2 * GiB, 8192, KvCacheKind.F16), hw));
+        Assert.Equal(FitRegime.FitsSplit, ProjectorPair.Regime(ModelHeader(), 2 * GiB, GiB, 8192, KvCacheKind.F16, hw));
+        Assert.True(ProjectorPair.CostsARegime(ModelHeader(), 2 * GiB, GiB, 8192, KvCacheKind.F16, hw));
+        Assert.Equal(40, FitArithmetic.SplitLayers(FitArithmetic.Estimate(ModelHeader(), 3 * GiB, 8192, KvCacheKind.F16), hw));
+    }
+
     [Fact]
     public void THE_PAIR_IS_PRICED_AS_ONE_PROCESS_LOADING_TWO_FILES()
     {
@@ -51,7 +65,7 @@ public class ProjectorPairTests
 
         Assert.Equal(FitRegime.FitsGpu, FitArithmetic.Judge(
             FitArithmetic.Estimate(ModelHeader(), 5_500_000_000, 8192, KvCacheKind.F16), tight));
-        Assert.Equal(FitRegime.FitsRamOnly, ProjectorPair.Regime(
+        Assert.Equal(FitRegime.FitsSplit, ProjectorPair.Regime(
             ModelHeader(), 5_500_000_000, 1_100_000_000, 8192, KvCacheKind.F16, tight));
         Assert.True(ProjectorPair.CostsARegime(
             ModelHeader(), 5_500_000_000, 1_100_000_000, 8192, KvCacheKind.F16, tight));
@@ -82,7 +96,7 @@ public class ProjectorPairTests
             FitArithmetic.Estimate(ModelHeader(), model + projector, 32768, KvCacheKind.F16), roomy);
 
         Assert.Equal(FitRegime.FitsGpu, optimistic);        //the worse misreport of the two, a promise the machine cannot keep.
-        Assert.Equal(FitRegime.FitsRamOnly, honestAt32k);
+        Assert.Equal(FitRegime.FitsSplit, honestAt32k);   //the honest pair puts part of its layers on the card and the rest in memory
         Assert.Equal(honestAt32k,
             ProjectorPair.Regime(ModelHeader(), model, projector, 32768, KvCacheKind.F16, roomy));
     }

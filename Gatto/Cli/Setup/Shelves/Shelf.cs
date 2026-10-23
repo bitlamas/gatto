@@ -272,10 +272,10 @@ internal static class Shelf
         return rows;
     }
 
-    //the table splits into the card's rows and memory's only on a discrete card, in the engine's order, when both groups have rows
+    //the table splits by where its rows run only on a discrete card, in the engine's order, when two of the card, the split and memory have rows
     internal static bool Grouped(ShelfView v) =>
         v.Groups ?? FitMarks.HasRunsColumn(v.Shape) && !v.Lift && v.SmallestFirst is null
-        && v.Rows.Any(x => x.Fit == FitRegime.FitsGpu) && v.Rows.Any(x => x.Fit == FitRegime.FitsRamOnly);
+        && v.Rows.Select(x => x.Fit).Where(f => f is FitRegime.FitsGpu or FitRegime.FitsSplit or FitRegime.FitsRamOnly).Distinct().Count() >= 2;
 
     //the rows the two headings and the blank between the groups take, which the row window pays for
     internal static int GroupRows(ShelfView v) => Grouped(v) ? 3 : 0;
@@ -287,6 +287,7 @@ internal static class Shelf
     internal static string GroupHeading(FitRegime fit) => fit switch
     {
         FitRegime.FitsGpu => "on the graphics card",
+        FitRegime.FitsSplit => "on the card and in memory",
         FitRegime.FitsRamOnly => "in system memory, fastest first",
         _ => "too big for this machine",
     };
@@ -331,6 +332,7 @@ internal static class Shelf
             //a count without the runs column counts the card and memory together, so its jump looks for either
             var fitting = FitMarks.HasRunsColumn(v.Shape)
                 ? [(v.OnCard, FitRegime.FitsGpu, (IReadOnlySet<FitRegime>)new HashSet<FitRegime> { FitRegime.FitsGpu }),
+                   (v.Split, FitRegime.FitsSplit, new HashSet<FitRegime> { FitRegime.FitsSplit }),
                    (v.InMemory, FitRegime.FitsRamOnly, new HashSet<FitRegime> { FitRegime.FitsRamOnly })]
                 : new[] { (v.OnCard + v.InMemory, FitRegime.FitsGpu,
                     (IReadOnlySet<FitRegime>)new HashSet<FitRegime> { FitRegime.FitsGpu, FitRegime.FitsRamOnly }) };

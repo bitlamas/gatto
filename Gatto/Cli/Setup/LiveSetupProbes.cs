@@ -1148,8 +1148,31 @@ internal sealed class LiveSetupProbes(string homePath, Gatto.Terminal.GlyphSet g
         catch (Exception) { return null; }
     }
 
+    //priced as the shelf prices the file, its own header and its whole shard set, so the profile's layer count is the one the mark stood for
+    public int? SplitLayersFor(string ggufPath, int context, string? projectorPath = null)
+    {
+        try
+        {
+            if (Hardware() is not { } snapshot) return null;
+            var hw = Gatto.Core.Hardware.HardwareClassifier.Classify(snapshot);
+            using var fs = File.OpenRead(ggufPath);
+            var header = Gatto.Core.Models.GgufHeaderParser.Parse(fs);
+            if (ModelDiscovery.SetBytesOrNull(ggufPath) is not { } bytes) return null;
+            //a projector loads beside the model in one process, priced as the pair warning prices it
+            var projector = ModelDiscovery.SetBytesOrNull(projectorPath) ?? 0;
+            var estimate = Gatto.Core.Models.FitArithmetic.Estimate(
+                header, bytes + projector, context, Gatto.Core.Models.KvCacheKind.F16, ModelDiscovery.StreamedBytesOrNull(ggufPath, header));
+            return Gatto.Core.Models.FitArithmetic.Judge(estimate, hw) == Gatto.Core.Models.FitRegime.FitsSplit
+                ? Gatto.Core.Models.FitArithmetic.SplitLayers(estimate, hw)
+                : null;
+        }
+        catch (Exception) { return null; }
+    }
+
     //fall back to the offered context when anything is unreadable, a ceiling that cannot load is worse
-    public int ContextFor(string ggufPath)
+    public int ContextFor(string ggufPath) => ContextFor(ggufPath, null);
+
+    public int ContextFor(string ggufPath, string? projectorPath)
     {
         try
         {
@@ -1165,19 +1188,44 @@ internal sealed class LiveSetupProbes(string homePath, Gatto.Terminal.GlyphSet g
             if (ModelDiscovery.SetBytesOrNull(ggufPath) is not { } bytes) return SetupFlow.OfferedContext;
             var streamed = ModelDiscovery.StreamedBytesOrNull(ggufPath, header);
 
+            var rungs = new[] { ceiling, 131072, 65536, 32768, 16384, 8192, 4096 }.Where(r => r <= ceiling).Distinct().ToList();
+
+            //a file the shelf marks as a split takes the rung that keeps its layers on the card, the projector counted beside it
+            var projector = ModelDiscovery.SetBytesOrNull(projectorPath) ?? 0;
+            Gatto.Core.Models.FitEstimate PairAt(int context) => Gatto.Core.Models.FitArithmetic.Estimate(
+                header, bytes + projector, context, Gatto.Core.Models.KvCacheKind.F16, streamed);
+            if (Gatto.Core.Models.FitArithmetic.Judge(PairAt(Shelves.Pane.KvContext), hw) == Gatto.Core.Models.FitRegime.FitsSplit
+                && SplitRung(rungs, PairAt, hw) is { } rung)
+                return rung;
+
             //the largest budget that actually fits, tried from the model's own ceiling down
-            foreach (var candidate in new[] { ceiling, 131072, 65536, 32768, 16384, 8192, 4096 })
+            foreach (var candidate in rungs)
             {
-                if (candidate > ceiling) continue;
                 var estimate = Gatto.Core.Models.FitArithmetic.Estimate(
                     header, bytes, candidate, Gatto.Core.Models.KvCacheKind.F16, streamed);
                 if (Gatto.Core.Models.FitArithmetic.Judge(estimate, hw) is
-                    Gatto.Core.Models.FitRegime.FitsGpu or Gatto.Core.Models.FitRegime.FitsRamOnly)
+                    Gatto.Core.Models.FitRegime.FitsGpu or Gatto.Core.Models.FitRegime.FitsSplit or Gatto.Core.Models.FitRegime.FitsRamOnly)
                     return candidate;
             }
             return SetupFlow.OfferedContext;
         }
         catch (Exception) { return SetupFlow.OfferedContext; }
+    }
+
+    //a rung the card holds whole first, then the largest holding at least half the layers, then the one holding the most. null when no rung splits
+    internal static int? SplitRung(IReadOnlyList<int> rungs, Func<int, Gatto.Core.Models.FitEstimate> at, Gatto.Core.Hardware.HardwareClass hw)
+    {
+        var whole = rungs.Where(r => Gatto.Core.Models.FitArithmetic.Judge(at(r), hw) == Gatto.Core.Models.FitRegime.FitsGpu).ToList();
+        if (whole.Count > 0) return whole[0];
+        var splits = rungs
+            .Select(r => (Rung: r, Estimate: at(r)))
+            .Where(x => Gatto.Core.Models.FitArithmetic.Judge(x.Estimate, hw) == Gatto.Core.Models.FitRegime.FitsSplit)
+            .Select(x => (x.Rung, Layers: Gatto.Core.Models.FitArithmetic.SplitLayers(x.Estimate, hw) ?? 0, Blocks: x.Estimate.Blocks ?? 0))
+            .ToList();
+        if (splits.Count == 0) return null;
+        foreach (var s in splits)
+            if (2L * s.Layers >= s.Blocks) return s.Rung;
+        return splits.OrderByDescending(s => s.Layers).ThenByDescending(s => s.Rung).First().Rung;
     }
 
     //a generous deadline, a cold 30 GB load is the normal case here and minutes of silence are expected
