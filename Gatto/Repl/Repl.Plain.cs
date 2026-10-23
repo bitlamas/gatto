@@ -23,6 +23,7 @@ public sealed partial class Repl
         if (cloudNotice is not null) Console.WriteLine($"{_glyphs.Sharp} " + cloudNotice);
         if (servedNotice is not null) Console.WriteLine($"{_glyphs.Sharp} " + servedNotice);
         foreach (var w in LaunchWarningsNow()) Console.WriteLine($"{_glyphs.Sharp} " + TermText.Sanitize(w));   //an extension's error text reaches this list, so strip it like OnWarning does
+        if (sandboxNotice is not null) Console.WriteLine($"{_glyphs.Sharp} " + sandboxNotice);
         if (wildNotice is not null) Console.WriteLine($"{_glyphs.Sharp} " + wildNotice);
 
         var renderer = new PlainRenderer(reasoning, _glyphs);
@@ -101,6 +102,11 @@ public sealed partial class Repl
             if (SlashGate.TryMatchCommand(trimmedLine, "/wild", out var wildArg))
             {
                 Console.WriteLine(HandleWild(wildArg));
+                continue;
+            }
+            if (SlashGate.TryMatchCommand(trimmedLine, "/sandbox", out var sandboxArg))
+            {
+                Console.WriteLine(HandleSandbox(sandboxArg));
                 continue;
             }
             if (trimmedLine == "/safe")

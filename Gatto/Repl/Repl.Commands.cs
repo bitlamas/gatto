@@ -239,6 +239,27 @@ public sealed partial class Repl
         }
     }
 
+    //the mode is for the process: /sandbox says its state, on turns it on, and off names what keeps it on
+    internal string HandleSandbox(string arg)
+    {
+        if (sandbox is null || !OperatingSystem.IsWindows()) return "sandbox off";
+        switch (arg)
+        {
+            case "":
+                return TermText.Sanitize(sandbox.Line);
+            case "on":
+                try { sandbox.TurnOn("/sandbox on"); }
+                catch (GattoConfigException ex) { return TermText.Sanitize(ex.Message); }
+                return TermText.Sanitize(sandbox.Line);
+            case "off":
+                return TermText.Sanitize(sandbox.On ? sandbox.OffRefusal : sandbox.Line);
+            default:
+                return SandboxUsage;
+        }
+    }
+
+    internal const string SandboxUsage = "usage: /sandbox [on]";
+
     //the exact inverse of a bare /wild that turned wild on, for this session only
     private string HandleSafe()
     {

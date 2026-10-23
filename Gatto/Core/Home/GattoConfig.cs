@@ -76,7 +76,10 @@ public sealed record GattoConfig(
     bool StopServerOnExit = false,
     //the role a bare launch runs and wild for every launch from this home, both optional so hand-built instances stay terse
     string? DefaultRole = null,
-    bool Wild = false)
+    bool Wild = false,
+    //sandbox mode for every launch from this home, and the folders beyond the project the confined shell may write
+    bool Sandbox = false,
+    IReadOnlyList<string>? SandboxGrants = null)
 {
     //never null: Load resolves the section or its default, and the nullable field keeps test instances terse
     public SearchConfig Search => SearchOrNull ?? SearchConfig.Default;
@@ -99,7 +102,7 @@ public sealed record GattoConfig(
 
     //the one statement of what gatto.json accepts, asserted against the schema in both directions, so a key added here needs a schema entry
     internal static readonly string[] TopKeys =
-        { "$schema", "endpoints", "default_endpoint", "default_model", "defaults", "llama_server", "context_files", "theme", "glyphs", "reasoning", "regions", "search", "weights_root", "think", "alt_screen", "dump_on_exit", "stop_server_on_exit", "mouse", "wheel_lines", "copy_on_select", "auto_compact", "deny_reason", "memory", "update_check", "extensions", "default_role", "wild" };
+        { "$schema", "endpoints", "default_endpoint", "default_model", "defaults", "llama_server", "context_files", "theme", "glyphs", "reasoning", "regions", "search", "weights_root", "think", "alt_screen", "dump_on_exit", "stop_server_on_exit", "mouse", "wheel_lines", "copy_on_select", "auto_compact", "deny_reason", "memory", "update_check", "extensions", "default_role", "wild", "sandbox", "sandbox_grants" };
     internal static readonly string[] ValidThemes = { "dark", "light", "auto" };
     //the same three-value shape as theme: auto asks the host, the two names answer for it
     internal static readonly string[] ValidGlyphs = { "auto", "unicode", "ascii" };
@@ -466,6 +469,30 @@ public sealed record GattoConfig(
             wildDefault = wd.GetBoolean();
         }
 
+        //sandbox mode for every launch from this home. a project can turn it on too, never off
+        var sandbox = false;
+        if (root.TryGetProperty("sandbox", out var sb))
+        {
+            if (sb.ValueKind is not (JsonValueKind.True or JsonValueKind.False))
+                throw new GattoConfigException("gatto.json has a \"sandbox\" with the wrong type, it must be a boolean");
+            sandbox = sb.GetBoolean();
+        }
+
+        //each grant an absolute path to a folder that exists, since a typo would otherwise surface as a refused write mid-session
+        var sandboxGrants = new List<string>();
+        if (root.TryGetProperty("sandbox_grants", out var sg))
+        {
+            if (sg.ValueKind != JsonValueKind.Array)
+                throw new GattoConfigException("gatto.json has a \"sandbox_grants\" with the wrong type, it must be a list of folder paths");
+            foreach (var g in sg.EnumerateArray())
+            {
+                if (g.ValueKind != JsonValueKind.String || g.GetString() is not { Length: > 0 } grant
+                    || !Path.IsPathFullyQualified(grant) || !Directory.Exists(grant))
+                    throw new GattoConfigException($"gatto.json has a \"sandbox_grants\" entry that is not an existing folder's full path: {g.GetRawText()}");
+                sandboxGrants.Add(grant);
+            }
+        }
+
         //mouse capture and the lines per wheel notch, with no cross-validation: mouse true and alt_screen false is a silent no-mouse
         var mouse = true;
         if (root.TryGetProperty("mouse", out var ms))
@@ -545,7 +572,7 @@ public sealed record GattoConfig(
             }
         }
 
-        return new GattoConfig(endpoints, defaultEp, defaults, llamaServer, contextCompat, contextHome, theme, glyphs, reasoning, search, weightsDir, think, altScreen, dumpOnExit, mouse, wheelLines, copyOnSelect, autoCompact, denyReason, memoryEnabled, memoryIndexBudget, updateCheck, stopServerOnExit, defaultRole, wildDefault)
+        return new GattoConfig(endpoints, defaultEp, defaults, llamaServer, contextCompat, contextHome, theme, glyphs, reasoning, search, weightsDir, think, altScreen, dumpOnExit, mouse, wheelLines, copyOnSelect, autoCompact, denyReason, memoryEnabled, memoryIndexBudget, updateCheck, stopServerOnExit, defaultRole, wildDefault, sandbox, sandboxGrants)
         { Raw = root };
     }
 

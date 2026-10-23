@@ -8,7 +8,7 @@ public static class ProjectFileConfig
     public const string FileName = ".gatto.json";
 
     //narrower than GattoConfig's arrays on purpose: syncing them would let a project pin settings the home file owns
-    private static readonly string[] TopKeys = { "context_files", "memory", "auto_compact", "wild" };
+    private static readonly string[] TopKeys = { "context_files", "memory", "auto_compact", "wild", "sandbox" };
     private static readonly string[] ContextFilesKeys = { "compat" };
     private static readonly string[] MemoryKeys = { "enabled" };
 
@@ -100,6 +100,32 @@ public static class ProjectFileConfig
                 $"{Path.Combine(dir, FileName)} has a wild with the wrong type, it must be a boolean");
 
         return value.GetBoolean();
+    }
+
+    //the sandbox setting this directory pins, or null when there is none. a top-level bare boolean like wild
+    public static bool? TryReadSandbox(string dir)
+    {
+        if (ReadRoot(dir) is not { } root) return null;
+        if (!root.TryGetProperty("sandbox", out var value)) return null;
+
+        if (value.ValueKind is not (JsonValueKind.True or JsonValueKind.False))
+            throw new GattoConfigException(
+                $"{Path.Combine(dir, FileName)} has a sandbox with the wrong type, it must be a boolean");
+
+        return value.GetBoolean();
+    }
+
+    //a project may turn the sandbox on and never off, so only a true counts and the nearest one is named. a false is read and ignored
+    public static bool EffectiveSandbox(string cwd, out string? turnedOnBy)
+    {
+        turnedOnBy = null;
+        foreach (var d in AncestorsOf(cwd))
+            if (TryReadSandbox(d) is true)
+            {
+                turnedOnBy = Path.Combine(d, FileName);
+                return true;
+            }
+        return false;
     }
 
     //wild mode may be turned on only when no .gatto.json up the path sets wild false. a true there is read and ignored, since a project only takes capability away

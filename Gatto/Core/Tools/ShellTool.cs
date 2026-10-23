@@ -71,15 +71,35 @@ public sealed class ShellTool : ITool
         var command = ToolArgs.RequiredString(args, "command");
         var timeoutMs = ToolArgs.OptionalInt(args, "timeout_ms") ?? 120_000;
 
-        using var proc = Process.Start(StartInfo(command, ctx.Cwd, ctx.Session))!;
-        //stdin is closed at once, so a command that waits for input gets an EOF
-        proc.StandardInput.Close();
+        var startInfo = StartInfo(command, ctx.Cwd, ctx.Session);
+        Process proc;
+        StreamReader stdout, stderr;
+        IDisposable? sandboxed = null;
+        string? sandboxProject = null;
+        IReadOnlyList<string>? sandboxRoots = null;
+        if (OperatingSystem.IsWindows() && ctx.Sandbox is { On: true } box)
+        {
+            sandboxProject = box.Project ?? ctx.Cwd;
+            sandboxRoots = box.Roots;
+            //the same child under the sandbox token, stdin already closed by the launch
+            var launch = Gatto.Core.Sandbox.SandboxLaunch.Start(box, startInfo, PowerShellUtf8.WithPrelude(command, sandbox: true));
+            (proc, stdout, stderr, sandboxed) = (launch.Process, launch.Stdout, launch.Stderr, launch);
+        }
+        else
+        {
+            proc = Process.Start(startInfo)!;
+            //stdin is closed at once, so a command that waits for input gets an EOF
+            proc.StandardInput.Close();
+            (stdout, stderr) = (proc.StandardOutput, proc.StandardError);
+        }
+        using var launchScope = sandboxed;
+        using var processScope = proc;
         //chunked drains rather than ReadToEndAsync, a grandchild keeps the pipe open so EOF can never come. no await here may be bounded only by the session token
         var outBuf = new StringBuilder();
         var errBuf = new StringBuilder();
         var gate = new object();
-        var stdoutTask = DrainAsync(proc.StandardOutput, outBuf, gate, ct);
-        var stderrTask = DrainAsync(proc.StandardError, errBuf, gate, ct);
+        var stdoutTask = DrainAsync(stdout, outBuf, gate, ct);
+        var stderrTask = DrainAsync(stderr, errBuf, gate, ct);
 
         using var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
         timeoutCts.CancelAfter(timeoutMs);
@@ -116,6 +136,9 @@ public sealed class ShellTool : ITool
         lock (gate) { outText = outBuf.ToString().TrimEnd(); errText = errBuf.ToString().TrimEnd(); }
         var sb = new StringBuilder(outText);
         if (errText.Length > 0) sb.AppendLine().AppendLine(StderrMarker).Append(errText);
+        //the model reads why the write failed, the error itself stays and so does the exit code's verdict
+        if (sandboxProject is not null && Gatto.Core.Sandbox.SandboxRefusal.Note(errText, sandboxProject, sandboxRoots) is { } refusal)
+            sb.AppendLine().Append(refusal);
         if (pipeHeld) sb.AppendLine().Append(PipeHeldNote);
         if (proc.ExitCode != 0) sb.AppendLine().Append($"(exit code {proc.ExitCode})");
         var text = ToolArgs.HeadCap(sb.ToString(), 50_000);

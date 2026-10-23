@@ -3199,6 +3199,55 @@ public class GattoAppTests : IDisposable
         Assert.DoesNotContain("<0.1 GB", text, StringComparison.Ordinal);
     }
 
+    //every launch in the suite takes the run's own sandbox folders, so a test never reads the machine's NuGet folders or unplants a live session's label
+    [Fact]
+    public void NO_LAUNCH_UNDER_TEST_NAMES_THE_MACHINES_SANDBOX_FOLDERS()
+    {
+        var folders = Assert.IsType<(string NuGet, string HttpCache, string TempParent)>(GattoApp.SandboxFoldersDefault);
+        foreach (var folder in new[] { folders.NuGet, folders.HttpCache, folders.TempParent })
+            Assert.StartsWith(TestTempRoot.Root! + Path.DirectorySeparatorChar, folder, StringComparison.OrdinalIgnoreCase);
+    }
+
+    //a killed sandboxed session leaves its labels, so the next launch that opens a session removes them and says so once, in the session or on stderr under -p
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    [System.Runtime.Versioning.SupportedOSPlatform("windows")]
+    public async Task A_LAUNCH_REMOVES_THE_LABELS_A_KILLED_SANDBOX_LEFT_AND_SAYS_SO_ONCE(bool oneShot)
+    {
+        await using var server = new FakeOpenAiServer();
+        UseHome();
+        WriteConfig($$$"""{"endpoints":{"local":{"base_url":"{{{server.BaseUrl}}}"}},"default_endpoint":"local","default_model":"model-x"}""");
+        WriteRole("generalist", "{}");
+        WriteModel("model-x", port: 1, profileExtra: "#auto_serve#: false".Replace('#', '"'));
+        var folders = Directory.CreateTempSubdirectory("gatto-residue-").FullName;
+        try
+        {
+            //the test's own NuGet and temp folders, so the launch never reads or unplants the machine's
+            using var scope = GattoApp.SandboxFoldersScope(Path.Combine(folders, "nuget"), Path.Combine(folders, "cache"), Path.Combine(folders, "tmp"));
+            Gatto.Core.Sandbox.SandboxGrants.Plant(_cwd, _home);
+            var built = Path.Combine(_cwd, "built.exe");
+            File.WriteAllText(built, "x");
+            server.Enqueue(Completion("answer"));
+            var stdout = new StringWriter();
+            var stderr = new StringWriter();
+            Console.SetIn(new StringReader("/quit\n"));
+            Console.SetOut(stdout);
+            Console.SetError(stderr);
+
+            Assert.Equal(0, await GattoApp.RunAsync(oneShot ? ["-p", "hi"] : []));
+
+            var said = (oneShot ? stderr : stdout).ToString();
+            Assert.Single(said.Split('\n'), l => l.Contains(Gatto.Core.Sandbox.SandboxState.ResidueLine, StringComparison.Ordinal));
+            Assert.False(Gatto.Core.Sandbox.SandboxGrants.Holds(_cwd));
+            Assert.DoesNotContain(";;;LW)", Gatto.Core.Sandbox.SandboxGrants.Label(built), StringComparison.Ordinal);
+        }
+        finally
+        {
+            try { Directory.Delete(folders, true); } catch (IOException) { }
+        }
+    }
+
     //a scripted round in which the parent calls run_agent on one role
     private static FakeResponse RunAgentCall(string roleName)
     {

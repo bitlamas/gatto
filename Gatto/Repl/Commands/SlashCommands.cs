@@ -50,6 +50,7 @@ public static class SlashCommands
         //the key name comes from WildKeys, so /help can't drift from the real keymap
         new("/wild", "[always|never]", "no prompts (" + Gatto.Terminal.WildKeys.KeyName + " toggles)"),
         new("/safe", "", "prompts back on"),
+        new("/sandbox", "[on]", "show the sandbox state, or turn it on for this process"),
         new("/permissions", "[all|revoke <n>]", "review + revoke standing permission grants"),
         new("/tools", "", "list the tools armed this session", BypassesQueue: true),
         new("/context", "", "show what fills the context window", BypassesQueue: true),

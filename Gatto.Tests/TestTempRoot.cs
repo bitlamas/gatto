@@ -19,6 +19,8 @@ internal static class TestTempRoot
         Root = Directory.CreateDirectory(Path.Combine(system, Prefix + Environment.ProcessId)).FullName;
         Environment.SetEnvironmentVariable("TMP", Root);
         Environment.SetEnvironmentVariable("TEMP", Root);
+        //a launch looks for labels on the NuGet folders and the sandbox temp parent, so the run gives it its own and the machine's are never read or unplanted
+        Gatto.Cli.GattoApp.SandboxFoldersDefault = (Path.Combine(Root, "sandbox-nuget"), Path.Combine(Root, "sandbox-http-cache"), Path.Combine(Root, "sandbox-tmp"));
     }
 
     //the test host ends before an exit handler can finish, so each run removes the folders of runs whose process is gone

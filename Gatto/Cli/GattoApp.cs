@@ -28,12 +28,14 @@ using Gatto.Terminal;
 
 namespace Gatto.Cli;
 
-file sealed class AppToolContext(string cwd, string home, IUserPrompter? prompter, SessionStore sessions) : IToolContext
+file sealed class AppToolContext(string cwd, string home, IUserPrompter? prompter, SessionStore sessions,
+    Gatto.Core.Sandbox.SandboxState? sandbox) : IToolContext
 {
     public string Cwd => cwd;
     public string HomePath => home;
     public IUserPrompter? Prompter => prompter;
     public SessionIdentity? Session => sessions.Identity;
+    public Gatto.Core.Sandbox.SandboxState? Sandbox => sandbox;
 }
 
 file sealed class OneShotObserver : ITurnObserver
@@ -91,7 +93,7 @@ public static class GattoApp
         usage: gatto [role|command] [options]
           roles:    {roles}
           commands: setup | serve start [model] [--detach] | serve stop|status | doctor | status | audition | model new [gguf] [id] | update | uninstall
-          options:  -m <model>  -p <prompt>  -e <endpoint>  --effort <level>  --continue[ <id>]  --yes  --version  -h
+          options:  -m <model>  -p <prompt>  -e <endpoint>  --effort <level>  --continue[ <id>]  --yes  --sandbox  --version  -h
         """;
 
     //the roles line is read from the home at print time, so the help never names a default the config overrode or a role that is not on disk
@@ -129,6 +131,23 @@ public static class GattoApp
     private sealed class ProbeDeadlineReset : IDisposable
     {
         public void Dispose() => ProbeDeadlineOverride.Value = null;
+    }
+
+    //a test's own NuGet and temp folders for the sandbox, carried like the probe deadline, so a launch under test never reads or unplants the machine's
+    private static readonly AsyncLocal<(string NuGet, string HttpCache, string TempParent)?> SandboxFoldersOverride = new();
+
+    internal static IDisposable SandboxFoldersScope(string nuget, string httpCache, string tempParent)
+    {
+        SandboxFoldersOverride.Value = (nuget, httpCache, tempParent);
+        return new SandboxFoldersReset();
+    }
+
+    //the folders a launch takes when no scope names its own, null in production. a test run sets them so the suite never touches the machine's
+    internal static (string NuGet, string HttpCache, string TempParent)? SandboxFoldersDefault { get; set; }
+
+    private sealed class SandboxFoldersReset : IDisposable
+    {
+        public void Dispose() => SandboxFoldersOverride.Value = null;
     }
 
     //a test's trace switch, carried in its own async flow like the probe deadline, so a parallel test never writes a trace
@@ -582,7 +601,21 @@ public static class GattoApp
             return ServeNotice.Using(res.ModelString, port);
         }
 
-        var toolCtx = new AppToolContext(cwd, home, prompter, sessions);
+        //the sandbox is one per process: the command line, then the home, then a .gatto.json up the path, and none of them turns it off
+        var sandboxFolders = SandboxFoldersOverride.Value ?? SandboxFoldersDefault;
+        using var sandbox = OperatingSystem.IsWindows()
+            ? new Gatto.Core.Sandbox.SandboxState(cwd, home, config.SandboxGrants ?? [], sandboxFolders?.NuGet, sandboxFolders?.HttpCache, sandboxFolders?.TempParent)
+            : null;
+        string? sandboxLine = null, residueLine = null;
+        if (OperatingSystem.IsWindows() && sandbox is not null)
+        {
+            //every launch that opens a session looks for labels a killed gatto left, so nothing is built on a labelled tree whether the mode is on or not
+            using var sandboxTick = args.Prompt is null ? new TickLine(Console.Out, launchTheme is not null, blankBeforeFirst: true) : null;
+            var sandboxSource = SandboxSource(args.Sandbox, config.Sandbox, cwd);
+            if (await PrepareSandboxAsync(sandbox, sandboxSource, sandboxTick, glyphs, launchTheme) is { } residue) residueLine = TermText.Sanitize(residue);
+            if (sandboxSource is not null) sandboxLine = TermText.Sanitize(sandbox.Line);
+        }
+        var toolCtx = new AppToolContext(cwd, home, prompter, sessions, sandbox);
         var permissions = PermissionStore.Load(home, cwd, out var permWarning);   //a corrupt permissions file loads as no grants, so every mutating tool prompts, with a warning
         if (permWarning is not null) Console.Error.WriteLine($"! {permWarning}");
 
@@ -852,6 +885,8 @@ public static class GattoApp
         {
             //stderr only, the -p contract keeps stdout for model text
             if (WildNotice(permissions, wildState, config.Wild) is { } wildLine) Console.Error.WriteLine(wildLine);
+            if (residueLine is not null) Console.Error.WriteLine(residueLine);
+            if (sandboxLine is not null) Console.Error.WriteLine(sandboxLine);
             using var oneShotCts = new CancellationTokenSource();
             ConsoleCancelEventHandler cancelHandler = (_, e) =>
             {
@@ -892,6 +927,7 @@ public static class GattoApp
             }
         }
 
+        if (residueLine is not null) launchWarnings.Add(residueLine);
         //said after the banner with the launch warnings, a line written before it is under the alt screen. its own row, since it is this launch's state and never saved
         string? wildLaunchNotice = WildNotice(permissions, wildState, config.Wild) is { } wildNotice
             ? (wildState.On ? $"{wildNotice} {glyphs.Dot} /safe to turn off" : wildNotice)
@@ -937,13 +973,13 @@ public static class GattoApp
             serverGone: () => state.Model is { } served
                 ? ServeLines.GoneLine(new ServeManager(home, ServeCommand.ServerBinaryFor(served, config)).Dead(served.Profile.Port), glyphs)
                 : null,
-                    autoCompact: config.AutoCompact, permissions: permissions, listTools: listTools, listPolicy: listPolicy, commands: commands, memoryWarning: launchRes.MemoryTruncatedLines > 0 ? MemoryTruncationWarning(launchRes.MemoryTruncatedLines) : null, cloudNotice: cloudNotice, wildNotice: wildLaunchNotice, servedNotice: servedInSession && servedLine is not null ? TermText.Sanitize(ServeNotice.Text(servedLine)) : null, launchWarnings: launchWarnings, cloud: state.Cloud, readUsage: usageMeter.Read, onUsageChanged: repaint => usageMeter.Changed = repaint,piggyback: piggyback, turnAbort: turnAbort,
+                    autoCompact: config.AutoCompact, permissions: permissions, listTools: listTools, listPolicy: listPolicy, commands: commands, memoryWarning: launchRes.MemoryTruncatedLines > 0 ? MemoryTruncationWarning(launchRes.MemoryTruncatedLines) : null, cloudNotice: cloudNotice, sandboxNotice: sandboxLine, wildNotice: wildLaunchNotice, servedNotice: servedInSession && servedLine is not null ? TermText.Sanitize(ServeNotice.Text(servedLine)) : null, launchWarnings: launchWarnings, cloud: state.Cloud, readUsage: usageMeter.Read, onUsageChanged: repaint => usageMeter.Changed = repaint,piggyback: piggyback, turnAbort: turnAbort,
             //a session with no model talks to a server gatto does not manage, so the notice says that instead of offering a model fix
             unmanagedNotice: !state.ServedHere() && state.Endpoint.Models is not { Count: > 0 } && !state.Cloud ? UnmanagedSession.ModelUnavailable(state.LaunchBaseUrl) : null,
             cloudSwitchHint: unlistedRemote && state.Cloud ? CloudSwitchHint(state.EndpointName) : null,
             unmanagedVisionNotice: !state.ServedHere() ? UnmanagedSession.VisionUnavailable(state.LaunchBaseUrl) : null,
             deafWatch: deafWatch,
-            wildFromHome: config.Wild, wildPersisted: () => permissions.Wild,
+            wildFromHome: config.Wild, wildPersisted: () => permissions.Wild, sandbox: sandbox,
             defaultRole: config.DefaultRole ?? "generalist",
             roleTint: state.Role.ParsedTint(), roleCat: state.Role.Cat, firstMessage: state.Role.FirstMessage,
             //read when /context asks, so a /role or /model since is followed. the shape is the loop's last request, its tools split by origin
@@ -1037,6 +1073,41 @@ public static class GattoApp
         Console.Error.WriteLine($"! {m}");
         if (carry) carried.Add(m);
     };
+
+    //the residue sweep and the plant each walk a packages folder's every entry, so an interactive launch draws them on the serve start's live line, one line for both. -p passes no line
+    [System.Runtime.Versioning.SupportedOSPlatform("windows")]
+    internal static async Task<string?> PrepareSandboxAsync(Gatto.Core.Sandbox.SandboxState sandbox, string? source, TickLine? line, GlyphSet glyphs, Theme? theme)
+    {
+        var residue = sandbox.HasResidue();
+        if (!residue && source is null) return null;
+        string? Work()
+        {
+            var said = residue ? sandbox.RemoveResidue() : null;
+            if (source is not null) sandbox.TurnOn(source);
+            return said;
+        }
+        if (line is null) return Work();
+        var words = residue ? $"removing labels left by an earlier session{glyphs.Ellipsis}" : $"preparing the sandbox{glyphs.Ellipsis}";
+        var work = Task.Run(Work);
+        var from = Stopwatch.GetTimestamp();
+        var frame = 0;
+        do
+        {
+            line.LivePainted(LoadingRow.Render(words, Stopwatch.GetElapsedTime(from), glyphs, theme, frame++), glyphs);
+            await Task.WhenAny(work, Task.Delay(ResidueFrame)).ConfigureAwait(false);
+        } while (!work.IsCompleted);
+        line.Finish();
+        return await work.ConfigureAwait(false);
+    }
+
+    private static readonly TimeSpan ResidueFrame = TimeSpan.FromMilliseconds(140);   //the pulse's step, the audition ticker's own
+
+    //what turns the sandbox on, the command line first, then the home, then the nearest .gatto.json that asks. null leaves it off
+    internal static string? SandboxSource(bool flag, bool fromHome, string cwd) =>
+        flag ? "--sandbox"
+        : fromHome ? "gatto.json"
+        : ProjectFileConfig.EffectiveSandbox(cwd, out var by) ? by
+        : null;
 
     //the launch line about wild mode: on and which source turned it on, or off because a project's .gatto.json forbids what the home says. null when wild is plainly off
     internal static string? WildNotice(PermissionStore permissions, WildState wild, bool wildFromHome) =>

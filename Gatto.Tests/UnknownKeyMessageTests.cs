@@ -143,7 +143,7 @@ public class UnknownKeyMessageTests
             .Split(',').Select(s => s.Trim()).Where(s => s.Length > 0).ToArray();
 
         Assert.Equal(
-            new[] { "auto_compact", "context_files.compat", "memory.enabled", "wild" },
+            new[] { "auto_compact", "context_files.compat", "memory.enabled", "sandbox", "wild" },
             offered.OrderBy(s => s, StringComparer.Ordinal).ToArray());
     }
 }

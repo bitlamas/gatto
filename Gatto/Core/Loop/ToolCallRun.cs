@@ -78,6 +78,7 @@ file sealed class TracedToolContext(IToolContext inner, Trace trace, long parent
     public string HomePath => inner.HomePath;
     public IUserPrompter? Prompter => inner.Prompter;
     public SessionIdentity? Session => inner.Session;
+    public Gatto.Core.Sandbox.SandboxState? Sandbox => inner.Sandbox;
     public Trace Trace => trace;
     public long TraceParent => parent;
 }

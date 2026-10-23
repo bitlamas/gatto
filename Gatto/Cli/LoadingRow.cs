@@ -20,6 +20,15 @@ internal static class LoadingRow
         return $"loading {modelId}{end}";
     }
 
+    //a wait with no model in it, drawn with the same face, pulse and clock
+    internal static string Render(string words, TimeSpan elapsed, GlyphSet glyphs, Theme? theme, int frame)
+    {
+        var clock = Gatto.Core.ElapsedText.Of(elapsed);
+        if (theme is null) return $"{glyphs.Face}  {Pulse(frame)}  {words}  {clock}";
+        return theme.Paint(glyphs.Face + "  " + Pulse(frame), Theme.Accent) + "  "
+            + theme.Paint(words, Theme.Bright) + "  " + theme.Paint(clock, Theme.Dim);
+    }
+
     //the face and pulse share one accent run so the gap between them costs no reset, and a null theme returns the row unpainted
     internal static string Render(
         TimeSpan elapsed, string modelId, string? size, GlyphSet glyphs, Theme? theme, int frame)

@@ -562,6 +562,11 @@ public sealed partial class Repl
             s.Refresh();                                   //the wild toggle changed, the footer chip must follow
             return false;
         }
+        if (SlashGate.TryMatchCommand(trimmed, "/sandbox", out var sandboxArg))
+        {
+            s.Renderer.CommitSystem(HandleSandbox(sandboxArg));
+            return false;
+        }
         if (trimmed == "/safe")
         {
             s.Renderer.CommitSystem(HandleSafe());

@@ -158,6 +158,8 @@ public sealed class RichReplHarness
         //the launched role and its file's colours and rows, the generalist with none as a bare launch from a fresh home
         string roleName = "generalist", (RgbColor Dark, RgbColor? Light)? roleTint = null, IReadOnlyList<string>? roleCat = null,
         string? firstMessage = null,
+        //the process's sandbox, absent as off Windows
+        Gatto.Core.Sandbox.SandboxState? sandbox = null,
         //the loop's trace, absent as an untraced session, so a test can read what a traced rich turn wrote
         Gatto.Core.Trace? trace = null,
         //the session store, absent as a session that saves nothing, so a test can open a resumed identity or read a name
@@ -165,7 +167,9 @@ public sealed class RichReplHarness
         //the line the launch says when the server held something other than the default, absent as a launch on the default
         string? servedNotice = null,
         //the wild line the launch says, absent as a launch with wild off and nothing forbidding it
-        string? wildNotice = null)
+        string? wildNotice = null,
+        //the sandbox line the launch says, absent as a launch with the mode off
+        string? sandboxNotice = null)
     {
         Surface = new VtScreenSurface(width, height);
         _tap = new TappedSurface(Surface);
@@ -181,7 +185,7 @@ public sealed class RichReplHarness
             permissions: permissions,
             //the closure is assigned after construction so it can see the harness. a test sets it to make the recompose warn or count calls.
             recomposeSystem: () => Composed.Text(Recompose?.Invoke() ?? systemPrompt),
-            wild: wild, persistWild: persistWild, wildPersisted: wildPersisted, wildFromHome: wildFromHome,
+            wild: wild, persistWild: persistWild, wildPersisted: wildPersisted, wildFromHome: wildFromHome, sandbox: sandbox,
             switchRole: switchRole ?? (_ => new RoleSwitchResult(false, "", null, null, "no roles in the harness")),
             defaultRole: defaultRole,
             pump: Pump = new InputPump(new KeyInputSource(keySource ?? Keys)),
@@ -206,7 +210,7 @@ public sealed class RichReplHarness
             contextInputs: contextInputs,
             chrome: chrome,
             commands: commands,
-            launchWarnings: launchWarnings, servedNotice: servedNotice, wildNotice: wildNotice,
+            launchWarnings: launchWarnings, servedNotice: servedNotice, sandboxNotice: sandboxNotice, wildNotice: wildNotice,
             clipboardImageSource: clipboardImages,
             roleTint: roleTint, roleCat: roleCat, firstMessage: firstMessage);
     }

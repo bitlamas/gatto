@@ -98,6 +98,7 @@ public sealed partial class Repl(
     //the finished sentence for an over-budget memory index, printed once after the banner. a later re-truncation goes through the warn sink instead
     string? memoryWarning = null,
     string? cloudNotice = null,   //said once per home, the first time a session runs on a cloud endpoint
+    string? sandboxNotice = null,   //the sandbox line of this launch, on or did not start, which a resume says for itself
     string? wildNotice = null,   //wild on or forbidden at this launch, which a resume says for itself
     string? servedNotice = null,   //the launch found a server holding something other than the default, and the launch screen goes unread once a server is up
     //the launch lines in arrival order, said after the banner: the sink's warnings on the rich face only, the wild notice on both. null says none
@@ -144,6 +145,7 @@ public sealed partial class Repl(
     //gatto.json turns wild on for every launch, so /wild never can end this session's wild and not the next launch's
     bool wildFromHome = false,
     Func<bool>? wildPersisted = null,   //whether the home holds a wild grant for this folder, read before /wild never clears it
+    Gatto.Core.Sandbox.SandboxState? sandbox = null,   //the process's sandbox, which /sandbox reads and turns on. null off Windows
     //the role a bare launch runs from this home, and the rule names a role only when it is not this one. null names every role
     string? defaultRole = null,
     //the running role's colours and banner rows, handed down so the Repl never reads a role file

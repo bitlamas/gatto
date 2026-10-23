@@ -10,6 +10,9 @@ internal static class PowerShellUtf8
     private const string Prelude =
         "$__e = New-Object System.Text.UTF8Encoding $false; [Console]::InputEncoding = $__e; [Console]::OutputEncoding = $__e; $OutputEncoding = $__e;\n";
 
+    //under the sandbox cmd has already set the console to UTF-8, so the output encoding is all PowerShell still needs
+    private const string SandboxPrelude = "$OutputEncoding = [Text.Encoding]::UTF8;\n";
+
     //pin the read side to no-BOM UTF-8, the StreamReader strips a BOM on its own, so this is belt-and-braces
     internal static void PinReadEncoding(ProcessStartInfo psi)
     {
@@ -18,10 +21,11 @@ internal static class PowerShellUtf8
     }
 
     //the prelude goes after any leading using or param block, since both must stay the first statement
-    internal static string WithPrelude(string command)
+    internal static string WithPrelude(string command, bool sandbox = false)
     {
+        var prelude = sandbox ? SandboxPrelude : Prelude;
         var at = LeadingDeclarationEnd(command);
-        return at == 0 ? Prelude + command : command[..at] + "\n" + Prelude + command[at..];
+        return at == 0 ? prelude + command : command[..at] + "\n" + prelude + command[at..];
     }
 
     //the index just past any leading using statements and an optional param block

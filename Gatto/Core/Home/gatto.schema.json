@@ -181,6 +181,17 @@
       "default": false,
       "description": "start every session from this home in wild mode: no permission prompts. a project's .gatto.json with \"wild\": false still forbids it. /safe turns it off for one session."
     },
+    "sandbox": {
+      "type": "boolean",
+      "default": false,
+      "description": "start every session from this home in sandbox mode: the shell may write only inside the project, the NuGet cache and sandbox_grants. a project's .gatto.json can turn it on, never off."
+    },
+    "sandbox_grants": {
+      "type": "array",
+      "items": { "type": "string" },
+      "default": [],
+      "description": "full paths of existing folders the shell may also write in sandbox mode."
+    },
     "mouse": {
       "type": "boolean",
       "default": true,

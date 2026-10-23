@@ -8,7 +8,8 @@ public sealed record ParsedArgs(
     //only serve status reads this, every other command leaves it false
     bool Json = false,
     string? Endpoint = null,
-    Gatto.Roles.Models.ThinkingLevel? Effort = null);
+    Gatto.Roles.Models.ThinkingLevel? Effort = null,
+    bool Sandbox = false);
 
 public static class ArgRouter
 {
@@ -27,6 +28,7 @@ public static class ArgRouter
         Gatto.Roles.Models.ThinkingLevel? effort = null;
         var cont = false;
         var yes = false;
+        var sandbox = false;
 
         var i = 0;
         if (argv.Length > 0 && !argv[0].StartsWith('-'))
@@ -77,6 +79,9 @@ public static class ArgRouter
                 case "--yes":
                     yes = true;
                     break;
+                case "--sandbox":
+                    sandbox = true;
+                    break;
                 case "-h" or "--help":
                     return new ParsedArgs("help", role, null, null, false, false);
                 case "--version":
@@ -87,7 +92,7 @@ public static class ArgRouter
         }
         if (effort is not null && prompt is null)
             throw new ArgumentException("--effort works only with -p. in the REPL, /effort sets the level");
-        return new ParsedArgs(command, role, model, prompt, cont, yes, ContinueId: continueId, Endpoint: endpoint, Effort: effort);
+        return new ParsedArgs(command, role, model, prompt, cont, yes, ContinueId: continueId, Endpoint: endpoint, Effort: effort, Sandbox: sandbox);
     }
 
     //the prompt of -p=... or --prompt=..., null for any other argument
