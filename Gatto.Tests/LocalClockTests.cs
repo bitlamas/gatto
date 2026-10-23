@@ -1,5 +1,5 @@
 using System.Runtime.Versioning;
-using Gatto.Core;
+using Gatto.Terminal;
 using Microsoft.Win32;
 
 namespace Gatto.Tests;

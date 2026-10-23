@@ -1,9 +1,9 @@
 using System.Runtime.InteropServices;
 
-namespace Gatto.Core;
+namespace Gatto.Terminal;
 
 //the time of day in the user's own Windows short-time format. invariant globalization hides that format from .NET, so Windows formats the time itself
-internal static class LocalClock
+public static class LocalClock
 {
     private const uint LocaleShortTime = 0x79;
     private const int BufferChars = 80;

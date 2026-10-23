@@ -1,6 +1,6 @@
 using System.Runtime.InteropServices;
 
-namespace Gatto.Core;
+namespace Gatto.Cli;
 
 //a .NET process inherits its parent's error mode, so a missing DLL opens a modal dialog unless SEM_FAILCRITICALERRORS is set
 internal static class ProcessErrorMode

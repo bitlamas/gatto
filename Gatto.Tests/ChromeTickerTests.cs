@@ -207,9 +207,9 @@ public class ChromeTickerTests
 
         var sw = Stopwatch.StartNew();
         while (sw.ElapsedMilliseconds < 1500) await Task.Delay(20);
-        var before = Gatto.Core.LocalClock.Now();
+        var before = Gatto.Terminal.LocalClock.Now();
         var row = ticker.CompletionRow();
-        var after = Gatto.Core.LocalClock.Now();
+        var after = Gatto.Terminal.LocalClock.Now();
         ticker.StopTurn();
 
         Assert.NotNull(before);

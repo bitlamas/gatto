@@ -19,7 +19,7 @@ public sealed class ChromeTicker(ChromePainter painter, object gate, ISlotsReade
     private CancellationTokenSource? _cts;
     private Stopwatch? _clock;
     //read when the completion line is built, so it shows the time the turn ended
-    private readonly Func<string?> _timeOfDay = timeOfDay ?? Gatto.Core.LocalClock.Now;
+    private readonly Func<string?> _timeOfDay = timeOfDay ?? Gatto.Terminal.LocalClock.Now;
     //the turn's time blocked on prompts, subtracted from the displayed elapsed and read under the gate. the blink and the /slots poll run on the wall clock
     private UserWait _wait;
     private string _kaomoji = "";

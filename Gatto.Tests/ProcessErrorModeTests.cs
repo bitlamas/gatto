@@ -17,7 +17,7 @@ public class ProcessErrorModeTests
         try
         {
             SetErrorMode(0x0002);
-            Gatto.Core.ProcessErrorMode.FailFastOnMissingDll();
+            Gatto.Cli.ProcessErrorMode.FailFastOnMissingDll();
             Assert.Equal(0x0003u, GetErrorMode());
         }
         finally { SetErrorMode(original); }

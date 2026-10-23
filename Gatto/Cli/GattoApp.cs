@@ -150,7 +150,7 @@ public static class GattoApp
     {
         var launchedAt = Stopwatch.GetTimestamp();   //the launch span's start, read before any other work
         //first, before anything spawns a child, so a missing DLL kills the process instead of pinning it behind a dialog nobody sees
-        Gatto.Core.ProcessErrorMode.FailFastOnMissingDll();
+        ProcessErrorMode.FailFastOnMissingDll();
 
         //this dispatch stays before the config load, or a broken config silences the child. the word comes from HardwareProbe.ChildWord, which ArgRouter.Reserved reads.
         if (argv.Length == 1 && argv[0] == Gatto.Core.Hardware.HardwareProbe.ChildWord)
