@@ -403,6 +403,7 @@ public class ChromeTickerTests
         var (surface, painter, gate) = NewPainter();
         var ticker = new ChromeTicker(painter, gate);
         ticker.StartTurn(Cats.Face(GlyphSet.Unicode));
+        ticker.MarkStreaming();   //a turn that has streamed nothing shows the slower reading context row instead of the purr
         var sw = Stopwatch.StartNew();
         while (sw.ElapsedMilliseconds < 1500) await Task.Delay(20);
         var frames = Frames(surface, gate);
