@@ -94,6 +94,69 @@ public class HardwareProbeTests
         Assert.Null(r.ServeOnlyGpu);   //the integrated budget is larger but under the floor, so llama.cpp's own pick stands and nothing is pinned
     }
 
+    //a 32 GB laptop whose integrated chip reports a 128 TiB device-local heap. the installed figure and the two device-local heaps are a user's report, the other lines only its shape
+    private const string HeapAboveInstalled = """
+        installed=34359738368
+        visible=34226159616
+        vulkan=ok physical_devices=2
+        device_0_name=NVIDIA GeForce GTX 1650
+        device_0_type=DISCRETE_GPU (2)
+        device_0_vendor=0x10DE device_id=0x1F91
+        device_0_heap_count=2 type_count=4
+        device_0_heap_0=4294967296 flags=0x01 DEVICE_LOCAL
+        device_0_heap_1=17113079808 flags=0x00 -
+        device_1_name=Intel(R) UHD Graphics 630
+        device_1_type=INTEGRATED_GPU (1)
+        device_1_vendor=0x8086 device_id=0x3E9B
+        device_1_heap_count=1 type_count=2
+        device_1_heap_0=140718414050495 flags=0x01 DEVICE_LOCAL
+        """;
+
+    [Fact]
+    public void A_HEAP_LARGER_THAN_INSTALLED_MEMORY_IS_DISCARDED_AND_THE_CARD_IS_PICKED()
+    {
+        var r = HardwareProbe.ParseReport(HeapAboveInstalled);
+
+        Assert.Equal(GpuKind.Discrete, r.Snapshot!.GraphicsKind);
+        Assert.Equal(4_294_967_296UL, r.Snapshot.GraphicsMemoryBytes);
+        Assert.Equal("NVIDIA GeForce GTX 1650", r.GpuName);
+        Assert.Null(r.ServeOnlyGpu);
+        //the chip alone, with its only heap discarded, has no usable heap and drops out
+        Assert.Equal(GpuKind.None, HardwareProbe.ParseReport(ChipOnly(HeapAboveInstalled)).Snapshot!.GraphicsKind);
+    }
+
+    [Fact]
+    public void A_HEAP_AT_OR_BELOW_INSTALLED_MEMORY_PICKS_AS_BEFORE()
+    {
+        var report = HeapAboveInstalled.Replace("140718414050495", "17179869184", StringComparison.Ordinal);
+
+        var r = HardwareProbe.ParseReport(report);
+
+        Assert.Equal(GpuKind.Discrete, r.Snapshot!.GraphicsKind);
+        Assert.Equal("NVIDIA GeForce GTX 1650", r.GpuName);
+        Assert.Null(r.ServeOnlyGpu);   //the chip's 16 GiB stays under the floor, so the card is picked as it always was
+        Assert.Equal(17_179_869_184UL, HardwareProbe.ParseReport(ChipOnly(report)).Snapshot!.GraphicsMemoryBytes);
+    }
+
+    //with no installed reading nothing is discarded, since a dropped real heap costs a card and a kept false one only a pin the floor still guards
+    [Fact]
+    public void WITHOUT_AN_INSTALLED_READING_THE_HEAP_IS_KEPT_AND_THE_FLOOR_STILL_PICKS_THE_CARD()
+    {
+        var report = HeapAboveInstalled.Replace("installed=34359738368\n", "", StringComparison.Ordinal);
+        Assert.DoesNotContain("installed=", report, StringComparison.Ordinal);
+
+        var r = HardwareProbe.ParseReport(report);
+
+        Assert.Equal(GpuKind.Discrete, r.Snapshot!.GraphicsKind);
+        Assert.Equal("NVIDIA GeForce GTX 1650", r.GpuName);
+        Assert.Null(r.ServeOnlyGpu);
+        Assert.Equal(140_718_414_050_495UL, HardwareProbe.ParseReport(ChipOnly(report)).Snapshot!.GraphicsMemoryBytes);
+    }
+
+    //the report with the card's lines taken out, so the chip's own reading shows which of its heaps survived
+    private static string ChipOnly(string report) =>
+        string.Join('\n', report.Split('\n').Where(l => !l.TrimStart().StartsWith("device_0_", StringComparison.Ordinal)));
+
     //a unified pool past the floor and larger than every discrete card together is the GPU, pinned since llama-server alone takes the card
     [Fact]
     public void A_LARGE_UNIFIED_POOL_BEATS_A_SMALL_DISCRETE_EGPU()

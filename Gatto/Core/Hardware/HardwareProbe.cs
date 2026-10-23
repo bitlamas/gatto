@@ -64,9 +64,12 @@ internal static class HardwareProbe
             : new(reading.Snapshot, "ok", reading.CpuName, reading.GpuName, reading.ServeOnlyGpu);
     }
 
-    //one device's lines: the vulkan type ordinal, the largest device-local heap and the sum of them
-    private sealed record VkDevice(int Index, string? Name, uint TypeCode, string? Vendor, ulong LargestLocalHeap,
-        ulong LocalHeapSum);
+    //one device's lines: the vulkan type ordinal and every device-local heap, the largest and the sum read off the list once the report is whole
+    private sealed record VkDevice(int Index, string? Name, uint TypeCode, string? Vendor, IReadOnlyList<ulong> LocalHeaps)
+    {
+        public ulong LargestLocalHeap => LocalHeaps.Count == 0 ? 0 : LocalHeaps.Max();
+        public ulong LocalHeapSum => LocalHeaps.Aggregate(0UL, (sum, heap) => sum + heap);
+    }
 
     //one pass picks the device and produces the snapshot and the names together, so the selection rule has no second copy
     public static ProbeReading ParseReport(string text)
@@ -99,8 +102,11 @@ internal static class HardwareProbe
         }
         if (!vulkanOk) devices.Clear();
 
+        //no heap holds more than the machine has, so a larger one cannot be real and goes, once the installed line has arrived wherever it sat in the stream. with no installed reading nothing goes
+        var capped = devices.Values.Select(d => installed is { } cap ? d with { LocalHeaps = [.. d.LocalHeaps.Where(h => h <= cap)] } : d);
+
         //index order first, so the stable sorts below keep the earlier device on a tie
-        var usable = devices.Values.Where(d => d.TypeCode is 1 or 2 && d.LargestLocalHeap > 0).OrderBy(d => d.Index).ToList();
+        var usable = capped.Where(d => d.TypeCode is 1 or 2 && d.LargestLocalHeap > 0).OrderBy(d => d.Index).ToList();
         var cards = usable.Where(d => d.TypeCode == 2).OrderByDescending(d => d.LargestLocalHeap).ToList();
         var integrated = usable.Where(d => d.TypeCode == 1).OrderByDescending(d => d.LargestLocalHeap).FirstOrDefault();
 
@@ -134,7 +140,7 @@ internal static class HardwareProbe
         if (us <= 0 || !int.TryParse(afterPrefix[..us], out var idx)) return;
         var field = afterPrefix[(us + 1)..];
 
-        var dev = devices.TryGetValue(idx, out var existing) ? existing : new VkDevice(idx, null, 0, null, 0, 0);
+        var dev = devices.TryGetValue(idx, out var existing) ? existing : new VkDevice(idx, null, 0, null, []);
         switch (field)
         {
             case "name":
@@ -184,11 +190,7 @@ internal static class HardwareProbe
         try { flags = Convert.ToUInt32(tokens[1][flagsPrefix.Length..], 16); }
         catch (Exception ex) when (ex is FormatException or OverflowException) { return; }
         if ((flags & 1) != 0)
-            devices[idx] = dev with
-            {
-                LargestLocalHeap = Math.Max(dev.LargestLocalHeap, bytes),
-                LocalHeapSum = dev.LocalHeapSum + bytes,
-            };
+            devices[idx] = dev with { LocalHeaps = [.. dev.LocalHeaps, bytes] };
     }
 
     //a vendor id is exactly four hex digits, and case varies by machine so the caller normalises it
