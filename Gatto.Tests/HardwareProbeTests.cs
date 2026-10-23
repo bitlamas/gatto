@@ -372,4 +372,52 @@ public class HardwareProbeTests
             .ToList();
         Assert.Equal(["1002"], strings);
     }
+
+    private static string Fixture(string name) => Path.Combine(AppContext.BaseDirectory, "Fixtures", "hwprobe", name);
+
+    //a named report is read in place of the child, so a walk on any machine shows the report's machine and no process starts
+    [Fact]
+    public void A_NAMED_REPORT_IS_READ_AND_NO_CHILD_STARTS()
+    {
+        var children = 0;
+        var outcome = HardwareProbe.Run(TimeSpan.FromSeconds(1), Fixture("discrete-32gb-8gb-vram.txt"), _ => { children++; return new(null, "child"); });
+
+        Assert.Equal(0, children);
+        var expected = HardwareProbe.ParseReport(File.ReadAllText(Fixture("discrete-32gb-8gb-vram.txt")));
+        Assert.Equal("ok", outcome.Detail);
+        Assert.Equal(expected.Snapshot, outcome.Snapshot);
+        Assert.Equal(expected.GpuName, outcome.GpuName);
+        Assert.Equal(GpuKind.Discrete, outcome.Snapshot!.GraphicsKind);
+    }
+
+    [Theory]
+    [InlineData(null)]
+    [InlineData("")]
+    public void WITH_NO_REPORT_NAMED_THE_CHILD_RUNS(string? named)
+    {
+        var children = 0;
+        var outcome = HardwareProbe.Run(TimeSpan.FromSeconds(1), named, _ => { children++; return new(null, "child"); });
+
+        Assert.Equal(1, children);
+        Assert.Equal("child", outcome.Detail);
+    }
+
+    //a report that is missing or says nothing usable fails the way a child that printed nothing does, never with an exception
+    [Fact]
+    public void A_MISSING_OR_UNUSABLE_REPORT_IS_THE_GENERIC_PROBE_FAILURE()
+    {
+        var dir = Directory.CreateTempSubdirectory("gatto-hwreport-").FullName;
+        try
+        {
+            var junk = Path.Combine(dir, "junk.txt");
+            File.WriteAllText(junk, "not a report\n");
+            foreach (var path in new[] { Path.Combine(dir, "missing.txt"), junk, dir })
+            {
+                var outcome = HardwareProbe.Run(TimeSpan.FromSeconds(1), path, _ => throw new InvalidOperationException("the child ran"));
+                Assert.Null(outcome.Snapshot);
+                Assert.Equal("hardware probe produced no usable report", outcome.Detail);
+            }
+        }
+        finally { Directory.Delete(dir, true); }
+    }
 }

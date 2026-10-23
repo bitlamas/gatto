@@ -34,8 +34,27 @@ internal static class HardwareProbe
         return psi;
     }
 
+    //a probe-report file read in place of the child, for a walk on a machine the walker does not have. unset, the child runs as always
+    internal const string ReportVariable = "GATTO_HARDWARE_REPORT";
+
     //wizard-time only, so nothing runs the probe at startup, and a failure is a null Snapshot with a Detail string
-    public static ProbeOutcome Run(TimeSpan deadline)
+    public static ProbeOutcome Run(TimeSpan deadline) =>
+        Run(deadline, Environment.GetEnvironmentVariable(ReportVariable), RunChild);
+
+    //the report file when one is named, the child otherwise, so a test can see which one ran
+    internal static ProbeOutcome Run(TimeSpan deadline, string? reportPath, Func<TimeSpan, ProbeOutcome> child) =>
+        reportPath is { Length: > 0 } path ? FromReport(path) : child(deadline);
+
+    //the child's own format, so a report captured with probe-machine on any machine reads here as it did there. a file that cannot be read is the generic failure
+    internal static ProbeOutcome FromReport(string path)
+    {
+        string text;
+        try { text = File.ReadAllText(path); }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or ArgumentException or NotSupportedException) { text = ""; }
+        return Outcome(ParseReport(text), "");
+    }
+
+    private static ProbeOutcome RunChild(TimeSpan deadline)
     {
         //a null ProcessPath means gatto can't name its own image, so the CPU-only shape would be a claim about the machine
         if (Environment.ProcessPath is not { } exePath)
@@ -56,13 +75,15 @@ internal static class HardwareProbe
         Task.WaitAll(new Task[] { so, se }, 2000);
         var stdout = so.IsCompletedSuccessfully ? so.Result : "";
         var stderr = se.IsCompletedSuccessfully ? se.Result.Trim() : "";
-        var reading = ParseReport(stdout);
-        //a failed parse reports no names either, even when the cpu line arrived, so no chip name sits above missing figures
-        return reading.Snapshot is null
+        return Outcome(ParseReport(stdout), stderr);
+    }
+
+    //a failed parse reports no names either, even when the cpu line arrived, so no chip name sits above missing figures
+    private static ProbeOutcome Outcome(ProbeReading reading, string stderr) =>
+        reading.Snapshot is null
             ? new(null, "hardware probe produced no usable report"
                 + (stderr.Length > 0 ? $" — stderr: {stderr}" : ""))
             : new(reading.Snapshot, "ok", reading.CpuName, reading.GpuName, reading.ServeOnlyGpu);
-    }
 
     //one device's lines: the vulkan type ordinal and every device-local heap, the largest and the sum read off the list once the report is whole
     private sealed record VkDevice(int Index, string? Name, uint TypeCode, string? Vendor, IReadOnlyList<ulong> LocalHeaps)
