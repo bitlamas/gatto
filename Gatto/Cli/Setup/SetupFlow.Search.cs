@@ -136,9 +136,12 @@ internal sealed partial class SetupFlow
         if (serving && _serving is not { IsCompleted: false })
             _serving = new Serving(Task.Run(probes.LoadedModelId), Task.Run(probes.LoadedModelPath));
 
+        //the scan and the search block for as long as the disk and the Hub take, so each gets its own thread rather than a place in the pool's queue
         _load = new ShelfLoad(source,
-            scanning ?? (scan ? Task.Run(() => probes.Scan(scanRoot)) : null), scanRoot,
-            search ? Task.Run(() => probes.SearchModels(request, sink, token)) : null, stop,
+            scanning ?? (scan ? Task.Factory.StartNew(() => probes.Scan(scanRoot), CancellationToken.None,
+                TaskCreationOptions.LongRunning, TaskScheduler.Default) : null), scanRoot,
+            search ? Task.Factory.StartNew(() => probes.SearchModels(request, sink, token), CancellationToken.None,
+                TaskCreationOptions.LongRunning, TaskScheduler.Default) : null, stop,
             keepIfEmpty, then, other, step, opening, serving ? _serving : null);
         return LoadingScreen();
     }

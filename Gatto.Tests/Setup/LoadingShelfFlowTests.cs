@@ -168,6 +168,33 @@ public class LoadingShelfFlowTests
         Assert.Equal(2, shelf.Shelf!.Rows.Count);
     }
 
+    //the scan and the search block for their whole run, so a pool full of blocked work must not keep either from starting
+    [Fact]
+    public void THE_SCAN_AND_THE_SEARCH_START_WHILE_THE_POOL_IS_FULL()
+    {
+        using var searching = new ManualResetEventSlim(false);
+        using var scanning = new ManualResetEventSlim(false);
+        var probes = new FakeSetupProbes
+        {
+            OnScan = _ => scanning.Set(),
+            Slow = (request, progress, ct) =>
+            {
+                searching.Set();
+                return FakeSetupProbes.Outcome([], null);
+            },
+        };
+        var flow = new SetupFlow(probes) { CanSwitchSource = true, LoadsShelfInBackground = true };
+        var full = new ManualResetEventSlim(false);   //never disposed, since a queued item may still wait on it after the test ends
+        for (var i = 0; i < 400; i++) ThreadPool.QueueUserWorkItem(_ => full.Wait(Bound));
+        try
+        {
+            flow.StartAtModelSegment();
+            Assert.True(scanning.Wait(Bound), $"the scan never started, pool {ThreadPool.ThreadCount} threads, {ThreadPool.PendingWorkItemCount} queued");
+            Assert.True(searching.Wait(Bound), $"the search never started, pool {ThreadPool.ThreadCount} threads, {ThreadPool.PendingWorkItemCount} queued");
+        }
+        finally { full.Set(); }
+    }
+
     //the step line names the one publisher, then counts the models read. each moment is held by its own gate, and the serving probe answers last, so a read can only see the moment the search is in
     [Fact]
     public void THE_STEP_LINE_NAMES_THE_PUBLISHER_THEN_COUNTS_THE_MODELS()
@@ -499,17 +526,19 @@ public class LoadingShelfFlowTests
     public void A_CHIP_DURING_THE_SERVING_WAIT_KEEPS_THE_PROBE_IN_FLIGHT()
     {
         using var hold = new ManualResetEventSlim(false);
+        using var asked = new ManualResetEventSlim(false);
         var probes = new FakeSetupProbes
         {
             Slow = (r, p, ct) => FakeSetupProbes.Outcome([Row("unsloth/a")], null),
             Loaded = "a",
-            OnLoaded = () => hold.Wait(Bound),
+            OnLoaded = () => { asked.Set(); hold.Wait(Bound); },
         };
         probes.FromRepo["unsloth/a"] = "a";
         var flow = new SetupFlow(probes) { CanSwitchSource = true, LoadsShelfInBackground = true };
         try
         {
             flow.StartAtModelSegment();
+            Assert.True(asked.Wait(Bound));   //the serving step shows from before the probe starts, so the count is read only once the probe is in flight
             Assert.True(SpinUntil(() => flow.PollShelfLoad()?.Step == ServingStep));
 
             Assert.Equal(SetupFlow.ShelfLoadingKey, Assert.IsType<SetupScreen.Choice>(
