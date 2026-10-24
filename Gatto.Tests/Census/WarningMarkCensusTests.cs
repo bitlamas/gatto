@@ -8,7 +8,7 @@ public class WarningMarkCensusTests
     //every .cs file of every project with the tests, and the shipped scripts, since the sync publishes all their comments
     private static List<string> Files(string root) =>
         [.. Directory.EnumerateFiles(root, "*.cs", SearchOption.AllDirectories)
-            .Concat(Directory.EnumerateFiles(Path.Combine(root, "Gatto", "Shipped"), "*.csx", SearchOption.AllDirectories))
+            .Concat(SourceTree.ScriptsUnder("Shipped"))
             .Where(f => !SourceTree.HasFolderBelow(root, f, "obj", "bin", "tmp", ".git"))
             .OrderBy(f => f, StringComparer.Ordinal)];
 

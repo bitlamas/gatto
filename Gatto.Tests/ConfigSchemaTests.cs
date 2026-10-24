@@ -98,8 +98,7 @@ public class ConfigSchemaTests
     public void EVERY_STRICT_LEVEL_IN_THE_READER_HAS_A_ROW_HERE()
     {
         //the scan covers all of Core\Home, an array declared in a new file cannot slip past
-        var arrays = Directory
-            .EnumerateFiles(Path.Combine(Census.SourceTree.RepoRoot(), "Gatto", "Core", "Home"), "*.cs")
+        var arrays = Census.SourceTree.ProductionFilesUnder("Core", "Home")
             .SelectMany(f => System.Text.RegularExpressions.Regex
                 .Matches(File.ReadAllText(f), @"internal static readonly string\[\] (\w+Keys)\b")
                 .Select(m => m.Groups[1].Value))

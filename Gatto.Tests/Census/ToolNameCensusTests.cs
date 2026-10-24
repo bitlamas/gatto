@@ -19,7 +19,7 @@ public class ToolNameCensusTests
             .Order(StringComparer.Ordinal)];
 
     private static IReadOnlyList<string> ShippedNames() =>
-        [.. Directory.EnumerateFiles(Path.Combine(SourceTree.RepoRoot(), "Gatto", "Shipped", "extensions"), "*.csx")
+        [.. SourceTree.ScriptsUnder("Shipped", "extensions")
             .SelectMany(f => Registration.Matches(SourceTree.Read(f)).Select(m => m.Groups[1].Value))
             .Order(StringComparer.Ordinal)];
 

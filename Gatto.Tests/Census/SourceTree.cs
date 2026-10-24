@@ -99,7 +99,30 @@ internal static class SourceTree
         return comments;
     }
 
-    private static string Scan(string source, bool keepStrings, List<string>? literals = null, List<string>? comments = null)
+    //returns the start and end of every outermost string literal, so a census can tell code from text by position
+    public static IReadOnlyList<(int Start, int End)> LiteralSpans(string source)
+    {
+        var spans = new List<(int Start, int End)>();
+        Scan(source, keepStrings: false, spans: spans);
+        return spans;
+    }
+
+    //the shipped scripts under one product-relative folder, such as Shipped, across every product project that holds it. never an empty set
+    public static IReadOnlyList<string> ScriptsUnder(params string[] folder)
+    {
+        var scripts = ProductProjects
+            .Select(p => Path.Combine([RepoRoot(), p, .. folder]))
+            .Where(Directory.Exists)
+            .SelectMany(d => Directory.EnumerateFiles(d, "*.csx", SearchOption.AllDirectories))
+            .Where(f => !HasFolderBelow(RepoRoot(), f, "obj", "bin"))
+            .OrderBy(f => f, StringComparer.Ordinal)
+            .ToList();
+        Assert.NotEmpty(scripts);
+        return scripts;
+    }
+
+    private static string Scan(string source, bool keepStrings, List<string>? literals = null, List<string>? comments = null,
+        List<(int Start, int End)>? spans = null)
     {
         var outp = new System.Text.StringBuilder(source.Length);
         var i = 0;
@@ -153,6 +176,7 @@ internal static class SourceTree
                     ? SkipRawString(source, i, fence, dollars, sink, literals)
                     : SkipString(source, i, verbatim, dollars > 0, sink, literals);
                 literals?.Add(source[start..Math.Min(i, source.Length)]);
+                spans?.Add((start, Math.Min(i, source.Length)));
                 if (keepStrings) outp.Append(source, start, i - start);
                 continue;
             }
