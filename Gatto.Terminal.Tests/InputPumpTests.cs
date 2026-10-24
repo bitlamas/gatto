@@ -36,11 +36,32 @@ public class InputPumpTests
         return Assert.IsType<ComposerInput.Key>(t.Result).K;
     }
 
-    private static void WaitUntil(Func<bool> cond, int ms = 30000)   //ends as soon as the condition holds, so the bound only matters on a loaded machine
+    //the bound every wait here takes. a wait ends at its signal, so the bound only matters on a loaded machine
+    private static readonly TimeSpan Bound = TimeSpan.FromSeconds(30);
+
+    //a pump count with no event of its own, read until it holds. what was read goes in the failure, so a miss says how far it got
+    private static void WaitFor(string what, Func<int> read, int want) =>
+        Assert.True(SpinWait.SpinUntil(() => read() == want, Bound), $"{what} read {read()}, wanted {want}");
+
+    //a sink that counts its calls and signals once the count reaches the target, so the test waits on the sink rather than polling a field
+    private sealed class Counted(int target) : IDisposable
     {
-        var sw = System.Diagnostics.Stopwatch.StartNew();
-        while (!cond() && sw.ElapsedMilliseconds < ms) Thread.Sleep(5);
-        Assert.True(cond(), "condition not reached in time");
+        private int _seen;
+        private readonly ManualResetEventSlim _reached = new(false);
+
+        public int Seen => Volatile.Read(ref _seen);
+
+        //the call number, counted before the caller decides whether this call throws
+        public int Hit()
+        {
+            var n = Interlocked.Increment(ref _seen);
+            if (n >= target) _reached.Set();
+            return n;
+        }
+
+        public void Wait() => Assert.True(_reached.Wait(Bound), $"the sink saw {Seen} of {target} calls");
+
+        public void Dispose() => _reached.Dispose();
     }
 
     //a throw on the pump thread kills the process, so the dispatch is guarded like the read. a dispatch that never recovers must reach Kill()
@@ -55,14 +76,14 @@ public class InputPumpTests
         var warnings = new List<string>();
         pump.SetInputFaultSink(warnings.Add);
 
-        var seen = 0;
-        pump.SetScrollSink(_ => { seen++; if (seen == 1) throw new InvalidOperationException("cursed key"); });
+        using var seen = new Counted(2);
+        pump.SetScrollSink(_ => { if (seen.Hit() == 1) throw new InvalidOperationException("cursed key"); });
         pump.Start();
 
         src.Feed.Add(PageUp());   //the first routed event throws inside the sink.
         src.Feed.Add(PageUp());   //routing must continue after a sink throw.
 
-        WaitUntil(() => seen >= 2);
+        seen.Wait();
         Assert.Single(warnings);
     }
 
@@ -74,13 +95,13 @@ public class InputPumpTests
         var warnings = new List<string>();
         pump.SetInputFaultSink(warnings.Add);
 
-        var seen = 0;
-        pump.SetScrollSink(_ => { seen++; throw new InvalidOperationException("always cursed"); });
+        using var seen = new Counted(10);
+        pump.SetScrollSink(_ => { seen.Hit(); throw new InvalidOperationException("always cursed"); });
         pump.Start();
 
         for (var i = 0; i < 10; i++) src.Feed.Add(PageUp());
 
-        WaitUntil(() => seen >= 10);
+        seen.Wait();
         Assert.Single(warnings);
     }
 
@@ -108,13 +129,13 @@ public class InputPumpTests
         var pump = new InputPump(new KeyInputSource(src));
         pump.SetInputFaultSink(_ => { });
 
-        var seen = 0;
-        pump.SetScrollSink(_ => { seen++; if (seen % 2 == 1) throw new InvalidOperationException("every other key"); });
+        using var seen = new Counted(300);
+        pump.SetScrollSink(_ => { if (seen.Hit() % 2 == 1) throw new InvalidOperationException("every other key"); });
         pump.Start();
 
         for (var i = 0; i < 300; i++) src.Feed.Add(PageUp());
 
-        WaitUntil(() => seen >= 300);
+        seen.Wait();
         //a key routed after 150 failures proves the counter reset on each success.
         src.Feed.Add(K('a'));
         Assert.Equal('a', Read(pump.Composer)!.Value.KeyChar);
@@ -164,7 +185,7 @@ public class InputPumpTests
         pump.Start();
         src.Feed.Add(K('t'));                              //the type-ahead key is fed before any prompt exists.
         //wait for ComposerPending (means routed), KeyAvailable also reports the source's peek, so the focus scope can swallow the type-ahead
-        WaitUntil(() => pump.ComposerPending == 1);        //pending means the key was routed
+        WaitFor("the composer's pending count", () => pump.ComposerPending, 1);   //pending means the key was routed
         using (var focus = pump.PushFocus())
         {
             src.Feed.Add(K('n'));                          //this key answers the prompt.
@@ -224,7 +245,7 @@ public class InputPumpTests
         var focus = pump.PushFocus();
         src.Feed.Add(K('y'));
         //wait on the focus PendingCount, KeyAvailable also reports the source peek. disposing early routes the key to the composer instead of discarding it
-        WaitUntil(() => focus.PendingCount == 1);   //count 1 proves the key reached the scope and stayed unread.
+        WaitFor("the scope's pending count", () => focus.PendingCount, 1);   //count 1 proves the key reached the scope and stayed unread.
         focus.Dispose();
         src.Feed.Add(K('b'));
         Assert.Equal('b', Read(pump.Composer)!.Value.KeyChar);   //reading b next proves the discarded key was never replayed to the composer
@@ -250,11 +271,11 @@ public class InputPumpTests
         pump.Start();
 
         src.Feed.Add(K('a'));
-        WaitUntil(() => pump.ComposerPending == 1);   //this wait proves the key was routed before the gesture entered the channel, so the fixed read order reflects true arrival order.
+        WaitFor("the composer's pending count", () => pump.ComposerPending, 1);   //this wait proves the key was routed before the gesture entered the channel, so the fixed read order reflects true arrival order.
         pump.EnqueueComposerGesture(new ComposerInput.Select(0, 1, ComposerGesture.Begin));
-        WaitUntil(() => pump.ComposerPending == 2);
+        WaitFor("the composer's pending count", () => pump.ComposerPending, 2);
         src.Feed.Add(K('b'));
-        WaitUntil(() => pump.ComposerPending == 3);
+        WaitFor("the composer's pending count", () => pump.ComposerPending, 3);
 
         Assert.Equal('a', Assert.IsType<ComposerInput.Key>(pump.Composer.Read()).K.KeyChar);
         var sel = Assert.IsType<ComposerInput.Select>(pump.Composer.Read());

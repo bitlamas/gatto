@@ -63,17 +63,26 @@ public class ShelfKeysTests
         Assert.DoesNotContain('d', keys);
     }
 
+    //a wait returns at the signal, and the bound only caps a failure, as the loading shelf's tests bound theirs
+    private static readonly TimeSpan Bound = TimeSpan.FromSeconds(30);
+
+    //what the pool holds when a background start never came, so a failure says whether the pool or the flow kept it
+    private static string PoolNow() =>
+        $"pool {ThreadPool.ThreadCount} threads, {ThreadPool.PendingWorkItemCount} queued";
+
     //a chip clicked while a search runs cancels it, and its rows never reach the shelf
     [Fact]
     public void A_CHIP_CLICK_DURING_A_SEARCH()
     {
         using var release = new ManualResetEventSlim(false);
+        using var started = new ManualResetEventSlim(false);
         var tokens = new List<CancellationToken>();
         var probes = new FakeSetupProbes
         {
             Slow = (r, _, ct) =>
             {
                 lock (tokens) tokens.Add(ct);
+                started.Set();
                 if (r.Lit.Contains("glm")) return FakeSetupProbes.Outcome([Row("unsloth/new")]);
                 release.Wait(TimeSpan.FromSeconds(5), CancellationToken.None);
                 return FakeSetupProbes.Outcome([Row("unsloth/old")]);
@@ -81,13 +90,13 @@ public class ShelfKeysTests
         };
         var flow = new SetupFlow(probes) { CanSwitchSource = true, LoadsShelfInBackground = true };
         flow.StartPastEngine();
-        Assert.True(SpinWait.SpinUntil(() => { lock (tokens) return tokens.Count == 1; }, TimeSpan.FromSeconds(5)));
+        Assert.True(started.Wait(Bound), "the background search never started, " + PoolNow());
 
         flow.Answer(ShelfControls.FamilyAnswer("glm"));
         lock (tokens) Assert.True(tokens[0].IsCancellationRequested);
         release.Set();
 
-        Assert.True(SpinWait.SpinUntil(flow.PollWatch, TimeSpan.FromSeconds(5)));
+        Assert.True(SpinWait.SpinUntil(flow.PollWatch, Bound), "the chip's search never resolved, " + PoolNow());
         var landed = Assert.IsType<SetupScreen.Choice>(flow.Answer(SetupFlow.Landed));
         Assert.Equal(["new"], landed.Shelf!.Rows.Select(r => r.Model));
     }

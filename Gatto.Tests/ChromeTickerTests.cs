@@ -407,9 +407,12 @@ public class ChromeTickerTests
         var sw = Stopwatch.StartNew();
         while (sw.ElapsedMilliseconds < 1500) await Task.Delay(20);
         var frames = Frames(surface, gate);
+        string? row;
+        lock (gate) row = painter.State.PurrText;
         ticker.StopTurn(repaint: false);
 
         Assert.True(frames >= 6, $"a running turn painted {frames} frames in 1.5 s");
+        Assert.DoesNotContain("reading context", row ?? "", StringComparison.Ordinal);   //the frames counted are the purr's, not the slower row's
     }
 
     [Fact]

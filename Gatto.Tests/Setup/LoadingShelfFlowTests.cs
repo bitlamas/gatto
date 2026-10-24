@@ -168,22 +168,25 @@ public class LoadingShelfFlowTests
         Assert.Equal(2, shelf.Shelf!.Rows.Count);
     }
 
-    //the step line names the one publisher, then counts the models read, from the search's own moments
+    //the step line names the one publisher, then counts the models read. each moment is held by its own gate, and the serving probe answers last, so a read can only see the moment the search is in
     [Fact]
     public void THE_STEP_LINE_NAMES_THE_PUBLISHER_THEN_COUNTS_THE_MODELS()
     {
         using var reported = new ManualResetEventSlim(false);
-        using var next = new ManualResetEventSlim(false);
+        using var toReading = new ManualResetEventSlim(false);
+        using var toEnd = new ManualResetEventSlim(false);
+        using var serving = new ManualResetEventSlim(false);
         var probes = new FakeSetupProbes
         {
+            OnLoaded = () => serving.Wait(Bound),
             Slow = (request, progress, ct) =>
             {
                 progress!.Report(new SearchProgress(SearchStage.Listing, 0, 1, ["unsloth"]));
                 reported.Set();
-                next.Wait(Bound, CancellationToken.None);
+                toReading.Wait(Bound, CancellationToken.None);
                 progress.Report(new SearchProgress(SearchStage.Reading, 6, 13, ["unsloth"]));
                 reported.Set();
-                next.Wait(Bound, CancellationToken.None);
+                toEnd.Wait(Bound, CancellationToken.None);
                 return FakeSetupProbes.Outcome([], null);
             },
         };
@@ -195,11 +198,16 @@ public class LoadingShelfFlowTests
             Assert.Equal("asking Hugging Face for unsloth's models", flow.PollShelfLoad()!.Value.Step);
 
             reported.Reset();
-            next.Set();
+            toReading.Set();
             Assert.True(reported.Wait(Bound));
             Assert.Equal("reading the files of 13 models · 6 of 13", flow.PollShelfLoad()!.Value.Step);
         }
-        finally { next.Set(); }
+        finally
+        {
+            toReading.Set();
+            toEnd.Set();
+            serving.Set();
+        }
     }
 
     //several publishers are counted as they answer, so the copy names none of them and needs no change when the list grows
