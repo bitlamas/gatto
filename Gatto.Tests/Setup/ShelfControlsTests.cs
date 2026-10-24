@@ -28,7 +28,7 @@ public class ShelfControlsTests
         RepoId: id, Publisher: id.Split('/')[0],
         PickedQuant: new HubQuant("m-Q4_K_M.gguf", 18_000_000_000, null),
         Fit: FitRegime.FitsGpu, NativeCtx: 262144, Vision: false,
-        Badge: badge ? new Badge(id, new DateOnly(2026, 8, 1), "v", "greedy", Passed: 5, Ran: 5) : null,
+        Badge: badge ? new Badge(id, null, true, [], new DateOnly(2026, 8, 1), "v", "greedy") : null,
         Downloads: 100, Gated: false,
         LastModified: new DateTimeOffset(2026, 7, 15, 0, 0, 0, TimeSpan.Zero),
         Params: 30_500_000_000, AllQuants: null, Projectors: null, Arch: "qwen3");

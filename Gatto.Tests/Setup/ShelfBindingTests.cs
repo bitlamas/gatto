@@ -194,6 +194,19 @@ public class ShelfBindingTests
         Assert.Contains(Texts(Populated()), s => s.Contains(ShelfBinding.UnmeasuredShelf, StringComparison.Ordinal));
     }
 
+    //a tested file listed beside an untested pick shows its glyph in the pane, so a shelf holding it is not one where nothing was measured
+    [Fact]
+    public void A_TESTED_FILE_ANYWHERE_ON_THE_SHELF_KEEPS_THE_SENTENCE_OFF()
+    {
+        var shipped = Gatto.Tests.Fakes.ShippedRows.Any(fellShort: false);
+        var first = View().Rows[0];
+        var listed = first.WithFiles([first.RowQuant!, new HubQuant("other-Q8_0.gguf", 9_000_000_000, shipped.Sha256)]);
+
+        Assert.Null(listed.Tested);
+        Assert.DoesNotContain(Texts(Populated() with { Rows = [listed, .. View().Rows.Skip(1)] }),
+            s => s.Contains(ShelfBinding.UnmeasuredShelf, StringComparison.Ordinal));
+    }
+
     [Fact]
     public void THE_HEADER_STRIP_ADVERTISES_EXACTLY_THE_KEYS_THAT_WORK()
     {

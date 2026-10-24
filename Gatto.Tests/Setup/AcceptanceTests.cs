@@ -90,7 +90,7 @@ public class AcceptanceTests
     {
         var flow = new SetupFlow(new Probes { Rows = [], Found = [Local(@"D:\m\qwen.gguf")], ServeOnly = gpu });
         flow.StartPastEngine();
-        flow.Answer("0");
+        flow.AnswerSettled("0");
 
         Assert.Equal(gpu, flow.Writes.CreateModel!.PinGpu);
     }
@@ -103,7 +103,7 @@ public class AcceptanceTests
     {
         var flow = new SetupFlow(new Probes { Rows = [], Found = [Local(@"D:\m\qwen.gguf")], Split = layers });
         flow.StartPastEngine();
-        flow.Answer("0");
+        flow.AnswerSettled("0");
 
         Assert.Equal(layers, flow.Writes.CreateModel!.GpuLayers);
     }
@@ -114,7 +114,7 @@ public class AcceptanceTests
         //with every hub call returning nothing, the run still completes through discovery and writes a usable config
         var flow = new SetupFlow(new Probes { Rows = [], Found = [Local(@"D:\m\qwen.gguf")] });
         flow.StartPastEngine();
-        flow.Answer("0");
+        flow.AnswerSettled("0");
 
         //assert the pending intent before ResumeAfterWrites consumes it (this test stands in for the runner at each pause)
         Assert.NotNull(flow.Writes.CreateModel);
@@ -122,16 +122,16 @@ public class AcceptanceTests
 
         //skip starts the one load and the step ends at its arrival. the test waits for the load and answers the arrival, then the default is an intent
         Assert.Equal(SetupFlow.AuditionWaitingKey,
-            Assert.IsType<SetupScreen.Choice>(flow.Answer(SetupFlow.Skip)).Key);
+            Assert.IsType<SetupScreen.Choice>(flow.AnswerSettled(SetupFlow.Skip)).Key);
         Assert.True(SpinWait.SpinUntil(flow.PollWatch, TimeSpan.FromSeconds(10)), "the load never finished");
-        flow.Answer(SetupFlow.Landed);
-        flow.Answer(SetupFlow.AnswersNext);
+        flow.AnswerSettled(SetupFlow.Landed);
+        flow.AnswerSettled(SetupFlow.AnswersNext);
         Assert.NotNull(flow.Writes.DefaultModel);
         flow.ResumeAfterWrites(null);          //the default write has landed, so the flow resumes at the prove-it check
 
         //prove-it runs on into the done step and ends at the consent pause, where the summary draws from what the install question did
         flow.ResumeAfterWrites(null);
-        var end = Assert.IsType<SetupScreen.Terminal>(flow.Answer(SetupFlow.Finish));
+        var end = Assert.IsType<SetupScreen.Terminal>(flow.AnswerSettled(SetupFlow.Finish));
 
         Assert.True(end.Success);
         Assert.True(flow.Writes.IsEmpty);      //nothing is left pending, because every intent reached a writer.
@@ -149,9 +149,9 @@ public class AcceptanceTests
                 Gatto.Core.Models.FitRegime.FitsGpu, 32768, false, null, 1, false)),
         });
         flow.StartPastEngine();
-        flow.Answer(SetupFlow.TypeAnId);
-        flow.Answer("someone/model");
-        flow.Answer("0");
+        flow.AnswerSettled(SetupFlow.TypeAnId);
+        flow.AnswerSettled("someone/model");
+        flow.AnswerSettled("0");
 
         Assert.Equal("someone/model", flow.Picked!.RowFile!.RepoId);
     }
@@ -176,7 +176,7 @@ public class AcceptanceTests
         //the Context field is non-nullable, so the risk is a manufactured zero. the connect fork has its own case, and this one is the model write
         var flow = new SetupFlow(new Probes { Found = [Local(@"D:\m\qwen.gguf")], Ctx = 16384 });
         flow.StartPastEngine();
-        flow.Answer("0");
+        flow.AnswerSettled("0");
 
         Assert.True(flow.Writes.CreateModel!.Context > 0);
         Assert.Equal(16384, flow.Writes.CreateModel.Context);

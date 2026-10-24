@@ -311,6 +311,24 @@ public class CheckTests
         Golden.AssertEquals("s7", "failed", 100,
             WalkRender.AfterWatch(Walk(Failing(), SetupFlow.AuditionFailedKey).Running, Walk(Failing(), SetupFlow.AuditionFailedKey).Settled, 100, 63_000).Rows);
 
+    //a failed run is recorded too, and only the pass screen reads the recorded fact, so a failure never promises the passed mark
+    [Fact]
+    public void A_FAILED_CHECK_SHOWS_NO_RECORDED_FACT_EVEN_WHEN_ITS_RECORD_WAS_WRITTEN()
+    {
+        var failing = Failing();
+        var recorded = new FakeSetupProbes
+        {
+            Llama = failing.Llama,
+            ActiveFile = failing.ActiveFile,
+            Audition = failing.Audition with { Recorded = new DateOnly(2026, 10, 23) },
+        };
+
+        var body = string.Join("\n", Walk(recorded, SetupFlow.AuditionFailedKey).Settled.BodyRows!.Select(r => r.Text));
+
+        Assert.DoesNotContain("recorded", body, StringComparison.Ordinal);
+        Assert.DoesNotContain(Gatto.Cli.Setup.Shelves.SearchRow.PassedHereWords, body, StringComparison.Ordinal);
+    }
+
     [Fact]
     public void THE_DISQUALIFYING_FAILURE_MATCHES_ITS_GOLDEN() =>
         Golden.AssertEquals("s7", "failed-dq", 100,
@@ -346,6 +364,19 @@ public class CheckTests
 
         //a fixture where every task passed would agree about nothing, so this count keeps the check real.
         Assert.Equal(3, said);
+    }
+
+    //a read before the battery takes the server rows' place, under the screen's own purr and its timer
+    [Fact]
+    public void A_READ_BEFORE_THE_BATTERY_SAYS_WHICH_FILE_IT_READS()
+    {
+        var rows = WalkRender.Watching(Live(new SetupFlow(Probes())), 100, tick: null,
+            nowMs: Purring(), check: new CheckTick(0, 0, "", [], ServerUp: true, Reading: "gemma-4-26B-A4B-it-UD-Q4_K_M.gguf")).Rows;
+
+        var joined = string.Join("\n", rows);
+        Assert.Contains("running       reading gemma-4-26B-A4B-it-UD-Q4_K_M.gguf", joined, StringComparison.Ordinal);
+        Assert.DoesNotContain("started, loading the model", joined, StringComparison.Ordinal);
+        Assert.Contains("1m 12s", joined, StringComparison.Ordinal);
     }
 
     //the done row drops while nothing has finished, a real moment between the first Started and the first Done

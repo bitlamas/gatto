@@ -107,15 +107,15 @@ public class ModelTableTests
         Assert.Equal("fewer params = faster", FitMarks.LegendFor(MachineShape.CpuOnly, GlyphSet.Unicode).Text);
     }
 
-    //a Hub row carries no badge, and a local row keeps today's
+    //a Hub row carries no record of this machine, and a local row keeps its own
     [Fact]
-    public void NO_BADGE_ON_A_HUB_ROW_AND_TODAYS_ON_A_LOCAL_ROW()
+    public void NO_PASSED_MARK_ON_A_HUB_ROW_AND_ITS_OWN_ON_A_LOCAL_ROW()
     {
-        var badge = new Badge("m", new DateOnly(2026, 8, 1), "v", "greedy", Passed: 5, Ran: 5);
+        var badge = new Badge("m", null, true, [], new DateOnly(2026, 8, 1), "v", "greedy");
         var local = R("local", 9, FitRegime.FitsGpu) with { Badge = badge };
         var marks = ShelfTable.Render([local], new Theme(TermCaps.Plain), 120, MachineShape.Discrete, GlyphSet.Unicode);
-        Assert.Contains(marks, r => r.Text.Contains(GlyphSet.Unicode.Ok, StringComparison.Ordinal));
+        Assert.Contains(marks, r => r.Text.Contains(GlyphSet.Unicode.PassedHere, StringComparison.Ordinal));
         var hub = ShelfTable.Render([R("hub", 9, FitRegime.FitsGpu)], new Theme(TermCaps.Plain), 120, MachineShape.Discrete, GlyphSet.Unicode);
-        Assert.DoesNotContain(hub, r => r.Text.Contains(GlyphSet.Unicode.Ok, StringComparison.Ordinal));
+        Assert.DoesNotContain(hub, r => r.Text.Contains(GlyphSet.Unicode.PassedHere, StringComparison.Ordinal));
     }
 }

@@ -143,7 +143,8 @@ public class FirstRunDoorTests : IDisposable
     {
         private int _i;
         public string? Choose(SetupScreen.Choice c, Func<bool>? watch = null,
-            Func<FetchTick?>? tick = null, Func<CheckTick?>? check = null) => Next();
+            Func<FetchTick?>? tick = null, Func<CheckTick?>? check = null) =>
+            Gatto.Tests.Fakes.FlowReads.ThroughRead(c, watch) ?? Next();
         public string? Ask(SetupScreen.Ask a) => Next();
         public void Show(SetupScreen.Info i) { }
         public void End(SetupScreen.Terminal t) { }

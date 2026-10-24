@@ -17,6 +17,9 @@ internal enum AuditionStage
 
     //a server was already serving this model, so the run reused it, and only the CLI caller wants to hear about it
     Reusing,
+
+    //the file is being hashed before the battery, a read as long as the file that needs a live row and no number
+    Reading,
 }
 
 //one fact while an audition runs, typed rather than a string so each caller decides how it looks
@@ -32,6 +35,12 @@ internal sealed record AuditionProgress(
     public static AuditionProgress Note(string text) => new(AuditionStage.Note, Text: text);
 
     public static AuditionProgress Reusing(string text) => new(AuditionStage.Reusing, Text: text);
+
+    //the file name travels as the text, and every caller draws it through ReadingWords so the row reads the same everywhere
+    public static AuditionProgress Reading(string fileName) => new(AuditionStage.Reading, Text: fileName);
+
+    //the words of every row that hashes a file, here and on the wizard's download and adoption
+    public static string ReadingWords(string fileName) => "reading " + fileName;
 
     //no text, the stage itself is the whole fact
     public static AuditionProgress Loading() => new(AuditionStage.Loading);

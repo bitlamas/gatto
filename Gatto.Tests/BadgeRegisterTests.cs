@@ -111,4 +111,100 @@ public class BadgeRegisterTests : IDisposable
         Assert.Null(BadgeRegister.Lookup(_home, "org/worded"));
         Assert.NotNull(BadgeRegister.Lookup(_home, "org/current"));
     }
+
+    //a record as the writer lays it out, the sha256 key only when the stamp had one
+    private static string Record(string verdict, string tasks, string? sha256 = null) =>
+        "{" + Field("schema") + "3," + Field("verdict") + Str(verdict) + "," + Field("battery_version") + BadgeRegister.Battery + ","
+        + Field("measured") + Str("2026-10-20") + "," + (sha256 is null ? "" : Field("sha256") + Str(sha256) + ",")
+        + Field("tasks") + "[" + tasks + "]}";
+
+    private static string Str(string s) => "\"" + s + "\"";
+
+    private static string Field(string name) => Str(name) + ":";
+
+    //the reader returns the last run here whatever its verdict, since the failed mark needs a fail to read
+    [Fact]
+    public void A_FAIL_RECORD_READS_AS_NOT_PASSED_AND_NAMES_NOTHING()
+    {
+        WriteRecord("m-Q4_K_M.gguf", Record("fail", """{"id":"B1","pass":false},{"id":"B2","pass":false},{"id":"B3","skipped":true}"""));
+
+        var b = BadgeRegister.Lookup(_home, "m-Q4_K_M.gguf");
+        Assert.NotNull(b);
+        Assert.False(b!.Passed);
+        Assert.Empty(b.FellShort);
+    }
+
+    [Fact]
+    public void A_PASS_WITH_ONE_FAILED_TASK_NAMES_THAT_TASK()
+    {
+        WriteRecord("m-Q4_K_M.gguf", Record("pass", """{"id":"B1","pass":true},{"id":"B4","pass":false},{"id":"B5","pass":true}"""));
+
+        var b = BadgeRegister.Lookup(_home, "m-Q4_K_M.gguf");
+        Assert.True(b!.Passed);
+        Assert.Equal(["B4"], b.FellShort);
+    }
+
+    //a skip cannot happen on a pass, and the reader must not invent a task out of one
+    [Fact]
+    public void A_SKIPPED_ROW_IS_NOT_A_TASK_FALLEN_SHORT_ON()
+    {
+        WriteRecord("m-Q4_K_M.gguf", Record("pass", """{"id":"B1","pass":true},{"id":"B5","skipped":true}"""));
+        Assert.Empty(BadgeRegister.Lookup(_home, "m-Q4_K_M.gguf")!.FellShort);
+    }
+
+    //a record from a build before the key holds no hash, and the shelf shows nothing beside it
+    [Fact]
+    public void THE_SHA256_IS_READ_WHEN_THE_RECORD_HOLDS_ONE()
+    {
+        var sha = new string('a', 64);
+        WriteRecord("keyed-Q4_K_M.gguf", Record("pass", """{"id":"B1","pass":true}""", sha));
+        WriteRecord("bare-Q4_K_M.gguf", Record("pass", """{"id":"B1","pass":true}"""));
+
+        Assert.Equal(sha, BadgeRegister.Lookup(_home, "keyed-Q4_K_M.gguf")!.Sha256);
+        Assert.Null(BadgeRegister.Lookup(_home, "bare-Q4_K_M.gguf")!.Sha256);
+    }
+
+    [Fact]
+    public void A_RECORD_THAT_STATES_NEITHER_VERDICT_IS_NOT_A_MEASUREMENT()
+    {
+        WriteRecord("m-Q4_K_M.gguf", Record("maybe", """{"id":"B1","pass":true}"""));
+        Assert.Null(BadgeRegister.Lookup(_home, "m-Q4_K_M.gguf"));
+    }
+
+    //the writer files the record under the file name, the one key every model has, and the reader finds it by that name
+    [Fact]
+    public void THE_WRITER_FILES_BY_FILE_NAME_AND_THE_READER_FINDS_IT_THERE()
+    {
+        Gatto.Roles.Audition.BadgeWriter.Write(_home, "Qwen3-8B-Q4_K_M.gguf", Verdict(pass: true), repoId: "org/Qwen3-8B-GGUF");
+        Gatto.Roles.Audition.BadgeWriter.Write(_home, "hand-downloaded-Q5_K_M.gguf", Verdict(pass: false), repoId: null);
+
+        Assert.True(File.Exists(Path.Combine(_home, BadgeRegister.DirectoryName, BadgeRegister.FileNameFor("Qwen3-8B-Q4_K_M.gguf"))));
+        Assert.Equal("org/Qwen3-8B-GGUF", BadgeRegister.Lookup(_home, "Qwen3-8B-Q4_K_M.gguf")!.RepoId);
+        //a hand-downloaded model has no repo id, a real state, and its fail still reads
+        var hand = BadgeRegister.Lookup(_home, "hand-downloaded-Q5_K_M.gguf");
+        Assert.Null(hand!.RepoId);
+        Assert.False(hand.Passed);
+    }
+
+    //model_file held a copy of model_key and had no reader, so schema 3 drops it with no migration
+    [Fact]
+    public void MODEL_FILE_IS_GONE_BECAUSE_IT_WAS_MODEL_KEYS_DUPLICATE()
+    {
+        Gatto.Roles.Audition.BadgeWriter.Write(_home, "Qwen3-8B-Q4_K_M.gguf", Verdict(pass: true), repoId: "org/m");
+        using var doc = System.Text.Json.JsonDocument.Parse(File.ReadAllText(
+            Path.Combine(_home, BadgeRegister.DirectoryName, BadgeRegister.FileNameFor("Qwen3-8B-Q4_K_M.gguf"))));
+
+        Assert.False(doc.RootElement.TryGetProperty("model_file", out _));
+        Assert.Equal(3, doc.RootElement.GetProperty("schema").GetInt32());
+    }
+
+    private static Gatto.Roles.Audition.AuditionVerdict Verdict(bool pass) =>
+        new(pass, false,
+            [
+                new Gatto.Roles.Audition.AuditionTaskResult("B1", pass, pass ? [] : [Gatto.Roles.Audition.FailureShape.NoToolCall],
+                    TimeSpan.FromSeconds(3), "read a file"),
+                new Gatto.Roles.Audition.AuditionTaskResult("B2", true, [], TimeSpan.FromSeconds(4), "write a file"),
+            ],
+            new Gatto.Roles.Audition.AuditionStamp("v0.4.0-99-gdeadbee", "Qwen3-8B-Q4_K_M.gguf", "Q4_K_M", 8192, "temp 0.7"),
+            TimeSpan.FromSeconds(25), 28.4);
 }

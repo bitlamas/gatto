@@ -46,20 +46,21 @@ public class AuditionReportTests : IDisposable
     }
 
     [Fact]
-    public void A_FAIL_writes_a_record_but_Lookup_returns_NOTHING()
+    public void A_FAIL_writes_a_record_that_reads_as_NOT_PASSED()
     {
-        //a failed measurement is still written but the lookup must return nothing, or the search row shows "tool-calling verified" for a failed model
+        //a failed measurement is written and read back as a fail, so the shelf shows the failed mark rather than a pass
         BadgeWriter.Write(_home, "org/bad", Verdict(pass: false));
 
         Assert.True(File.Exists(Path.Combine(_home, "audition", BadgeRegister.FileNameFor("org/bad"))));
-        Assert.Null(BadgeRegister.Lookup(_home, "org/bad"));
+        Assert.False(BadgeRegister.Lookup(_home, "org/bad")!.Passed);
     }
 
     [Fact]
-    public void A_DISQUALIFIED_run_is_no_badge_even_though_it_scored_four()
+    public void A_DISQUALIFIED_run_reads_as_not_passed_even_though_it_scored_four()
     {
+        //a fabrication disqualifies at any score, so the record says fail
         BadgeWriter.Write(_home, "org/liar", Verdict(pass: true, disqualified: true));
-        Assert.Null(BadgeRegister.Lookup(_home, "org/liar"));
+        Assert.False(BadgeRegister.Lookup(_home, "org/liar")!.Passed);
     }
 
     [Fact]
@@ -71,7 +72,26 @@ public class AuditionReportTests : IDisposable
             File.ReadAllText(Path.Combine(_home, "audition", BadgeRegister.FileNameFor("org/bad"))));
 
         Assert.Equal("fail", doc.RootElement.GetProperty("verdict").GetString());
-        Assert.False(doc.RootElement.TryGetProperty("gatto_build", out _));   //a fail record holds no badge fields.
+        //the stamp goes out on a fail too, the reader reads the verdict key and a failed-here mark needs the bytes it failed on
+        Assert.Equal("v0.4.0-38-g52d5ea2", doc.RootElement.GetProperty("gatto_build").GetString());
+        Assert.Equal("temp 0.7", doc.RootElement.GetProperty("sampling_note").GetString());
+    }
+
+    //the hash of the bytes rides the record on both verdicts, and a stamp without one writes no key
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public void THE_RECORD_CARRIES_THE_STAMPS_SHA256_ON_EITHER_VERDICT(bool pass)
+    {
+        var sha = new string('e', 64);
+        BadgeWriter.Write(_home, "org/keyed", Verdict(pass) with { Stamp = Stamp() with { Sha256 = sha, Server = "b1-abc" } });
+        BadgeWriter.Write(_home, "org/bare", Verdict(pass));
+
+        using var keyed = JsonDocument.Parse(File.ReadAllText(Path.Combine(_home, "audition", BadgeRegister.FileNameFor("org/keyed"))));
+        using var bare = JsonDocument.Parse(File.ReadAllText(Path.Combine(_home, "audition", BadgeRegister.FileNameFor("org/bare"))));
+        Assert.Equal(sha, keyed.RootElement.GetProperty("sha256").GetString());
+        Assert.Equal("b1-abc", keyed.RootElement.GetProperty("server").GetString());
+        Assert.False(bare.RootElement.TryGetProperty("sha256", out _));
     }
 
     [Fact]

@@ -20,6 +20,7 @@ public class SetupRunnerWalkTests
         public string? Choose(SetupScreen.Choice c, Func<bool>? watch = null,
             Func<FetchTick?>? tick = null, Func<CheckTick?>? check = null)
         {
+            if (FlowReads.ThroughRead(c, watch) is { } read) return read;
             Seen.Add(c);
             if (watch is not null) Watched.Add(c.Key);
             return Next();
@@ -189,16 +190,16 @@ public class SetupRunnerWalkTests
         var probes = new Probes { Rows = [Row("org/a")], Found = [] };
         var flow = new SetupFlow(probes);
         flow.StartPastEngine();
-        flow.Answer("0");
+        flow.AnswerSettled("0");
         probes.Found = [new FoundModel(@"C:\Users\me\Downloads\model-Q4_K_M.gguf", 4_000_000_000, null)];
         Assert.True(flow.PollForDownload());
-        flow.Answer(SetupFlow.Landed);
+        flow.AnswerSettled(SetupFlow.Landed);
 
         Assert.Equal(new Gatto.Roles.Models.ModelSource("org/a", "model-Q4_K_M.gguf"), flow.Writes.CreateModel!.Source);
 
         var found = new SetupFlow(new Probes { Found = [new FoundModel(@"D:\m\qwen.gguf", 4_000_000_000, null)] });
         found.StartPastEngine();
-        found.Answer("0");
+        found.AnswerSettled("0");
         Assert.Null(found.Writes.CreateModel?.Source);
     }
 
@@ -209,7 +210,7 @@ public class SetupRunnerWalkTests
         var probes = new Probes { Rows = [Row("org/a")], Found = [] };
         var flow = new SetupFlow(probes);
         flow.StartPastEngine();
-        flow.Answer("0");                                  //the pick opens the download screen.
+        flow.AnswerSettled("0");                                  //the pick opens the download screen.
 
         //with nothing in the folder the poll says so and nothing is intended, so the assertion goes on the poll
         Assert.False(flow.PollForDownload(), "an empty folder must not wake the watch");
@@ -219,7 +220,7 @@ public class SetupRunnerWalkTests
         //the browser finishes, and the poll wakes once, which is what produces the answer.
         probes.Found = [new FoundModel(@"C:\Users\me\Downloads\model-Q4_K_M.gguf", 4_000_000_000, null)];
         Assert.True(flow.PollForDownload(), "the file arriving must wake the watch");
-        flow.Answer(SetupFlow.Landed);
+        flow.AnswerSettled(SetupFlow.Landed);
 
         Assert.Equal(@"C:\Users\me\Downloads\model-Q4_K_M.gguf", flow.Writes.CreateModel!.GgufPath);
         Assert.True(flow.NeedsWritesApplied);              //a found model reaches this same completion point.
@@ -277,13 +278,13 @@ public class SetupRunnerWalkTests
         var probes = new Probes { Rows = [Row("org/a"), Row("org/b")], Found = [], Roots = [@"D:\dl"] };
         var flow = new SetupFlow(probes);
         flow.StartPastEngine();
-        flow.Answer("0");
-        flow.Answer(SetupFlow.Landed);                   //the first miss gets the explanation.
-        flow.Answer(SetupFlow.Landed);                   //the second miss repeats no explanation.
-        flow.Answer(SetupFlow.PickAnother);                  //back to the shelf.
-        flow.Answer("1");                                    //a different model is picked.
+        flow.AnswerSettled("0");
+        flow.AnswerSettled(SetupFlow.Landed);                   //the first miss gets the explanation.
+        flow.AnswerSettled(SetupFlow.Landed);                   //the second miss repeats no explanation.
+        flow.AnswerSettled(SetupFlow.PickAnother);                  //back to the shelf.
+        flow.AnswerSettled("1");                                    //a different model is picked.
 
-        var miss = Assert.IsType<SetupScreen.Choice>(flow.Answer(SetupFlow.Landed));
+        var miss = Assert.IsType<SetupScreen.Choice>(flow.AnswerSettled(SetupFlow.Landed));
         //the download screen has its own present-tense heading, and the shelf keeps the past-tense line
         Assert.Contains(miss.BodyRows!, r => r.Text.Contains("It is watching:", StringComparison.Ordinal));
     }
@@ -300,7 +301,7 @@ public class SetupRunnerWalkTests
         var probes = new Probes { Rows = [SetRow("org/big", 3, 12_000_000_000)], Found = [] };
         var flow = new SetupFlow(probes);
         flow.StartPastEngine();
-        flow.Answer("0");                                  //choosing a row arms the download watch.
+        flow.AnswerSettled("0");                                  //choosing a row arms the download watch.
 
         (FoundModel[] Found, string What)[] steps =
         [
@@ -350,11 +351,11 @@ public class SetupRunnerWalkTests
         var partial = new Probes { Rows = [SetRow("org/big", 13, 52_000_000_000)], Found = [] };
         var half = new SetupFlow(partial);
         half.StartPastEngine();          //no model found, so setup shows the search shelf.
-        half.Answer("0");                          //choosing the set row opens the download screen.
+        half.AnswerSettled("0");                          //choosing the set row opens the download screen.
         partial.Found = [FoundSet(4, 13)];
         //a half-arrived set wakes the watch, since the poll matches on the set. refusing to adopt is the job of Adopt, one layer down
         Assert.True(half.PollForDownload());
-        half.Answer(SetupFlow.Landed);
+        half.AnswerSettled(SetupFlow.Landed);
 
         //check Writes.CreateModel alone, since the engine step records its own write on purpose
         Assert.Null(half.Writes.CreateModel);
@@ -364,10 +365,10 @@ public class SetupRunnerWalkTests
         var full = new Probes { Rows = [SetRow("org/big", 13, 52_000_000_000)], Found = [] };
         var whole = new SetupFlow(full);
         whole.StartPastEngine();
-        whole.Answer("0");
+        whole.AnswerSettled("0");
         full.Found = [FoundSet(13, 13)];
         Assert.True(whole.PollForDownload());
-        whole.Answer(SetupFlow.Landed);
+        whole.AnswerSettled(SetupFlow.Landed);
 
         //the created model must name shard one, an adopted tail shard breaks ModelScaffold.ResolveShardOne
         Assert.EndsWith("m-Q4_K_M-00001-of-00013.gguf", whole.Writes.CreateModel!.GgufPath,
@@ -381,22 +382,22 @@ public class SetupRunnerWalkTests
         var probes = new Probes { Rows = [SetRow("org/big", 3, 12_000_000_000)], Found = [] };
         var flow = new SetupFlow(probes);
         flow.StartPastEngine();
-        flow.Answer("0");
+        flow.AnswerSettled("0");
 
         probes.Found = [FoundSet(1, 3)];
         Assert.True(flow.PollForDownload());
-        var first = Assert.IsType<SetupScreen.Choice>(flow.Answer(SetupFlow.Landed));
+        var first = Assert.IsType<SetupScreen.Choice>(flow.AnswerSettled(SetupFlow.Landed));
         Assert.Equal(SetupFlow.PartialSetKey, first.Key);
         Assert.Contains("1 of 3", first.Question!, StringComparison.Ordinal);
 
         probes.Found = [FoundSet(2, 3)];
         Assert.True(flow.PollForDownload(), "another shard is a state change and must wake it");
-        var again = Assert.IsType<SetupScreen.Choice>(flow.Answer(SetupFlow.Landed));
+        var again = Assert.IsType<SetupScreen.Choice>(flow.AnswerSettled(SetupFlow.Landed));
         Assert.Contains("2 of 3", again.Question!, StringComparison.Ordinal);
 
         probes.Found = [FoundSet(3, 3)];
         Assert.True(flow.PollForDownload());
-        flow.Answer(SetupFlow.Landed);
+        flow.AnswerSettled(SetupFlow.Landed);
         Assert.NotNull(flow.Writes.CreateModel);
     }
 
@@ -407,12 +408,12 @@ public class SetupRunnerWalkTests
         var probes = new Probes { Rows = [SetRow("org/big", 5, 20_000_000_000)], Found = [] };
         var flow = new SetupFlow(probes);
         flow.StartPastEngine();
-        flow.Answer("0");
+        flow.AnswerSettled("0");
 
         probes.Found = [new FoundModel(@"C:\Users\me\Downloads\m-Q4_K_M-00003-of-00005.gguf",
             8_000_000_000, null, 2)];
         Assert.True(flow.PollForDownload());
-        var screen = Assert.IsType<SetupScreen.Choice>(flow.Answer(SetupFlow.Landed));
+        var screen = Assert.IsType<SetupScreen.Choice>(flow.AnswerSettled(SetupFlow.Landed));
 
         Assert.Equal(SetupFlow.PartialSetKey, screen.Key);
         Assert.Contains("2 of 5", screen.Question!, StringComparison.Ordinal);
@@ -424,10 +425,10 @@ public class SetupRunnerWalkTests
         //browsers save to chosen folders and people move files, so the watch needs a typed way out. the scan roots are a policy the user can't argue with
         var flow = new SetupFlow(new Probes { Rows = [Row("org/a")] });
         flow.StartPastEngine();
-        flow.Answer("0");
+        flow.AnswerSettled("0");
 
         //the typed field on this screen is the way out, so the user isn't stuck in a folder the file will never appear in
-        var watch = Assert.IsType<SetupScreen.Choice>(flow.Answer(SetupFlow.Landed));
+        var watch = Assert.IsType<SetupScreen.Choice>(flow.AnswerSettled(SetupFlow.Landed));
         Assert.Equal(SetupFlow.DownloadKey, watch.Key);
         Assert.NotNull(watch.Door);
     }
@@ -439,12 +440,12 @@ public class SetupRunnerWalkTests
         var probes = new Probes { Rows = [Row("org/a")], Found = [] };
         var flow = new SetupFlow(probes);
         flow.StartPastEngine();
-        flow.Answer("0");                                   //0 picks the row, which arms the watch and opens the download screen
-        flow.Answer(SetupFlow.Elsewhere);                   //the Elsewhere answer opens the folder prompt
+        flow.AnswerSettled("0");                                   //0 picks the row, which arms the watch and opens the download screen
+        flow.AnswerSettled(SetupFlow.Elsewhere);                   //the Elsewhere answer opens the folder prompt
 
         //put the file in the folder the answer names, so the file-name match can hit
         probes.Found = [new FoundModel(@"D:\my downloads\model-Q4_K_M.gguf", 4_000_000_000, null)];
-        flow.Answer(ShelfControls.TypedAnswer(@"D:\my downloads"));
+        flow.AnswerSettled(ShelfControls.TypedAnswer(@"D:\my downloads"));
 
         Assert.Equal(@"D:\my downloads\model-Q4_K_M.gguf", flow.Selected?.Path);
     }
@@ -456,9 +457,9 @@ public class SetupRunnerWalkTests
         var probes = new Probes { Rows = [Row("org/a")], Found = [] };
         var flow = new SetupFlow(probes);
         flow.StartPastEngine();
-        flow.Answer("0");
-        flow.Answer(SetupFlow.Elsewhere);
-        flow.Answer(ShelfControls.TypedAnswer(@"D:\my downloads"));
+        flow.AnswerSettled("0");
+        flow.AnswerSettled(SetupFlow.Elsewhere);
+        flow.AnswerSettled(ShelfControls.TypedAnswer(@"D:\my downloads"));
 
         Assert.Contains(@"D:\my downloads", probes.ScanRoots);
     }
@@ -470,12 +471,12 @@ public class SetupRunnerWalkTests
         var probes = new Probes { Rows = [Row("org/a")], Found = [] };
         var flow = new SetupFlow(probes);
         flow.StartPastEngine();
-        flow.Answer("0");
-        flow.Answer(SetupFlow.Elsewhere);
+        flow.AnswerSettled("0");
+        flow.AnswerSettled(SetupFlow.Elsewhere);
 
         //put another file in that folder, so the list has rows without the one asked for
         probes.Found = [new FoundModel(@"D:\my downloads\something-else.gguf", 4_000_000_000, null)];
-        var screen = Assert.IsType<SetupScreen.Choice>(flow.Answer(ShelfControls.TypedAnswer(@"D:\my downloads")));
+        var screen = Assert.IsType<SetupScreen.Choice>(flow.AnswerSettled(ShelfControls.TypedAnswer(@"D:\my downloads")));
 
         Assert.Equal(SetupFlow.DiscoveredKey, screen.Key);
         Assert.Null(flow.Selected);
@@ -510,9 +511,9 @@ public class SetupRunnerWalkTests
         };
         var flow = new SetupFlow(probes);
         flow.StartPastEngine();
-        flow.Answer("0");                                  //0 picks the row, which opens the download screen
+        flow.AnswerSettled("0");                                  //0 picks the row, which opens the download screen
 
-        var miss = Assert.IsType<SetupScreen.Choice>(flow.Answer(SetupFlow.Landed));
+        var miss = Assert.IsType<SetupScreen.Choice>(flow.AnswerSettled(SetupFlow.Landed));
         Assert.Equal(SetupFlow.DownloadKey, miss.Key);
 
         var body = string.Join("\n", miss.BodyRows!.Select(r => r.Text));
@@ -530,7 +531,7 @@ public class SetupRunnerWalkTests
         var flow = new SetupFlow(probes);
         flow.StartPastEngine();
 
-        var first = Assert.IsType<SetupScreen.Choice>(flow.Answer("0"));
+        var first = Assert.IsType<SetupScreen.Choice>(flow.AnswerSettled("0"));
         var body = string.Join("\n", first.BodyRows!.Select(r => r.Text));
 
         Assert.Equal(SetupFlow.DownloadKey, first.Key);
@@ -566,9 +567,9 @@ public class SetupRunnerWalkTests
         //the typed-id path lands on its row, whose Enter must reach the same download screen as the shelf path, since the step has one home
         var flow = new SetupFlow(new ProbesWithTypedId { Rows = [] });
         flow.StartPastEngine();
-        flow.Answer(SetupFlow.TypeAnId);
-        flow.Answer("someone/model");
-        var screen = Assert.IsType<SetupScreen.Choice>(flow.Answer("0"));
+        flow.AnswerSettled(SetupFlow.TypeAnId);
+        flow.AnswerSettled("someone/model");
+        var screen = Assert.IsType<SetupScreen.Choice>(flow.AnswerSettled("0"));
 
         Assert.Equal(SetupFlow.DownloadKey, screen.Key);
     }
@@ -708,11 +709,11 @@ public class SetupRunnerWalkTests
         var probes = new Probes { Rows = [SetRow("org/big", 3, 12_000_000_000)], Found = [] };
         var flow = new SetupFlow(probes);
         flow.StartPastEngine();
-        flow.Answer("0");
+        flow.AnswerSettled("0");
 
         probes.Found = [FoundSet(1, 3)];
         Assert.True(flow.PollForDownload());
-        var partial = Assert.IsType<SetupScreen.Choice>(flow.Answer(SetupFlow.Landed));
+        var partial = Assert.IsType<SetupScreen.Choice>(flow.AnswerSettled(SetupFlow.Landed));
         Assert.Equal(SetupFlow.PartialSetKey, partial.Key);
         Assert.True(partial.OnlyTheWatchAdvances, "this screen must be render-and-wait");
 

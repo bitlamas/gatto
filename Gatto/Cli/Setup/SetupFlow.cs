@@ -365,6 +365,9 @@ internal sealed partial class SetupFlow(ISetupProbes probes)
     private ConnectProbe? _found;
     private IReadOnlyList<FoundModel> _discovered = [];
 
+    //the sha256 the run already holds for one file, from a verified fetch or a read, so the profile records it without reading the file again
+    private (string Path, string Sha256, long? Size, DateTime? Written)? _knownHash;
+
     //keep the last sweep's roots out of the back-step snapshot (a stale list would describe a sweep that did not happen)
     private IReadOnlyList<string> _scanRoots = [];
 
@@ -552,6 +555,7 @@ internal sealed partial class SetupFlow(ISetupProbes probes)
     private readonly List<string> _checkDone = [];
     private bool _serverUp;
     private bool _stillLoading;
+    private string? _checkReading;
 
     //number finished tasks the way the offer numbered them (the runner counts the same list in the same order)
     private void OnCheck(Gatto.Roles.Audition.AuditionProgress p)
@@ -559,7 +563,12 @@ internal sealed partial class SetupFlow(ISetupProbes probes)
         lock (_checkGate)
             switch (p.Stage)
             {
+                //the read ends when the battery starts, the row it drew gives way to the task count
+                case Gatto.Roles.Audition.AuditionStage.Reading:
+                    _checkReading = p.Text;
+                    break;
                 case Gatto.Roles.Audition.AuditionStage.Started:
+                    _checkReading = null;
                     _checkIndex = p.Index;
                     _checkTotal = p.Total;
                     _checkTask = p.Label;
@@ -589,6 +598,7 @@ internal sealed partial class SetupFlow(ISetupProbes probes)
             _checkDone.Clear();
             _serverUp = false;
             _stillLoading = false;
+            _checkReading = null;
         }
     }
 
@@ -596,10 +606,10 @@ internal sealed partial class SetupFlow(ISetupProbes probes)
     public CheckTick? PollCheck()
     {
         lock (_checkGate)
-            return _checkTotal == 0 && _checkDone.Count == 0 && !_serverUp && !_stillLoading
+            return _checkTotal == 0 && _checkDone.Count == 0 && !_serverUp && !_stillLoading && _checkReading is null
                 ? null
                 : new CheckTick(_checkIndex, _checkTotal, _checkTask, [.. _checkDone], _serverUp,
-                    _stillLoading);
+                    _stillLoading, _checkReading);
     }
 
     //the latest fetch moment, null when nothing is fetching
@@ -949,6 +959,7 @@ internal sealed partial class SetupFlow(ISetupProbes probes)
             ModelConsentKey when answer is ModelFetchNow or PickAnother
                 || ShelfControls.Untyped(answer) is not null => AnswerModelConsent(answer),
             ModelFetchingKey => AfterModelFetch(answer),
+            ReadingKey => AfterReading(answer),
             ModelFetchingPausedKey => AnswerModelFetchingPaused(answer),
             ModelArrivedKey => AnswerModelArrived(answer),
             ModelDroppedKey or ModelMismatchKey => AnswerModelEnding(answer),

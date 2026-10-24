@@ -3,7 +3,8 @@ namespace Gatto.Cli.Setup;
 //one moment of the running check, every event so far added up. the total is never zero, and finished tasks are numbered rather than marked
 internal readonly record struct CheckTick(
     int Index, int Total, string Task, IReadOnlyList<string> Done, bool ServerUp = false,
-    bool StillLoading = false);
+    bool StillLoading = false,
+    string? Reading = null);   //the file the run is hashing before the battery, null once the battery starts or when it read nothing
 
 //the live rows of the running check, pure composition with no clock and no width
 internal static class CheckRows
@@ -15,13 +16,18 @@ internal static class CheckRows
         var t = tick ?? new CheckTick(0, 0, "", []);
         return
         [
+        //the read takes the place of the server rows, it runs on a server already up or before one starts
+        .. t.Reading is { } file && t.Total == 0
+            ? (IReadOnlyList<SetupRow>)[SetupFlow.CheckFacts.Row("running",
+                Gatto.Roles.Audition.AuditionProgress.ReadingWords(file))]
+            : [],
         //the first thing the check does is start a server, so the starting row shares the running label on purpose
-        .. !t.ServerUp && t.Total == 0
+        .. t.Reading is null && !t.ServerUp && t.Total == 0
             ? (IReadOnlyList<SetupRow>)[SetupFlow.CheckFacts.Row("running",
                 "starting the server" + glyphs.Ellipsis)]
             : [],
         //the words are the flow's and the fact is the probe's, since copy shipped by a probe reaches no screen test
-        .. t.ServerUp && t.Total == 0
+        .. t.Reading is null && t.ServerUp && t.Total == 0
             ? (IReadOnlyList<SetupRow>)[SetupFlow.CheckFacts.Row("server", "started, loading the model")]
             : [],
         //the count is lifted out of the aside, since the number is what the eye looks for and the task's words explain it

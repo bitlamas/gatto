@@ -44,7 +44,7 @@ public class TypedPathAdoptionTests
             //a model is already on the shelf, and the typed file is in the scan too, since the real sweep would find it
             var (flow, _, _) = LocalShelf(WriteGguf(dir, "something-else-Q4_K_M.gguf"), typed);
 
-            flow.Answer(ShelfControls.TypedAnswer(typed));
+            flow.AnswerSettled(ShelfControls.TypedAnswer(typed));
 
             Assert.Equal(typed, flow.Writes.CreateModel?.GgufPath);
         }
@@ -60,7 +60,7 @@ public class TypedPathAdoptionTests
         {
             var (flow, probes, _) = LocalShelf(WriteGguf(dir, "qwen3-4b-Q4_K_M.gguf"));
 
-            flow.Answer(ShelfControls.TypedAnswer(dir));
+            flow.AnswerSettled(ShelfControls.TypedAnswer(dir));
 
             Assert.Contains(dir, probes.ScanRoots);
             Assert.Null(flow.Writes.CreateModel);

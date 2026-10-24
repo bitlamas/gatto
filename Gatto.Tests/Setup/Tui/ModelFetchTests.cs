@@ -70,7 +70,7 @@ public class ModelFetchTests
     {
         var flow = new SetupFlow(probes);
         flow.StartPastEngine();
-        return Assert.IsType<SetupScreen.Choice>(flow.Answer("0"));
+        return Assert.IsType<SetupScreen.Choice>(flow.AnswerSettled("0"));
     }
 
     private static SetupScreen.Choice Fetching(FakeSetupProbes probes) => Fetching(probes, false);
@@ -80,8 +80,8 @@ public class ModelFetchTests
     {
         var flow = new SetupFlow(probes);
         if (inSession) flow.StartAtModelSegment(); else flow.StartPastEngine();
-        flow.Answer("0");
-        return Assert.IsType<SetupScreen.Choice>(flow.Answer(SetupFlow.ModelFetchNow));
+        flow.AnswerSettled("0");
+        return Assert.IsType<SetupScreen.Choice>(flow.AnswerSettled(SetupFlow.ModelFetchNow));
     }
 
     //the live download screen for the tests that guard its keys, exposed so the fixture is not copied again
@@ -129,9 +129,9 @@ public class ModelFetchTests
         };
         var flow = new SetupFlow(probes);
         if (inSession) flow.StartAtModelSegment(); else flow.StartPastEngine();
-        flow.Answer("0");
-        flow.Answer(SetupFlow.ModelFetchNow);
-        var screen = Assert.IsType<SetupScreen.Choice>(flow.Answer(SetupFlow.Landed));
+        flow.AnswerSettled("0");
+        flow.AnswerSettled(SetupFlow.ModelFetchNow);
+        var screen = Assert.IsType<SetupScreen.Choice>(flow.AnswerSettled(SetupFlow.Landed));
         Assert.Equal(SetupFlow.ModelDroppedKey, screen.Key);
         //the strip says which path landed, three sections for add and five for setup
         Assert.Equal(inSession ? 3 : 5, screen.Strip.Count);
@@ -154,8 +154,8 @@ public class ModelFetchTests
         };
         var flow = new SetupFlow(probes);
         if (inSession) flow.StartAtModelSegment(); else flow.StartPastEngine();
-        flow.Answer("0");
-        var screen = Assert.IsType<SetupScreen.Choice>(flow.Answer(SetupFlow.ModelFetchNow));
+        flow.AnswerSettled("0");
+        var screen = Assert.IsType<SetupScreen.Choice>(flow.AnswerSettled(SetupFlow.ModelFetchNow));
         Assert.Equal(SetupFlow.ModelFetchingKey, screen.Key);
         return (flow, probes, screen);
     }
@@ -164,9 +164,9 @@ public class ModelFetchTests
     {
         var flow = new SetupFlow(probes);
         flow.StartPastEngine();
-        flow.Answer("0");
-        flow.Answer(SetupFlow.ModelFetchNow);
-        return Assert.IsType<SetupScreen.Choice>(flow.Answer(SetupFlow.Landed));
+        flow.AnswerSettled("0");
+        flow.AnswerSettled(SetupFlow.ModelFetchNow);
+        return Assert.IsType<SetupScreen.Choice>(flow.AnswerSettled(SetupFlow.Landed));
     }
 
     //the corpus
@@ -275,10 +275,10 @@ public class ModelFetchTests
         var probes = Probes(VisionOffer());
         var flow = new SetupFlow(probes);
         flow.StartPastEngine();
-        var consent = Assert.IsType<SetupScreen.Choice>(flow.Answer("0"));
+        var consent = Assert.IsType<SetupScreen.Choice>(flow.AnswerSettled("0"));
         Assert.Equal(2, consent.Options.Count);
 
-        var back = Assert.IsType<SetupScreen.Choice>(flow.Answer(SetupFlow.PickAnother));
+        var back = Assert.IsType<SetupScreen.Choice>(flow.AnswerSettled(SetupFlow.PickAnother));
         Assert.Equal(SetupFlow.SearchKey, back.Key);
         Assert.Empty(probes.ModelFetched);
     }
@@ -305,14 +305,14 @@ public class ModelFetchTests
         var probes = Probes(offer);
         var flow = new SetupFlow(probes);
         flow.StartPastEngine();
-        flow.Answer("0");
-        var screen = Assert.IsType<SetupScreen.Choice>(flow.Answer(SetupFlow.ModelFetchNow));
+        flow.AnswerSettled("0");
+        var screen = Assert.IsType<SetupScreen.Choice>(flow.AnswerSettled(SetupFlow.ModelFetchNow));
 
         Assert.Equal(SetupFlow.ModelFetchingKey, screen.Key);
         Assert.True(screen.Watching);
 
         //the watch resolving is what joins the task, nothing may be read about the fetch before it
-        flow.Answer(SetupFlow.Landed);
+        flow.AnswerSettled(SetupFlow.Landed);
         Assert.Same(offer, Assert.Single(probes.ModelFetched));
     }
 
@@ -323,9 +323,9 @@ public class ModelFetchTests
         var probes = Probes(VisionOffer());
         var flow = new SetupFlow(probes);
         flow.StartPastEngine();
-        flow.Answer("0");
+        flow.AnswerSettled("0");
 
-        Assert.Throws<InvalidOperationException>(() => flow.Answer("model.fetch.probably"));
+        Assert.Throws<InvalidOperationException>(() => flow.AnswerSettled("model.fetch.probably"));
 
         //nothing was fetched, a throw alone would not say that
         Assert.Empty(probes.ModelFetched);
@@ -341,10 +341,10 @@ public class ModelFetchTests
         var probes = Probes(VisionOffer(), result: new(outcome, Weights));
         var flow = new SetupFlow(probes);
         flow.StartPastEngine();
-        flow.Answer("0");
-        flow.Answer(SetupFlow.ModelFetchNow);
+        flow.AnswerSettled("0");
+        flow.AnswerSettled(SetupFlow.ModelFetchNow);
 
-        var after = Assert.IsType<SetupScreen.Choice>(flow.Answer(SetupFlow.Landed));
+        var after = Assert.IsType<SetupScreen.Choice>(flow.AnswerSettled(SetupFlow.Landed));
         Assert.Equal(SetupFlow.DownloadKey, after.Key);
     }
 
@@ -355,14 +355,39 @@ public class ModelFetchTests
         var probes = Probes(VisionOffer());
         var flow = new SetupFlow(probes);
         flow.StartPastEngine();
-        flow.Answer("0");
-        flow.Answer(SetupFlow.ModelFetchNow);
-        flow.Answer(SetupFlow.Landed);
+        flow.AnswerSettled("0");
+        flow.AnswerSettled(SetupFlow.ModelFetchNow);
+        flow.AnswerSettled(SetupFlow.Landed);
         var before = probes.ScanRoots.Count;
 
-        flow.Answer(SetupFlow.ModelArrivedNext);
+        flow.AnswerSettled(SetupFlow.ModelArrivedNext);
 
         Assert.Equal(Into, probes.ScanRoots.Skip(before).Single());
+    }
+
+    //a fetch arrives only when every byte matched the listed oid, so the model is written with that oid and nothing reads the file again
+    [Fact]
+    public void THE_ARRIVAL_CARRIES_THE_LISTED_OID_TO_THE_MODEL_WITH_NO_HASH()
+    {
+        var hashed = 0;
+        var probes = new FakeSetupProbes
+        {
+            HubOffer = PlainOffer(),
+            ModelResult = new(HubFetchOutcome.Arrived),
+            Rows = [Row(Repo, Quant(Weights, WeightsBytes))],
+            Hash = _ => { hashed++; return Sha; },
+        };
+        var flow = new SetupFlow(probes);
+        flow.StartPastEngine();
+        flow.AnswerSettled("0");
+        flow.AnswerSettled(SetupFlow.ModelFetchNow);
+        flow.AnswerSettled(SetupFlow.Landed);
+        probes.Found = [new FoundModel(Into + Weights, WeightsBytes, null)];
+
+        flow.AnswerSettled(SetupFlow.ModelArrivedNext);
+
+        Assert.Equal(Sha, flow.Writes.CreateModel!.Sha256);
+        Assert.Equal(0, hashed);
     }
 
 
@@ -382,9 +407,9 @@ public class ModelFetchTests
     {
         var flow = new SetupFlow(probes);
         flow.StartPastEngine();
-        flow.Answer("0");
-        flow.Answer(SetupFlow.ModelFetchNow);
-        return Assert.IsType<SetupScreen.Choice>(flow.Answer(SetupFlow.Landed));
+        flow.AnswerSettled("0");
+        flow.AnswerSettled(SetupFlow.ModelFetchNow);
+        return Assert.IsType<SetupScreen.Choice>(flow.AnswerSettled(SetupFlow.Landed));
     }
 
     [Fact]
@@ -415,10 +440,10 @@ public class ModelFetchTests
 
         var flow = new SetupFlow(probes);
         flow.StartPastEngine();
-        flow.Answer("0");
-        flow.Answer(SetupFlow.ModelFetchNow);
-        flow.Answer(SetupFlow.Landed);
-        flow.Answer(SetupFlow.BackKey);
+        flow.AnswerSettled("0");
+        flow.AnswerSettled(SetupFlow.ModelFetchNow);
+        flow.AnswerSettled(SetupFlow.Landed);
+        flow.AnswerSettled(SetupFlow.BackKey);
         flow.MarkLeaving();
 
         Assert.Empty(probes.PartialsDeleted);
@@ -431,9 +456,9 @@ public class ModelFetchTests
         var probes = Dropping();
         var flow = new SetupFlow(probes);
         flow.StartPastEngine();
-        flow.Answer("0");
-        flow.Answer(SetupFlow.ModelFetchNow);
-        var dropped = Assert.IsType<SetupScreen.Choice>(flow.Answer(SetupFlow.Landed));
+        flow.AnswerSettled("0");
+        flow.AnswerSettled(SetupFlow.ModelFetchNow);
+        var dropped = Assert.IsType<SetupScreen.Choice>(flow.AnswerSettled(SetupFlow.Landed));
 
         var (answer, frame) = WalkRender.Answered(dropped, 100, [SetupRig.CtrlC, SetupRig.CtrlC]);
         Assert.Null(answer);
@@ -500,15 +525,15 @@ public class ModelFetchTests
         var probes = Dropping();
         var flow = new SetupFlow(probes);
         flow.StartPastEngine();
-        flow.Answer("0");
-        flow.Answer(SetupFlow.ModelFetchNow);
-        flow.Answer(SetupFlow.Landed);
+        flow.AnswerSettled("0");
+        flow.AnswerSettled(SetupFlow.ModelFetchNow);
+        flow.AnswerSettled(SetupFlow.Landed);
         Assert.Equal(1, probes.ModelStarts);
 
-        var again = Assert.IsType<SetupScreen.Choice>(flow.Answer(SetupFlow.ModelResume));
+        var again = Assert.IsType<SetupScreen.Choice>(flow.AnswerSettled(SetupFlow.ModelResume));
         Assert.Equal(SetupFlow.ModelFetchingKey, again.Key);
 
-        flow.Answer(SetupFlow.Landed);
+        flow.AnswerSettled(SetupFlow.Landed);
         Assert.Equal(2, probes.ModelStarts);
         Assert.Equal(2, probes.ModelFetched.Count);
         Assert.Same(probes.ModelFetched[0], probes.ModelFetched[1]);
@@ -528,12 +553,12 @@ public class ModelFetchTests
         };
         var flow = new SetupFlow(probes);
         flow.StartPastEngine();
-        flow.Answer("0");
-        flow.Answer(SetupFlow.ModelFetchNow);
-        var screen = Assert.IsType<SetupScreen.Choice>(flow.Answer(SetupFlow.Landed));
+        flow.AnswerSettled("0");
+        flow.AnswerSettled(SetupFlow.ModelFetchNow);
+        var screen = Assert.IsType<SetupScreen.Choice>(flow.AnswerSettled(SetupFlow.Landed));
         Assert.Equal(2, screen.Options.Count);
 
-        var back = Assert.IsType<SetupScreen.Choice>(flow.Answer(SetupFlow.PickAnother));
+        var back = Assert.IsType<SetupScreen.Choice>(flow.AnswerSettled(SetupFlow.PickAnother));
         Assert.Equal(SetupFlow.SearchKey, back.Key);
         Assert.Equal(1, probes.ModelStarts);
     }
@@ -550,10 +575,10 @@ public class ModelFetchTests
         };
         var flow = new SetupFlow(probes);
         flow.StartPastEngine();
-        flow.Answer("0");
-        flow.Answer(SetupFlow.ModelFetchNow);
+        flow.AnswerSettled("0");
+        flow.AnswerSettled(SetupFlow.ModelFetchNow);
 
-        var after = Assert.IsType<SetupScreen.Choice>(flow.Answer(SetupFlow.ModelFetchStop));
+        var after = Assert.IsType<SetupScreen.Choice>(flow.AnswerSettled(SetupFlow.ModelFetchStop));
 
         Assert.True(probes.ModelUnwound, "the flow spoke before the fetch had unwound");
         //the stop goes back to the offer, declining this download is not leaving setup
@@ -567,13 +592,13 @@ public class ModelFetchTests
         var probes = Dropping();
         var flow = new SetupFlow(probes);
         flow.StartPastEngine();
-        flow.Answer("0");
-        flow.Answer(SetupFlow.ModelFetchNow);
-        flow.Answer(SetupFlow.Landed);
+        flow.AnswerSettled("0");
+        flow.AnswerSettled(SetupFlow.ModelFetchNow);
+        flow.AnswerSettled(SetupFlow.Landed);
 
         probes.Arrive();
-        flow.Answer(SetupFlow.ModelResume);
-        var arrived = Assert.IsType<SetupScreen.Choice>(flow.Answer(SetupFlow.Landed));
+        flow.AnswerSettled(SetupFlow.ModelResume);
+        var arrived = Assert.IsType<SetupScreen.Choice>(flow.AnswerSettled(SetupFlow.Landed));
 
         Assert.Equal(SetupFlow.ModelArrivedKey, arrived.Key);
         //two legs were run, so the figure the arrival carries covers both rather than restarting
@@ -603,9 +628,9 @@ public class ModelFetchTests
     {
         var flow = new SetupFlow(probes);
         flow.StartPastEngine();
-        flow.Answer("0");
-        flow.Answer(SetupFlow.ModelFetchNow);
-        return Assert.IsType<SetupScreen.Choice>(flow.Answer(SetupFlow.Landed));
+        flow.AnswerSettled("0");
+        flow.AnswerSettled(SetupFlow.ModelFetchNow);
+        return Assert.IsType<SetupScreen.Choice>(flow.AnswerSettled(SetupFlow.Landed));
     }
 
     //a clock that answers 0 once and then the given moment, so the purr comes out as a real wait
@@ -656,12 +681,12 @@ public class ModelFetchTests
 
         var flow = new SetupFlow(probes);
         flow.StartPastEngine();
-        flow.Answer("0");
+        flow.AnswerSettled("0");
 
         probes.Found = [Landed()];
         //poll before answering, AnswerDownload reads the list the scan left and does not rescan, otherwise every case falls through to still watching
         flow.PollWatch();
-        var next = flow.Answer(SetupFlow.Landed);
+        var next = flow.AnswerSettled(SetupFlow.Landed);
 
         var stillWatching = ScreenKey.Of(next) == SetupFlow.DownloadKey;
         var body = stillWatching
@@ -693,7 +718,7 @@ public class ModelFetchTests
 
         var flow = new SetupFlow(probes);
         flow.StartPastEngine();
-        var watch = Assert.IsType<SetupScreen.Choice>(flow.Answer("0"));
+        var watch = Assert.IsType<SetupScreen.Choice>(flow.AnswerSettled("0"));
         var body = string.Join("\n", watch.BodyRows!.Select(r => r.Text));
         Assert.Contains("It will check the name and the size when a file lands, but without a "
             + "published fingerprint it can't check the bytes.", body, StringComparison.Ordinal);
@@ -701,7 +726,7 @@ public class ModelFetchTests
         //the right name at the wrong size is the only wrongness this state can see
         probes.Found = [Landed(bytes: WeightsBytes - 1)];
         flow.PollWatch();
-        var wrong = Assert.IsType<SetupScreen.Choice>(flow.Answer(SetupFlow.Landed));
+        var wrong = Assert.IsType<SetupScreen.Choice>(flow.AnswerSettled(SetupFlow.Landed));
         Assert.Equal(SetupFlow.DownloadKey, wrong.Key);
         Assert.Contains("isn't the published one",
             string.Join(" ", wrong.BodyRows!.Select(r => r.Text)), StringComparison.Ordinal);
@@ -726,10 +751,10 @@ public class ModelFetchTests
 
         var flow = new SetupFlow(probes);
         flow.StartPastEngine();
-        flow.Answer("0");
+        flow.AnswerSettled("0");
         probes.Found = [Landed()];
         flow.PollWatch();
-        var screen = Assert.IsType<SetupScreen.Choice>(flow.Answer(SetupFlow.Landed));
+        var screen = Assert.IsType<SetupScreen.Choice>(flow.AnswerSettled(SetupFlow.Landed));
 
         Assert.Equal(SetupFlow.DownloadKey, screen.Key);
         Assert.True(screen.Watching, "the watch stops after a wrong file, and it must not");
@@ -755,16 +780,16 @@ public class ModelFetchTests
     {
         var flow = new SetupFlow(probes);
         flow.StartPastEngine();
-        flow.Answer("0");
+        flow.AnswerSettled("0");
         //an offer in hand means the walk consents first and reaches the watch with nothing fetched
         if (probes.HubOffer is not null)
         {
-            flow.Answer(SetupFlow.ModelFetchNow);
-            flow.Answer(SetupFlow.Landed);
+            flow.AnswerSettled(SetupFlow.ModelFetchNow);
+            flow.AnswerSettled(SetupFlow.Landed);
         }
         probes.Found = [Landed()];
         flow.PollWatch();
-        return Assert.IsType<SetupScreen.Choice>(flow.Answer(SetupFlow.Landed));
+        return Assert.IsType<SetupScreen.Choice>(flow.AnswerSettled(SetupFlow.Landed));
     }
 
     //the watch waits for the whole unit, so weights alone keep it running since the model cannot see yet
@@ -790,7 +815,7 @@ public class ModelFetchTests
         //nothing has arrived so there is nothing to decline, and the no-fingerprint path reaches the watch first
         var empty = new SetupFlow(HalfArrived(unreachable: false));
         empty.StartPastEngine();
-        var watching = Assert.IsType<SetupScreen.Choice>(empty.Answer("0"));
+        var watching = Assert.IsType<SetupScreen.Choice>(empty.AnswerSettled("0"));
         Assert.Equal([SetupFlow.PickAnother], watching.Options.Select(o => o.Key));
     }
 
@@ -801,13 +826,13 @@ public class ModelFetchTests
         var probes = HalfArrived(unreachable: false);
         var flow = new SetupFlow(probes);
         flow.StartPastEngine();
-        flow.Answer("0");
+        flow.AnswerSettled("0");
         probes.Found = [Landed()];
         flow.PollWatch();
-        var partial = Assert.IsType<SetupScreen.Choice>(flow.Answer(SetupFlow.Landed));
+        var partial = Assert.IsType<SetupScreen.Choice>(flow.AnswerSettled(SetupFlow.Landed));
         Assert.Contains(partial.Options, o => o.Key == SetupFlow.UseTextOnly);
 
-        var after = flow.Answer(SetupFlow.UseTextOnly);
+        var after = flow.AnswerSettled(SetupFlow.UseTextOnly);
 
         //the answer moves on, anywhere other than the watch it just left
         Assert.NotEqual(SetupFlow.DownloadKey, ScreenKey.Of(after));
@@ -823,9 +848,9 @@ public class ModelFetchTests
         var probes = HalfArrived();
         var flow = new SetupFlow(probes);
         flow.StartPastEngine();
-        flow.Answer("0");
-        flow.Answer(SetupFlow.ModelFetchNow);
-        var watch = Assert.IsType<SetupScreen.Choice>(flow.Answer(SetupFlow.Landed));
+        flow.AnswerSettled("0");
+        flow.AnswerSettled(SetupFlow.ModelFetchNow);
+        var watch = Assert.IsType<SetupScreen.Choice>(flow.AnswerSettled(SetupFlow.Landed));
 
         //both files arrive here, so this is the arrival rather than the partial arm
         probes.Found =
@@ -837,7 +862,7 @@ public class ModelFetchTests
         //the move offer is set after the files land, the arrival needs the files to be there
         probes.Move = _ => new MoveOffer(Into, false, WeightsBytes, null);
         flow.PollWatch();
-        var screen = Assert.IsType<SetupScreen.Choice>(flow.Answer(SetupFlow.Landed));
+        var screen = Assert.IsType<SetupScreen.Choice>(flow.AnswerSettled(SetupFlow.Landed));
 
         Assert.Equal(SetupFlow.MoveKey, screen.Key);
         Assert.True(screen.PurredSinceWatch, "the arrival does not ask for the wait it just watched");
@@ -867,11 +892,11 @@ public class ModelFetchTests
 
         var flow = new SetupFlow(probes);
         flow.StartPastEngine();
-        flow.Answer("0");
+        flow.AnswerSettled("0");
         //published, the hash disagrees. unpublished, the size disagrees, that state's own strongest check
         probes.Found = [Landed(bytes: published ? WeightsBytes : WeightsBytes - 1)];
         flow.PollWatch();
-        var screen = Assert.IsType<SetupScreen.Choice>(flow.Answer(SetupFlow.Landed));
+        var screen = Assert.IsType<SetupScreen.Choice>(flow.AnswerSettled(SetupFlow.Landed));
 
         var body = string.Join("\n", screen.BodyRows!.Select(r => r.Text));
         Assert.Contains("isn't the published one", body, StringComparison.Ordinal);
@@ -912,13 +937,13 @@ public class ModelFetchTests
 
         var flow = new SetupFlow(probes);
         flow.StartPastEngine();
-        flow.Answer("0");
-        flow.Answer(SetupFlow.ModelFetchNow);
-        flow.Answer(SetupFlow.Landed);
+        flow.AnswerSettled("0");
+        flow.AnswerSettled(SetupFlow.ModelFetchNow);
+        flow.AnswerSettled(SetupFlow.Landed);
 
         //the file lands after the fetch, seeding it at launch sends the walk to discovery instead
         probes.Found = [new Gatto.Core.Acquire.FoundModel(landed, WeightsBytes, null)];
-        var next = flow.Answer(SetupFlow.ModelArrivedNext);
+        var next = flow.AnswerSettled(SetupFlow.ModelArrivedNext);
 
         Assert.Equal(gattoFetched, ScreenKey.Of(next) != SetupFlow.MoveKey);
     }
@@ -942,14 +967,14 @@ public class ModelFetchTests
         var probes = Probes(VisionOffer());
         var flow = new SetupFlow(probes);
         flow.StartPastEngine();
-        flow.Answer("0");
-        var screen = Assert.IsType<SetupScreen.Choice>(flow.Answer(SetupFlow.ModelFetchNow));
+        flow.AnswerSettled("0");
+        var screen = Assert.IsType<SetupScreen.Choice>(flow.AnswerSettled(SetupFlow.ModelFetchNow));
         Assert.Equal(SetupFlow.ModelFetchingKey, screen.Key);
 
         Assert.Equal(SetupFlow.Landed,
             WalkRender.WatchAfterKeys(screen, 100, tick: null,
                 [new ConsoleKeyInfo('\0', ConsoleKey.Enter, false, false, false)]));
 
-        flow.Answer(SetupFlow.Landed);   //join the fetch rather than leaving it running
+        flow.AnswerSettled(SetupFlow.Landed);   //join the fetch rather than leaving it running
     }
 }

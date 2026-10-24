@@ -3,33 +3,42 @@ using Gatto.Cli.Setup.Shelves;
 using Gatto.Cli.Setup.Tui;
 using Gatto.Core.Acquire;
 using Gatto.Core.Models;
+using Gatto.Terminal;
 using Gatto.Tests.Fakes;
 
 namespace Gatto.Tests.Setup.Tui;
 
-//the badge is asked by the flow and passed in, since LocalShelf maps only what a FoundModel can see
+//the local shelf shows the user's record only beside the bytes it measured: the record's sha256 against the profile entry's live key
 public class LocalBadgeTests
 {
     private const string File = "ministral-Q6_K.gguf";
+    private static readonly string FilePath = Path.Combine(@"C:\weights", "ministral", File);
+    private static readonly string Sha = new('b', 64);
 
     private static FoundModel OnDisk() =>
-        new(Path.Combine(@"C:\weights", "ministral", File), 3_000_000_000,
+        new(FilePath, 3_000_000_000,
             new GgufHeader(GgufOutcome.Complete, null, "llama", "ministral", 32768, null,
                 BlockCount: 32, HeadCount: 32, HeadCountKv: 8, EmbeddingLength: 4096,
                 KeyLength: 128, ValueLength: 128, ChatTemplate: null));
 
-    private static Badge Measured() => new(
-        ModelKey: File, Measured: new DateOnly(2026, 9, 6), GattoBuild: "abc1234",
-        SamplingNote: "defaults", Passed: 5, Ran: 5, RepoId: "unsloth/Ministral-3-3B-GGUF");
+    private static Badge Record(bool passed, string? sha256, IReadOnlyList<string>? fellShort = null) =>
+        new(File, sha256, passed, fellShort ?? [], new DateOnly(2026, 9, 6), "abc1234", "defaults",
+            RepoId: "unsloth/Ministral-3-3B-GGUF");
 
-    private static FakeSetupProbes Probes(bool measured)
+    //a hub row, so the run opens on the hub shelf and the source key moves it to this machine's
+    private static ModelRow HubRow() =>
+        ShelfRows.Of("org/m", "org", new HubQuant("m-Q4_K_M.gguf", 4_000_000_000, null), FitRegime.FitsGpu, 32768, false);
+
+    //the profile names the file and its entry holds the live key, the way the flow reads both
+    private static FakeSetupProbes Probes(Badge? record, string? liveKey = null)
     {
-        var p = new FakeSetupProbes { Llama = @"C:\llama\llama-server.exe", Found = [OnDisk()] };
-        if (measured) p.Badges[File] = Measured();
+        var p = new FakeSetupProbes { Llama = @"C:\llama\llama-server.exe", Found = [OnDisk()], Rows = [HubRow()] };
+        p.Existing[FilePath] = "ministral";
+        if (liveKey is not null) p.LiveKeys[FilePath] = liveKey;
+        if (record is not null) p.Badges[File] = record;
         return p;
     }
 
-    //the local shelf reached the way the flow reaches it, and the helper asserts the source it got
     private static SetupScreen.Choice LocalShelfOf(FakeSetupProbes probes)
     {
         var flow = new SetupFlow(probes) { CanSwitchSource = true };
@@ -43,53 +52,80 @@ public class LocalBadgeTests
         string.Join("\n", WalkRender.Choice(LocalShelfOf(probes), 100,
             script: [new ConsoleKeyInfo('\0', ConsoleKey.Enter, false, false, false)]).Rows);
 
-    //a measured model on the local shelf shows its badge
-    [Fact]
-    public void A_MEASURED_MODEL_ON_THE_LOCAL_SHELF_CARRIES_ITS_BADGE()
+    //the pane as the face draws it at a width with room for each mark on one line
+    private static string Wide(FakeSetupProbes probes)
     {
-        var row = Assert.Single(LocalShelfOf(Probes(measured: true)).Shelf!.Rows);
-
-        Assert.Equal(File, row.Badge?.ModelKey);
+        var local = LocalShelfOf(probes);
+        var row = Assert.Single(local.Shelf!.Rows);
+        return string.Join("\n", Pane.Rows(row, local.Shelf.Facts![0], Gatto.Core.Hardware.MachineShape.Discrete, 120,
+            glyphs: GlyphSet.Unicode).Select(r => r.Text));
     }
 
-    //an unpriced row needs its own driver, since a machine with unreadable hardware builds every row through LocalShelf.Unpriced
-    [Fact]
-    public void AN_UNPRICED_ROW_CARRIES_ITS_BADGE_TOO()
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public void A_RECORD_WHOSE_HASH_IS_THE_LIVE_KEY_SHOWS_ITS_MARK(bool passed)
     {
+        var screen = Wide(Probes(Record(passed, Sha), liveKey: Sha));
+
+        var g = GlyphSet.Unicode;
+        Assert.Contains(passed ? $"{g.PassedHere} {SearchRow.PassedHereWords}" : $"{g.FailedHere} {SearchRow.FailedHereWords}",
+            screen, StringComparison.Ordinal);
+    }
+
+    //a file replaced under the same name keeps the old record, and the differing hash keeps the mark off
+    [Fact]
+    public void A_RECORD_OF_OTHER_BYTES_SHOWS_NO_MARK()
+    {
+        var row = Assert.Single(LocalShelfOf(Probes(Record(true, new string('9', 64)), liveKey: Sha)).Shelf!.Rows);
+        Assert.Null(row.Badge);
+        Assert.Null(Assert.Single(LocalShelfOf(Probes(Record(true, Sha), liveKey: null)).Shelf!.Rows).Badge);
+        Assert.Null(Assert.Single(LocalShelfOf(Probes(Record(true, null), liveKey: Sha)).Shelf!.Rows).Badge);
+    }
+
+    //a file gatto tested and that passed here shows both, the shipped mark first, each with the task it fell short on
+    [Fact]
+    public void A_TESTED_FILE_THAT_PASSED_HERE_SHOWS_BOTH_MARKS_TESTED_FIRST()
+    {
+        var shipped = ShippedRows.Any(fellShort: true);
+        var screen = Wide(Probes(Record(true, shipped.Sha256, ["B1"]), liveKey: shipped.Sha256));
+
+        var g = GlyphSet.Unicode;
+        var tested = screen.IndexOf($"{g.Tested} {SearchRow.TestedWords}, fell short: {ShippedRows.Labels(shipped.FellShort, g)}", StringComparison.Ordinal);
+        var here = screen.IndexOf($"{g.PassedHere} {SearchRow.PassedHereWords}, fell short: {ShippedRows.Labels(["B1"], g)}", StringComparison.Ordinal);
+        Assert.True(tested >= 0 && here > tested, screen);
+    }
+
+    [Fact]
+    public void AN_UNTESTED_FILE_HAS_NO_TOOLS_LINE_AND_NO_MARK()
+    {
+        var probes = Probes(null);
+        var row = Assert.Single(LocalShelfOf(probes).Shelf!.Rows);
+
+        Assert.Null(row.Badge);
+        Assert.Null(row.Tested);
+        Assert.DoesNotContain("tools ", Screen(probes), StringComparison.Ordinal);
+    }
+
+    //a mark is a stat of the profile entry, never a read of the file, so rendering the shelf hashes nothing
+    [Fact]
+    public void RENDERING_THE_SHELF_READS_NO_FILE()
+    {
+        var reads = 0;
         var probes = new FakeSetupProbes
         {
             Llama = @"C:\llama\llama-server.exe",
             Found = [OnDisk()],
-            Snapshot = null,
+            Hash = _ => { Interlocked.Increment(ref reads); return Sha; },
+            Rows = [ShelfRows.Of("org/m", "org", new HubQuant("m-Q4_K_M.gguf", 4_000_000_000, Sha), FitRegime.FitsGpu, 32768, false)],
         };
-        probes.Badges[File] = Measured();
+        probes.Existing[FilePath] = "ministral";
+        probes.LiveKeys[FilePath] = Sha;
 
-        var row = Assert.Single(LocalShelfOf(probes).Shelf!.Rows);
+        var hub = Assert.IsType<SetupScreen.Choice>(new SetupFlow(probes).StartPastEngine());
+        WalkRender.Choice(hub, 100, script: [new ConsoleKeyInfo('\0', ConsoleKey.Enter, false, false, false)]);
+        Screen(probes);
 
-        Assert.Equal(File, row.Badge?.ModelKey);
-        Assert.Equal(FitRegime.Unknown, row.Fit);
-    }
-
-    //a model with no record still reads as unmeasured, so the fix is not "always measured"
-    [Fact]
-    public void A_MODEL_WITH_NO_RECORD_IS_STILL_UNMEASURED()
-    {
-        Assert.Null(Assert.Single(LocalShelfOf(Probes(measured: false)).Shelf!.Rows).Badge);
-    }
-
-    //the pane must stop saying not measured, since a badge nobody renders leaves the user the same sentence
-    [Fact]
-    public void THE_PANE_STOPS_SAYING_NOT_MEASURED_FOR_A_MEASURED_MODEL()
-    {
-        Assert.DoesNotContain(Pane.NotMeasured, Screen(Probes(measured: true)),
-            StringComparison.Ordinal);
-    }
-
-    //the same search must find the sentence on an unmeasured shelf, or its absence says nothing about the screen
-    [Fact]
-    public void THE_PANE_STILL_SAYS_NOT_MEASURED_WHEN_NOTHING_MEASURED_IT()
-    {
-        Assert.Contains(Pane.NotMeasured, Screen(Probes(measured: false)),
-            StringComparison.Ordinal);
+        Assert.Equal(0, reads);
     }
 }

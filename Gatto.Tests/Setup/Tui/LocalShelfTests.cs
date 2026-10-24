@@ -260,7 +260,7 @@ public class LocalShelfTests
     [Fact]
     public void A_LOCAL_ROW_IS_THE_FOLDER_WITH_ONE_REPO_AND_KEEPS_ITS_BADGE()
     {
-        var badge = new Badge("org/model", new DateOnly(2026, 8, 10), "abc1234", "temp 0.7");
+        var badge = new Badge("org/model", null, true, [], new DateOnly(2026, 8, 10), "abc1234", "temp 0.7");
         var r = OneRow(Found("gemma-4-26B-A4B-it-UD-Q4_K_M.gguf", 16.9), Hw(), badge);
 
         var publisher = Assert.Single(r.Publishers);

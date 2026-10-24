@@ -11,7 +11,6 @@
                                                │ context up to 32,768
                                                │ reads all 8B params/token
                                                │ arch      qwen3
-                                               │ ✗ not measured by gatto yet
                                                │
                                                │ › ▾ C:\models   4.7 GB Q4_K_M  ✓ fits
                                                │   ❯ Q4_K_M     4.7 GB  ✓ fits

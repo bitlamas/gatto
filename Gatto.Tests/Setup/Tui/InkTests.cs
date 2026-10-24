@@ -102,8 +102,8 @@ public class InkTests
     {
         var flow = new SetupFlow(probes);
         flow.StartPastEngine();
-        SetupScreen screen = flow.Answer("0");
-        foreach (var a in answers) screen = flow.Answer(a);
+        SetupScreen screen = flow.AnswerSettled("0");
+        foreach (var a in answers) screen = flow.AnswerSettled(a);
 
         var (s, f) = Face();
         f.Choose((SetupScreen.Choice)screen);
@@ -135,8 +135,8 @@ public class InkTests
         var probes = FetchProbes(new(Gatto.Core.Acquire.HubFetchOutcome.Arrived));
         var flow = new SetupFlow(probes);
         flow.StartPastEngine();
-        flow.Answer("0");
-        var fetching = (SetupScreen.Choice)flow.Answer(SetupFlow.ModelFetchNow);
+        flow.AnswerSettled("0");
+        var fetching = (SetupScreen.Choice)flow.AnswerSettled(SetupFlow.ModelFetchNow);
 
         var (s, f) = Face();
         //the watch must resolve, or the face polls for ever against a key source that never yields
@@ -204,13 +204,13 @@ public class InkTests
     {
         var flow = new SetupFlow(probes);
         flow.StartPastEngine();
-        SetupScreen screen = flow.Answer("0");
+        SetupScreen screen = flow.AnswerSettled("0");
         if (land)
         {
             probes.Found = [new Gatto.Core.Acquire.FoundModel(
                 WatchDownloads + WatchFile, 16L * 1024 * 1024 * 1024, null)];
             flow.PollWatch();
-            screen = flow.Answer(SetupFlow.Landed);
+            screen = flow.AnswerSettled(SetupFlow.Landed);
         }
 
         var (s, f) = Face();
@@ -312,7 +312,7 @@ public class InkTests
         flow.StartAtModelSegment();
         SetupScreen offer = flow.ResumeAfterWrites("gemma-4-26B-A4B-it");
         while (flow.NeedsWritesApplied) offer = flow.ResumeAfterWrites(null);
-        var live = (SetupScreen.Choice)flow.Answer(SetupFlow.Yes);
+        var live = (SetupScreen.Choice)flow.AnswerSettled(SetupFlow.Yes);
 
         var (s, f) = Face();
         var polls = 0;
@@ -346,9 +346,9 @@ public class InkTests
         flow.StartAtModelSegment();
         SetupScreen at = flow.ResumeAfterWrites("gemma-4-26B-A4B-it");
         while (flow.NeedsWritesApplied) at = flow.ResumeAfterWrites(null);
-        flow.Answer(SetupFlow.Yes);
+        flow.AnswerSettled(SetupFlow.Yes);
         Assert.True(SpinWait.SpinUntil(flow.PollWatch, TimeSpan.FromSeconds(10)), "the check never finished");
-        var passed = (SetupScreen.Choice)flow.Answer(SetupFlow.Landed);
+        var passed = (SetupScreen.Choice)flow.AnswerSettled(SetupFlow.Landed);
 
         var (s, f) = Face();
         f.Choose(passed);
@@ -450,7 +450,7 @@ public class InkTests
         });
         var (s, f) = Face();
         flow.Start();
-        f.Choose((SetupScreen.Choice)flow.Answer(SetupFlow.WelcomeGo));
+        f.Choose((SetupScreen.Choice)flow.AnswerSettled(SetupFlow.WelcomeGo));
         var screen = s.Text;
 
         Assert.True(Wears(screen, "  models        ", Theme.Dim), "the fact label is not dim");

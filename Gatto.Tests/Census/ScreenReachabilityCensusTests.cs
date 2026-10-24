@@ -80,6 +80,9 @@ public class ScreenReachabilityCensusTests
         //the paused screen is reached by pressing Space on a live fetch. all three of its keys must be answered by test input
         ["model.fetching.paused"] = new(Reach.Rendered, "Choice → face.Choose",
             BackedBy: "ESC_TWICE_ON_THE_PAUSED_SCREEN_DELETES_THE_PARTIAL"),
+        //the read of a file before its model is written, a watched screen the poll resolves
+        ["model.reading"] = new(Reach.Rendered, "Choice → face.Choose (keys only, watching)",
+            BackedBy: "A_FOUND_FILE_IS_READ_ON_A_ROW_BEFORE_ITS_MODEL_IS_WRITTEN"),
         ["model.arrived"] = new(Reach.Rendered, "Choice → face.Choose",
             BackedBy: "THE_ARRIVAL_RESCANS_THE_FOLDER_IT_FETCHED_INTO"),
         //the two ending screens are both answered by a test. the drop resumes the same offer, and the mismatch stays for the shelf

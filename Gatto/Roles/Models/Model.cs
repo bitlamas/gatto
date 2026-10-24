@@ -7,7 +7,8 @@ using Gatto.Core.Loop;
 namespace Gatto.Roles.Models;
 
 //one file of a model. exactly one is Active, checked at load, and the quant name is a label off the file name
-public sealed record ModelFile(string Path, string? Quant, bool Active);
+public sealed record ModelFile(string Path, string? Quant, bool Active,
+    string? Sha256 = null, long? Size = null, DateTime? Written = null);   //the hash of the bytes with the size and UTC write time it was taken over, all three or none
 
 //the exactly-one-active rule lives only here, a quant switch reaches it through Model.Load
 internal static class ActiveFile
@@ -358,7 +359,12 @@ public sealed record Model(string Id, ModelProfile Profile, string? SystemAppend
                 ? q.GetString() : null;
             //absent active reads false here, one bad profile should get one complaint from the list-level check below
             var active = f.TryGetProperty("active", out var a) && a.ValueKind == JsonValueKind.True;
-            list.Add(new ModelFile(filePath, quant, active));
+            //an absent key reads null, the entry was written before the file was hashed or by hand, and the shelf treats it as no key
+            var sha256 = f.TryGetProperty("sha256", out var h) && h.ValueKind == JsonValueKind.String ? h.GetString() : null;
+            long? size = f.TryGetProperty("size", out var z) && z.TryGetInt64(out var bytes) ? bytes : null;
+            DateTime? written = f.TryGetProperty("written", out var t) && t.ValueKind == JsonValueKind.String
+                && t.TryGetDateTimeOffset(out var when) ? when.UtcDateTime : null;
+            list.Add(new ModelFile(filePath, quant, active, sha256, size, written));
         }
 
         ActiveFile.Of(list, id, path);   //refuses two actives or none, each with its own message

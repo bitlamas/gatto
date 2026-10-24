@@ -30,6 +30,8 @@ public class SyncWaitCensusTests
         ["Gatto/Cli/Setup/SetupFlow.Done.cs"] = 1,
         ["Gatto/Cli/Setup/SetupFlow.Engine.cs"] = 2,
         ["Gatto/Cli/Setup/SetupFlow.ModelFetch.cs"] = 2,
+        //the join after a read the poll saw finish, or after a stop cancelled it, the same shape as the one load's join
+        ["Gatto/Cli/Setup/SetupFlow.Reading.cs"] = 1,
         ["Gatto/Cli/Setup/SetupFlow.Search.cs"] = 2,
         ["Gatto/Cli/Setup/WriteSetApply.cs"] = 2,
         ["Gatto/Core/Acquire/LlamaServerProbe.cs"] = 3,

@@ -26,7 +26,8 @@ internal enum AuditionStumbleKind
 internal sealed record AuditionStamp(string GattoBuild, string ModelFileName, string? Quant,
     int Context, string SamplingNote, string ThinkingNote = "", string? Server = null,
     //the repo id read off the measured profile, a badge without one is invisible on the shelf. null when the model came off disk and has no repo
-    string? RepoId = null);
+    string? RepoId = null,
+    string? Sha256 = null);   //the hash of the bytes measured, null when the file could not be read, and then the record carries no key
 
 //wall clock and decode rate are evidence and never decide the verdict, a slow model can still pass
 internal sealed record AuditionVerdict(bool Pass, bool Disqualified,
@@ -115,6 +116,9 @@ internal static class AuditionRunner
                 $"'{r.Model}' is the running server, so the check for '{modelId}' could not start "
                 + $"one. Nothing was measured, and this says nothing about the model."));
 
+        //after the refusal, so a refused run reads nothing, and before the spawn, so the read never competes with the server's load
+        var sha256 = await LiveKeyOrReadAsync(homePath, modelId, model, progress, ct).ConfigureAwait(false);
+
         if (stopAfter)
         {
             //starting a server on someone's machine is not a silent act, this note comes before the spawn
@@ -149,7 +153,7 @@ internal static class AuditionRunner
             try
             {
                 return await RunBatteryAsync(client, homePath, modelId,
-                    StampFor(model, loaded), progress, ct,
+                    StampFor(model, loaded, sha256), progress, ct,
                     //pass the model's own reasoning_history, the default would measure a heavier setup than the model actually runs
                     reasoning: model.Profile.ReasoningHistory,
                     thinkingBody: thinkingBody, promptSuffix: thinkingSuffix).ConfigureAwait(false);
@@ -306,7 +310,7 @@ internal static class AuditionRunner
     }
 
     //the build, the file and the sampling that make the pass attributable, and the quant comes from the file name or is null
-    internal static AuditionStamp StampFor(Model model, LoadedModel? loaded)
+    internal static AuditionStamp StampFor(Model model, LoadedModel? loaded, string? sha256 = null)
     {
         var file = Path.GetFileName(model.Profile.ActivePath);
         //the quant rule lives in QuantToken.Of with the shelf and serve status, anchored to a whole segment. an underscore-separated name answers null, the honest answer
@@ -316,7 +320,31 @@ internal static class AuditionRunner
             //what the server reported, the same source as the context above, null when the server said nothing about its build
             loaded?.BuildInfo,
             //read off the measured profile, the fact travels with the measurement and a caller cannot stamp a model it never auditioned
-            model.Profile.Source?.RepoId);
+            model.Profile.Source?.RepoId,
+            //the hash comes in from the run rather than a stat here, so the stamp stays a pure reading of what it is handed
+            sha256);
+    }
+
+    //the entry's hash while its file is unchanged, else one read of the file on a live row, written back so the next run reads none
+    internal static async Task<string?> LiveKeyOrReadAsync(string homePath, string modelId, Model model,
+        IProgress<AuditionProgress>? progress, CancellationToken ct)
+    {
+        var entry = model.Profile.Files.Single(f => f.Active);
+        if (ModelFiles.LiveKey(entry) is { } live) return live;
+
+        progress?.Report(AuditionProgress.Reading(Path.GetFileName(entry.Path)));
+        try
+        {
+            var read = await Checksum.Sha256Async(entry.Path, string.Empty, null, ct).ConfigureAwait(false);
+            if (read.ActualSha256 is not { Length: > 0 } hash) return null;
+            try { ModelFiles.RecordKey(Path.Combine(homePath, "models"), modelId, entry.Path, FileKey.Of(hash, entry.Path)); }
+            catch (Exception) { }   //a profile that cannot take the key still gets a stamped record, the next run reads the file again
+            return hash;
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            return null;   //a file that cannot be read is stamped with no key and shows no mark, the battery still runs
+        }
     }
 
     //the effort a plain launch of this model asks for, its own default or medium
@@ -328,12 +356,70 @@ internal static class AuditionRunner
             ? landed.ToString().ToLowerInvariant()
             : "template default";
 
-    //the sampling actually sent, "defaults" when the profile overrides nothing, a blank row would read like missing data
-    private static string SamplingNote(Model model) =>
-        model.Profile.Sampling is { } s && s.ValueKind == System.Text.Json.JsonValueKind.Object
-            && s.EnumerateObject().Any()
-            ? string.Join(", ", s.EnumerateObject().Select(p => $"{p.Name} {p.Value}"))
-            : "defaults";
+    //the sampling the server was started with, from the sampling block, the seed key and the sampling flags in extra_args. defaults only when none names one
+    internal static string SamplingNote(Model model)
+    {
+        var parts = new List<string>();
+        if (model.Profile.Sampling is { ValueKind: System.Text.Json.JsonValueKind.Object } s)
+            parts.AddRange(s.EnumerateObject().Select(p => $"{p.Name} {p.Value}"));
+        //the seed key reaches the server as --seed, so it stamps the way -s does
+        if (model.Profile.Seed is { } seed) parts.Add($"seed {seed}");
+        parts.AddRange(SamplingFlagsIn(model.Profile.ExtraArgs));
+        return parts.Count > 0 ? string.Join(", ", parts) : "defaults";
+    }
+
+    //the rows of the sampling params block of the pinned llama-server's help, every spelling, the first long one naming the flag and a bit for whether it takes a value
+    internal static readonly (string[] Spellings, bool TakesValue)[] SamplingFlags =
+    [
+        (["--samplers"], true),
+        (["-s", "--seed"], true),
+        (["--sampler-seq", "--sampling-seq"], true),
+        (["--ignore-eos"], false),
+        (["--temp", "--temperature"], true),
+        (["--top-k"], true),
+        (["--top-p"], true),
+        (["--min-p"], true),
+        (["--top-nsigma", "--top-n-sigma"], true),
+        (["--xtc-probability"], true),
+        (["--xtc-threshold"], true),
+        (["--typical", "--typical-p"], true),
+        (["--repeat-last-n"], true),
+        (["--repeat-penalty"], true),
+        (["--presence-penalty"], true),
+        (["--frequency-penalty"], true),
+        (["--dry-multiplier"], true),
+        (["--dry-base"], true),
+        (["--dry-allowed-length"], true),
+        (["--dry-penalty-last-n"], true),
+        (["--dry-sequence-breaker"], true),
+        (["--adaptive-target"], true),
+        (["--adaptive-decay"], true),
+        (["--dynatemp-range"], true),
+        (["--dynatemp-exp"], true),
+        (["--mirostat"], true),
+        (["--mirostat-lr"], true),
+        (["--mirostat-ent"], true),
+        (["-l", "--logit-bias"], true),
+        (["--grammar"], true),
+        (["--grammar-file"], true),
+        (["-j", "--json-schema"], true),
+        (["-jf", "--json-schema-file"], true),
+        (["-bs", "--backend-sampling"], false),
+    ];
+
+    //each sampling flag as name and value under its first long spelling, the value always the next entry since the loader refuses a flag=value entry
+    private static IEnumerable<string> SamplingFlagsIn(IReadOnlyList<string> args)
+    {
+        for (var i = 0; i < args.Count; i++)
+        {
+            if (SamplingFlags.FirstOrDefault(f => f.Spellings.Contains(args[i], StringComparer.Ordinal)) is not { Spellings: { } names } flag)
+                continue;
+
+            var name = names.First(n => n.StartsWith("--", StringComparison.Ordinal))[2..];
+            if (!flag.TakesValue) { yield return name; continue; }
+            yield return i + 1 < args.Count ? $"{name} {args[++i]}" : name;
+        }
+    }
 
     //runs the battery against the client and grades it
     internal static async Task<AuditionVerdict> RunBatteryAsync(IChatClient client, string homePath,

@@ -376,6 +376,13 @@ internal sealed partial class SetupFlow
         };
     }
 
+    //a fetch arrives only when every byte matched the listed oid, so the scaffold records that oid with a stat of the file and no second read
+    private SetupScreen AdoptKnown(FoundModel model, string? sha256)
+    {
+        Know(model, sha256);
+        return Adopt(model);
+    }
+
     //rescan the disk instead of composing a FoundModel from the offer, adopt refuses an incomplete set and only the disk can say it's complete
     private SetupScreen AnswerModelArrived(string key)
     {
@@ -386,7 +393,7 @@ internal sealed partial class SetupFlow
         _scanRoots = rescan.Roots;
         //return to consent when the rescan cannot find the arrival it announced, the watch would render a stale cause after a verified fetch
         return _discovered.FirstOrDefault(m => Answers(m, Picked!.RowQuant!)) is { } landed
-            ? Adopt(landed)
+            ? AdoptKnown(landed, _modelOffer!.Weights.Members[0].Sha256)
             : ModelConsent(_modelOffer!);
     }
 }

@@ -39,13 +39,13 @@ public class AuditionBadgeTests : IDisposable
         Assert.Null(probes.BadgeForFile("Ministral-3-3B-Q6_K"));
     }
 
-    //a fetched model has a repo id, and the shelf looks up only by it. a badge written under the file name alone is not found
+    //a fetched model has a repo id, kept on the record for the reader of the file, while the shelf finds the record by file name
     [Fact]
-    public void A_CLI_AUDITION_WRITES_THE_REPO_ID_THE_SHELF_LOOKS_UP_BY()
+    public void A_CLI_AUDITION_KEEPS_THE_REPO_ID_ON_THE_RECORD()
     {
         BadgeWriter.Write(_home, Verdict("Qwen3.5-4B-Q6_K.gguf", "unsloth/Qwen3.5-4B-GGUF"));
 
-        Assert.NotNull(BadgeRegister.LookupByRepoId(_home, "unsloth/Qwen3.5-4B-GGUF"));
+        Assert.Equal("unsloth/Qwen3.5-4B-GGUF", BadgeRegister.Lookup(_home, "Qwen3.5-4B-Q6_K.gguf")!.RepoId);
     }
 
     //a model adopted from disk has no repo id, so the field stays null. the badge is still found under the file name, the key that every model has

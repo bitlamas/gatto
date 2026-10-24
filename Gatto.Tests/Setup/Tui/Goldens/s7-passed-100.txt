@@ -10,7 +10,7 @@
   thinking      template default
   speed         ~31.4 tok/s, usable
 
-  recorded      the shelf shows it as tool-calling verified · 2026-08-24
+  recorded      the shelf marks it as passed on this machine
 
 ────────────────────────────────────────────────────────────────────────────────────────────────────
   Enter next   Esc leave

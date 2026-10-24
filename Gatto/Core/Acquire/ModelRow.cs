@@ -21,8 +21,12 @@ internal sealed record ModelRow(
     FileRef? RowFile, FitRegime Fit,   //the fit is DoesNotFit when RowFile is null, and RowPublisher is -1
     string? Structure = null, (long Total, long Active)? Experts = null,
     Badge? Badge = null,   //set only by the local shelf, a Hub row carries none
-    string? ParamsLabel = null)   //the size label in its anchored shape, drawn and sorted by where Params is unknown, set only by the local shelf
+    string? ParamsLabel = null,   //the size label in its anchored shape, drawn and sorted by where Params is unknown, set only by the local shelf
+    string? LocalKey = null)   //the sha256 the file's profile entry holds while its size and write time still match, set only by the local shelf
 {
+    //the shipped mark of the file the row shows, computed so a repick in the pane moves it. a hub row matches by the oid its listing carries
+    public ShippedMark? Tested => ShippedMarks.Lookup(LocalKey ?? RowQuant?.Members[0].Sha256);
+
     //the quant a reference names, so the choice and the fetch read Members, Bytes and Sha256 from one place
     public HubQuant? QuantOf(FileRef file) =>
         Publishers.SelectMany(p => p.Repos)

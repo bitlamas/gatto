@@ -9,7 +9,8 @@ internal static class LocalShelf
 {
     //a model's files priced against this machine, one publisher per folder holding that folder's files. the row's file decides the row's fit, quant and folder, and the badge is passed in by the flow
     public static ModelRow Row(LocalGroup g, FoundModel rowFile, HardwareClass? hw, int ctxForFit = 4096,
-        Gatto.Core.Acquire.Badge? badge = null, bool vision = false)
+        Gatto.Core.Acquire.Badge? badge = null, bool vision = false,
+        string? localKey = null)   //the file's live key from its profile entry, null when none holds or the stat disagrees
     {
         var folders = Folders(g);
         var offers = folders.Select(f =>
@@ -28,7 +29,8 @@ internal static class LocalShelf
             Structure: rowFile.Header is { } sh ? ModelStructure.Cell(sh) : null,
             Experts: rowFile.Header is { } eh ? ModelStructure.Experts(eh) : null,
             Badge: badge,
-            ParamsLabel: ModelStructure.SizeCell(rowFile.Header?.SizeLabel));
+            ParamsLabel: ModelStructure.SizeCell(rowFile.Header?.SizeLabel),
+            LocalKey: localKey);
     }
 
     //a group's folders in scan order, each with its own files in scan order
@@ -57,11 +59,12 @@ internal static class LocalShelf
     //the pane's folder lines and the folded frame's file, each file priced by FitOf as its row is. a row whose file no rule chose draws no pick mark
     public static Gatto.Cli.Setup.Shelves.ModelFacts FactsFor(LocalGroup g, FoundModel rowFile, bool ruled, HardwareClass? hw,
         int ctxForFit = 4096, Gatto.Terminal.HaveMark have = Gatto.Terminal.HaveMark.None, string? haveId = null,
-        string? publisher = null)
+        string? publisher = null,
+        Func<string, Gatto.Cli.Setup.Shelves.MarkSet>? marksFor = null)   //each listed file's marks by its path, read by the flow
     {
         var dir = System.IO.Path.GetDirectoryName(rowFile.Path);
         Gatto.Cli.Setup.Shelves.PaneFile Line(FoundModel f) => new(QuantToken.Of(f.Path), f.FileBytes, FitOf(f, hw, ctxForFit),
-            FileRefOf(f), Tag: f.Set is { IsSet: true } ? FilesWords(f) : null);
+            FileRefOf(f), Tag: f.Set is { IsSet: true } ? FilesWords(f) : null, Marks: marksFor?.Invoke(f.Path) ?? default);
         var publishers = Folders(g).Select(f => new Gatto.Cli.Setup.Shelves.PanePublisher(f.Folder, [.. f.Files.Select(Line)],
             FileRefOf(f.Files.Contains(rowFile) ? rowFile : f.Files.FirstOrDefault(x => x.IsComplete) ?? f.Files[0]),
             Marked: ruled && f.Files.Contains(rowFile))).ToList();

@@ -33,14 +33,13 @@ internal static class BadgeWriter
             w.WriteString("verdict", badge ? "pass" : "fail");
             w.WriteString("measured", measured.ToString("yyyy-MM-dd"));
 
-            //badge fields are written only on a pass, a fail record with a build stamp would invite a reader to treat presence as proof
-            if (badge)
-            {
-                w.WriteString("gatto_build", verdict.Stamp.GattoBuild);
-                w.WriteString("sampling_note", verdict.Stamp.SamplingNote);
-                //which llama-server produced this, written only when the server reported it, and the same GGUF can fail on mainline and pass on a fork
-                if (verdict.Stamp.Server is { Length: > 0 } server) w.WriteString("server", server);
-            }
+            //the stamp goes out on both verdicts, the reader reads the verdict key, so a build stamp's presence proves nothing
+            w.WriteString("gatto_build", verdict.Stamp.GattoBuild);
+            w.WriteString("sampling_note", verdict.Stamp.SamplingNote);
+            //which llama-server produced this, written only when the server reported it, and the same GGUF can fail on mainline and pass on a fork
+            if (verdict.Stamp.Server is { Length: > 0 } server) w.WriteString("server", server);
+            //the bytes measured, so the shelf shows this record only beside the file that still holds them
+            if (verdict.Stamp.Sha256 is { Length: > 0 } sha256) w.WriteString("sha256", sha256);
 
             //the reader refuses a record whose battery is not the current one, so this number is what keeps the badge alive
             w.WriteNumber("battery_version", Battery.Version);

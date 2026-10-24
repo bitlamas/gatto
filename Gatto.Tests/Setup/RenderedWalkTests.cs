@@ -36,7 +36,7 @@ public class RenderedWalkTests : IDisposable
             Params: paramCount);
 
     private static Badge Measured(string modelKey) =>
-        new(modelKey, new DateOnly(2026, 7, 30), "v0.3.4", "greedy", Passed: 5, Ran: 5);
+        new(modelKey, null, true, [], new DateOnly(2026, 7, 30), "v0.3.4", "greedy");
 
     //drive the whole setup flow over a real home, so the run reaches the completion screen instead of stopping at the write pause.
     private SetupRig Walk(int width, params ConsoleKeyInfo[] keys)

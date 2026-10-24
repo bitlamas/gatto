@@ -22,10 +22,46 @@ internal sealed class AuditionConsole : IProgress<AuditionProgress>, IDisposable
 
     private readonly Gatto.Terminal.GlyphSet _glyphs;
 
+    //the read of a file has no event of its own until it ends, so a timer keeps its row moving and the next event takes it down
+    private readonly object _gate = new();
+    private Timer? _reading;
+    private readonly System.Diagnostics.Stopwatch _readClock = new();
+    private string _readWords = "";
+
+    private void PaintReading()
+    {
+        lock (_gate)
+            if (_reading is not null)
+                _tick.Live($"  {_readWords} {Gatto.Core.ElapsedText.Of(_readClock.Elapsed)}");
+    }
+
+    private void StopReading()
+    {
+        _reading?.Dispose();
+        _reading = null;
+    }
+
     public void Report(AuditionProgress p)
     {
+        lock (_gate) Draw(p);
+    }
+
+    private void Draw(AuditionProgress p)
+    {
+        if (p.Stage != AuditionStage.Reading) StopReading();
         switch (p.Stage)
         {
+            //a log has no moving row, so it commits the line once and the read is said rather than shown
+            case AuditionStage.Reading when !_tick.Rich:
+                _tick.Note("  " + AuditionProgress.ReadingWords(p.Text));
+                break;
+
+            case AuditionStage.Reading:
+                _readWords = AuditionProgress.ReadingWords(p.Text);
+                _readClock.Restart();
+                _reading = new Timer(_ => PaintReading(), null, 0, 250);
+                break;
+
             //a note is a line the user keeps and must survive the erase (gatto started a server on their machine)
             case AuditionStage.Reusing:      //news at the CLI: it is why nothing loaded
             case AuditionStage.Note:
@@ -48,7 +84,21 @@ internal sealed class AuditionConsole : IProgress<AuditionProgress>, IDisposable
     }
 
     //take the live line down before the report renders
-    public void Finish() => _tick.Finish();
+    public void Finish()
+    {
+        lock (_gate)
+        {
+            StopReading();
+            _tick.Finish();
+        }
+    }
 
-    public void Dispose() => _tick.Dispose();
+    public void Dispose()
+    {
+        lock (_gate)
+        {
+            StopReading();
+            _tick.Dispose();
+        }
+    }
 }

@@ -94,13 +94,13 @@ public class ArchNoteTests
         var loaded = Row("futurearch") with
         {
             Vision = true,
-            Badge = new Badge("o/m", new DateOnly(2026, 8, 13), "abc", "vendor", Passed: 5, Ran: 5),
+            Badge = new Badge("o/m", null, true, [], new DateOnly(2026, 8, 13), "abc", "vendor"),
         };
 
         var spec = ShelfTable.Spec([loaded], ShelfStage.Full, Gatto.Core.Hardware.MachineShape.Discrete, glyphs: GlyphSet.Unicode);
 
         //the grid holds models only, so body row 0 is the model and the marks cell is last.
-        Assert.Equal($"{Gatto.Terminal.GlyphSet.Unicode.Vision} {Gatto.Terminal.GlyphSet.Unicode.Ok} {Gatto.Terminal.GlyphSet.Unicode.OtherBuild}", spec.Rows[0][^1]);
+        Assert.Equal($"{Gatto.Terminal.GlyphSet.Unicode.Vision} {Gatto.Terminal.GlyphSet.Unicode.PassedHere} {Gatto.Terminal.GlyphSet.Unicode.OtherBuild}", spec.Rows[0][^1]);
 
         //read the legend words from ArchNote.MarkerText rather than retyping them, retyped copy drifts from the sentence
         var legend = ShelfTable.Legend([loaded], glyphs: GlyphSet.Unicode);

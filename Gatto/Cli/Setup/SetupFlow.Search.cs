@@ -446,14 +446,15 @@ internal sealed partial class SetupFlow
         }).ToList();
 
         return new ShelfView(
-            //the badge register is keyed by file name and the badge stays on the row of the badged file, so a row asks by its file's name on disk
-            [.. shown.Select((s, i) => LocalShelf.Row(s.Group, s.File, hw, badge: probes.BadgeForFile(System.IO.Path.GetFileName(s.File.Path)),
-                vision: read[i].Vision))],
+            //the record is filed by file name and shows only beside the bytes it measured, so a row asks by name and keeps it when the hashes agree
+            [.. shown.Select((s, i) => LocalShelf.Row(s.Group, s.File, hw, badge: HereBadge(read[i].Id, s.File.Path),
+                vision: read[i].Vision, localKey: LocalKey(read[i].Id, s.File.Path)))],
             Shape,
             Families: Families.Load().Ladder, Family: _localFamily ?? "all",
             Total: total,
             Facts: [.. shown.Select((s, i) => LocalShelf.FactsFor(s.Group, s.File, s.Ruled, hw,
-                have: HaveFor(read[i].Id, loadedId, s.File.Path, loadedPath), haveId: read[i].Id, publisher: read[i].Publisher))],
+                have: HaveFor(read[i].Id, loadedId, s.File.Path, loadedPath), haveId: read[i].Id, publisher: read[i].Publisher,
+                marksFor: path => MarksFor(existing(path), path)))],
             Source: ShelfSource.Local,
             SmallestFirst: _smallestFirst,
             Folder: _scanTyped,
@@ -540,7 +541,22 @@ internal sealed partial class SetupFlow
                 QuantToken.Of(q.FileName),
                 q.Bytes,
                 HubSearch.FitOf(q.Bytes, r.NativeCtx, machine, Shelves.Pane.KvContext, r.Arch, q.StreamedBytes),
-                new FileRef(offer.Org, repo.RepoId, q.RepoPath))))]);
+                new FileRef(offer.Org, repo.RepoId, q.RepoPath),
+                Marks: new Shelves.MarkSet(ShippedMarks.Lookup(q.Members[0].Sha256) is not null, false, false))))]);
+
+    //the file's live key through the profile that names it, null when none does or the stat shows the bytes changed
+    private string? LocalKey(string? modelId, string path) => modelId is { } id ? probes.LiveKeyFor(id, path) : null;
+
+    //the user's record of the file, kept only when it holds the bytes the profile entry still holds
+    private Badge? HereBadge(string? modelId, string path) =>
+        LocalKey(modelId, path) is { } key && probes.BadgeForFile(System.IO.Path.GetFileName(path)) is { Sha256: { } sha } badge
+            && string.Equals(sha, key, StringComparison.OrdinalIgnoreCase) ? badge : null;
+
+    private Shelves.MarkSet MarksFor(string? modelId, string path)
+    {
+        var here = HereBadge(modelId, path);
+        return new(ShippedMarks.Lookup(LocalKey(modelId, path)) is not null, here is { Passed: true }, here is { Passed: false });
+    }
 
     //apply the choice once, by replacing the row's file and its regime. an unresolvable reference leaves the old file standing
     private void ApplyPickedFile(string key, FileRef file)

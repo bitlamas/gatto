@@ -44,7 +44,7 @@ public class ShelfTableTests
         var rows = new[]
         {
             Row("unsloth/Qwen3-Coder-30B-A3B-Instruct-GGUF", 18_000_000_000, "Qwen3-Coder-30B-A3B-Q4_K_M.gguf",
-                badge: new Badge("unsloth/Qwen3-Coder-30B-A3B-Instruct-GGUF", new DateOnly(2026, 8, 1), "b", "n")),
+                badge: new Badge("unsloth/Qwen3-Coder-30B-A3B-Instruct-GGUF", null, true, [], new DateOnly(2026, 8, 1), "b", "n")),
             Row("unsloth/gemma-4-26B-it-GGUF", 9_000_000_000, "gemma-4-26B-it-Q6_K.gguf", vision: true),
             Row("unsloth/tiny-GGUF", 900_000_000, "tiny-IQ2_XXS.gguf", fit: FitRegime.FitsRamOnly),
         };
@@ -98,7 +98,7 @@ public class ShelfTableTests
         var rows = new[]
         {
             Row("unsloth/Qwen3-Coder-30B-A3B-Instruct-GGUF", vision: true,
-                badge: new Badge("o/m", new DateOnly(2026, 8, 1), "b", "n")) with { Arch = "gatto-test-unknown-arch" },
+                badge: new Badge("o/m", null, true, [], new DateOnly(2026, 8, 1), "b", "n")) with { Arch = "gatto-test-unknown-arch" },
         };
 
         var floors = 0;
@@ -108,7 +108,7 @@ public class ShelfTableTests
                 == ShelfStage.NoContext) floors++;
 
             var flat = string.Concat(Lines(rows, width));
-            foreach (var glyph in new[] { Gatto.Terminal.GlyphSet.Unicode.Vision, Gatto.Terminal.GlyphSet.Unicode.Ok, Gatto.Terminal.GlyphSet.Unicode.OtherBuild })
+            foreach (var glyph in new[] { Gatto.Terminal.GlyphSet.Unicode.Vision, Gatto.Terminal.GlyphSet.Unicode.PassedHere, Gatto.Terminal.GlyphSet.Unicode.OtherBuild })
                 Assert.True(flat.Contains(glyph, StringComparison.Ordinal),
                     $"width {width}: the marks column lost \"{glyph}\"");
         }
@@ -283,14 +283,14 @@ public class ShelfTableTests
         var rows = new[]
         {
             Row("unsloth/v-GGUF", vision: true,
-                badge: new Badge("unsloth/v-GGUF", new DateOnly(2026, 8, 1), "b", "n")),
+                badge: new Badge("unsloth/v-GGUF", null, true, [], new DateOnly(2026, 8, 1), "b", "n")),
         };
         var spec = ShelfTable.Spec(rows, ShelfStage.Full, Gatto.Core.Hardware.MachineShape.Discrete, glyphs: GlyphSet.Unicode);
 
         Assert.Equal("", spec.Headers[^1]);
         var marks = spec.Rows[0][^1];
         Assert.Contains(Gatto.Terminal.GlyphSet.Unicode.Vision, marks, StringComparison.Ordinal);
-        Assert.Contains(Gatto.Terminal.GlyphSet.Unicode.Ok, marks, StringComparison.Ordinal);
+        Assert.Contains(Gatto.Terminal.GlyphSet.Unicode.PassedHere, marks, StringComparison.Ordinal);
         foreach (var banned in new[] { "recommended", "best", "verified", "good", "fast", "slow" })
             Assert.DoesNotContain(banned, marks, StringComparison.OrdinalIgnoreCase);
     }
@@ -329,5 +329,25 @@ public class ShelfTableTests
         //the grid holds a header and ten models only, the tier label is interleaved later by ShelfBinding
         Assert.Equal(11, lines.Count);
         Assert.DoesNotContain(lines, l => l.Contains("model:", StringComparison.Ordinal));
+    }
+
+    //the three marks sit after vision and before the other-build marker, and the legend names each one a row carries
+    [Fact]
+    public void THE_MARKS_COLUMN_ORDERS_THE_THREE_MARKS_AND_THE_LEGEND_NAMES_THEM()
+    {
+        var g = GlyphSet.Unicode;
+        var shipped = Gatto.Tests.Fakes.ShippedRows.Any(fellShort: false);
+        var row = ShelfRows.Of("org/m", "org", new HubQuant("m-Q4_K_M.gguf", 4_000_000_000, shipped.Sha256), FitRegime.FitsGpu, 32768,
+            Vision: true, Badge: new Badge("m-Q4_K_M.gguf", shipped.Sha256, true, [], new DateOnly(2026, 10, 1), "b", "defaults"));
+
+        var text = string.Join("\n", ShelfTable.Render([row], new Theme(TermCaps.Plain), 120,
+            Gatto.Core.Hardware.MachineShape.Discrete, g).Select(r => r.Text));
+        Assert.Contains($"{g.Vision} {g.Tested} {g.PassedHere}", text, StringComparison.Ordinal);
+        Assert.Equal($"{g.Vision} vision {g.Dot} {g.Tested} {SearchRow.TestedWords} {g.Dot} {g.PassedHere} {SearchRow.PassedHereWords}",
+            ShelfTable.Legend([row], g));
+
+        var failed = row with { Badge = row.Badge! with { Passed = false } };
+        Assert.Contains($"{g.FailedHere} {SearchRow.FailedHereWords}", ShelfTable.Legend([failed], g), StringComparison.Ordinal);
+        Assert.DoesNotContain("tool-calling verified", ShelfTable.Legend([row, failed], g), StringComparison.Ordinal);
     }
 }

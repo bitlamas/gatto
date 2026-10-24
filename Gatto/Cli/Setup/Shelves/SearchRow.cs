@@ -4,7 +4,7 @@ using Gatto.Core.Models;
 
 namespace Gatto.Cli.Setup.Shelves;
 
-//the row's words (name, size, fit, badge, context) and nothing more, and the badge says what was measured rather than recommending
+//the row's words (name, size, fit, marks, context) and nothing more, and a mark says what was measured rather than recommending
 internal static class SearchRow
 {
     public static string Label(ModelRow r) => r.Model;
@@ -14,23 +14,31 @@ internal static class SearchRow
 
     internal static string RowFileName(ModelRow r) => r.RowQuant?.FileName ?? "";
 
-    //keep Gb, FitWords, BadgeWordsBare and Ctx here, the table, the pane and the tier line all call them
+    //keep Gb, FitWords, the mark words and Ctx here, the table, the pane and the tier line all call them
 
-    //the badge words are a measurement, so they never say "recommended" or a bare "tested". the pane draws the tick itself, so these words come without a glyph
-    internal static string BadgeWordsBare(Gatto.Core.Acquire.Badge b) =>
-        $"tool-calling verified {b.Measured:yyyy-MM}{Margin(b)}";
+    //the words of the three marks, each naming who measured and where, with no date, count or score
+    internal const string TestedWords = "tested by gatto";
+    internal const string PassedHereWords = "passed on this machine";
+    internal const string FailedHereWords = "failed on this machine";
 
-    //the score appears only when a task is missing, as "4 of 5 tasks" (a bare fraction reads as a rating). a task the run cut short says unfinished
-    private static string Margin(Gatto.Core.Acquire.Badge b)
+    //the tasks a marked file fell short on in the battery's own labels, two joined by the dot, empty when it fell short on none
+    internal static string FellShort(IReadOnlyList<string> ids, Gatto.Terminal.GlyphSet g) =>
+        ids.Count == 0 ? ""
+        : ", fell short: " + string.Join($" {g.Dot} ", ids.Select(id =>
+            Gatto.Roles.Audition.Battery.Tasks.FirstOrDefault(t => t.Id == id)?.Label ?? id));
+
+    //the marks of the row's own file
+    internal static MarkSet MarksOf(ModelRow r) =>
+        new(r.Tested is not null, r.Badge is { Passed: true }, r.Badge is { Passed: false });
+
+    //the marks of every file a row lists: its own, each hub file the pane lists by the oid its listing carries, and each local file the pane lists
+    internal static MarkSet ListedMarks(ModelRow r, ModelFacts? facts)
     {
-        if (b.Ran <= 0 || b.Passed >= b.Ran) return "";
-        var tail = b.Unfinished switch
-        {
-            0 => "",
-            1 => ", one unfinished",
-            var n => $", {n} unfinished",
-        };
-        return $" ({b.Passed} of {b.Ran} tasks{tail})";
+        var marks = MarksOf(r);
+        foreach (var file in facts?.Publishers?.SelectMany(p => p.Files) ?? []) marks = marks.Or(file.Marks);
+        var hubTested = r.Publishers.Any(p => p.Repos.Any(repo =>
+            HubSearch.Candidates(repo.Quants, r.Params).Any(q => ShippedMarks.Lookup(q.Members[0].Sha256) is not null)));
+        return marks with { Tested = marks.Tested || hubTested };
     }
 
     //fit in words, said as a computation, the estimate errs conservative and the words must not promise more than the arithmetic knows

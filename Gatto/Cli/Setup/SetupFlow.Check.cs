@@ -501,9 +501,9 @@ internal sealed partial class SetupFlow
                 ? (IReadOnlyList<SetupRow>)[.. TaskRows([.. ran.Where(t => !t.Pass)]), ""]
                 : [],
             .. StampRows(f),
-            .. check.Recorded is { } on
+            .. check.Recorded is not null
                 ? (IReadOnlyList<SetupRow>)["", CheckFacts.Row("recorded",
-                    $"the shelf shows it as tool-calling verified {Glyphs.Dot} {on:yyyy-MM-dd}")]
+                    "the shelf marks it as passed on this machine")]
                 : [],
             //trailing blank, a KeysOnly screen has no option list, the last fact would sit on the footer rule
             "",

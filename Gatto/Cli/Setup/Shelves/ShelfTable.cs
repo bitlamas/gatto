@@ -154,19 +154,27 @@ internal static class ShelfTable
     {
         var marks = new List<string>();
         if (r.Vision) marks.Add(g.Vision);
-        if (r.Badge is not null) marks.Add(g.Ok);
+        //the three marks of the row's file in one order, the words are the legend's
+        if (r.Tested is not null) marks.Add(g.Tested);
+        if (r.Badge is { Passed: true }) marks.Add(g.PassedHere);
+        if (r.Badge is { Passed: false }) marks.Add(g.FailedHere);
         //the marker ships as a mark, since its words do not fit any rung and the legend holds them
         if (ArchNote.Marker(r) is not null) marks.Add(g.OtherBuild);
         return string.Join(" ", marks);
     }
 
     //what the marks on this shelf mean, null when no row has one. each segment appears only when a row has that glyph
-    public static string? Legend(IReadOnlyList<ModelRow> rows, GlyphSet? glyphs)
+    public static string? Legend(IReadOnlyList<ModelRow> rows, GlyphSet? glyphs, IReadOnlyList<ModelFacts>? facts = null)
     {
         var g = glyphs ?? GlyphSet.Unicode;
         var parts = new List<string>();
         if (rows.Any(r => r.Vision)) parts.Add($"{g.Vision} vision");
-        if (rows.Any(r => r.Badge is not null)) parts.Add($"{g.Ok} tool-calling verified");
+        //a mark on any listed file brings its words, since a glyph in the pane's file list has no words of its own
+        var listed = rows.Select((r, i) => SearchRow.ListedMarks(r, facts?.ElementAtOrDefault(i)))
+            .Aggregate(default(MarkSet), (all, m) => all.Or(m));
+        if (listed.Tested) parts.Add($"{g.Tested} {SearchRow.TestedWords}");
+        if (listed.PassedHere) parts.Add($"{g.PassedHere} {SearchRow.PassedHereWords}");
+        if (listed.FailedHere) parts.Add($"{g.FailedHere} {SearchRow.FailedHereWords}");
         if (rows.Any(r => ArchNote.Marker(r) is not null))
             parts.Add($"{g.OtherBuild} {ArchNote.MarkerText}");
         return parts.Count == 0 ? null : string.Join($" {g.Dot} ", parts);

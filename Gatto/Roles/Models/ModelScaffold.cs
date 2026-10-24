@@ -42,7 +42,8 @@ public static class ModelScaffold
     public static string Create(string modelsDir, string ggufPath, int port, string? id = null,
         int? context = null, bool replace = false, string? projector = null,
         string? llamaServer = null, ModelSource? source = null, string? device = null,
-        int? gpuLayers = null)   //a split's layer count, null for a model that fits whole
+        int? gpuLayers = null,   //a split's layer count, null for a model that fits whole
+        string? sha256 = null)   //the hash of the file, stated with a stat of it here, at the path the profile names
     {
         var resolved = ResolveShardOne(Path.GetFullPath(ggufPath));
 
@@ -77,6 +78,13 @@ public static class ModelScaffold
             if (Gatto.Core.Acquire.QuantToken.Of(resolved) is { Length: > 0 } quant)
                 w.WriteString("quant", quant);
             w.WriteBoolean("active", true);
+            if (sha256 is { Length: > 0 } hash)
+            {
+                var key = FileKey.Of(hash, resolved);
+                w.WriteString("sha256", key.Sha256);
+                w.WriteNumber("size", key.Size);
+                w.WriteString("written", DateTime.SpecifyKind(key.Written, DateTimeKind.Utc));
+            }
             w.WriteEndObject();
             w.WriteEndArray();
             //the repo and file it was fetched from, when there is one, so a match can compare repos instead of file names

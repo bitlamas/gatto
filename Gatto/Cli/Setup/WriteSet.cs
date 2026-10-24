@@ -11,7 +11,8 @@ internal sealed record WriteSet
         bool Replace = false, string? AddToModelId = null,   //only the collision screen's confirmation sets Replace, and AddToModelId adds the file to a model gatto already has
         Gatto.Roles.Models.ModelSource? Source = null,   //the hub repo and file a fetched model came from, null for a model found on disk
         string? PinGpu = null,   //the product name of the integrated GPU the fit counted, which the write turns into a -dev pin
-        int? GpuLayers = null);   //the layers a split puts on the card, null when the model fits whole and the profile takes every layer
+        int? GpuLayers = null,   //the layers a split puts on the card, null when the model fits whole and the profile takes every layer
+        string? Sha256 = null);   //the hash alone, since the writer stats the file at its final path after any move
 
     public Endpoint? UpsertEndpoint { get; init; }
     public Model? CreateModel { get; init; }

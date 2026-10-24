@@ -15,8 +15,7 @@ public class ShelfCoverageTests
     private const string UnloadableArch = "gatto-test-unknown-arch";
 
     private static readonly Badge TheBadge = new(
-        "bartowski/Qwen3-Coder-GGUF", new DateOnly(2026, 8, 1), "v0.4.0", "greedy",
-        Passed: 4, Ran: 5);
+        "bartowski/Qwen3-Coder-GGUF", null, true, ["B4"], new DateOnly(2026, 8, 1), "v0.4.0", "greedy");
 
     //the fixture's numbers must not match anything else on screen, or a census can pass on the wrong text
     private static ModelRow TheRow() => ShelfRows.Of(
@@ -123,8 +122,8 @@ public class ShelfCoverageTests
     [Fact(Skip = "the words render on the TUI pane (Pane.Rows' only caller is Shelf.cs:514) and ShelfFrames renders the PLAIN face, which has no pane, so on that face a badge is a bare tick with no words, and a bare tick beside a model name reads as an endorsement. Reported; the fix is a design question. Un-skips when the plain face carries the words or is retired.")]
     public void THE_BADGES_WORDS_SURVIVE_THE_SWAP_label_date_AND_margin()
     {
-        //a bare tick beside a model name reads as an endorsement, so the badge needs its words and date. the words come from SearchRow.BadgeWordsBare
-        AssertReachable(ShelfFrames(), "badge words", SearchRow.BadgeWordsBare(TheBadge));
+        //a bare mark beside a model name reads as an endorsement, so the mark needs its words. the words come from SearchRow
+        AssertReachable(ShelfFrames(), "mark words", SearchRow.PassedHereWords);
     }
 
     //these assert a column on the model's row. the download URL holds the file name, so a presence check would pass with an empty table

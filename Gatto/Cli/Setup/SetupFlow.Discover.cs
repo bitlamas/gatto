@@ -198,7 +198,7 @@ internal sealed partial class SetupFlow
     }
 
     //the one completion point for a chosen model. a found file stays put, a wizard pick must not move 30 GB
-    private SetupScreen Adopt(FoundModel model)
+    private SetupScreen Adopt(FoundModel model, Func<SetupScreen>? stopped = null)
     {
         //check completeness here and nowhere else, every route inherits the refusal. do it before the choice is announced
         if (!model.IsComplete) return PartialSet(model);
@@ -218,6 +218,17 @@ internal sealed partial class SetupFlow
             return Done();
         }
 
+        //a file about to get a profile entry is read first unless the run already holds its hash, so the entry records the bytes
+        if (KnownHashFor(model) is null)
+            return Read(model, hash => { Know(model, hash); return AdoptNew(model); },
+                stopped ?? (() => DiscoveredScreen(heading: null)));
+
+        return AdoptNew(model);
+    }
+
+    //the adoption past the reuse and the read, the clash question or the move offer
+    private SetupScreen AdoptNew(FoundModel model)
+    {
         //a different file holding the same id is a question only the user can answer, don't merge it with the reuse above
         var (clash, clashId) = probes.ClashFor(model.Path, SourceOf(model)?.RepoId);
         if (clashId is { Length: > 0 } held)
@@ -482,7 +493,8 @@ internal sealed partial class SetupFlow
         Writes = Writes with
         {
             CreateModel = new WriteSet.Model(model.Path, Port: DefaultPort,
-                Context: probes.ContextFor(model.Path), Id: existingId, AddToModelId: existingId),
+                Context: probes.ContextFor(model.Path), Id: existingId, AddToModelId: existingId,
+                Sha256: KnownHashFor(model)),
         };
         //save the join separately, the WriteSet is cleared before its question is asked
         _joining = (existingId, Gatto.Core.Acquire.QuantToken.Of(model.Path) ?? "");
@@ -525,6 +537,35 @@ internal sealed partial class SetupFlow
         return Done();
     }
 
+    //the hash the run holds for this file, matched by full path so it never lands on another file, and dropped when a stat shows the bytes changed since
+    private string? KnownHashFor(FoundModel model)
+    {
+        if (_knownHash is not { } known || !string.Equals(System.IO.Path.GetFullPath(known.Path),
+                System.IO.Path.GetFullPath(model.Path), StringComparison.OrdinalIgnoreCase))
+            return null;
+        var now = StatOf(model.Path);
+        return now is null || known.Size is null || (now.Value.Size == known.Size && now.Value.Written == known.Written)
+            ? known.Sha256 : null;
+    }
+
+    //what the run learned about a file's bytes and the stat it was taken at, and a failed stat only loses the guard since the writer stats the file again
+    private void Know(FoundModel model, string? sha256)
+    {
+        if (sha256 is not { Length: > 0 } hash) return;
+        var stat = StatOf(model.Path);
+        _knownHash = (model.Path, hash, stat?.Size, stat?.Written);
+    }
+
+    private static (long Size, DateTime Written)? StatOf(string path)
+    {
+        try
+        {
+            var info = new System.IO.FileInfo(path);
+            return info.Exists ? (info.Length, info.LastWriteTimeUtc) : null;
+        }
+        catch (Exception) { return null; }   //a path the stat cannot read keeps the hash without its guard
+    }
+
     //the repo a model came from, only for the file the user picked. the id and the clash check both read this one answer
     private Gatto.Roles.Models.ModelSource? SourceOf(FoundModel model) =>
         Picked is { RowFile: { } file, RowQuant: { } quant } && Answers(model, quant) ? new Gatto.Roles.Models.ModelSource(file.RepoId, quant.FileName) : null;
@@ -542,7 +583,8 @@ internal sealed partial class SetupFlow
                 Context: context, Replace: replace,
                 Source: SourceOf(model),
                 PinGpu: probes.ServeOnlyGpu(),
-                GpuLayers: probes.SplitLayersFor(model.Path, context, Writes.Projector)),
+                GpuLayers: probes.SplitLayersFor(model.Path, context, Writes.Projector),
+                Sha256: KnownHashFor(model)),
         };
         //pause for the writer before offering anything, no screen may audition a model that isn't on disk yet
         NeedsWritesApplied = true;

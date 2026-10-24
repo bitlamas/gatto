@@ -55,6 +55,7 @@ internal static class WalkSection
         ["model.typedid"] = Model,
         ["model.scanpath"] = Model,
         ["model.download"] = Model,
+        ["model.reading"] = Model,
         //the in-app fetch is the model step, since the subject decides the section and the subject is which model gatto will run
         ["model.consent"] = Model,
         ["model.fetching"] = Model,

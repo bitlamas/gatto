@@ -1,0 +1,84 @@
+{
+  "schema": 1,
+  "battery": 4,
+  "rows": [
+    {
+      "sha256": "7e918aeca06c52bcb528ea6b04b4ec957e75ee8c0a73138854c0dfcf371ea429",
+      "file": "Qwen3.5-9B-IQ4_XS.gguf",
+      "repo_id": "unsloth/Qwen3.5-9B-GGUF",
+      "runs": 20,
+      "passed": 20,
+      "tasks": {
+        "B1": 20,
+        "B2": 20,
+        "B3": 20,
+        "B4": 20,
+        "B5": 20
+      },
+      "fell_short": [],
+      "sampling_note": "defaults",
+      "gatto_build": "f611334",
+      "server": "b3-b4c008d",
+      "measured": "2026-10-20"
+    },
+    {
+      "sha256": "b773526fab7e47cd2da8f51c20f986f7912f0aee56811265839650c4bfd1a098",
+      "file": "Qwen3.6-35B-A3B-UD-Q5_K_S.gguf",
+      "repo_id": "unsloth/Qwen3.6-35B-A3B-MTP-GGUF",
+      "runs": 20,
+      "passed": 20,
+      "tasks": {
+        "B1": 20,
+        "B2": 20,
+        "B3": 20,
+        "B4": 19,
+        "B5": 17
+      },
+      "fell_short": [],
+      "sampling_note": "defaults",
+      "gatto_build": "f611334",
+      "server": "b11071-6ad1af560",
+      "measured": "2026-10-20"
+    },
+    {
+      "sha256": "9975fc8a0fbb4ef70a9ff667588e967d2932d48906dd67e6e5dd58b0a21bc331",
+      "file": "Qwen3.8-Flash-Next-Q4_K_XL-IQ4NL-00001-of-00004.gguf",
+      "repo_id": null,
+      "runs": 20,
+      "passed": 20,
+      "tasks": {
+        "B1": 20,
+        "B2": 20,
+        "B3": 20,
+        "B4": 20,
+        "B5": 20
+      },
+      "fell_short": [],
+      "sampling_note": "defaults",
+      "gatto_build": "f611334",
+      "server": "b0-unknown",
+      "measured": "2026-10-20"
+    },
+    {
+      "sha256": "df0fd4ee07072c607c29a0a1cb4f98918426cca12f45a2776bdd6ee6d09a4de3",
+      "file": "gemma-4-E4B-it-qat-UD-Q4_K_XL.gguf",
+      "repo_id": "unsloth/gemma-4-E4B-it-qat-GGUF",
+      "runs": 20,
+      "passed": 19,
+      "tasks": {
+        "B1": 20,
+        "B2": 20,
+        "B3": 19,
+        "B4": 3,
+        "B5": 19
+      },
+      "fell_short": [
+        "B4"
+      ],
+      "sampling_note": "defaults",
+      "gatto_build": "f611334",
+      "server": "b3-b4c008d",
+      "measured": "2026-10-20"
+    }
+  ]
+}

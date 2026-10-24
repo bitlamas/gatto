@@ -115,6 +115,9 @@ internal sealed class LiveSetupProbes(string homePath, Gatto.Terminal.GlyphSet g
     public Gatto.Core.Acquire.Badge? BadgeForFile(string fileName) =>
         string.IsNullOrWhiteSpace(fileName) ? null : BadgeRegister.Lookup(homePath, fileName);
 
+    public string? LiveKeyFor(string modelId, string ggufPath) =>
+        Gatto.Roles.Models.ModelFiles.LiveKey(Path.Combine(homePath, "models"), modelId, ggufPath);
+
     //stops the session's server after a yes to the swap, leaves the wizard's own to Dispose, and answers false on a failed stop
     public bool ReleaseHeldServer()
     {
@@ -1004,13 +1007,13 @@ internal sealed class LiveSetupProbes(string homePath, Gatto.Terminal.GlyphSet g
     }
 
     //hash what landed, and answer null instead of throwing, an unreadable file is a state the screen has words for
-    public string? Sha256Of(string ggufPath)
+    public string? Sha256Of(string ggufPath, CancellationToken ct = default)
     {
         try
         {
             return Gatto.Core.Acquire.Checksum
                 //an empty expected hash on purpose, this reads the actual hash and leaves the comparison to the flow
-                .Sha256Async(ggufPath, string.Empty, null, CancellationToken.None)
+                .Sha256Async(ggufPath, string.Empty, null, ct)
                 .GetAwaiter().GetResult().ActualSha256;
         }
         catch (Exception) { return null; }

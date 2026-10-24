@@ -96,15 +96,15 @@ public sealed class ShelfDownloadTests : IDisposable
         var probes = new FakeSetupProbes { Rows = [Row(StaticQ4, sha: false)], Found = [] };
         var flow = new SetupFlow(probes);
         flow.StartPastEngine();
-        flow.Answer(ShelfControls.PickAnswer("0", I1Q4));
+        flow.AnswerSettled(ShelfControls.PickAnswer("0", I1Q4));
         probes.Found = [new FoundModel(@"C:\Users\me\Downloads\m.i1-Q4_K_M.gguf", 5_200_000_000, null)];
         Assert.True(flow.PollForDownload());
-        flow.Answer(SetupFlow.Landed);
+        flow.AnswerSettled(SetupFlow.Landed);
 
         Assert.Equal(new Gatto.Roles.Models.ModelSource("bartowski/m-i1-GGUF", "m.i1-Q4_K_M.gguf"), flow.Writes.CreateModel!.Source);
 
         flow.ResumeAfterWrites("m");
-        flow.Answer(SetupFlow.Yes);
+        flow.AnswerSettled(SetupFlow.Yes);
         Assert.True(SpinWait.SpinUntil(() => probes.AuditionStarts > 0, TimeSpan.FromSeconds(10)), "the check never started");
         Assert.Equal("bartowski/m-i1-GGUF", probes.AuditionRepoId);
     }

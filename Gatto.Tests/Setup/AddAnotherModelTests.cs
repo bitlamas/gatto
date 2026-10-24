@@ -27,14 +27,14 @@ public class AddAnotherModelTests
         };
         var flow = new SetupFlow(probes) { CanSwitchSource = true };
         flow.StartAtModelSegment();
-        Assert.Equal(SetupFlow.DiscoveredKey, Assert.IsType<SetupScreen.Choice>(flow.Answer(SetupFlow.CtlSource)).Key);
+        Assert.Equal(SetupFlow.DiscoveredKey, Assert.IsType<SetupScreen.Choice>(flow.AnswerSettled(SetupFlow.CtlSource)).Key);
         return (flow, probes);
     }
 
     //a local row picked and its scaffold written, the id the writer would produce passed back in
     private static SetupScreen.Choice PickAndReachTheCheck(SetupFlow flow, int row, string id)
     {
-        var screen = flow.Answer(row.ToString(System.Globalization.CultureInfo.InvariantCulture));
+        var screen = flow.AnswerSettled(row.ToString(System.Globalization.CultureInfo.InvariantCulture));
         Assert.True(flow.NeedsWritesApplied);
         screen = flow.ResumeAfterWrites(id);
         while (flow.NeedsWritesApplied) screen = flow.ResumeAfterWrites(null);
@@ -43,7 +43,7 @@ public class AddAnotherModelTests
 
     private static SetupScreen ThroughThePause(SetupFlow flow, string answer)
     {
-        var screen = flow.Answer(answer);
+        var screen = flow.AnswerSettled(answer);
         while (flow.NeedsWritesApplied) screen = flow.ResumeAfterWrites(null);
         return screen;
     }
@@ -64,7 +64,7 @@ public class AddAnotherModelTests
     {
         var (flow, probes) = Started();
         PickAndReachTheCheck(flow, 0, "alpha");
-        var saving = flow.Answer(SetupFlow.AddAnother);
+        var saving = flow.AnswerSettled(SetupFlow.AddAnother);
         Assert.True(flow.NeedsWritesApplied);
         Assert.Equal("alpha", flow.Writes.DefaultModelIfAbsent);
         Assert.Null(flow.Writes.DefaultModel);
@@ -88,8 +88,8 @@ public class AddAnotherModelTests
     public void THE_SHELF_RETURNS_AS_THE_USER_LEFT_IT()
     {
         var (flow, _) = Started();
-        flow.Answer(SetupFlow.CtlParams);
-        var sorted = Assert.IsType<SetupScreen.Choice>(flow.Answer(SetupFlow.CtlParams));
+        flow.AnswerSettled(SetupFlow.CtlParams);
+        var sorted = Assert.IsType<SetupScreen.Choice>(flow.AnswerSettled(SetupFlow.CtlParams));
         Assert.False(sorted.Shelf!.SmallestFirst);
         PickAndReachTheCheck(flow, 0, "alpha");
         var back = Assert.IsType<SetupScreen.Choice>(ThroughThePause(flow, SetupFlow.AddAnother));
@@ -115,9 +115,9 @@ public class AddAnotherModelTests
         PickAndReachTheCheck(flow, 0, "alpha");
         var shelf = Assert.IsType<SetupScreen.Choice>(ThroughThePause(flow, SetupFlow.AddAnother));
         Assert.False(shelf.AllowBack);
-        var typed = Assert.IsType<SetupScreen.Choice>(flow.Answer(ShelfControls.TypedAnswer(@"C:\m")));
+        var typed = Assert.IsType<SetupScreen.Choice>(flow.AnswerSettled(ShelfControls.TypedAnswer(@"C:\m")));
         Assert.True(typed.AllowBack);
-        Assert.Equal(SetupFlow.DiscoveredKey, Assert.IsType<SetupScreen.Choice>(flow.Answer(SetupFlow.BackKey)).Key);
+        Assert.Equal(SetupFlow.DiscoveredKey, Assert.IsType<SetupScreen.Choice>(flow.AnswerSettled(SetupFlow.BackKey)).Key);
     }
 
     //a model added from the Hub returns to the Hub shelf with its sort, and nothing behind it
@@ -135,7 +135,7 @@ public class AddAnotherModelTests
         };
         var flow = new SetupFlow(probes) { CanSwitchSource = true };
         Assert.Equal(SetupFlow.SearchKey, Assert.IsType<SetupScreen.Choice>(flow.StartAtModelSegment()).Key);
-        flow.Answer(SetupFlow.CtlParams);
+        flow.AnswerSettled(SetupFlow.CtlParams);
         var screen = flow.ResumeAfterWrites("gemma-4-26B-A4B-it");
         while (flow.NeedsWritesApplied) screen = flow.ResumeAfterWrites(null);
         Assert.Equal(SetupFlow.InSessionCheckKey, Assert.IsType<SetupScreen.Choice>(screen).Key);

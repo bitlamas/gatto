@@ -20,7 +20,12 @@ public class UnmappedScreenTests : IDisposable
         private int _i;
         public List<SetupScreen> Seen { get; } = [];
         public string? Choose(SetupScreen.Choice c, Func<bool>? watch = null,
-            Func<FetchTick?>? tick = null, Func<CheckTick?>? check = null) { Seen.Add(c); return Next(); }
+            Func<FetchTick?>? tick = null, Func<CheckTick?>? check = null)
+        {
+            if (Gatto.Tests.Fakes.FlowReads.ThroughRead(c, watch) is { } read) return read;
+            Seen.Add(c);
+            return Next();
+        }
         public string? Ask(SetupScreen.Ask a) { Seen.Add(a); return Next(); }
         public void Show(SetupScreen.Info i) => Seen.Add(i);
         public void End(SetupScreen.Terminal t) => Seen.Add(t);

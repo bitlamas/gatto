@@ -44,6 +44,7 @@
     <EmbeddedResource Include="Core\Acquire\llama-siblings.json" />
     <EmbeddedResource Include="Core\Acquire\model-kinds.json" />
     <EmbeddedResource Include="Core\Acquire\families.json" />
+    <EmbeddedResource Include="Core\Acquire\tool-use-marks.json" />
     <EmbeddedResource Include="Core\Acquire\streamed-tensors.json" />
     <EmbeddedResource Include="Core\Acquire\load-mode-dialect.json" />
     <!-- the json schema for gatto.json, written into the home beside the file it describes.

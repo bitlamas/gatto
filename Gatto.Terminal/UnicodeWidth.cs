@@ -64,6 +64,7 @@ public static class UnicodeWidth
         if (c is >= 0xFE30 and <= 0xFE4F) return 2;
         if (c is >= 0xFF00 and <= 0xFF60) return 2;   //fullwidth forms (７ （ etc.)
         if (c is >= 0xFFE0 and <= 0xFFE6) return 2;
+        if (c is 0x1F5F7 or 0x1F5F9) return 1;   //the two ballot marks, measured one cell in both terminals. the rest of the range is unmeasured and stays wide
         if (c is >= 0x1F300 and <= 0x1F64F) return 2; //emoji
         if (c is >= 0x1F680 and <= 0x1F6FF) return InRanges(c, WideTransport) ? 2 : 1;
         if (c is >= 0x1F900 and <= 0x1F9FF) return 2;

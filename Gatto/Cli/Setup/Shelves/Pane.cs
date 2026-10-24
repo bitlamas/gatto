@@ -5,9 +5,19 @@ using Gatto.Terminal;
 
 namespace Gatto.Cli.Setup.Shelves;
 
+//the three marks one file carries, the same on the shelf's rows and in the pane's file list
+internal readonly record struct MarkSet(bool Tested, bool PassedHere, bool FailedHere)
+{
+    public bool Any => Tested || PassedHere || FailedHere;
+
+    public MarkSet Or(MarkSet other) =>
+        new(Tested || other.Tested, PassedHere || other.PassedHere, FailedHere || other.FailedHere);
+}
+
 //one file as the pane lists it: the quant, its size, the fit verdict FitArithmetic reached and the file it names. a file with no token has a null quant and is still listed
 internal readonly record struct PaneFile(string? Quant, long Bytes, FitRegime Fit, FileRef? File = null,
-    string? Tag = null)   //what tells this file's repo from another holding the same label, null when nothing collides
+    string? Tag = null,   //what tells this file's repo from another holding the same label, null when nothing collides
+    MarkSet Marks = default)   //the file's own marks, drawn after its fit glyph, with the words in the legend and the tools line
 {
     //the quant, or the file's own name when its name declares none, and the repo's tag when it has one
     public string Label => (Quant ?? (File is { } f ? f.Path[(f.Path.LastIndexOf('/') + 1)..] : ""))
@@ -69,8 +79,8 @@ internal static class Pane
     //how many files the window shows at once: three, with the knee at the top so the file gatto would pick opens the list
     private const int Window = 3;
 
-    //the words say gatto has not measured it, since unverified reads as a verdict on the model
-    internal const string NotMeasured = "not measured by gatto yet";
+    //the label column the wide pane pads arch and tools to
+    private const string ToolsLabel = "tools     ";
 
     //the pane for one row, padded to width. a hub row lists its publishers closed, and one opens at a time so nobody steps through thirty quants
     public static IReadOnlyList<PaintedRow> Rows(
@@ -91,6 +101,8 @@ internal static class Pane
         foreach (var line in Wrap(Name(r), width)) rows.Add(PaintedRow.Of(line, RunInk.Bright));
         if (f.Have != HaveMark.None) rows.Add(HaveRow(r, f, width, g));
         rows.AddRange(FactsLines(r, f, width, g));
+        //a hub row's file can carry the tested mark, so the hub pane has the tools line too
+        rows.AddRange(ToolsRows(r, ToolsLabel, width, g));
         rows.Add(PaintedRow.Of(""));
 
         if (f.Publishers is { Count: > 0 } pubs)
@@ -150,12 +162,8 @@ internal static class Pane
         if (r.Arch is { Length: > 0 } arch)
             rows.Add(new PaintedRow([new Run("arch      ", RunInk.Dim), new Run(arch)]));
 
-        //a row with no measurement says so. the badge words come from SearchRow's own helper rather than a second wording
-        rows.Add(r.Badge is { } b
-            //the bare badge words here, since this row paints its own mark and the full sentence would put a second glyph on the row
-            ? new PaintedRow([new Run(g.Ok, RunInk.Ok),
-                              new Run(" " + SearchRow.BadgeWordsBare(b), RunInk.Dim)])
-            : new PaintedRow([new Run(g.Bad + " " + NotMeasured, RunInk.Dim)]));
+        //the marks of the row's file with their words, and no line when none applies, since an untested file is not a verdict
+        rows.AddRange(ToolsRows(r, ToolsLabel, width, g));
 
         rows.Add(PaintedRow.Of(""));
 
@@ -276,6 +284,7 @@ internal static class Pane
                 head.Add(new Run(SearchRow.Gb(ordered[pick].Bytes) + " " + ordered[pick].Label + "  "));
                 head.Add(new Run(fit.Glyph, fit.Ink));
                 head.Add(new Run(words && fit.Word.Length > 0 ? " " + fit.Word : "", RunInk.Dim));
+                head.AddRange(MarkRuns(ordered[pick].Marks, g));
             }
             else
             {
@@ -318,7 +327,7 @@ internal static class Pane
             var fit = FitMarks.Of(ordered[i].Fit, shape, g);
             var word = onDisk ? HaveMarks.Word(have) : fit.Word;
             //the line is four cells, the file cells and the glyph before the word, which goes when the pane is narrower
-            if (4 + QuantColumn + SizeColumn + 2 + 1 + 1 + UnicodeWidth.Of(word) > width) word = "";
+            if (4 + QuantColumn + SizeColumn + 2 + 1 + 1 + UnicodeWidth.Of(word) + MarkCells(ordered[i].Marks) > width) word = "";
             //the file's index is its place in the ordered list, the index a pane line names
             var fileTag = new HitTag(HitKind.PaneFile, Index: publisher, File: i, Area: Region.Files);
             var line = new PaintedRow([
@@ -327,7 +336,8 @@ internal static class Pane
                     here ? RunInk.Accent : RunInk.Plain, fileTag),
                 new Run("  ", Tag: fileTag),
                 new Run(onDisk ? HaveMarks.Glyph(have, g) : fit.Glyph, onDisk ? HaveMarks.Ink(have) : fit.Ink, fileTag),
-                new Run(word.Length > 0 ? " " + word : "", RunInk.Dim, fileTag)]);
+                new Run(word.Length > 0 ? " " + word : "", RunInk.Dim, fileTag),
+                .. MarkRuns(ordered[i].Marks, g).Select(run => run with { Tag = fileTag })]);
             //the indent stays off the band, which starts at the mark as the publisher line's does
             rows.Add(new PaintedRow([new Run("  "), .. (here ? line.Banded() : line).Runs]));
         }
@@ -344,7 +354,7 @@ internal static class Pane
         if (pick < 0) return "no file fits";
         var fit = FitMarks.Of(ordered[pick].Fit, shape, g);
         return SearchRow.Gb(ordered[pick].Bytes) + " " + ordered[pick].Label + "  " + fit.Glyph
-            + (words && fit.Word.Length > 0 ? " " + fit.Word : "");
+            + (words && fit.Word.Length > 0 ? " " + fit.Word : "") + new string(' ', MarkCells(ordered[pick].Marks));
     }
 
     //the lines the publisher list holds, each publisher's own line and the open one's files under it
@@ -381,7 +391,7 @@ internal static class Pane
         pick is null ? -1 : ordered.ToList().FindIndex(x => x.File == pick);
 
     private static string Clip(string text, int n, GlyphSet g) =>
-        UnicodeWidth.Of(text) <= n || n < 2 ? text : text[..(n - 1)] + g.Ellipsis;
+        UnicodeWidth.Of(text) <= n || n <= UnicodeWidth.Of(g.Ellipsis) ? text : text[..(n - UnicodeWidth.Of(g.Ellipsis))] + g.Ellipsis;
 
     //the model's own name, which no publisher prefixes
     private static string Name(ModelRow r) => r.Model;
@@ -520,13 +530,108 @@ internal static class Pane
         var foldTag = new HitTag(HitKind.FoldedFile, File: f.Files is { Count: > 0 } ff ? FileAt(ff, cursor) : -1, Area: Region.Files);
         rows.Add(new PaintedRow([.. shown.Take(2), .. shown.Skip(2).Select(x => x with { Tag = foldTag })]));
 
-        //a hub row carries no badge, so only the local fold says what gatto measured, the wide pane's rule in shorter words
-        if (f.LocalPath is not null)
-            rows.Add(r.Badge is { } b
-                ? new PaintedRow([new Run("  "), new Run(g.Ok, RunInk.Ok), new Run(" " + SearchRow.BadgeWordsBare(b), RunInk.Dim)])
-                : new PaintedRow([new Run("  "), new Run(g.Bad + " not measured yet", RunInk.Dim)]));
+        //the wide pane's tools line at the fold's indent, on a hub row too, since its file can carry the tested mark
+        rows.AddRange(ToolsRows(r, $"  tools {g.Dot} ", width, g));
         return rows;
     }
+
+    //one mark of the tools line: the glyph in its ink, its words, and the tasks it fell short on, empty for none and for the failed mark
+    private sealed record ToolsMark(Run Glyph, string Words, string FellShort);
+
+    private static List<ToolsMark> ToolsMarks(ModelRow r, GlyphSet g)
+    {
+        var marks = new List<ToolsMark>();
+        if (r.Tested is { } tested)
+            marks.Add(new(new Run(g.Tested, RunInk.Ok), SearchRow.TestedWords, SearchRow.FellShort(tested.FellShort, g)));
+        if (r.Badge is { Passed: true } passed)
+            marks.Add(new(new Run(g.PassedHere, RunInk.Ok), SearchRow.PassedHereWords, SearchRow.FellShort(passed.FellShort, g)));
+        else if (r.Badge is { Passed: false })
+            marks.Add(new(new Run(g.FailedHere, RunInk.Warn), SearchRow.FailedHereWords, ""));
+        return marks;
+    }
+
+    //the label, then the marks two spaces apart, wrapped at that seam under the first glyph, and a clause too long for its line goes under its words
+    internal static IReadOnlyList<PaintedRow> ToolsRows(ModelRow r, string label, int width, GlyphSet g)
+    {
+        var marks = ToolsMarks(r, g);
+        if (marks.Count == 0) return [];
+
+        var indent = new string(' ', UnicodeWidth.Of(label));
+        var rows = new List<PaintedRow>();
+        var line = new List<Run> { new(label, RunInk.Dim) };
+        var used = indent.Length;
+        var empty = true;
+        foreach (var mark in marks)
+        {
+            var head = UnicodeWidth.Of(mark.Glyph.Text) + 1 + UnicodeWidth.Of(mark.Words);
+            var cells = head + UnicodeWidth.Of(mark.FellShort);
+            if (!empty && used + 2 + cells > width)
+            {
+                rows.Add(new PaintedRow(line));
+                line = [new Run(indent)];
+                used = indent.Length;
+                empty = true;
+            }
+            if (!empty)
+            {
+                line.Add(new Run("  "));
+                used += 2;
+            }
+            var under = used + UnicodeWidth.Of(mark.Glyph.Text) + 1;
+            line.Add(mark.Glyph);
+            if (used + cells <= width)
+            {
+                line.Add(new Run(" " + mark.Words + mark.FellShort, RunInk.Dim));
+                used += cells;
+            }
+            else
+            {
+                //the words wrap by word under themselves, and the clause drops its joining comma on rows of its own, so no task name is cut
+                var room = Math.Max(1, width - under);
+                var pieces = WordLines(mark.Words, room);
+                if (mark.FellShort.Length > 0) pieces.AddRange(WordLines(mark.FellShort.TrimStart(',', ' '), room));
+                line.Add(new Run(" " + pieces[0], RunInk.Dim));
+                foreach (var piece in pieces.Skip(1))
+                {
+                    rows.Add(new PaintedRow(line));
+                    line = [new Run(new string(' ', under)), new Run(piece, RunInk.Dim)];
+                }
+                used = under + UnicodeWidth.Of(pieces[^1]);
+            }
+            empty = false;
+        }
+        rows.Add(new PaintedRow(line));
+        return rows;
+    }
+
+    //words filled greedily into lines of at most room cells, and a word wider than the room keeps a line of its own
+    private static List<string> WordLines(string text, int room)
+    {
+        var lines = new List<string>();
+        var current = "";
+        foreach (var word in text.Split(' '))
+        {
+            var joined = current.Length == 0 ? word : current + " " + word;
+            if (current.Length > 0 && UnicodeWidth.Of(joined) > room)
+            {
+                lines.Add(current);
+                joined = word;
+            }
+            current = joined;
+        }
+        lines.Add(current);
+        return lines;
+    }
+
+    //a file's marks as glyphs alone, after its other marks, since the words are the legend's and the tools line's
+    private static IEnumerable<Run> MarkRuns(MarkSet m, GlyphSet g)
+    {
+        if (m.Tested) { yield return new Run(" "); yield return new Run(g.Tested, RunInk.Ok); }
+        if (m.PassedHere) { yield return new Run(" "); yield return new Run(g.PassedHere, RunInk.Ok); }
+        if (m.FailedHere) { yield return new Run(" "); yield return new Run(g.FailedHere, RunInk.Warn); }
+    }
+
+    private static int MarkCells(MarkSet m) => (m.Tested ? 2 : 0) + (m.PassedHere ? 2 : 0) + (m.FailedHere ? 2 : 0);
 
     //the files list as one line: the pick, its verdict and how many are heavier. the arrow points right, and lighter files are counted nowhere once the pick moves
     private static IReadOnlyList<Run> FoldFiles(
@@ -543,6 +648,7 @@ internal static class Pane
             runs.Add(new Run($" {g.Dot} " + (f.FilesHere ?? "") + "  ", RunInk.Dim));
             runs.Add(new Run(localMark.Glyph, localMark.Ink));
             runs.Add(new Run(localMark.Word.Length > 0 ? " " + localMark.Word : "", RunInk.Dim));
+            runs.AddRange(MarkRuns(SearchRow.MarksOf(r), g));
             return runs;
         }
 
@@ -555,6 +661,7 @@ internal static class Pane
             runs.Add(new Run($"{ordered[at].Label} {SearchRow.Gb(ordered[at].Bytes)}  "));
             runs.Add(new Run(mark.Glyph, mark.Ink));
             runs.Add(new Run(mark.Word.Length > 0 ? " " + mark.Word : "", RunInk.Dim));
+            runs.AddRange(MarkRuns(ordered[at].Marks, g));
             var heavier = ordered.Count - 1 - at;
             if (heavier > 0) runs.Add(new Run($" {g.Dot} {g.Ellipsis} {heavier} heavier {g.Right}", RunInk.Dim));
         }
@@ -631,7 +738,8 @@ internal static class Pane
             var tail = $"{g.Ellipsis}\\" + string.Join('\\', segs[i..]);
             if (UnicodeWidth.Of(tail) <= width) return tail;
         }
-        return $"{g.Ellipsis}" + path[^Math.Min(path.Length, Math.Max(0, width - 1))..];
+        //the ascii ellipsis is three cells, so the kept tail is what the ellipsis leaves
+        return $"{g.Ellipsis}" + path[^Math.Min(path.Length, Math.Max(0, width - UnicodeWidth.Of(g.Ellipsis)))..];
     }
 
     private static IReadOnlyList<string> Wrap(string text, int width)

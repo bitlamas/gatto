@@ -48,31 +48,31 @@ public class SearchRowTests
         Table(r, shape) + " · " + Pane(r);
 
     [Fact]
-    public void A_BADGE_says_what_was_MEASURED_and_never_recommends()
+    public void A_MARK_says_what_was_MEASURED_and_never_recommends()
     {
-        //the words must state what was measured, they live on the pane since a bare tick in the table reads as a recommendation
-        var pane = LocalPane(Row(badge: new Badge("org/model", new DateOnly(2026, 8, 10), "abc1234", "temp 0.7")));
+        //the words must state what was measured and where, with no date, count or score beside them
+        var pane = LocalPane(Row(badge: new Badge("org/model", null, true, [], new DateOnly(2026, 8, 10), "abc1234", "temp 0.7")));
 
-        Assert.Contains("tool-calling verified", pane, StringComparison.Ordinal);
-        Assert.Contains("2026-08", pane, StringComparison.Ordinal);
+        Assert.Contains(SearchRow.PassedHereWords, pane, StringComparison.Ordinal);
+        Assert.DoesNotContain("2026", pane, StringComparison.Ordinal);
         Assert.DoesNotContain("recommend", pane, StringComparison.OrdinalIgnoreCase);
         Assert.DoesNotContain("best", pane, StringComparison.OrdinalIgnoreCase);
     }
 
     [Fact]
-    public void A_BADGE_SHOWS_ITS_MARGIN_only_when_there_is_one()
+    public void A_PASS_NAMES_THE_TASK_IT_FELL_SHORT_ON_and_never_a_score()
     {
         //both halves belong in one test, since a line that does not move with the fact is the defect
-        var badge = new Badge("org/model", new DateOnly(2026, 8, 10), "abc1234", "temp 0.7",
-            Passed: 5, Ran: 5);
+        var badge = new Badge("org/model", null, true, [], new DateOnly(2026, 8, 10), "abc1234", "temp 0.7");
 
-        var perfect = LocalPane(Row(badge: badge));
-        var marginal = LocalPane(Row(badge: badge with { Passed = 4 }));
+        var clean = LocalPane(Row(badge: badge));
+        var marginal = LocalPane(Row(badge: badge with { FellShort = ["B4"] }));
 
-        Assert.DoesNotContain("tasks", perfect, StringComparison.Ordinal);
-        Assert.Contains("4 of 5 tasks", marginal, StringComparison.Ordinal);
+        Assert.DoesNotContain("fell short", clean, StringComparison.Ordinal);
+        Assert.Contains(", fell short: " + Gatto.Roles.Audition.Battery.Tasks.Single(t => t.Id == "B4").Label, marginal, StringComparison.Ordinal);
 
-        //a bare fraction beside a model name reads as a rating out of five, so the unit is always named
+        //a fraction beside a model name reads as a rating out of five, so none is shown
+        Assert.DoesNotContain(" of 5", marginal, StringComparison.Ordinal);
         Assert.DoesNotContain("4/5", marginal, StringComparison.Ordinal);
         Assert.DoesNotContain("recommend", marginal, StringComparison.OrdinalIgnoreCase);
     }
@@ -163,7 +163,7 @@ public class SearchRowTests
     public void A_row_carries_NO_DESCRIPTION_AND_NO_CAPABILITY_PROSE()
     {
         //author-supplied claims such as reasoning and tool use have no standard, so no surface may state them. check both surfaces.
-        var both = Both(Row(badge: new Badge("org/model", new DateOnly(2026, 8, 10), "abc", "t")));
+        var both = Both(Row(badge: new Badge("org/model", null, true, [], new DateOnly(2026, 8, 10), "abc", "t")));
 
         foreach (var folklore in new[] { "reasoning", "tool use", "instruct-tuned", "uncensored", "state of the art" })
             Assert.DoesNotContain(folklore, both, StringComparison.OrdinalIgnoreCase);

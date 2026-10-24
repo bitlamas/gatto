@@ -188,6 +188,7 @@ internal sealed partial class SetupFlow
             && (load.Other?.IsCompleted ?? true) && (load.Serving?.IsCompleted ?? true)
         //a paused fetch resolves nothing, so this arm leads the rest. without it the flow falls to asking the disk about a browser download
         : _modelPaused ? false
+        : _reading is { } read ? read.IsCompleted
         : _fetching is { } fetch ? fetch.IsCompleted
         //task fields answer before disk questions, a task is running or it is not, the fields below are told apart by which are set
         : _modelFetch is { } model ? model.IsCompleted
@@ -252,16 +253,11 @@ internal sealed partial class SetupFlow
             if (_discovered.FirstOrDefault(m => Answers(m, row.RowQuant!)) is not { } arrived)
                 return DownloadScreen(row);
 
-            var check = Accept(arrived, row.RowQuant!);
-            return check.Verdict switch
-            {
-                //still being written or unreadable both mean not yet, neither is an accusation
-                WatchVerdict.StillArriving or WatchVerdict.Unreadable => DownloadScreen(row),
-                WatchVerdict.NotThePublishedFile => WrongFile(row, arrived, check),
-                //the whole unit must be here, a vision model missing its encoder stays on the watch
-                _ when !UnitHere(row) => DownloadScreen(row),
-                _ => AdoptFromWatch(arrived),
-            };
+            //the checks that need no read come first, a growing file or a wrong size is answered without reading a byte
+            if (Precheck(arrived, row.RowQuant!) is { } early) return Judged(row, arrived, early);
+            return KnownHashFor(arrived) is { } held
+                ? Judged(row, arrived, Accept(row.RowQuant!, held))
+                : Read(arrived, hash => Judged(row, arrived, Accept(row.RowQuant!, hash)), () => DownloadScreen(row));
         }
         if (key == PickAnother) return Search();
 
@@ -270,7 +266,7 @@ internal sealed partial class SetupFlow
         {
             _declinedEncoder = true;
             return _discovered.FirstOrDefault(m => Answers(m, row.RowQuant!)) is { } weights
-                ? Adopt(weights)
+                ? Adopt(weights, () => DownloadScreen(row))
                 : DownloadScreen(row);
         }
 
@@ -304,16 +300,25 @@ internal sealed partial class SetupFlow
             : DiscoveredScreen("That file isn't there yet, these are the models gatto can see");
     }
 
-    //the order lives in the pure flow where tests drive it. unreadable answers null, calling a locked file the wrong file would lie
-    private WatchCheck Accept(FoundModel found, HubQuant picked)
+    //the order lives in the pure flow where tests drive it, and these two answers need no read. null means the file is read next
+    private WatchCheck? Precheck(FoundModel found, HubQuant picked)
     {
         //a .part beside it means the writer is not done, keep watching rather than judge a growing file
         if (probes.StillArriving(found.Path)) return new(WatchVerdict.StillArriving);
 
-        //where a fingerprint was published it decides, a file whose bytes differ cannot have the published hash anyway
+        //the size check is for single files with no fingerprint. a set's Bytes is a summed total, comparing it against one shard calls every correct set wrong
+        if (picked.Sha256 is not { Length: > 0 } && picked.ShardCount <= 1 && found.Set is null
+            && picked.Bytes > 0 && found.FileBytes > 0 && found.FileBytes != picked.Bytes)
+            return new(WatchVerdict.NotThePublishedFile);
+
+        return null;
+    }
+
+    //the read decides: a published fingerprint is compared, and without one the hash is still kept for the profile
+    private static WatchCheck Accept(HubQuant picked, string? actual)
+    {
         if (picked.Sha256 is { Length: > 0 } expected)
         {
-            var actual = probes.Sha256Of(found.Path);
             //a file gatto cannot hash is usually one still written without a .part, wait rather than accuse
             if (actual is not { Length: > 0 }) return new(WatchVerdict.Unreadable);
 
@@ -321,13 +326,22 @@ internal sealed partial class SetupFlow
                 ? new(WatchVerdict.Verified, actual, expected)
                 : new(WatchVerdict.NotThePublishedFile, actual, expected);
         }
+        return new(WatchVerdict.NameAndSizeOnly, actual);
+    }
 
-        //the size check is for single files only. a set's Bytes is a summed total, comparing it against one shard calls every correct set wrong
-        if (picked.ShardCount <= 1 && found.Set is null
-            && picked.Bytes > 0 && found.FileBytes > 0 && found.FileBytes != picked.Bytes)
-            return new(WatchVerdict.NotThePublishedFile);
-
-        return new(WatchVerdict.NameAndSizeOnly);
+    //one verdict to one screen, and a file the run adopts takes the hash its read produced
+    private SetupScreen Judged(ModelRow row, FoundModel arrived, WatchCheck check)
+    {
+        if (check.Verdict is WatchVerdict.Verified or WatchVerdict.NameAndSizeOnly) Know(arrived, check.Actual);
+        return check.Verdict switch
+        {
+            //still being written or unreadable both mean not yet, neither is an accusation
+            WatchVerdict.StillArriving or WatchVerdict.Unreadable => DownloadScreen(row),
+            WatchVerdict.NotThePublishedFile => WrongFile(row, arrived, check),
+            //the whole unit must be here, a vision model missing its encoder stays on the watch
+            _ when !UnitHere(row) => DownloadScreen(row),
+            _ => AdoptFromWatch(arrived),
+        };
     }
 
     //the watch keeps watching, nothing adopted and nothing deleted. the file is the user's, unlike the fetch's mismatch which deletes what it pulled

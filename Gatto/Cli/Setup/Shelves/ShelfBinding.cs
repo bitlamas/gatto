@@ -157,7 +157,7 @@ internal static class ShelfBinding
         return (
             w => Labels(shelf, options, theme, Content(w, chrome), g),
             w => Headings(shelf, theme, Content(w, chrome), g),
-            ShelfTable.Legend(shelf.Rows, g));
+            ShelfTable.Legend(shelf.Rows, g, shelf.Facts));
     }
 
     //width 0 means unknown all the way down, so it is passed through rather than turned into a negative budget
@@ -294,8 +294,8 @@ internal static class ShelfBinding
             foreach (var s in Wrapped(CountLine(shelf, glyphs), content))
                 headings.Add(new SelectHeading(option, theme.Paint(s, Theme.Dim)));
 
-            //an unmeasured shelf says so, since the register ships seeded and the check mark legend would otherwise explain a mark nothing has
-            if (!shelf.Rows.Any(r => r.Badge is not null))
+            //a shelf with no marked file says so, every listed file counted, since a tested file beside an untested pick would make the sentence false
+            if (!shelf.Rows.Select((r, i) => SearchRow.ListedMarks(r, shelf.Facts?.ElementAtOrDefault(i))).Any(m => m.Any))
                 foreach (var s in Wrapped(UnmeasuredShelf, content))
                     headings.Add(new SelectHeading(option, theme.Paint(s, Theme.Dim)));
 
@@ -310,8 +310,8 @@ internal static class ShelfBinding
         return headings;
     }
 
-    //the sentence says the models have not been measured, since unverified would read as a verdict on them
-    internal const string UnmeasuredShelf = "None of these has been tool-calling verified yet.";
+    //the sentence says nothing here has been measured, by gatto or here, since unverified would read as a verdict on the models
+    internal const string UnmeasuredShelf = "Nothing here has been tested by gatto or on this machine yet.";
 
     //the note says the search found none that fit this machine, since a sort that found nothing keeps the rows already on screen
     internal const string CarriedOverNote =

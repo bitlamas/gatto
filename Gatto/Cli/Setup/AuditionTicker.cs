@@ -56,6 +56,16 @@ internal sealed class AuditionTicker : IProgress<AuditionProgress>, IDisposable
                 Repaint();
                 break;
 
+            //the purr's own timer moves the row while the file is read, and plain mode says the read once
+            case AuditionStage.Reading when !_tick.Rich:
+                lock (_gate) _tick.Note("  " + AuditionProgress.ReadingWords(p.Text));
+                break;
+
+            case AuditionStage.Reading:
+                lock (_gate) { _task = AuditionProgress.ReadingWords(p.Text); }
+                Repaint();
+                break;
+
             //in rich mode the live row moves on to the next task, the count is the progress. plain mode commits one line per task
             case AuditionStage.Done when !_tick.Rich:
                 lock (_gate) _tick.Note($"  {(p.Pass ? _glyphs.Ok : _glyphs.Bad)} {p.TaskId}  {p.Label}");

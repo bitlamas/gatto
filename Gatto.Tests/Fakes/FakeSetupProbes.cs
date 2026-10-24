@@ -185,7 +185,7 @@ internal sealed class FakeSetupProbes : ISetupProbes
     //what a downloaded file hashes to. null means unreadable, which the flow treats apart from a hash that disagrees
     public Func<string, string?>? Hash { get; init; }
 
-    public string? Sha256Of(string ggufPath) => Hash?.Invoke(ggufPath);
+    public string? Sha256Of(string ggufPath, CancellationToken ct = default) => Hash?.Invoke(ggufPath);
 
     //when set, the model fetch holds until cancellation and finishes a beat later, so a flow that never joined fails
     public bool ModelBlockUntilCancelled { get; init; }
@@ -354,6 +354,11 @@ internal sealed class FakeSetupProbes : ISetupProbes
 
     //measured badges keyed by file name. empty by default, which is a machine that has measured nothing.
     public Dictionary<string, Gatto.Core.Acquire.Badge> Badges { get; } = [];
+
+    //the live key each profile entry holds by file path, so a test states which bytes a profile still vouches for
+    public Dictionary<string, string> LiveKeys { get; } = new(StringComparer.OrdinalIgnoreCase);
+
+    public string? LiveKeyFor(string modelId, string ggufPath) => LiveKeys.TryGetValue(ggufPath, out var k) ? k : null;
 
     public Gatto.Core.Acquire.Badge? BadgeForFile(string fileName) =>
         Badges.TryGetValue(fileName, out var b) ? b : null;

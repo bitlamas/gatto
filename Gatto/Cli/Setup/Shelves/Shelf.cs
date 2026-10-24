@@ -297,7 +297,7 @@ internal static class Shelf
         string.Concat(CountRuns(v, glyphs, shownMs).Select(r => r.Text));
 
     //the count line as one run per clause, so a clause that answers a key or jumps to a regime carries its own target
-    public static IReadOnlyList<Run> CountRuns(ShelfView v, GlyphSet? glyphs, long? shownMs = null)
+    public static IReadOnlyList<Run> CountRuns(ShelfView v, GlyphSet? glyphs, long? shownMs = null, bool marks = true)
     {
         var g = glyphs ?? GlyphSet.Unicode;
         //a zero total means the producer did not count, so report the rows in hand, smaller than the truth and never wrong
@@ -305,7 +305,8 @@ internal static class Shelf
         //the Range glyph, since this is a range's typography rather than a not-run mark
         var position = $"{v.MoreAbove + 1}{g.Range}{v.MoreAbove + v.Rows.Count} of {total}";
 
-        if (v.Source == ShelfSource.Hub) return Tail(g, position, HubClauses(v, g, shownMs));
+        var words = marks ? MarkWords(v, g) : null;
+        if (v.Source == ShelfSource.Hub) return Tail(g, position, [.. HubClauses(v, g, shownMs), (words, null)]);
 
         //the LOCAL shelf's legend, and only the local shelf's, since its cells are bare glyphs. the marks it lists come from the rows on screen
         var legend = v.Source == ShelfSource.Local
@@ -313,14 +314,56 @@ internal static class Shelf
             : null;
 
         if (v.ShowAll)
-            return Tail(g, position, ("older and too-big rows shown, a hides them", null), (legend, null));
+            return Tail(g, position, ("older and too-big rows shown, a hides them", null), (legend, null), (words, null));
 
         var hidden = HiddenClause(v.HiddenNewer, v.HiddenOlder, v.HiddenByFit, g);
 
         //the family clause stays out of the hidden list. that filter is lifted with "all", so its number can't sit under a sentence naming "a"
         var family = FamilyClause(v.HiddenByFamily);
 
-        return Tail(g, position, (hidden, new HitTag(HitKind.Clause, Key: "a")), (family, null), (legend, null));
+        return Tail(g, position, (hidden, new HitTag(HitKind.Clause, Key: "a")), (family, null), (legend, null), (words, null));
+    }
+
+    //the words of each mark a listed file carries, on the count row, since the footer sheds a long legend whole
+    internal static string? MarkWords(ShelfView v, GlyphSet g) =>
+        MarkParts(v, g) is { Count: > 0 } parts ? string.Join($" {g.Dot} ", parts) : null;
+
+    private static List<string> MarkParts(ShelfView v, GlyphSet g)
+    {
+        var marks = v.Rows.Select((r, i) => SearchRow.ListedMarks(r, v.Facts?.ElementAtOrDefault(i)))
+            .Aggregate(default(MarkSet), (all, m) => all.Or(m));
+        var parts = new List<string>();
+        if (marks.Tested) parts.Add($"{g.Tested} {SearchRow.TestedWords}");
+        if (marks.PassedHere) parts.Add($"{g.PassedHere} {SearchRow.PassedHereWords}");
+        if (marks.FailedHere) parts.Add($"{g.FailedHere} {SearchRow.FailedHereWords}");
+        return parts;
+    }
+
+    //the mark words sit beside the count when they fit and on rows of their own when not, so no word is cut
+    private static IReadOnlyList<PaintedRow> CountRows(ShelfView v, GlyphSet g, long? shownMs, int width)
+    {
+        var whole = CountRuns(v, g, shownMs);
+        var rows = new List<PaintedRow>();
+        if (width <= 0 || UnicodeWidth.Of(Indent + string.Concat(whole.Select(r => r.Text))) <= width || MarkParts(v, g).Count == 0)
+        {
+            rows.Add(new PaintedRow([whole[0] with { Text = Indent + whole[0].Text }, .. whole.Skip(1)]));
+            return rows;
+        }
+        var count = CountRuns(v, g, shownMs, marks: false);
+        rows.Add(new PaintedRow([count[0] with { Text = Indent + count[0].Text }, .. count.Skip(1)]));
+        var line = "";
+        foreach (var part in MarkParts(v, g))
+        {
+            var joined = line.Length == 0 ? part : $"{line} {g.Dot} {part}";
+            if (line.Length > 0 && UnicodeWidth.Of(Indent + joined) > width)
+            {
+                rows.Add(PaintedRow.Of(Indent + line, RunInk.Dim));
+                joined = part;
+            }
+            line = joined;
+        }
+        rows.Add(PaintedRow.Of(Indent + line, RunInk.Dim));
+        return rows;
     }
 
     //the hub shelf's clauses: what is measured and what a adds, or under a how many rows each regime holds, then why the search stopped short
@@ -440,8 +483,7 @@ internal static class Shelf
         }
 
         rows.Add(PaintedRow.Of(""));
-        var count = CountRuns(v, g, shownMs);
-        rows.Add(new PaintedRow([count[0] with { Text = Indent + count[0].Text }, .. count.Skip(1)]));
+        rows.AddRange(CountRows(v, g, shownMs, width));
 
         //below the pane's threshold the facts move under the count line, since the count belongs with the table it describes
         if (pane == 0 && row >= 0 && row < v.Rows.Count)

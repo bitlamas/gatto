@@ -74,6 +74,9 @@ internal interface ISetupProbes
     //the badge for a file on this machine, or null when nothing has measured it. the register is keyed by file name, so the local shelf asks by name
     Gatto.Core.Acquire.Badge? BadgeForFile(string fileName) => null;
 
+    //the hash a model's profile entry holds for the file while its size and write time still match, by one stat and no read
+    string? LiveKeyFor(string modelId, string ggufPath) => null;
+
     //stop the server another model holds, and report whether one was released. call it only after the user confirms the swap
     bool ReleaseHeldServer() => false;
 
@@ -126,7 +129,7 @@ internal interface ISetupProbes
     bool StillArriving(string ggufPath) => false;
 
     //the sha256 of a file that arrived, or null when it cannot be read. null is unreadable, which is a different screen from a mismatch
-    string? Sha256Of(string ggufPath) => null;
+    string? Sha256Of(string ggufPath, CancellationToken ct = default) => null;
 
     //the shipped --version probe on the path the user just gave, run at once so a wrong download shows as it is typed
     Gatto.Core.Acquire.ProbeResult VerifyLlamaServer(string exePath);

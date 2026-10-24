@@ -34,8 +34,21 @@ public class UnicodeWidthTests
     [InlineData(0x1F650, 1)]   //an ornamental dingbat is narrow
     [InlineData(0x2713, 1)]    //the ok glyph
     [InlineData(0x26A0, 1)]    //the warn glyph
+    [InlineData(0x1F5F9, 1)]   //the tested mark, measured one cell in both terminals
+    [InlineData(0x1F5F7, 1)]   //the failed mark, measured with it
+    [InlineData(0x2605, 1)]    //the passed mark is a narrow star
+    [InlineData(0x1F5F8, 2)]   //their neighbour was not measured and stays wide
     public void OfRune_EmojiByEastAsianWidth(int codePoint, int expected) =>
         Assert.Equal(expected, UnicodeWidth.OfRune(new System.Text.Rune(codePoint)));
+
+    //the three marks of the shelf draw one cell each, so the marks column and the tools line keep their widths
+    [Fact]
+    public void THE_THREE_MARK_GLYPHS_ARE_ONE_CELL_EACH()
+    {
+        Assert.Equal(1, UnicodeWidth.Of(GlyphSet.Unicode.Tested));
+        Assert.Equal(1, UnicodeWidth.Of(GlyphSet.Unicode.PassedHere));
+        Assert.Equal(1, UnicodeWidth.Of(GlyphSet.Unicode.FailedHere));
+    }
 
     //a check mark followed by the variation selector is two cells, the shape that broke a table border
     [Fact]

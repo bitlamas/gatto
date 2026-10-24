@@ -4,6 +4,17 @@ using Gatto.Core;
 
 namespace Gatto.Roles.Models;
 
+//the sha256 of a file with the size and UTC write time it was taken over. a stat that still reads both is what lets a later reader trust the hash
+internal sealed record FileKey(string Sha256, long Size, DateTime Written)
+{
+    //stats the file where it now lies, so a key taken after a move names the bytes at their final path
+    public static FileKey Of(string sha256, string path)
+    {
+        var info = new FileInfo(path);
+        return new FileKey(sha256.ToLowerInvariant(), info.Length, info.LastWriteTimeUtc);
+    }
+}
+
 //edit the profile as a document so the user's other keys keep their shape, and re-load through Model.Load first so the schema refuses early
 internal static class ModelFiles
 {
@@ -32,7 +43,7 @@ internal static class ModelFiles
     }
 
     //the new file joins inactive, a later question makes it active. a quant label missing or already taken is refused, commands address files by label
-    public static void Add(string modelsDir, string id, string ggufPath)
+    public static void Add(string modelsDir, string id, string ggufPath, string? sha256 = null)
     {
         var resolved = System.IO.Path.GetFullPath(ggufPath);
         var (path, root, files) = Open(modelsDir, id);
@@ -52,8 +63,57 @@ internal static class ModelFiles
                 $"model '{id}' already has a file called '{quant}' — it holds {Names(files)}");
 
         var entry = new JsonObject { ["path"] = resolved, ["quant"] = quant, ["active"] = false };
+        if (sha256 is { Length: > 0 } hash) Write(entry, FileKey.Of(hash, resolved));
         files.Add(entry);
         Save(path, root);
+    }
+
+    //the audition's write-back: the three keys on the entry naming the file, false when no entry names it
+    public static bool RecordKey(string modelsDir, string id, string filePath, FileKey key)
+    {
+        var resolved = System.IO.Path.GetFullPath(filePath);
+        var (path, root, files) = Open(modelsDir, id);
+        if (files.FirstOrDefault(f => string.Equals(f?["path"]?.GetValue<string>(), resolved,
+                StringComparison.OrdinalIgnoreCase)) is not JsonObject entry)
+            return false;
+
+        Write(entry, key);
+        Save(path, root);
+        return true;
+    }
+
+    //written through JsonObject as a DateTime, which keeps every tick, since a key whose time lost precision would never match its file again
+    internal static void Write(JsonObject entry, FileKey key)
+    {
+        entry["sha256"] = key.Sha256;
+        entry["size"] = key.Size;
+        entry["written"] = DateTime.SpecifyKind(key.Written, DateTimeKind.Utc);
+    }
+
+    //the hash only while the file still has the size and write time it was taken over. one stat and no read, and every reader of the key goes through it
+    public static string? LiveKey(ModelFile entry)
+    {
+        if (entry is not { Sha256: { Length: > 0 } hash, Size: { } size, Written: { } written }) return null;
+        try
+        {
+            var info = new FileInfo(entry.Path);
+            return info.Exists && info.Length == size && info.LastWriteTimeUtc.Ticks == written.ToUniversalTime().Ticks
+                ? hash : null;
+        }
+        catch (Exception) { return null; }   //a path the stat cannot read is a key nobody can check
+    }
+
+    //the live key of the entry naming the file in one model's profile, null when the profile does not load or names no such file
+    public static string? LiveKey(string modelsDir, string id, string filePath)
+    {
+        try
+        {
+            var resolved = System.IO.Path.GetFullPath(filePath);
+            return Model.Load(modelsDir, id).Profile.Files
+                .FirstOrDefault(f => string.Equals(System.IO.Path.GetFullPath(f.Path), resolved, StringComparison.OrdinalIgnoreCase))
+                is { } entry ? LiveKey(entry) : null;
+        }
+        catch (Exception) { return null; }   //a broken profile shows no mark, the shelf is not where it gets reported
     }
 
     //ask the mutator's rules without mutating, so a refusal comes before a consent screen. a null here is no promise, the mutator re-checks

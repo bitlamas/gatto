@@ -223,7 +223,7 @@ public class SetupFlowTests
     private static SetupFlow AtTypedDoor(FakeProbes probes)
     {
         var flow = AtSearch(probes);
-        flow.Answer(SetupFlow.TypeAnId);
+        flow.AnswerSettled(SetupFlow.TypeAnId);
         return flow;
     }
 
@@ -236,7 +236,7 @@ public class SetupFlowTests
             Llama = @"C:\llama\llama-server.exe",
             Rows = [Row("org/a")],
         };
-        AtTypedDoor(probes).Answer("gemma 4");
+        AtTypedDoor(probes).AnswerSettled("gemma 4");
 
         //the walk already searched on the way in, so assert on the last entry.
         Assert.Equal("gemma 4", probes.Searches[^1]);
@@ -253,7 +253,7 @@ public class SetupFlowTests
             Llama = @"C:\llama\llama-server.exe",
             TypedId = new TypedIdOutcome.NoUsableQuant(),
         };
-        AtTypedDoor(probes).Answer("unsloth/gemma-4-e4b-it-GGUF");
+        AtTypedDoor(probes).AnswerSettled("unsloth/gemma-4-e4b-it-GGUF");
 
         Assert.Contains("unsloth/gemma-4-e4b-it-GGUF", probes.TypedIds);
     }
@@ -270,7 +270,7 @@ public class SetupFlowTests
             Llama = @"C:\llama\llama-server.exe",
             TypedId = new TypedIdOutcome.NoUsableQuant(),
         };
-        AtTypedDoor(probes).Answer(pasted);
+        AtTypedDoor(probes).AnswerSettled(pasted);
 
         Assert.Contains("unsloth/gemma-4-e4b-it-GGUF", probes.TypedIds);
         //the URL itself must never reach the lookup, since the lookup would refuse it as malformed.
@@ -283,7 +283,7 @@ public class SetupFlowTests
     {
         var probes = new FakeProbes { Llama = @"C:\llama\llama-server.exe" };
         var again = Assert.IsType<SetupScreen.Ask>(
-            AtTypedDoor(probes).Answer("https://huggingface.co/collections/unsloth/gemma-4-68a1"));
+            AtTypedDoor(probes).AnswerSettled("https://huggingface.co/collections/unsloth/gemma-4-68a1"));
 
         Assert.Equal(SetupFlow.TypedIdKey, again.Key);
         Assert.Contains("collection", again.Label!, StringComparison.OrdinalIgnoreCase);
@@ -299,7 +299,7 @@ public class SetupFlowTests
     {
         var probes = new FakeProbes { Llama = @"C:\llama\llama-server.exe", Rows = [] };
         var screen = Assert.IsType<SetupScreen.Choice>(
-            AtTypedDoor(probes).Answer("wharrgarbl"));
+            AtTypedDoor(probes).AnswerSettled("wharrgarbl"));
 
         //this walk never reached a shelf, so the sentence is the screen's heading, since no frame holds the block
         var said = screen.Question!;
@@ -345,8 +345,8 @@ public class SetupFlowTests
             Llama = @"C:\llama\llama-server.exe",
             TypedId = new TypedIdOutcome.NoWeights(),
         });
-        flow.Answer(SetupFlow.TypeAnId);
-        var again = Assert.IsType<SetupScreen.Ask>(flow.Answer("ggml-org/vocabs"));
+        flow.AnswerSettled(SetupFlow.TypeAnId);
+        var again = Assert.IsType<SetupScreen.Ask>(flow.AnswerSettled("ggml-org/vocabs"));
 
         Assert.Equal(SetupFlow.TypedIdKey, again.Key);
         Assert.Contains("publishes no weights", again.Label!, StringComparison.OrdinalIgnoreCase);
@@ -357,7 +357,7 @@ public class SetupFlowTests
         Assert.DoesNotContain("doesn't look like", again.Label!, StringComparison.OrdinalIgnoreCase);
 
         //typing again is the point of a re-prompt, so this answers the screen, since a state with no dispatch arm throws here
-        Assert.NotNull(flow.Answer("unsloth/gemma-4-e4b-it-GGUF"));
+        Assert.NotNull(flow.AnswerSettled("unsloth/gemma-4-e4b-it-GGUF"));
     }
 
     //the live flow must hand the row's facts along, since every structure test drove the renderer with its own. assert the composed row
@@ -395,9 +395,9 @@ public class SetupFlowTests
         Assert.Contains(welcome.BodyRows!, r => r.Text.Contains("This machine", StringComparison.Ordinal));
 
         //the machine numbers have a screen of their own, so check both screens. the fork stays the first screen that asks the user to choose
-        var machine = flow.Answer(SetupFlow.WelcomeGo);
+        var machine = flow.AnswerSettled(SetupFlow.WelcomeGo);
         Assert.Equal(SetupFlow.MachineKey, Key(machine));
-        Assert.Equal(PastTheOpening, Key(flow.Answer(SetupFlow.MachineNext)));
+        Assert.Equal(PastTheOpening, Key(flow.AnswerSettled(SetupFlow.MachineNext)));
     }
 
     [Fact]
@@ -464,7 +464,7 @@ public class SetupFlowTests
         Assert.DoesNotContain("let me point at it", body, StringComparison.Ordinal);
 
         //the path must reach verification, so assert the narration and the write (which screen follows depends on the rest of the machine)
-        flow.Answer(ShelfControls.TypedAnswer(@"C:\llama\llama-server.exe"));
+        flow.AnswerSettled(ShelfControls.TypedAnswer(@"C:\llama\llama-server.exe"));
         //the narration holds the verification result, and the screen doesn't say it again
         Assert.Contains(flow.TakeNarration(), i => i.Key == "llama.ok");
         Assert.Equal(@"C:\llama\llama-server.exe", flow.Writes.LlamaServer);
@@ -546,7 +546,7 @@ public class SetupFlowTests
             Facts = new AuditionFacts("Q4_K_M", "defaults", "template default", 61.2, 2, 5),
         });
         flow.StartPastEngine();
-        flow.Answer("0");
+        flow.AnswerSettled("0");
         Resumed(flow, "qwen");
 
         var failed = Assert.IsType<SetupScreen.Choice>(Answered(flow, SetupFlow.Yes));
@@ -576,7 +576,7 @@ public class SetupFlowTests
                 Facts = facts,
             });
             flow.StartPastEngine();
-            flow.Answer("0");
+            flow.AnswerSettled("0");
             Resumed(flow, "qwen");
             return flow;
         }
@@ -637,7 +637,7 @@ public class SetupFlowTests
             Proof = new Gatto.Core.Acquire.ProveOutcome(true, "hi", t),
         });
         flow.StartPastEngine();
-        flow.Answer("0");
+        flow.AnswerSettled("0");
         Resumed(flow, "qwen");
         PastTheSkip(flow);
 
@@ -680,25 +680,25 @@ public class SetupFlowTests
     //answer the offer, wait on the poll rather than on a duration, and stop at the outcome. the write pause stays undrained, since a caller still reads an intent
     private static SetupScreen CheckRan(SetupFlow flow)
     {
-        var running = Assert.IsType<SetupScreen.Choice>(flow.Answer(SetupFlow.Yes));
+        var running = Assert.IsType<SetupScreen.Choice>(flow.AnswerSettled(SetupFlow.Yes));
         Assert.Equal(SetupFlow.AuditionRunningKey, running.Key);
         Assert.True(SpinWait.SpinUntil(flow.PollWatch, TimeSpan.FromSeconds(10)),
             "the check never finished, so this walk never reached its own subject");
-        return flow.Answer(SetupFlow.Landed);
+        return flow.AnswerSettled(SetupFlow.Landed);
     }
 
     //answering Skip returns the wait screen, since the skip runs one load. let the load finish, return the arrival, and leave the pause undrained
     private static SetupScreen SkipRan(SetupFlow flow)
     {
-        var waiting = Assert.IsType<SetupScreen.Choice>(flow.Answer(SetupFlow.Skip));
+        var waiting = Assert.IsType<SetupScreen.Choice>(flow.AnswerSettled(SetupFlow.Skip));
         Assert.Equal(SetupFlow.AuditionWaitingKey, waiting.Key);
         Assert.True(SpinWait.SpinUntil(flow.PollWatch, TimeSpan.FromSeconds(10)),
             "the one load never finished, so this walk never reached its own subject");
-        var landed = flow.Answer(SetupFlow.Landed);
+        var landed = flow.AnswerSettled(SetupFlow.Landed);
 
         //answer the arrival so the helper ends past the check step with the pause armed. a load that never answered has no arrival, so don't require one
         return landed is SetupScreen.Choice { Key: SetupFlow.AuditionAnswersKey }
-            ? flow.Answer(SetupFlow.AnswersNext)
+            ? flow.AnswerSettled(SetupFlow.AnswersNext)
             : landed;
     }
 
@@ -721,12 +721,12 @@ public class SetupFlowTests
     //answer a screen as the runner does. use it only where a test reads what follows, since draining wipes the armed state another test pins
     private static SetupScreen Answered(SetupFlow flow, string key)
     {
-        var screen = flow.Answer(key);
+        var screen = flow.AnswerSettled(key);
         if (screen is SetupScreen.Choice { OnlyTheWatchAdvances: true })
         {
             Assert.True(SpinWait.SpinUntil(flow.PollWatch, TimeSpan.FromSeconds(10)),
                 "the watched work never finished, so this walk never reached its own subject");
-            screen = flow.Answer(SetupFlow.Landed);
+            screen = flow.AnswerSettled(SetupFlow.Landed);
         }
         while (flow.NeedsWritesApplied) screen = flow.ResumeAfterWrites(null);
         return screen;
@@ -740,7 +740,7 @@ public class SetupFlowTests
 
         //pass through the watched screen as the runner does when the poll resolves. guard on Watching, since the other path's prove is not watched
         if (screen is SetupScreen.Choice { Watching: true, Key: SetupFlow.ProveKey })
-            screen = flow.Answer(SetupFlow.OpenRepl);
+            screen = flow.AnswerSettled(SetupFlow.OpenRepl);
         return screen;
     }
 
@@ -822,7 +822,7 @@ public class SetupFlowTests
             Facts = facts,
         });
         flow.StartPastEngine();
-        flow.Answer("0");
+        flow.AnswerSettled("0");
         Resumed(flow, "qwen");
         return flow;
     }
@@ -838,7 +838,7 @@ public class SetupFlowTests
             ExistingModel = "qwen3.6-35b-a3b",
         });
         flow.StartPastEngine();
-        flow.Answer("0");
+        flow.AnswerSettled("0");
 
         //assert the absence of the create intent, since a run that writes a duplicate still passes an id check
         Assert.Null(flow.Writes.CreateModel);
@@ -863,7 +863,7 @@ public class SetupFlowTests
         };
         var flow = new SetupFlow(probes);
         flow.StartPastEngine();
-        flow.Answer("0");
+        flow.AnswerSettled("0");
 
         Assert.Equal(@"D:\m\new.gguf", flow.Writes.CreateModel!.GgufPath);
         Assert.True(flow.NeedsWritesApplied);
@@ -908,8 +908,8 @@ public class SetupFlowTests
             ExistingEndpoint = probes.ExistingEndpointFor("http://127.0.0.1:9999"),
         });
         flow.StartPastOpening();
-        flow.Answer(SetupFlow.ForkConnect);
-        flow.Answer(SetupFlow.Yes);
+        flow.AnswerSettled(SetupFlow.ForkConnect);
+        flow.AnswerSettled(SetupFlow.Yes);
         Assert.Null(WriteSetApply.Apply(home.Path, flow.Writes, out _));
 
         var after = Gatto.Core.Home.GattoConfig.Load(home.Path).Endpoints;
@@ -934,8 +934,8 @@ public class SetupFlowTests
             ExistingEndpoint = probes.ExistingEndpointFor("http://127.0.0.1:1235"),
         });
         flow.StartPastOpening();
-        flow.Answer(SetupFlow.ForkConnect);
-        flow.Answer(SetupFlow.Yes);
+        flow.AnswerSettled(SetupFlow.ForkConnect);
+        flow.AnswerSettled(SetupFlow.Yes);
 
         Assert.Null(WriteSetApply.Apply(home.Path, flow.Writes, out _));
 
@@ -957,8 +957,8 @@ public class SetupFlowTests
             Proof = new Gatto.Core.Acquire.ProveOutcome(true, "hi", TimeSpan.FromMilliseconds(5)),
         });
         flow.StartPastOpening();
-        flow.Answer(SetupFlow.ForkConnect);
-        flow.Answer(SetupFlow.Yes);
+        flow.AnswerSettled(SetupFlow.ForkConnect);
+        flow.AnswerSettled(SetupFlow.Yes);
         Assert.Equal(id, flow.Writes.DefaultModel);
         Resumed(flow);
 
@@ -1007,8 +1007,8 @@ public class SetupFlowTests
             ExistingEndpoint = existingEndpoint,
         });
         flow.StartPastOpening();
-        flow.Answer(SetupFlow.ForkConnect);
-        flow.Answer(SetupFlow.Yes);
+        flow.AnswerSettled(SetupFlow.ForkConnect);
+        flow.AnswerSettled(SetupFlow.Yes);
         return flow;
     }
 
@@ -1021,14 +1021,14 @@ public class SetupFlowTests
             Proof = proof,
         });
         flow.StartPastOpening();
-        flow.Answer(SetupFlow.ForkConnect);
-        var screen = flow.Answer(SetupFlow.Yes);
+        flow.AnswerSettled(SetupFlow.ForkConnect);
+        var screen = flow.AnswerSettled(SetupFlow.Yes);
         //this path arms more than one write pause, so loop like the runner. pass null each time, since no model exists on this path
         while (flow.NeedsWritesApplied) screen = flow.ResumeAfterWrites(null);
 
         //the connect check is watched, so pass through its screen as the runner does, since any answer but the stop key means it finished
         if (screen is SetupScreen.Choice { Watching: true })
-            screen = flow.Answer(SetupFlow.OpenRepl);
+            screen = flow.AnswerSettled(SetupFlow.OpenRepl);
 
         var prove = Assert.IsType<SetupScreen.Choice>(screen);
         return string.Join(" ", prove.BodyRows!.Select(r => r.Text));
@@ -1156,7 +1156,7 @@ public class SetupFlowTests
         //the wizard must never recite the ports it probes, and a screen may echo the address it found, so this run finds nothing
         var flow = new SetupFlow(new FakeProbes { Server = null });
         flow.StartPastOpening();
-        flow.Answer(SetupFlow.ForkConnect);
+        flow.AnswerSettled(SetupFlow.ForkConnect);
 
         foreach (var s in flow.Emitted)
             foreach (var port in new[] { "1234", "1235", "8080" })
@@ -1172,7 +1172,7 @@ public class SetupFlowTests
             Server = new Gatto.Core.Acquire.ConnectProbe("http://127.0.0.1:1234", ["some-model"], 8192),
         });
         flow.StartPastOpening();
-        var confirm = Assert.IsType<SetupScreen.Choice>(flow.Answer(SetupFlow.ForkConnect));
+        var confirm = Assert.IsType<SetupScreen.Choice>(flow.AnswerSettled(SetupFlow.ForkConnect));
 
         Assert.Equal(SetupFlow.ConfirmServerKey, confirm.Key);
         //the address is a body row, so that is where the echo is asserted
@@ -1189,7 +1189,7 @@ public class SetupFlowTests
             Server = new Gatto.Core.Acquire.ConnectProbe("http://host:9", ["a", "b", "c"], 8192),
         });
         many.StartPastOpening();
-        var manyRows = Assert.IsType<SetupScreen.Choice>(many.Answer(SetupFlow.ForkConnect)).BodyRows!;
+        var manyRows = Assert.IsType<SetupScreen.Choice>(many.AnswerSettled(SetupFlow.ForkConnect)).BodyRows!;
 
         Assert.DoesNotContain(manyRows, r => r.Text.Contains("Serving", StringComparison.Ordinal));
         //the catalogue renders as one fact with a count, and the model pick is what names the models
@@ -1204,7 +1204,7 @@ public class SetupFlowTests
             Server = new Gatto.Core.Acquire.ConnectProbe("http://host:9", ["only-one"], 8192),
         });
         one.StartPastOpening();
-        var oneRows = Assert.IsType<SetupScreen.Choice>(one.Answer(SetupFlow.ForkConnect)).BodyRows!;
+        var oneRows = Assert.IsType<SetupScreen.Choice>(one.AnswerSettled(SetupFlow.ForkConnect)).BodyRows!;
 
         //assert the row exactly, since a single-model server must still name what it serves
         Assert.Contains(oneRows, r => r.Text == "serving   only-one");
@@ -1234,7 +1234,7 @@ ew.gguf", 4_000_000_000, null)],
         //a taken model name must ask here, since a late throw sends the user off to delete a directory by hand
         var flow = AdoptingWithCollision(colliding: "qwen3.6-35b-a3b");
 
-        var screen = Assert.IsType<SetupScreen.Choice>(flow.Answer("0"));
+        var screen = Assert.IsType<SetupScreen.Choice>(flow.AnswerSettled("0"));
 
         Assert.Equal(SetupFlow.ModelCollisionKey, screen.Key);
         //two options only, since this fixture has two files that differ, which rules out joining them
@@ -1251,7 +1251,7 @@ ew.gguf", 4_000_000_000, null)],
     {
         var flow = AdoptingWithCollision("gemma-4-e4b-it", kind: Gatto.Roles.Models.IdClash.SameModel);
 
-        flow.Answer("0");
+        flow.AnswerSettled("0");
 
         Assert.DoesNotContain(flow.Emitted, s => Key(s) == SetupFlow.ModelCollisionKey);
         Assert.True(flow.NeedsWritesApplied);
@@ -1268,7 +1268,7 @@ ew.gguf", 4_000_000_000, null)],
     {
         var flow = AdoptingWithCollision("gemma-4-e4b-it", kind: Gatto.Roles.Models.IdClash.CannotTell);
 
-        var screen = Assert.IsType<SetupScreen.Choice>(flow.Answer("0"));
+        var screen = Assert.IsType<SetupScreen.Choice>(flow.AnswerSettled("0"));
 
         Assert.Equal([SetupFlow.UseExistingModel, SetupFlow.AddAsFile, SetupFlow.ReplaceModel],
             screen.Options.Select(o => o.Key));
@@ -1282,7 +1282,7 @@ ew.gguf", 4_000_000_000, null)],
     {
         var flow = AdoptingWithCollision("gemma-4-e4b-it", kind: Gatto.Roles.Models.IdClash.HolderUnreadable);
 
-        var screen = Assert.IsType<SetupScreen.Choice>(flow.Answer("0"));
+        var screen = Assert.IsType<SetupScreen.Choice>(flow.AnswerSettled("0"));
 
         Assert.Equal([SetupFlow.UseExistingModel, SetupFlow.ReplaceModel], screen.Options.Select(o => o.Key));
     }
@@ -1292,9 +1292,9 @@ ew.gguf", 4_000_000_000, null)],
     public void ANSWERING_THE_JOIN_RECORDS_THE_SAME_INTENT_AS_THE_PROVEN_CASE()
     {
         var flow = AdoptingWithCollision("gemma-4-e4b-it", kind: Gatto.Roles.Models.IdClash.CannotTell);
-        flow.Answer("0");
+        flow.AnswerSettled("0");
 
-        flow.Answer(SetupFlow.AddAsFile);
+        flow.AnswerSettled(SetupFlow.AddAsFile);
 
         Assert.True(flow.NeedsWritesApplied);
         var write = Assert.IsType<WriteSet.Model>(flow.Writes.CreateModel);
@@ -1315,7 +1315,7 @@ ew.gguf", 4_000_000_000, null)],
             Context = 8192,
         });
         flow.StartPastEngine();
-        flow.Answer("0");                       //answering 0 picks the found file, which joins with no screen
+        flow.AnswerSettled("0");                       //answering 0 picks the found file, which joins with no screen
         return flow;
     }
 
@@ -1339,7 +1339,7 @@ ew.gguf", 4_000_000_000, null)],
         Assert.Equal(SetupFlow.QuantFromNowKey, screen.Key);
 
         //answering yes records the switch, and the flow ends on the model that was joined.
-        flow.Answer(SetupFlow.Yes);
+        flow.AnswerSettled(SetupFlow.Yes);
         Assert.Equal(("gemma-4-e4b-it", "Q6_K"), flow.Writes.ActivateFile);
     }
 
@@ -1356,10 +1356,10 @@ ew.gguf", 4_000_000_000, null)],
             Context = 8192,
         });
         flow.StartAtModelSegment();
-        flow.Answer("0");
+        flow.AnswerSettled("0");
         Assert.Equal(SetupFlow.QuantFromNowKey, Key(flow.ResumeAfterWrites("gemma-4-e4b-it")));
 
-        flow.Answer(SetupFlow.No);
+        flow.AnswerSettled(SetupFlow.No);
         while (flow.NeedsWritesApplied) flow.ResumeAfterWrites(null);
 
         var said = string.Join(" ", flow.RecordRows().Select(r => r.Text));
@@ -1412,7 +1412,7 @@ ew.gguf", 4_000_000_000, null)],
         var flow = Joining();
         flow.ResumeAfterWrites("gemma-4-e4b-it");
 
-        flow.Answer(SetupFlow.Yes);
+        flow.AnswerSettled(SetupFlow.Yes);
 
         Assert.Equal(("gemma-4-e4b-it", "Q6_K"), flow.Writes.ActivateFile);
     }
@@ -1424,7 +1424,7 @@ ew.gguf", 4_000_000_000, null)],
         var flow = Joining();
         flow.ResumeAfterWrites("gemma-4-e4b-it");
 
-        flow.Answer(SetupFlow.No);
+        flow.AnswerSettled(SetupFlow.No);
 
         Assert.Null(flow.Writes.ActivateFile);
         //no removal is recorded either, so the model keeps the file the join added.
@@ -1436,9 +1436,9 @@ ew.gguf", 4_000_000_000, null)],
     public void AND_REPLACE_STILL_REPLACES_RATHER_THAN_JOINING()
     {
         var flow = AdoptingWithCollision("gemma-4-e4b-it", kind: Gatto.Roles.Models.IdClash.CannotTell);
-        flow.Answer("0");
+        flow.AnswerSettled("0");
 
-        flow.Answer(SetupFlow.ReplaceModel);
+        flow.AnswerSettled(SetupFlow.ReplaceModel);
 
         //assert on the writes, since a predicate over Emitted that ignores its argument can never fail
         Assert.Null(flow.Writes.CreateModel?.AddToModelId);
@@ -1448,9 +1448,9 @@ ew.gguf", 4_000_000_000, null)],
     public void USE_THE_ONE_I_HAVE_scaffolds_nothing_and_completes_on_the_existing_model()
     {
         var flow = AdoptingWithCollision(colliding: "qwen3.6-35b-a3b");
-        flow.Answer("0");
+        flow.AnswerSettled("0");
 
-        flow.Answer(SetupFlow.UseExistingModel);
+        flow.AnswerSettled(SetupFlow.UseExistingModel);
 
         Assert.Null(flow.Writes.CreateModel);              //this answer adopts no new file, since the existing model stays.
         //the kept model must appear as a discovery in the narration, which is what renders
@@ -1462,9 +1462,9 @@ ew.gguf", 4_000_000_000, null)],
     {
         //a destructive answer is no different, since the flow only records that the user said yes and one place acts on it
         var flow = AdoptingWithCollision(colliding: "qwen3.6-35b-a3b");
-        flow.Answer("0");
+        flow.AnswerSettled("0");
 
-        flow.Answer(SetupFlow.ReplaceModel);
+        flow.AnswerSettled(SetupFlow.ReplaceModel);
 
         var model = Assert.IsType<WriteSet.Model>(flow.Writes.CreateModel);
         Assert.True(model.Replace);
@@ -1480,7 +1480,7 @@ ew.gguf", model.GgufPath);
         //the same file means reuse and the same name means a question, and neither may absorb the other, so this fixture answers both
         var flow = AdoptingWithCollision(colliding: "qwen3.6-35b-a3b", existing: "qwen3.6-35b-a3b");
 
-        flow.Answer("0");
+        flow.AnswerSettled("0");
 
         Assert.DoesNotContain(flow.Emitted, s => Key(s) == SetupFlow.ModelCollisionKey);
         Assert.Null(flow.Writes.CreateModel);
@@ -1491,7 +1491,7 @@ ew.gguf", model.GgufPath);
     {
         var flow = AdoptingWithCollision(colliding: null);
 
-        flow.Answer("0");
+        flow.AnswerSettled("0");
 
         Assert.DoesNotContain(flow.Emitted, s => Key(s) == SetupFlow.ModelCollisionKey);
         Assert.False(Assert.IsType<WriteSet.Model>(flow.Writes.CreateModel).Replace);
@@ -1507,7 +1507,7 @@ ew.gguf", model.GgufPath);
             Server = new Gatto.Core.Acquire.ConnectProbe("http://host:9", ["m"], 8192),
             UpdateAnswered = null,
         });
-        flow.Answer(SetupFlow.Yes);
+        flow.AnswerSettled(SetupFlow.Yes);
         Resumed(flow, null);
 
         var ask = Assert.IsType<SetupScreen.Choice>(Answered(flow, SetupFlow.Finish));
@@ -1528,13 +1528,13 @@ ew.gguf", model.GgufPath);
             Server = new Gatto.Core.Acquire.ConnectProbe("http://host:9", ["m"], 8192),
             UpdateAnswered = true,
         });
-        flow.Answer(SetupFlow.Yes);
+        flow.AnswerSettled(SetupFlow.Yes);
         Resumed(flow, null);
 
         //naming the summary screen is a stronger claim than its type, since reaching it at all proves the consent screen was skipped
         var done = Assert.IsType<SetupScreen.Choice>(Answered(flow, SetupFlow.Finish));
         Assert.Equal(SetupFlow.SummaryKey, done.Key);
-        Assert.IsType<SetupScreen.Terminal>(flow.Answer(SetupFlow.Finish));
+        Assert.IsType<SetupScreen.Terminal>(flow.AnswerSettled(SetupFlow.Finish));
         Assert.Null(flow.Writes.UpdateCheck);   //an already answered machine records no consent write again.
     }
 
@@ -1548,18 +1548,18 @@ ew.gguf", model.GgufPath);
             Server = new Gatto.Core.Acquire.ConnectProbe("http://host:9", ["m"], 8192),
             UpdateAnswered = null,
         });
-        flow.Answer(SetupFlow.Yes);
+        flow.AnswerSettled(SetupFlow.Yes);
         Resumed(flow, null);
         Answered(flow, SetupFlow.Finish);
 
         //the consent flush consumes the intent on its way to disk, so read it before the pause runs
-        flow.Answer(key);
+        flow.AnswerSettled(key);
         Assert.Equal(expected, flow.Writes.UpdateCheck);
 
         //the summary screen sits between the consent question and the final screen, so the intent above is read first
         var done = Assert.IsType<SetupScreen.Choice>(Resumed(flow));
         Assert.Equal(SetupFlow.SummaryKey, done.Key);
-        Assert.IsType<SetupScreen.Terminal>(flow.Answer(SetupFlow.Finish));
+        Assert.IsType<SetupScreen.Terminal>(flow.AnswerSettled(SetupFlow.Finish));
     }
 
     [Fact]
@@ -1575,12 +1575,12 @@ ew.gguf", model.GgufPath);
         var found = Assert.IsType<SetupScreen.Choice>(flow.StartPastOpening());
         Assert.True(found.AllowBack);                     //the screen itself offers back, so a mis-pick is visibly undoable.
 
-        flow.Answer(SetupFlow.ForkConnect);               //the wrong turn, taken instead of the found model
-        var again = Assert.IsType<SetupScreen.Choice>(flow.Answer(SetupFlow.BackKey));
+        flow.AnswerSettled(SetupFlow.ForkConnect);               //the wrong turn, taken instead of the found model
+        var again = Assert.IsType<SetupScreen.Choice>(flow.AnswerSettled(SetupFlow.BackKey));
 
         Assert.Equal(SetupFlow.FoundKey, again.Key);
         Assert.Contains(SetupFlow.FoundUse, again.Options.Select(o => o.Key));
-        flow.Answer(SetupFlow.FoundUse);
+        flow.AnswerSettled(SetupFlow.FoundUse);
 
         //only the second choice survives, since the flow follows the llama path
         Assert.Equal(SetupPath.Llama, flow.Path);
@@ -1597,10 +1597,10 @@ ew.gguf", model.GgufPath);
             Server = new Gatto.Core.Acquire.ConnectProbe("http://host:9", ["their-model"], 8192),
         });
         flow.StartPastOpening();
-        flow.Answer(SetupFlow.ForkConnect);               //the wrong turn, which switches the flow to the connect path.
+        flow.AnswerSettled(SetupFlow.ForkConnect);               //the wrong turn, which switches the flow to the connect path.
         Assert.Equal(SetupPath.Connect, flow.Path);
 
-        var back = Assert.IsType<SetupScreen.Choice>(flow.Answer(SetupFlow.BackKey));
+        var back = Assert.IsType<SetupScreen.Choice>(flow.AnswerSettled(SetupFlow.BackKey));
 
         Assert.Equal(SetupFlow.FoundKey, back.Key);
         Assert.Equal(SetupPath.Llama, flow.Path);
@@ -1611,10 +1611,10 @@ ew.gguf", model.GgufPath);
     {
         //the boundary is any written change, so back is refused as soon as ResumeAfterWrites runs
         var flow = ConnectingTo(["their-model"]);
-        flow.Answer(SetupFlow.Yes);
+        flow.AnswerSettled(SetupFlow.Yes);
         Resumed(flow, null);                     //from this call on, the writes are on disk.
 
-        var refused = Assert.IsType<SetupScreen.Info>(flow.Answer(SetupFlow.BackKey));
+        var refused = Assert.IsType<SetupScreen.Info>(flow.AnswerSettled(SetupFlow.BackKey));
 
         Assert.Equal("back.refused", refused.Key);        //the key proves this is the refusal screen itself
         Assert.Contains("can't go back", refused.Rows[0].Text, StringComparison.Ordinal);
@@ -1626,7 +1626,7 @@ ew.gguf", model.GgufPath);
     {
         //past the write boundary the back flag goes false, so the screen never offers the key, since offering one gatto then refuses is worse
         var flow = ConnectingTo(["their-model"]);
-        flow.Answer(SetupFlow.Yes);
+        flow.AnswerSettled(SetupFlow.Yes);
         var prove = Resumed(flow, null);
 
         Assert.False(prove.AllowBack);
@@ -1641,7 +1641,7 @@ ew.gguf", model.GgufPath);
         var welcome = flow.Start();
         Assert.False(welcome.AllowBack);
 
-        Assert.True(flow.Answer(SetupFlow.WelcomeGo).AllowBack,
+        Assert.True(flow.AnswerSettled(SetupFlow.WelcomeGo).AllowBack,
             "the screen after the welcome must offer back, there is now somewhere to go");
     }
 
@@ -1659,20 +1659,20 @@ ew.gguf", model.GgufPath);
     {
         //back returns each screen in turn, and stops being offered once nothing is behind the first one.
         var flow = ConnectingTo(["alpha", "beta"]);
-        flow.Answer(SetupFlow.Yes);                       //yes answers the model pick.
+        flow.AnswerSettled(SetupFlow.Yes);                       //yes answers the model pick.
 
-        var toConfirm = flow.Answer(SetupFlow.BackKey);
+        var toConfirm = flow.AnswerSettled(SetupFlow.BackKey);
         Assert.Equal(SetupFlow.ConfirmServerKey, Key(toConfirm));
-        var toEngine = flow.Answer(SetupFlow.BackKey);
+        var toEngine = flow.AnswerSettled(SetupFlow.BackKey);
 
         //the found screen, since this machine reports an engine, which is what makes the connect choice reachable
         Assert.Equal(SetupFlow.FoundKey, Key(toEngine));
         //visit every screen on the way back, since a stack that lost one would still claim to reach the welcome
         Assert.True(toEngine.AllowBack);
-        var toMachine = flow.Answer(SetupFlow.BackKey);
+        var toMachine = flow.AnswerSettled(SetupFlow.BackKey);
         Assert.Equal(SetupFlow.MachineKey, Key(toMachine));
         Assert.True(toMachine.AllowBack);
-        var toWelcome = flow.Answer(SetupFlow.BackKey);
+        var toWelcome = flow.AnswerSettled(SetupFlow.BackKey);
         Assert.Equal(SetupFlow.WelcomeKey, Key(toWelcome));
         Assert.False(toWelcome.AllowBack);                //the welcome is the first screen, so there is nothing to go back to
     }
@@ -1684,7 +1684,7 @@ ew.gguf", model.GgufPath);
     private static SetupScreen AtTheInstallQuestion(SetupFlow flow)
     {
         flow.StartPastEngine();
-        flow.Answer("0");
+        flow.AnswerSettled("0");
         Resumed(flow, "qwen");
         return PastThePass(flow);
     }
@@ -1731,7 +1731,7 @@ ew.gguf", model.GgufPath);
         var flow = WalkableFlowWithInstall(Gatto.Cli.Install.InstallState.AlreadyInstalledElsewhere, installed: "0.3.9");
         Assert.IsType<SetupScreen.Choice>(AtTheInstallQuestion(flow));
 
-        var next = flow.Answer(SetupFlow.InstallYes);
+        var next = flow.AnswerSettled(SetupFlow.InstallYes);
 
         Assert.Equal(AfterTheInstallQuestion, Key(next));
         Assert.Equal(@"C:\Programs\gatto", flow.Writes.InstallTo);
@@ -1746,7 +1746,7 @@ ew.gguf", model.GgufPath);
         var flow = WalkableFlowWithInstall(Gatto.Cli.Install.InstallState.AlreadyInstalledElsewhere, installed: "0.3.9");
         Assert.IsType<SetupScreen.Choice>(AtTheInstallQuestion(flow));
 
-        var next = flow.Answer(SetupFlow.InstallNo);
+        var next = flow.AnswerSettled(SetupFlow.InstallNo);
 
         Assert.Equal(AfterTheInstallQuestion, Key(next));
         Assert.Null(flow.Writes.InstallTo);
@@ -1788,7 +1788,7 @@ ew.gguf", model.GgufPath);
         var flow = WalkableFlowWithInstall(Gatto.Cli.Install.InstallState.InstalledButNotOnPath, installed: "0.3.9");
         AtTheInstallQuestion(flow);
 
-        flow.Answer(SetupFlow.InstallYes);
+        flow.AnswerSettled(SetupFlow.InstallYes);
 
         Assert.Equal(@"C:\Programs\gatto", flow.Writes.InstallTo);
         Assert.False(flow.Writes.PathOnly);
@@ -1809,7 +1809,7 @@ ew.gguf", model.GgufPath);
             + string.Join(" ", first.Options.Select(o => o.Label));
         Assert.DoesNotContain("PATH", everything, StringComparison.Ordinal);
 
-        flow.Answer(SetupFlow.InstallYes);
+        flow.AnswerSettled(SetupFlow.InstallYes);
 
         Assert.True(flow.Writes.PathOnly);
         Assert.Null(flow.Writes.InstallTo);   //no copy here, since a copy would install the older image
@@ -1941,7 +1941,7 @@ ew.gguf", model.GgufPath);
         var flow = WalkableFlowWithInstall(Gatto.Cli.Install.InstallState.NotInstalled);
         AtTheInstallQuestion(flow);
 
-        var next = flow.Answer(SetupFlow.InstallYes);
+        var next = flow.AnswerSettled(SetupFlow.InstallYes);
 
         Assert.Equal(AfterTheInstallQuestion, Key(next));
         Assert.Equal(@"C:\Programs\gatto", flow.Writes.InstallTo);
@@ -1953,7 +1953,7 @@ ew.gguf", model.GgufPath);
         var flow = WalkableFlowWithInstall(Gatto.Cli.Install.InstallState.NotInstalled);
         AtTheInstallQuestion(flow);
 
-        var next = flow.Answer(SetupFlow.InstallNo);
+        var next = flow.AnswerSettled(SetupFlow.InstallNo);
 
         Assert.Equal(AfterTheInstallQuestion, Key(next));
         Assert.Null(flow.Writes.InstallTo);
@@ -1971,7 +1971,7 @@ ew.gguf", model.GgufPath);
             ExistingEndpoint = existingEndpoint,
         });
         flow.StartPastOpening();
-        flow.Answer(SetupFlow.ForkConnect);
+        flow.AnswerSettled(SetupFlow.ForkConnect);
         return flow;
     }
 
@@ -1981,7 +1981,7 @@ ew.gguf", model.GgufPath);
         //an endpoint with no default model resolves at nothing, so the endpoint, its default and the served model are written together
         var flow = ConnectingTo(["their-model"]);
 
-        flow.Answer(SetupFlow.Yes);
+        flow.AnswerSettled(SetupFlow.Yes);
 
         Assert.True(flow.NeedsWritesApplied);
         var e = Assert.IsType<WriteSet.Endpoint>(flow.Writes.UpsertEndpoint);
@@ -1995,7 +1995,7 @@ ew.gguf", model.GgufPath);
     {
         var flow = ConnectingTo(["only-one"]);
 
-        flow.Answer(SetupFlow.Yes);
+        flow.AnswerSettled(SetupFlow.Yes);
 
         Assert.Equal("only-one", flow.Writes.DefaultModel);
         Assert.DoesNotContain(flow.Emitted, s => Key(s) == SetupFlow.ModelPickKey);
@@ -2007,13 +2007,13 @@ ew.gguf", model.GgufPath);
         //a server lists everything it could load, so the choice of model is the user's and the labels are the server's own strings
         var flow = ConnectingTo(["alpha", "beta", "gamma"]);
 
-        var pick = Assert.IsType<SetupScreen.Choice>(flow.Answer(SetupFlow.Yes));
+        var pick = Assert.IsType<SetupScreen.Choice>(flow.AnswerSettled(SetupFlow.Yes));
 
         Assert.Equal(SetupFlow.ModelPickKey, pick.Key);
         Assert.Equal(["alpha", "beta", "gamma"], pick.Options.Select(o => o.Key));
         Assert.False(flow.NeedsWritesApplied);
 
-        flow.Answer("beta");
+        flow.AnswerSettled("beta");
 
         Assert.True(flow.NeedsWritesApplied);
         Assert.Equal("beta", flow.Writes.DefaultModel);
@@ -2026,13 +2026,13 @@ ew.gguf", model.GgufPath);
         var many = Enumerable.Range(1, 12).Select(i => $"model-{i}").ToList();
         var flow = ConnectingTo(many);
 
-        var pick = Assert.IsType<SetupScreen.Choice>(flow.Answer(SetupFlow.Yes));
+        var pick = Assert.IsType<SetupScreen.Choice>(flow.AnswerSettled(SetupFlow.Yes));
 
         Assert.Equal(SetupFlow.ModelPickKey, pick.Key);
         Assert.Equal(many, pick.Options.Select(o => o.Key));      //every model, in the order the server gave.
 
         //the twelfth row takes an answer, since a drawn but dead row would still pass the list check
-        flow.Answer("model-12");
+        flow.AnswerSettled("model-12");
         Assert.Equal("model-12", flow.Writes.DefaultModel);
     }
 
@@ -2042,13 +2042,13 @@ ew.gguf", model.GgufPath);
         //a server that lists nothing leaves gatto without an id, so it asks for the name
         var flow = ConnectingTo([]);
 
-        var ask = Assert.IsType<SetupScreen.Ask>(flow.Answer(SetupFlow.Yes));
+        var ask = Assert.IsType<SetupScreen.Ask>(flow.AnswerSettled(SetupFlow.Yes));
 
         Assert.Equal(SetupFlow.ModelNameKey, ask.Key);
         Assert.NotNull(ask.Validate("   "));
         Assert.Null(ask.Validate("their-model"));
 
-        flow.Answer("  their-model  ");
+        flow.AnswerSettled("  their-model  ");
 
         Assert.Equal("their-model", flow.Writes.DefaultModel);
     }
@@ -2059,7 +2059,7 @@ ew.gguf", model.GgufPath);
     {
         var flow = ConnectingTo(["their-model"], existingEndpoint: "local");
 
-        flow.Answer(SetupFlow.Yes);
+        flow.AnswerSettled(SetupFlow.Yes);
 
         Assert.Equal("server", flow.Writes.UpsertEndpoint!.Name);
         Assert.Equal("server", flow.Writes.DefaultEndpoint);
@@ -2071,7 +2071,7 @@ ew.gguf", model.GgufPath);
         //every other existing endpoint name is reused, since only "local" collides
         var flow = ConnectingTo(["their-model"], existingEndpoint: "their-box");
 
-        flow.Answer(SetupFlow.Yes);
+        flow.AnswerSettled(SetupFlow.Yes);
 
         Assert.Equal("their-box", flow.Writes.UpsertEndpoint!.Name);
         Assert.Equal("their-box", flow.Writes.DefaultEndpoint);
@@ -2082,7 +2082,7 @@ ew.gguf", model.GgufPath);
     {
         //the audition needs a model and a connect walk has none, so a later edit must not offer it on that walk
         var flow = ConnectingTo(["their-model"]);
-        flow.Answer(SetupFlow.Yes);
+        flow.AnswerSettled(SetupFlow.Yes);
         Assert.True(flow.NeedsWritesApplied);
 
         Resumed(flow, null);
@@ -2101,9 +2101,9 @@ ew.gguf", model.GgufPath);
             Server = new Gatto.Core.Acquire.ConnectProbe("http://host:9", ["m"], NCtx: null),
         });
         flow.StartPastOpening();
-        flow.Answer(SetupFlow.ForkConnect);
+        flow.AnswerSettled(SetupFlow.ForkConnect);
 
-        var ask = Assert.IsType<SetupScreen.Ask>(flow.Answer(SetupFlow.Yes));
+        var ask = Assert.IsType<SetupScreen.Ask>(flow.AnswerSettled(SetupFlow.Yes));
         //the key check is what ties the body assertion below to this screen
         Assert.Equal(SetupFlow.ContextKey, ask.Key);
         var body = string.Join("\n", (ask.BodyRows ?? []).Select(r => r.Text));
@@ -2118,9 +2118,9 @@ ew.gguf", model.GgufPath);
             Server = new Gatto.Core.Acquire.ConnectProbe("http://host:9", ["m"], NCtx: null),
         });
         flow.StartPastOpening();
-        flow.Answer(SetupFlow.ForkConnect);
+        flow.AnswerSettled(SetupFlow.ForkConnect);
 
-        var ask = Assert.IsType<SetupScreen.Ask>(flow.Answer(SetupFlow.Yes));
+        var ask = Assert.IsType<SetupScreen.Ask>(flow.AnswerSettled(SetupFlow.Yes));
         Assert.Equal(SetupFlow.ContextKey, ask.Key);
         //the offer is a pickable row holding the flat default, and its label must not show 8192
         var offer = Assert.IsType<AskOffer>(ask.Offer);
@@ -2133,7 +2133,7 @@ ew.gguf", model.GgufPath);
             offer.Value);
         Assert.DoesNotContain("8192", offer.Label, StringComparison.Ordinal);
         //the written budget is the number the label advertised, since both come from one constant
-        flow.Answer(offer.Value);
+        flow.AnswerSettled(offer.Value);
         var written = Assert.IsType<WriteSet.Endpoint>(flow.Writes.UpsertEndpoint);
         Assert.Equal(SetupFlow.OfferedServerContext, written.Context);
     }
@@ -2150,9 +2150,9 @@ ew.gguf", model.GgufPath);
             Server = new Gatto.Core.Acquire.ConnectProbe("http://host:9", ["m"], reported),
         });
         flow.StartPastOpening();
-        flow.Answer(SetupFlow.ForkConnect);
-        flow.Answer(SetupFlow.Yes);
-        if (typed is not null) flow.Answer(typed);   //the answer goes to an Ask, which takes free text
+        flow.AnswerSettled(SetupFlow.ForkConnect);
+        flow.AnswerSettled(SetupFlow.Yes);
+        if (typed is not null) flow.AnswerSettled(typed);   //the answer goes to an Ask, which takes free text
 
         var ep = Assert.IsType<WriteSet.Endpoint>(flow.Writes.UpsertEndpoint);
         Assert.Equal(expected, ep.Context);
@@ -2166,7 +2166,7 @@ ew.gguf", model.GgufPath);
         var flow = new SetupFlow(new FakeProbes { Server = null });
         flow.StartPastOpening();
 
-        var retry = Assert.IsType<SetupScreen.Choice>(flow.Answer(SetupFlow.ForkConnect));
+        var retry = Assert.IsType<SetupScreen.Choice>(flow.AnswerSettled(SetupFlow.ForkConnect));
 
         Assert.Equal(SetupFlow.RetryKey, retry.Key);
         Assert.Contains(retry.Options, o => o.Key == SetupFlow.Retry);
@@ -2178,8 +2178,8 @@ ew.gguf", model.GgufPath);
         //leaving never closes the console, and write-at-the-end means it costs nothing
         var flow = new SetupFlow(new FakeProbes { Server = new Gatto.Core.Acquire.ConnectProbe("http://host:9", ["their-model"], 8192) });
         flow.StartPastOpening();
-        flow.Answer(SetupFlow.ForkConnect);
-        var end = Assert.IsType<SetupScreen.Terminal>(flow.Answer(SetupFlow.No));
+        flow.AnswerSettled(SetupFlow.ForkConnect);
+        var end = Assert.IsType<SetupScreen.Terminal>(flow.AnswerSettled(SetupFlow.No));
 
         //only the model write is asserted, since choosing the engine records a write of its own
         Assert.Null(flow.Writes.CreateModel);
@@ -2250,7 +2250,7 @@ ew.gguf", model.GgufPath);
         });
         flow.StartPastEngine();
 
-        flow.Answer("0");
+        flow.AnswerSettled("0");
 
         Assert.Equal(@"D:\models\qwen.gguf", flow.Selected!.Path);
 
@@ -2270,7 +2270,7 @@ ew.gguf", model.GgufPath);
         var flow = new SetupFlow(probes);
         flow.StartPastEngine();
 
-        flow.Answer(ShelfControls.TypedAnswer("  \"D:/weights\"  "));
+        flow.AnswerSettled(ShelfControls.TypedAnswer("  \"D:/weights\"  "));
 
         Assert.Equal(@"D:\weights", probes.ScanRoots[^1]);
     }
@@ -2303,7 +2303,7 @@ ew.gguf", model.GgufPath);
         Assert.Contains(search.Options, o => o.Key == SetupFlow.Elsewhere);
 
         //taking it opens the folder ask
-        var ask = Assert.IsType<SetupScreen.Ask>(flow.Answer(SetupFlow.Elsewhere));
+        var ask = Assert.IsType<SetupScreen.Ask>(flow.AnswerSettled(SetupFlow.Elsewhere));
         Assert.Equal(SetupFlow.ScanPathKey, ask.Key);
     }
 
@@ -2317,7 +2317,7 @@ ew.gguf", model.GgufPath);
         });
         flow.StartPastEngine();
 
-        flow.Answer("1");
+        flow.AnswerSettled("1");
 
         Assert.Equal("org/b", flow.Picked!.RowFile!.RepoId);
         //only the model write is asserted, since choosing the engine records a write of its own
@@ -2341,9 +2341,9 @@ ew.gguf", model.GgufPath);
         };
         var flow = AtSearch(probes);
 
-        flow.Answer(SetupFlow.TypeAnId);
-        flow.Answer("someone/not-on-the-list");
-        flow.Answer("0");
+        flow.AnswerSettled(SetupFlow.TypeAnId);
+        flow.AnswerSettled("someone/not-on-the-list");
+        flow.AnswerSettled("0");
 
         Assert.Equal("someone/not-on-the-list", flow.Picked!.RowFile!.RepoId);
         Assert.Contains("someone/not-on-the-list", probes.TypedIds);
@@ -2354,11 +2354,11 @@ ew.gguf", model.GgufPath);
     public void BACK_NEVER_UNDOES_A_LIFT_THAT_FOUND_ROWS()
     {
         var flow = AtSearch(new FakeProbes { Llama = @"C:\llama\llama-server.exe", Rows = [Row("unsloth/a-GGUF")] });
-        var lifted = Assert.IsType<SetupScreen.Choice>(flow.Answer(SetupFlow.CtlLift));
+        var lifted = Assert.IsType<SetupScreen.Choice>(flow.AnswerSettled(SetupFlow.CtlLift));
         Assert.True(lifted.Shelf!.Lift);
         Assert.NotEmpty(lifted.Shelf.Rows);
 
-        var back = flow.Answer(SetupFlow.BackKey);
+        var back = flow.AnswerSettled(SetupFlow.BackKey);
         Assert.False(back is SetupScreen.Choice { Key: SetupFlow.SearchKey, Shelf.Lift: false },
             "back from the lifted shelf showed the unlifted one");
     }
@@ -2373,9 +2373,9 @@ ew.gguf", model.GgufPath);
             TypedId = new TypedIdOutcome.Ok(Row("someone/typed-GGUF")),
         };
         var flow = AtSearch(probes);
-        flow.Answer(SetupFlow.TypeAnId);
+        flow.AnswerSettled(SetupFlow.TypeAnId);
 
-        var shelf = Assert.IsType<SetupScreen.Choice>(flow.Answer("someone/typed-GGUF"));
+        var shelf = Assert.IsType<SetupScreen.Choice>(flow.AnswerSettled("someone/typed-GGUF"));
         Assert.Equal(SetupFlow.SearchKey, shelf.Key);
         Assert.Null(flow.Picked);
         var view = shelf.Shelf!;
@@ -2384,12 +2384,12 @@ ew.gguf", model.GgufPath);
         Assert.True(view.Searched);
         Assert.NotNull(Assert.Single(view.Facts!).Publishers);
 
-        var next = flow.Answer("0");
+        var next = flow.AnswerSettled("0");
         Assert.NotEqual(SetupFlow.SearchKey, (next as SetupScreen.Choice)?.Key);
         Assert.Equal("someone/typed-GGUF", flow.Picked!.RowFile!.RepoId);
 
         var asked = probes.TypedIds.Count;
-        var back = Assert.IsType<SetupScreen.Choice>(flow.Answer(SetupFlow.BackKey));
+        var back = Assert.IsType<SetupScreen.Choice>(flow.AnswerSettled(SetupFlow.BackKey));
         Assert.Equal(SetupFlow.SearchKey, back.Key);
         Assert.Equal(["someone/typed-GGUF"], back.Shelf!.Rows.Select(r => r.RowFile!.RepoId));
         Assert.Equal(asked, probes.TypedIds.Count);
@@ -2404,9 +2404,9 @@ ew.gguf", model.GgufPath);
             Llama = @"C:\llama\llama-server.exe",
             TypedId = new TypedIdOutcome.Malformed(),
         });
-        flow.Answer(SetupFlow.TypeAnId);
+        flow.AnswerSettled(SetupFlow.TypeAnId);
 
-        var again = Assert.IsType<SetupScreen.Ask>(flow.Answer("https://huggingface.co/org/model"));
+        var again = Assert.IsType<SetupScreen.Ask>(flow.AnswerSettled("https://huggingface.co/org/model"));
 
         Assert.Contains("org/model", again.Label, StringComparison.Ordinal);   //org/model is the shape the label must show
         foreach (var wrong in new[] { "unreachable", "offline", "connection", "network" })
@@ -2421,9 +2421,9 @@ ew.gguf", model.GgufPath);
             Llama = @"C:\llama\llama-server.exe",
             TypedId = new TypedIdOutcome.Unreachable(Gated: true),
         });
-        flow.Answer(SetupFlow.TypeAnId);
+        flow.AnswerSettled(SetupFlow.TypeAnId);
 
-        var again = Assert.IsType<SetupScreen.Ask>(flow.Answer("org/gated"));
+        var again = Assert.IsType<SetupScreen.Ask>(flow.AnswerSettled("org/gated"));
         Assert.Contains("licence", again.Label, StringComparison.OrdinalIgnoreCase);
     }
 
@@ -2436,9 +2436,9 @@ ew.gguf", model.GgufPath);
             Llama = @"C:\llama\llama-server.exe",
             TypedId = new TypedIdOutcome.Unreachable(false),
         });
-        flow.Answer(SetupFlow.TypeAnId);
+        flow.AnswerSettled(SetupFlow.TypeAnId);
 
-        var again = flow.Answer("org/typo");
+        var again = flow.AnswerSettled("org/typo");
         Assert.Equal(SetupFlow.TypedIdKey, Key(again));
     }
 
@@ -2451,8 +2451,8 @@ ew.gguf", model.GgufPath);
             Llama = @"C:\llama\llama-server.exe",
             TypedId = new TypedIdOutcome.NoUsableQuant(),
         });
-        flow.Answer(SetupFlow.TypeAnId);
-        var again = Assert.IsType<SetupScreen.Ask>(flow.Answer("someone/enormous"));
+        flow.AnswerSettled(SetupFlow.TypeAnId);
+        var again = Assert.IsType<SetupScreen.Ask>(flow.AnswerSettled("someone/enormous"));
 
         Assert.Equal(SetupFlow.TypedIdKey, again.Key);
         Assert.Contains("Found it", again.Label!, StringComparison.Ordinal);
@@ -2477,13 +2477,13 @@ ew.gguf", model.GgufPath);
         //vision stays an addition the screen asks for, so the projector is never armed on its own
         var flow = new SetupFlow(WithProjector());
         flow.StartPastEngine();
-        var ask = Assert.IsType<SetupScreen.Choice>(flow.Answer("0"));
+        var ask = Assert.IsType<SetupScreen.Choice>(flow.AnswerSettled("0"));
 
         Assert.Equal(SetupFlow.ProjectorKey, ask.Key);
         Assert.Equal(SetupFlow.Yes, ask.Options[0].Key);
         Assert.Contains("mmproj-qwen-f16.gguf", string.Join(" ", ask.BodyRows!), StringComparison.Ordinal);
 
-        flow.Answer(SetupFlow.No);
+        flow.AnswerSettled(SetupFlow.No);
         Assert.Null(flow.Writes.Projector);
         Assert.NotNull(flow.Writes.CreateModel);
     }
@@ -2493,8 +2493,8 @@ ew.gguf", model.GgufPath);
     {
         var flow = new SetupFlow(WithProjector());
         flow.StartPastEngine();
-        flow.Answer("0");
-        flow.Answer(SetupFlow.Yes);
+        flow.AnswerSettled("0");
+        flow.AnswerSettled(SetupFlow.Yes);
 
         Assert.Equal(@"D:\m\mmproj-qwen-f16.gguf", flow.Writes.Projector);
     }
@@ -2509,7 +2509,7 @@ ew.gguf", model.GgufPath);
             Found = [new Gatto.Core.Acquire.FoundModel(@"D:\m\qwen.gguf", 4_000_000_000, null)],
         });
         flow.StartPastEngine();
-        flow.Answer("0");
+        flow.AnswerSettled("0");
 
         Assert.DoesNotContain(flow.Emitted, s => s is SetupScreen.Choice c && c.Key == SetupFlow.ProjectorKey);
         Assert.NotNull(flow.Writes.CreateModel);
@@ -2521,7 +2521,7 @@ ew.gguf", model.GgufPath);
         //a projector costs about a fixed size, so the screen shows the pair's regime and warns only when the answer changes it
         var costs = new SetupFlow(WithProjector(Gatto.Core.Models.FitRegime.FitsGpu, Gatto.Core.Models.FitRegime.FitsRamOnly));
         costs.StartPastEngine();
-        var warned = Assert.IsType<SetupScreen.Choice>(costs.Answer("0"));
+        var warned = Assert.IsType<SetupScreen.Choice>(costs.AnswerSettled("0"));
         var warnedBody = string.Join(" ", warned.BodyRows!);
 
         Assert.Contains(SearchRow.FitWords(Gatto.Core.Models.FitRegime.FitsRamOnly, Gatto.Core.Hardware.MachineShape.Discrete, Gatto.Terminal.GlyphSet.Unicode), warnedBody, StringComparison.Ordinal);
@@ -2529,7 +2529,7 @@ ew.gguf", model.GgufPath);
 
         var free = new SetupFlow(WithProjector(Gatto.Core.Models.FitRegime.FitsGpu, Gatto.Core.Models.FitRegime.FitsGpu));
         free.StartPastEngine();
-        var quiet = Assert.IsType<SetupScreen.Choice>(free.Answer("0"));
+        var quiet = Assert.IsType<SetupScreen.Choice>(free.AnswerSettled("0"));
 
         Assert.Single(quiet.BodyRows!);   //the single row is the file itself, with no fit sentence
     }
@@ -2540,7 +2540,7 @@ ew.gguf", model.GgufPath);
         //the screen prices the two resident files, so it must not imply a cost per image
         var flow = new SetupFlow(WithProjector(Gatto.Core.Models.FitRegime.FitsGpu, Gatto.Core.Models.FitRegime.FitsRamOnly));
         flow.StartPastEngine();
-        var ask = Assert.IsType<SetupScreen.Choice>(flow.Answer("0"));
+        var ask = Assert.IsType<SetupScreen.Choice>(flow.AnswerSettled("0"));
         var body = string.Join(" ", ask.BodyRows!);
 
         foreach (var banned in new[] { "per image", "each image", "tokens", "slower per" })
@@ -2553,10 +2553,10 @@ ew.gguf", model.GgufPath);
     {
         var flow = new SetupFlow(WithProjector());
         flow.StartPastEngine();
-        var ask = Assert.IsType<SetupScreen.Choice>(flow.Answer("0"));
+        var ask = Assert.IsType<SetupScreen.Choice>(flow.AnswerSettled("0"));
         Assert.Equal(SetupFlow.ProjectorKey, ask.Key);
 
-        flow.Answer(SetupFlow.BackKey);
+        flow.AnswerSettled(SetupFlow.BackKey);
 
         //a screen shown is not a screen answered, so nothing about vision may remain after the user backs out.
         Assert.Null(flow.Writes.Projector);
@@ -2581,7 +2581,7 @@ ew.gguf", model.GgufPath);
     {
         var flow = new SetupFlow(probes);
         flow.StartPastEngine();
-        return (flow, flow.Answer("0"));
+        return (flow, flow.AnswerSettled("0"));
     }
 
     [Fact]
@@ -2595,7 +2595,7 @@ ew.gguf", model.GgufPath);
         Assert.Equal(SetupFlow.No, ask.Options[0].Key);
         Assert.Equal(3, ask.Options.Count);
 
-        flow.Answer(SetupFlow.No);
+        flow.AnswerSettled(SetupFlow.No);
         Assert.Null(flow.Writes.MoveTo);
         Assert.NotNull(flow.Writes.CreateModel);
     }
@@ -2685,7 +2685,7 @@ ew.gguf", model.GgufPath);
     {
         //the recorded folder is the one shown on the screen, since a second derivation would let the two part company
         var (flow, _) = AtMove(InDownloads());
-        flow.Answer(SetupFlow.Yes);
+        flow.AnswerSettled(SetupFlow.Yes);
 
         Assert.Equal(@"C:\Users\me\.gatto\models", flow.Writes.MoveTo);
     }
@@ -2694,14 +2694,14 @@ ew.gguf", model.GgufPath);
     public void CHOOSING_A_FOLDER_ASKS_FOR_IT_AND_RECORDS_WHAT_WAS_TYPED()
     {
         var (flow, _) = AtMove(InDownloads());
-        var ask = Assert.IsType<SetupScreen.Ask>(flow.Answer(SetupFlow.Elsewhere));
+        var ask = Assert.IsType<SetupScreen.Ask>(flow.AnswerSettled(SetupFlow.Elsewhere));
         Assert.Equal(SetupFlow.MovePathKey, ask.Key);
 
         //a folder that does not exist yet is legal, since adoption creates it, so only an empty answer is rejected.
         Assert.Null(ask.Validate(@"E:\not-yet"));
         Assert.NotNull(ask.Validate("   "));
 
-        flow.Answer(@"E:\weights");
+        flow.AnswerSettled(@"E:\weights");
         Assert.Equal(@"E:\weights", flow.Writes.MoveTo);
     }
 
@@ -2719,14 +2719,14 @@ ew.gguf", model.GgufPath);
         };
 
         var (flow, _) = AtMove(probes);
-        flow.Answer(SetupFlow.Yes);
+        flow.AnswerSettled(SetupFlow.Yes);
         Assert.Equal(@"C:\Users\me\.gatto\models", flow.Writes.MoveTo);
 
         //the projector ask sits between this intent and the write pause, so backing out is possible.
-        var projector = Assert.IsType<SetupScreen.Choice>(flow.Answer(SetupFlow.BackKey));
+        var projector = Assert.IsType<SetupScreen.Choice>(flow.AnswerSettled(SetupFlow.BackKey));
         Assert.Equal(SetupFlow.MoveKey, projector.Key);
 
-        flow.Answer(SetupFlow.No);
+        flow.AnswerSettled(SetupFlow.No);
         Assert.Null(flow.Writes.MoveTo);
     }
 
@@ -2743,7 +2743,7 @@ ew.gguf", model.GgufPath);
     {
         var flow = new SetupFlow(probes);
         flow.StartPastEngine();
-        return (flow, flow.Answer("0"));
+        return (flow, flow.AnswerSettled("0"));
     }
 
     [Fact]
@@ -2769,7 +2769,7 @@ ew.gguf", model.GgufPath);
     {
         //declining the build must still write the model, since refusing to record a real model decides for the user
         var (flow, _) = AtCustomBuild(WithCustomArch());
-        flow.Answer(SetupFlow.No);
+        flow.AnswerSettled(SetupFlow.No);
 
         Assert.NotNull(flow.Writes.CreateModel);
         Assert.Null(flow.Writes.ModelLlamaServer);
@@ -2779,10 +2779,10 @@ ew.gguf", model.GgufPath);
     public void SAYING_YES_RECORDS_THE_BUILD_AGAINST_THE_PACK_and_never_the_machine()
     {
         var (flow, _) = AtCustomBuild(WithCustomArch());
-        var ask = Assert.IsType<SetupScreen.Ask>(flow.Answer(SetupFlow.Yes));
+        var ask = Assert.IsType<SetupScreen.Ask>(flow.AnswerSettled(SetupFlow.Yes));
         Assert.Equal(SetupFlow.CustomBuildPathKey, ask.Key);
 
-        flow.Answer(@"C:\forks\bailing\llama-server.exe");
+        flow.AnswerSettled(@"C:\forks\bailing\llama-server.exe");
 
         Assert.Equal(@"C:\forks\bailing\llama-server.exe", flow.Writes.ModelLlamaServer);
         //the per-model build never touches the machine's own binary, so the two paths live in separate members
@@ -2825,9 +2825,9 @@ ew.gguf", model.GgufPath);
             Architecture = "futurearch",
             Shape = Gatto.Core.Acquire.ProbeShape.NotClassic,
         });
-        flow.Answer(SetupFlow.Yes);
+        flow.AnswerSettled(SetupFlow.Yes);
 
-        var again = Assert.IsType<SetupScreen.Ask>(flow.Answer(@"C:\wrong\llama.exe"));
+        var again = Assert.IsType<SetupScreen.Ask>(flow.AnswerSettled(@"C:\wrong\llama.exe"));
         Assert.Equal(SetupFlow.CustomBuildPathKey, again.Key);
         Assert.Contains("single combined program", again.Label!, StringComparison.Ordinal);
         Assert.Null(flow.Writes.ModelLlamaServer);
@@ -2846,17 +2846,17 @@ ew.gguf", model.GgufPath);
             Architecture = "futurearch",
         });
         flow.StartPastEngine();
-        flow.Answer("0");
+        flow.AnswerSettled("0");
 
-        var offer = Assert.IsType<SetupScreen.Choice>(flow.Answer(SetupFlow.Yes));
+        var offer = Assert.IsType<SetupScreen.Choice>(flow.AnswerSettled(SetupFlow.Yes));
         Assert.Equal(@"D:\m\mmproj-qwen-f16.gguf", flow.Writes.Projector);
 
         //the build offer is the screen that sits between the intent and the pause.
         Assert.Equal(SetupFlow.CustomBuildKey, offer.Key);
 
-        var back = Assert.IsType<SetupScreen.Choice>(flow.Answer(SetupFlow.BackKey));
+        var back = Assert.IsType<SetupScreen.Choice>(flow.AnswerSettled(SetupFlow.BackKey));
         Assert.Equal(SetupFlow.ProjectorKey, back.Key);
-        flow.Answer(SetupFlow.No);
+        flow.AnswerSettled(SetupFlow.No);
 
         //the abandoned answer must not survive, since the projector would otherwise reach disk for a choice the user reversed
         Assert.Null(flow.Writes.Projector);
@@ -2871,8 +2871,8 @@ ew.gguf", model.GgufPath);
             Llama = @"C:\llama\llama-server.exe",
             TypedId = new TypedIdOutcome.Unreachable(false),
         });
-        flow.Answer(SetupFlow.TypeAnId);
-        var again = Assert.IsType<SetupScreen.Ask>(flow.Answer("someone/nope"));
+        flow.AnswerSettled(SetupFlow.TypeAnId);
+        var again = Assert.IsType<SetupScreen.Ask>(flow.AnswerSettled("someone/nope"));
 
         Assert.Contains("private", again.Label!, StringComparison.OrdinalIgnoreCase);
     }
@@ -2916,7 +2916,7 @@ ew.gguf", model.GgufPath);
     {
         var flow = new SetupFlow(probes);
         flow.StartPastEngine();
-        flow.Answer("0");                      //0 picks the discovered model
+        flow.AnswerSettled("0");                      //0 picks the discovered model
         Assert.True(flow.NeedsWritesApplied);  //the write must be due before the offer appears
         return flow;
     }
@@ -2943,9 +2943,9 @@ ew.gguf", model.GgufPath);
         var probes = new FakeProbes { Llama = @"C:\llama\llama-server.exe", Rows = [Row("org/m")] };
         var flow = new SetupFlow(probes);
         flow.StartPastEngine();       //nothing was discovered, so this lands on the search shelf.
-        flow.Answer("0");                       //0 is the Hub row pick, which opens the download screen
+        flow.AnswerSettled("0");                       //0 is the Hub row pick, which opens the download screen
         probes.Found = [Model(@"D:\Downloads\model-Q4_K_M.gguf")];
-        flow.Answer(SetupFlow.Landed);      //the file arrived, so the flow adopts it and reaches the scaffold pause
+        flow.AnswerSettled(SetupFlow.Landed);      //the file arrived, so the flow adopts it and reaches the scaffold pause
         Resumed(flow, "m");
         CheckRan(flow);                         //accepting the offer is what lets the check run
 
@@ -3038,8 +3038,8 @@ ew.gguf", model.GgufPath);
         };
         var flow = new SetupFlow(probes);
         flow.StartPastOpening();
-        flow.Answer(SetupFlow.ForkConnect);
-        flow.Answer(SetupFlow.Yes);
+        flow.AnswerSettled(SetupFlow.ForkConnect);
+        flow.AnswerSettled(SetupFlow.Yes);
 
         Assert.DoesNotContain(flow.Emitted, s => Key(s) == SetupFlow.AuditionOfferKey);
         Assert.DoesNotContain(nameof(ISetupProbes.RunAudition), probes.Asked);
@@ -3125,7 +3125,7 @@ ew.gguf", model.GgufPath);
         });
 
         //read the sentence through FailureScreen, the retry case is a Choice and the typed case is an Ask with a null Label
-        Assert.Contains(expected, FailureScreen.Sentence(flow.Answer(ShelfControls.TypedAnswer(@"C:\llama\llama-server.exe"))),
+        Assert.Contains(expected, FailureScreen.Sentence(flow.AnswerSettled(ShelfControls.TypedAnswer(@"C:\llama\llama-server.exe"))),
             StringComparison.OrdinalIgnoreCase);
     }
 
@@ -3150,7 +3150,7 @@ ew.gguf", model.GgufPath);
             {
                 Llama = null, Shape = Gatto.Core.Acquire.ProbeShape.DllNotFound, Asset = asset,
             });
-            label = FailureScreen.Sentence(flow.Answer(ShelfControls.TypedAnswer(@"C:\llama\llama-server.exe")));
+            label = FailureScreen.Sentence(flow.AnswerSettled(ShelfControls.TypedAnswer(@"C:\llama\llama-server.exe")));
         }
         else
         {
@@ -3165,8 +3165,8 @@ ew.gguf", model.GgufPath);
                 Shape = Gatto.Core.Acquire.ProbeShape.DllNotFound,
                 Asset = asset,
             });
-            flow.Answer(SetupFlow.Yes);   //yes opens the path ask.
-            label = Assert.IsType<SetupScreen.Ask>(flow.Answer(@"D:\mine\llama-server.exe")).Label!;
+            flow.AnswerSettled(SetupFlow.Yes);   //yes opens the path ask.
+            label = Assert.IsType<SetupScreen.Ask>(flow.AnswerSettled(@"D:\mine\llama-server.exe")).Label!;
         }
 
         Assert.Contains(mustSay, label, StringComparison.OrdinalIgnoreCase);
@@ -3195,7 +3195,7 @@ ew.gguf", model.GgufPath);
             VcRuntimeAbsent = vcRuntimeAbsent,
         });
 
-        var label = FailureScreen.Sentence(flow.Answer(ShelfControls.TypedAnswer(@"C:\llama\llama-server.exe")));
+        var label = FailureScreen.Sentence(flow.AnswerSettled(ShelfControls.TypedAnswer(@"C:\llama\llama-server.exe")));
 
         Assert.Contains(mustSay, label, StringComparison.OrdinalIgnoreCase);
         Assert.DoesNotContain(mustNotSay, label, StringComparison.OrdinalIgnoreCase);
@@ -3211,7 +3211,7 @@ ew.gguf", model.GgufPath);
             Found = [Model(@"D:\models\qwen.gguf")],
         });
 
-        var next = flow.Answer(ShelfControls.TypedAnswer(@"C:\llama\llama-server.exe"));
+        var next = flow.AnswerSettled(ShelfControls.TypedAnswer(@"C:\llama\llama-server.exe"));
 
         Assert.Contains(flow.TakeNarration(), i => i.Key == "llama.ok");
         Assert.Equal(SetupFlow.DiscoveredKey, Key(next));
@@ -3222,7 +3222,7 @@ ew.gguf", model.GgufPath);
     {
         //a segment that succeeds still completes nothing, so CreateModel and DefaultModel stay null
         var flow = AtSteering(new FakeProbes { Llama = null, Shape = Gatto.Core.Acquire.ProbeShape.ClassicServer });
-        flow.Answer(ShelfControls.TypedAnswer(@"C:\llama\llama-server.exe"));
+        flow.AnswerSettled(ShelfControls.TypedAnswer(@"C:\llama\llama-server.exe"));
 
         Assert.Null(flow.Writes.CreateModel);
         Assert.Null(flow.Writes.DefaultModel);
@@ -3281,7 +3281,7 @@ ew.gguf", model.GgufPath);
         CheckRan(flow);
 
         //read the write set before the done pause consumes the intent, insisting still records the default
-        flow.Answer(SetupFlow.Anyway);
+        flow.AnswerSettled(SetupFlow.Anyway);
         Assert.NotNull(flow.Writes.DefaultModel);
 
         Assert.Equal(SetupFlow.SummaryKey, Key(Resumed(flow)));
@@ -3291,7 +3291,7 @@ ew.gguf", model.GgufPath);
     public void THE_VERIFIED_LLAMA_PATH_becomes_an_intent_rather_than_an_immediate_write()
     {
         var flow = AtSteering(new FakeProbes { Llama = null, Shape = Gatto.Core.Acquire.ProbeShape.ClassicServer });
-        flow.Answer(ShelfControls.TypedAnswer(@"C:\llama\llama-server.exe"));
+        flow.AnswerSettled(ShelfControls.TypedAnswer(@"C:\llama\llama-server.exe"));
 
         Assert.Equal(@"C:\llama\llama-server.exe", flow.Writes.LlamaServer);
     }
@@ -3452,15 +3452,15 @@ ew.gguf", model.GgufPath);
             Server = new Gatto.Core.Acquire.ConnectProbe("http://host:9", ["m"], 8192),
         });
         flow.StartPastOpening();
-        flow.Answer(SetupFlow.ForkConnect);
-        flow.Answer(SetupFlow.Yes);          //this answer records the endpoint intent.
+        flow.AnswerSettled(SetupFlow.ForkConnect);
+        flow.AnswerSettled(SetupFlow.Yes);          //this answer records the endpoint intent.
         Assert.False(flow.Writes.IsEmpty);
 
         //the second run backs out at the last screen.
         var flow2 = new SetupFlow(new FakeProbes { Server = new Gatto.Core.Acquire.ConnectProbe("http://host:9", ["their-model"], 8192) });
         flow2.StartPastOpening();
-        flow2.Answer(SetupFlow.ForkConnect);
-        flow2.Answer(SetupFlow.No);
+        flow2.AnswerSettled(SetupFlow.ForkConnect);
+        flow2.AnswerSettled(SetupFlow.No);
 
         Assert.True(flow2.Writes.IsEmpty);
     }
@@ -3570,7 +3570,7 @@ ew.gguf", model.GgufPath);
         //the probe log is cleared after the welcome, the welcome reads gatto's own config before any path is chosen
         probes.Asked.Clear();
         var beforeFork = flow.Emitted.Count;
-        flow.Answer(SetupFlow.ForkConnect);
+        flow.AnswerSettled(SetupFlow.ForkConnect);
 
         Assert.Equal(SetupPath.Connect, flow.Path);
         Assert.DoesNotContain(nameof(ISetupProbes.LlamaServerPath), probes.Asked);
@@ -3620,10 +3620,10 @@ ew.gguf", model.GgufPath);
         //a terminal screen waits for nothing, so an answer there must throw
         var flow = new SetupFlow(new FakeProbes { Server = new Gatto.Core.Acquire.ConnectProbe("http://host:9", ["their-model"], 8192) });
         flow.StartPastOpening();
-        flow.Answer(SetupFlow.ForkConnect);
-        flow.Answer(SetupFlow.No);            //leaving ends on the terminal screen.
+        flow.AnswerSettled(SetupFlow.ForkConnect);
+        flow.AnswerSettled(SetupFlow.No);            //leaving ends on the terminal screen.
 
-        Assert.Throws<InvalidOperationException>(() => flow.Answer("whatever"));
+        Assert.Throws<InvalidOperationException>(() => flow.AnswerSettled("whatever"));
     }
 
     private static string Rendered(SetupScreen s) => s switch
@@ -3707,9 +3707,9 @@ ew.gguf", model.GgufPath);
             });
 
         flow.StartPastOpening();
-        if (scenario == "server") { flow.Answer(SetupFlow.ForkConnect); flow.Answer(SetupFlow.Yes); }
+        if (scenario == "server") { flow.AnswerSettled(SetupFlow.ForkConnect); flow.AnswerSettled(SetupFlow.Yes); }
         //the steering screen takes a typed path, so the answer must be wrapped as typed text.
-        else { flow.Answer(ShelfControls.TypedAnswer(@"C:\llama\llama-server.exe")); }
+        else { flow.AnswerSettled(ShelfControls.TypedAnswer(@"C:\llama\llama-server.exe")); }
 
         var asks = flow.Emitted.OfType<SetupScreen.Ask>().ToList();
         Assert.NotEmpty(asks);
@@ -3920,7 +3920,7 @@ ew.gguf", model.GgufPath);
     {
         var flow = new SetupFlow(probes);
         flow.StartPastOpening();
-        return flow.Answer(SetupFlow.ForkConnect);
+        return flow.AnswerSettled(SetupFlow.ForkConnect);
     }
 
     //say gatto's own server and step past it, and assert that the skip was asked for rather than stumbled on

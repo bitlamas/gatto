@@ -42,7 +42,7 @@ internal static class WriteSetApply
             if (writes.CreateModel is { AddToModelId: { Length: > 0 } joins } add)
             {
                 Gatto.Roles.Models.ModelFiles.Add(
-                    System.IO.Path.Combine(homePath, "models"), joins, add.GgufPath);
+                    System.IO.Path.Combine(homePath, "models"), joins, add.GgufPath, add.Sha256);
                 //the completion point is the model the file joined, so the run ends on the model the user asked for
                 modelId = joins;
             }
@@ -65,7 +65,7 @@ internal static class WriteSetApply
                     writes.Projector,
                     //the per-model server override, read from its own member for the same reason. null on every ordinary run
                     writes.ModelLlamaServer,
-                    p.Source, device, p.GpuLayers);
+                    p.Source, device, p.GpuLayers, p.Sha256);
             }
         }
         catch (Exception ex) { return $"couldn't create the model: {ex.Message}"; }
