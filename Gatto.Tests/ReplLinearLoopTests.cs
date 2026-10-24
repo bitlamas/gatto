@@ -31,7 +31,25 @@ public class ReplLinearLoopTests
         var ticker = new ChromeTicker(painter, gate);
         var renderer = new StreamRenderer(painter, surface, T, "coder", ticker, gate,
             model: painter.Model, convoTail: () => null);
+        var paints = new Gatto.Tests.Fakes.Changes();
+        surface.OnWrite = paints.Mark;
+        Paints.Add(painter, paints);
         return (surface, painter, ticker, renderer, gate);
+    }
+
+    //each painter's paints, so a wait for the purr wakes on the paint that drew it
+    private static readonly System.Runtime.CompilerServices.ConditionalWeakTable<ChromePainter, Gatto.Tests.Fakes.Changes> Paints = new();
+
+    //the purr row read under the gate at each paint until it holds, then handed back as last read
+    private static async Task<string?> PurrWhen(ChromePainter painter, object gate, Func<string, bool> holds)
+    {
+        string? purr = null;
+        await Paints.GetValue(painter, _ => new Gatto.Tests.Fakes.Changes()).UntilAsync(() =>
+        {
+            lock (gate) purr = painter.State.PurrText;
+            return purr is not null && holds(purr);
+        }, Gatto.Tests.Fakes.Waits.Bound);
+        return purr;
     }
 
     private static string Visible(string s) => Gatto.Terminal.TermText.StripAnsiForWidth(s);
@@ -65,14 +83,8 @@ public class ReplLinearLoopTests
                     return false;
                 }
 
-                //wait for the purr to appear, a flat delay measures the scheduler and fails under suite load
-                var deadline = DateTime.UtcNow + TimeSpan.FromSeconds(10);
-                while (DateTime.UtcNow < deadline)
-                {
-                    lock (gate) purrDuringBody = painter.State.PurrText;
-                    if (!string.IsNullOrEmpty(purrDuringBody)) break;
-                    await Task.Delay(15);
-                }
+                //wait for the purr to appear, woken by each paint, since a flat delay measures the scheduler
+                purrDuringBody = await PurrWhen(painter, gate, p => p.Length > 0);
                 return false;
             });
 
@@ -148,13 +160,7 @@ public class ReplLinearLoopTests
             {
                 //nothing inside a turn may stop the purr, and the fake must set State.Tool or the ticker reads prefill
                 lock (gate) painter.State.Tool = ("shell", "ls");
-                var deadline = DateTime.UtcNow.AddSeconds(30);
-                while (DateTime.UtcNow < deadline)
-                {
-                    lock (gate) purrDuringTool = painter.State.PurrText;
-                    if (purrDuringTool is not null) break;
-                    await Task.Delay(20);
-                }
+                purrDuringTool = await PurrWhen(painter, gate, _ => true);
                 return false;
             });
 
@@ -175,14 +181,7 @@ public class ReplLinearLoopTests
 
         renderer.OnPromptProgress(total: 15_063, processed: 4_096);
 
-        string? seen = null;
-        var deadline = DateTime.UtcNow.AddSeconds(30);
-        while (DateTime.UtcNow < deadline)
-        {
-            lock (gate) seen = painter.State.PurrText;
-            if (seen is not null && seen.Contains("reading context", StringComparison.Ordinal)) break;
-            await Task.Delay(20);
-        }
+        var seen = await PurrWhen(painter, gate, p => p.Contains("reading context", StringComparison.Ordinal));
         ticker.StopTurn();
 
         Assert.NotNull(seen);

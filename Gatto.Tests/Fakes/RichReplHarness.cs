@@ -33,6 +33,7 @@ public sealed class ScriptedKeySource : IKeySource
                 if (!_awaitingSample) return _keys.Count > 0;
                 _awaitingSample = false;
                 Monitor.PulseAll(_lock);
+                OnChange?.Invoke();
                 return false;
             }
         }
@@ -49,7 +50,9 @@ public sealed class ScriptedKeySource : IKeySource
             while (!_closed && (_awaitingSample || _keys.Count == 0)) Monitor.Wait(_lock, 5);
             if (_closed) throw new InvalidOperationException("the key script is closed");
             _awaitingSample = true;
-            return _keys.Dequeue();
+            var key = _keys.Dequeue();
+            OnChange?.Invoke();
+            return key;
         }
     }
 
@@ -69,6 +72,12 @@ public sealed class ScriptedKeySource : IKeySource
     //keys not read yet, so a test can wait until the script has reached the editor
     public int Pending { get { lock (_lock) return _keys.Count; } }
 
+    //every key has left and the editor sampled after the last, which it does once a key is handled and a panel never does
+    public bool Handled { get { lock (_lock) return _keys.Count == 0 && !_awaitingSample; } }
+
+    //called when a key leaves and when the editor samples, so a waiting test wakes on the key
+    public Action? OnChange { get; set; }
+
     //the typed text plus an Enter keystroke, so the result is one submitted line
     public ScriptedKeySource Line(string text)
     {
@@ -83,7 +92,7 @@ public sealed class ScriptedKeySource : IKeySource
 }
 
 //a thread-safe tap that records every write in order. tests wait on it, since polling the viewport would race the painter's concurrent updates
-internal sealed class TappedSurface(VtScreenSurface inner) : ITermSurface
+internal sealed class TappedSurface(VtScreenSurface inner, Changes changes) : ITermSurface
 {
     private readonly System.Collections.Concurrent.ConcurrentQueue<string> _writes = new();
 
@@ -94,6 +103,7 @@ internal sealed class TappedSurface(VtScreenSurface inner) : ITermSurface
     {
         _writes.Enqueue(s);
         inner.Write(s);
+        changes.Mark();
     }
 
     public string Text() => TermText.StripAnsiForWidth(string.Concat(_writes));
@@ -119,6 +129,9 @@ public sealed class RichReplHarness
     private readonly Gatto.Repl.Repl _repl;
     private readonly List<string> _warnings = new();
     private readonly TappedSurface _tap;
+
+    //fired by every write, request, key and attach question, the things a run-until condition reads
+    private readonly Changes _changes = new();
 
     //the list stays empty while the loop runs, since the loop routes warnings to the renderer. assert live warnings from the screen text
     public IReadOnlyList<string> Warnings => _warnings;
@@ -172,7 +185,9 @@ public sealed class RichReplHarness
         string? sandboxNotice = null)
     {
         Surface = new VtScreenSurface(width, height);
-        _tap = new TappedSurface(Surface);
+        _tap = new TappedSurface(Surface, _changes);
+        Client.OnRequest = _changes.Mark;
+        Keys.OnChange = _changes.Mark;
         Warn = new WarningSink(m => _warnings.Add(m));
         Convo = new Conversation(systemPrompt);
 
@@ -219,7 +234,7 @@ public sealed class RichReplHarness
     public Func<SelectSpec, SelectOutcome>? OnConfirmAttach
     {
         get => _repl.ConfirmAttachForTest;
-        set => _repl.ConfirmAttachForTest = value;
+        set => _repl.ConfirmAttachForTest = value is null ? null : spec => { var outcome = value(spec); _changes.Mark(); return outcome; };
     }
 
     //throws when the script does not drive the loop to its own exit. the rich loop returns 0 on cancellation, so a returned 0 says nothing about the run.
@@ -245,6 +260,22 @@ public sealed class RichReplHarness
     //asks whether the session has written this text to the terminal. stripping ansi lets a phrase spanning a colour change still match.
     public bool Saw(string text) => _tap.Text().Contains(text, StringComparison.OrdinalIgnoreCase);
 
+    //runs until start holds, then a measured window more, for a test of what does not happen. the window is the one wait here a clock owns
+    public Task RunForAsync(Func<bool> start, TimeSpan window)
+    {
+        var opened = 0;
+        var over = 0;
+        return RunUntilAsync(() =>
+        {
+            if (start() && Interlocked.Exchange(ref opened, 1) == 0)
+                _ = Task.Delay(window).ContinueWith(_ => { Volatile.Write(ref over, 1); _changes.Mark(); }, TaskScheduler.Default);
+            return Volatile.Read(ref over) == 1;
+        }, unsignalled: true);
+    }
+
+    //waits inside a running session for a condition on what it wrote or asked, woken by each change
+    public Task<bool> UntilAsync(Func<bool> holds, TimeSpan bound) => _changes.UntilAsync(holds, bound);
+
     //everything the session wrote, in order and without ansi, for a test that asks what came after what
     public string Written() => _tap.Text();
 
@@ -255,12 +286,11 @@ public sealed class RichReplHarness
     public string RawWritten() => _tap.Raw();
 
     //ending by cancellation runs the teardown, so TranscriptDump holds the committed transcript. a scripted /quit behind a refusal would race the composer restore.
-    public async Task RunUntilAsync(Func<bool> until, int timeoutMs = 15000)
+    public async Task RunUntilAsync(Func<bool> until, int timeoutMs = 15000, bool unsignalled = false)
     {
         using var cts = new CancellationTokenSource(timeoutMs);
         var run = _repl.RunRichAsync(new TermCaps(Rich: true, TrueColor: true), cts.Token);
-        while (!run.IsCompleted && !cts.IsCancellationRequested && !until())
-            await Task.Delay(5);
+        await _changes.UntilAsync(until, TimeSpan.FromMilliseconds(timeoutMs), run, unsignalled);
         var timedOut = !until();
         cts.Cancel();
         try { await run; }

@@ -6,6 +6,7 @@ using Gatto.Repl.Render;
 using Gatto.Repl.Render.Chrome;
 using Gatto.Terminal;
 using Gatto.Terminal.Tests.Fakes;
+using Gatto.Tests.Fakes;
 
 namespace Gatto.Tests;
 
@@ -792,15 +793,6 @@ public class AskWizardTests
         public bool KeyAvailable => false;
     }
 
-    private sealed class SyncSurface : ITermSurface
-    {
-        private readonly System.Text.StringBuilder _sb = new();
-        public int Width { get; set; } = 80;
-        public int Height { get; set; }
-        public void Write(string s) { lock (_sb) _sb.Append(s); }
-        public string Text { get { lock (_sb) return _sb.ToString(); } }
-    }
-
     private static IReadOnlyList<AskAnswer>? WaitForAnswers(Task<IReadOnlyList<AskAnswer>> ask, int ms = 30000)
         => ask.Wait(ms) ? ask.Result : null;
 
@@ -812,8 +804,7 @@ public class AskWizardTests
         var pump = new InputPump(new KeyInputSource(new FeedKeys(src)));
         pump.Start();
         src.Add(new ConsoleKeyInfo('t', ConsoleKey.T, false, false, false));   //a type-ahead key that must stay with the composer.
-        var sw = System.Diagnostics.Stopwatch.StartNew();
-        while ((src.Count > 0 || !pump.Composer.KeyAvailable) && sw.ElapsedMilliseconds < 30000) Thread.Sleep(5);
+        Waits.Until(() => pump.ComposerPending == 1, () => $"the composer holds {pump.ComposerPending} routed keys, the source {src.Count}");
         Assert.True(pump.Composer.KeyAvailable);
 
         var surface = new SyncSurface();
@@ -823,10 +814,7 @@ public class AskWizardTests
             [Q("Lang", "Which?", false, "Go", "Rust"), Q("Build", "How?", false, "make")],
             CancellationToken.None));
 
-        var render = System.Diagnostics.Stopwatch.StartNew();
-        //the deadline only covers a busy thread pool, a longer one cannot hide a missing render, the assertion fails either way
-        while (!surface.Text.Contains("Which?") && render.ElapsedMilliseconds < 30000) Thread.Sleep(5);
-        Assert.Contains("Which?", surface.Text, StringComparison.Ordinal);
+        Assert.True(surface.WaitFor("Which?", Waits.Bound), surface.Text);
 
         src.Add(Digit('2'));
         src.Add(Digit('1'));

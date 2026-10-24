@@ -7,12 +7,8 @@ namespace Gatto.Tests;
 [Collection("e2e")]
 public class RefusalClearsTheComposerTests
 {
-    //reports true only after the condition has held for about 200ms, so the loop keeps going through the bad window
-    private static System.Func<bool> Settled(System.Func<bool> cond, int polls = 40)
-    {
-        var n = 0;
-        return () => cond() && ++n > polls;
-    }
+    //the run goes on this long after the refusal, so a restore that comes late still lands inside it
+    private static readonly System.TimeSpan BadWindow = System.TimeSpan.FromMilliseconds(200);
 
     private static int Count(string haystack, string needle)
     {
@@ -28,7 +24,7 @@ public class RefusalClearsTheComposerTests
         var h = new RichReplHarness(System.IO.Path.GetTempPath());
         h.Keys.Line("/hepl");
 
-        await h.RunUntilAsync(Settled(() => h.Saw("/hepl is not a command")));
+        await h.RunForAsync(() => h.Saw("/hepl is not a command"), BadWindow);
 
         var screen = h.ScreenText();
         Assert.False(screen.Contains("❯ /hepl", System.StringComparison.Ordinal),
@@ -43,7 +39,7 @@ public class RefusalClearsTheComposerTests
         h.Keys.Line("/hepl");
         h.Keys.Line("");   //an empty line replays the user pressing enter again with nothing typed.
 
-        await h.RunUntilAsync(Settled(() => h.Saw("/hepl is not a command")));
+        await h.RunForAsync(() => h.Saw("/hepl is not a command"), BadWindow);
 
         var refusals = Count(h.ScreenText(), "/hepl is not a command");
         Assert.True(refusals <= 1,

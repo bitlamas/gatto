@@ -1775,15 +1775,6 @@ public class SelectPromptTests
         Assert.IsType<SelectOutcome.Cancelled>(outcome);
     }
 
-    private sealed class SyncSurface : ITermSurface
-    {
-        private readonly System.Text.StringBuilder _sb = new();
-        public int Width { get; set; } = 80;
-        public int Height { get; set; }
-        public void Write(string s) { lock (_sb) _sb.Append(s); }
-        public string Text { get { lock (_sb) return _sb.ToString(); } }
-    }
-
     private sealed class FeedKeys(System.Collections.Concurrent.BlockingCollection<ConsoleKeyInfo> q) : IKeySource
     {
         public ConsoleKeyInfo ReadKey() => q.Take();
@@ -1807,8 +1798,7 @@ public class SelectPromptTests
         var pump = new InputPump(new KeyInputSource(new FeedKeys(src)));
         pump.Start();
         src.Add(new ConsoleKeyInfo('t', ConsoleKey.T, false, false, false));
-        var sw = System.Diagnostics.Stopwatch.StartNew();
-        while ((src.Count > 0 || !pump.Composer.KeyAvailable) && sw.ElapsedMilliseconds < 30000) Thread.Sleep(5);
+        Waits.Until(() => pump.ComposerPending == 1, () => $"the composer holds {pump.ComposerPending} routed keys, the source {src.Count}");
         Assert.Empty(src);
         Assert.True(pump.Composer.KeyAvailable);
 
@@ -1817,10 +1807,8 @@ public class SelectPromptTests
         var widget = new SelectPrompt(surface, T, new NeverKeys(), pump);
         var show = Task.Run(() => widget.Show(Spec("Yes", "No", "Cancel")));
 
-        var render = System.Diagnostics.Stopwatch.StartNew();
-        //the loop is a sync on the first surface write, the 30000ms deadline only keeps a missing render from hanging the test
-        while (!surface.Text.Contains("Do you want to proceed?") && render.ElapsedMilliseconds < 30000) Thread.Sleep(5);
-        Assert.Contains("Do you want to proceed?", surface.Text);
+        //the first render is the sync point, and the bound only keeps a missing render from hanging the test
+        Assert.True(surface.WaitFor("Do you want to proceed?", Waits.Bound), surface.Text);
 
         src.Add(Special(ConsoleKey.DownArrow));
         src.Add(Special(ConsoleKey.Enter));

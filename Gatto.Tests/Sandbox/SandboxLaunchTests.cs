@@ -4,6 +4,7 @@ using System.Text.Json;
 using Gatto.Core.Client;
 using Gatto.Core.Sandbox;
 using Gatto.Core.Tools;
+using Gatto.Tests.Fakes;
 
 namespace Gatto.Tests.Sandbox;
 
@@ -261,7 +262,13 @@ public sealed class SandboxLaunchTests : IDisposable
             $"Set-Content -Path '{pidFile}' -Value $p.Id; Start-Sleep 60", timeoutMs: 8000);
         Assert.StartsWith("command timed out after 8000ms", r.Text, StringComparison.Ordinal);
         var pid = int.Parse(File.ReadAllText(pidFile).Trim());
-        await Task.Delay(500);
+        //the tree kill has been asked for, so wait on the grandchild's own exit, which ends at once when it is already gone
+        try
+        {
+            using var grandchild = Process.GetProcessById(pid);
+            Assert.True(grandchild.WaitForExit(Waits.Bound), $"process {pid} outlived the tree kill");
+        }
+        catch (ArgumentException) { }
         Assert.Throws<ArgumentException>(() => Process.GetProcessById(pid));
     }
 
@@ -269,8 +276,10 @@ public sealed class SandboxLaunchTests : IDisposable
     [Fact]
     public async Task A_CHILD_STARTED_DURING_ANOTHER_HOLDS_NONE_OF_ITS_PIPES()
     {
-        var slow = Run("Start-Sleep 6; 'slow'");
-        await Task.Delay(1500);
+        var started = Path.Combine(Project, "slow-started.txt");
+        var slow = Run($"Set-Content -Path '{started}' -Value 1; Start-Sleep 6; 'slow'");
+        //the first child runs once its marker exists, so the second starts while the first holds its pipes
+        Waits.Until(() => File.Exists(started), () => $"the first child never wrote {started}");
         var clock = Stopwatch.StartNew();
         var quick = await Run("'quick'");
         Assert.True(clock.Elapsed < TimeSpan.FromSeconds(4), clock.Elapsed.ToString());

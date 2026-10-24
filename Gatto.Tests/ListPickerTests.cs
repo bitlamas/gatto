@@ -615,15 +615,6 @@ public class ListPickerTests
     }
 
     //local copies of the fakes in RichPermissionPrompterTests, which are private to that class
-    private sealed class SyncSurface : ITermSurface
-    {
-        private readonly System.Text.StringBuilder _sb = new();
-        public int Width { get; set; } = 80;
-        public int Height { get; set; }
-        public void Write(string s) { lock (_sb) _sb.Append(s); }
-        public string Text { get { lock (_sb) return _sb.ToString(); } }
-    }
-
     private sealed class FeedKeys(System.Collections.Concurrent.BlockingCollection<ConsoleKeyInfo> q) : IKeySource
     {
         public ConsoleKeyInfo ReadKey() => q.Take();
@@ -654,9 +645,8 @@ public class ListPickerTests
         var pump = new InputPump(new KeyInputSource(new FeedKeys(src)));
         pump.Start();
         src.Add(new ConsoleKeyInfo('t', ConsoleKey.T, false, false, false));   //a key typed before the picker exists.
-        var sw = System.Diagnostics.Stopwatch.StartNew();
-        //the channel's KeyAvailable also reports the source peek, so wait for the source to drain first, or the focus scope steals the key
-        while ((src.Count > 0 || !pump.Composer.KeyAvailable) && sw.ElapsedMilliseconds < 30000) Thread.Sleep(5);
+        //the channel's KeyAvailable also reports the source peek, so wait for the key to be routed, or the focus scope steals it
+        Waits.Until(() => pump.ComposerPending == 1, () => $"the composer holds {pump.ComposerPending} routed keys, the source {src.Count}");
         Assert.Empty(src);
         Assert.True(pump.Composer.KeyAvailable);
 
@@ -665,9 +655,7 @@ public class ListPickerTests
         var picker = new RichListPicker(surface, T, new NeverKeys(), pump);
         var pick = Task.Run(() => picker.Pick(Title, Items));
 
-        var renderSw = System.Diagnostics.Stopwatch.StartNew();
-        while (!surface.Text.Contains(Title, StringComparison.Ordinal) && renderSw.ElapsedMilliseconds < 30000) Thread.Sleep(5);
-        Assert.Contains(Title, surface.Text, StringComparison.Ordinal);
+        Assert.True(surface.WaitFor(Title, Waits.Bound), surface.Text);
 
         src.Add(new ConsoleKeyInfo('\0', ConsoleKey.DownArrow, false, false, false));
         src.Add(new ConsoleKeyInfo('\0', ConsoleKey.Enter, false, false, false));

@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using System.Runtime.CompilerServices;
 using Gatto.Core.Client;
 using Gatto.Repl;
 using Gatto.Repl.Input;
@@ -6,6 +7,7 @@ using Gatto.Repl.Render;
 using Gatto.Repl.Render.Chrome;
 using Gatto.Terminal;
 using Gatto.Terminal.Tests.Fakes;
+using Gatto.Tests.Fakes;
 
 namespace Gatto.Tests;
 
@@ -14,12 +16,16 @@ file sealed class FakeSlotsReader(SlotProgress? result = null, bool throws = fal
 {
     private int _calls;
     public int Calls => Volatile.Read(ref _calls);
+
+    //marked at each poll, so a test waits on the poll itself
+    public Changes Polled { get; } = new();
     public SlotProgress? Result { get; set; } = result;
     public bool Throws { get; set; } = throws;
 
     public Task<SlotProgress?> ReadAsync(CancellationToken ct)
     {
         Interlocked.Increment(ref _calls);
+        Polled.Mark();
         if (Throws) throw new HttpRequestException("slots endpoint down");
         return Task.FromResult(Result);
     }
@@ -64,8 +70,29 @@ public class ChromeTickerTests
         {
             Frame = new InputFrame(surface, T, "coder", status, glyphs: GlyphSet.Unicode),
         };
+        var paints = new Changes();
+        surface.OnWrite = paints.Mark;
+        Paints.Add(painter, paints);
         return (surface, painter, gate);
     }
+
+    //each painter's paints, so a wait wakes on the paint that follows the state it reads. the ticker paints every state it sets
+    private static readonly ConditionalWeakTable<ChromePainter, Changes> Paints = new();
+
+    //a state the ticker sets, read again at each paint. the failure names what was read
+    private static async Task Painted(ChromePainter painter, Func<bool> holds, Func<string> read) =>
+        Assert.True(await Paints.GetValue(painter, _ => new Changes()).UntilAsync(holds, Waits.Bound), read());
+
+    //the next paints, so a tick that ran after a poll has drawn what the poll answered
+    private static async Task NextPaints(ChromePainter painter, int count)
+    {
+        var paints = Paints.GetValue(painter, _ => new Changes());
+        for (var i = 0; i < count; i++) await paints.Next.WaitAsync(Waits.Bound);
+    }
+
+    //the reader has been polled this many times, woken by each poll
+    private static async Task Polled(Changes polled, Func<int> calls, int want) =>
+        Assert.True(await polled.UntilAsync(() => calls() >= want, Waits.Bound), $"the reader saw {calls()} of {want} polls");
 
     [Fact]
     public void PurrRow_Format_KaomojiFramesElapsedTokens()
@@ -293,7 +320,7 @@ public class ChromeTickerTests
 
         ticker.BeginUserWait();
         painter.SetPanel(new[] { "which one?" });
-        while (painter.State.ToolWait is null && sw.ElapsedMilliseconds < 6000) await Task.Delay(20);
+        await Painted(painter, () => painter.State.ToolWait is not null, () => "the waiting row never came");
 
         Assert.NotNull(painter.State.ToolWait);
         Assert.Contains("<1s", painter.State.ToolWait!, StringComparison.Ordinal);
@@ -354,8 +381,7 @@ public class ChromeTickerTests
         var ticker = new ChromeTicker(painter, gate);
         ticker.StartTurn(Cats.Face(GlyphSet.Unicode));
 
-        var sw = Stopwatch.StartNew();
-        while (painter.State.ToolWait is null && sw.ElapsedMilliseconds < 30_000) await Task.Delay(20);
+        await Painted(painter, () => painter.State.ToolWait is not null, () => "the waiting row never came");
 
         Assert.NotNull(painter.State.ToolWait);
         Assert.StartsWith(Cats.WaitingOf(glyphs: GlyphSet.Unicode), painter.State.ToolWait!, StringComparison.Ordinal);
@@ -428,15 +454,13 @@ public class ChromeTickerTests
         var ticker = new ChromeTicker(painter, gate);
         ticker.StartTurn(Cats.Face(GlyphSet.Unicode));
 
-        var sw = Stopwatch.StartNew();
-        while (painter.State.ToolWait is null && sw.ElapsedMilliseconds < 30_000) await Task.Delay(20);
+        await Painted(painter, () => painter.State.ToolWait is not null, () => "the waiting row never came");
         Assert.NotNull(painter.State.ToolWait);
         Assert.Null(painter.State.PurrText);
 
         lock (gate) { painter.State.PanelRows = null; }
 
-        sw.Restart();
-        while (painter.State.PurrText is null && sw.ElapsedMilliseconds < 30_000) await Task.Delay(20);
+        await Painted(painter, () => painter.State.PurrText is not null, () => "the purr never came back");
 
         Assert.NotNull(painter.State.PurrText);
         Assert.Contains("purr", painter.State.PurrText!, StringComparison.Ordinal);
@@ -463,21 +487,13 @@ public class ChromeTickerTests
         ticker.StartTurn("（＾ω＾）");
 
         //wait, with a bound, for the first tick past the grace window.
-        var sw = Stopwatch.StartNew();
-        while (painter.State.PurrText is null && sw.ElapsedMilliseconds < 30_000) await Task.Delay(20);
+        await Painted(painter, () => painter.State.PurrText is not null, () => "the purr row never came");
         Assert.NotNull(painter.State.PurrText);
         var first = painter.State.PurrText;
         var firstBlink = painter.State.BlinkOn;
 
-        //the blink flips on a 500 ms cadence, so two samples 500 ms apart must differ at least once.
-        var sawFlip = false;
-        sw.Restart();
-        while (sw.ElapsedMilliseconds < 30_000)
-        {
-            await Task.Delay(500);
-            if (painter.State.BlinkOn != firstBlink) { sawFlip = true; break; }
-        }
-        Assert.True(sawFlip, "BlinkOn never flipped across the sampling window");
+        //the blink flips on its own cadence, so some paint must show it flipped
+        await Painted(painter, () => painter.State.BlinkOn != firstBlink, () => "BlinkOn never flipped");
         Assert.NotNull(first);
 
         var writtenBeforeStop = surface.Text.Length;
@@ -599,13 +615,8 @@ public class ChromeTickerTests
         ticker.AddToolResultChars(4 * 12500);
 
         string? seen = null;
-        var sw = Stopwatch.StartNew();
-        while (sw.ElapsedMilliseconds < 30_000)
-        {
-            var t = painter.State.PurrText;
-            if (t is not null && t.Contains("Σ", StringComparison.Ordinal)) { seen = t; break; }
-            await Task.Delay(20);
-        }
+        await Painted(painter, () => (seen = painter.State.PurrText)?.Contains("Σ", StringComparison.Ordinal) == true,
+            () => $"the row read {seen}");
         ticker.StopTurn();
         Assert.NotNull(seen);
         Assert.Contains("Σ 12.6k", seen!, StringComparison.Ordinal);   //the total adds the decode estimate and the tool tokens.
@@ -629,13 +640,8 @@ public class ChromeTickerTests
         ticker.StartTurn("x", promptTokensEstimate: 85_000);   //no deltas have streamed, so the turn is in prefill.
 
         string? seen = null;
-        var sw = Stopwatch.StartNew();
-        while (sw.ElapsedMilliseconds < 30_000)
-        {
-            var t = painter.State.PurrText;
-            if (t is not null && t.Contains("20.5k", StringComparison.Ordinal)) { seen = t; break; }
-            await Task.Delay(20);
-        }
+        await Painted(painter, () => (seen = painter.State.PurrText)?.Contains("20.5k", StringComparison.Ordinal) == true,
+            () => $"the row read {seen}");
         ticker.StopTurn();
 
         Assert.NotNull(seen);
@@ -653,9 +659,8 @@ public class ChromeTickerTests
         ticker.StartTurn("x", promptTokensEstimate: 234_000);
         ticker.MarkStreaming();
 
-        var sw = Stopwatch.StartNew();
-        while (reader.Calls < 1 && sw.ElapsedMilliseconds < 30_000) await Task.Delay(20);
-        await Task.Delay(300);   //wait so that at least one tick follows the poll.
+        await Polled(reader.Polled, () => reader.Calls, 1);
+        await NextPaints(painter, 2);   //two paints after the poll, so a tick that read its answer has drawn
         var seen = painter.State.PurrText;
         ticker.StopTurn();
 
@@ -675,9 +680,8 @@ public class ChromeTickerTests
         ticker.MarkStreaming();
         ticker.SetPromptProgress(total: 15_063, processed: 4_096);
 
-        var sw = Stopwatch.StartNew();
-        while (reader.Calls < 1 && sw.ElapsedMilliseconds < 30_000) await Task.Delay(20);
-        await Task.Delay(300);   //wait so that at least one tick follows the poll.
+        await Polled(reader.Polled, () => reader.Calls, 1);
+        await NextPaints(painter, 2);   //two paints after the poll, so a tick that read its answer has drawn
         var seen = painter.State.PurrText;
         ticker.StopTurn();
 
@@ -698,10 +702,10 @@ public class ChromeTickerTests
         ticker.OnFault = _ => Interlocked.Increment(ref faults);
         ticker.StartTurn("x");
 
-        var sw = Stopwatch.StartNew();
-        while (painter.State.PurrText is null && sw.ElapsedMilliseconds < 30_000) await Task.Delay(20);
+        await Painted(painter, () => painter.State.PurrText is not null, () => "the purr row never came");
         var txt = painter.State.PurrText;
-        await Task.Delay(200);   //give the poll time to fire and fail before the row is read
+        await Polled(reader.Polled, () => reader.Calls, 1);   //the poll has fired and failed before the faults are counted
+        await NextPaints(painter, 1);
         ticker.StopTurn();
 
         Assert.NotNull(txt);
@@ -718,18 +722,12 @@ public class ChromeTickerTests
         var ticker = new ChromeTicker(painter, gate, reader);
         ticker.StartTurn("x", promptTokensEstimate: 85_000);
 
-        var sw = Stopwatch.StartNew();
-        while (sw.ElapsedMilliseconds < 30_000)
-        {
-            if (painter.State.PurrText?.Contains("20.5k", StringComparison.Ordinal) == true) break;
-            await Task.Delay(20);
-        }
-        Assert.Contains("20.5k", painter.State.PurrText ?? "");
+        await Painted(painter, () => painter.State.PurrText?.Contains("20.5k", StringComparison.Ordinal) == true,
+            () => $"the row read {painter.State.PurrText}");
 
         reader.Result = null;
         var callsAtFlip = reader.Calls;
-        sw.Restart();
-        while (reader.Calls < callsAtFlip + 2 && sw.ElapsedMilliseconds < 30_000) await Task.Delay(20);
+        await Polled(reader.Polled, () => reader.Calls, callsAtFlip + 2);
         var after = painter.State.PurrText;
         ticker.StopTurn();
 
@@ -745,8 +743,8 @@ public class ChromeTickerTests
         var ticker = new ChromeTicker(painter, gate, reader);
         ticker.StartTurn("x");
 
-        var sw = Stopwatch.StartNew();
-        while (sw.ElapsedMilliseconds < 1500) await Task.Delay(20);   //wait for a poll to land before the row is read
+        await Polled(reader.Polled, () => reader.Calls, 1);
+        await NextPaints(painter, 2);   //two paints after the poll, so the row is read after its answer landed
         var live = painter.State.PurrText;
         var completion = ticker.CompletionRow();
         ticker.StopTurn();
@@ -764,25 +762,19 @@ public class ChromeTickerTests
         var ticker = new ChromeTicker(painter, gate, reader);
 
         ticker.StartTurn("x");
-        var sw = Stopwatch.StartNew();
-        while (!(painter.State.PurrText?.Contains("prefill", StringComparison.Ordinal) ?? false)
-               && sw.ElapsedMilliseconds < 30_000) await Task.Delay(20);
+        //every prefill row reads reading context, so the stale thing is the old turn's processed count
+        await Painted(painter, () => painter.State.PurrText?.Contains("34.4k", StringComparison.Ordinal) == true,
+            () => $"the row read {painter.State.PurrText}");
         ticker.StopTurn();
 
         reader.Result = null;
         ticker.StartTurn("x");
         string? second = null;
-        sw.Restart();
-        while (sw.ElapsedMilliseconds < 30_000)
-        {
-            var t = painter.State.PurrText;
-            if (t is not null) { second = t; break; }
-            await Task.Delay(20);
-        }
+        await Painted(painter, () => (second = painter.State.PurrText) is not null, () => "the second turn painted no row");
         ticker.StopTurn();
 
         Assert.NotNull(second);
-        Assert.DoesNotContain("prefill", second!);
+        Assert.DoesNotContain("34.4k", second!);
     }
 
     [Fact]
@@ -796,18 +788,12 @@ public class ChromeTickerTests
         ticker.AddTokenChars(400);   //the estimate is 100, lower than the real 170.
 
         string? seen = null;
-        var sw = Stopwatch.StartNew();
-        while (sw.ElapsedMilliseconds < 30_000)
-        {
-            var t = painter.State.PurrText;
-            if (t is not null && t.Contains("↓ 170", StringComparison.Ordinal)) { seen = t; break; }
-            await Task.Delay(20);
-        }
-        Assert.NotNull(seen);
+        await Painted(painter, () => (seen = painter.State.PurrText)?.Contains("↓ 170", StringComparison.Ordinal) == true,
+            () => $"the row read {seen}");
 
-        for (var i = 0; i < 6; i++)   //the count must never flip back to the estimate.
+        for (var i = 0; i < 6; i++)   //the count must never flip back to the estimate, on any of the next six paints
         {
-            await Task.Delay(30);
+            await NextPaints(painter, 1);
             var t = painter.State.PurrText;
             if (t is not null) Assert.DoesNotContain("↓ 100", t);
         }
@@ -879,14 +865,12 @@ public class ChromeTickerTests
         };
         var ticker = new ChromeTicker(painter, gate);
         var faults = 0;
-        Exception? reported = null;
-        ticker.OnFault = ex => { Interlocked.Increment(ref faults); Volatile.Write(ref reported, ex); };
+        var reported = new TaskCompletionSource<Exception>(TaskCreationOptions.RunContinuationsAsynchronously);
+        ticker.OnFault = ex => { Interlocked.Increment(ref faults); reported.TrySetResult(ex); };
 
         ticker.StartTurn("（＾ω＾）");
 
-        var sw = Stopwatch.StartNew();
-        while (Volatile.Read(ref reported) is null && sw.ElapsedMilliseconds < 30_000) await Task.Delay(20);
-        Assert.NotNull(reported);
+        Assert.NotNull(await reported.Task.WaitAsync(Waits.Bound));
         Assert.Equal(1, Volatile.Read(ref faults));
 
         await Task.Delay(300);   //three more tick slots. it must not call OnFault again
@@ -960,20 +944,14 @@ public class ChromeTickerTests
         var ticker = new ChromeTicker(painter, gate);
         ticker.StartTurn("x");
 
-        var sw = Stopwatch.StartNew();
-        while (painter.State.PurrText is null && sw.ElapsedMilliseconds < 30_000) await Task.Delay(20);
+        await Painted(painter, () => painter.State.PurrText is not null, () => "the purr row never came");
         Assert.Contains("reading context", painter.State.PurrText!, StringComparison.Ordinal);
 
         ticker.MarkStreaming();   //what OnToolCallDelta reports, the model has started emitting
 
         string? after = null;
-        sw.Restart();
-        while (sw.ElapsedMilliseconds < 30_000)
-        {
-            var t = painter.State.PurrText;
-            if (t is not null && !t.Contains("reading context", StringComparison.Ordinal)) { after = t; break; }
-            await Task.Delay(20);
-        }
+        await Painted(painter, () => (after = painter.State.PurrText) is { } t && !t.Contains("reading context", StringComparison.Ordinal),
+            () => $"the row read {after}");
         ticker.StopTurn();
 
         Assert.NotNull(after);
@@ -991,8 +969,7 @@ public class ChromeTickerTests
         ticker.StopTurn();
 
         ticker.StartTurn("x");
-        var sw = Stopwatch.StartNew();
-        while (painter.State.PurrText is null && sw.ElapsedMilliseconds < 30_000) await Task.Delay(20);
+        await Painted(painter, () => painter.State.PurrText is not null, () => "the purr row never came");
         var txt = painter.State.PurrText;
         ticker.StopTurn();
 

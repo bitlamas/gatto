@@ -1382,9 +1382,7 @@ public class RichPermissionPrompterTests
             var turn = loop.RunTurnAsync(convo, "go", obs, cts.Token);
 
             //wait for the prompt to paint, which is the event that proves the read is blocked on a key.
-            var painted = System.Diagnostics.Stopwatch.StartNew();
-            while (!surface.Text.Contains("Esc to cancel", StringComparison.Ordinal) && painted.ElapsedMilliseconds < 30000) await Task.Delay(5);
-            Assert.Contains("Esc to cancel", surface.Text, StringComparison.Ordinal);
+            Assert.True(await surface.WaitForAsync("Esc to cancel", Waits.Bound), surface.Text);
 
             cts.Cancel();
             Assert.True(await Task.WhenAny(turn, Task.Delay(10_000)) == turn, "the turn did not end after its token was cancelled while the prompt waited for a key");
@@ -1609,19 +1607,14 @@ public class RichPermissionPrompterTests
         pump.Start();
         src.Add(new ConsoleKeyInfo('t', ConsoleKey.T, false, false, false));   //this key is composer type-ahead, typed before the prompt exists.
         //wait on the composer channel count, KeyAvailable is true before the key is routed and focus pushed then sends it to the prompt
-        var sw = System.Diagnostics.Stopwatch.StartNew();
-        while (pump.ComposerPending == 0 && sw.ElapsedMilliseconds < 30000) Thread.Sleep(5);
-        Assert.True(pump.ComposerPending > 0);
+        Waits.Until(() => pump.ComposerPending == 1, () => $"the composer holds {pump.ComposerPending} routed keys, the source {src.Count}");
 
         //the prompt and the polling thread write this surface at once, so it needs a synchronized builder.
         var surface = new SyncSurface();
         var prompter = new RichPermissionPrompter(surface, new Theme(TermCaps.Plain), new NeverKeys(), pump);
         var ask = Task.Run(() => prompter.AskWithReason(ShellRequest).Answer);
         //wait for the render, it comes after focus is pushed, so the prompt scope is on top before any key can reach the composer
-        var renderSw = System.Diagnostics.Stopwatch.StartNew();
-        while (!surface.Text.Contains("Do you want to proceed?", StringComparison.Ordinal)
-               && renderSw.ElapsedMilliseconds < 30000) Thread.Sleep(5);
-        Assert.Contains("Do you want to proceed?", surface.Text, StringComparison.Ordinal);
+        Assert.True(surface.WaitFor("Do you want to proceed?", Waits.Bound), surface.Text);
         src.Add(new ConsoleKeyInfo('3', ConsoleKey.D3, false, false, false));   //this key answers option 3, which is No.
         var answer = WaitForAnswer(ask);
         Assert.True(answer.HasValue, "prompt did not answer via the pump focus");
@@ -1662,16 +1655,6 @@ public class RichPermissionPrompterTests
             Thread.Sleep(Timeout.Infinite);
             return default;
         }
-    }
-
-    //lock the fake's storage, so the race the test exercises stays in the routing logic
-    private sealed class SyncSurface : ITermSurface
-    {
-        private readonly System.Text.StringBuilder _sb = new();
-        public int Width { get; set; } = 80;
-        public int Height { get; set; }
-        public void Write(string s) { lock (_sb) _sb.Append(s); }
-        public string Text { get { lock (_sb) return _sb.ToString(); } }
     }
 }
 

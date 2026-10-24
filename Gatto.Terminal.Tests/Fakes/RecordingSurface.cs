@@ -11,7 +11,13 @@ public sealed class RecordingSurface : ITermSurface
     public bool ReportsResize { get; set; }
     public StringBuilder Output { get; } = new();
     public string Text => Output.ToString();
-    public void Write(string s) => Output.Append(s);
+    //called after each write, so a test waits on the paint
+    public Action? OnWrite { get; set; }
+    public void Write(string s)
+    {
+        Output.Append(s);
+        OnWrite?.Invoke();
+    }
     public void Clear() => Output.Clear();
 }
 

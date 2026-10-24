@@ -138,15 +138,16 @@ public class PasteSurvivesCommandTests : IDisposable
     public async Task A_reading_command_beside_a_placeholder_during_a_turn_keeps_the_image()
     {
         var h = Harness(2);
-        h.Client.FirstEventDelayMs = 1500;
-        h.Keys.Line("hello");
-        var feeder = Task.Run(async () =>
+        var handled = false;
+        //the turn is held from its request until the editor handled every key after it, so /help is typed during the turn
+        h.Client.HoldNextTurn = async ct =>
         {
-            while (h.Client.Requests.Count == 0) await Task.Delay(5);
             h.Keys.Key(AltV).Line(" /help").Line("describe it").Line("/quit");
-        });
+            handled = await h.UntilAsync(() => h.Keys.Handled, Waits.Bound);
+        };
+        h.Keys.Line("hello");
         await h.RunAsync();
-        await feeder;
+        Assert.True(handled, $"the editor left {h.Keys.Pending} keys unread while the turn was held");
 
         Assert.Equal("[Image #1] describe it", LastUser(h).Content);
         Assert.Single(LastUser(h).Images!);

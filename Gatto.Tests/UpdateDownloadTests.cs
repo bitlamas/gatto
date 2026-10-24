@@ -3,6 +3,7 @@ using System.Net;
 using System.Security.Cryptography;
 using Gatto.Cli;
 using Gatto.Cli.Update;
+using Gatto.Tests.Fakes;
 
 namespace Gatto.Tests;
 
@@ -120,12 +121,13 @@ public class UpdateDownloadTests : IDisposable
     {
         using var http = new HttpClient(new PausingHandler(256 * 1024, 64 * 1024, TimeSpan.Zero));
         var reports = new List<(long Done, long Total)>();
+        var whole = new ManualResetEventSlim(false);   //never disposed, since a late progress callback may still set it
 
         await UpdateDownload.FetchAsync(http, Asset(size: 256 * 1024), UpdateDownload.Dir(_home),
-            new Progress<(long, long)>(r => { lock (reports) reports.Add(r); }), CancellationToken.None);
+            new Progress<(long, long)>(r => { lock (reports) reports.Add(r); if (r.Item1 == 256 * 1024) whole.Set(); }), CancellationToken.None);
 
-        //the assertion is about what was reported, Progress<T> posts asynchronously so the last callback may still be queued
-        await Task.Delay(50);
+        //the progress posts asynchronously, so the test waits on the callback that reports the whole size
+        Assert.True(whole.Wait(Waits.Bound), "no report reached the whole size");
         lock (reports)
         {
             Assert.NotEmpty(reports);

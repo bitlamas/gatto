@@ -22,7 +22,8 @@ public class DeafnessWatchWiringTests
     {
         var writer = new CountingWriter();
         var h = new RichReplHarness(Path.GetTempPath(), width: 120, deafWatch: DeafWatch(writer));
-        h.Client.FirstEventDelayMs = 5000;
+        //the turn stays open until the row is on the screen, so the watchdog fires inside it
+        h.Client.HoldNextTurn = ct => h.UntilAsync(() => h.Saw(InputDeafnessWatchdog.Row), Waits.Bound);
         h.Client.EnqueueTurn(new StreamEvent.TextDelta("ok"), new StreamEvent.Finished("stop", null));
         h.Keys.Line("a long turn");
 
@@ -42,7 +43,7 @@ public class DeafnessWatchWiringTests
         {
             if (focus is null && h.Pump.HasModalWaitSink) focus = h.Pump.PushFocus();
             return h.Saw(InputDeafnessWatchdog.Row);
-        });
+        }, unsignalled: true);   //the modal sink is set with no write, so the condition is spun
         focus?.Dispose();
 
         Assert.True(writer.Writes >= 1);
@@ -76,7 +77,7 @@ public class DeafnessWatchWiringTests
                 default:
                     return false;
             }
-        });
+        }, unsignalled: true);   //the armed depth moves with no write, so the condition is spun
 
         Assert.Equal(2, stage);
     }
@@ -87,13 +88,7 @@ public class DeafnessWatchWiringTests
     {
         var writer = new CountingWriter();
         var h = new RichReplHarness(Path.GetTempPath(), width: 120, deafWatch: DeafWatch(writer));
-        var clock = new System.Diagnostics.Stopwatch();
-
-        await h.RunUntilAsync(() =>
-        {
-            if (!clock.IsRunning && h.Pump.HasModalWaitSink) clock.Start();
-            return clock.ElapsedMilliseconds > 300;
-        });
+        await h.RunForAsync(() => h.Pump.HasModalWaitSink, TimeSpan.FromMilliseconds(300));
 
         Assert.Equal(0, writer.Writes);
         Assert.False(h.Saw(InputDeafnessWatchdog.Row));

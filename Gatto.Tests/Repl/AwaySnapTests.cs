@@ -206,14 +206,14 @@ public class AwaySnapTests : IDisposable
     }
 
     //holds the turn until the test lets it go, so the view can be scrolled away before the next round asks
-    private sealed class GateTool(Func<bool> go) : ITool
+    private sealed class GateTool(Task go) : ITool
     {
         public string Name => "wait";
         public string Description => "waits for the test";
         public JsonElement ParametersSchema => JsonDocument.Parse("""{"type":"object"}""").RootElement;
         public async Task<ToolResult> ExecuteAsync(JsonElement args, IToolContext ctx, CancellationToken ct)
         {
-            while (!go()) await Task.Delay(5, ct);
+            await go.WaitAsync(ct);
             return new ToolResult("waited");
         }
     }
@@ -236,10 +236,10 @@ public class AwaySnapTests : IDisposable
     [Fact]
     public async Task A_key_that_returns_to_a_pinned_prompt_answers_nothing_and_the_next_one_approves()
     {
-        var released = false;
+        var released = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         var touch = new TouchTool();
         var reg = new ToolRegistry();
-        reg.Register(new GateTool(() => Volatile.Read(ref released)));
+        reg.Register(new GateTool(released.Task));
         reg.Register(touch);
         var hooks = new Gatto.Core.Loop.HookBus();
         var chrome = new ChromeHandle();
@@ -263,7 +263,7 @@ public class AwaySnapTests : IDisposable
                 case 0 when h.Saw("line 99") && h.Saw("wait") && h.Keys.Pending == 0:
                     h.Keys.Key(PageUp); stage = 1; break;
                 case 1 when !h.Surface.CursorVisible:
-                    top = h.FinalFrame()[0]; Volatile.Write(ref released, true); stage = 2; break;
+                    top = h.FinalFrame()[0]; released.TrySetResult(); stage = 2; break;
                 case 2 when Pinned().StartsWith("↓ a prompt is waiting for your answer", StringComparison.Ordinal):
                     //the view held while the prompt opened
                     Assert.Equal(top, h.FinalFrame()[0]);

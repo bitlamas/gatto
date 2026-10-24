@@ -2,6 +2,7 @@ using System.Collections.Concurrent;
 using Gatto.Core.Tools;
 using Gatto.Repl.Prompts;
 using Gatto.Terminal;
+using Gatto.Tests.Fakes;
 
 namespace Gatto.Tests;
 
@@ -20,15 +21,6 @@ public class EmergencyStopTests
     {
         public ConsoleKeyInfo ReadKey() => throw new InvalidOperationException("constructor keys must not be used when a pump is present");
         public bool KeyAvailable => false;
-    }
-
-    private sealed class SyncSurface : ITermSurface
-    {
-        private readonly System.Text.StringBuilder _sb = new();
-        public int Width { get; set; } = 80;
-        public int Height { get; set; }
-        public void Write(string s) { lock (_sb) _sb.Append(s); }
-        public string Text { get { lock (_sb) return _sb.ToString(); } }
     }
 
     private static InputPump StartedPump()
@@ -81,9 +73,7 @@ public class EmergencyStopTests
         var ask = Task.Run(() => prompter.AskAsync([question], cts.Token));
 
         //wait for the question to paint, which is the event that proves the read is blocked on a key
-        var painted = System.Diagnostics.Stopwatch.StartNew();
-        while (!surface.Text.Contains("Which?", StringComparison.Ordinal) && painted.ElapsedMilliseconds < 5000) await Task.Delay(5);
-        Assert.Contains("Which?", surface.Text, StringComparison.Ordinal);
+        Assert.True(await surface.WaitForAsync("Which?", Waits.Bound), surface.Text);
 
         cts.Cancel();
         await AssertEndsCancelled(ask, "an ask_user question");

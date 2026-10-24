@@ -149,8 +149,10 @@ public sealed class SessionNameTests : IDisposable
     [Fact]
     public void TWO_SESSIONS_WITH_ONE_NAME_REFUSE()
     {
-        SaveSession(_cwd, Name);
-        Thread.Sleep(5);
+        var first = SaveSession(_cwd, Name);
+        //a session file is named by the clock's ticks, so the second save waits for the clock to pass the first one's
+        var stamp = long.Parse(Path.GetFileNameWithoutExtension(first)[^19..]);
+        Waits.Until(() => DateTime.UtcNow.Ticks > stamp, () => $"the clock still reads {DateTime.UtcNow.Ticks}, the first file {stamp}");
         SaveSession(_cwd, Name);
 
         var ex = Assert.Throws<GattoConfigException>(() => SessionStore.ResolvePathById(_home, Name));

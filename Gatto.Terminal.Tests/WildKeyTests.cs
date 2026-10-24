@@ -85,7 +85,7 @@ public class WildKeyTests
         src.Feed.Add(Tab());
         var t = Task.Run(pump.Composer.Read);
 
-        Assert.True(await Task.WhenAny(t, Task.Delay(2000)) == t, "bare Tab should have reached the composer");
+        Assert.True(await Task.WhenAny(t, Task.Delay(30000)) == t, "bare Tab should have reached the composer");   //the read ends at the key, so the bound only caps a miss
         Assert.Equal(ConsoleKey.Tab, Assert.IsType<ComposerInput.Key>(await t).K.Key);
     }
 

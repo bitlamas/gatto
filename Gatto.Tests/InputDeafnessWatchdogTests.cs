@@ -46,16 +46,6 @@ public class InputDeafnessWatchdogTests
         public bool Write(INPUT_RECORD record) { Interlocked.Increment(ref Writes); return true; }
     }
 
-    private static void WaitFor(Func<bool> until)
-    {
-        var clock = System.Diagnostics.Stopwatch.StartNew();
-        while (!until())
-        {
-            if (clock.Elapsed > TimeSpan.FromSeconds(10)) throw new TimeoutException("the condition never held");
-            Thread.Sleep(5);
-        }
-    }
-
     //the tracer must stay invisible downstream. a later change to key-up handling that let it through would type a key into the composer on every check.
     [Fact]
     public void THE_TRACER_IS_A_KEY_UP_THE_TRANSLATOR_DROPS()
@@ -101,7 +91,8 @@ public class InputDeafnessWatchdogTests
         watch.SetDeafSink(rows.Enqueue);
 
         watch.Arm();
-        WaitFor(() => console.Writes >= 3 && source.RecordsRead >= 3);
+        Waits.Until(() => console.Writes >= 3 && source.RecordsRead >= 3,
+            () => $"the watchdog wrote {console.Writes} tracers and the reader read {source.RecordsRead}");
         watch.Disarm();
 
         Assert.Empty(rows);
@@ -115,12 +106,13 @@ public class InputDeafnessWatchdogTests
         var pump = new InputPump(source);
         pump.Start();
         var rows = new ConcurrentQueue<string>();
+        var printed = new ManualResetEventSlim(false);   //never disposed, since the watchdog thread may still call the sink
         var watch = new InputDeafnessWatchdog(() => source.RecordsRead, console,
             TimeSpan.FromMilliseconds(20), TimeSpan.FromMilliseconds(50));
-        watch.SetDeafSink(rows.Enqueue);
+        watch.SetDeafSink(row => { rows.Enqueue(row); printed.Set(); });
 
         watch.Arm();
-        WaitFor(() => !rows.IsEmpty);
+        Assert.True(printed.Wait(Waits.Bound), $"no row after {console.Writes} tracers");
         var writes = console.Writes;
         watch.Tick();
         watch.Tick();
