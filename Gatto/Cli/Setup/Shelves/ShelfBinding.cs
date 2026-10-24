@@ -294,11 +294,6 @@ internal static class ShelfBinding
             foreach (var s in Wrapped(CountLine(shelf, glyphs), content))
                 headings.Add(new SelectHeading(option, theme.Paint(s, Theme.Dim)));
 
-            //a shelf with no marked file says so, every listed file counted, since a tested file beside an untested pick would make the sentence false
-            if (!shelf.Rows.Select((r, i) => SearchRow.ListedMarks(r, shelf.Facts?.ElementAtOrDefault(i))).Any(m => m.Any))
-                foreach (var s in Wrapped(UnmeasuredShelf, content))
-                    headings.Add(new SelectHeading(option, theme.Paint(s, Theme.Dim)));
-
             //beside the count line, where a reader already looks, and only when the fallback fired
             if (shelf.CarriedOver)
                 foreach (var s in Wrapped(CarriedOverNote, content))
@@ -309,9 +304,6 @@ internal static class ShelfBinding
 
         return headings;
     }
-
-    //the sentence says nothing here has been measured, by gatto or here, since unverified would read as a verdict on the models
-    internal const string UnmeasuredShelf = "Nothing here has been tested by gatto or on this machine yet.";
 
     //the note says the search found none that fit this machine, since a sort that found nothing keeps the rows already on screen
     internal const string CarriedOverNote =

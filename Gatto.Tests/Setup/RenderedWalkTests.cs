@@ -769,10 +769,6 @@ public class RenderedWalkTests : IDisposable
         Assert.NotEmpty(modelRows);
         Assert.All(modelRows, r =>
             Assert.DoesNotContain(Gatto.Terminal.GlyphSet.Unicode.Ok, r, StringComparison.Ordinal));
-
-        //assert the shelf also says nothing has been verified, which makes the absent tick a fact about the register
-        var seen = Squash(string.Join(" ", rig.Frames));
-        Assert.Contains(Squash(Gatto.Cli.Setup.Shelves.ShelfBinding.UnmeasuredShelf), seen, StringComparison.Ordinal);
     }
 
     private SetupRig ShelfTyped(int width, Func<string, TypedIdOutcome> typed,
