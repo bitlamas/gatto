@@ -15,12 +15,11 @@ public class InSessionShelfTests
     private static readonly IReadOnlyList<StripSection> InSessionStrip =
         WalkSection.For(SetupFlow.SearchKey, SetupPath.Llama, inSession: true);
 
-    //the key here is test-only, so this strip is the all-pending one production never paints (three fixtures use it, the flow emits it nowhere)
-
     //the key that answers a numbered screen, with its NUL written as an escape (a raw control byte is invisible to a reviewer)
     private static readonly ConsoleKeyInfo Enter = new('\0', ConsoleKey.Enter, false, false, false);
     private static readonly ConsoleKeyInfo Down = new('\0', ConsoleKey.DownArrow, false, false, false);
 
+    //the key here is test-only, so this strip is the all-pending one production never paints (three fixtures use it, the flow emits it nowhere)
     private static SetupScreen.Choice InSessionScreen(ShelfView shelf) =>
         new(SetupFlow.SearchKey, SetupFlow.ModelTitleFor(inSession: true),
             [.. shelf.Rows.Select((r, i) => new ChoiceOption(i.ToString(), r.RowFile!.RepoId))],
@@ -249,8 +248,6 @@ public class InSessionShelfTests
         Assert.Equal("  ❯ model · check · done", strip);
     }
 
-    //the word is leave on every flow, and the add flow's keys row is where that is asserted
-
     //at 80 the pane goes under the table, the fixture and script unchanged so the diff is about the fold
     [Fact]
     public void THE_COMPOSED_PANEL_FOLDS_UNDER_THE_TABLE_AT_80()
@@ -273,8 +270,6 @@ public class InSessionShelfTests
         Assert.Contains(wide, r => r.Contains("│", StringComparison.Ordinal));
         Assert.DoesNotContain(narrow, r => r.Contains("│", StringComparison.Ordinal));
     }
-
-    //a resize repaint goes through PaintCore, so that claim lives with the row diff in FrameFitsTests and CursorTests
 
     //the out-of-reach pair: one shelf, two frames, differing only in the notice
 
@@ -356,7 +351,6 @@ public class InSessionShelfTests
         Assert.Contains(withIt, r => r.Contains(SetupFlow.OutOfReach, StringComparison.Ordinal));
         Assert.DoesNotContain(without, r => r.Contains(SetupFlow.OutOfReach, StringComparison.Ordinal));
     }
-    //panelRows has no production callers, so the panel geometry is deleted rather than re-derived (the terminal's own height arithmetic is covered elsewhere)
 
     //a paused fetch is the shelf's first row
 

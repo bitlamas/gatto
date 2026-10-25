@@ -46,7 +46,6 @@ public class LineEditorTests : IDisposable
     private static ConsoleKeyInfo K(char c) => new(c, CharToKey(c), false, false, false);
 
     //alt+v arrives with a printable character, so it needs its own case, and a blanket ignore of alt would break altgr's characters
-
     private static ConsoleKeyInfo AltKey(char c, ConsoleKey k, bool ctrl = false) =>
         new(c, k, shift: false, alt: true, control: ctrl);
 

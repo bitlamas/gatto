@@ -8,14 +8,13 @@ public sealed class ImageCache
     //images already reported as unavailable, so the notice is said once per image per session
     private readonly HashSet<string> _reported = new(StringComparer.Ordinal);
 
-    //the data: URI for this reference, null when the file has moved or changed (sending other pixels would lie about what the model saw)
-
     //report an unavailable image at most once per session, keyed on the sha recorded at attach time so a replacement reports again
     private void Report(ImageRef img, string message, Action<string>? onUnavailable)
     {
         if (_reported.Add(img.Sha256)) onUnavailable?.Invoke(message);
     }
 
+    //the data: URI for this reference, null when the file has moved or changed (sending other pixels would lie about what the model saw)
     public string? DataUri(ImageRef img, Action<string>? onUnavailable = null)
     {
         if (_bySha.TryGetValue(img.Sha256, out var cached)) return cached;

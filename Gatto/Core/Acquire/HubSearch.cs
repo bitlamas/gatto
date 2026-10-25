@@ -123,8 +123,6 @@ internal static class HubSearch
         _ => 3,
     };
 
-    //one quant per model, the best that fits the GPU then RAM, and no row when nothing fits, and inside a tier the knee
-
     //one repo named by the user as a model row of one publisher. the row comes back with no pick when the floor hid every file, so the pane can still choose one
     internal static async Task<(ModelRow? Row, bool NoWeights)> LookupModelAsync(
         HubClient client, string repoId, HardwareClass hw, int ctxForFit, CancellationToken ct)
@@ -309,7 +307,7 @@ internal static class HubSearch
         long? totalParams, bool lifted, string? arch = null, bool floorLifted = false) =>
         Pick(quants, q => q, hw, nativeCtx, ctxForFit, totalParams, lifted, arch, floorLifted) is { } p ? (p.Item, p.Fit) : null;
 
-    //generic over the candidate, so a caller that tags each quant with its repo gets the tag back with the pick
+    //one quant per model, the best that fits the GPU then RAM, and no row when nothing fits, and inside a tier the knee. generic over the candidate, so a caller that tags each quant with its repo gets the tag back with the pick
     internal static (T Item, FitRegime Fit)? Pick<T>(
         IReadOnlyList<T> items, Func<T, HubQuant> quantOf, HardwareClass hw, long? nativeCtx, int ctxForFit,
         long? totalParams, bool lifted, string? arch = null, bool floorLifted = false)

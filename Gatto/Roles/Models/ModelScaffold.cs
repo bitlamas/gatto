@@ -283,8 +283,7 @@ public static class ModelScaffold
                 files = Directory.EnumerateFiles(currentDir, "*.gguf");
             }
             catch (UnauthorizedAccessException) { }
-            catch (DirectoryNotFoundException) { }
-            //any other failure is left to bubble, so a real error is not swallowed
+            catch (DirectoryNotFoundException) { }   //any other failure is left to bubble, so a real error is not swallowed
 
             foreach (var file in files)
                 yield return file;
@@ -295,8 +294,7 @@ public static class ModelScaffold
                 subdirs = Directory.EnumerateDirectories(currentDir);
             }
             catch (UnauthorizedAccessException) { }
-            catch (DirectoryNotFoundException) { }
-            //any other failure is left to bubble, so a real error is not swallowed
+            catch (DirectoryNotFoundException) { }   //any other failure is left to bubble, so a real error is not swallowed
 
             foreach (var subdir in subdirs)
                 queue.Enqueue(subdir);

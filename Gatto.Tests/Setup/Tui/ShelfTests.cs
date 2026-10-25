@@ -68,8 +68,6 @@ public class ShelfTests
             ? f with { Publishers = [new PanePublisher("unsloth", files, files.FirstOrDefault(x => x.Quant == "Q4_K_M").File)] }
             : f;
 
-    //this fixture mirrors the generator's unified-96 shelf, four current rows with six older ones counted but hidden, and the cursor opens on the 26B
-
     private const FitRegime Fits = FitRegime.FitsGpu;
 
     private static ShelfView Gemma(MachineShape shape, FitRegime[] fits, ModelFacts[] facts,
@@ -77,6 +75,7 @@ public class ShelfTests
         new(rows, shape, Families: Families, Family: "gemma",
             Total: 10, HiddenOlder: hiddenOlder, HiddenByFit: hiddenByFit, Facts: [.. facts.Select(Publisher)]);
 
+    //this fixture mirrors the generator's unified-96 shelf, four current rows with six older ones counted but hidden, and the cursor opens on the 26B
     internal static ShelfView Unified96()
     {
         ModelRow[] rows =

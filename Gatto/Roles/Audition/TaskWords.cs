@@ -33,9 +33,7 @@ internal static class TaskWords
         _ => shape.ToString(),
     };
 
-    //a silence in the words a waiting person uses
-
-    //the plural comes off the rounded number the reader sees, and one second is the floor of the seconds arm
+    //a silence in the words a waiting person uses. the plural comes off the rounded number the reader sees, and one second is the floor of the seconds arm
     private static string Roughly(TimeSpan t) =>
         t.TotalSeconds < 90
             ? Plural.Of((long)Math.Max(1, Math.Round(t.TotalSeconds)), "second")

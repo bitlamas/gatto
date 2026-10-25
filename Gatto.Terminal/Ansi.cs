@@ -2,6 +2,7 @@ namespace Gatto.Terminal;
 
 public readonly record struct RgbColor(byte R, byte G, byte B, byte Index256);
 
+//an escape byte followed straight by a hex digit needs the fixed four-digit \u form. hex escapes are greedy in C#, so escape-then-7 collapses into U+01B7
 public static class Ansi
 {
     public const string Reset = "\x1b[0m";
@@ -40,8 +41,6 @@ public static class Ansi
 
     //absolute cursor position, row and column counted from one. the alt-screen compositor draws the frame top-to-bottom and pins the composer to the bottom row
     public static string Cup(int row, int col) => $"\x1b[{row};{col}H";
-
-    //an escape byte followed straight by a hex digit needs the fixed four-digit \u form. hex escapes are greedy in C#, so escape-then-7 collapses into U+01B7
 
     public static string Fg(RgbColor c, bool trueColor) =>
         trueColor ? $"\x1b[38;2;{c.R};{c.G};{c.B}m" : $"\x1b[38;5;{c.Index256}m";

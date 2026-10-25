@@ -17,8 +17,6 @@ internal sealed class SetupTranscript(Theme theme, Gatto.Terminal.GlyphSet? glyp
     private int _rows;
     private int _width;
 
-    //a back-step row is not an answer, so it draws dim like the body's skipped rows. the arrow points forward, the option said "←"
-
     //a function of the glyph set. this text is only drawn, so its wording has no identity and moving it changes only the drawing
     private static string WentBackOf(Gatto.Terminal.GlyphSet g) => $"{g.Right} went back";
 
@@ -44,6 +42,7 @@ internal sealed class SetupTranscript(Theme theme, Gatto.Terminal.GlyphSet? glyp
         //match on the option's identity, the drawn label changes with the glyph set. free text has no identity, so it falls back to the answer
         var navigation = string.Equals(input.Identity ?? input.Answer, SetupFace.BackOptionKey,
             StringComparison.Ordinal);
+        //a back-step row is not an answer, so it draws dim like the body's skipped rows. the arrow points forward, the option said "←"
         var answer = navigation ? WentBackOf(_glyphs) : TermText.Sanitize(input.Answer);
         var width = input.Width;
 

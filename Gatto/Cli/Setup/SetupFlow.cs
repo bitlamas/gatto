@@ -17,14 +17,11 @@ internal enum SetupPath
     Connect,
 }
 
-//keep the flow pure and resumeless, a user who leaves mid-way leaves nothing behind. every fact from ISetupProbes, every word out as a SetupScreen
-
-//five states rather than a bool, still arriving, unreadable and wrong file are three facts, collapsing them accuses a half-written file
-
 //keep the two shas beside the verdict, so the screen shows the pair the check compared rather than hashing the file again.
 internal readonly record struct WatchCheck(
     WatchVerdict Verdict, string? Actual = null, string? Expected = null);
 
+//five states rather than a bool, still arriving, unreadable and wrong file are three facts, collapsing them accuses a half-written file
 internal enum WatchVerdict
 {
     //the name, size and published fingerprint all agree.
@@ -52,11 +49,10 @@ internal enum WatchCause
     NoFingerprint,
 }
 
+//keep the flow pure and resumeless, a user who leaves mid-way leaves nothing behind. every fact from ISetupProbes, every word out as a SetupScreen
 internal sealed partial class SetupFlow(ISetupProbes probes)
 {
-    //keep screen keys stable for tests, the copy beside them changes but the key can't
-
-    //write keys as literals, the census greps raw source for them, and it greps comments too, so a comment must not quote the constructor pattern
+    //keep screen keys stable for tests, the copy beside them changes but the key can't. write keys as literals, the census greps raw source for them, and it greps comments too, so a comment must not quote the constructor pattern
 
     //the first segment, which puts gatto where a terminal can find it.
     public const string WelcomeKey = "welcome";
@@ -158,7 +154,7 @@ internal sealed partial class SetupFlow(ISetupProbes probes)
 
     //keep the fork's name on the connect key (many test sites and the reachability guard name it)
     public const string ForkConnect = "connect";
-    //render back as a row rather than a keystroke, so both askable kinds stay uniform without touching SelectPrompt
+    //render back as a row rather than a keystroke, so both askable kinds stay uniform without touching SelectPrompt. don't name a screen option back, Answer intercepts that key before the screen dispatch
     public const string BackKey = "back";
 
     //a typed screen's answer that leaves the wizard, where a bare null still means back for a face with no leave of its own
@@ -284,9 +280,7 @@ internal sealed partial class SetupFlow(ISetupProbes probes)
     //keep a separate offer for a server that will not report its window, the other constant is the llama path's fallback. a change here must not move that path
     public const int OfferedServerContext = 65536;
 
-    //use the face's budget, a second derivation fetches rows the screen can't show
-
-    //set the row budget from the runner, it holds both the flow and the face. keep the default for a flow driven by a test
+    //set the row budget from the runner, it holds both the flow and the face, since a second derivation fetches rows the screen can't show. keep the default for a flow driven by a test
     internal int RowBudget { get; set; } = HubSearch.DefaultRowBudget;
 
     //compose the flow's copy in the glyph set the runner passes, a flow that read it itself could disagree. tests that build bare default to Unicode
@@ -648,8 +642,6 @@ internal sealed partial class SetupFlow(ISetupProbes probes)
         public void Report(Gatto.Roles.Audition.AuditionProgress value) => onReport(value);
     }
 
-    //hold the confirmed URL, context and endpoint name across the screens before the write pause (the flow keeps no resume state)
-
     //hold the model id the chosen file collides with, from the screen to its answer, per run
     private string? _clashingModelId;
 
@@ -660,6 +652,8 @@ internal sealed partial class SetupFlow(ISetupProbes probes)
 
     //findability repair only, no copy needed (the installed copy is newer than this image or unreadable)
     private bool _repairOnly;
+
+    //hold the confirmed URL, context and endpoint name across the screens before the write pause (the flow keeps no resume state)
     private string? _connectBaseUrl;
     private int _connectContext;
     private string? _connectEndpointName;
@@ -675,9 +669,7 @@ internal sealed partial class SetupFlow(ISetupProbes probes)
 
     //hold the running prove task (the watch says whether it ended and this is the only thing that knows)
     private Task<Gatto.Core.Acquire.ProveOutcome>? _proving;
-    //null means the check was skipped or could not run. treat it as we did not look
-
-    //store the whole check rather than its facts (the completion screen can't infer a pass from facts a failed audition also measures)
+    //store the whole check rather than its facts (the completion screen can't infer a pass from facts a failed audition also measures). null means the check was skipped or could not run, treat it as we did not look
     private AuditionCheck? _check;
     //record that the writes were applied, set only where they are applied
     private bool _applied;

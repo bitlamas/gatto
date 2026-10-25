@@ -570,9 +570,7 @@ internal sealed partial class SetupFlow
     private Gatto.Roles.Models.ModelSource? SourceOf(FoundModel model) =>
         Picked is { RowFile: { } file, RowQuant: { } quant } && Answers(model, quant) ? new Gatto.Roles.Models.ModelSource(file.RepoId, quant.FileName) : null;
 
-    //the model intent in one place, replacing or not, so the collision branch can't drift on context, port or the pause
-
-    //this records an intent and pauses for the writer. if a screen ever sits between an intent and its pause, add the back-walk test in the same commit
+    //the model intent in one place, replacing or not, so the collision branch can't drift on context, port or the pause. it records an intent and pauses for the writer, and a screen put between the two needs the back-walk test in the same commit
     private SetupScreen ScaffoldIntent(FoundModel model, bool replace)
     {
         //use the computed context, a ceiling this machine can't hold is a model that fails to load

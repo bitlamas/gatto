@@ -7,11 +7,10 @@ using Gatto.Terminal;
 
 namespace Gatto.Cli.Setup.Shelves;
 
-//the shelf as data for the face, passed on a Choice so the flow stays pure. the Rows list is the shown slice, with the cap already applied
-
 //which source the shelf is showing, one discriminator rather than five flags that could disagree
 internal enum ShelfSource { Hub, Local }
 
+//the shelf as data for the face, passed on a Choice so the flow stays pure. the Rows list is the shown slice, with the cap already applied
 internal sealed record ShelfView(
     IReadOnlyList<ModelRow> Rows, MachineShape Shape,
     bool Lift = false, int HiddenByFit = 0,
@@ -55,8 +54,6 @@ internal sealed record ShelfView(
             $"a shelf carries one ModelFacts per row: {Rows.Count} rows, {Facts.Count} facts",
             nameof(Facts));
 }
-
-//the one place that turns a ShelfView into the widget's labels and headings, called by both faces. a group starts at every non-continuation row
 
 //the shelf's control keys, the one place the keyboard is named. the order here is the order the header renders, so the strip and the keys cannot drift
 internal static class ShelfControls
@@ -142,6 +139,7 @@ internal static class ShelfControls
         All.FirstOrDefault(c => c.Key == key) is { Answer: { } a } ? a : null;
 }
 
+//the one place that turns a ShelfView into the widget's labels and headings, called by both faces. a group starts at every non-continuation row
 internal static class ShelfBinding
 {
     //the two seams, bound. options is the full list the screen shows, models first and escape rows after, one label per option
@@ -179,7 +177,6 @@ internal static class ShelfBinding
         //the lead is counted, not assumed to be 1, because a header row is emitted only when some column has a name
         var g = groups.Count - lines.Count(l => l.Row is not null);
         //labels may already hold the resume row, which is what makes the escape-row loop below start in the right place
-
         foreach (var line in lines)
         {
             //only a model becomes a label, its wrapped lines rejoined since the widget renders a newline as one selectable row

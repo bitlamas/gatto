@@ -115,7 +115,6 @@ public class ProjectFileConfigTests : IDisposable
 
         using var handle = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.None);
         //a locked file must read as absent rather than throw, while malformed content still throws
-
         Assert.Null(ProjectFileConfig.TryReadCompat(_dir));
     }
 

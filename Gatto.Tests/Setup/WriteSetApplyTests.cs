@@ -32,7 +32,6 @@ public class WriteSetApplyTests : IDisposable
     }
 
     //the connect path's three writes, and the order between them
-
     [Fact]
     public void A_CONNECT_WRITESET_lands_the_endpoint_its_default_AND_the_model()
     {

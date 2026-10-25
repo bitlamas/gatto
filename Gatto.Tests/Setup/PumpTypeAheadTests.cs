@@ -5,10 +5,9 @@ using Gatto.Terminal.Tests.Fakes;
 
 namespace Gatto.Tests.Setup;
 
-//a focus scope reads a fresh, empty channel, so a key typed before the push cannot reach it, and every wait is on a signal
-
 //xUnit1031 stays suppressed, since blocking is the subject of these tests and an await would change what they check
 #pragma warning disable xUnit1031
+//a focus scope reads a fresh, empty channel, so a key typed before the push cannot reach it, and every wait is on a signal
 public class PumpTypeAheadTests
 {
     //a read blocks until a key arrives, so the pump waits the way it does on a real console.

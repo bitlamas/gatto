@@ -10,8 +10,6 @@ public class SetupTranscriptTests
 {
     private static readonly Theme T = SetupRig.T;
 
-    //the rig lives in SetupRig so every file that scripts a face models the console the same way
-
     private static SetupScreen.Choice Retry(string key = "retry") => new(
         key,
         "No server answered, start it and try again?",

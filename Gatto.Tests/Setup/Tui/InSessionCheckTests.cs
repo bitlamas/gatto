@@ -140,8 +140,6 @@ public class InSessionCheckTests
             "the check was started without asking, and a swap of the served model needs a confirm");
     }
 
-    //a check that could not run must not say the swap already happened (that claim sits with the completion's check row)
-
     private static FakeSetupProbes CheckReturning(AuditionCheck check) => new()
     {
         Llama = @"C:\llama\llama-server.exe",
@@ -221,6 +219,46 @@ public class InSessionCheckTests
         Assert.Equal(SetupFlow.AuditionOfferKey, CheckStep(flow).Key);
     }
 
+    //the in-session ending is the scrollback the session prints, and it carries no launch, install or consent row. the walk answers the update question on the way, so the ending has a consent it could repeat
+    [Fact]
+    public void THE_IN_SESSION_ENDING_SHOWS_NO_LAUNCH_INSTALL_OR_CONSENT_ROW()
+    {
+        var flow = new SetupFlow(new FakeSetupProbes
+        {
+            Llama = @"C:\llama\llama-server.exe",
+            ActiveFile = "gemma-4-26B-A4B-it-UD-Q4_K_M.gguf",
+            HeldBy = Serving,
+            UpdateAnswered = null,
+            Audition = new AuditionCheck(AuditionOutcome.Passed, new AuditionFacts("Q4_K_M", "greedy", "off", 42.5, 5, 5)),
+        });
+        SetupScreen screen = CheckStep(flow);
+        var keys = new List<string>();
+        for (var i = 0; i < 25 && screen is SetupScreen.Choice c && c.Options.Count > 0; i++)
+        {
+            keys.Add(c.Key);
+            //the check is let finish rather than stopped, so the walk takes the ordinary road to the ending
+            if (c.Watching) Assert.True(SpinWait.SpinUntil(flow.PollWatch, TimeSpan.FromSeconds(30)), "the watch never resolved on " + c.Key);
+            screen = flow.Answer(c.Watching ? SetupFlow.Landed : c.Options[0].Key);
+            while (flow.NeedsWritesApplied) screen = flow.ResumeAfterWrites(null);
+        }
+        var walked = string.Join(" -> ", keys) + " -> " + ScreenKey.Of(screen);
+        Assert.True(screen is SetupScreen.Terminal, "the walk never reached the ending: " + walked);
+        Assert.True(keys.Contains(SetupFlow.InSessionCheckKey) && keys.Contains(SetupFlow.UpdateKey),
+            "the walk skipped the check ask or the update question: " + walked);
+
+        var ending = string.Join("\n", Gatto.Cli.Setup.SetupSession.Scrollback(flow, () => [], 100,
+            Gatto.Terminal.GlyphSet.Unicode, new Gatto.Cli.VersionStamp("0.5.0", "1a2b3c4", false),
+            new DateOnly(2026, 10, 24), "gatto model", theme: null));
+
+        //the ending names the model it added, so an empty scrollback cannot pass the absences below
+        Assert.Contains($"/model {Incoming}", ending, StringComparison.Ordinal);
+        Assert.DoesNotContain("Start gatto", ending, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("Starting gatto", ending, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("install", ending, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("update", ending, StringComparison.OrdinalIgnoreCase);
+        Assert.False(flow.StartReplWhenDone);
+    }
+
     //the key, pressed
 
     private sealed class Keys(IEnumerable<ConsoleKeyInfo> k) : Gatto.Terminal.IKeySource
@@ -256,8 +294,6 @@ public class InSessionCheckTests
         Assert.Contains(painted(), r => r.Contains("Esc add it unchecked", StringComparison.Ordinal));
         Assert.DoesNotContain(painted(), r => r.Contains("Esc again", StringComparison.Ordinal));
     }
-
-    //the in-session ending shows no install, no consent and no launch row (the launch row is still owed a guard)
 
     //the in-session strip, and what it does to the frame
 

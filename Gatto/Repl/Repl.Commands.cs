@@ -208,9 +208,7 @@ public sealed partial class Repl
     internal const string WildUsage =
         "usage: /wild [always|never] — toggle wild mode; always/never also persists for this project";
 
-    //shared /wild dispatch, the persistence variants return two lines and the rich caller commits one row per line
-
-    //every string is a literal but the forbidding file's path, which goes through Sanitize, and the Shift+Tab toggle comes through here too
+    //shared /wild dispatch, the persistence variants return two lines and the rich caller commits one row per line. every string is a literal but the forbidding file's path, which goes through Sanitize, and Shift+Tab comes through here too
     private string HandleWild(string arg)
     {
         if (wild is null) return "wild mode is unavailable in this session";
@@ -325,14 +323,13 @@ public sealed partial class Repl
         return true;
     }
 
-    //the /compact confirmation line, silent about zero banked and always reporting a non-zero drop count
-
     //the chars÷4 percent of the live conversation, the plain path's stand-in for the footer. it is only ever compared with itself
     private int? EstimatedPercent() =>
         contextBudget is int b && b > 0
             ? (int)Math.Round(100.0 * ContextBudget.Estimate(convo.Messages) / b)
             : null;
 
+    //the /compact confirmation line, silent about zero banked and always reporting a non-zero drop count
     internal string CompactedLine(CtxState? ctx = null)
     {
         //both figures come from the footer's own CtxState, sampled before and after, so the number told is the number shown

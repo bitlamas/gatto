@@ -225,8 +225,6 @@ public sealed class Compactor(IChatClient client, string model, RequestShape? sh
         return (summary, false, false, false);
     }
 
-    //the labeled block a fresh session leads with, composed into the system text rather than added as messages
-
     //opens a BuildContext block, --continue greps the prior system for this marker so a compacted session keeps its summary on resume
     public const string ContextMarker = "## Previous session summary (compacted from ";
 
@@ -242,6 +240,7 @@ public sealed class Compactor(IChatClient client, string model, RequestShape? sh
         + "\"\"\"\n" + originalPrompt + "\n\"\"\"\n\n"
         + ContinuationDirective;
 
+    //the labeled block a fresh session leads with, composed into the system text rather than added as messages
     public static string BuildContext(string summary, string oldSessionFile, (string User, string Assistant)? lastExchange)
     {
         var sb = new StringBuilder();

@@ -85,9 +85,7 @@ public static class GattoApp
         : r.TryGetProperty(name, out var top) ? top
         : null;
 
-    //the help text is the first thing a stranger reads, so it uses the user's words rather than harness
-
-    //internal so a guard drives the string that ships, since a guard over a copy is an oracle about the copy
+    //the help text is the first thing a stranger reads, so it uses the user's words rather than harness. internal so a guard drives the string that ships, since a guard over a copy is an oracle about the copy
     internal const string Help = """
         gatto, a terminal assistant that runs AI models on your own computer
         usage: gatto [role|command] [options]
@@ -644,9 +642,7 @@ public static class GattoApp
             probeHttp = new HttpClient(new SocketsHttpHandler { ConnectTimeout = probeDeadline })
                 { Timeout = Timeout.InfiniteTimeSpan };
 
-            //launch probe
-
-            //a bare launch arms the shelf model the server holds, before the client, the window and the thinking are built from the default
+            //the launch probe, a bare launch arms the shelf model the server holds, before the client, the window and the thinking are built from the default
             serverAlreadyUp = false;
             servedBytes = null;
             servedLine = null;
@@ -1169,8 +1165,6 @@ public static class GattoApp
         }
     }
 
-    //the one truncation sentence for the launch line and every reload warning, so the wording cannot drift and truncation is never silent
-
     //2% of the model's context, clamped to 1000 and 4000 tokens, since the index is in every prefix and must stay glanceable
     internal static int DerivedMemoryBudget(int? modelContext)
     {
@@ -1179,6 +1173,7 @@ public static class GattoApp
         return Math.Clamp(ctx * 2 / 100, floor, ceiling);
     }
 
+    //the one truncation sentence for the launch line and every reload warning, so the wording cannot drift and truncation is never silent
     internal static string MemoryTruncationWarning(int facts) =>
         $"memory index over budget: {facts} facts not shown; prune .gatto\\memory\\";
 

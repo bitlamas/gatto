@@ -109,9 +109,7 @@ public sealed class ScrollController
         _anchorRow = 0;
     }
 
-    //reveal a focused item, driven by the FocusController
-
-    //scroll the item into view without passing its top, so a tall item below the view shows its top
+    //reveal a focused item, driven by the FocusController. scroll the item into view without passing its top, so a tall item below the view shows its top
     public void RevealItem(int itemIndex, int width, int height)
     {
         var (top, bottom) = ItemBounds(itemIndex, width);

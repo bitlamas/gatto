@@ -78,8 +78,6 @@ public sealed class ServeManager
     //counts the refused starts, since the refusal fires before any spawn and a spawn count cannot tell an ask from no ask
     internal int RefusedStarts { get; private set; }
 
-    //start
-
     //each unanswered detached poll raises Loading with the elapsed time, so a caller can keep the wait visible (the foreground path never polls)
     public async Task<int> StartAsync(Model model, IServeListener listener, CancellationToken ct,
         bool foreground = false)
@@ -255,8 +253,6 @@ public sealed class ServeManager
         return 1;
     }
 
-    //stop
-
     //the exit code reads 0 for four different outcomes. a caller that needs to know which one calls Stop and reads the outcome
     public Task<int> StopAsync(IServeListener listener, CancellationToken ct) =>
         Task.FromResult(Stop(listener).Result is StopResult.KillFailed ? 1 : 0);
@@ -310,8 +306,6 @@ public sealed class ServeManager
                 return new StopOutcome(StopResult.Stale, state.Model, state.Pid, null);
         }
     }
-
-    //status
 
     //the human status. the machine-readable one is its own method below, and the two share no branch.
     public async Task<int> StatusAsync(IServeListener listener, CancellationToken ct)
@@ -484,8 +478,6 @@ public sealed class ServeManager
         catch (Exception) { } //best effort, a locked or missing file mustn't crash stop or status
     }
 
-    //health poll
-
     private async Task<bool> HealthOkAsync(int port, CancellationToken ct)
     {
         using var read = CancellationTokenSource.CreateLinkedTokenSource(ct);
@@ -505,8 +497,6 @@ public sealed class ServeManager
             return false;   //connection refused, not up yet, per-request timeout: all of them just mean not ready
         }
     }
-
-    //log tail
 
     private IReadOnlyList<string> TailLog(int n)
     {

@@ -28,6 +28,7 @@ public class StreamRendererTests
     private static StatusInfo Status(string role) =>
         new(@"C:\proj", "qwen", role, new CtxState(), @"C:\Users\x");
 
+    //these fixtures use a width where InputFrame still draws the frame's rules, since it drops them below 20 cells
     private static (StreamRenderer R, RecordingSurface S, ChromePainter P, ChromeTicker K) Make(
         int width = 80, int height = 0, string role = "coder", ReasoningMode reasoning = ReasoningMode.Collapsed,
         Func<DateTime>? now = null)
@@ -119,10 +120,6 @@ public class StreamRendererTests
         return string.Join('\n', lines.Select(l => l.ToString()));
     }
 
-    //these fixtures use a width where InputFrame still draws the frame's rules, since it drops them below 20 cells
-
-    //the transcript is the TranscriptModel, so these fixtures assert its committed rows in order, ANSI stripped, and leave the tail and composer out
-
     //the chip's own SGR run, from its foreground introducer to the next reset, because the transcript carries other backgrounds too
     private static string ChipRun(string raw, string fg)
     {
@@ -132,6 +129,7 @@ public class StreamRendererTests
         return end < 0 ? raw[i..] : raw[i..end];
     }
 
+    //the transcript is the TranscriptModel, so these fixtures assert its committed rows in order, ANSI stripped, and leave the tail and composer out
     private static string[] Rows(ChromePainter p) =>
         p.Model.Items.SelectMany(i => i.Render(p.Width, T, glyphs: GlyphSet.Unicode))
             .Select(r => TermText.StripAnsiForWidth(r).TrimEnd()).ToArray();
@@ -1177,7 +1175,6 @@ public class StreamRendererTests
     }
 
     //the token estimate feeds the ticker
-
     [Fact]
     public void Deltas_FeedTheTickerTokenEstimate()
     {
@@ -1404,8 +1401,6 @@ public class StreamRendererTests
         r.OnSubagentProgress("turn 2");
         Assert.Equal("  turn 2\n", evil.Inner.Text);
     }
-
-    //usage
 
     [Fact]
     public void OnUsage_Forwards()

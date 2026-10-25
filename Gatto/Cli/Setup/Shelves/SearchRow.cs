@@ -4,7 +4,7 @@ using Gatto.Core.Models;
 
 namespace Gatto.Cli.Setup.Shelves;
 
-//the row's words (name, size, fit, marks, context) and nothing more, and a mark says what was measured rather than recommending
+//the row's words (name, size, fit, marks, context) and nothing more, and a mark says what was measured rather than recommending. keep Gb, FitWords, the mark words and Ctx here, the table, the pane and the tier line all call them
 internal static class SearchRow
 {
     public static string Label(ModelRow r) => r.Model;
@@ -13,8 +13,6 @@ internal static class SearchRow
     internal static long RowBytes(ModelRow r) => r.RowQuant?.Bytes ?? 0;
 
     internal static string RowFileName(ModelRow r) => r.RowQuant?.FileName ?? "";
-
-    //keep Gb, FitWords, the mark words and Ctx here, the table, the pane and the tier line all call them
 
     //the words of the three marks, each naming who measured and where, with no date, count or score
     internal const string TestedWords = "tested by gatto";
@@ -41,9 +39,7 @@ internal static class SearchRow
         return marks with { Tested = marks.Tested || hubTested };
     }
 
-    //fit in words, said as a computation, the estimate errs conservative and the words must not promise more than the arithmetic knows
-
-    //the words name where the weights sit, since fit arithmetic can't speak for speed, and "slower" needs a faster tier to exist
+    //fit said as a computation, the estimate errs conservative and the words must not promise more than the arithmetic knows. they name where the weights sit, since fit can't speak for speed, and "slower" needs a faster tier
     internal static string FitWords(FitRegime fit, MachineShape shape, Gatto.Terminal.GlyphSet g) => fit switch
     {
         FitRegime.FitsGpu => shape switch

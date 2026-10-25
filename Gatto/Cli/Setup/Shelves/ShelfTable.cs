@@ -39,9 +39,7 @@ internal static class ShelfTable
         GlyphSet? glyphs) =>
         SearchRow.FitWords(fit, shape, glyphs ?? GlyphSet.Unicode);
 
-    //the rule character that opens a tier line, already shipped beside the composer frame's label
-
-    //a function of the glyph set, since a const cannot read one, and two table horizontals keep the tier rule and the screen rule identical
+    //the rule character that opens a tier line, already shipped beside the composer frame's label. a function of the glyph set, since a const cannot read one, and two table horizontals keep the tier rule and the screen rule identical
     public static string TierRuleOf(GlyphSet g) => g.Rule + g.Rule;
 
     //the stage that fits, measured against the renderer's own column arithmetic rather than a table of guessed thresholds
@@ -99,9 +97,7 @@ internal static class ShelfTable
     //the merged header, composed from the glyph table so the ASCII set does not draw tofu in the header row
     private static string SizeQuantHeaderOf(GlyphSet g) => $"size {g.Dot} quant";
 
-    //params survives every rung, since the count is the first thing anyone asks about a model
-
-    //context joins the ladder and drops at the floor, since the model's own page still has the number
+    //params survives every rung, since the count is the first thing anyone asks about a model. context joins the ladder and drops at the floor, since the model's own page still has the number
     private static IReadOnlyList<Header> Headers(ShelfStage stage, bool ctx, GlyphSet g) => stage switch
     {
         ShelfStage.Full =>

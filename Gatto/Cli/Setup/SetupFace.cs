@@ -63,6 +63,7 @@ internal sealed class SetupFace(
                     Row: ms => tick?.Invoke() is { } t
                         ? Widget.Line(t, _glyphs)
                         : ChromeTicker.PurrHead(Cats.Face(_glyphs), ms, PurrFrames.Short),
+                    //one poll clock and one interval for both faces, since two would answer differently how long gatto waits
                     Clock: clock?.Invoke() ?? new ConsolePollClock(keys),
                     Interval: Watch.Interval,
                     //a file turning up is a discovery, so the permanent record must name it
@@ -80,10 +81,6 @@ internal sealed class SetupFace(
             _ => Answered(null),   //cancelled, or a shape this screen never asked for
         };
     }
-
-
-
-    //one poll clock and one interval for both faces, since two would answer differently how long gatto waits
 
     //where a control press left the cursor. an answer clears it, so the next screen starts at the top
     private int _resumeCursor;

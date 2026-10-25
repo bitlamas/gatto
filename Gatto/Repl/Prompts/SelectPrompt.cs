@@ -173,18 +173,14 @@ public sealed class SelectPrompt(   //single-select, multi-select and the free-t
     //nine, a number promises one keystroke and there is no key for 10. rows past this stay in the list, arrow-reachable, and get no digit
     internal const int NumberedRows = 9;
 
-    //the cursor glyph is the one the composer prompt uses. the chevron glyph stays the collapsed-reasoning marker, don't use it here
-
-    //a property rather than a const, a const can't read a set. it stays one cell wide so the columns measured around it don't move
+    //the cursor glyph is the one the composer prompt uses, the chevron stays the collapsed-reasoning marker. a property rather than a const, a const can't read a set. it stays one cell wide so the columns measured around it don't move
     private string CursorGlyph => _glyphs.Prompt + " ";
 
     //two cells, so a non-cursor row lines up under a cursor row and every non-option region shares one left edge
     private const string Indent = "  ";
 
     //the chrome cells before an option's label, caret, number and any dot and checkbox columns. a caller laying out a table needs this number
-
-    //numbered has no default on purpose, a caller that measures numbered while rendering unnumbered gets a table three cells narrower than its screen
-    internal static int LabelColumn(bool anyMarked, bool multiSelect, bool numbered) =>
+    internal static int LabelColumn(bool anyMarked, bool multiSelect, bool numbered) =>   //numbered has no default on purpose, a caller that measures numbered while rendering unnumbered gets a table three cells narrower than its screen
         Indent.Length + (numbered ? NumberWidth + 2 : 0)
         + (anyMarked ? MarkPad.Length : 0) + (multiSelect ? BoxOff.Length : 0);
 

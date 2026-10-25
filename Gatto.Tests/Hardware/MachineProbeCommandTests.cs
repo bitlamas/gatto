@@ -3,9 +3,7 @@ using Gatto.Cli.Hardware;
 namespace Gatto.Tests.Hardware;
 
 //the memory and cpu reads run in process, so the suite checks the machine it runs on. a driver mock would only agree with its author
-
-//declare the windows platform claim once on the class, matching the subject's own claim. the reads use kernel32 and the registry.
-[System.Runtime.Versioning.SupportedOSPlatform("windows")]
+[System.Runtime.Versioning.SupportedOSPlatform("windows")]   //declare the windows platform claim once on the class, matching the subject's own claim. the reads use kernel32 and the registry.
 public class MachineProbeCommandTests
 {
     [Fact]

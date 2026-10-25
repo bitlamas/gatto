@@ -71,9 +71,7 @@ internal static class UninstallConsent
         _ => Theme.Ok,
     };
 
-    //the only part of this file that touches a keyboard, so everything above stays data a test can drive
-
-    //the ask draws over a surface and keys somebody else owns so a test renders the screens, and the glyph set is handed in
+    //the only part of this file that touches a keyboard, so everything above stays data a test can drive. the ask draws over a surface and keys somebody else owns so a test renders the screens, and the glyph set is handed in
     internal static Asker Prompter(Theme? theme, ITermSurface surface, IKeySource keys,
         Gatto.Terminal.GlyphSet? glyphs) => (question, options) =>
     {

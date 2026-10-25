@@ -42,7 +42,6 @@ public sealed class RichPrompter(   //nothing is committed to scrollback, and th
             InitialCursor: ask.InitialCursor,
             NoInitialCursor: ask.NoInitialCursor);
         //don't arm a drain here, this path runs under the pump's modal focus which already stops type-ahead from answering a prompt
-
         return new SelectPrompt(surface, theme, k, pump: null, chrome, _glyphs).Show(spec) switch
         {
             SelectOutcome.Chosen c => new WizardAnswer(ask.Options[c.Index].Identity),

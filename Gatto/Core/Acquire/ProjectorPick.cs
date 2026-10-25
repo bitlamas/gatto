@@ -3,7 +3,7 @@ namespace Gatto.Core.Acquire;
 //prefer the f16 encoder, since the quant saves little and costs precision. a preference rather than a filter, so a quant-only repo still gets an offer
 internal static class ProjectorPick
 {
-    //the encoder to offer, or null when the repo ships none
+    //the encoder to offer, or null when the repo ships none. the pick still runs, and nothing narrates which encoder was chosen for a repo that ships several
     public static HubQuant? Best(IReadOnlyList<HubQuant>? projectors)
     {
         if (projectors is not { Count: > 0 }) return null;
@@ -15,8 +15,6 @@ internal static class ProjectorPick
             .ThenBy(q => q.FileName, StringComparer.OrdinalIgnoreCase)
             .First();
     }
-
-    //the pick still runs, and nothing narrates which encoder was chosen for a repo that ships several
 
     //match the name's own tokens, since a bare Contains("f16") would also fire on a name like -af16k-
     private static bool IsReferencePrecision(HubQuant q) =>

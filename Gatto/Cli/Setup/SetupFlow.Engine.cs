@@ -65,9 +65,7 @@ internal sealed partial class SetupFlow
         $"The server at {baseUrl} is gatto's own, it is serving {model}, which is the road option 1 "
         + "on the engine screen takes.";
 
-    //the typed door for a server not on a port gatto reaches. it is also why the retry state offers one option instead of two
-
-    //a property rather than a const, a const can't read the chosen glyph set
+    //the typed door for a server not on a port gatto reaches. it is also why the retry state offers one option instead of two. a property rather than a const, a const can't read the chosen glyph set
     private string ServerDoorPlaceholder =>
         $"type the server's address{Glyphs.Ellipsis} e.g. http://127.0.0.1:8080";
 
@@ -284,9 +282,7 @@ internal sealed partial class SetupFlow
             : "That needs to be a whole number of tokens, like 4096";
     }
 
-    //the connect path ends with one endpoint whose context is known.
-
-    //the connect flow's completion. the endpoint and a model must both be set here, or the next launch throws
+    //the connect flow's completion, where the path ends with one endpoint whose context is known. the endpoint and a model must both be set here, or the next launch throws
     private SetupScreen Complete(string baseUrl, int context)
     {
         _connectBaseUrl = baseUrl;
@@ -424,9 +420,7 @@ internal sealed partial class SetupFlow
         offer.Pick.CudartZipName,
         offer.Assets?.Companion is { } c ? SizeWords.Auto(c.Size) : null);
 
-    //the one typed-row placeholder for every engine screen that takes a path, so the door reads the same everywhere.
-
-    //take the glyph set as an argument rather than a const, tests must name the vocabulary they assert
+    //the one typed-row placeholder for every engine screen that takes a path, so the door reads the same everywhere. take the glyph set as an argument rather than a const, tests must name the vocabulary they assert
     internal static string LlamaDoorPlaceholderOf(Gatto.Terminal.GlyphSet g) =>
         $"type the path to llama-server.exe{g.Ellipsis}";
 
@@ -750,8 +744,6 @@ internal sealed partial class SetupFlow
 
     private SetupScreen AnswerFetched(string optionKey) =>
         optionKey == FetchedNext ? Discover(extraRoot: null) : Leave();
-
-    //name the one asset this machine wants, companion included as the same unit, choosing among thirteen needs facts a user cannot know
 
     //the screen for a machine gatto cannot read, it states no build and offers no fetch (gatto must not guess a build it cannot price)
     private SetupScreen Steer() =>

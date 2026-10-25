@@ -35,9 +35,7 @@ public class WelcomeFitsTests
     private static bool Blank(IReadOnlyList<string> frame, int i) =>
         i >= 0 && i < frame.Count && frame[i].Trim().Length == 0;
 
-    //the ladder's promise
-
-    //at 30 rows the welcome fits with the hint line still on it, at every ladder width
+    //the ladder's promise, at 30 rows the welcome fits with the hint line still on it, at every ladder width
     [Theory]
     [InlineData(52)]
     [InlineData(72)]

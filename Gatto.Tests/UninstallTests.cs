@@ -390,9 +390,7 @@ public class UninstallTests
     private static string Fetched(string home) =>
         Path.Combine(home, "llama", "b10076", "llama-server.exe");
 
-    //an engine under the home's llama folder is gatto's, so the row names it fetched by gatto and its mark follows the home
-
-    //the mark is internal, so the theory takes a bool and spells the expectation from the argument
+    //an engine under the home's llama folder is gatto's, so the row names it fetched by gatto and its mark follows the home. the mark is internal, so the theory takes a bool and spells the expectation from the argument
     [Theory]
     [InlineData(true)]
     [InlineData(false)]

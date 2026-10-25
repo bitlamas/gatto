@@ -84,8 +84,6 @@ internal sealed class LiveSetupProbes(string homePath, Gatto.Terminal.GlyphSet g
     //the server this wizard started and therefore must stop, a server that was already running belongs to somebody else
     private Gatto.Roles.Serve.ServeManager? _started;
 
-    //one server lives from here to Dispose, shared by the audition and prove-it. the return is null while serving, or a short reason the caller must use
-
     //the one read of the serving fact, and an unreadable machine answers Idle rather than throwing
     private Gatto.Roles.Serve.ServingState Serving(string modelId)
     {
@@ -145,8 +143,6 @@ internal sealed class LiveSetupProbes(string homePath, Gatto.Terminal.GlyphSet g
         }
     }
 
-    //the wizard's live screen through the model load, prove-it passes null because it reports its own arrival
-
     //maps the runner's stumble for the screen, and the log path comes from ServeManager rather than being spelled here
     internal static CheckStumble StumbleFrom(
         Gatto.Roles.Audition.AuditionRunner.AuditionStumbleException ex, string homePath) =>
@@ -178,8 +174,9 @@ internal sealed class LiveSetupProbes(string homePath, Gatto.Terminal.GlyphSet g
         catch (Exception) { return null; }
     }
 
+    //one server lives from here to Dispose, shared by the audition and prove-it. the return is null while serving, or a short reason the caller must use
     private string? EnsureServer(string modelId,
-        IProgress<Gatto.Roles.Audition.AuditionProgress>? progress = null)
+        IProgress<Gatto.Roles.Audition.AuditionProgress>? progress = null)   //the wizard's live screen through the model load, prove-it passes null because it reports its own arrival
     {
         if (_started is not null) return null;                  //ours already and still running, so nothing to start
         if (_startFailure is not null) return _startFailure;    //the first failure comes back, there is no second attempt
@@ -336,9 +333,6 @@ internal sealed class LiveSetupProbes(string homePath, Gatto.Terminal.GlyphSet g
 
     //the id of the server ReleaseHeldServer stopped, cleared by the restore so a second Dispose can't start it twice
     private string? _released;
-    //the probe is bounded, a wizard that hangs on a wedged WMI is worse than one that says it couldn't tell
-
-    //not implemented yet, the rows fall back to the processor and the graphics chip until a read ignores a departed card's leftover DriverDesc
 
     //the two names cleaned for the screen, read off the same run as Hardware so name and memory figure can't disagree
     public HardwareNames HardwareNames() => HardwareNaming.Clean(Reading().CpuName, Reading().GpuName);
@@ -357,7 +351,7 @@ internal sealed class LiveSetupProbes(string homePath, Gatto.Terminal.GlyphSet g
 
     private readonly object _readingGate = new();
 
-    //15 seconds max, about fifty times the 300 ms the vulkan loader measured on this machine, so a cold driver has room
+    //15 seconds max, about fifty times the 300 ms the vulkan loader measured on this machine, so a cold driver has room. a wizard that hangs on a wedged WMI is worse than one that says it couldn't tell
     private static ProbeOutcome Read()
     {
         try { return HardwareProbe.Run(TimeSpan.FromSeconds(15)); }
@@ -365,8 +359,6 @@ internal sealed class LiveSetupProbes(string homePath, Gatto.Terminal.GlyphSet g
     }
 
     private ProbeOutcome? _reading;
-
-    //the configured llama-server only when the file is on disk, a configured path to a deleted file is not satisfied
 
     //hands EngineSearch the machine's real roots, and the drive root comes from SystemDirectory so Windows on another letter still sweeps
     public IReadOnlyList<Gatto.Roles.Serve.FoundEngine> EngineSweep() =>
@@ -378,6 +370,7 @@ internal sealed class LiveSetupProbes(string homePath, Gatto.Terminal.GlyphSet g
             //the sweep must include the engine this home already names, or a configured engine reads as missing
             LlamaServerPath());
 
+    //the configured llama-server only when the file is on disk, a configured path to a deleted file is not satisfied
     public string? LlamaServerPath()
     {
         try
@@ -540,8 +533,6 @@ internal sealed class LiveSetupProbes(string homePath, Gatto.Terminal.GlyphSet g
         return roots;
     }
 
-    //empty is a legitimate answer, and an unreadable hardware probe returns nothing rather than pricing an invented machine
-
     //the tree memo lives on the session object, a memo inside one HubClient would forget on every chip switch. its header reads also go to disk under the home
     private readonly HubTreeMemo _trees = new(new HubReadStore(homePath));
 
@@ -570,6 +561,7 @@ internal sealed class LiveSetupProbes(string homePath, Gatto.Terminal.GlyphSet g
     //the shelf of original models, or a typed search, under the same deadline as every search. a surprise is an empty shelf with no cause
     public ShelfOutcome SearchModels(ModelSearchRequest request, IProgress<SearchProgress>? progress, CancellationToken ct)
     {
+        //empty is a legitimate answer, and an unreadable hardware probe returns nothing rather than pricing an invented machine
         var empty = new ShelfOutcome([], 0, 0, 0, false, 0, [], null);
         if (Hardware() is not { } snapshot) return empty;
         var hw = Gatto.Core.Hardware.HardwareClassifier.Classify(snapshot);
@@ -621,8 +613,6 @@ internal sealed class LiveSetupProbes(string homePath, Gatto.Terminal.GlyphSet g
         }
         catch (Exception) { return new TypedIdOutcome.Unreachable(false); }
     }
-
-    //a GattoConfigException is the harness failing, so report CouldNotRun and no verdict about the model
 
     //the look-up forwards to the one map the other call sites read, so modeled means one thing here
     public string? ExistingModelFor(string ggufPath) =>
@@ -753,13 +743,11 @@ internal sealed class LiveSetupProbes(string homePath, Gatto.Terminal.GlyphSet g
     {
         try
         {
-            //no preamble note here, the face prints notes after the wait they would announce
-
             //decided before any spawn, only this arm may name a cause (a file shorter than its furthest tensor's end can't be complete)
             if (FiledIncomplete(modelId) is { } filed)
                 return new AuditionCheck(AuditionOutcome.CouldNotRun, Stumble: filed);
 
-            //pass the sink in, this call is where the wait happens, and return the server's own reason as the stumble
+            //pass the sink in, this call is where the wait happens, and return the server's own reason as the stumble. no preamble note goes before it, the face prints notes after the wait they would announce
             if (EnsureServer(modelId, progress) is { } why)   //one server for the whole post-write phase, the runner reuses it and leaves it up for prove-it
                 return new AuditionCheck(AuditionOutcome.CouldNotRun,   //don't run the battery, the runner would fail the same way and print the same log again
                     Stumble: new CheckStumble.Unavailable(why));
@@ -844,6 +832,7 @@ internal sealed class LiveSetupProbes(string homePath, Gatto.Terminal.GlyphSet g
         public void Report((long Done, long Total) value) => onReport(value);
     }
 
+    //name the one asset this machine wants, companion included as the same unit, choosing among thirteen needs facts a user cannot know
     public Gatto.Roles.Serve.LlamaAsset? ChooseLlamaAsset()
     {
         if (Hardware() is not { } snapshot) return null;
@@ -1066,9 +1055,7 @@ internal sealed class LiveSetupProbes(string homePath, Gatto.Terminal.GlyphSet g
         finally { Gatto.Cli.Update.UpdateDownload.Sweep(homePath); }
     }
 
-    //bounded at 10 s, a binary that never answers must not hang the wizard
-
-    //resolve the path first, a folder is a legal answer, and report the path that was actually run
+    //resolve the path first, a folder is a legal answer, and report the path that was actually run. bounded at 10 s, a binary that never answers must not hang the wizard
     public Gatto.Core.Acquire.ProbeResult VerifyLlamaServer(string exePath)
     {
         var resolved = LlamaAssetSteering.ResolveServerExe(exePath);
@@ -1231,13 +1218,10 @@ internal sealed class LiveSetupProbes(string homePath, Gatto.Terminal.GlyphSet g
         return splits.OrderByDescending(s => s.Layers).ThenByDescending(s => s.Rung).First().Rung;
     }
 
-    //a generous deadline, a cold 30 GB load is the normal case here and minutes of silence are expected
-
-    //the id comes in as an argument rather than from default_model, so this proves what the run just built
-
     //the file the user opens afterwards, composed like every other home path here so it can't name a file the writer didn't write
     public string ConfigPath() => System.IO.Path.Combine(homePath, "gatto.json");
 
+    //the id comes in as an argument rather than from default_model, so this proves what the run just built
     public ProveOutcome ProveIt(string? modelId,
         IProgress<Gatto.Roles.Audition.AuditionProgress>? progress = null)
     {
@@ -1268,6 +1252,7 @@ internal sealed class LiveSetupProbes(string homePath, Gatto.Terminal.GlyphSet g
             if (baseUrl is null) return new ProveOutcome(false, "no endpoint is configured to talk to", TimeSpan.Zero);
 
             using var http = new HttpClient { Timeout = Timeout.InfiniteTimeSpan };
+            //a generous deadline, a cold 30 GB load is the normal case here and minutes of silence are expected
             using var cts = new CancellationTokenSource(TimeSpan.FromMinutes(6));
             var client = new Gatto.Core.Client.OpenAiCompatClient(
                 //this slot takes the endpoint name, the model reaches the wire through the ChatRequest

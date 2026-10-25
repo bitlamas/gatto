@@ -130,7 +130,6 @@ public sealed class Doctor(
     private string Paint(string s, RgbColor color) => theme is null ? s : theme.Paint(s, color);
 
     //1. server reachable
-
     private async Task<CheckResult> CheckServerAsync(
         GattoConfig? config, IReadOnlyDictionary<string, (Model? Model, string? Error)> loadedModels, Gatto.Terminal.GlyphSet g, CancellationToken ct)
     {
@@ -186,7 +185,6 @@ public sealed class Doctor(
     }
 
     //1b. every non-local endpoint with a base_url answers /v1/models
-
     private async Task<CheckResult> CheckEndpointReachableAsync(
         string name, Gatto.Core.Client.EndpointConfig ep, Gatto.Terminal.GlyphSet g, CancellationToken ct)
     {
@@ -223,10 +221,7 @@ public sealed class Doctor(
         }
     }
 
-
-    //info: the model file lives in Downloads
-
-    //the folder and the containment rule come from ModelLocation, which the wizard's move offer asks too
+    //info: the model file lives in Downloads. the folder and the containment rule come from ModelLocation, which the wizard's move offer asks too
     private static CheckResult? CheckDownloadsLocation(
         IReadOnlyDictionary<string, (Model? Model, string? Error)> loadedModels, Gatto.Terminal.GlyphSet g)
     {
@@ -238,8 +233,6 @@ public sealed class Doctor(
                     "consider moving it and updating the model's files", Info: true);
         return null;
     }
-
-    //info: auto-compaction vetoed by a project file
 
     //names the project file that turned auto-compaction off, and stays silent when gatto.json did it. it resolves through EffectiveAutoCompact, the Repl's own call
     private static CheckResult? CheckAutoCompactVeto(string cwd, GattoConfig? config, Gatto.Terminal.GlyphSet g)
@@ -260,7 +253,6 @@ public sealed class Doctor(
     }
 
     //info: a gatto-managed server is running
-
     private CheckResult? CheckRunningServer(
         IReadOnlyDictionary<string, (Model? Model, string? Error)> loadedModels, Gatto.Terminal.GlyphSet g)
     {
@@ -276,7 +268,6 @@ public sealed class Doctor(
     }
 
     //info: two roles target different gatto-managed servers. delete this line when several servers are supported, a stopgap built from what doctor already has
-
     private static CheckResult? CheckSingleServerConsistency(
         string rolesDir, GattoConfig? config,
         IReadOnlyDictionary<string, (Model? Model, string? Error)> loadedModels, Gatto.Terminal.GlyphSet g)
@@ -306,14 +297,12 @@ public sealed class Doctor(
     }
 
     //2. gatto.json parses and has no unknown keys
-
     private static CheckResult CheckConfig(GattoConfig? config, string? error, string configPath, Gatto.Terminal.GlyphSet g) =>
         config is not null
             ? new CheckResult(true, $"gatto.json parses ({configPath})")
             : new CheckResult(false, $"gatto.json: {error} {g.Dot} fix: edit {configPath}, then run: gatto doctor");
 
     //3. models consistent
-
     private static CheckResult CheckModels(
         string modelsDir, string weightsRoot, IReadOnlyList<string> modelIds,
         IReadOnlyDictionary<string, (Model? Model, string? Error)> loadedModels, GattoConfig? config, Gatto.Terminal.GlyphSet g)
@@ -361,7 +350,6 @@ public sealed class Doctor(
     }
 
     //4. roles parse and validate
-
     private static CheckResult CheckRoles(string rolesDir, GattoConfig? config, Gatto.Terminal.GlyphSet g)
     {
         var names = RoleFile.ListNames(rolesDir);
@@ -435,7 +423,6 @@ public sealed class Doctor(
         (Math.Floor(ratio * 10) / 10).ToString("F1", CultureInfo.InvariantCulture);
 
     //extensions compile
-
     private static CheckResult CheckExtensions(string home, string extensionsDir, Gatto.Terminal.GlyphSet g,
         IReadOnlySet<string>? shippedHistorical)
     {
@@ -470,7 +457,6 @@ public sealed class Doctor(
     }
 
     //5. llama_server is set and exists (skipped with no local model configured)
-
     private CheckResult CheckLlamaServer(GattoConfig? config, IReadOnlyList<string> modelIds, Gatto.Terminal.GlyphSet g)
     {
         if (modelIds.Count == 0)
@@ -517,7 +503,6 @@ public sealed class Doctor(
     }
 
     //6. this folder's grants in the home parse
-
     private static CheckResult CheckPermissions(string home, string cwd, Gatto.Terminal.GlyphSet g)
     {
         var path = PermissionStore.PathFor(home, cwd);
@@ -531,9 +516,7 @@ public sealed class Doctor(
             : new CheckResult(false, $"{warning} {g.Dot} fix or delete {path}, then run: gatto doctor");
     }
 
-    //7. context files: the effective collected set
-
-    //the files actually loaded for this folder, through the same Collect call the launch makes. paths in load order, the nearest last
+    //7. context files: the files actually loaded for this folder, through the same Collect call the launch makes. paths in load order, the nearest last
     private static CheckResult CheckContextFiles(string home, string cwd, GattoConfig? config,
         Gatto.Terminal.GlyphSet g)
     {
@@ -621,9 +604,7 @@ public sealed class Doctor(
         } + ancestors;
     }
 
-    //8. project memory: the effective state and what decided it
-
-    //whether memory is on for this folder and which file turned it off, resolved through the same EffectiveMemoryEnabled call the launch makes
+    //8. project memory: whether memory is on for this folder and which file turned it off, resolved through the same EffectiveMemoryEnabled call the launch makes
     private static CheckResult CheckMemory(string cwd, GattoConfig? config, Gatto.Terminal.GlyphSet g)
     {
         if (config is null)
@@ -677,7 +658,6 @@ public sealed class Doctor(
         string.Equals(Path.GetFullPath(a), Path.GetFullPath(b), StringComparison.OrdinalIgnoreCase);
 
     //per-directory context_files.compat overrides from .gatto.json
-
     private static CheckResult CheckProjectFiles(string cwd, Gatto.Terminal.GlyphSet g)
     {
         var found = new List<string>();      //present and readable (with or without an actual ruling)

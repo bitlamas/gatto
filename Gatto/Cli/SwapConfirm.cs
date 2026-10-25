@@ -3,23 +3,16 @@ using Gatto.Roles.Models;
 
 namespace Gatto.Cli;
 
-//the confirm screen for a model swap that restarts the server, so the user chooses the re-prefill before it starts. the consent facts are on this screen too
+//the confirm screen for a model swap that restarts the server, so the user chooses the re-prefill before it starts. the consent facts are on this screen too, and whether it is shown is ServeManager.Serving's answer
 internal static class SwapConfirm
 {
     public const string Go = "go";
-
-    //the incoming model's auto_serve. null means this screen shows the concrete ask too, and answering it is the consent for this swap
-
-    //this screen composes and does not decide whether it is shown: whether the server must change is ServeManager.Serving's answer
-
-    //the model the running server actually holds, from serve.json. this is what gets unloaded, so it is what the screen names
-
-    //asked only when this model is the one the server holds. the switch restarts the server and the conversation is read again, so the screen owes that cost
 
     //the one home for the question. two surfaces ask it, the in-session confirm and the wizard's done step, and two spellings would drift by a word
     public static string QuantQuestion(string modelId, string quant) =>
         $"Run {modelId} on {quant} from now on?";
 
+    //asked only when this model is the one the server holds. the switch restarts the server and the conversation is read again, so the screen owes that cost
     public static WizardAsk QuantSwitch(string modelId, string quant, string servingQuant) =>
         new(
             QuantQuestion(modelId, quant),
@@ -78,7 +71,7 @@ internal static class SwapConfirm
         ];
 
     //the prompter form and the wizard's done step are one composition, so this delegates. the concrete block is gone, since absent now means yes and nothing asks
-    public static WizardAsk Compose(Model outgoing, Model incoming, string servingModelId) =>
+    public static WizardAsk Compose(Model outgoing, Model incoming, string servingModelId) =>   //the serving id is the model the running server actually holds, from serve.json. it is what gets unloaded, so it is what the screen names
         InSessionDone(outgoing.Id, incoming.Id, servingModelId);
 
     //the ask only, because the done step already drew the model's file, size and config path. the swap itself stays with GattoApp

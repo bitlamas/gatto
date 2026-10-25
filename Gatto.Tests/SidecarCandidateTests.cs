@@ -22,7 +22,6 @@ public class SidecarCandidateTests
     ];
 
     //the product-level oracle: what the user is offered
-
     [Theory]
     [InlineData(6_000_000_000UL,  "6 GB discrete")]
     [InlineData(8_000_000_000UL,  "8 GB discrete")]

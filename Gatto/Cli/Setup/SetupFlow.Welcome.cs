@@ -6,9 +6,7 @@ namespace Gatto.Cli.Setup;
 //the welcome, machine and install screens, the first segment of the setup
 internal sealed partial class SetupFlow
 {
-    //the welcome screen draws the flow as a map (a step counter can't be right when the flow forks)
-
-    //keep the copy from the generator, a paraphrase reads well but is wrong about the screen
+    //the welcome screen draws the flow as a map (a step counter can't be right when the flow forks). keep the copy from the generator, a paraphrase reads well but is wrong about the screen
     private SetupScreen Welcome()
     {
         var engineInstalled = probes.LlamaServerPath() is { Length: > 0 };

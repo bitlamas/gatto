@@ -1014,8 +1014,6 @@ public class DoctorTests : IDisposable
             "the home layer prints first, in load order");
     }
 
-    //an assertion against wording no code path can emit can never fail, so it guards nothing
-
     [Fact]
     public async Task Check7_HomeAncestorOfCwd_IsCountedOnceNotTwice()
     {

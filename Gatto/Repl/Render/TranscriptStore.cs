@@ -134,7 +134,6 @@ public static class TranscriptStore
     }
 
     //event records as json
-
     private static string EventJson(EventItem ev)
     {
         using var ms = new System.IO.MemoryStream();

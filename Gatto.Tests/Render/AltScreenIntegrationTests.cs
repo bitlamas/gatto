@@ -233,7 +233,6 @@ public sealed class AltScreenIntegrationTests
         r.OnReasoningDelta("brief thought\n");                 //the reasoning delta commits and the block collapses.
         r.OnTextDelta("I'm doing well, thanks for asking");    //the reasoning closes, and the partial answer line streams as the chrome tail.
         //the turn stays open on purpose, so the check sees the live mid-answer state.
-
         var rows = s.Viewport.ToArray();
         var chipIdx = System.Array.FindIndex(rows, row => row.Contains("thought for"));
         var tailIdx = System.Array.FindIndex(rows, row => row.Contains("I'm doing well"));

@@ -651,7 +651,6 @@ public class ModelTests : IDisposable
     {
         WriteProfile("p", """{ "files": [{ "path": "m.gguf", "active": true }], "port": 1234, "context": 4096 }""");
         //repair.json and scorecard.json are optional, loading must not throw when they are missing
-
         var model = Model.Load(_modelsDir, "p");
 
         Assert.Null(model.Repair);
@@ -910,6 +909,7 @@ public class ModelTests : IDisposable
         new ModelProfile([new ModelFile(modelPath, null, true)], 1235, 4096, null, null, null, null, null, Array.Empty<string>()),
         null, null);
 
+    //auto_serve is a tri-state, false is the veto, and nothing writes it on the user's behalf
     [Fact]
     public void AutoServe_IS_TRISTATE_and_absent_means_never_asked()
     {
@@ -936,9 +936,4 @@ public class ModelTests : IDisposable
         Assert.Contains("auto_serve", ex.Message, StringComparison.Ordinal);
         Assert.Contains("true or false", ex.Message, StringComparison.Ordinal);
     }
-
-
-
-    //auto_serve is a tri-state, false is the veto, and nothing writes it on the user's behalf
-
 }

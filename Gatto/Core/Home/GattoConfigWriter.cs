@@ -17,7 +17,6 @@ public static class GattoConfigWriter
         //emit non-ASCII literally, since the default encoder escapes CJK paths into sequences the user has to read by hand
         Encoder = JavaScriptEncoder.Create(UnicodeRanges.All),
     };
-    //parse the file, set one key and write it back, so keys this writer doesn't own survive untouched
 
     //the llama server path, written from the local path only, since an endpoint says where to talk rather than which binary serves it
     public static void SetLlamaServer(string homePath, string exePath) =>
@@ -115,7 +114,7 @@ public static class GattoConfigWriter
         Mutate(homePath, root => root[key] = value, $"cannot record consent for '{key}'");
     }
 
-    //read, edit and write the config back atomically, preserving the target's ACL
+    //read, edit and write the config back atomically, preserving the target's ACL. one key is set, so keys this writer doesn't own survive untouched
     private static void Mutate(string homePath, Action<JsonObject> edit, string cannotDoWhat)
     {
         var path = Path.Combine(homePath, "gatto.json");

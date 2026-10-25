@@ -203,9 +203,7 @@ public class InstallOnDoneTests
         Assert.Contains("installed, any terminal finds it", row, StringComparison.Ordinal);
     }
 
-    //the DoneStep seam has three call sites, and each one is named here
-
-    //site C is AnswerProve, the ordinary success, already driven by the state frames above, so it needs no test of its own
+    //the DoneStep seam has three call sites, and each one is named here. site C is AnswerProve, the ordinary success, already driven by the state frames above, so it needs no test of its own
 
     //site A of 3, the held arm, where another model holds the server and the flow still owes the user the done step
     [Fact]

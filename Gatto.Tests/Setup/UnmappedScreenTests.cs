@@ -1,5 +1,3 @@
-    //the census keeps a row for every constructed screen, and a key written into _emitted with nothing draining it fails NO_SCREEN_IS_NARRATION_ONLY_ANY_MORE
-
 using Gatto.Cli.Setup;
 using Gatto.Core.Acquire;
 using Gatto.Core.Hardware;
@@ -95,8 +93,6 @@ public class UnmappedScreenTests : IDisposable
         return dst;
     }
 
-    //narration and the face
-
     //narration now reaches the face, and the model.chosen confirmation is gone from the flow entirely
     [Fact]
     public void NARRATION_NOW_REACHES_THE_FACE_AND_model_chosen_IS_GONE()
@@ -113,11 +109,6 @@ public class UnmappedScreenTests : IDisposable
         Assert.DoesNotContain("model.chosen", face.Keys);
         //this run finds a model already, so none of the five survivors fires here and the kept-rows claim sits in SetupRunnerWalkTests
     }
-
-    //the four that were only missing a guard
-
-
-
 
     [Fact]
     public void A_FAILED_WRITE_SAYS_WHAT_FAILED_and_stops()

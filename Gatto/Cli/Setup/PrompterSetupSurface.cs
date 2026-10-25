@@ -111,12 +111,10 @@ internal sealed class PrompterSetupSurface(
         }
     }
 
-    //leave these rows unpainted, a caller-painted line could meet a second sanitize on the commit sink
-
     //drop empty rows at this face, a blank line is a record here that renders as a bare gutter mark
     public void Show(SetupScreen.Info i) => WriteRows(i.Rows);
 
-    //the one writer for transcript rows on this face, the waiting screen goes through it too
+    //the one writer for transcript rows on this face, the waiting screen goes through it too. leave these rows unpainted, a caller-painted line could meet a second sanitize on the commit sink
     private void WriteRows(IReadOnlyList<SetupRow>? rows)
     {
         foreach (var row in (rows ?? []).Where(r => !string.IsNullOrWhiteSpace(r.Text)))

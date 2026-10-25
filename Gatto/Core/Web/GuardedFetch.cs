@@ -73,13 +73,12 @@ public sealed class GuardedFetch
         },
     };
 
-    //resolve the host and require every address to clear UrlGuard, with a literal IP skipping DNS. internal so a test can drive this path without a socket
-
     //resolve for an allowed host:port without the blocked-range check, a literal IP still skips DNS
     private static async Task<IPAddress[]> ResolveUnvalidatedAsync(
         Func<string, Task<IPAddress[]>> resolver, string host) =>
         IPAddress.TryParse(host, out var literal) ? new[] { literal } : await resolver(host);
 
+    //resolve the host and require every address to clear UrlGuard, with a literal IP skipping DNS. internal so a test can drive this path without a socket
     internal static async Task<IPAddress[]> ResolveValidatedAsync(
         Func<string, Task<IPAddress[]>> resolver, string host)
     {

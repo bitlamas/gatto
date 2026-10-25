@@ -87,8 +87,6 @@ public class InSessionDownloadTests
         Assert.Equal(DrawnSetupKeys(width),
             PaintedKeys(ModelFetchTests.FetchingScreen(inSession: true), width));
 
-    //the fits sweep is retired, no option sets Short any more so both WatchKeys calls compose the same row
-
     //the title belongs to the road, each expected spelling read off that road's drawn frame (swapping the arms reddens both rows)
     [Theory]
     [InlineData(false, "s6-fetching-100.txt")]

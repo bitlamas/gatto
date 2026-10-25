@@ -7,14 +7,12 @@ namespace Gatto.Cli.Install;
 //gatto uninstall: the consent, the removal, and the helper that clears the install folder once gatto has exited
 internal static class UninstallCommand
 {
-
-    //interactive only, it refuses without a terminal. nothing is removed until the map and the PATH entry are in place, so gatto can always say what it did
-
     //the context, the read-only site and the irreversible acts are three records. the deeds stay out of the rendering record, or a reader takes it for output only
     internal static int RunUninstall(
         CommandContext? context = null, UninstallSite? site = null, UninstallActs? acts = null)
     {
         var ctx = context ?? CommandContext.Production();
+        //interactive only, it refuses without a terminal
         if (!ctx.Interactive)
         {
             Console.Error.WriteLine(
@@ -83,6 +81,7 @@ internal static class UninstallCommand
             consent.Value.StopServer ? running : null,
             otherWeightFiles: Uninstall.HasUnnamedWeights(home, models));
         cli.Blank();
+        //nothing is removed until the map and the PATH entry are in place, so gatto can always say what it did
         UninstallConsent.WriteMap(cli, map);
 
         //the sibling notice goes before the confirm, since it changes what a yes achieves. it stays outside the map, whose rows are all the confirm covers

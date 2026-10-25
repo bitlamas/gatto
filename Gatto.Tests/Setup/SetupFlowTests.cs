@@ -777,8 +777,6 @@ public class SetupFlowTests
         Assert.Equal("gatto is set up.", prove.Question);
     }
 
-    //the passing branch needs no third test, since the completion screen already covers the non-failed paths
-
     //a passed audition keeps its sentence, since the guard above would pass on a screen that says it to nobody
     [Fact]
     public void A_PASSED_AUDITION_STILL_SAYS_THE_MODEL_ANSWERS_PROPERLY()

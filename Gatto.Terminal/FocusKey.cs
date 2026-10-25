@@ -8,11 +8,7 @@ public static class FocusKeys
     //the toggle key name, in one place so the footer hint and /help never drift from the keymap
     public const string ToggleKeyName = "Ctrl+R";
 
-    //the focus-move key name, in one place so the hint and /help's table name the same two keys
-
-    //a method, because a const cannot read the glyph set the two readers hold
-
-    //the name comes from the glyph set, so the ASCII set spells it Ctrl+Up/Down and the Unicode set shows the arrows
+    //the focus-move key name, in one place so the hint and /help's table name the same two keys. a method, since the ASCII set spells it Ctrl+Up/Down and the Unicode set shows the arrows
     public static string MoveKeyNameOf(GlyphSet g) => $"Ctrl+{g.UpKey}/{g.DownKey}";
 
     //the footer hint, from the one keymap so a change never leaves it out of step with /help. a method, because a const cannot read the glyph set

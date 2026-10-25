@@ -41,8 +41,7 @@ public class ContextFilesTests : IDisposable
         var c = Dir("a", "b", "c");
         Directory.CreateDirectory(c);
         var gattoPath = Path.Combine(c, "GATTO.md");
-        Write(gattoPath, "only c has one");
-        //the middle directories deliberately hold no context file.
+        Write(gattoPath, "only c has one");   //the middle directories deliberately hold no context file.
 
         var result = ContextFiles.Collect(c, compat: false, homeGattoMdPath: null);
 
@@ -211,7 +210,6 @@ public class ContextFilesTests : IDisposable
 
         using var handle = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.None);
         //a locked file must be skipped, and its sharing-violation IOException must not escape
-
         var result = ContextFiles.Collect(c, compat: false, homeGattoMdPath: null);
 
         Assert.DoesNotContain(result, e => e.Path == path);
@@ -315,7 +313,6 @@ public class ContextFilesTests : IDisposable
 
         using var handle = new FileStream(gattoJsonPath, FileMode.Open, FileAccess.Read, FileShare.None);
         //a locked .gatto.json reads as absent, so the compat passed in still governs instead of throwing
-
         var result = ContextFiles.Collect(proj, compat: false, homeGattoMdPath: null);
 
         Assert.DoesNotContain(result, e => e.Path == Path.Combine(proj, "CLAUDE.md"));

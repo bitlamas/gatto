@@ -4,8 +4,6 @@ namespace Gatto.Cli.Setup;
 //the audition offer and the in-session check, from the load ask through the run to its verdict
 internal sealed partial class SetupFlow
 {
-    //the audition offer
-
     //one header for the whole step, two screens spelling it separately is how a step asks two questions
     private const string CheckTitle = "Can it run commands and edit files?";
 
@@ -75,8 +73,6 @@ internal sealed partial class SetupFlow
         //the add road never draws the summary (its first option starts gatto)
         return !_addRoad && _summaryOutcome is { } done ? SummaryScreen(done) : TerminalScreen();
     }
-
-    //don't name a screen option back, Answer intercepts that key before the screen dispatch
 
     //yes releases the held server, it is the ask's own promise. no must not touch the server, its sentence says nothing changes
     private SetupScreen AnswerInSessionCheck(string key)

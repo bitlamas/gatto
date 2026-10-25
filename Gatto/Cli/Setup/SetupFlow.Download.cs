@@ -6,8 +6,6 @@ namespace Gatto.Cli.Setup;
 //the watch and the download, the landed path, a wrong file and a partial set
 internal sealed partial class SetupFlow
 {
-    //after the pick: the download, and the watch
-
     //every pick ends on a screen that waits, an Info with nothing after it ends the run
     private SetupScreen PickedFromHub(ModelRow row)
     {

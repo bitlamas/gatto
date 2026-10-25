@@ -137,8 +137,6 @@ internal static class SetupRows
         return lines;
     }
 
-    //the same rows as plain strings, so ScreenPainter clamps them by visible cell rather than by escape byte
-
     //the same rows holding their tone, with the lead folded into the text, since plain strings leave the face nothing to paint from
     public static IEnumerable<SetupRow> Toned(IReadOnlyList<SetupRow>? rows, int width, int margin = 0,
         Gatto.Terminal.GlyphSet? glyphs = null) =>
@@ -155,7 +153,7 @@ internal static class SetupRows
             });
         });
 
-    //the default frameGutter is the frame's two spaces, and the record printed to scrollback passes none, since its body sits at column zero
+    //the same rows as plain strings, so ScreenPainter clamps them by visible cell rather than by escape byte. the default frameGutter is the frame's two spaces, and the record printed to scrollback passes none, since its body sits at column zero
     public static IEnumerable<string> Plain(IReadOnlyList<SetupRow>? rows, int width,
         Gatto.Terminal.GlyphSet glyphs, int margin = 0, string frameGutter = Gutter) =>
         (rows ?? []).SelectMany(r => Wrap(r, width, margin, glyphs, frameGutter)

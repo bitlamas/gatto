@@ -125,9 +125,7 @@ public static class ArgRouter
                     $"unknown serve subcommand '{sub}'. Valid: {string.Join(", ", ServeSubcommands)}");
         }
 
-        //model takes new as its one subcommand, and RunModelAsync refuses a target or any other subcommand
-
-        //audition reads its first bare token as the target rather than a subcommand, so shift it out of sub here
+        //model takes new as its one subcommand, and RunModelAsync refuses a target or any other subcommand. audition reads its first bare token as the target rather than a subcommand, so shift it out of sub here
         if (command == "audition") { target = sub; sub = null; }
 
         return new ParsedArgs(command, role, null, null, false, false, sub, target, Detach: detach, Json: json);

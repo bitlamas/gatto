@@ -189,8 +189,6 @@ public class HaveMarksTests
         Assert.Contains(local.Shelf!.Facts!, f => f.Have == HaveMark.Loaded);
     }
 
-    //fixtures
-
     //the model's id is set on the facts on both shelves, since the render tests build their own facts and would pass without it
     [Fact]
     public void THE_MODELS_ID_RIDES_THE_FACTS_ON_BOTH_SHELVES_NOT_ONLY_THE_MARK()
@@ -253,6 +251,8 @@ public class HaveMarksTests
         Assert.Equal(HaveMark.None, facts.Have);
         Assert.Null(facts.HaveId);
     }
+
+    //fixtures
 
     //the Hub shelf the flow opens on, asserting the shelf it reached so a helper cannot drive the wrong screen
     private static ShelfView HubShelfOf(FakeSetupProbes probes)

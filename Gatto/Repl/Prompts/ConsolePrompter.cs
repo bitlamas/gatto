@@ -6,9 +6,7 @@ namespace Gatto.Repl.Prompts;
 //the pure parts of the ask_user picker for both prompters, display text is sanitised here and the picks come back raw
 internal static class PrompterCore
 {
-    //a free-text menu entry the prompter adds itself, kept out of the option list so TryParsePicks never sees it
-
-    //a function of the glyph set, a const can't read one, and the pick is matched by number so the text has no identity
+    //a free-text menu entry the prompter adds itself, kept out of the option list so TryParsePicks never sees it. a function of the glyph set, a const can't read one, and the pick is matched by number so the text has no identity
     public static string FreeTextLabelOf(GlyphSet g) => $"Type my own answer{g.Ellipsis}";
 
     //the menu rows, a numbered line per option with its description and (Recommended) mark, then the free-text row and the hint
@@ -60,9 +58,7 @@ public sealed class ConsolePrompter(Gatto.Terminal.GlyphSet? glyphs = null)
 {
     private readonly Gatto.Terminal.GlyphSet _glyphs = glyphs ?? Gatto.Terminal.GlyphSet.Unicode;
 
-    //a numbered menu on a cooked line, a blank line leaves, an unparseable pick re-asks, and nothing throws to mean the user left
-
-    //control is always null here, this path reads cooked lines so there is no keystroke for it to be
+    //a numbered menu on a cooked line, a blank line leaves, an unparseable pick re-asks, and nothing throws to mean the user left. control is always null here, this path reads cooked lines so there is no keystroke for it to be
     public WizardAnswer? AskOne(WizardAsk ask)
     {
         Console.WriteLine();

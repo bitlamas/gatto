@@ -35,7 +35,6 @@ public sealed class TeardownTests
     }
 
     //teardown ordering: a late paint after Stop draws nothing
-
     [Fact]
     public void Teardown_stops_the_compositor_before_restoring_and_a_late_paint_is_a_no_op()
     {
@@ -61,7 +60,6 @@ public sealed class TeardownTests
     }
 
     //a degrade restores the main screen and reprints the transcript tail
-
     [Fact]
     public void A_degrade_restores_the_main_screen_and_dumps_the_transcript_tail()
     {

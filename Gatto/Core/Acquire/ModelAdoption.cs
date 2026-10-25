@@ -160,8 +160,6 @@ internal static class ModelAdoption
         return new AdoptionResult(true, Path.Combine(request.DestinationDir, Path.GetFileName(primary)), rename, null);
     }
 
-    //undo whatever landed so the world looks as it did: a rename goes back, a copy is deleted
-
     //best effort: Directory.Delete without recursion throws when the folder is not empty, so nothing here checks
     private static void TryRemoveEmptyDirectory(string dir)
     {
@@ -169,6 +167,7 @@ internal static class ModelAdoption
         catch (Exception) { } //the folder may be non-empty, gone or locked, and a rollback never throws
     }
 
+    //undo whatever landed so the world looks as it did: a rename goes back, a copy is deleted
     private static void Rollback(List<(string Source, string Dest, long Size)> landed, bool rename)
     {
         foreach (var (source, dest, _) in landed)

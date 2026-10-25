@@ -2,9 +2,7 @@ using System.Text.RegularExpressions;
 
 namespace Gatto.Cli.Update;
 
-//an ordered release version, so update tells a newer candidate from an older republished tag. v?N.N.N only, except this process's own version
-
-//vN.N.N, the leading v optional. a prerelease tail, a four-part version or build metadata is not an update
+//an ordered release version, so update tells a newer candidate from an older republished tag. vN.N.N, the leading v optional, except this process's own version. a prerelease tail, a four-part version or build metadata is not an update
 internal readonly record struct ReleaseVersion(int Major, int Minor, int Patch)
 {
     //keep [0-9] rather than \d, which in .NET matches every Unicode decimal digit. it is not the gate that rejects non-ASCII digits, so nothing pins it

@@ -375,11 +375,9 @@ public sealed class ChromePainter
         return Math.Clamp(top, 0, total - rows);
     }
 
-    //the height clamp in one place, the viewport less one row of headroom
-
     //the chat output keeps at least this many rows, and every consumer reads it through BudgetRows so they all shrink together
     private const int TranscriptMinRows = 3;
-    private static int BudgetRows(int height) => height <= 0 ? int.MaxValue : Math.Max(3, height - TranscriptMinRows);
+    private static int BudgetRows(int height) => height <= 0 ? int.MaxValue : Math.Max(3, height - TranscriptMinRows);   //the height clamp in one place
 
     //the clamp's category for the newest queued message and the blank above it, dropped last after the purr
     private const string NewestQueue = "queue-newest";
@@ -514,8 +512,6 @@ public sealed class ChromePainter
             fixedRows.Add((_theme.Paint(p, _theme.RoleTint(RoleForTint)), p, "purr", ChromeRegion.Purr, NextRow(ChromeRegion.Purr)));
         }
 
-        //the queue shows the user's own messages, and the newest are the ones that fit since the composer is below the block
-
         //the clamp is computed before the frame, since a too-tall panel can only be trimmed on the way in
         var budgetRows = BudgetRows(height);
 
@@ -567,6 +563,7 @@ public sealed class ChromePainter
 
         //with frameRows known, size the older messages from the room left. the cap and queueRoom are two ceilings, so fill the content first, then the roll-up
         var q = State.QueueTexts;
+        //the queue shows the user's own messages, and the newest are the ones that fit since the composer is below the block
         if (q.Count > 0)
         {
             var newest = QueueBlock(q[^1], width);

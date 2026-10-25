@@ -46,9 +46,7 @@ internal sealed record PanePublisher(string Org, IReadOnlyList<PaneFile> Files, 
 //one line of the publisher list: a publisher's own line when File is -1, otherwise one of the open publisher's files in size order
 internal readonly record struct PaneLine(int Publisher, int File);
 
-//what the frame knows about one model beyond the listing, as data. no field is derived here, and an absent one renders nothing
-
-//the file count and the file list stay, since a lazy producer fills them in v0.5.1
+//what the frame knows about one model beyond the listing, as data. no field is derived here, and an absent one renders nothing. the file count and the file list stay, since a lazy producer fills them in v0.5.1
 internal sealed record ModelFacts(
     string? Structure = null,
     (long Total, long Active)? Experts = null,
@@ -420,13 +418,7 @@ internal static class Pane
             : [new Run("")];
     }
 
-    //the A-number out of MoE A4B, or null. the pattern is anchored and shape-checked, so an odd structure string cannot put an unvalidated span on the screen
-
-    //an unconventional filename shows its size alone rather than a made-up token, so this follows QuantToken.Of's rule instead of copying it
-
-    //the sentence for the loaded model, whose own width is the threshold
-
-    //a method rather than a const, since the glyph comes from a set chosen at launch
+    //the sentence for the loaded model, whose own width is the threshold. a method rather than a const, since the glyph comes from a set chosen at launch
     private static string LoadedTailOf(GlyphSet g) => $" {g.Dot} the model you're on";
 
     //the have-fact with the glyph inked and the rest dim
@@ -465,11 +457,13 @@ internal static class Pane
         return Gatto.Terminal.UnicodeWidth.Of(noted) <= width ? noted : text;
     }
 
+    //an unconventional filename shows its size alone rather than a made-up token, so this follows QuantToken.Of's rule instead of copying it
     private static string LocalQuantAndSize(ModelRow r) =>
         Gatto.Core.Acquire.QuantToken.Of(SearchRow.RowFileName(r)) is { Length: > 0 } q
             ? $"{q}  {SearchRow.Gb(SearchRow.RowBytes(r))}"
             : SearchRow.Gb(SearchRow.RowBytes(r));
 
+    //the A-number out of MoE A4B, or null. the pattern is anchored and shape-checked, so an odd structure string cannot put an unvalidated span on the screen
     private static string? ActiveSize(string? structure)
     {
         if (structure is null) return null;

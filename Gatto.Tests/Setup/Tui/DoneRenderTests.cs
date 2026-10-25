@@ -12,8 +12,6 @@ namespace Gatto.Tests.Setup.Tui;
 //the done step, rendered against the s9 goldens. a golden no test renders goes stale instead of red, and this is the last page a user reads.
 public class DoneRenderTests
 {
-    //a machine at the done step with consent unanswered, since Installed silences the install question and consent is the first screen
-
     //the found-engine machine these frames draw, since the found screen shows that exe and the summary names its folder. both screens describe one machine.
     private const string Gguf = "gemma-4-26B-A4B-it-UD-Q4_K_M.gguf";
     private const string Weights = @"C:\Users\you\.gatto\weights\gemma-4-26B-A4B-it";
@@ -26,7 +24,7 @@ public class DoneRenderTests
 
     //the fixture fetches its model, since the frame says verified, and each parameter reaches one of the other frames
     internal static FakeSetupProbes Machine(bool? consent, HardwareSnapshot? snapshot = null,
-        bool fetchEngine = false, Gatto.Cli.Install.InstallState install = Gatto.Cli.Install.InstallState.Installed,
+        bool fetchEngine = false, Gatto.Cli.Install.InstallState install = Gatto.Cli.Install.InstallState.Installed,   //a machine at the done step with consent unanswered, since Installed silences the install question and consent is the first screen
         AuditionCheck? audition = null, bool block = false, string? heldBy = null,
         ProveOutcome? prove = null)
     {
@@ -487,7 +485,4 @@ public class DoneRenderTests
 
         Assert.Equal(SetupFlow.UpdateKey, ScreenKey.Of(next));
     }
-
-    //the in-session done frames are gone, their s10 mocks stay on disk as a design record. a mock a test still renders is an oracle and follows the product copy.
-
 }

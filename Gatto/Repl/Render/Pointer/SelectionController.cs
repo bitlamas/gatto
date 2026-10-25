@@ -13,8 +13,7 @@ public sealed class SelectionController
     private ChromeSpan? _chromeCurrent;
     private DragKind _chromeKind;
     private readonly Dictionary<int, string> _chromeSnapshot = new();   //row to the Visible text it had at span time
-    private int _chromeTotalRows;   //the block's row count when the span was taken
-                                     //a pure shift can leave every snapshotted row's text unchanged, so the count catches what the text compare can't
+    private int _chromeTotalRows;   //the block's row count when the span was taken. a pure shift can leave every snapshotted row's text unchanged, so the count catches what the text compare can't
 
     public SelectionController(TranscriptModel model)
     {

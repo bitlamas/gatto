@@ -354,8 +354,6 @@ public class HubSearchTests
         Assert.Equal("abc", q.Sha256);
     }
 
-    //a flat row list let nothing-fits and hub-unreachable arrive as one signal, so each cause is pinned to its own evidence
-
     [Fact]
     public async Task A_typed_repo_id_reaches_a_model_with_no_allowlist_involved()
     {
@@ -383,9 +381,7 @@ public class HubSearchTests
             "model rows + the search screen's two escape rows must not exceed nine");
     }
 
-    //repos under one org, each with one file that fits, all through the real listing parser
-
-    //the budget tests pin concurrency to 1, since arrival order varies in flight and cancelling on a call number would measure the scheduler
+    //repos under one org, each with one file that fits, all through the real listing parser. the budget tests pin concurrency to 1, since arrival order varies in flight and cancelling on a call number would measure the scheduler
     private static Hub ManyRepos(int count, long fileBytes = 2_000_000_000)
     {
         var hub = new Hub();

@@ -226,8 +226,6 @@ public class UpdateDownloadTests : IDisposable
         Assert.Empty(Directory.GetFiles(into));
     }
 
-    //the sweep
-
     //clears what a killed process left behind, and stays silent when there is no folder at all
     [Fact]
     public void SWEEP_CLEARS_THE_UPDATE_FOLDER_and_is_silent_when_absent()

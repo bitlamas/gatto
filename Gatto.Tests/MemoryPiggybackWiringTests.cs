@@ -169,7 +169,6 @@ public sealed class MemoryPiggybackWiringTests : IDisposable
     }
 
     //the line must report a transition as well as an after-figure, since a correct destination alone reads as broken when the drop is large
-
     [Fact]
     public async Task CompactedLine_reports_before_and_after_not_just_after()
     {

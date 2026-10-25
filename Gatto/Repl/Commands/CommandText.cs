@@ -25,13 +25,7 @@ internal static class CommandText
         ? $"wild mode on — permission prompts are OFF for this session  {(glyphs ?? Gatto.Terminal.GlyphSet.Unicode).Wild}"
         : "wild mode off — permission prompts are back on";
 
-    //every tool gatto advertises this turn with the extension that armed it, taken from the harness registration
-
-    //sanitizing happens inside TableLayout before it measures, so nothing stripped can push the columns out of line
-
-    //two columns with the origin inline in parentheses, a third column would strand it far from the row it belongs to
-
-    //rows group by origin, built-ins first then extensions ordinal, with a policy line after that extension's last tool
+    //every tool gatto advertises this turn with the extension that armed it, taken from the harness registration. rows group by origin, built-ins first then extensions ordinal, with a policy line after that extension's last tool
     internal static TableSpec ToolsSpec(
         IReadOnlyList<ToolInfo> tools, IReadOnlyList<(string Extension, string Line)> policy,
         Gatto.Terminal.GlyphSet? glyphs)
@@ -47,6 +41,7 @@ internal static class CommandText
         for (var i = 0; i < ordered.Count; i++)
         {
             var t = ordered[i];
+            //sanitizing happens inside TableLayout before it measures, so nothing stripped can push the columns out of line
             rows.Add(new[]
             {
                 t.Name,
@@ -69,21 +64,18 @@ internal static class CommandText
                                           .OrderBy(p => p.Extension, StringComparer.Ordinal))
             rows.Add(new[] { "", prefix + line + "  (" + ext + ")" });
 
+        //two columns with the origin inline in parentheses, a third column would strand it far from the row it belongs to
         return new(new[] { "tool", "description" }, new[] { ColumnAlign.Left, ColumnAlign.Left }, rows);
     }
 
-    //the arrow and the capital P separate the policy row from the description above it, TableSpec has no style channel
-
     //a function of the glyph set, since a const cannot read one, and it is a render-only prefix that nothing compares against
-    internal static string PolicyPrefixOf(Gatto.Terminal.GlyphSet g) => $"{g.Continue} Policy: ";
+    internal static string PolicyPrefixOf(Gatto.Terminal.GlyphSet g) => $"{g.Continue} Policy: ";   //the arrow and the capital P separate the policy row from the description above it, TableSpec has no style channel
 
     internal static string ToolsHeadline(int count) =>
         count.ToString(System.Globalization.CultureInfo.InvariantCulture)
         + (count == 1 ? " tool armed this session" : " tools armed this session");
 
-    //the plain loop's projection of the same spec, borderless, so both loops render through one core
-
-    //the empty check reads both lists, an extension with policy and no tools still exists, while the headline counts tools only
+    //the plain loop's projection of the same spec, borderless, so both loops render through one core. the empty check reads both lists, an extension with policy and no tools still exists, while the headline counts tools only
     internal static string RenderToolsListFor(
         IReadOnlyList<ToolInfo> tools, IReadOnlyList<(string Extension, string Line)> policy,
         Theme theme, int width, Gatto.Terminal.GlyphSet? glyphs)

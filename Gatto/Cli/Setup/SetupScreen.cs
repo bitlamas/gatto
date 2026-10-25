@@ -143,8 +143,6 @@ internal sealed record SetupRow(string Text, RowTone Tone = RowTone.Body,
 internal sealed record AskOffer(string Label, string Value);
 
 //one option, with the key as the contract and the label as copy. the Esc verb field is both the footer's word and Esc's answer, so they cannot disagree
-
-//the word beside the mark, replacing recommended where that word is wrong. both faces read the same word, which is lowercase
 internal sealed record ChoiceOption(string Key, string Label, string? Description = null,
     bool Disabled = false, bool Recommended = false, bool Advances = true, string? EscVerb = null,
-    string? Press = null, string? MarkWord = null);
+    string? Press = null, string? MarkWord = null);   //the mark word sits beside the mark, replacing recommended where that word is wrong. both faces read the same word, which is lowercase

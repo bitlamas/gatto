@@ -125,7 +125,6 @@ public sealed record Model(string Id, ModelProfile Profile, string? SystemAppend
         }
 
         //scorecard.json is deliberately not read here, its presence means nothing to the loader
-
         return new Model(id, profile, systemAppend, repair);
     }
 

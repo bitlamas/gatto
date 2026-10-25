@@ -4,11 +4,9 @@ using Gatto.Core.Loop;
 namespace Gatto.Roles.Audition;
 
 //one task's result, with the label kept on it and the elapsed time left at zero for the runner to stamp
-
-//a task that ran has no skip, and one not cut for silence has no allowance. a skip is neither a pass nor a fail, and the silence is the one that expired
 internal sealed record AuditionTaskResult(string TaskId, bool Pass,
     IReadOnlyList<FailureShape> Shapes, TimeSpan Elapsed, string Label = "",
-    bool Skipped = false, TimeSpan? Silence = null, string Act = "")
+    bool Skipped = false, TimeSpan? Silence = null, string Act = "")   //a task that ran has no skip, and one not cut for silence has no allowance. a skip is neither a pass nor a fail, and the silence is the one that expired
 {
     //use this to count failures rather than !Pass, which counts a skipped task as a failure
     public bool Failed => !Pass && !Skipped;

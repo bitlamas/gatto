@@ -127,8 +127,6 @@ public class UnknownKeyMessageTests
         Assert.DoesNotContain("known keys: enabled", msg);
     }
 
-    //the project file's sentence, rendered from its arrays
-
     //the sentence is rendered from the arrays, and the keys it offers must be exactly the ones the reader takes
     [Fact]
     public void THE_PROJECT_FILES_SENTENCE_IS_RENDERED_FROM_ITS_ARRAYS()

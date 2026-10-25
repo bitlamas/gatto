@@ -24,10 +24,8 @@ internal static class SetupCommand
         //one glyph set for the run, asked once and handed to every painter
         var glyphs = CommandBanner.GlyphsFor(home);
 
-        //nothing is written on the way in, the home appears at the first real write so looking at the wizard leaves nothing behind
+        //nothing is written on the way in, the home appears at the first real write so looking at the wizard leaves nothing behind. the wizard prints no banner, but CommandBanner.Chrome still runs to resolve the theme the face needs
         var theme = CommandBanner.Chrome(home);
-
-        //the wizard prints no banner, but CommandBanner.Chrome still runs to resolve the theme the face needs
 
         //the TUI face is the one this command builds, from the same flow the plain face got. the version is read off the build
         var surface = new ConsoleSurface();

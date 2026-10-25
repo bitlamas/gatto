@@ -276,9 +276,7 @@ internal static class AuditionRunner
         string.Join(Environment.NewLine,
             block.Split('\n').Select(l => "  " + l.TrimEnd('\r')));
 
-    //a duration in the words a waiting person uses, taken from the time actually waited rather than a number written into copy
-
-    //the plural comes off the rounded number shown, and this is a verbatim twin of the Roughly in TaskWords
+    //a duration in the words a waiting person uses, taken from the time actually waited rather than a number written into copy. the plural comes off the rounded number shown, and this is a verbatim twin of the Roughly in TaskWords
     private static string Roughly(TimeSpan t) =>
         t.TotalSeconds < 90
             ? Plural.Of((long)Math.Max(1, Math.Round(t.TotalSeconds)), "second")

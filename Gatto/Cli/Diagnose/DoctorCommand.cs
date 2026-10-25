@@ -7,9 +7,7 @@ namespace Gatto.Cli.Diagnose;
 //gatto doctor, read-only, with the client its checks read through
 internal static class DoctorCommand
 {
-    //read-only, so a missing home is left for the checks to report. the HttpClient here is real, and the tests drive Doctor with their own probes
-
-    //internal so a test can drive it with its own records, the dispatch line above stays uncovered
+    //read-only, so a missing home is left for the checks to report. the HttpClient here is real, and the tests drive Doctor with their own probes. internal so a test can drive it with its own records, the dispatch line above stays uncovered
     internal static async Task<int> RunDoctorAsync(
         CommandContext? context = null, DoctorProbes? outside = null)
     {

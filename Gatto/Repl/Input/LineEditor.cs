@@ -46,11 +46,10 @@ public sealed class LineEditor(IComposerSource input, History history, Func<int>
         _lines[_line] = _lines[_line].Insert(_col, text);
         _col += text.Length;
     }
-    //the Esc·Esc clear and Ctrl+C·Ctrl+C quit chords live in the session, so an armed chord survives a submit
-
     //the queue pull: every queued message in order and the queue emptied in the same call, so a pull can't half-happen
     private Func<IReadOnlyList<string>>? _pullQueue;
 
+    //the Esc·Esc clear and Ctrl+C·Ctrl+C quit chords live in the session, so an armed chord survives a submit
     private ArmedChord? _chords;
     private Action? _onQuit;
     private Action? _onHintChanged;
@@ -541,12 +540,11 @@ public sealed class LineEditor(IComposerSource input, History history, Func<int>
     //the composer holds nothing, one empty logical line, defined once for every chord rung that asks
     private bool IsEmpty => _lines.Count == 1 && _lines[0].Length == 0;
 
-    //the pump's Ctrl+C, with AltGr (Ctrl+Alt) excluded so a composed character still inserts
-
     //a real Alt chord holds Alt without Control, which is how it differs from an AltGr character (AltGr is Ctrl+Alt)
     private static bool IsAltOnly(ConsoleKeyInfo k) =>
         k.Modifiers.HasFlag(ConsoleModifiers.Alt) && !k.Modifiers.HasFlag(ConsoleModifiers.Control);
 
+    //the pump's Ctrl+C, with AltGr (Ctrl+Alt) excluded so a composed character still inserts
     private static bool IsCtrlC(ConsoleKeyInfo k) =>
         k.Key == ConsoleKey.C && k.Modifiers.HasFlag(ConsoleModifiers.Control)
         && !k.Modifiers.HasFlag(ConsoleModifiers.Alt);

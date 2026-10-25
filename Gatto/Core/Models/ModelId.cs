@@ -6,8 +6,6 @@ internal static class ModelId
     //the longest derived model id, the id becomes a directory name
     private const int MaxIdLength = 64;
 
-    //the id comes from the repo a fetched model came from, else the declared name, the file stem only when the header has none, and it is derived once
-
     //the slug rule on its own, extracted from Derive so the fetch can name a folder before any metadata exists
     public static string Slug(string raw)
     {
@@ -20,6 +18,7 @@ internal static class ModelId
         return slug.Length > 0 ? slug : "model";
     }
 
+    //the id comes from the repo a fetched model came from, else the declared name, the file stem only when the header has none, and it is derived once
     public static string Derive(GgufMetadata md, string path, string? repoId = null) =>
         repoId is { Length: > 0 } repo ? FromRepo(repo)
             : Slug(string.IsNullOrWhiteSpace(md.Name) ? Path.GetFileNameWithoutExtension(path) : md.Name!);

@@ -27,7 +27,6 @@ internal sealed class TuiSetupSurface : ISetupSurface, IDisposable
     private const char Del = '\u007f';
 
     //version has no default, a literal version would be printed rather than reported. pass a clock that resolves at once, otherwise a scripted cancel hangs the run
-
     public TuiSetupSurface(ITermSurface surface, IKeySource keys, Theme theme, string version, string build,
         Func<long>? nowMs = null, Func<bool, IPollClock>? clock = null,
         Func<IPurrPulse>? pulse = null,
@@ -421,9 +420,7 @@ internal sealed class TuiSetupSurface : ISetupSurface, IDisposable
         if (open is { } last) yield return last;
     }
 
-    //what the last Paint put on screen, plain, the oracle a render test diffs against its golden
-
-    //derived from the painted rows, so the record and the screen cannot disagree about what a row says
+    //what the last Paint put on screen, plain, the oracle a render test diffs against its golden. derived from the painted rows, so the record and the screen cannot disagree about what a row says
     internal IReadOnlyList<string> LastPainted => [.. _painted.Select(r => r.Text)];
 
     //the same rows inked for the theme, so a golden can pin the colours a frame was drawn in
@@ -1245,8 +1242,6 @@ internal sealed class TuiSetupSurface : ISetupSurface, IDisposable
             : [new("Enter", c.Options[0].Label), new("Esc", c.Options[1].Label)];
     }
 
-    //body rows wrapped at the live width, in the tone the flow set. this is the one place RowTone meets RunInk
-
     //the fact rows inked: label dim, value in its own tone, GB accent. the label splits at MachineFacts.Column, so a value that starts with a space keeps its ink
     private IReadOnlyList<PaintedRow> MachineRows(MachineView m, int width) =>
     [
@@ -1289,6 +1284,7 @@ internal sealed class TuiSetupSurface : ISetupSurface, IDisposable
         : painted.Text.Trim().Length == 0 ? painted with { Fit = RowFit.Paragraph }
         : painted;
 
+    //body rows wrapped at the live width, in the tone the flow set
     private IReadOnlyList<PaintedRow> Rows(IReadOnlyList<SetupRow>? rows, int width) =>
     [
         .. SetupRows.Toned(rows, width, SetupRows.FrameMargin, _glyphs).Select(r =>
@@ -1348,8 +1344,6 @@ internal sealed class TuiSetupSurface : ISetupSurface, IDisposable
     private static PaintedRow Highlighted(string text, IReadOnlyList<string>? spans, RunInk baseInk) =>
         Marked(text, [.. (spans ?? []).Select(s => (s, RunInk.Accent, false))], baseInk);
 
-    //the row's spans in the order they sit in the text, since the split runs left to right
-
     //the three span inks: accent for what the user acts on, plain for what is named, bright for a key. don't add a fourth
     private static IReadOnlyList<(string Span, RunInk Ink, bool Word)> SpansOf(SetupRow row, string text) =>
     [
@@ -1358,6 +1352,7 @@ internal sealed class TuiSetupSurface : ISetupSurface, IDisposable
             //a key inside a sentence takes the same bright ink the footer's keys use
             .Concat((row.Keys ?? []).Select(s => (Span: s, Ink: RunInk.Bright, Word: true)))
             .Where(p => p.Span.Length > 0 && At(text, p.Span, p.Word) >= 0)
+            //the row's spans in the order they sit in the text, since the split runs left to right
             .OrderBy(p => At(text, p.Span, p.Word))
     ];
 

@@ -318,8 +318,6 @@ public class ReplLinearLoopTests
         Assert.Equal(Gatto.Repl.Repl.CtrlCAction.AbortTurn, Gatto.Repl.Repl.DecideCtrlC(true, composerEmpty: false, nowMs: 1500, lastAtRestMs: 1000));
     }
 
-    //the cancel ladder has its own tests in CancelLadderTests
-
     [Fact]
     public void CtrlC_AtRest_LoopExits_ChromeTornDownExactlyOnce_ExitZero()
     {

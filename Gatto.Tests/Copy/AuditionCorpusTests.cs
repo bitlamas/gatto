@@ -95,7 +95,6 @@ public class AuditionCorpusTests
     }
 
     //the speed bands, guarded on the rendered row
-
     [Theory]
     [InlineData(95.0)]    //great
     [InlineData(62.4)]    //good
@@ -115,9 +114,7 @@ public class AuditionCorpusTests
         Assert.Contains("generating · " + note, rendered, StringComparison.Ordinal);
     }
 
-    //the rows the runner reports while it runs
-
-    //a pipe is the truth here, the live ticks are TickLine's contract. check the sentences and the gutter here, a Started event commits nothing
+    //the rows the runner reports while it runs. a pipe is the truth here, the live ticks are TickLine's contract. check the sentences and the gutter here, a Started event commits nothing
     [Theory]
     [InlineData(CorpusMode.Dark)]
     [InlineData(CorpusMode.Plain)]

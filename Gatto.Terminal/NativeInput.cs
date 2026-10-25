@@ -2,8 +2,6 @@ using System.Runtime.InteropServices;
 
 namespace Gatto.Terminal;
 
-//this struct follows the windows layout: EventType is a WORD at offset 0, the union begins at offset 4
-
 [StructLayout(LayoutKind.Sequential)]
 public struct COORD { public short X; public short Y; }
 
@@ -28,6 +26,7 @@ public struct MOUSE_EVENT_RECORD
     public uint dwEventFlags;
 }
 
+//this struct follows the windows layout: EventType is a WORD at offset 0, the union begins at offset 4
 [StructLayout(LayoutKind.Explicit)]
 public struct INPUT_RECORD
 {

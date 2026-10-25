@@ -9,8 +9,6 @@ namespace Gatto.Roles.Serve;
 //the formatter behind serve status --json. offload, fallback or OOM fields stay out (the probe reports none of them)
 public static class ServeStatusJson
 {
-    //the quant rule lives in QuantToken, Core can't reach Roles and a second copy drifts
-
     //build the one JSON object serve status --json prints. null loaded means the probe got nothing, null matchesModel means it couldn't be worked out
     public static string Build(LoadedModel? loaded, string? modelId, bool? matchesModel)
     {
@@ -32,7 +30,7 @@ public static class ServeStatusJson
             if (matchesModel is bool m) w.WriteBoolean("matches_model", m);
             else w.WriteNull("matches_model");
 
-            //omit quant when it doesn't parse, these other fields always appear, with null
+            //omit quant when it doesn't parse, these other fields always appear, with null. the quant rule lives in QuantToken, Core can't reach Roles and a second copy drifts
             var quant = loaded?.ModelPath is { Length: > 0 } qp
                 ? Gatto.Core.Acquire.QuantToken.Of(qp) : null;
             if (quant is not null) w.WriteString("quant", quant);

@@ -48,12 +48,11 @@ public class RenderedWalkTests : IDisposable
         return rig;
     }
 
-    //a branch runs the same world with one fact changed at width 80, the width sweep already covers the rest
-
     //strip every space from the frame, a literal match would assert the text never wraps instead of that the screen says it
     private static string Squash(string frame) =>
         new([.. frame.Where(c => !char.IsWhiteSpace(c))]);
 
+    //a branch runs the same world with one fact changed at width 80, the width sweep already covers the rest
     private SetupRig Branch(Probes probes, params ConsoleKeyInfo[] keys)
     {
         var rig = new SetupRig(80);
@@ -65,8 +64,6 @@ public class RenderedWalkTests : IDisposable
 
     //the home the last run used, so a path assertion compares against what the run actually did
     private string _walkHome = "";
-
-    //nothing is installed and one Hub model arrives late, a file present from the start is found by discovery and the shelf never renders
 
     //keep every branch dimension a parameter of one fixture, a copy per branch could describe a different product and still pass
     private static Probes SteeredProbes(
@@ -83,6 +80,7 @@ public class RenderedWalkTests : IDisposable
         bool holdTheFetch = false,
         IReadOnlyList<ModelRow>? rows = null)
     {
+        //nothing is installed and one Hub model arrives late, a file present from the start is found by discovery and the shelf never renders
         var downloads = Path.Combine(home, "Downloads");
         Directory.CreateDirectory(downloads);
         var arriving = Path.Combine(downloads, "model-Q4_K_M.gguf");

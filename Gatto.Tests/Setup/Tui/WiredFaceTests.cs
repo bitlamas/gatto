@@ -288,9 +288,9 @@ public class WiredFaceTests
         var f = new TuiSetupSurface(s, keys, new Theme(new TermCaps(true, true)), Version, Build, () => 0);
         face = f;
 
+        //one option and no typed field is the shape that draws the blank before the footer rule, and the probe's words stay the subject
         var screen = new SetupScreen.Choice("k", "Ready?", [new("yes", "Yes")],
             BodyRows: [new SetupRow("a sentence the probe must not scribble on.")]);
-        //one option and no typed field is the shape that draws the blank before the footer rule, and the probe's words stay the subject
 
         f.Paint((_, _) => ScreenOf(screen));
         var frameBefore = f.LastPainted.ToArray();

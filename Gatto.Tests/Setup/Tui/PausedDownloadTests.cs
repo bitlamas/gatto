@@ -200,8 +200,6 @@ public class PausedDownloadTests
             "the watch never reached the disk after the stop: the paused flag is still set");
     }
 
-    //re-picking a paused model is the ordinary pick in a fresh flow, which is what /model add builds, and HubFetch resumes off the .part
-
     //picking the same model again starts one more fetch, and the count is read only after the second fetch is joined by pausing it
     [Fact]
     public void PICKING_THE_SAME_MODEL_AGAIN_STARTS_THE_FETCH_ONCE_MORE()
@@ -212,7 +210,7 @@ public class PausedDownloadTests
             Assert.IsType<SetupScreen.Choice>(flow.Answer(SetupFlow.ModelFetchPause)).Key);
         var pausedAfter = probes.ModelStarts;
 
-        //a second gatto model run: a new flow over the same probes and the same offer
+        //a second gatto model run: a new flow over the same probes and the same offer. re-picking a paused model is the ordinary pick in a fresh flow, and HubFetch resumes off the .part
         var again = new SetupFlow(probes);
         again.StartAtModelSegment();
         again.Answer("0");

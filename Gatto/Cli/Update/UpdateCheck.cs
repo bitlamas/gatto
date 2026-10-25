@@ -64,9 +64,7 @@ internal static class UpdateCheck
             : $"you're on the latest release ({running})";
     }
 
-    //null on anything unexpected, a shape we don't recognise is not an update
-
-    //a projection of ParseRelease, so the weekly line and the update command never read one payload two ways
+    //a projection of ParseRelease, so the weekly line and the update command never read one payload two ways. null on anything unexpected, a shape we don't recognise is not an update
     public static UpdateState? Parse(string json, DateTimeOffset now) => ParseRelease(json, now)?.State;
 
     //everything the weekly line and the update command need from one payload, or null on anything unexpected

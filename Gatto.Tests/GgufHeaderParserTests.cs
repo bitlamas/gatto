@@ -123,7 +123,6 @@ public class GgufHeaderParserTests
     }
 
     //every malformation message uses one path-prefixed template, so each message names the file. these pins cover the message text the older tests never asserted
-
     [Theory]
     [InlineData("bad-magic", "is not a GGUF file (bad magic)")]
     [InlineData("wrong-version", "is GGUF v2; gatto reads v3")]

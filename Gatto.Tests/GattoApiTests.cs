@@ -38,6 +38,7 @@ public class GattoApiTests
             Task.FromResult<IReadOnlyList<AskAnswer>>(new[] { new AskAnswer("h", new[] { "yes" }) });
     }
 
+    //the host api version is asserted in one test only, a second assertion could drift from it
     [Fact]
     public void HostApiVersion_IsSix() => Assert.Equal("6", GattoApi.HostApiVersion);
 

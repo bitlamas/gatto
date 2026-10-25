@@ -195,9 +195,7 @@ public sealed partial class Repl(
     //images the compaction dropped because a summary holds only text, counted so CompactedLine can report the loss
     private int _lastCompactImagesDropped;
 
-    //images pasted with Alt+V and not yet sent, merged with the files a message names and cleared once it goes
-
-    //pasted images waiting for a send, keyed by the number in their [Image #N] placeholder (every access is under s.Gate)
+    //images pasted with Alt+V and not yet sent, keyed by the number in their [Image #N] placeholder (every access is under s.Gate). they merge with the files a message names and clear once it goes
     private readonly Dictionary<int, ImageRef> _pendingPaste = new();
 
     //the pasted bytes by their blob path, written only when a message that holds them is sent, so a refused, deleted or abandoned paste leaves no file (under s.Gate)
@@ -475,11 +473,7 @@ public sealed partial class Repl(
         }
     }
 
-    //the only place a session StreamRenderer is built, so the model is always painter.Model and the tail closure holds the caller's live convo field
-
-    //transient and never serialized (it would stack on every resume), rebuilt on launch and /new, built here so the wording can't drift
-
-    //internal for the test seam, a guard on the banner must render the banner rather than the cat on its own
+    //transient and never serialized (it would stack on every resume), rebuilt on launch and /new, built here so the wording can't drift. internal for the test seam, a guard on the banner must render the banner rather than the cat on its own
     internal static CommandEchoItem BannerItem(Theme theme, string roleName, IReadOnlyList<string>? roleCat, string modelName, string? versionLine,
         Gatto.Terminal.GlyphSet? glyphs)
     {
@@ -525,6 +519,7 @@ public sealed partial class Repl(
         RotateDisplay(model, renderer, lead, line, held, carry);
     }
 
+    //the only place a session StreamRenderer is built, so the model is always painter.Model and the tail closure holds the caller's live convo field
     internal static StreamRenderer BuildSessionRenderer(
         ChromePainter painter, ITermSurface surface, Theme theme, string roleName, ChromeTicker ticker,
         object gate, Action<Usage>? onUsage, ReasoningMode reasoning, Func<ChatMessage?> convoTail,

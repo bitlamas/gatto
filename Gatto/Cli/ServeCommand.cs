@@ -139,7 +139,6 @@ internal static class ServeCommand
         model?.Profile.LlamaServer ?? config.LlamaServer ?? "";
 
     //is this model the one the running server holds, asked once so a switch names it. the binary does not decide this, Serving reads serve.json
-
     internal static Gatto.Roles.Serve.ServingState QuantServing(
         string home, Gatto.Roles.Models.Model model, GattoConfig config) =>
         new Gatto.Roles.Serve.ServeManager(home, ServerBinaryFor(model, config)).Serving(model.Id);

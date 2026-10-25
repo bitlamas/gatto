@@ -3,9 +3,7 @@ using System.Text;
 
 namespace Gatto.Cli.Hardware;
 
-//two Vulkan 1.0 calls, the device type and the memory heaps, and no logical device. the suite never runs Dump, the live check is what proves this port
-
-//declared so CA1416 does not fire, since a zero-warnings citation counts that warning
+//two Vulkan 1.0 calls, the device type and the memory heaps, and no logical device. the suite never runs Dump, the live check is what proves this port. declared so CA1416 does not fire, since a zero-warnings citation counts that warning
 [System.Runtime.Versioning.SupportedOSPlatform("windows")]
 internal static class VulkanReader
 {

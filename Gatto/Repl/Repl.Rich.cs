@@ -12,9 +12,7 @@ namespace Gatto.Repl;
 //the rich face: its loop, the key decisions and the cancel sink
 public sealed partial class Repl
 {
-    //rich loop, the chrome is always the buffer suffix owned by ChromePainter, and each finished row goes to scrollback above it
-
-    //internal so the harness can pass in a synthetic rich TermCaps, Detect() answers plain whenever stdout is redirected
+    //rich loop, the chrome is always the buffer suffix owned by ChromePainter, each finished row goes to scrollback above it. internal so the harness can pass in a synthetic rich TermCaps, Detect() answers plain whenever stdout is redirected
     internal async Task<int> RunRichAsync(TermCaps caps, CancellationToken appCt)
     {
         //the pump starts here and only here, the composer needs it running continuously, and the fallback covers a directly built Repl
@@ -192,7 +190,7 @@ public sealed partial class Repl
             }
         });
 
-        //a failed copy leaves the selection alone, Win32Clipboard.TrySet never throws
+        //a failed copy leaves the selection alone, Win32Clipboard.TrySet never throws. the selection needs no wiring, the compositor reads the painter's SelectionController each paint and clears itself on reflow
         var clip = clipboard ?? new Gatto.Terminal.Win32Clipboard();
         void Copy()
         {
@@ -203,7 +201,6 @@ public sealed partial class Repl
                 if (text is { Length: > 0 }) clip.TrySet(text);
             }
         }
-        //no wiring needed, the compositor reads the painter's SelectionController each paint and clears itself on reflow
 
         //mouse events are global and work under a modal, only a Press refreshes since each refresh reads the git branch, and every event repaints
         if (mouseEnabled)

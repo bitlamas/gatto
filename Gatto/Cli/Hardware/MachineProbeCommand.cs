@@ -3,9 +3,7 @@ using System.Text;
 
 namespace Gatto.Cli.Hardware;
 
-//prints key=value lines for Core to parse. a probe reads nothing under the home and writes nothing, and a section that throws still reports
-
-//the whole class is Windows-only by construction, declared so CA1416 does not have to find it at every call site
+//prints key=value lines for Core to parse. a probe reads nothing under the home and writes nothing, and a section that throws still reports. it is Windows-only by construction, declared so CA1416 does not have to find it at every call site
 [System.Runtime.Versioning.SupportedOSPlatform("windows")]
 internal static class MachineProbeCommand
 {

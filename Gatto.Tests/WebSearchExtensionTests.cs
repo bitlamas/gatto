@@ -12,9 +12,7 @@ using Gatto.Extensions;
 namespace Gatto.Tests;
 
 //the bundled web_search.csx tools load through the real ExtensionHost and the DDG-Lite page comes from a fake handler, so no test touches the network
-
-//real compiles bump the process-global ExtensionHost.CompileCount that other tests assert exact deltas against, so this class joins e2e
-[Collection("e2e")]
+[Collection("e2e")]   //real compiles bump the process-global ExtensionHost.CompileCount that other tests assert exact deltas against, so this class joins e2e
 public sealed class WebSearchExtensionTests : IDisposable
 {
     private readonly string _home = Directory.CreateTempSubdirectory("gatto-websearch-").FullName;

@@ -505,8 +505,6 @@ public sealed class ExtensionHostTests : IClassFixture<RoslynWarmupFixture>, IDi
         Assert.Null(api.TakeStaged().Policy);
     }
 
-    //the host api version is asserted in one test only, a second assertion could drift from it
-
     //the structural error must outrank the content error, so a blank second call is reported as a second call
     [Fact]
     public void A_second_policy_call_is_reported_as_a_second_call_even_when_it_is_also_empty()

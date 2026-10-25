@@ -343,12 +343,12 @@ internal sealed partial class SetupFlow
         if (resume is not null)
             options.Add(new ChoiceOption(ResumePausedFetch, ResumeRow(resume)));
 
+        //add no description to the option, the facts that change the pick are table columns and the rest is on the model's page
         for (var i = 0; i < shown; i++)
             options.Add(new ChoiceOption(
                 i.ToString(System.Globalization.CultureInfo.InvariantCulture),
                 //make the option's label the identity only, the transcript echoes it and a whole table row there is unreadable
                 SearchRow.Label(_rows[i])));
-                //add no description to the option, the facts that change the pick are table columns and the rest is on the model's page
 
         //keep the point-at-a-folder option, a user whose models sit on an unswept drive has no way out but re-downloading them
         options.Add(new ChoiceOption(Elsewhere, "I already have a model, let me point at the folder"));
@@ -358,8 +358,6 @@ internal sealed partial class SetupFlow
             //the allowlist shapes browsing, a user can still type any model by name
             options.Add(new ChoiceOption(TypeAnId, "Type a model's name from Hugging Face"));
         }
-        //keep the neutral empty branch, it claims nothing and covers an emptiness the engine cannot evidence
-
 
         //say what these rows are first and the order second, keep a verdict word like best off the heading
         return Emit(new SetupScreen.Choice(
@@ -706,6 +704,7 @@ internal sealed partial class SetupFlow
         //keep shelf out of these sentences, it is our word, a register a user never saw
         HubSearchCause.NothingFits => "None of these models fit this machine",
         HubSearchCause.HubFailed => "Couldn't reach the model list",
+        //keep the neutral empty branch, it claims nothing and covers an emptiness the engine cannot evidence
         _ => "No models to show right now",
     };
 

@@ -43,8 +43,6 @@ internal sealed record HubTree(IReadOnlyList<HubQuant> Quants, IReadOnlyList<Hub
     public bool HasProjector => Projectors.Count > 0;
 }
 
-//where a human goes to fetch one file. every segment is escaped, and the repo id is split so its slash survives
-
 //what a user's typed line means. the classification lives here, so the two readers cannot disagree about the same paste
 internal abstract record HubRef
 {
@@ -109,6 +107,7 @@ internal static class HubUrl
         host.Equals("huggingface.co", StringComparison.OrdinalIgnoreCase)
         || host.Equals("www.huggingface.co", StringComparison.OrdinalIgnoreCase);
 
+    //where a human goes to fetch one file. every segment is escaped, and the repo id is split so its slash survives
     public static string Download(string repoId, string path) =>
         $"https://huggingface.co/{Segments(repoId)}/resolve/main/{FilePath(path)}?download=true";
 
@@ -129,11 +128,10 @@ internal static class HubUrl
     public static bool IsRepoPath(string path) =>
         path.Length > 0 && path.Split('/').All(s => s.Length > 0 && s is not ("." or ".."));
 
-    //the .. segment cannot escape the host, and that property lives in Segments, which Download, Resolve and Tree all use
-
     //the repo's file list, where a user fetches a shard set, since a single-file link can only be one of them
     public static string Tree(string repoId) => $"https://huggingface.co/{Segments(repoId)}/tree/main";
 
+    //the .. segment cannot escape the host, and that property lives in Segments, which Download, Resolve and Tree all use
     private static string Segments(string repoId) =>
         string.Join("/", repoId.Split('/').Select(Uri.EscapeDataString));
 }
@@ -158,11 +156,10 @@ internal sealed class HubRateLimitedException(string subject, int? resetSeconds)
 //the measured hub surface. it never retries, pages only the source and releaser listings, and the display cap belongs to the caller
 internal sealed class HubClient(HttpClient http, TimeProvider? clock = null)
 {
-    //a repo id is two segments of URL-safe characters, so it goes into the request path unescaped. escaping it would encode the separating slash
-
     //the search row tells a repo id from a search with this same shape, exposed as a predicate so the two cannot drift apart
     internal static bool LooksLikeRepoId(string candidate) => RepoIdShape.IsMatch(candidate);
 
+    //a repo id is two segments of URL-safe characters, so it goes into the request path unescaped. escaping it would encode the separating slash
     private static readonly Regex RepoIdShape =
         new(@"^[A-Za-z0-9][A-Za-z0-9._-]*/[A-Za-z0-9][A-Za-z0-9._-]*$", RegexOptions.CultureInvariant);
 
@@ -349,8 +346,6 @@ internal sealed class HubClient(HttpClient http, TimeProvider? clock = null)
         return doc.RootElement.ValueKind == JsonValueKind.Object ? ListingOf(doc.RootElement) : null;
     }
 
-    //one call returns the whole tree, with each quant's exact bytes and published sha and vision from an mmproj file. the id is validated before the request
-
     //the dense or MoE A4B header: 16 KB, one retry to 256 KB, then nothing. return null on any failure, and reuse HttpRangeFetch and RemoteGgufHeader
     public async Task<GgufHeader?> StructureHeaderAsync(
         string repoId, string fileName, CancellationToken ct)
@@ -376,6 +371,7 @@ internal sealed class HubClient(HttpClient http, TimeProvider? clock = null)
             file => HubTrace.Ranged(HttpRangeFetch.Create(http, new Uri(HubUrl.Resolve(listing.RepoId, file))), "table", listing.RepoId, file), ct,
             disk, listing.RepoId, couldMove, tokenizers);
 
+    //one call returns the whole tree, with each quant's exact bytes and published sha and vision from an mmproj file. the id is validated before the request
     public async Task<HubTree> TreeAsync(string repoId, CancellationToken ct)
     {
         if (!RepoIdShape.IsMatch(repoId))
@@ -418,11 +414,10 @@ internal sealed class HubClient(HttpClient http, TimeProvider? clock = null)
         return new HubTree(AsCandidates(quants), AsCandidates(projectors), files);
     }
 
-    //collapse a shard set to one candidate keyed on ShardName's canonical shard-one name, and show the lowest shard the listing had
-
     //a member keeps its own file's fields, including the hash the folded summary drops
     private static HubFile Member(HubQuant f) => new(f.FileName, f.Bytes, f.Sha256, f.Path);
 
+    //collapse a shard set to one candidate keyed on ShardName's canonical shard-one name, and show the lowest shard the listing had
     private static IReadOnlyList<HubQuant> AsCandidates(IReadOnlyList<HubQuant> files)
     {
         var result = new List<HubQuant>(files.Count);

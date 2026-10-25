@@ -109,10 +109,6 @@ public class DiffRepaintTests
         Assert.Contains("Pick a model", s.All, StringComparison.Ordinal);
     }
 
-    //what the diff stopped clearing by accident
-
-    //there is no purr line, the pulse puts the purr in the title row, guarded by PurrPlaceTests. the cursor park stays, it keeps clear-below on the right row.
-
     //the other two edges absolute addressing rests on
 
     //a height-only resize invalidates the diff too, since a shorter terminal drops the top rows and slides the whole frame up
@@ -160,9 +156,7 @@ public class DiffRepaintTests
         Assert.Contains(screen.Viewport, r => r.Contains("gatto setup", StringComparison.Ordinal));
     }
 
-    //the width edge
-
-    //the erase goes before the row's content, an ESC[K after a full-width row eats its last character. sweep the widths, a single width hides the defect.
+    //the width edge: the erase goes before the row's content, an ESC[K after a full-width row eats its last character. sweep the widths, a single width hides the defect.
     [Theory]
     [InlineData(78)]
     [InlineData(79)]

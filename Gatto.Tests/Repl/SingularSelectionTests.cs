@@ -115,8 +115,7 @@ public class SingularSelectionTests
 
             Assert.True(SpinWait.SpinUntil(() => !painter.Selection.HasSelection, Bound),
                 "Direction A: the transcript selection was not cleared by the composer selection-set hook");
-            Assert.True(SpinWait.SpinUntil(() => editor.HasComposerSelectionForTest, Bound));
-            //exactly one domain stays live, and here that is the composer side
+            Assert.True(SpinWait.SpinUntil(() => editor.HasComposerSelectionForTest, Bound));   //exactly one domain stays live, and here that is the composer side
 
             pump.InjectToComposer(Enter);   //the enter key lets editor.Read return, so the background task ends cleanly
             Assert.True(await Task.WhenAny(readTask, Task.Delay(Bound)) == readTask, "editor.Read did not return");

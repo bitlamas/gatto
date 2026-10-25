@@ -5,8 +5,6 @@ namespace Gatto.Cli.Setup;
 //done and what follows: another model, the prove, the connect check, the summary, the update ask and the leave
 internal sealed partial class SetupFlow
 {
-    //shared
-
     //last write, it names the default and arms the pause before prove-it
     private SetupScreen Done()
     {
@@ -764,9 +762,7 @@ internal sealed partial class SetupFlow
             "left", LeavingRows, NextStep: LeaveStep, Success: true), null);
     }
 
-    //the leave copy says what actually landed, silent before the writes, ownership after. one home because Esc shows this too
-
-    //the leave's rows are the record on both roads
+    //the leave's rows are the record on both roads. the leave copy says what actually landed, silent before the writes, ownership after, one home because Esc shows this too
     internal IReadOnlyList<SetupRow> LeavingRows => RecordFacts();
 
     //the sentence is what the frame draws, comma included, a test reads it against that golden

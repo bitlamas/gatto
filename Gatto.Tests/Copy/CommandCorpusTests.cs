@@ -95,7 +95,6 @@ public class CommandCorpusTests : IDisposable
     }
 
     //the writer's own rows, which every command body goes through
-
     [Theory]
     [MemberData(nameof(PaintedAndPlain))]
     public void THE_WRITER_ROWS(CorpusMode mode)
@@ -276,8 +275,6 @@ public class CommandCorpusTests : IDisposable
         CopyGolden.Check("fatal-pause",
             CorpusDriver.Visible(string.Join("\n", said) + "\n--- exit ---\n" + exit + "\n"));
     }
-
-    //the matcher's own oracle
 
     //the matcher is the corpus's only judge, so it is tested here against a known difference rather than by hand
     [Fact]

@@ -15,9 +15,7 @@ internal static class ServerConnect
     //the ports tried in order, 1234 and 11434 are never named in copy and gatto's own port goes first
     public static readonly IReadOnlyList<int> ProbePorts = [1235, 8080, 1234, 11434];
 
-    //the capability table, read by the wizard and by doctor
-
-    //these sentences are shown to users, so say what the user loses and what happens instead
+    //the capability table, read by the wizard and by doctor. these sentences are shown to users, so say what the user loses and what happens instead
     public static readonly IReadOnlyList<ServerCapability> Capabilities =
     [
         new("OpenAI-compatible /v1/chat/completions with streaming + tool calls",

@@ -183,14 +183,13 @@ public sealed class ViewportCompositor(ITermSurface surface, LineIndex index, ob
 
         _layout = new FrameLayout(width, height, showHint ? transcriptHeight : showPin ? height - 1 : -1, hitRows, cellRows, chromeRowMap, wholeChrome);
 
-        //the transcript is bottom-anchored against the chrome, so a short session pads blanks at the top
+        //the transcript is bottom-anchored against the chrome, so a short session pads blanks at the top. the frame ends holding exactly height rows, transcript plus hint plus chrome
         var frame = new List<string>(height);
         for (var i = 0; i < transcriptHeight - content.Count; i++) frame.Add("");
         frame.AddRange(content);
         if (showHint) frame.Add(JumpHint(contentOffset + (hintGap ? 1 : 0), width));   //the floating hint, just above the chrome, in the row the transcript gave up
         frame.AddRange(chromeRows.Select(r => r.Rendered));
         if (showPin) frame.Add(PromptPin(width));   //below the chrome rows still on screen, on the window's last row
-        //frame holds exactly height rows, transcript plus hint plus chrome
 
         //a caret whose chrome row scrolled away is parked and hidden
         var caretShown = chrome.CaretRow - dropped < chromeRows.Count;

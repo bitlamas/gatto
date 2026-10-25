@@ -9,9 +9,7 @@ public static class Strip
     private static string JoinOf(GlyphSet g) => " " + g.Dot + " ";
     private const string Indent = "  ";
 
-    //the strip row in plain cells, where focused holds the section with the keys or -1, and out of range means no focus
-
-    //the strip row as plain text, the concatenation of Runs, so the goldens and the terminal share one composition
+    //the strip row as plain text, the concatenation of Runs, so the goldens and the terminal share one composition. focused holds the section with the keys or -1, and out of range means no focus
     public static string Compose(IReadOnlyList<StripSection> sections, int focused = -1) =>
         new PaintedRow(Runs(sections, focused)).Text;
 

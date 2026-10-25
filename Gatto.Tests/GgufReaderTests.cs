@@ -105,7 +105,6 @@ public class GgufReaderTests
             w.Write(8U);   //the string value type.
             w.Write(ulong.MaxValue / 2);  //an absurdly large claimed length.
             //the string data itself is never written.
-
             File.WriteAllBytes(p, ms.ToArray());
 
             //the failure must surface as a GattoConfigException, so no raw runtime exception escapes
@@ -139,7 +138,6 @@ public class GgufReaderTests
             w.Write(8U);   //the type code of each element, a string
             w.Write(ulong.MaxValue / 2);  //an element count far beyond the file, so the parser must refuse it
             //leave the declared array data out, so only the count is on disk.
-
             File.WriteAllBytes(p, ms.ToArray());
 
             //a corrupt count must surface as a GattoConfigException, so no ArgumentOutOfRangeException or OverflowException escapes

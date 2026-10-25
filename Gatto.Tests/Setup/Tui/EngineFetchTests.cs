@@ -287,8 +287,6 @@ public class EngineFetchTests
             string.Join("\n", screen.BodyRows!.Select(r => r.Text)), StringComparison.Ordinal);
     }
 
-    //the answers
-
     //the button fetches, since a consent whose Enter did anything else would lie about the deed behind it
     [Fact]
     public void FETCH_IT_NOW_DOWNLOADS_THE_ASSET_THE_SCREEN_NAMED()
@@ -536,10 +534,8 @@ public class EngineFetchTests
 
     //helpers
 
-    //the whole flow to the fetch's answer, returning the flow and the screen it opened. a test about the fetch needs what the user sees and what was written
-
     //press the button, then answer the arrival, and assert the watch in between, or the test passes even if the button stops fetching
-    private static (SetupFlow Flow, SetupScreen Screen) Fetch(Func<EnginePair, EngineFetch> fetch)
+    private static (SetupFlow Flow, SetupScreen Screen) Fetch(Func<EnginePair, EngineFetch> fetch)   //the whole flow to the fetch's answer, returning the flow and the screen it opened. a test about the fetch needs what the user sees and what was written
     {
         var flow = new SetupFlow(Probes(Asset, fetch));
         flow.StartPastOpening();

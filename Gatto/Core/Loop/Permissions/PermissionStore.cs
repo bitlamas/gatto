@@ -28,6 +28,7 @@ public sealed class PermissionStore
 {
     private readonly string _projectRoot;
     private readonly string? _path;
+    //a per-kind list property needs a caller first, the entries view is the only surface these lists need
     private readonly List<string> _shellPrefixes = new();
     private readonly List<string> _writeDirs = new();
     private readonly List<string> _tools = new();
@@ -39,8 +40,6 @@ public sealed class PermissionStore
 
     //the project's standing yes to attaching a batch of pasted images, a grant like the others
     public bool AttachMany => _attachMany;
-
-    //a per-kind list property needs a caller first, the entries view is the only surface these lists need
 
     private PermissionStore(string projectRoot, string? path)
     {
@@ -219,6 +218,7 @@ public sealed class PermissionStore
         if (index < 0 || index >= entries.Count)
             return null;
         var entry = entries[index];
+        //removal is index-based through RevokeAt only, so don't add a text-matching removal (the next reader would assume RevokeAt routes through it)
         switch (entry.Kind)
         {
             case PermissionKind.ShellPrefix:
@@ -234,8 +234,6 @@ public sealed class PermissionStore
         Persist();
         return entry;
     }
-
-    //removal is index-based through RevokeAt only, so don't add a text-matching removal (the next reader would assume RevokeAt routes through it)
 
     //true if a new prefix was added, false for empty or duplicate (case-insensitive)
     private bool AddShellPrefix(string prefix)

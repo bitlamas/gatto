@@ -82,15 +82,13 @@ public class FrameFitsTests
             fitted.Where(r => r.Trim().Length > 0));
     }
 
-    //the head bound
+    //the head bound can never bind now, since every frame opens header, strip and rule, so the guard sits on the chrome rows below
 
     private sealed class NoKeys : Gatto.Terminal.IKeySource
     {
         public bool KeyAvailable => false;
         public ConsoleKeyInfo ReadKey() => new('\u001b', ConsoleKey.Escape, false, false, false);
     }
-
-    //the head bound can never bind now, since every frame opens header, strip and rule, so the guard sits on the chrome rows below
 
     //every chrome row is RowFit.Fixed, which makes Fit's Head and Tail statements about the frame, so the test reads each row's class
     [Fact]

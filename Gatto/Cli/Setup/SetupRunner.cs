@@ -39,6 +39,7 @@ internal static class SetupRunner
                 //the home is created at the first real write, so leaving the wizard before one leaves no home behind. it is idempotent, so the later apply sites inherit it
                 Gatto.Core.Home.GattoHome.EnsureInitialized(h);
 
+                //both paths apply here, since prove-it reads the config from disk and must read one this run wrote. default_model is written by the apply that creates the model, so a run that leaves at the check still points at something
                 if (WriteSetApply.Apply(h, flow.Writes, out var written, out var moveNote) is { } problem)
                 {
                     face.Show(new SetupScreen.Info("write.failed", [problem]));
@@ -94,10 +95,6 @@ internal static class SetupRunner
                     return 0;   //a Progress screen belongs to the tick line, so this case ends the run rather than drawing it
 
                 case SetupScreen.Terminal t:
-                    //both paths apply above, since prove-it reads the config from disk and must read one this run wrote
-
-                    //default_model is written by the apply that creates the model, so a run that leaves at the check still points at something
-
                     face.End(t);
                     return t.Success ? 0 : 1;
 
@@ -107,14 +104,12 @@ internal static class SetupRunner
         }
     }
 
-
-    //backing out with Esc, with the words composed by the flow. only the flow knows whether this run's writes already happened, so a fixed sentence could be false
-
-    //one home for the leave screen, reached by the cancel path. it is a Terminal rather than an Info, since End is what composes the closing line
+    //one home for the leave screen, reached by the cancel path when the user backs out with Esc. it is a Terminal rather than an Info, since End is what composes the closing line
     private static int Left(ISetupSurface face, SetupFlow flow)
     {
         //the flow is told before its rows and sentence are read, since Esc never reaches the flow
         flow.MarkLeaving();
+        //the words are composed by the flow, since only the flow knows whether this run's writes already happened and a fixed sentence could be false
         face.End(new SetupScreen.Terminal("left", flow.LeavingRows, flow.LeaveStep, Success: true));
         return 0;
     }

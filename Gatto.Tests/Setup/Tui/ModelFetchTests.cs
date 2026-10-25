@@ -212,8 +212,6 @@ public class ModelFetchTests
             WalkRender.Choice(Arrived(Probes(VisionOffer())) with { PurredMs = 461_000 }, 100,
                 script: [SetupRig.Enter]).Rows);
 
-    //the marker and the then row
-
     //the file marker counts the unit in flight and the then row announces the next, decided separately
     [Theory]
     //offer, tick, marker, then
@@ -912,8 +910,6 @@ public class ModelFetchTests
         Assert.DoesNotContain("the file's fingerprint on Hugging Face", body, StringComparison.Ordinal);
         Assert.Contains("the size Hugging Face lists", body, StringComparison.Ordinal);
     }
-
-    //the move offer belongs to the browser path alone
 
     //the move question only appears for a file gatto did not fetch, so both paths are asserted
     [Theory]

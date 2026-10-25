@@ -163,8 +163,6 @@ internal interface ISetupProbes
     //the id of the model that already wraps this model file, or null. asked of every model by resolved path, so a non-default one is not invisible
     string? ExistingModelFor(string ggufPath);
 
-    //the model id this file would take when a different file already has it, or null. null also covers an id ExistingModelFor already claimed
-
     //what adopting this file means for the model whose id it would take. a match adds, a proven difference collides, and anything less asks
     (Gatto.Roles.Models.IdClash Kind, string? Id) ClashFor(string ggufPath, string? incomingRepoId);
 

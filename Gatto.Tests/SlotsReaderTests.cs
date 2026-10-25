@@ -4,8 +4,6 @@ using Gatto.Core.Client;
 
 namespace Gatto.Tests;
 
-//the /slots reader that turns llama-server's prompt counters into a phase-keyed purr row, tested through a stubbed HTTP handler so nothing goes live
-
 file sealed class SlotsStub(HttpStatusCode code, string body) : HttpMessageHandler
 {
     public Uri? LastUri { get; private set; }
@@ -30,6 +28,7 @@ file sealed class SlotsThrowingHandler : HttpMessageHandler
         throw new HttpRequestException("connection refused");
 }
 
+//the /slots reader that turns llama-server's prompt counters into a phase-keyed purr row, tested through a stubbed HTTP handler so nothing goes live
 public class SlotsReaderTests
 {
     //captured from a live prefill: the two counters only ever advance together, one n_batch at a time. don't invent this fixture
@@ -39,7 +38,6 @@ public class SlotsReaderTests
         """;
 
     //parsing in HttpSlotsReader
-
     [Fact]
     public async Task ProcessingSlot_ParsesPromptCountersAndDecoded()
     {

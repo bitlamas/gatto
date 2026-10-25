@@ -7,11 +7,10 @@ public interface IWizardPrompter
     WizardAnswer? AskOne(WizardAsk ask);
 }
 
-//a single wizard question, a free-text row (and a review step) only when the caller asks, plus the shelf's table fields passed through
-
 //how a wizard question came back, so both faces can report a control, and Control is always null on the plain path
 public sealed record WizardAnswer(string? Label = null, char? Control = null, int Cursor = 0);
 
+//a single wizard question, a free-text row (and a review step) only when the caller asks, plus the shelf's table fields passed through
 public sealed record WizardAsk(
     string Question,
     IReadOnlyList<SelectOption> Options,
