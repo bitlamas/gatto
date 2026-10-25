@@ -537,6 +537,62 @@ public class RichPermissionPrompterTests
         Assert.Contains(rows, row => row == "  ?? b.cs");
     }
 
+    //a command the home guard asked says so in the question row, the whole row in the warn ink and no row added
+    [Fact]
+    public void A_GUARDED_COMMAND_SAYS_SO_IN_A_WARN_QUESTION_ROW()
+    {
+        var (s, p, h) = Armed(width: 120);
+        IReadOnlyList<string>? live = null;
+        var prompter = new RichPermissionPrompter(s, T,
+            new ProbingScriptedKeys(n => { if (n == 0) live = p.State.PanelRows; }, new[] { Digit('1') }),
+            pump: null, chrome: h);
+
+        prompter.AskWithReason(ShellRequest with { GrantOffer = null, Guard = HomeGuard.Command });
+
+        var rows = Plain(live);
+        var question = Array.IndexOf(rows, "  All commands executed inside gatto's home require approval. Do you want to proceed?");
+        Assert.True(question >= 0, string.Join("\n", rows));
+        Assert.Contains(Ansi.Fg(Theme.Warn, true) + PromptTitles.HomeCommands, live![question], StringComparison.Ordinal);
+        Assert.Equal(new[] { "  shell command", "", "  git status --short", "" }, rows[..question]);
+    }
+
+    //a write keeps its preview box as it was, and the file name takes the warn ink with the rest of the row
+    [Fact]
+    public void A_GUARDED_WRITE_SAYS_SO_IN_A_WARN_QUESTION_ROW_UNDER_ITS_BOX()
+    {
+        var (s, p, h) = Armed(width: 120);
+        IReadOnlyList<string>? live = null;
+        var prompter = new RichPermissionPrompter(s, T,
+            new ProbingScriptedKeys(n => { if (n == 0) live = p.State.PanelRows; }, new[] { Digit('1') }),
+            pump: null, chrome: h);
+
+        prompter.AskWithReason(WriteRequest with { GrantOffer = null, Guard = HomeGuard.Write });
+
+        var rows = Plain(live);
+        var question = Array.IndexOf(rows, "  All writes inside gatto's home require approval. Do you want to write new file a.txt?");
+        Assert.True(question >= 3, string.Join("\n", rows));
+        Assert.Matches("^-+$", rows[question - 1]);
+        Assert.Equal("2  two", rows[question - 2].Trim());
+        Assert.Contains(Ansi.Fg(Theme.Warn, true) + PromptTitles.HomeWrites + " Do you want to write new file a.txt?", live![question], StringComparison.Ordinal);
+    }
+
+    //an ordinary prompt's question keeps its usual words and ink
+    [Fact]
+    public void AN_ORDINARY_QUESTION_ROW_TAKES_NO_WARN_INK()
+    {
+        var (s, p, h) = Armed(width: 120);
+        IReadOnlyList<string>? live = null;
+        var prompter = new RichPermissionPrompter(s, T,
+            new ProbingScriptedKeys(n => { if (n == 0) live = p.State.PanelRows; }, new[] { Digit('1') }),
+            pump: null, chrome: h);
+
+        prompter.AskWithReason(ShellRequest);
+
+        var question = Array.IndexOf(Plain(live), "  Do you want to proceed?");
+        Assert.True(question >= 0);
+        Assert.DoesNotContain(Ansi.Fg(Theme.Warn, true), live![question], StringComparison.Ordinal);
+    }
+
     //an aborted key read must clear the panel, or it covers a composer the user can't see
     [Fact]
     public void Armed_AbortedKeyRead_ClearsThePanel()
@@ -1679,6 +1735,18 @@ public class PlainPermissionPrompterTests : IDisposable
         Console.SetIn(new StringReader(input));
         var answer = new PlainPermissionPrompter().AskWithReason(request).Answer;
         return (sw.ToString(), answer);
+    }
+
+    //the plain menu prints the guard's sentence on the row under the call, and an ordinary request prints none
+    [Fact]
+    public void A_GUARDED_REQUEST_PRINTS_THE_SENTENCE_UNDER_THE_CALL()
+    {
+        var (output, _) = Run(ShellRequest with { GrantOffer = null, Guard = HomeGuard.Command }, "1\n");
+        var lines = output.Split('\n').Select(l => l.TrimEnd('\r')).ToList();
+        var call = lines.FindIndex(l => l.StartsWith("[permission] ", StringComparison.Ordinal));
+
+        Assert.Equal("  " + PromptTitles.HomeCommands, lines[call + 1]);
+        Assert.DoesNotContain(PromptTitles.HomeCommands, Run(ShellRequest, "1\n").Output, StringComparison.Ordinal);
     }
 
     [Fact]

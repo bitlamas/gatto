@@ -20,7 +20,12 @@ public sealed record PermissionRequest(
     //an edit's two strings and where it lands in the file as it is now, so the prompt shows the change before the answer
     string? EditOld = null, string? EditNew = null, Gatto.Core.Client.EditView? View = null,
     //the file a write would replace as the gate saw it when it asked, null when there was none
-    ExistingFile? Existing = null);
+    ExistingFile? Existing = null,
+    //the guard on gatto's own folder that asked a call every pass would have let through, null for an ordinary prompt
+    HomeGuard? Guard = null);
+
+//a write into gatto's own folder or a command that names it, the two calls the gate asks whatever wild or a grant says
+public enum HomeGuard { Write, Command }
 
 //lines when the file reads as text and bytes otherwise, both null when it exists and could not be read
 public sealed record ExistingFile(int? Lines, long? Bytes);

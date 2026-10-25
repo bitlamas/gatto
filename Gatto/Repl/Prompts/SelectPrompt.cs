@@ -28,8 +28,8 @@ public sealed record SelectOption(
     public static implicit operator SelectOption(string label) => new(label);
 }
 
-//the question row, Code paints one span in the inline-code style like the title does. implicit from string so plain callers stay terse
-public sealed record PromptQuestion(string Text, string? Code = null, string After = "")
+//the question row, Code paints one span in the inline-code style like the title does and Warn paints the whole row in the warn ink. implicit from string so plain callers stay terse
+public sealed record PromptQuestion(string Text, string? Code = null, string After = "", bool Warn = false)
 {
     public static implicit operator PromptQuestion(string text) => new(text);
 }
@@ -794,7 +794,7 @@ public sealed class SelectPrompt(   //single-select, multi-select and the free-t
                 var qAt = 0;
                 foreach (var seg in SoftWrap.Wrap(qPlain, qBudget, qBudget))
                 {
-                    rows.Add(Fit(Indent + Chipped(seg.Text, qAt, qHead.Length, qCode.Length), w));
+                    rows.Add(Fit(Indent + (question.Warn ? theme.Paint(seg.Text, Theme.Warn) : Chipped(seg.Text, qAt, qHead.Length, qCode.Length)), w));
                     qAt += seg.SourceChars;
                 }
                 //one blank between the question and its options, and it belongs here since every prompt in gatto goes through this widget

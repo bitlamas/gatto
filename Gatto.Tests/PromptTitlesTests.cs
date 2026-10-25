@@ -199,6 +199,39 @@ public class PromptTitlesTests
         Assert.DoesNotContain(detail, row => row.Contains('⋯'));
     }
 
+    //a command the home guard asked opens its question with the guard's sentence in the warn ink, and its detail stays the command
+    [Fact]
+    public void A_GUARDED_COMMAND_OPENS_ITS_QUESTION_WITH_THE_SENTENCE_IN_THE_WARN_INK()
+    {
+        var request = new PermissionRequest("shell", @"Get-Content C:\home\.gatto\gatto.json", null, Guard: HomeGuard.Command);
+        var (_, question, detail) = PromptTitles.For(request, null, Cwd);
+
+        Assert.Equal("All commands executed inside gatto's home require approval. Do you want to proceed?", question.Text + question.Code + question.After);
+        Assert.True(question.Warn);
+        Assert.Equal(new[] { @"Get-Content C:\home\.gatto\gatto.json" }, detail.Select(d => d.Text));
+    }
+
+    [Fact]
+    public void A_GUARDED_WRITE_OPENS_ITS_QUESTION_WITH_THE_WRITE_SENTENCE()
+    {
+        var request = new PermissionRequest("write_file", @"C:\home\.gatto\notes.txt (+2 lines)", null,
+            PreviewLines: new[] { "one", "two" }, PreviewTotalLines: 2, Guard: HomeGuard.Write);
+        var (_, question, detail) = For(request);
+
+        Assert.Equal("All writes inside gatto's home require approval. Do you want to write new file notes.txt?", question);
+        Assert.True(PromptTitles.For(request, null, Cwd).Question.Warn);
+        Assert.Equal(new[] { "1  one", "2  two" }, detail);
+    }
+
+    [Fact]
+    public void AN_ORDINARY_PROMPT_KEEPS_ITS_QUESTION_AND_ITS_INK()
+    {
+        var (_, question, _) = PromptTitles.For(new PermissionRequest("shell", "git status --short", "git status"), null, Cwd);
+
+        Assert.Equal(PromptTitles.GenericQuestion, question.Text);
+        Assert.False(question.Warn);
+    }
+
     //show even a short command whole, since the panel replaces the composer and no line is duplicated
     [Fact]
     public void Shell_ShortCommand_IsStillShownInFull()

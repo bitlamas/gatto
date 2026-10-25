@@ -51,15 +51,16 @@ public sealed class PermissionGate(
         var call = payload.Call;
         if (call is null) return Task.CompletedTask;
 
-        var home = CheckBoundary(call);                                  //0. ahead of every pass below, so no grant, --yes or wild mode skips it
+        var guard = CheckBoundary(call);                                 //0. ahead of every pass below, so no grant, --yes or wild mode skips it
+        var home = guard is not null;
 
         if (ReadClass.Contains(call.Name) || BoundedWriteClass.Contains(call.Name) || _instanceReadClass.Contains(call.Name))
             return Task.CompletedTask;                                   //1. read-class or bounded-write, both pass without asking
         if (!home && (autoYes || wild?.On == true)) return Task.CompletedTask;     //2. the --yes flag or wild mode, both pass
 
         var c = Classify(call);
-        //a call into gatto's own folder is asked every time, so the prompt offers no always and a yes covers this call alone
-        if (home) c = c with { Request = c.Request with { GrantOffer = null } };
+        //a call into gatto's own folder is asked every time, so the prompt offers no always, names its guard, and a yes covers this call alone
+        if (home) c = c with { Request = c.Request with { GrantOffer = null, Guard = guard } };
 
         var granted = !home && c.Kind switch                            //3. a matching standing grant from the store
         {
@@ -147,8 +148,8 @@ public sealed class PermissionGate(
         else if (c.Kind == Kind.Opaque) store.GrantTool(c.Request.GrantOffer, persist: true);
     }
 
-    //true for a write or a command that reaches gatto's own folder, and with --yes the file tools and the shell stay in the working folder or a grant. a call that does not parse is left to the steps below
-    private bool CheckBoundary(ToolCall call)
+    //the guard for a write or a command that reaches gatto's own folder, and with --yes the file tools and the shell stay in the working folder or a grant. a call that does not parse is left to the steps below
+    private HomeGuard? CheckBoundary(ToolCall call)
     {
         JsonElement args;
         try
@@ -156,33 +157,33 @@ public sealed class PermissionGate(
             using var doc = JsonDocument.Parse(call.ArgumentsJson.Length > 0 ? call.ArgumentsJson : "{}");
             args = doc.RootElement.Clone();
         }
-        catch (JsonException) { return false; }
+        catch (JsonException) { return null; }
 
         switch (call.Name)
         {
             case "write_file" or "edit_file" when TryGetString(args, "path", out var path):
                 var full = ResolvePath(path);
-                if (_boundary.InHome(full)) return AskedOrRefused(HomeWrite);
+                if (_boundary.InHome(full)) return AskedOrRefused(HomeWrite, HomeGuard.Write);
                 if (autoYes && !_boundary.Inside(full)) throw new InvalidOperationException(OutsideFolder);
-                return false;
+                return null;
             case "read_file" when autoYes && TryGetString(args, "path", out var read):
                 if (!_boundary.Inside(ResolvePath(read))) throw new InvalidOperationException(OutsideFolder);
-                return false;
+                return null;
             case "glob" or "grep" when autoYes:
                 if (!_boundary.Inside(ResolvePath(TryGetString(args, "root", out var root) ? root : ".")))
                     throw new InvalidOperationException(OutsideFolder);
-                return false;
+                return null;
             case "shell" when TryGetString(args, "command", out var command):
-                if (_boundary.NamesHome(command)) return AskedOrRefused(ShellNamesHome);
+                if (_boundary.NamesHome(command)) return AskedOrRefused(ShellNamesHome, HomeGuard.Command);
                 if (autoYes && _boundary.Leaves(command)) throw new InvalidOperationException(CommandLeaves);
-                return false;
+                return null;
         }
-        return false;
+        return null;
     }
 
     //gatto's own folder is written only on a yes, so under --yes or with no terminal the call is refused here and never reaches a pass
-    private bool AskedOrRefused(string refusal) =>
-        autoYes || prompter is null ? throw new InvalidOperationException(refusal) : true;
+    private HomeGuard AskedOrRefused(string refusal, HomeGuard guard) =>
+        autoYes || prompter is null ? throw new InvalidOperationException(refusal) : guard;
 
     private Classified Classify(ToolCall call)
     {

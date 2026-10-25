@@ -745,6 +745,7 @@ public sealed class PermissionGateTests : IDisposable
 
         Assert.Equal(1, prompter.CallCount);
         Assert.Null(prompter.Requests.Single().GrantOffer);
+        Assert.Equal(HomeGuard.Write, prompter.Requests.Single().Guard);
     }
 
     [Fact]
@@ -758,6 +759,22 @@ public sealed class PermissionGateTests : IDisposable
 
         Assert.Equal(1, prompter.CallCount);
         Assert.Null(prompter.Requests.Single().GrantOffer);
+        Assert.Equal(HomeGuard.Command, prompter.Requests.Single().Guard);
+    }
+
+    //a call wild would pass is asked only with wild off, and that prompt names no guard
+    [Fact]
+    public async Task A_PROMPT_FOR_A_CALL_WILD_WOULD_PASS_NAMES_NO_GUARD()
+    {
+        var (home, store) = HomeAndStore();
+        var prompter = new FakePrompter(PermissionAnswer.Once, PermissionAnswer.Once);
+        var gate = new PermissionGate(store, prompter, autoYes: false, home: home);
+
+        await gate.CheckAsync(new HookPayload(Call: new ToolCall("c1", "shell", "{\"command\":\"del something.txt\"}")));
+        await gate.CheckAsync(new HookPayload(Call: new ToolCall("c2", "write_file", JsonSerializer.Serialize(new { path = Path.Combine(_root, "a.txt"), content = "hi" }))));
+
+        Assert.Equal(2, prompter.CallCount);
+        Assert.All(prompter.Requests, r => Assert.Null(r.Guard));
     }
 
     //an always typed anyway keeps nothing, so the next call into the home is asked again

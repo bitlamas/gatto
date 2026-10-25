@@ -243,6 +243,7 @@ public sealed class PlainPermissionPrompter(bool denyReason = false) : IPermissi
             : "";
         //the tool name is model-controlled, it can hold ESC before the unknown-tool check runs, so sanitize it like the Summary
         Console.WriteLine($"[permission] {agentPrefix}{PermissionPromptText.Sanitize(request.Tool)}  {PermissionPromptText.Sanitize(request.Summary)}");
+        if (PromptTitles.HomeSentence(request.Guard) is { } sentence) Console.WriteLine("  " + sentence);
         //a write over a file says so here in the rich prompt's words, since this line alone reads the same for a new file
         if (request is { Tool: "write_file", Existing: { } existing })
             Console.WriteLine("  Overwrite file" + (PromptTitles.Replaces(existing) is { } replaced ? ", " + replaced : ""));

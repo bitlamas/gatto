@@ -25,9 +25,30 @@ internal static class PromptTitles
     private static readonly Regex SizingSuffix =
         new(@" \(\+?\d+ (?:lines?|bytes?)\)$", RegexOptions.Compiled | RegexOptions.CultureInvariant);
 
+    //what a prompt the home guard asked says ahead of its question, and the plain prompter prints the same words
+    internal const string HomeCommands = "All commands executed inside gatto's home require approval.";
+    internal const string HomeWrites = "All writes inside gatto's home require approval.";
+
+    internal static string? HomeSentence(HomeGuard? guard) => guard switch
+    {
+        HomeGuard.Command => HomeCommands,
+        HomeGuard.Write => HomeWrites,
+        _ => null,
+    };
+
     //title, question and detail for one request. a blank search provider gives the bare Web search title, and a null cwd means the process working directory
     public static (TitleRow Title, PromptQuestion Question, IReadOnlyList<DetailRow> Detail) For(
         PermissionRequest r, string? webSearchProvider, string? cwd = null, GlyphSet? glyphs = null)
+    {
+        var (title, question, detail) = Words(r, webSearchProvider, cwd, glyphs);
+        //a guarded prompt opens its question with the guard's sentence, and the whole row takes the warn ink
+        return HomeSentence(r.Guard) is { } sentence
+            ? (title, question with { Text = sentence + " " + question.Text, Warn = true }, detail)
+            : (title, question, detail);
+    }
+
+    private static (TitleRow Title, PromptQuestion Question, IReadOnlyList<DetailRow> Detail) Words(
+        PermissionRequest r, string? webSearchProvider, string? cwd, GlyphSet? glyphs)
     {
         var g = glyphs ?? GlyphSet.Unicode;
         switch (r.Tool)
