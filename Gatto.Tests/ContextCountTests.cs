@@ -35,6 +35,32 @@ public class ContextCountTests
         new("tool", new string('t', 600), ToolCallId: "c2"),
     ];
 
+    //a background end is gatto's record and not the user's words, so the user group holds the typed message alone
+    [Fact]
+    public async Task A_BACKGROUND_END_COUNTS_ON_ITS_OWN_LINE_AND_NOT_AS_THE_USERS_WORDS()
+    {
+        ChatMessage[] sent =
+        [
+            new("system", "sys text"),
+            new("user", new string('u', 100)),
+            new("assistant", new string('a', 60)),
+            new("user", "background task 1 ended · exit 0 · 3s\n" + new string('o', 400), Gloss: "exit 0", Background: 1),
+        ];
+        var f = await ContextCount.BuildAsync(Inputs(sent), new FakeCounter(2_000), CancellationToken.None);
+
+        Assert.Equal(50, Assert.Single(f.Parts, p => p.Label == "user").Tokens);
+        var end = Assert.Single(f.Parts, p => p.Label == "background");
+        Assert.Equal((ContextGroup.Messages, "1"), (end.Group, end.Detail));
+        Assert.True(end.Tokens > 200);
+    }
+
+    [Fact]
+    public async Task WITH_NO_BACKGROUND_END_THERE_IS_NO_BACKGROUND_LINE()
+    {
+        var f = await ContextCount.BuildAsync(Inputs(Sent), new FakeCounter(2_000), CancellationToken.None);
+        Assert.DoesNotContain(f.Parts, p => p.Label == "background");
+    }
+
     [Fact]
     public async Task On_the_exact_path_each_part_is_the_servers_count_and_the_template_takes_the_rest()
     {

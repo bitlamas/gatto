@@ -21,7 +21,9 @@ public sealed record ChatMessage(string Role, string? Content,
     //the note a resume carried on this message, sent ahead of the typed text and never shown
     Gatto.Core.Client.SessionUpdate? Update = null,
     //how the request that produced this reply was cut, set only when something was, so a resume cuts its first request the same way
-    Gatto.Core.Client.ShapeMark? Shape = null);
+    Gatto.Core.Client.ShapeMark? Shape = null,
+    //the number of the background task whose end this user-role record carries, so a reader tells it from the user's own words
+    int? Background = null);
 public sealed record ChatRequest(string Model, IReadOnlyList<ChatMessage> Messages,
     IReadOnlyList<ToolSpec>? Tools = null,
     JsonElement? SamplingOverrides = null, JsonElement? BodyOverrides = null,

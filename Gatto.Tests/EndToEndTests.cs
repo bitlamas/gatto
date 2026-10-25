@@ -790,6 +790,25 @@ public class EndToEndTests : IDisposable
         Assert.Matches(@"^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d[+-]\d\d:\d\d$", seen.Split(' ')[1]);
     }
 
+    //a one-shot has no conversation for an end to land in, so the flag runs in the foreground and the stop-reason line keeps its shape
+    [Fact]
+    public async Task A_ONE_SHOT_BACKGROUND_CALL_RUNS_IN_THE_FOREGROUND_AND_THE_STOP_REASON_LINE_KEEPS_ITS_SHAPE()
+    {
+        await using var server = new FakeOpenAiServer();
+        Configure(server);
+        var stderr = new StringWriter();
+        Console.SetError(stderr);
+        server.Enqueue(Calls("shell", new { command = "Write-Output 'from the flag'", background = true }));
+        server.Enqueue(Says("done"));
+
+        Assert.Equal(0, await GattoApp.RunAsync(new[] { "-p", "start it" }));
+
+        Assert.Equal(Gatto.Core.Tools.ShellTool.ForegroundNote + "\nfrom the flag", ToolResultIn(server.LastRequestBody!.Value));
+        using var doc = JsonDocument.Parse(stderr.ToString().Split('\n', StringSplitOptions.RemoveEmptyEntries).Last().Trim());
+        Assert.Equal(["outcome", "rounds", "session_path", "last_error", "schema_version"], doc.RootElement.EnumerateObject().Select(p => p.Name));
+        Assert.Equal(("completed", 2), (doc.RootElement.GetProperty("outcome").GetString(), doc.RootElement.GetProperty("rounds").GetInt32()));
+    }
+
     //under --yes with no standing grant, the working-folder boundary lets a read of gatto's own variables through
     [Fact]
     public async Task WITH_YES_AND_NO_GRANT_THE_SHELL_CHILD_STILL_READS_ITS_SESSION()

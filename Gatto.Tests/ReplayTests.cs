@@ -34,7 +34,7 @@ public class ReplayTests
         };
         var obs = new RecordingObserver();
         var users = new List<string>();
-        Gatto.Repl.Repl.ReplayTranscript(messages, obs, users.Add);
+        Gatto.Repl.Repl.ReplayTranscript(messages, obs, users.Add, _ => { });
 
         Assert.Equal(new[] { "hello" }, users);
         Assert.Equal(new[] { "start:read_file", "result:read_file:file body", "text:done.\n" }, obs.Events);
@@ -46,7 +46,7 @@ public class ReplayTests
     {
         var messages = new List<ChatMessage> { new("tool", "orphan", ToolCallId: "zz") };
         var obs = new RecordingObserver();
-        Gatto.Repl.Repl.ReplayTranscript(messages, obs, _ => { });
+        Gatto.Repl.Repl.ReplayTranscript(messages, obs, _ => { }, _ => { });
         Assert.Equal(new[] { "result:(tool):orphan" }, obs.Events);
     }
 
@@ -55,7 +55,7 @@ public class ReplayTests
     {
         var messages = new List<ChatMessage> { new("assistant", "line\n") };
         var obs = new RecordingObserver();
-        Gatto.Repl.Repl.ReplayTranscript(messages, obs, _ => { });
+        Gatto.Repl.Repl.ReplayTranscript(messages, obs, _ => { }, _ => { });
         Assert.Equal(new[] { "text:line\n" }, obs.Events);
     }
 
@@ -71,7 +71,7 @@ public class ReplayTests
         var sw = new StringWriter();
         var prior = Console.Out;
         Console.SetOut(sw);
-        try { Gatto.Repl.Repl.ReplayTranscript(messages, new PlainRenderer(), _ => { }); }
+        try { Gatto.Repl.Repl.ReplayTranscript(messages, new PlainRenderer(), _ => { }, _ => { }); }
         finally { Console.SetOut(prior); }
         var output = sw.ToString();
 

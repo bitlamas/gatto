@@ -35,6 +35,9 @@ public interface IToolContext
     //the process's sandbox, read at each call so a run_agent child's shell is confined through its parent's context. null where none exists
     Gatto.Core.Sandbox.SandboxState? Sandbox => null;
 
+    //the background tasks a shell call may start, armed by the rich face alone. null everywhere else, where the flag runs in the foreground
+    BackgroundTasks? Tasks => null;
+
     //the trace and the open tool.exec span, which the loop hands a tool per call only when tracing. no ambient span exists
     Trace Trace => Trace.Off;
     long TraceParent => 0;

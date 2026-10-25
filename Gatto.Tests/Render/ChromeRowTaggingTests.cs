@@ -28,7 +28,7 @@ public class ChromeRowTaggingTests
     {
         //the row budget forces the oldest queued messages into one roll-up row above the shown ones, which stay nearest the composer
         var p = NewPainter(width: 40, height: 20);
-        p.State.QueueTexts = new[] { "one", "two", "three", "four", "five", "six", "seven" };
+        p.State.QueueTexts = ["one", "two", "three", "four", "five", "six", "seven"];
 
         var rows = p.ComposeChromeBlock(40, 20).Rows;
         var queue = rows.Where(r => r.Region == ChromeRegion.Queue).ToList();
@@ -58,7 +58,7 @@ public class ChromeRowTaggingTests
     public void Tags_stay_aligned_with_the_painted_rows_when_the_height_clamp_drops_categories()
     {
         var p = NewPainter(width: 60, height: 10);      //the height is small enough that the clamp really drops categories.
-        p.State.QueueTexts = new[] { "q1", "q2" };
+        p.State.QueueTexts = ["q1", "q2"];
         p.State.PurrText = "purring";
         p.State.Notice = "writing";
         p.State.Composer = new EditorView(new List<string> { "typing" }, 0, 6);

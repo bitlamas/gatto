@@ -102,6 +102,41 @@ public class AgentLoopTests
         return (loop, client, hooks, new Conversation(null), new RecordingObserver());
     }
 
+    //the end is the turn's one user record, appended as built, and the resume note waits for the next typed message
+    [Fact]
+    public async Task A_TURN_STARTED_BY_A_BACKGROUND_END_HOLDS_THAT_ONE_USER_RECORD()
+    {
+        var (loop, client, _, convo, obs) = Setup();
+        var note = new SessionUpdate("the note", new BaselineSources("2026-10-24", null, [], [], "r", "m"), 1);
+        convo.SetPendingUpdate(note);
+        var record = convo.BackgroundRecord(3, "background task 3 ended · exit 0 · 2s\nbuilt", "exit 0", isError: false);
+        client.EnqueueTurn(new StreamEvent.TextDelta("seen"), new StreamEvent.Finished("stop", null));
+
+        await loop.RunTurnAsync(convo, record, obs, default);
+
+        var user = Assert.Single(convo.Messages, m => m.Role == "user");
+        Assert.Same(record, user);
+        Assert.Same(record, convo.Messages[0]);   //the index the turn captured before the append, which the elision protects
+        Assert.Equal((3, "exit 0", (SessionUpdate?)null), (user.Background, user.Gloss, user.Update));
+        Assert.Same(note, convo.PendingUpdate);
+        Assert.Equal("background task 3 ended · exit 0 · 2s", AgentLoop.PromptOf(record));
+    }
+
+    [Fact]
+    public async Task A_TYPED_TURN_STILL_TAKES_THE_RESUME_NOTE()
+    {
+        var (loop, client, _, convo, obs) = Setup();
+        var note = new SessionUpdate("the note", new BaselineSources("2026-10-24", null, [], [], "r", "m"), 1);
+        convo.SetPendingUpdate(note);
+        client.EnqueueTurn(new StreamEvent.TextDelta("ok"), new StreamEvent.Finished("stop", null));
+
+        await loop.RunTurnAsync(convo, "typed", obs, default);
+
+        Assert.Same(note, convo.Messages[0].Update);
+        Assert.Null(convo.PendingUpdate);
+        Assert.Equal("typed", AgentLoop.PromptOf(convo.Messages[0]));
+    }
+
     [Fact]
     public async Task Plain_text_turn_completes()
     {

@@ -36,6 +36,9 @@ file sealed class AppToolContext(string cwd, string home, IUserPrompter? prompte
     public IUserPrompter? Prompter => prompter;
     public SessionIdentity? Session => sessions.Identity;
     public Gatto.Core.Sandbox.SandboxState? Sandbox => sandbox;
+
+    //null at construction, and the rich face alone sets it when it starts, so -p and the plain face run the flag in the foreground
+    public BackgroundTasks? Tasks { get; set; }
 }
 
 file sealed class OneShotObserver : ITurnObserver
@@ -1100,6 +1103,7 @@ public static class GattoApp
                 wildFromHome: config.Wild, wildPersisted: () => permissions.Wild, sandbox: sandbox,
                 defaultRole: config.DefaultRole ?? "generalist",
                 roleTint: state.Role.ParsedTint(), roleCat: state.Role.Cat, firstMessage: state.Role.FirstMessage,
+                armTasks: tasks => ((AppToolContext)toolCtx).Tasks = tasks,
                 //read when /context asks, so a /role or /model since is followed. the shape is the loop's last request, its tools split by origin
                 contextInputs: usage =>
                 {
@@ -1160,7 +1164,7 @@ public static class GattoApp
 
             //one writer and one order for everything read at the end, so a pipe cannot get the lines out of order
             ExitBlock.Write(new CliSurface(Console.Out, launchTheme, glyphs), glyphs,
-                farewell: repl.Ended?.Farewell ?? false, resume: repl.Ended?.Resume ?? false, serverLine);
+                farewell: repl.Ended?.Farewell ?? false, resume: repl.Ended?.Resume ?? false, serverLine, endedTasks: repl.Ended?.EndedTasks ?? 0);
             return replExit;
         }
     }

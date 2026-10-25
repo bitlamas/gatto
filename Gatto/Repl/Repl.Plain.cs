@@ -10,6 +10,10 @@ namespace Gatto.Repl;
 //the plain face, for a terminal the rich surface cannot drive
 public sealed partial class Repl
 {
+    //a restored background end prints its head line as gatto's own line. the plain face has no block to fold the output in
+    private void PlainBackgroundEcho(Gatto.Core.Client.ChatMessage end) =>
+        Console.WriteLine($"\n{_glyphs.Sharp} " + TermText.Sanitize(Gatto.Core.Tools.BackgroundTasks.HeadOf(end.Content)));
+
     //plain loop
     private async Task<int> RunPlainAsync(CancellationToken appCt)
     {
@@ -33,11 +37,11 @@ public sealed partial class Repl
             Console.WriteLine($"(resumed from {resumedFrom})");
             if (resumeLine is not null) Console.WriteLine(resumeLine);
             _usageState.SeedFrom(convo.Messages);   //the last reply's cut, so the first request keeps the prefix the server last read
-            ReplayTranscript(convo.Messages, renderer, u => Console.WriteLine("\n> " + u));
+            ReplayTranscript(convo.Messages, renderer, u => Console.WriteLine("\n> " + u), PlainBackgroundEcho);
             Console.WriteLine();
         }
         else if (SeedFirstMessage(convo, firstMessage))
-            ReplayTranscript(convo.Messages, renderer, u => Console.WriteLine("\n> " + u));
+            ReplayTranscript(convo.Messages, renderer, u => Console.WriteLine("\n> " + u), PlainBackgroundEcho);
         //plain prints subagent progress as a bracketed line like its [tool] rows, and the sink is a one-slot holder filled once a renderer exists
         if (subagentProgressSink is { Length: > 0 })
             subagentProgressSink[0] = m => Console.WriteLine("[agent] " + m);
@@ -96,7 +100,7 @@ public sealed partial class Repl
                 loop.ResetAutoCompact();               //a fresh session may auto-compact again
                 Console.WriteLine(NewConversationLine);
                 if (SeedFirstMessage(convo, firstMessage))
-                    ReplayTranscript(convo.Messages, renderer, u => Console.WriteLine("\n> " + u));
+                    ReplayTranscript(convo.Messages, renderer, u => Console.WriteLine("\n> " + u), PlainBackgroundEcho);
                 continue;
             }
             if (SlashGate.TryMatchCommand(trimmedLine, "/wild", out var wildArg))
@@ -121,6 +125,17 @@ public sealed partial class Repl
                 var rows = await ContextRowsAsync(width, new Theme(TermCaps.Plain), appCt);
                 if (rows is null) Console.WriteLine(ContextUnavailable);
                 else foreach (var row in rows) Console.WriteLine(row.Visible);
+                continue;
+            }
+            //the plain face never arms a registry, so it has no task to list or end
+            if (trimmedLine == "/tasks")
+            {
+                Console.WriteLine($"{_glyphs.Sharp} {NoBackgroundTasks}");
+                continue;
+            }
+            if (SlashGate.TryMatchCommand(trimmedLine, "/tasks", out var tasksArg) && tasksArg.Trim().StartsWith("kill", StringComparison.Ordinal))
+            {
+                Console.WriteLine($"{_glyphs.Sharp} no background task {TermText.Sanitize(tasksArg.Trim()[4..].Trim())}");
                 continue;
             }
             if (trimmedLine == "/tools")
@@ -175,7 +190,7 @@ public sealed partial class Repl
                 }
                 Console.WriteLine(result.Success ? CommandText.RoleLine(roleName) : result.Message);
                 if (result.Opened)   //the switch seeded the new role's opening, so it alone is painted
-                    ReplayTranscript(convo.Messages, renderer, u => Console.WriteLine("\n> " + u));
+                    ReplayTranscript(convo.Messages, renderer, u => Console.WriteLine("\n> " + u), PlainBackgroundEcho);
                 continue;
             }
             if (trimmedLine == "/model" || trimmedLine.StartsWith("/model ", StringComparison.Ordinal))

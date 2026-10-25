@@ -15,8 +15,8 @@ public class DispatchQueueTests
         Assert.True(q.TryEnqueue("a"));
         Assert.True(q.TryEnqueue("b"));
         using var cts = Deadline();
-        Assert.Equal("a", await q.TakeAsync(cts.Token));
-        Assert.Equal("b", await q.TakeAsync(cts.Token));
+        Assert.Equal("a", (await q.TakeAsync(cts.Token))?.Text);
+        Assert.Equal("b", (await q.TakeAsync(cts.Token))?.Text);
         Assert.Equal(0, q.Count);
     }
 
@@ -29,7 +29,7 @@ public class DispatchQueueTests
         Assert.True(q.TryEnqueue("3"));
         Assert.False(q.TryEnqueue("4"));   //on rejection the caller beeps and puts the text back in the composer.
         Assert.Equal(3, q.Count);
-        Assert.Equal(new[] { "1", "2", "3" }, q.Texts());
+        Assert.Equal(new[] { "1", "2", "3" }, q.Texts().Select(v => v.Text));
     }
     [Fact]
     public async Task TakeAsync_ReturnsNull_WhenTheMessageWasDroppedAfterItsPermitWasTaken()
@@ -67,7 +67,7 @@ public class DispatchQueueTests
         q.TryEnqueue("d");
 
         using var cts = Deadline();
-        Assert.Equal("d", await q.TakeAsync(cts.Token));   //the one surviving message takes the one real permit.
+        Assert.Equal("d", (await q.TakeAsync(cts.Token))?.Text);   //the one surviving message takes the one real permit.
         using var shortCts = new CancellationTokenSource(150);
         await Assert.ThrowsAnyAsync<OperationCanceledException>(() => q.TakeAsync(shortCts.Token));
     }
@@ -78,6 +78,87 @@ public class DispatchQueueTests
         var q = new DispatchQueue(10);
         Assert.Empty(q.DrainAll());
         Assert.Equal(0, q.Count);
+    }
+
+    private static Gatto.Core.Tools.BackgroundEnd End(int n) =>
+        new(n, 0, $"background task {n} ended · exit 0 · 1s\noutput {n}", "exit 0", false, Gatto.Core.Tools.BackgroundTasks.Exit, TimeSpan.FromSeconds(1));
+
+    private static async Task Blocks(DispatchQueue q)
+    {
+        using var shortCts = new CancellationTokenSource(150);
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => q.TakeAsync(shortCts.Token));
+    }
+
+    [Fact]
+    public void THE_CAP_COUNTS_TYPED_MESSAGES_AND_NEVER_REFUSES_AN_END()
+    {
+        var q = new DispatchQueue(2);
+        q.EnqueueTask(End(1));
+        Assert.True(q.TryEnqueue("a"));
+        Assert.True(q.TryEnqueue("b"));
+        Assert.False(q.TryEnqueue("c"));
+        q.EnqueueTask(End(2));
+
+        Assert.Equal(4, q.Count);
+        Assert.Equal([("background task 1 ended · exit 0 · 1s", true), ("a", false), ("b", false), ("background task 2 ended · exit 0 · 1s", true)],
+            q.Texts().Select(v => (v.Text, v.Task)));
+    }
+
+    [Fact]
+    public async Task THE_PULL_TAKES_TYPED_MESSAGES_AND_LEAVES_ENDS_WITH_THEIR_PERMITS()
+    {
+        var q = new DispatchQueue(10);
+        q.TryEnqueue("a");
+        q.EnqueueTask(End(1));
+        q.TryEnqueue("b");
+
+        Assert.Equal(["a", "b"], q.DrainAll());
+        using var cts = Deadline();
+        Assert.Equal(1, (await q.TakeAsync(cts.Token))?.End?.Number);
+        await Blocks(q);
+    }
+
+    [Fact]
+    public async Task A_PARKED_END_WAITS_FOR_THE_NEXT_ENTRY_AND_GOES_BEFORE_IT()
+    {
+        var q = new DispatchQueue(10);
+        q.Park(new QueueEntry(End(1).Text, End(1)));
+        await Blocks(q);   //no permit of its own, so the dispatcher does not retry it at once
+
+        q.TryEnqueue("next");
+        using var cts = Deadline();
+        Assert.Equal(1, (await q.TakeAsync(cts.Token))?.End?.Number);
+        Assert.Equal("next", (await q.TakeAsync(cts.Token))?.Text);
+        await Blocks(q);
+    }
+
+    [Fact]
+    public async Task A_PARKED_END_GOES_BEFORE_A_MESSAGE_ALREADY_WAITING_AND_THE_MESSAGE_KEEPS_ITS_PERMIT()
+    {
+        var q = new DispatchQueue(10);
+        q.TryEnqueue("waiting");
+        q.Park(new QueueEntry(End(1).Text, End(1)));
+
+        using var cts = Deadline();
+        Assert.Equal(1, (await q.TakeAsync(cts.Token))?.End?.Number);
+        Assert.Equal("waiting", (await q.TakeAsync(cts.Token))?.Text);
+        await Blocks(q);
+    }
+
+    [Fact]
+    public async Task DROP_TASKS_TAKES_QUEUED_AND_PARKED_ENDS_WITH_THEIR_PERMITS()
+    {
+        var q = new DispatchQueue(10);
+        q.EnqueueTask(End(1));
+        q.TryEnqueue("typed");
+        q.Park(new QueueEntry(End(2).Text, End(2)));
+
+        q.DropTasks();
+
+        Assert.Equal(["typed"], q.Texts().Select(v => v.Text));
+        using var cts = Deadline();
+        Assert.Equal("typed", (await q.TakeAsync(cts.Token))?.Text);
+        await Blocks(q);
     }
 
     [Fact]
@@ -91,7 +172,7 @@ public class DispatchQueueTests
             for (var i = 0; i < 200; i++)
             {
                 var m = await q.TakeAsync(cts.Token);
-                if (m is not null) got.Add(m);
+                if (m is { } entry) got.Add(entry.Text);
             }
         });
         for (var i = 0; i < 200; i++) Assert.True(q.TryEnqueue("m" + i));

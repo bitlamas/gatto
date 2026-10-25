@@ -431,6 +431,22 @@ public sealed class StreamRenderer : ITurnObserver
             () => _surface.Write("\n! " + message + "\n"));
     }
 
+    //a background task's end as a closed shell block under its head line, live and on restore alike, appended before the paint
+    public void CommitBackground(ChatMessage record) => Guarded(
+        () =>
+        {
+            if (_inReasoning) CloseReasoningBlock();
+            else FlushOpenLine();
+            if (_last != LastWrite.None) _blankPending = true;
+            var item = BackgroundEndItem.From(record, _theme, _glyphs, StampRole);
+            _model?.Append(item);
+            CommitRows(TapRows(item));
+            _last = LastWrite.Tool;
+            _blockOpen = false;
+            _blankPending = true;   //the block has closed, so the next commit leads with a blank row
+        },
+        () => _surface.Write("\n! " + TermText.Sanitize(Gatto.Core.Tools.BackgroundTasks.HeadOf(record.Content)) + "\n"));
+
     //the turn's dim completion line, one blank row under the output and truncated to one row. the bracket calls it after EndTurn so the timer is still live
     public void CommitCompletion(string line) => Guarded(
         () =>

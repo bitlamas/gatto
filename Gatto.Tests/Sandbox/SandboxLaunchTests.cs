@@ -18,12 +18,13 @@ public sealed class SandboxLaunchTests : IDisposable
     private string Project => Path.Combine(_root, "project");
     private string Outside => Path.Combine(_root, "outside");
 
-    private sealed class Ctx(string cwd, string home, SandboxState? sandbox) : IToolContext
+    private sealed class Ctx(string cwd, string home, SandboxState? sandbox, BackgroundTasks? tasks = null) : IToolContext
     {
         public string Cwd => cwd;
         public string HomePath => home;
         public IUserPrompter? Prompter => null;
         public SandboxState? Sandbox => sandbox;
+        public BackgroundTasks? Tasks => tasks;
     }
 
     public SandboxLaunchTests()
@@ -270,6 +271,48 @@ public sealed class SandboxLaunchTests : IDisposable
         }
         catch (ArgumentException) { }
         Assert.Throws<ArgumentException>(() => Process.GetProcessById(pid));
+    }
+
+    //a tree kill follows parent links, so a grandchild whose parent already exited is reached through the job alone
+    [Fact]
+    public async Task A_BACKGROUND_TASK_RUNS_IN_ITS_JOB_AND_ITS_KILL_ENDS_A_GRANDCHILD_WHOSE_PARENT_EXITED()
+    {
+        using var tasks = new BackgroundTasks();
+        var ended = new TaskCompletionSource<BackgroundEnd>(TaskCreationOptions.RunContinuationsAsynchronously);
+        tasks.Ended = e => ended.TrySetResult(e);
+        var pidFile = Path.Combine(Project, "pids.txt");
+        var middle = $"$g = Start-Process -PassThru -WindowStyle Hidden powershell -ArgumentList '-NoProfile','-Command','Start-Sleep 120'; "
+            + $"Set-Content -Path '{pidFile}' -Value \"$PID $($g.Id)\"";
+        var encoded = Convert.ToBase64String(System.Text.Encoding.Unicode.GetBytes(middle));
+        var r = await new ShellTool().ExecuteAsync(
+            JsonSerializer.SerializeToElement(new
+            {
+                command = $"Start-Process -WindowStyle Hidden powershell -ArgumentList '-NoProfile','-EncodedCommand','{encoded}'; Start-Sleep 120",
+                background = true,
+            }),
+            new Ctx(Project, Path.Combine(_root, "home"), _state, tasks), CancellationToken.None);
+        Assert.Equal("background 1", r.Gloss);
+
+        int[] pids = [];
+        Waits.Until(() =>
+        {
+            try { pids = [.. File.ReadAllText(pidFile).Split(' ', StringSplitOptions.RemoveEmptyEntries).Select(int.Parse)]; }
+            catch (Exception ex) when (ex is IOException or FormatException) { }
+            return pids.Length == 2;
+        }, () => "the middle process never wrote its pids");
+        using (var parent = TryProcess(pids[0])) Assert.True(parent is null || parent.WaitForExit(Waits.Bound), "the middle process did not exit");
+        using var grandchild = Process.GetProcessById(pids[1]);
+        Assert.Contains(_state.Jobs, job => SandboxNative.IsProcessInJob(grandchild.Handle, job, out var inJob) && inJob);
+
+        Assert.True(tasks.Kill(1, BackgroundTasks.ByTasks));
+        Assert.True(grandchild.WaitForExit(Waits.Bound), "the orphaned grandchild outlived the task's kill");
+        Assert.Equal(BackgroundTasks.ByTasks, (await ended.Task.WaitAsync(Waits.Bound)).Cause);
+    }
+
+    private static Process? TryProcess(int pid)
+    {
+        try { return Process.GetProcessById(pid); }
+        catch (ArgumentException) { return null; }
     }
 
     //a second child must not inherit the first's pipe ends, or it holds the first's output open

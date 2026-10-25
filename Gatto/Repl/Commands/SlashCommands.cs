@@ -19,13 +19,18 @@ public static class SlashCommands
         return true;
     }
 
-    //a command that reads state and changes nothing the running turn uses answers mid-turn instead of waiting in the queue. /permissions only in its list view
+    //a command that reads state and changes nothing the running turn uses answers mid-turn instead of waiting in the queue. /permissions and /tasks only in their list views
     public static bool BypassesQueue(string input)
     {
         var trimmed = input.Trim();
         foreach (var cmd in All)
             if (SlashGate.TryMatchCommand(trimmed, cmd.Name, out var arg))
-                return cmd.Name == "/permissions" ? arg.Trim() is "" or "all" : cmd.BypassesQueue;
+                return cmd.Name switch
+                {
+                    "/permissions" => arg.Trim() is "" or "all",
+                    "/tasks" => arg.Trim() == "",
+                    _ => cmd.BypassesQueue,
+                };
         return false;
     }
 
@@ -54,6 +59,8 @@ public static class SlashCommands
         new("/permissions", "[all|revoke <n>]", "review + revoke standing permission grants"),
         new("/tools", "", "list the tools armed this session", BypassesQueue: true),
         new("/context", "", "show what fills the context window", BypassesQueue: true),
+        //the kill acts at once on its own arm, during a turn too, and the list answers in the panel then
+        new("/tasks", "[kill <n>]", "list the background tasks, or end one", BypassesQueue: true),
         //like /remember, the input becomes InitPrompt and is dispatched as if typed
         new("/init", "", "survey the project, write GATTO.md", ReachesModel: true),
         new("/quit", "", "exit"),

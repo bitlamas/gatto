@@ -26,6 +26,45 @@ public class ContextBudgetTests
         return list;
     }
 
+    private static ChatMessage End(int n, string head, int outputChars) =>
+        new("user", head + "\n" + new string('y', outputChars), Gloss: "exit 0", Background: n);
+
+    //a background end is a user-role record, and a 50,000-character one would otherwise ride every request
+    [Theory]
+    [InlineData("background task 2 ended · exit 0 · 3s", 600)]
+    [InlineData("background task 2 ended · exit 0 · 3s", 6_000)]
+    [InlineData("background task 2 killed by /tasks · 1m 04s", 6_000)]
+    public void A_BACKGROUND_END_IS_CUT_TO_ITS_HEAD_LINE_WITH_NO_KEPT_HEAD(string head, int outputChars)
+    {
+        var msgs = Rounds(40);
+        var end = End(2, head, outputChars);
+        msgs.Insert(1, end);
+
+        var (result, elided, _, through) = ContextBudget.Apply(msgs, 10_500, msgs.Count);
+
+        Assert.Equal($"[elided: {head}, {end.Content!.Length} chars — output elided]", result[1].Content);
+        Assert.Equal(2, result[1].Background);
+        Assert.True(elided > 1);
+        Assert.True(through > 1);
+    }
+
+    [Fact]
+    public void A_TYPED_USER_RECORD_IS_NEVER_CUT_AND_A_CUT_END_IS_CUT_AGAIN_BELOW_THE_FRONTIER()
+    {
+        var msgs = Rounds(40);
+        var typed = User(new string('t', 6_000));
+        msgs.Insert(1, typed);
+        msgs.Insert(2, End(1, "background task 1 ended · exit 0 · 3s", 6_000));
+
+        var (first, _, _, through) = ContextBudget.Apply(msgs, 10_500, msgs.Count);
+        var (again, elided, _, _) = ContextBudget.Apply(msgs, 10_500, msgs.Count, elidedThrough: through, extend: false);
+
+        Assert.Same(typed, first[1]);
+        Assert.StartsWith("[elided: background task 1 ended", first[2].Content, StringComparison.Ordinal);
+        Assert.Equal(first[2].Content, again[2].Content);   //the prefix the server holds stays the same
+        Assert.True(elided > 0);
+    }
+
     //once the count crosses the elision line, the cut goes down to the lower line in the same request
     [Fact]
     public void Apply_cuts_down_to_the_lower_line_in_one_step()

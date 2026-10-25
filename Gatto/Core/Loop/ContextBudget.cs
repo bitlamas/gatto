@@ -117,9 +117,13 @@ public static class ContextBudget
 
         void CutAt(int i)
         {
-            if (working[i].Role != "tool") return;
-            var originalChars = working[i].Content?.Length ?? 0;
-            var stub = Cut(working[i].Content ?? "", ToolNameFor(working, i) + " result", " — re-run if needed");
+            var content = working[i].Content ?? "";
+            string stub;
+            if (working[i].Role == "tool") stub = Cut(content, ToolNameFor(working, i) + " result", " — re-run if needed");
+            //a background end's head line already says what ran and how it ended, so it is the stub's subject and no head is kept
+            else if (working[i].Background is not null) stub = Marker(content.Length, Tools.BackgroundTasks.HeadOf(content), " — output elided");
+            else return;
+            var originalChars = content.Length;
             //skip a result that isn't longer than its stub or below MinElidableChars, eliding either would grow the request or rewrite the prefix for nothing
             if (originalChars <= stub.Length || originalChars < MinElidableChars) return;
             working[i] = working[i] with { Content = stub };
@@ -152,10 +156,13 @@ public static class ContextBudget
     //the stub for a cut result, with its head above the marker when the result is long, so the first line of a file is never lost
     internal static string Cut(string content, string what, string after)
     {
-        if (content.Length < HeadFromChars) return $"[elided: {what}, {content.Length} chars{after}]";
+        if (content.Length < HeadFromChars) return Marker(content.Length, what, after);
         var head = Head(content);
         return head + "\n" + $"[elided: {what}, {content.Length} chars, the first {head.Length} shown above{after}]";
     }
+
+    //the bare marker a cut leaves, with nothing of the content kept above it
+    internal static string Marker(int chars, string what, string after) => $"[elided: {what}, {chars} chars{after}]";
 
     //the first HeadKeepChars of a result, ending on a whole line when one fits
     private static string Head(string content)

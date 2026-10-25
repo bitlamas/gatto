@@ -40,6 +40,8 @@ public class AsciiReplScreenTests
         ("completion", new CompletionItem("done in 3s", null)),
         ("lead", new SessionLeadItem("resumed from a session", null)),
         ("command-echo", new CommandEchoItem(["/model", "  switched"], null)),
+        ("background-end", BackgroundEndItem.From(new Gatto.Core.Client.ChatMessage("user", "background task 1 ended · exit 0 · 3s\nout line",
+            Gloss: "exit 0", Background: 1), Plain, GlyphSet.Ascii, "generalist")),
     ];
 
     //the chrome is composed under the ascii set like the transcript. the purr line is chrome rather than an item, so it belongs in this block

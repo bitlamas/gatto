@@ -150,6 +150,23 @@ public class SessionStoreTests : IDisposable
         Assert.Equal("{\"role\":\"tool\",\"content\":\"3 files\",\"tool_call_id\":\"call_1\"}", json);
     }
 
+    [Fact]
+    public void A_BACKGROUND_END_ROUND_TRIPS_ITS_FIELD_AND_A_RECORD_WITHOUT_IT_READS_NULL()
+    {
+        var end = new ChatMessage("user", "background task 2 killed by /tasks · 4s", IsError: true, Gloss: "killed", Background: 2);
+        var json = SessionStore.ChatJson(end);
+        using var doc = System.Text.Json.JsonDocument.Parse(json);
+        var back = SessionStore.ParseChatElement(doc.RootElement);
+
+        Assert.Equal(2, doc.RootElement.GetProperty("background").GetInt32());
+        Assert.Equal((2, "killed", true), (back.Background, back.Gloss, back.IsError));
+
+        var typed = SessionStore.ChatJson(new ChatMessage("user", "hi"));
+        Assert.Equal("{\"role\":\"user\",\"content\":\"hi\"}", typed);
+        using var plain = System.Text.Json.JsonDocument.Parse(typed);
+        Assert.Null(SessionStore.ParseChatElement(plain.RootElement).Background);
+    }
+
     //the elision frontier and the ratio ride the assistant record only when something was cut, an uncut record stays as it was
     [Fact]
     public void ChatJson_writes_the_elision_shape_only_when_set_and_reads_it_back()

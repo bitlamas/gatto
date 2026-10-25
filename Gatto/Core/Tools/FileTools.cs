@@ -19,6 +19,10 @@ internal static class ToolArgs
         args.TryGetProperty(name, out var v) && v.ValueKind == JsonValueKind.Number
             ? v.GetInt32() : null;
 
+    public static bool OptionalBool(JsonElement args, string name) =>
+        args.ValueKind == JsonValueKind.Object &&
+        args.TryGetProperty(name, out var v) && v.ValueKind == JsonValueKind.True;
+
     public static string Resolve(IToolContext ctx, string path) => Resolve(ctx.Cwd, path);
 
     //a leading ~ is the user's folder, as the shell reads it, so the tool and the permission gate both land where the model meant

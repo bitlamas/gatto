@@ -71,6 +71,10 @@ public static class TranscriptStore
             last = m;
             switch (m.Role)
             {
+                case "user" when m.Background is not null:
+                    //a background end draws as it did live, its block from the record and never as the user's words
+                    model.Append(BackgroundEndItem.From(m, theme, glyphs, role));
+                    break;
                 case "user":
                     if (m.Content is { Length: > 0 } u) model.Append(new UserEchoItem(u.Split('\n')));
                     break;

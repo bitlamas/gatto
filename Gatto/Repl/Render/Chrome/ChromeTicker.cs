@@ -36,7 +36,17 @@ public sealed class ChromeTicker(ChromePainter painter, object gate, ISlotsReade
     //set by any streamed delta and by MarkStreaming on a tool call, so the prefill row ends when the model starts emitting
     private int _emitted;
     //the ticker's own fields as its last paint left them. every other state change repaints itself, so a tick that changes none of these has nothing to show
-    private (string? Purr, string? Wait, bool Blink)? _painted;
+    private (string? Purr, string? Wait, bool Blink, string Tasks)? _painted;
+
+    //the running background tasks, read each tick, so the row's timers move with or without a turn. null in a session that arms none
+    public Func<IReadOnlyList<(int Number, string Command, TimeSpan Elapsed)>>? Running { get; set; }
+
+    //true while no turn runs and a task does, so the one loop keeps the tasks row moving and draws nothing of the purr. read and written under the gate
+    private bool _idle;
+
+    //what the tasks row shows, one second at a time, so a tick that moves a task's timer repaints and any other tick does not
+    private static string TasksKey(IReadOnlyList<(int Number, string Command, TimeSpan Elapsed)> tasks) =>
+        string.Join("|", tasks.Select(t => t.Number + " " + Gatto.Core.ElapsedText.Of(t.Elapsed)));
 
     //the last prompt_progress chunk of the request, and 0 means none arrived so the prefill row keeps using /slots
     private long _streamTotal;
@@ -173,7 +183,13 @@ public sealed class ChromeTicker(ChromePainter painter, object gate, ISlotsReade
     {
         lock (gate)
         {
-            if (_cts is not null || _faulted) return;
+            if (_faulted || (_cts is not null && !_idle)) return;
+            //a turn takes the clock from the idle loop, so one loop runs at a time
+            if (_idle)
+            {
+                _cts!.Cancel(); _cts.Dispose(); _cts = null;
+                _idle = false;
+            }
             _purr = frames ?? PurrFrames.Full;
             _kaomoji = kaomoji;
             _tokenChars = 0;
@@ -200,7 +216,18 @@ public sealed class ChromeTicker(ChromePainter painter, object gate, ISlotsReade
         lock (gate)
         {
             if (_cts is null) return;
-            _cts.Cancel(); _cts.Dispose(); _cts = null;
+            //a task still running keeps the loop alive in the idle mode, and a stop while idle, the teardown's, ends it
+            if (!_idle && Running?.Invoke() is { Count: > 0 })
+            {
+                _idle = true;
+                _painted = null;
+            }
+            else
+            {
+                _cts.Cancel(); _cts.Dispose(); _cts = null;
+                _idle = false;
+                painter.State.Tasks = [];
+            }
             //the Stopwatch keeps running once started, so null it here. otherwise CompletionRow recommits a purred-for line whose elapsed keeps growing off an earlier turn
             _clock = null;
             _slots = null;   //no stale /slots answer reaches the next turn
@@ -223,12 +250,36 @@ public sealed class ChromeTicker(ChromePainter painter, object gate, ISlotsReade
             while (!ct.IsCancellationRequested)
             {
                 await Task.Delay(100, ct);
-                var ms = _clock!.ElapsedMilliseconds;
-                if (ms < GraceMs) continue;
                 if (!Monitor.TryEnter(gate)) continue;   //don't block the timer waiting for the gate, a long hold would freeze the tick
                 try
                 {
                     if (ct.IsCancellationRequested || _faulted) return;
+                    var tasks = Running?.Invoke() ?? [];
+                    //the idle branch comes before the turn clock, which StopTurn nulled
+                    if (_idle)
+                    {
+                        if (tasks.Count == 0)
+                        {
+                            //the last task ended, so the row goes and the loop ends with it
+                            _cts?.Dispose(); _cts = null;
+                            _idle = false;
+                            _painted = null;
+                            painter.State.Tasks = [];
+                            try { painter.Repaint(); }
+                            catch (Exception ex) { _faulted = true; fault = ex; }
+                            return;
+                        }
+                        painter.State.Tasks = tasks;
+                        var idleTick = ((string?)null, (string?)null, painter.State.BlinkOn, TasksKey(tasks));
+                        if (_painted == idleTick) continue;
+                        _painted = idleTick;
+                        try { painter.Repaint(); }
+                        catch (Exception ex) { _faulted = true; fault = ex; return; }
+                        continue;
+                    }
+                    var ms = _clock!.ElapsedMilliseconds;
+                    if (ms < GraceMs) continue;
+                    painter.State.Tasks = tasks;
                     //floor the estimate at the highest count shown, so a failed poll cannot dip the ↓ back below what the row just showed
                     var tokens = Math.Max(Interlocked.Read(ref _tokenChars) / 4, _maxDown);
                     var toolTokens = Interlocked.Read(ref _toolChars) / 4;   //the turn's tool-result tokens (Σ)
@@ -271,7 +322,7 @@ public sealed class ChromeTicker(ChromePainter painter, object gate, ISlotsReade
                         painter.State.BlinkOn = ms / 500 % 2 == 0;
                     }
                     //a panel's waiting row moves once a second, and ten full frames a second of the same rows cost the terminal 35 KB a second under conpty
-                    var tick = (painter.State.PurrText, painter.State.ToolWait, painter.State.BlinkOn);
+                    var tick = (painter.State.PurrText, painter.State.ToolWait, painter.State.BlinkOn, TasksKey(tasks));
                     if (_painted == tick) continue;
                     _painted = tick;
                     try { painter.Repaint(); }

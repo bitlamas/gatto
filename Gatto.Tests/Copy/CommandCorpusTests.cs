@@ -133,20 +133,21 @@ public class CommandCorpusTests : IDisposable
     //the exit block, the one place the end of a session is printed
 
     //every state the block can show, rendered, since a phrase test cannot see the order or the blank rows
-    public static TheoryData<string, bool, bool, string> ExitStates => new()
+    public static TheoryData<string, bool, bool, string, int> ExitStates => new()
     {
-        { "quit-stopped", true, true, "stopped" },
-        { "quit-still-loaded", true, true, "hint" },
-        { "quit-nothing-closed", true, true, "nothing" },
-        { "quit-no-session", true, false, "stopped" },
-        { "input-died", false, true, "hint" },
-        { "no-server", true, true, "none" },
-        { "empty", false, false, "none" },
+        { "quit-stopped", true, true, "stopped", 0 },
+        { "quit-still-loaded", true, true, "hint", 0 },
+        { "quit-nothing-closed", true, true, "nothing", 0 },
+        { "quit-no-session", true, false, "stopped", 0 },
+        { "input-died", false, true, "hint", 0 },
+        { "no-server", true, true, "none", 0 },
+        { "quit-ended-tasks", true, true, "stopped", 2 },
+        { "empty", false, false, "none", 0 },
     };
 
     [Theory]
     [MemberData(nameof(ExitStates))]
-    public void THE_EXIT_BLOCK(string state, bool farewell, bool resume, string server)
+    public void THE_EXIT_BLOCK(string state, bool farewell, bool resume, string server, int endedTasks)
     {
         foreach (var mode in new[] { CorpusMode.Dark, CorpusMode.Plain })
         {
@@ -163,7 +164,7 @@ public class CommandCorpusTests : IDisposable
                 "hint" => ServeNotice.ExitHint(true, 102_400_000_000, CorpusDriver.Glyphs),
                 _ => null,
             };
-            ExitBlock.Write(cli, CorpusDriver.Glyphs, farewell, resume, line);
+            ExitBlock.Write(cli, CorpusDriver.Glyphs, farewell, resume, line, endedTasks);
             CopyGolden.Check($"exit-block-{state}-{mode}", CorpusDriver.Visible(w.ToString()));
         }
     }
@@ -349,6 +350,7 @@ public class CommandCorpusTests : IDisposable
         "exit-block-quit-no-session-Dark", "exit-block-quit-no-session-Plain",
         "exit-block-input-died-Dark", "exit-block-input-died-Plain",
         "exit-block-no-server-Dark", "exit-block-no-server-Plain",
+        "exit-block-quit-ended-tasks-Dark", "exit-block-quit-ended-tasks-Plain",
         "exit-block-empty-Dark", "exit-block-empty-Plain",
         "wizard-record-40", "wizard-record-60", "wizard-record-80",
         "wizard-record-100", "wizard-record-120", "wizard-record-model",

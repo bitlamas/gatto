@@ -25,6 +25,7 @@ public sealed partial class Repl
         //reads lastView by reference so it sees the current composer contents, and it is set before the first dispatch
         s.ComposerEmpty = () => lastView.Lines.Count == 1 && lastView.Lines[0].Length == 0;
         var stopped = false;             //teardown latch, written and read only under the gate
+        var endedTasks = 0;              //the background tasks the teardown ended, which the exit block says
         var degraded = false;            //renderer degrade latch, written and read only under the gate
         //the pump died, console gone or a dispatch that never recovered, read once at the exit epilogue so the session can say why it ended
         var pumpDied = false;
@@ -121,6 +122,25 @@ public sealed partial class Repl
         //the one pusher, called when the queue changes, so the chrome and the queue cannot part
         void PublishQueueLocked() => s.Painter.State.QueueTexts = queue.Texts();
 
+        //the one arming site of the background tasks, so -p, the plain face and a run_agent child run the flag in the foreground
+        var tasks = new Gatto.Core.Tools.BackgroundTasks();
+        //the sink is set before the context is armed, since an end with no sink is dropped
+        tasks.Ended = end =>
+        {
+            lock (s.Gate)
+            {
+                //an end composed after a /new or the teardown belongs to a conversation that is gone
+                if (stopped || end.Generation != tasks.Generation) return;
+                queue.EnqueueTask(end);
+                PublishQueueLocked();
+                RedrawLocked(lastView);
+            }
+        };
+        _tasks = tasks;
+        armTasks?.Invoke(tasks);
+        //the ticker reads the running tasks each tick, so their row moves in a turn and out of one
+        s.Ticker.Running = () => [.. tasks.Running.Select(t => (t.Task.Number, t.Task.Command, t.Elapsed))];
+
         //one fault slot shared with the composer and resize tasks, the first fault wins, and the cancel is punted off the timer thread
         void OnChromeFault(Exception ex)
         {
@@ -188,6 +208,13 @@ public sealed partial class Repl
                     //the placeholders beside a command seed the next Read here, where no restore can race the reseed
                     string? carry = null;
                     if (CommandAmongPlaceholders(text, KnownCommands()) is { } split) (text, carry) = split;
+                    //a background kill acts at once, at rest and during a turn alike, and never waits in the queue
+                    if (KillNow(text, s))
+                    {
+                        lock (s.Gate) { if (!stopped) RedrawLocked(idleView); }
+                        rejected = carry;
+                        continue;
+                    }
                     //a command that only reads answers at once while a turn runs, drawn where the composer was, and never waits in the queue
                     if (BypassNow(text, s) is { } answer)
                     {
@@ -232,11 +259,11 @@ public sealed partial class Repl
         {
             while (!loopCt.IsCancellationRequested)
             {
-                string? input;
-                try { input = await queue.TakeAsync(loopCt); }
+                QueueEntry? taken;
+                try { taken = await queue.TakeAsync(loopCt); }
                 catch (OperationCanceledException) { break; }
                 //null means Esc dropped this message after its permit, so the counts agree again and the loop just repaints
-                if (input is null) { lock (s.Gate) { PublishQueueLocked(); RedrawLocked(lastView); } continue; }
+                if (taken is not { } input) { lock (s.Gate) { PublishQueueLocked(); RedrawLocked(lastView); } continue; }
 
                 if (await DispatchLinearAsync(input, s, queue, appCt)) break;
                 lock (s.Gate) { PublishQueueLocked(); RedrawLocked(lastView); }   //fresh status and ctx after the turn
@@ -247,11 +274,21 @@ public sealed partial class Repl
             //cancel the loop before loopCts is disposed, a /quit exit breaks the while without cancelling and the resize poller's next Task.Delay would throw
             try { loopCts.Cancel(); } catch (ObjectDisposedException) { }
             hintTimer.Dispose();            //stop a pending composer-hint expiry shot
-            TeardownChrome(s.Gate, s.Painter, s.Ticker, _chrome, () => stopped = true, Volatile.Read(ref fault));
+            try
+            {
+                endedTasks = TeardownChrome(s.Gate, s.Painter, s.Ticker, _chrome, () => stopped = true, Volatile.Read(ref fault),
+                    () => tasks.KillAll(Gatto.Core.Tools.BackgroundTasks.AtQuit));
+            }
+            finally
+            {
+                armTasks?.Invoke(null);
+                _tasks = null;
+                tasks.Dispose();
+            }
             s.RestoreMouseMode?.Invoke();   //restore the shell's mouse and QuickEdit mode (idempotent, the degrade path and the exit hooks call it too)
         }
         //the alt screen is gone with the transcript, so Ended tells the exit block whether to reprint it or offer a resume
-        Ended = EndOf(degraded, dumpOnExit, sessions?.CountForCwd() > 0, pumpDied);
+        Ended = EndOf(degraded, dumpOnExit, sessions?.CountForCwd() > 0, pumpDied) with { EndedTasks = endedTasks };
         if (!degraded) ExitEpilogue(s.Surface, s.Painter.Model, s.Theme, dumpOnExit, pumpDied, s.Glyphs);
         return 0;
     }
@@ -281,7 +318,7 @@ public sealed partial class Repl
     //this bracket starts and stops the purr, the body cannot end it early. the renderer is a Func, a /role swap mid-turn must still close the current turn
     internal static async Task<bool> DispatchBracketAsync(
         object gate, ChromePainter painter, ChromeTicker ticker, Func<StreamRenderer> renderer,
-        IReadOnlyList<string> queued, IReadOnlyList<string> userLines, string kaomoji,
+        IReadOnlyList<QueueEntryView> queued, IReadOnlyList<string> userLines, string kaomoji,
         IReadOnlyList<SlashCommands.Cmd> known, Func<Task<bool>> body,
         long promptEstimate = 0, Func<Render.Chrome.PurrFrames>? purrSet = null, string? classifyAs = null)
     {
@@ -309,16 +346,18 @@ public sealed partial class Repl
     }
 
 
-    //retire the ticker under the gate before the painter erases anything, a tick after that would paint onto a cleaned screen
-    internal static void TeardownChrome(
+    //retire the ticker under the gate before the painter erases anything, a tick after that would paint onto a cleaned screen. returns how many background tasks it ended
+    internal static int TeardownChrome(
         object gate, ChromePainter painter, ChromeTicker ticker, ChromeHandle? chrome,
-        Action markStopped, Exception? fault)
+        Action markStopped, Exception? fault, Func<int>? endTasks = null)
     {
+        var ended = 0;
         try
         {
             lock (gate)
             {
                 markStopped();
+                ended = endTasks?.Invoke() ?? 0;   //before the ticker stops, so no running task keeps its idle loop alive past the teardown
                 ticker.StopTurn();          //idempotent, and its own paint faults go to OnFault
                 ticker.OnFault = null;
                 if (chrome is not null) { chrome.Painter = null; chrome.Renderer = null; }
@@ -327,6 +366,7 @@ public sealed partial class Repl
         }
         catch when (fault is not null) { } //the console is sick, the fault below is the real story
         if (fault is not null) ExceptionDispatchInfo.Capture(fault).Throw();
+        return ended;
     }
 
     //rewrites the current composer line at the cursor row when the painter is dead, a one-line fallback rather than a frame
@@ -392,8 +432,11 @@ public sealed partial class Repl
     }
 
     //takes the attach decision above the turn bracket, a refusal from inside the body comes after the echo and the purr
-    private async Task<bool> DispatchLinearAsync(string input, RichState s, DispatchQueue queue, CancellationToken appCt)
+    private async Task<bool> DispatchLinearAsync(QueueEntry entry, RichState s, DispatchQueue queue, CancellationToken appCt)
     {
+        //a background task's end takes its own arm before the gate, since the user did not type it
+        if (entry.End is { } end) return await DispatchBackgroundAsync(entry, end, s, queue, appCt);
+        var input = entry.Text;
         //refuses an unknown command above the bracket, and clears the composer instead of handing the text back since a restore races the composer's own paint
         var submitted = input;   //what was typed, the bracket classifies this rather than the stripped text
         var gate = SlashGate.GateSlash(input, KnownCommands());
@@ -403,6 +446,7 @@ public sealed partial class Repl
             return false;
         }
         input = gate.Text;   //a typed // has lost its first slash, everything below sees the stripped text
+        if (!gate.Literal && input.Trim() == "/new") EndTasksForNew(s, queue);
 
         var attach = AttachDecision.None;
         //the one place attachments are acquired, and the literal flag keeps a //help message on this arm since the stripped text reads as a command
@@ -429,6 +473,45 @@ public sealed partial class Repl
             //what the model is about to re-read, measured before the turn appends anything
             promptEstimate: ScaledPromptEstimate(ContextBudget.Estimate(convo.Messages), _usageState.Ratio),
             purrSet: purrSet, classifyAs: submitted);
+    }
+
+    //the session's background tasks, armed by the rich loop alone and null outside it
+    private Gatto.Core.Tools.BackgroundTasks? _tasks;
+
+    //how many tasks the coming /new ended, said in the new transcript after its rotation
+    private int _endedAtNew;
+
+    //under the gate the generation advances first, so no end composed from here on is enqueued, then the queued and parked ends go with the conversation
+    private void EndTasksForNew(RichState s, DispatchQueue queue)
+    {
+        lock (s.Gate)
+        {
+            _endedAtNew = _tasks?.KillAll(Gatto.Core.Tools.BackgroundTasks.AtNew) ?? 0;
+            queue.DropTasks();
+            s.Painter.State.QueueTexts = queue.Texts();
+        }
+    }
+
+    //a background task's end, on its own arm: no gate, no attachments and no typed echo, so a pending paste stays pending
+    private async Task<bool> DispatchBackgroundAsync(QueueEntry entry, Gatto.Core.Tools.BackgroundEnd end, RichState s,
+        DispatchQueue queue, CancellationToken appCt)
+    {
+        var head = Gatto.Core.Tools.BackgroundTasks.HeadOf(end.Text);
+        var record = convo.BackgroundRecord(end.Number, end.Text, end.Gloss, end.IsError);
+        return await DispatchBracketAsync(s.Gate, s.Painter, s.Ticker, () => s.Renderer,
+            queue.Texts(), [], Cats.Face(_glyphs), KnownCommands(),
+            async () =>
+            {
+                s.Renderer.CommitBackground(record);
+                var kept = await RunModelTurnAsync(s, [],
+                    ct => RunTurnGuardedAsync(loop, convo, record, s.Renderer, sessions, ct, s.Painter.Model, serverGone), appCt);
+                //a turn that rolled back before its first reply leaves the end owed, so it waits at the head of the queue for the next message
+                if (kept) _tasks?.Delivered(end.Number);
+                else lock (s.Gate) { queue.Park(entry); s.Painter.State.QueueTexts = queue.Texts(); }
+                return false;
+            },
+            promptEstimate: ScaledPromptEstimate(ContextBudget.Estimate(convo.Messages), _usageState.Ratio),
+            purrSet: purrSet, classifyAs: head);
     }
 
     //what a message attaches and why it may not send, the notices commit inside the turn and a refusal line stops the message
@@ -546,9 +629,12 @@ public sealed partial class Repl
                 },
                 s.Painter.Model, s.Renderer, BannerItem(s.Theme, roleName, roleCat, modelName, versionLine, s.Glyphs),
                 NewConversationLine, carry);
+            //said after the rotation, which would erase it, and never saved, since the tasks were this process's
+            if (_endedAtNew > 0) s.Renderer.CommitSystem($"ended {Gatto.Core.Plural.Of(_endedAtNew, "background task")}", transient: true);
+            _endedAtNew = 0;
             if (SeedFirstMessage(convo, firstMessage))
             {
-                ReplayTranscript(convo.Messages, s.Renderer, u => s.Renderer.CommitUser(u.Split('\n')));
+                ReplayTranscript(convo.Messages, s.Renderer, u => s.Renderer.CommitUser(u.Split('\n')), s.Renderer.CommitBackground);
                 s.Renderer.EndTurn();
             }
             s.Painter.Repaint();
@@ -605,6 +691,14 @@ public sealed partial class Repl
             { s.Renderer.CommitSystem("no tools are armed this session"); return false; }
             s.Renderer.CommitSystem(CommandText.ToolsHeadline(tools.Count));
             s.Renderer.CommitListing(CommandText.ToolsSpec(tools, policy, s.Glyphs));
+            return false;
+        }
+        if (trimmed == "/tasks")
+        {
+            //one ♯ row per task at rest, as /permissions commits its grants, and the honest empty when none runs
+            var lines = TasksLines();
+            if (lines.Count == 0) s.Renderer.CommitSystem(NoBackgroundTasks);
+            foreach (var line in lines) s.Renderer.CommitSystem(line);
             return false;
         }
         if (trimmed == "/compact")
@@ -677,7 +771,7 @@ public sealed partial class Repl
                 //the switch seeded the new role's opening, painted through the rebuilt renderer in the new tint
                 if (result.Opened)
                 {
-                    ReplayTranscript(convo.Messages, s.Renderer, u => s.Renderer.CommitUser(u.Split('\n')));
+                    ReplayTranscript(convo.Messages, s.Renderer, u => s.Renderer.CommitUser(u.Split('\n')), s.Renderer.CommitBackground);
                     s.Renderer.EndTurn();
                 }
             }
@@ -722,20 +816,29 @@ public sealed partial class Repl
         }
         if (trimmed == "/init") input = InitPrompt.Text;   //sent through the normal turn below, as if the user had typed it
 
+        await RunModelTurnAsync(s, attach.Notices,
+            ct => RunTurnGuardedAsync(loop, convo, input, s.Renderer, sessions, ct, s.Painter.Model, attach.Images, serverGone), appCt);
+        return false;
+    }
+
+    //the model turn both arms share, its token the one Esc and the in-flight commands read. true when the turn kept its user record
+    private async Task<bool> RunModelTurnAsync(RichState s, IReadOnlyList<ImageAttach.Notice> notices,
+        Func<CancellationToken, Task<bool>> run, CancellationToken appCt)
+    {
         RefreshServingBeforeTurn(s.Renderer);   //re-probe and check the context fit before the request goes out
         s.Refresh();   //the chip (or its clearing) must reach the footer before the turn streams
 
         //announce the notices here inside the turn so they read under the message, a refusal never reaches this body at all
-        foreach (var notice in attach.Notices)
+        foreach (var notice in notices)
             s.Renderer.CommitSystem(notice.Text);
 
         lock (_ctsLock) { s.TurnCts = CancellationTokenSource.CreateLinkedTokenSource(appCt); }
         var turnCt = s.TurnCts.Token;
-        bool turnCancelled;
+        bool turnCancelled, kept;
         deafWatch?.Arm();
         try
         {
-            await RunTurnGuardedAsync(loop, convo, input, s.Renderer, sessions, turnCt, s.Painter.Model, attach.Images, serverGone);
+            kept = await run(turnCt);
             turnCancelled = turnCt.IsCancellationRequested;
         }
         finally
@@ -747,6 +850,6 @@ public sealed partial class Repl
         if (!turnCancelled) s.Painter.AltScreen.SetFinalTitle(TerminalTitle.Project(cwd));
         s.Refresh();                                   //a turn may have committed or switched branches, and tokens moved
         MaybeOfferCompact(s.Renderer, s.Ctx);           //the 85% offer goes through the warning sink and becomes a ♯ row
-        return false;
+        return kept;
     }
 }

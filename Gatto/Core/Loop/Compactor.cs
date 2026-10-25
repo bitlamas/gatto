@@ -388,6 +388,9 @@ public sealed class Compactor(IChatClient client, string model, RequestShape? sh
         var lastUserIdx = -1;
         for (var i = messages.Count - 1; i >= 0; i--)
             if (messages[i].Role == "user") { lastUserIdx = i; break; }
+        //the last user message always stays, so a background end keeps its head line alone, or its whole output would ride every retry
+        if (lastUserIdx >= 0 && messages[lastUserIdx] is { Background: not null } end)
+            messages = [.. messages.Take(lastUserIdx), end with { Content = Tools.BackgroundTasks.HeadOf(end.Content) }, .. messages.Skip(lastUserIdx + 1)];
 
         if (windowTokens <= 0)
         {

@@ -65,9 +65,34 @@ public sealed partial class Repl
         return w => [.. ContextReport.Rows(figures, w, s.Theme, _glyphs).Select(r => r.Rendered)];
     }
 
-    //the answers that are text already, /help, /tools and the list view of /permissions
+    internal const string NoBackgroundTasks = "no background tasks";
+
+    //one line per task, running and ended-but-undelivered alike, and no pid, since under the sandbox the child gatto holds is the wrapper
+    private IReadOnlyList<string> TasksLines() =>
+        [.. (_tasks?.Snapshot ?? []).Select(t => $"{t.Task.Number}  "
+            + (t.Gloss is null ? $"running {Gatto.Core.ElapsedText.Of(t.Elapsed)}" : $"ended {_glyphs.Dot} {t.Gloss}, waiting for the model")
+            + "  " + TermText.Sanitize(t.Task.Command.Split('\n')[0].Trim()))];
+
+    //the kill acts at once on the composer thread, during a turn too, and reaches no model. a successful kill says nothing, the queue row shows the end at once
+    private bool KillNow(string text, RichState s)
+    {
+        if (!SlashGate.TryMatchCommand(text.Trim(), "/tasks", out var arg)) return false;
+        var words = arg.Split(' ', 2, StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+        if (words.Length == 0 || words[0] != "kill") return false;
+        var which = words.Length > 1 ? words[1] : "";
+        if (!(int.TryParse(which, out var number) && _tasks?.Kill(number, Gatto.Core.Tools.BackgroundTasks.ByTasks) == true))
+            s.Renderer.CommitSystem($"no background task {which}", transient: true);
+        return true;
+    }
+
+    //the answers that are text already, /help, /tools, /tasks and the list view of /permissions
     private Func<int, IReadOnlyList<string>> ReadOnlyAnswer(string trimmed, RichState s)
     {
+        if (trimmed == "/tasks")
+        {
+            var lines = TasksLines();
+            return _ => lines.Count == 0 ? ["  " + NoBackgroundTasks] : [.. lines.Select(l => "  " + l)];
+        }
         if (trimmed == "/help")
         {
             var known = KnownCommands();
@@ -118,7 +143,8 @@ public sealed partial class Repl
         if (aIdx < 0) return null;
         for (var i = aIdx - 1; i >= 0; i--)
             if (msgs[i].Role == "user" && msgs[i].Content is { Length: > 0 } u)
-                return (u, msgs[aIdx].Content!);
+                //a background end is not the user's words, so its head line names it and its output stays out of the summary
+                return (msgs[i].Background is null ? u : Gatto.Core.Tools.BackgroundTasks.HeadOf(u), msgs[aIdx].Content!);
         return null;
     }
 

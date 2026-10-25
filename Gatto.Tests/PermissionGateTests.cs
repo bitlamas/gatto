@@ -128,6 +128,25 @@ public sealed class PermissionGateTests : IDisposable
         Assert.Equal(1, prompter.CallCount);
     }
 
+    //the flag changes when the result arrives, never what the gate asks, so the two calls put one question to the user
+    [Fact]
+    public async Task A_BACKGROUND_CALL_IS_ASKED_EXACTLY_AS_THE_SAME_COMMAND_IN_THE_FOREGROUND()
+    {
+        var store = PermissionStore.Load(_root, _root, out _);
+        var prompter = new FakePrompter(PermissionAnswer.Once, PermissionAnswer.Once);
+        var hooks = GateOn(store, prompter, autoYes: false);
+        var spy = new SpyTool("shell");
+        var (loop, client, convo, obs) = LoopWith(hooks, spy);
+        EnqueueOneCall(client, "shell", "{\"command\":\"git status\"}");
+        EnqueueOneCall(client, "shell", "{\"command\":\"git status\",\"background\":true}");
+
+        await loop.RunTurnAsync(convo, "go", obs, default);
+        await loop.RunTurnAsync(convo, "again", obs, default);
+
+        Assert.Equal(2, prompter.CallCount);
+        Assert.Equal(prompter.Requests[0], prompter.Requests[1]);
+    }
+
     [Fact]
     public async Task Once_runs_without_recording_a_grant()
     {

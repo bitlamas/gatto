@@ -154,6 +154,7 @@ public sealed class SessionStore(string homePath, string cwd)
             if (m.GattoRole is not null) w.WriteString("gatto_role", m.GattoRole);
             if (m.IsError) w.WriteBoolean("is_error", true);
             if (m.Gloss is not null) w.WriteString("gloss", m.Gloss);
+            if (m.Background is int task) w.WriteNumber("background", task);
             if (m.Update is { } update)
             {
                 w.WriteStartObject("gatto_update");
@@ -274,7 +275,8 @@ public sealed class SessionStore(string homePath, string cwd)
             ReadImages(el),
             ReadView(el),
             ReadUpdate(el),
-            ReadShape(el));
+            ReadShape(el),
+            el.TryGetProperty("background", out var bg) && bg.ValueKind == JsonValueKind.Number && bg.TryGetInt32(out var task) ? task : null);
     }
 
     //both fields or neither, an absent pair is a reply whose request went out uncut

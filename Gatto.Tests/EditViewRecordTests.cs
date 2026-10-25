@@ -93,7 +93,7 @@ public sealed class EditViewRecordTests : IDisposable
             new("tool", "orphan", ToolCallId: "c9", View: View),
         };
         var obs = new RecordingObserver();
-        Gatto.Repl.Repl.ReplayTranscript(messages, obs, _ => { });
+        Gatto.Repl.Repl.ReplayTranscript(messages, obs, _ => { }, _ => { });
         Assert.Equal(2, obs.Results.Count);
         Assert.All(obs.Results, r => AssertSame(View, r.Item2.View));
     }

@@ -42,12 +42,22 @@ public sealed class Conversation
     public void SetPendingUpdate(SessionUpdate? update) { PendingUpdate = update; _updateCarrier = null; }
 
     //images are references to files named in the message, and null on nearly every turn so the serialised form stays unchanged
-    public void AddUser(string text, IReadOnlyList<ImageRef>? images = null)
+    public void AddUser(string text, IReadOnlyList<ImageRef>? images = null) => Append(UserRecord(text, images));
+
+    //a typed message as its record, which takes the pending resume note with it, so the record must be appended at once
+    public ChatMessage UserRecord(string text, IReadOnlyList<ImageRef>? images = null)
     {
         var m = new ChatMessage("user", text, Ts: _now(), Images: images, Update: PendingUpdate);
         if (PendingUpdate is not null) { _updateCarrier = m; PendingUpdate = null; }
-        _messages.Add(m);
+        return m;
     }
+
+    //a background task's end as a user-role record, which never takes the resume note, so the note waits for the next typed message
+    public ChatMessage BackgroundRecord(int number, string text, string gloss, bool isError) =>
+        new("user", text, IsError: isError, Gloss: gloss, Ts: _now(), Background: number);
+
+    //a record built by UserRecord or BackgroundRecord, the one append a turn makes for its user message
+    public void Append(ChatMessage record) => _messages.Add(record);
     //stripped says how many control tokens already came out of text, callers pass pre-stripped text and the strip stays at the loop seam
     public void AddAssistant(string text, IReadOnlyList<ToolCall>? toolCalls = null,
         Usage? usage = null, string? timings = null, string? reasoningContent = null, int stripped = 0,

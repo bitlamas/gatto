@@ -33,6 +33,37 @@ file sealed class MutatingTool : ITool
         => Task.FromResult(new ToolResult("mutated"));
 }
 
+//records the context a child's call ran with, under the name the role asks for
+file sealed class ContextSpyTool(string name) : ITool
+{
+    public IToolContext? Seen { get; private set; }
+    public string Name => name;
+    public string Description => "records its context";
+    public JsonElement ParametersSchema => JsonDocument.Parse("{\"type\":\"object\"}").RootElement;
+    public Task<ToolResult> ExecuteAsync(JsonElement args, IToolContext ctx, CancellationToken ct)
+    {
+        Seen = ctx;
+        return Task.FromResult(new ToolResult("seen"));
+    }
+}
+
+//a parent context with every member set, so a child view that drops one shows up as a null
+file sealed class FullContext(string cwd, BackgroundTasks tasks, Gatto.Core.Sandbox.SandboxState sandbox) : IToolContext
+{
+    public string Cwd => cwd;
+    public string HomePath => Path.Combine(cwd, "home");
+    public IUserPrompter? Prompter { get; } = new NoPrompter();
+    public Gatto.Core.SessionIdentity? Session { get; } = new(Guid.NewGuid(), DateTimeOffset.Now, "named");
+    public Gatto.Core.Sandbox.SandboxState? Sandbox => sandbox;
+    public BackgroundTasks? Tasks => tasks;
+}
+
+file sealed class NoPrompter : IUserPrompter
+{
+    public Task<IReadOnlyList<AskAnswer>> AskAsync(IReadOnlyList<AskQuestion> questions, CancellationToken ct) =>
+        Task.FromResult<IReadOnlyList<AskAnswer>>([]);
+}
+
 public sealed class RunAgentToolTests : IDisposable
 {
     private readonly string _dir = Directory.CreateTempSubdirectory("gatto-runagent-").FullName;
@@ -78,7 +109,8 @@ public sealed class RunAgentToolTests : IDisposable
         int? contextBudget = null,
         Func<RoleFile, string?>? refuseRole = null,
         Func<RoleFile, Composition>? composeChild = null,
-        Func<(string, JsonElement?, JsonElement?, string?)>? requestSettings = null)
+        Func<(string, JsonElement?, JsonElement?, string?)>? requestSettings = null,
+        IToolContext? parentCtx = null)
         => new(
             roles: () => roles ?? new[] { Role() },
             refuseRole: refuseRole ?? (_ => null),
@@ -86,7 +118,7 @@ public sealed class RunAgentToolTests : IDisposable
             subagentWiring: Wiring(gate, catalog, capture),
             client: client,
             requestSettings: requestSettings ?? (() => ("m", (JsonElement?)null, (JsonElement?)null, (string?)null)),
-            parentCtx: new TestToolContext(_dir),
+            parentCtx: parentCtx ?? new TestToolContext(_dir),
             progress: null,
             contextBudget: contextBudget);
 
@@ -252,6 +284,32 @@ public sealed class RunAgentToolTests : IDisposable
         //the wiring has its own allowlist, an extension tool named in the role must still not reach a child
         Assert.Null(captured.Get("some_extension_tool"));
         Assert.NotNull(captured.Get("read_file"));        //read_file must come through here, or the null asserts would pass on a filter that drops everything
+    }
+
+    //a child answers with its final text, so an end arriving later would reach no model that knew the task. its shell runs the flag in the foreground
+    [Fact]
+    [System.Runtime.Versioning.SupportedOSPlatform("windows")]
+    public async Task A_CHILD_S_CONTEXT_HAS_NO_BACKGROUND_TASKS_AND_FORWARDS_EVERY_OTHER_MEMBER()
+    {
+        await using var server = new FakeOpenAiServer();
+        server.Enqueue(new FakeResponse(Frames: ToolCallRound("read_file")));
+        server.Enqueue(new FakeResponse(Frames: TextRound("done")));
+        var client = new OpenAiCompatClient(new HttpClient(), "local", new EndpointConfig(server.BaseUrl));
+        using var tasks = new BackgroundTasks();
+        using var sandbox = new Gatto.Core.Sandbox.SandboxState(_dir, _dir, []);
+        var parent = new FullContext(_dir, tasks, sandbox);
+        var spy = new ContextSpyTool("read_file");
+        var tool = Build(client, FreshGate(new RecordingPermPrompter()),
+            catalog: new Dictionary<string, Func<ITool>> { ["read_file"] = () => spy }, parentCtx: parent);
+
+        await tool.ExecuteAsync(Args("helper", "go"), parent, default);
+
+        var seen = Assert.IsAssignableFrom<IToolContext>(spy.Seen);
+        Assert.Null(seen.Tasks);
+        Assert.Equal((parent.Cwd, parent.HomePath), (seen.Cwd, seen.HomePath));
+        Assert.Same(parent.Prompter, seen.Prompter);
+        Assert.Same(parent.Session, seen.Session);
+        Assert.Same(parent.Sandbox, seen.Sandbox);
     }
 
     [Fact]

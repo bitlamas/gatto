@@ -212,4 +212,8 @@ internal static class SandboxNative
 
     [DllImport("kernel32.dll", SetLastError = true)]
     public static extern bool TerminateProcess(IntPtr process, uint exitCode);
+
+    //ends every process the job holds, a descendant whose parent already exited included
+    [DllImport("kernel32.dll", SetLastError = true)]
+    public static extern bool TerminateJobObject(JobHandle job, uint exitCode);
 }

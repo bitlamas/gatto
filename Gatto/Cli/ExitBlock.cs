@@ -21,9 +21,14 @@ internal static class ExitBlock
         InkedLine.Of(($"session saved {glyphs.Dot} ", CliInk.Dim), CliSurface.Command("gatto --continue"),
             (" to resume", CliInk.Dim));
 
-    public static void Write(CliSurface cli, GlyphSet glyphs, bool farewell, bool resume, InkedLine? server)
+    //the background tasks the session's end stopped, said here since the alt screen that ran them is gone
+    internal static InkedLine EndedTasks(int count) =>
+        InkedLine.Of(($"ended {Gatto.Core.Plural.Of(count, "background task")}", CliInk.Dim));
+
+    public static void Write(CliSurface cli, GlyphSet glyphs, bool farewell, bool resume, InkedLine? server, int endedTasks = 0)
     {
         var lines = new List<InkedLine>();
+        if (endedTasks > 0) lines.Add(EndedTasks(endedTasks));
         if (farewell) lines.Add(Farewell(glyphs));
         if (resume) lines.Add(Resume(glyphs));
         if (server is not null) lines.Add(server);

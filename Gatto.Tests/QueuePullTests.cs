@@ -83,7 +83,7 @@ public class QueuePullTests : IDisposable
 
         q.TryEnqueue("after");
         using var ok = new CancellationTokenSource(TimeSpan.FromSeconds(5));
-        Assert.Equal("after", await q.TakeAsync(ok.Token));
+        Assert.Equal("after", (await q.TakeAsync(ok.Token))?.Text);
 
         using var brief = new CancellationTokenSource(150);
         await Assert.ThrowsAnyAsync<OperationCanceledException>(() => q.TakeAsync(brief.Token));
@@ -135,6 +135,25 @@ public class QueuePullTests : IDisposable
     private static IReadOnlyList<ChromeRow> QueueRows(ChromePainter p, int width, int height) =>
         [.. p.ComposeChromeBlock(width, height).Rows
             .Where(r => r.Region == ChromeRegion.Queue && r.Visible.Trim().Length > 0)];
+
+    //the user did not say a background end, so it waits under the system marker and off the user's band, and the typed message keeps both
+    [Fact]
+    public void A_WAITING_END_DRAWS_UNDER_THE_SYSTEM_MARKER_AND_A_TYPED_MESSAGE_UNDER_THE_PROMPT()
+    {
+        var p = Painter(80, 40);
+        p.State.QueueTexts = ["hello there", new QueueEntryView("background task 2 ended · exit 0 · 3s", true)];
+
+        var rows = QueueRows(p, 80, 40);
+        var band = Ansi.Bg(T.Map(Theme.UserInputBg), T.TrueColor);
+
+        var typed = Assert.Single(rows, r => r.Visible.Contains("hello there", StringComparison.Ordinal));
+        var end = Assert.Single(rows, r => r.Visible.Contains("background task 2", StringComparison.Ordinal));
+        Assert.Equal(GlyphSet.Unicode.Prompt + " hello there", typed.Visible.Trim());
+        Assert.Contains(band, typed.Rendered, StringComparison.Ordinal);
+        Assert.Equal(GlyphSet.Unicode.Sharp + " background task 2 ended · exit 0 · 3s", end.Visible.Trim());
+        Assert.DoesNotContain(band, end.Rendered, StringComparison.Ordinal);
+        Assert.DoesNotContain(GlyphSet.Unicode.Prompt, end.Visible, StringComparison.Ordinal);
+    }
 
     //a message wider than the row must render whole across wrapped rows. a wrap defect only shows where a row ends exactly at the edge
     [Theory]

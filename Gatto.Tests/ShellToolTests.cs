@@ -163,6 +163,46 @@ public class ShellToolTests : IDisposable
     }
 
     [Fact]
+    public async Task THE_FOREGROUND_RESULT_IS_THE_COMPOSER_S_TEXT()
+    {
+        var r = await new ShellTool().ExecuteAsync(
+            Args(new { command = "Write-Output 'out line'; [Console]::Error.WriteLine('err line'); exit 2" }), Ctx, default);
+
+        Assert.Equal(ShellTool.Compose("out line\r\n", "err line\r\n", 2, pipeHeld: false, null, null), r.Text);
+        Assert.Equal("out line\n" + ShellTool.StderrMarker + "\nerr line\n(exit code 2)", r.Text.Replace("\r\n", "\n"));
+    }
+
+    [Fact]
+    public void THE_SCHEMA_OFFERS_THE_BACKGROUND_FLAG_AND_THE_DESCRIPTION_SAYS_WHERE_THE_DEFAULT_APPLIES()
+    {
+        var tool = new ShellTool();
+        Assert.Equal("boolean", tool.ParametersSchema.GetProperty("properties").GetProperty("background").GetProperty("type").GetString());
+        Assert.Equal(["command"], tool.ParametersSchema.GetProperty("required").EnumerateArray().Select(e => e.GetString()));
+        Assert.Equal("Run a PowerShell command in the working directory. Args: command, optional timeout_ms (default 120000 in the foreground, "
+            + "none in the background), optional background (true starts the command and returns at once; its output arrives when it ends).",
+            tool.Description);
+    }
+
+    [Fact]
+    public async Task A_BACKGROUND_CALL_WITH_NO_REGISTRY_RUNS_IN_THE_FOREGROUND_AND_SAYS_SO_FIRST()
+    {
+        var plain = await new ShellTool().ExecuteAsync(Args(new { command = "Write-Output 'here'; exit 1" }), Ctx, default);
+        var flagged = await new ShellTool().ExecuteAsync(Args(new { command = "Write-Output 'here'; exit 1", background = true }), Ctx, default);
+
+        Assert.Null(Ctx.Tasks);
+        Assert.Equal(ShellTool.ForegroundNote + "\n" + plain.Text, flagged.Text);
+        Assert.Equal(plain.IsError, flagged.IsError);
+        Assert.Equal(plain.Gloss, flagged.Gloss);
+    }
+
+    [Fact]
+    public async Task A_BACKGROUND_FALSE_CALL_READS_AS_TODAY()
+    {
+        var r = await new ShellTool().ExecuteAsync(Args(new { command = "Write-Output 'here'", background = false }), Ctx, default);
+        Assert.Equal("here", r.Text);
+    }
+
+    [Fact]
     public void THE_SHELL_PRELUDE_SETS_THE_INPUT_ENCODING()
     {
         var tool = ShellTool.StartInfo("x", Path.GetTempPath()).ArgumentList[^1];

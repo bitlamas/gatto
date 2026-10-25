@@ -20,7 +20,7 @@ public class SlashCommandsTests
     //the name-set test pins SlashCommands.All to this list and can't see the Repl dispatch, so a branch with no row here goes unnoticed
     private static readonly string[] CanonicalNames =
         ["/help", "/new", "/role", "/name", "/model", "/effort", "/compact", "/remember",
-         "/wild", "/safe", "/sandbox", "/permissions", "/tools", "/context", "/init", "/quit"];
+         "/wild", "/safe", "/sandbox", "/permissions", "/tools", "/context", "/tasks", "/init", "/quit"];
 
     [Fact]
     public void THE_SAFE_ROW_FOLLOWS_WILD_IN_THE_PLAIN_RENDER()

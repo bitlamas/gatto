@@ -6,7 +6,7 @@ namespace Gatto.Tests.Census;
 public class GlyphCensusTests
 {
     //this declaration is the only place to change the count, every copy change must claim it
-    private const int EmDashes = 147;
+    private const int EmDashes = 148;
 
     //a ceiling the same census measured, so it may only fall. the other figure is not comparable, a different counting method made it
     private const int PreWave = 658;
@@ -28,6 +28,8 @@ public class GlyphCensusTests
         //remove an exemption when its file's remaining literals all come from the table or are excluded by rule
         ("Gatto/Core/Loop/Compactor.cs", "the elided-arguments note inside a compaction summary: text "
             + "the MODEL reads, not chrome a terminal draws"),
+        ("Gatto/Core/Tools/BackgroundTasks.cs", "a background task's head line: text the MODEL reads in its "
+            + "record, and the screen draws the row's dot from the table, not from the record"),
         ("Gatto/Core/Memory/MemoryIndex.cs", "MEMORY.md's index lines, written to a file the model "
             + "reads back; a twin here would rewrite stored notes, not a screen"),
         ("Gatto/Core/Tools/SearchTools.cs", "provider payloads and their words, not gatto's chrome"),

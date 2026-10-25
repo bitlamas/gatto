@@ -84,7 +84,11 @@ public static class ContextCount
 
         var chat = sent.Where(m => m.Role != "system").ToList();
         var tools = chat.Where(m => m.Role == "tool").ToList();
-        parts.Add(new ContextPartText("user", ContextGroup.Messages, Join(chat.Where(m => m.Role == "user").Select(m => m.Content))));
+        //a background end is gatto's record, not the user's words, so it counts on its own line
+        var ends = chat.Where(m => m.Role == "user" && m.Background is not null).ToList();
+        parts.Add(new ContextPartText("user", ContextGroup.Messages, Join(chat.Where(m => m.Role == "user" && m.Background is null).Select(m => m.Content))));
+        if (ends.Count > 0)
+            parts.Add(new ContextPartText("background", ContextGroup.Messages, Join(ends.Select(m => m.Content)), $"{ends.Count}"));
         parts.Add(new ContextPartText("assistant", ContextGroup.Messages, Join(chat.Where(m => m.Role == "assistant")
             .SelectMany(m => new[] { m.Content }.Concat(m.ToolCalls?.Select(c => c.Name + c.ArgumentsJson) ?? [])))));
         parts.Add(new ContextPartText("reasoning", ContextGroup.Reasoning, Join(chat.Select(m => m.ReasoningContent))));

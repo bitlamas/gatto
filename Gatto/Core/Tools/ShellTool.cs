@@ -13,12 +13,15 @@ public sealed class ShellTool : ITool
     public const string PipeHeldNote = "(a background child still holds the output pipe; showing output captured so far)";
 
     //how long the drains wait for EOF after the process exits. generous for a flush, tiny against a turn hung on a grandchild's inherited handle
-    private const int DrainGraceMs = 5_000;
+    internal const int DrainGraceMs = 5_000;
+
+    //the first line of a background call's result where no registry exists, so the model reads that it waited on the command
+    public const string ForegroundNote = "(background is not available here; the command ran in the foreground)";
 
     public string Name => "shell";
-    public string Description => "Run a PowerShell command in the working directory. Args: command, optional timeout_ms (default 120000).";
+    public string Description => "Run a PowerShell command in the working directory. Args: command, optional timeout_ms (default 120000 in the foreground, none in the background), optional background (true starts the command and returns at once; its output arrives when it ends).";
     public JsonElement ParametersSchema => ToolArgs.Schema("""
-        {"type":"object","properties":{"command":{"type":"string"},"timeout_ms":{"type":"integer"}},"required":["command"]}
+        {"type":"object","properties":{"command":{"type":"string"},"timeout_ms":{"type":"integer"},"background":{"type":"boolean"}},"required":["command"]}
         """);
 
     private static readonly Lazy<string> Exe = new(() =>
@@ -69,29 +72,45 @@ public sealed class ShellTool : ITool
     public async Task<ToolResult> ExecuteAsync(JsonElement args, IToolContext ctx, CancellationToken ct)
     {
         var command = ToolArgs.RequiredString(args, "command");
-        var timeoutMs = ToolArgs.OptionalInt(args, "timeout_ms") ?? 120_000;
+        var background = ToolArgs.OptionalBool(args, "background");
+        var timeoutMs = ToolArgs.OptionalInt(args, "timeout_ms");
 
+        if (background && ctx.Tasks is { } tasks)
+        {
+            //the registry owns the child from here, its drains run under the registry's token and never the turn's
+            var started = Launch(command, ctx);
+            var n = tasks.Start(started, command, timeoutMs);
+            return new ToolResult($"started in the background as task {n}. Its output and exit code arrive when it ends.", Gloss: $"background {n}");
+        }
+
+        //with no registry the flag runs the command as any other call, and the result says so first
+        var note = background ? ForegroundNote + "\n" : "";
+        return await RunForegroundAsync(command, timeoutMs ?? 120_000, note, ctx, ct);
+    }
+
+    //a started child and what its result needs, the scope disposing the sandbox launch's pipes when there is one
+    internal sealed record Started(Process Process, StreamReader Stdout, StreamReader Stderr, IDisposable? Scope,
+        Gatto.Core.Sandbox.SandboxNative.JobHandle? Job, string? SandboxProject, IReadOnlyList<string>? SandboxRoots);
+
+    //the one start for both paths, under the sandbox token when the mode is on
+    private static Started Launch(string command, IToolContext ctx)
+    {
         var startInfo = StartInfo(command, ctx.Cwd, ctx.Session);
-        Process proc;
-        StreamReader stdout, stderr;
-        IDisposable? sandboxed = null;
-        string? sandboxProject = null;
-        IReadOnlyList<string>? sandboxRoots = null;
         if (OperatingSystem.IsWindows() && ctx.Sandbox is { On: true } box)
         {
-            sandboxProject = box.Project ?? ctx.Cwd;
-            sandboxRoots = box.Roots;
             //the same child under the sandbox token, stdin already closed by the launch
             var launch = Gatto.Core.Sandbox.SandboxLaunch.Start(box, startInfo, PowerShellUtf8.WithPrelude(command, sandbox: true));
-            (proc, stdout, stderr, sandboxed) = (launch.Process, launch.Stdout, launch.Stderr, launch);
+            return new Started(launch.Process, launch.Stdout, launch.Stderr, launch, launch.JobHandle, box.Project ?? ctx.Cwd, box.Roots);
         }
-        else
-        {
-            proc = Process.Start(startInfo)!;
-            //stdin is closed at once, so a command that waits for input gets an EOF
-            proc.StandardInput.Close();
-            (stdout, stderr) = (proc.StandardOutput, proc.StandardError);
-        }
+        var proc = Process.Start(startInfo)!;
+        //stdin is closed at once, so a command that waits for input gets an EOF
+        proc.StandardInput.Close();
+        return new Started(proc, proc.StandardOutput, proc.StandardError, null, null, null, null);
+    }
+
+    private static async Task<ToolResult> RunForegroundAsync(string command, int timeoutMs, string note, IToolContext ctx, CancellationToken ct)
+    {
+        var (proc, stdout, stderr, sandboxed, _, sandboxProject, sandboxRoots) = Launch(command, ctx);
         using var launchScope = sandboxed;
         using var processScope = proc;
         //chunked drains rather than ReadToEndAsync, a grandchild keeps the pipe open so EOF can never come. no await here may be bounded only by the session token
@@ -111,7 +130,7 @@ public sealed class ShellTool : ITool
         {
             try { proc.Kill(entireProcessTree: true); } catch { }
             if (ct.IsCancellationRequested) throw;
-            return new ToolResult($"command timed out after {timeoutMs}ms", IsError: true);
+            return new ToolResult(note + $"command timed out after {timeoutMs}ms", IsError: true);
         }
 
         //the drains can still be blocked after the process exits, so wait a short grace and take what arrived. the turn must not wait on a reader that is still blocked
@@ -133,20 +152,29 @@ public sealed class ShellTool : ITool
         }
 
         string outText, errText;
-        lock (gate) { outText = outBuf.ToString().TrimEnd(); errText = errBuf.ToString().TrimEnd(); }
+        lock (gate) { outText = outBuf.ToString(); errText = errBuf.ToString(); }
+        var text = note + Compose(outText, errText, proc.ExitCode, pipeHeld, sandboxProject, sandboxRoots);
+        return new ToolResult(text, IsError: proc.ExitCode != 0, Gloss: $"exit {proc.ExitCode}");
+    }
+
+    //the result text from what the pipes gave, in one place, so a foreground call and a background task's end cannot read differently
+    internal static string Compose(string stdout, string stderr, int exitCode, bool pipeHeld,
+        string? sandboxProject, IReadOnlyList<string>? sandboxRoots)
+    {
+        var outText = stdout.TrimEnd();
+        var errText = stderr.TrimEnd();
         var sb = new StringBuilder(outText);
         if (errText.Length > 0) sb.AppendLine().AppendLine(StderrMarker).Append(errText);
         //the model reads why the write failed, the error itself stays and so does the exit code's verdict
         if (sandboxProject is not null && Gatto.Core.Sandbox.SandboxRefusal.Note(errText, sandboxProject, sandboxRoots) is { } refusal)
             sb.AppendLine().Append(refusal);
         if (pipeHeld) sb.AppendLine().Append(PipeHeldNote);
-        if (proc.ExitCode != 0) sb.AppendLine().Append($"(exit code {proc.ExitCode})");
-        var text = ToolArgs.HeadCap(sb.ToString(), 50_000);
-        return new ToolResult(text, IsError: proc.ExitCode != 0, Gloss: $"exit {proc.ExitCode}");
+        if (exitCode != 0) sb.AppendLine().Append($"(exit code {exitCode})");
+        return ToolArgs.HeadCap(sb.ToString(), 50_000);
     }
 
     //read the stream in chunks into the shared builder. the caller snapshots the builder under the same gate, so a late drain is harmless
-    private static async Task DrainAsync(StreamReader reader, StringBuilder into, object gate, CancellationToken ct)
+    internal static async Task DrainAsync(StreamReader reader, StringBuilder into, object gate, CancellationToken ct)
     {
         var buf = new char[4096];
         while (true)

@@ -9,6 +9,12 @@ namespace Gatto.Repl.Render.Chrome;
 //the rows a panel factory composes for one width, plus where the caret goes in them. a null caret means the panel takes no input and the cursor stays hidden
 public readonly record struct PanelContent(IReadOnlyList<string> Rows, (int Row, int Col)? Caret = null, bool KeepsRoom = false);   //true takes the whole room rather than half the window
 
+//one queued row as the chrome draws it, a background task's end marked so it never shows under the user's marker
+public readonly record struct QueueEntryView(string Text, bool Task)
+{
+    public static implicit operator QueueEntryView(string typed) => new(typed, false);
+}
+
 //everything the chrome block shows, mutated only under the painter's _gate, so the paint reads it in the same lock without a snapshot
 public sealed class ChromeState
 {
@@ -24,11 +30,13 @@ public sealed class ChromeState
     public string? ToolProgress;       //the run_agent liveness row, "<agent> · turn N", replaced in place
     public string? Notice;             //a status row that shows for a moment, such as a working notice
     public string? PurrText;           //the full purr row text, composed by the ticker, null when hidden
+    //the background tasks still running, filled by the ticker each tick, empty when none runs
+    public IReadOnlyList<(int Number, string Command, TimeSpan Elapsed)> Tasks = [];
     public bool BlinkOn = true;        //the ticker-driven 500 ms phase for the tool dot
     //true while reasoning is suppressed, the ticker adds " ~ thinking" to the purr row
     public bool Thinking;
-    //the queued messages as the user typed them, oldest first
-    public IReadOnlyList<string> QueueTexts = Array.Empty<string>();
+    //the queued messages as the user typed them and the waiting background ends by their head line, oldest first
+    public IReadOnlyList<QueueEntryView> QueueTexts = Array.Empty<QueueEntryView>();
     //non-null swaps the composer frame's editor rows for these panel rows, keeping the rules and status line. the editor itself is left alone so a clear restores it
     public IReadOnlyList<string>? PanelRows;
     //non-null makes PanelRows a cache, re-derived at the live width and allowance each compose, so the closure must capture a snapshot of its inputs
@@ -321,6 +329,7 @@ public sealed class ChromePainter
     {
         var n = 0;
         if (State.PurrText is not null) n += 2;                                                  //two rows, a blank and the purr line
+        if (State.Tasks.Count > 0) n += 2;                                                       //a blank and the tasks row, kept under a panel too
         //a panel over the live call may take that call's rows, which repeat what the prompt shows, and the clamp drops them when it does
         if (State.PanelUp) return n + NewestQueuedMessageReservation(width, height);
         if (State.Tool is not null) n += 2 + (State.ToolProgress is not null ? 1 : 0);            //two rows, a blank and the tool bullet, plus one more for the progress row
@@ -341,9 +350,17 @@ public sealed class ChromePainter
     }
 
     //both Compose and the reservation wrap through this, so the rows offered and the rows enforced come from one wrap
-    private List<(string R, string V)> QueueBlock(string message, int width)
+    private List<(string R, string V)> QueueBlock(QueueEntryView entry, int width)
     {
         var wrapAt = Math.Max(1, width - 2);
+        //the user did not say a background end, so it waits under the system marker, dim and off the band
+        if (entry.Task)
+            return [.. SoftWrap.Wrap(TermText.Sanitize(entry.Text), wrapAt, wrapAt).Select((seg, i) =>
+            {
+                var v = (i == 0 ? _glyphs.Sharp + " " : GutterWrap.Hang) + seg.Text;
+                return (_theme.Paint(v, Theme.Dim), v);
+            })];
+        var message = entry.Text;
         var band = Ansi.Bg(_theme.Map(Theme.UserInputBg), _theme.TrueColor);
         var rows = new List<(string, string)>();
         foreach (var line in message.Split('\n'))
@@ -358,6 +375,33 @@ public sealed class ChromePainter
     }
 
     private static readonly string[] ProbePanel = [""];
+
+    //a command head is never cut below this many cells, a shorter head says nothing, so a task that cannot keep it goes to the more tail
+    private const int TaskHeadCells = 8;
+
+    //the tasks row: the ring, the count, then each task's number, the first line of its command and its timer, as many as fit and then the more tail
+    internal (string Rendered, string Visible) TasksRow(IReadOnlyList<(int Number, string Command, TimeSpan Elapsed)> tasks, int width)
+    {
+        var g = _glyphs;
+        var sep = $"  {g.Dot}  ";
+        var lead = $"{g.Ring}  {tasks.Count} background";
+        var room = width > 0 ? width : int.MaxValue;
+        for (var shown = tasks.Count; shown >= 1; shown--)
+        {
+            var tail = shown < tasks.Count ? $"{sep}+{tasks.Count - shown} more" : "";
+            var parts = tasks.Take(shown).Select(t => (Num: t.Number + " ", Time: " " + Gatto.Core.ElapsedText.Of(t.Elapsed),
+                Head: TermText.Sanitize(t.Command.Split('\n')[0].Trim()))).ToList();
+            var fixedCells = UnicodeWidth.Of(lead) + UnicodeWidth.Of(tail) + parts.Sum(p => UnicodeWidth.Of(sep + p.Num + p.Time));
+            var perHead = room == int.MaxValue ? int.MaxValue : (room - fixedCells) / shown;
+            if (perHead < TaskHeadCells && parts.Any(p => UnicodeWidth.Of(p.Head) > perHead)) continue;
+            var body = string.Concat(parts.Select(p => sep + p.Num
+                + (UnicodeWidth.Of(p.Head) > perHead ? TermText.TruncateCells(p.Head, perHead, glyphs: g) : p.Head) + p.Time));
+            var visible = lead + body + tail;
+            return (_theme.Paint(g.Ring, Theme.Dim) + visible[g.Ring.Length..], visible);
+        }
+        var none = $"{lead}{sep}+{tasks.Count} more";
+        return (_theme.Paint(g.Ring, Theme.Dim) + none[g.Ring.Length..], none);
+    }
 
     //a window marks its hidden rows only when a row is left between the two marks for the caret
     internal const int MarkedWindowRows = 3;
@@ -511,6 +555,13 @@ public sealed class ChromePainter
             fixedRows.Add(("", "", "purr", ChromeRegion.Purr, NextRow(ChromeRegion.Purr)));
             fixedRows.Add((_theme.Paint(p, _theme.RoleTint(RoleForTint)), p, "purr", ChromeRegion.Purr, NextRow(ChromeRegion.Purr)));
         }
+        //the running background tasks after the purr and before the queue, with a blank above, both dropped together
+        if (State.Tasks.Count > 0)
+        {
+            var (tr, tv) = TasksRow(State.Tasks, width);
+            fixedRows.Add(("", "", "tasks", ChromeRegion.Tasks, NextRow(ChromeRegion.Tasks)));
+            fixedRows.Add((tr, tv, "tasks", ChromeRegion.Tasks, NextRow(ChromeRegion.Tasks)));
+        }
 
         //the clamp is computed before the frame, since a too-tall panel can only be trimmed on the way in
         var budgetRows = BudgetRows(height);
@@ -615,7 +666,7 @@ public sealed class ChromePainter
         var keptTail = tailRows.Count - tailStart;
         var overflow = keptTail + fixedRows.Count + frameRows - budgetRows;
         if (overflow > 0)
-            foreach (var category in new[] { "queue", "notice", "tool", "purr", NewestQueue })
+            foreach (var category in new[] { "queue", "tasks", "notice", "tool", "purr", NewestQueue })
             {
                 if (overflow <= 0) break;
                 var before = fixedRows.Count;

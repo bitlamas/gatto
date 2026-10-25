@@ -71,7 +71,7 @@ public class ReplLinearLoopTests
 
         await Gatto.Repl.Repl.DispatchBracketAsync(
             gate, painter, ticker, () => renderer,
-            queued: Array.Empty<string>(), userLines: submission.Split('\n'), kaomoji: "(=^･ω･^=)",
+            queued: [], userLines: submission.Split('\n'), kaomoji: "(=^･ω･^=)",
             known: Gatto.Repl.Commands.SlashCommands.All,
             body: async () =>
             {
@@ -102,7 +102,7 @@ public class ReplLinearLoopTests
 
         await Gatto.Repl.Repl.DispatchBracketAsync(
             gate, painter, ticker, () => renderer,
-            queued: Array.Empty<string>(), userLines: ["/undo 1"], kaomoji: "(=^･ω･^=)",
+            queued: [], userLines: ["/undo 1"], kaomoji: "(=^･ω･^=)",
             known: known,
             body: async () =>
             {
@@ -154,7 +154,7 @@ public class ReplLinearLoopTests
 
         var quit = await Gatto.Repl.Repl.DispatchBracketAsync(
             gate, painter, ticker, () => renderer,
-            queued: Array.Empty<string>(), userLines: new[] { "run the tool" }, kaomoji: "(=^･ω･^=)",
+            queued: [], userLines: new[] { "run the tool" }, kaomoji: "(=^･ω･^=)",
             known: Gatto.Repl.Commands.SlashCommands.All,
             body: async () =>
             {
@@ -195,12 +195,12 @@ public class ReplLinearLoopTests
 
         await Gatto.Repl.Repl.DispatchBracketAsync(
             gate, painter, ticker, () => renderer,
-            queued: new[] { "queued next" }, userLines: new[] { "hello there" }, kaomoji: "(=^･ω･^=)",
+            queued: ["queued next"], userLines: new[] { "hello there" }, kaomoji: "(=^･ω･^=)",
             known: Gatto.Repl.Commands.SlashCommands.All,
             body: () => Task.FromResult(false));
 
         Assert.Contains("❯ hello there", Visible(surface.Text), StringComparison.Ordinal);
-        lock (gate) Assert.Equal(new[] { "queued next" }, painter.State.QueueTexts);
+        lock (gate) Assert.Equal([new QueueEntryView("queued next", false)], painter.State.QueueTexts);
     }
 
     [Fact]
@@ -210,7 +210,7 @@ public class ReplLinearLoopTests
 
         await Assert.ThrowsAsync<InvalidOperationException>(() =>
             Gatto.Repl.Repl.DispatchBracketAsync(gate, painter, ticker, () => renderer,
-                Array.Empty<string>(), new[] { "boom" }, "(=^･ω･^=)",
+                [], new[] { "boom" }, "(=^･ω･^=)",
                 known: Gatto.Repl.Commands.SlashCommands.All,
                 body: () => throw new InvalidOperationException("turn blew up")));
 
@@ -229,7 +229,7 @@ public class ReplLinearLoopTests
         var current = renderer;
 
         await Gatto.Repl.Repl.DispatchBracketAsync(gate, painter, ticker, () => current,
-            Array.Empty<string>(), new[] { "hi" }, "(=^･ω･^=)",
+            [], new[] { "hi" }, "(=^･ω･^=)",
             known: Gatto.Repl.Commands.SlashCommands.All,
             body: () =>
             {
@@ -250,7 +250,7 @@ public class ReplLinearLoopTests
         var (surface, painter, ticker, renderer, gate) = Wire();
 
         await Gatto.Repl.Repl.DispatchBracketAsync(gate, painter, ticker, () => renderer,
-            Array.Empty<string>(), new[] { "clean the build" }, "(=^･ω･^=)",
+            [], new[] { "clean the build" }, "(=^･ω･^=)",
             known: Gatto.Repl.Commands.SlashCommands.All,
             body: () =>
             {

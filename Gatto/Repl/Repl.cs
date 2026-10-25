@@ -152,7 +152,9 @@ public sealed partial class Repl(
     (RgbColor Dark, RgbColor? Light)? roleTint = null,
     IReadOnlyList<string>? roleCat = null,
     //the running role's opening line, committed as history whenever a conversation opens empty
-    string? firstMessage = null)
+    string? firstMessage = null,
+    //hands the shell tool the session's background tasks, called by the rich face alone, so every other face runs the flag in the foreground
+    Action<Gatto.Core.Tools.BackgroundTasks?>? armTasks = null)
 {
     //the name the top rule shows, null when the running role is the default, compared as the launch resolves a name against the files
     private string? DisplayRole() => string.Equals(roleName, defaultRole, StringComparison.OrdinalIgnoreCase) ? null : roleName;
@@ -435,37 +437,52 @@ public sealed partial class Repl(
 
 
 
-    //roll back to the mark when only the user message was appended, a retry must not double it, else keep and persist the partial turn
-    public static async Task RunTurnGuardedAsync(
+    //roll back to the mark when only the user message was appended, a retry must not double it, else keep and persist the partial turn. true when the turn kept its user record
+    public static Task<bool> RunTurnGuardedAsync(
         AgentLoop loop, Conversation convo, string input, ITurnObserver renderer,
         SessionStore? sessions, CancellationToken ct, TranscriptModel? model = null,
-        IReadOnlyList<ImageRef>? images = null, Func<string?>? serverGone = null)
+        IReadOnlyList<ImageRef>? images = null, Func<string?>? serverGone = null) =>
+        GuardedAsync(loop, convo, () => loop.RunTurnAsync(convo, input, renderer, ct, images), renderer, sessions, model, serverGone);
+
+    //the same guard for a turn whose user record is built already, a background task's end
+    public static Task<bool> RunTurnGuardedAsync(
+        AgentLoop loop, Conversation convo, ChatMessage record, ITurnObserver renderer,
+        SessionStore? sessions, CancellationToken ct, TranscriptModel? model = null, Func<string?>? serverGone = null) =>
+        GuardedAsync(loop, convo, () => loop.RunTurnAsync(convo, record, renderer, ct), renderer, sessions, model, serverGone);
+
+    private static async Task<bool> GuardedAsync(AgentLoop loop, Conversation convo, Func<Task<TurnResult>> turn,
+        ITurnObserver renderer, SessionStore? sessions, TranscriptModel? model, Func<string?>? serverGone)
     {
         var mark = convo.Count;
         //armed for this turn only. the loop writes the tool request before the tool runs, so a hung tool leaves that call in the session file
         loop.OnRoundPersisted = sessions is null ? null : c => SaveSession(sessions, model, c);
         try
         {
-            await loop.RunTurnAsync(convo, input, renderer, ct, images);
+            await turn();
             SaveSession(sessions, model, convo);
+            return true;
         }
         catch (GattoConnectionException ex)
         {
-            if (convo.Count <= mark + 1)
+            var kept = convo.Count > mark + 1;
+            if (!kept)
                 convo.TruncateTo(mark);   //only the user message is dangling, safe to drop
             else
                 SaveSession(sessions, model, convo);   //these tool exchanges already ran, keep them in the session file
             //a recorded server that died names the cause and both commands, so its line replaces the client's error instead of repeating the start
             renderer.OnWarning(serverGone?.Invoke() ?? ex.Message);
+            return kept;
         }
         catch (OperationCanceledException)
         {
             //a Ctrl+C during a reactive rescue arrives as OperationCanceledException, absorb it like a connection failure or the whole session goes down with exit 1
-            if (convo.Count <= mark + 1)
+            var kept = convo.Count > mark + 1;
+            if (!kept)
                 convo.TruncateTo(mark);
             else
                 SaveSession(sessions, model, convo);
             renderer.OnWarning("turn cancelled");
+            return kept;
         }
         finally
         {
@@ -568,13 +585,17 @@ public sealed partial class Repl(
 
     //repaint a restored transcript through the renderer channels, sending each tool call and its result as a pair, and change nothing
     public static void ReplayTranscript(
-        IReadOnlyList<ChatMessage> messages, ITurnObserver observer, Action<string> echoUser)
+        IReadOnlyList<ChatMessage> messages, ITurnObserver observer, Action<string> echoUser, Action<ChatMessage> echoBackground)
     {
         var pending = new Dictionary<string, ToolCall>(StringComparer.Ordinal);
         foreach (var m in messages)
         {
             switch (m.Role)
             {
+                //a background end is gatto's record, so each face draws it its own way and never echoes it as typed
+                case "user" when m.Background is not null:
+                    echoBackground(m);
+                    break;
                 case "user" when m.Content is { Length: > 0 }:
                     echoUser(m.Content);
                     break;

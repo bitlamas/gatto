@@ -57,6 +57,10 @@ public sealed class AgentLoop(
     //the round the turn reached, read by the turn span when the turn ends in an exception
     private int _traceRounds;
 
+    //the text a turn's prompt reads as, the head line alone for a background end so its output never rides a continuation
+    internal static string PromptOf(ChatMessage record) =>
+        record.Background is not null ? BackgroundTasks.HeadOf(record.Content) : record.Content ?? "";
+
     //swap the overrides every later turn reads, without rebuilding the loop and losing its tools. budgetTokens stays out, the window has its own seam
     public void UpdateOverrides(string newModel, JsonElement? newSampling, JsonElement? newBody, string? newPromptSuffix = null)
     {
@@ -126,19 +130,25 @@ public sealed class AgentLoop(
     public Task<TurnResult> RunTurnAsync(
         Conversation convo, string userMessage, ITurnObserver observer, CancellationToken ct,
         IReadOnlyList<ImageRef>? images = null, long traceParent = 0, string? agent = null) =>
+        RunTurnAsync(convo, convo.UserRecord(userMessage, images), observer, ct, traceParent, agent);
+
+    //a turn whose user message is a record built already, a background task's end among them, appended as given
+    public Task<TurnResult> RunTurnAsync(
+        Conversation convo, ChatMessage userRecord, ITurnObserver observer, CancellationToken ct,
+        long traceParent = 0, string? agent = null) =>
         _trace.Enabled
-            ? TracedTurnAsync(convo, userMessage, observer, ct, images, traceParent, agent)
-            : RunTurnCoreAsync(convo, userMessage, observer, ct, images, 0, agent);
+            ? TracedTurnAsync(convo, userRecord, observer, ct, traceParent, agent)
+            : RunTurnCoreAsync(convo, userRecord, observer, ct, 0, agent);
 
     private async Task<TurnResult> TracedTurnAsync(
-        Conversation convo, string userMessage, ITurnObserver observer, CancellationToken ct,
-        IReadOnlyList<ImageRef>? images, long traceParent, string? agent)
+        Conversation convo, ChatMessage userRecord, ITurnObserver observer, CancellationToken ct,
+        long traceParent, string? agent)
     {
         var span = _trace.Open(Trace.Turn, traceParent);
         observer.OnTurnSpan(span.Id);
-        var seq = convo.Count;   //the user record's index among the chat records, which AddUser is about to append
+        var seq = convo.Count;   //the user record's index among the chat records, which the turn is about to append
         TurnResult? result = null;
-        try { return result = await RunTurnCoreAsync(convo, userMessage, observer, ct, images, span.Id, agent); }
+        try { return result = await RunTurnCoreAsync(convo, userRecord, observer, ct, span.Id, agent); }
         finally
         {
             //a child's conversation is never saved, so its turn names the role and carries no seq
@@ -153,9 +163,11 @@ public sealed class AgentLoop(
     }
 
     private async Task<TurnResult> RunTurnCoreAsync(
-        Conversation convo, string userMessage, ITurnObserver observer, CancellationToken ct,
-        IReadOnlyList<ImageRef>? images, long turnSpan, string? agent)
+        Conversation convo, ChatMessage userRecord, ITurnObserver observer, CancellationToken ct,
+        long turnSpan, string? agent)
     {
+        //what a compaction continues from, and a background end's head line stands for its output there
+        var userMessage = PromptOf(userRecord);
         //an unarmed loop measures the server's count too, so a subagent's elision decides on it as a session's does
         usageState ??= new ContextUsageState();
         //the current turn's user-message index, captured before AddUser, and the prompt_suffix splice target
@@ -174,7 +186,7 @@ public sealed class AgentLoop(
         //a rescue may fire more than once per turn, since a fresh oversized result is a new problem
         var reactiveHasRescued = false;
         var madeProgressSinceRescue = false;
-        convo.AddUser(userMessage, images);
+        convo.Append(userRecord);
         while (true)
         {
             round++;

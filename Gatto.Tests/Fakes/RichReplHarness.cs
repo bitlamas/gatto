@@ -192,7 +192,7 @@ public sealed class RichReplHarness
         Convo = new Conversation(systemPrompt);
 
         var loop = Loop = new AgentLoop(Client, tools ?? new ToolRegistry(), hooks ?? new HookBus(),
-            new TestToolContext(cwd), "test-model", trace: trace);
+            _context = new HarnessToolContext(cwd), "test-model", trace: trace);
 
         _repl = new Gatto.Repl.Repl(
             loop, Convo, roleName: roleName, modelName: "test-model",
@@ -227,8 +227,26 @@ public sealed class RichReplHarness
             commands: commands,
             launchWarnings: launchWarnings, servedNotice: servedNotice, sandboxNotice: sandboxNotice, wildNotice: wildNotice,
             clipboardImageSource: clipboardImages,
-            roleTint: roleTint, roleCat: roleCat, firstMessage: firstMessage);
+            roleTint: roleTint, roleCat: roleCat, firstMessage: firstMessage,
+            armTasks: tasks => _context.Tasks = tasks);
     }
+
+    //the tool context the loop runs on, which the rich face arms with its background tasks as the app context is armed
+    private sealed class HarnessToolContext(string cwd) : IToolContext
+    {
+        public string Cwd => cwd;
+        public string HomePath => cwd;
+        public IUserPrompter? Prompter => null;
+        public BackgroundTasks? Tasks { get; set; }
+    }
+
+    private readonly HarnessToolContext _context;
+
+    //the session's background tasks while the rich loop runs, null before it arms them and after its teardown
+    public BackgroundTasks? Tasks => _context.Tasks;
+
+    //how the session ended, set when the rich loop returns
+    public SessionEnd? Ended => _repl.Ended;
 
     //answers the attach-count question without a terminal. set it to a function of the SelectSpec, and null keeps the real widget.
     public Func<SelectSpec, SelectOutcome>? OnConfirmAttach

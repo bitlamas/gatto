@@ -16,6 +16,9 @@ internal sealed class SandboxLaunch : IDisposable
     public required StreamReader Stdout { get; init; }
     public required StreamReader Stderr { get; init; }
 
+    //the child's kill-on-close job, the same instance the sandbox state holds, so a background kill can end the whole job
+    public required JobHandle JobHandle { get; init; }
+
     public void Dispose()
     {
         Stdout.Dispose();
@@ -134,6 +137,7 @@ internal sealed class SandboxLaunch : IDisposable
                 Process = process,
                 Stdout = new StreamReader(new FileStream(stdoutRead, FileAccess.Read, 4096, isAsync: false), utf8),
                 Stderr = new StreamReader(new FileStream(stderrRead, FileAccess.Read, 4096, isAsync: false), utf8),
+                JobHandle = job,
             };
             state.Hold(job);
             return launch;

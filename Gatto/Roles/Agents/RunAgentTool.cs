@@ -119,7 +119,7 @@ public sealed class RunAgentTool : ITool
 
         //the parent's context budget flows down, so a file-heavy sub-agent gets the same tool-result elision as the main loop
         var subLoop = new AgentLoop(
-            countingClient, subTools, subHooks, _parentCtx, model,
+            countingClient, subTools, subHooks, new ChildToolContext(_parentCtx), model,
             samplingOverrides: sampling, bodyOverrides: body, budgetTokens: _contextBudget, maxRounds: role.Turns, promptSuffix: suffix,
             reasoningHistory: _reasoningHistory, trace: ctx.Trace);
 
@@ -179,4 +179,17 @@ public sealed class RunAgentTool : ITool
         public Task<int?> TryGetContextLengthAsync(CancellationToken ct = default) =>
             inner.TryGetContextLengthAsync(ct);
     }
+}
+
+//the parent's context for a child's loop with no background tasks, since the child answers before any end could reach it
+file sealed class ChildToolContext(IToolContext parent) : IToolContext
+{
+    public string Cwd => parent.Cwd;
+    public string HomePath => parent.HomePath;
+    public IUserPrompter? Prompter => parent.Prompter;
+    public SessionIdentity? Session => parent.Session;
+    public Gatto.Core.Sandbox.SandboxState? Sandbox => parent.Sandbox;
+    public BackgroundTasks? Tasks => null;
+    public Gatto.Core.Trace Trace => parent.Trace;
+    public long TraceParent => parent.TraceParent;
 }

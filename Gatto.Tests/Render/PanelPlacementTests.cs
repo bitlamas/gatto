@@ -51,7 +51,7 @@ public sealed class PanelPlacementTests
                 var (p, _) = Wire(60, h);
                 p.State.PurrText = "purr 3s";
                 p.State.Tool = ("shell", "dir");
-                p.State.QueueTexts = new[] { "first queued message", "second queued message" };
+                p.State.QueueTexts = ["first queued message", "second queued message"];
                 if (panelUp) p.SetPanel(Panel(p.PanelRowsAvailable()));
                 p.Repaint();
 
@@ -73,7 +73,7 @@ public sealed class PanelPlacementTests
         //at 8 rows with the purr the budget is five, so even the newest queued message drops when the block is over budget.
         var (tight, _) = Wire(60, 8);
         tight.State.PurrText = "purr 3s";
-        tight.State.QueueTexts = new[] { "only queued message" };
+        tight.State.QueueTexts = ["only queued message"];
         tight.Repaint();
         var tightBlock = tight.ComposeChromeBlock(60, 8);
         Assert.True(tightBlock.Rows.Count <= 5,
@@ -447,14 +447,14 @@ public sealed class PanelPlacementTests
         var older = string.Join(" ", Enumerable.Repeat("word", olderRows == 1 ? 6 : 20));
 
         var (probe, _) = Wire(60, 40);
-        probe.State.QueueTexts = new[] { older };
+        probe.State.QueueTexts = [older];
         probe.Repaint();
         Assert.Equal(olderRows + 1, Rows(probe, 60, 40, ChromeRegion.Queue).Count);   //the count includes the blank row above the queue.
 
         var (p, s) = Wire(60, 20);
         p.State.PurrText = "purr 3s";
         p.State.Tool = ("ask_user", "");
-        p.State.QueueTexts = new[] { older, "newest queued message" };
+        p.State.QueueTexts = [older, "newest queued message"];
         var allowed = p.PanelRowsAvailable();
         p.SetPanel(Panel(allowed));
         p.Repaint();
@@ -474,7 +474,7 @@ public sealed class PanelPlacementTests
         var (p, s) = Wire(60, 20);
         p.State.PurrText = "purr 3s";
         p.State.Tool = ("ask_user", "");
-        p.State.QueueTexts = new[] { string.Join(" ", Enumerable.Repeat("older", 40)), "newest queued message" };
+        p.State.QueueTexts = [string.Join(" ", Enumerable.Repeat("older", 40)), "newest queued message"];
         var allowed = p.PanelRowsAvailable();
         p.SetPanel(Panel(allowed));
         p.Repaint();
@@ -494,7 +494,7 @@ public sealed class PanelPlacementTests
         var (p, s) = Wire(60, 20);
         p.State.PurrText = "purr 3s";
         p.State.Tool = ("ask_user", "");
-        p.State.QueueTexts = new[] { "olderA one row", "olderB one row", "newest queued message" };
+        p.State.QueueTexts = ["olderA one row", "olderB one row", "newest queued message"];
         var allowed = p.PanelRowsAvailable();
         p.SetPanel(Panel(allowed));
         p.Repaint();
@@ -514,7 +514,7 @@ public sealed class PanelPlacementTests
     {
         //at height nine the queue is one row over budget, so the clamp drops the older message and its roll-up and keeps the newest
         var (p, s) = Wire(60, 9);
-        p.State.QueueTexts = new[] { "older queued message", "newest queued message" };
+        p.State.QueueTexts = ["older queued message", "newest queued message"];
         p.Repaint();
         var block = p.ComposeChromeBlock(60, 9);
         Assert.Contains(block.Rows, r => r.Region == ChromeRegion.Queue

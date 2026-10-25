@@ -79,6 +79,7 @@ file sealed class TracedToolContext(IToolContext inner, Trace trace, long parent
     public IUserPrompter? Prompter => inner.Prompter;
     public SessionIdentity? Session => inner.Session;
     public Gatto.Core.Sandbox.SandboxState? Sandbox => inner.Sandbox;
+    public BackgroundTasks? Tasks => inner.Tasks;   //read through by name, the interface default would turn every traced background call into a foreground one
     public Trace Trace => trace;
     public long TraceParent => parent;
 }

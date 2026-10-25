@@ -83,6 +83,22 @@ public class RecallMemoryToolTests : IDisposable
         return (a, b, c, d);
     }
 
+    //a hit carries no role, and its excerpt is the record's head, so a background end reads as the task it was and never as the user's words
+    [Fact]
+    public async Task A_BACKGROUND_END_S_EXCERPT_OPENS_WITH_ITS_HEAD_LINE()
+    {
+        var path = WriteSessionFile("0001-a.jsonl", Proj, ("user", "start the server", null));
+        AppendRawLine(path, JsonSerializer.Serialize(new
+        {
+            role = "user", content = "background task 1 ended · exit 1 · 4s\nnginx failed to bind port 8080", gloss = "exit 1", is_error = true, background = 1,
+        }));
+
+        var result = await new RecallMemoryTool().ExecuteAsync(Args("""{"query":"nginx bind"}"""), Ctx, default);
+
+        var hit = Assert.Single(ParseHits(result.Text));
+        Assert.StartsWith("background task 1 ended · exit 1 · 4s", hit.GetProperty("excerpt").GetString(), StringComparison.Ordinal);
+    }
+
     [Fact]
     public async Task Scoped_FindsAtAndUnderRoot_NotOther()
     {

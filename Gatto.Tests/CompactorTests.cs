@@ -522,6 +522,19 @@ public class CompactorTests
         Assert.Equal(("u1", "a1"), ex);
     }
 
+    //the reply answered a background end, so the exchange names the end by its head line and keeps its output out of the summary
+    [Fact]
+    public void LAST_TEXT_EXCHANGE_NAMES_A_BACKGROUND_END_BY_ITS_HEAD_LINE()
+    {
+        var c = new Conversation("sys");
+        c.AddUser("start the build");
+        c.AddAssistant("started");
+        c.Append(c.BackgroundRecord(1, "background task 1 ended · exit 0 · 3s\nBuild succeeded.", "exit 0", isError: false));
+        c.AddAssistant("the build passed");
+
+        Assert.Equal(("background task 1 ended · exit 0 · 3s", "the build passed"), Gatto.Repl.Repl.LastTextExchange(c));
+    }
+
     [Fact]
     public void LastTextExchange_NullWhenNoAssistantText()
     {
@@ -866,6 +879,39 @@ public class CompactorTests
         Assert.Contains(shaped, m => m.Role == "user" && m.Content == "the actual task");
         Assert.NotEqual("tool", shaped.SkipWhile(m => m.Role == "system").First().Role);
         AssertAdjacency(shaped);
+    }
+
+    //the last user message always stays, so an end's output would ride the harsh retry whole
+    [Fact]
+    public void HARSH_SHAPE_KEEPS_A_LAST_BACKGROUND_END_AS_ITS_HEAD_LINE_ALONE()
+    {
+        var wall = new string('x', 40_000);
+        var end = new ChatMessage("user", "background task 1 ended · exit 0 · 9s\n" + wall, Gloss: "exit 0", Background: 1);
+        var msgs = new[] { Sys("s"), User("start the build"), Asst("started"), end };
+
+        var shaped = Compactor.HarshShape(msgs, 20_000, 1.0);
+
+        var kept = Assert.Single(shaped, m => m.Background is not null);
+        Assert.Equal("background task 1 ended · exit 0 · 9s", kept.Content);
+        Assert.DoesNotContain(shaped, m => m.Content?.Contains(wall) == true);
+    }
+
+    [Fact]
+    public void THE_CONTINUATION_OF_A_TURN_AN_END_STARTED_CARRIES_ITS_HEAD_LINE_AND_NO_IMAGE()
+    {
+        var convo = new Conversation("sys");
+        convo.AddUser("look at this", [new ImageRef(@"C:\shot.png", 10, "abc", "image/png")]);
+        convo.AddAssistant("ok");
+        var end = convo.BackgroundRecord(1, "background task 1 ended · exit 2 · 3s\nthe output", "exit 2", isError: true);
+        convo.Append(end);
+
+        var (result, _) = Compactor.RebuildMidTurn("summary", convo, AgentLoop.PromptOf(end), new NullObserver(),
+            null, () => new ComposedSystem("sys", null), "·");
+
+        var prompt = Assert.Single(result.Messages);
+        Assert.Contains("background task 1 ended · exit 2 · 3s", prompt.Content, StringComparison.Ordinal);
+        Assert.DoesNotContain("the output", prompt.Content, StringComparison.Ordinal);
+        Assert.Null(prompt.Images);
     }
 
     [Fact]

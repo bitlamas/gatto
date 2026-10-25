@@ -101,7 +101,7 @@ public sealed record ReasoningItem(IReadOnlyList<string> RawLines) : TranscriptI
 }
 
 //a false HasResult marks a torn-turn call with no ⎿ gloss row. the gloss arrives already painted, while Name and Args are untrusted and sanitized in Render
-public sealed record ToolBlockItem(string Name, string Args, string Gloss, bool HasResult, string Role) : TranscriptItem
+public record ToolBlockItem(string Name, string Args, string Gloss, bool HasResult, string Role) : TranscriptItem
 {
     //the full tool result text, from the live result or from the tool record on replay. its rail shows only when the block is open and the text is not empty
     public string FullResult { get; init; } = "";
@@ -138,7 +138,7 @@ public sealed record ToolBlockItem(string Name, string Args, string Gloss, bool 
     //how many rows above the tail the command window rests, so a resize keeps the tail in view
     public int CommandFromTail { get => _commandFromTail; set { if (_commandFromTail != value) { _commandFromTail = value; MarkContentChanged(); } } }
 
-    public bool IsShell => Name == "shell" && FullArgs.Length > 0;
+    public virtual bool IsShell => Name == "shell" && FullArgs.Length > 0;
 
     //the result row's pieces, so the link sits between the words and the token count. null keeps the painted gloss with no link
     public ToolGlossParts? Parts { get; init; }
@@ -338,11 +338,51 @@ public sealed record ToolBlockItem(string Name, string Args, string Gloss, bool 
     protected override IReadOnlyList<RowWrap> RowWrapsBody(int width, Theme theme, GlyphSet? glyphs) =>
         Layout(width, theme, glyphs).Rows.Select(r => new RowWrap(r.Continuation, r.PrefixCells, r.LeadCells)).ToList();
 
-    public ShellBlockLayout ShellLayout(int width, Theme theme, GlyphSet? glyphs) =>
+    public virtual ShellBlockLayout ShellLayout(int width, Theme theme, GlyphSet? glyphs) =>
         ShellBlockRender.Layout(
             new ShellBlockInput(FullArgs, Output, FullResult.Length, RawGloss, Gloss, HasResult, Role, BulletTint, FollowUp),
             new ShellBlockState(Collapsed, View, OutputTop, CommandFromTail), width, theme, glyphs ?? GlyphSet.Unicode);
 
+}
+
+//a background task's end as a shell block, headed by its own line under the system marker. the record holds no command
+public sealed record BackgroundEndItem : ToolBlockItem
+{
+    public BackgroundEndItem(string head, string gloss, string role) : base("shell", "", gloss, HasResult: true, role) => Head = head;
+
+    //the record's first line, which names the task, its cause and how long it ran
+    public string Head { get; }
+
+    //the block shows its output the shell way though no command is held, so the window, the link and the keys are the ones a shell block has
+    public override bool IsShell => true;
+
+    //the shell layout with its head row swapped, so every row the mouse and the keys map stays where the shell block puts it
+    public override ShellBlockLayout ShellLayout(int width, Theme theme, GlyphSet? glyphs)
+    {
+        var g = glyphs ?? GlyphSet.Unicode;
+        var layout = base.ShellLayout(width, theme, glyphs);
+        var rows = layout.Rows.ToList();
+        //the record holds the middle dot as written, and the row draws the glyph set's own
+        var line = theme.Paint(g.Sharp + " " + TermText.Sanitize(Head).Replace($" {GlyphSet.Unicode.Dot} ", $" {g.Dot} "), Theme.Warn);
+        rows[0] = new RenderedRow(width > 0 ? TermText.TruncateCells(line, width, glyphs: g) : line, false);
+        return layout with { Rows = rows };
+    }
+
+    //the block from the record, collapsed, its output the text after the head line and its gloss the record's
+    public static BackgroundEndItem From(ChatMessage record, Theme theme, GlyphSet? glyphs, string role)
+    {
+        var parts = (record.Content ?? "").Split('\n', 2);
+        var output = parts.Length > 1 ? parts[1] : "";
+        var stored = new ToolResult(output, record.IsError, record.Gloss);
+        return new BackgroundEndItem(parts[0], ItemRender.ToolGloss(stored, theme, glyphs), role)
+        {
+            Collapsed = true,
+            FullResult = output,
+            RawGloss = record.Gloss,
+            Parts = ItemRender.ToolGlossParts(stored, theme, glyphs),
+            IsError = record.IsError,
+        };
+    }
 }
 
 public sealed record UserEchoItem(IReadOnlyList<string> RawLines) : TranscriptItem
