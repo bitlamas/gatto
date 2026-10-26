@@ -97,7 +97,7 @@ public class SessionIdentityTests : IDisposable
         first.Save(Convo());
 
         var resumed = new SessionStore(_home, _cwd);
-        resumed.Adopt(SessionStore.IdentityOf(first.CurrentPath!)!);
+        resumed.Adopt(SessionStore.IdentityOf(first.CurrentPath!)!, first.CurrentPath!);
         resumed.Save(Convo());
 
         Assert.NotEqual(first.CurrentPath, resumed.CurrentPath);

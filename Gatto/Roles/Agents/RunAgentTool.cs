@@ -188,6 +188,7 @@ file sealed class ChildToolContext(IToolContext parent) : IToolContext
     public string HomePath => parent.HomePath;
     public IUserPrompter? Prompter => parent.Prompter;
     public SessionIdentity? Session => parent.Session;
+    public IReadOnlyList<string> SessionFiles => parent.SessionFiles;   //a child's recall leaves out the parent's files, whose turns are the parent's context
     public Gatto.Core.Sandbox.SandboxState? Sandbox => parent.Sandbox;
     public BackgroundTasks? Tasks => null;
     public Gatto.Core.Trace Trace => parent.Trace;

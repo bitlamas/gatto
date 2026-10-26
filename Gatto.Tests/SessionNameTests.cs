@@ -90,7 +90,7 @@ public sealed class SessionNameTests : IDisposable
         Assert.Equal(Name, SessionStore.IdentityOf(store.CurrentPath!)!.Name);
 
         var resumed = new SessionStore(_home, _cwd);
-        resumed.Adopt(SessionStore.IdentityOf(origin)!);
+        resumed.Adopt(SessionStore.IdentityOf(origin)!, origin);
         resumed.Save(Convo());
         Assert.Equal(Name, SessionStore.IdentityOf(resumed.CurrentPath!)!.Name);
 
@@ -271,7 +271,7 @@ public sealed class SessionNameTests : IDisposable
     public async Task A_RESUMED_NAMED_SESSION_OPENS_WITH_ITS_NAME()
     {
         var store = new SessionStore(_home, _cwd);
-        store.Adopt(store.Identity with { Name = Name });
+        store.Adopt(store.Identity with { Name = Name }, Path.Combine(_home, "sessions", "named.jsonl"));
         var deed = new Deed();
         var h = new RichReplHarness(_cwd, title: deed, sessions: store);
         h.Keys.Line("/quit");

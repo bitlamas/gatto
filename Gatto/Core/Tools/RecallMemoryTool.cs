@@ -62,6 +62,8 @@ public sealed class RecallMemoryTool : ITool
         //a sidecar shares this folder and also ends in .jsonl, so it must not be read as a session
         var included = Directory.EnumerateFiles(sessionsDir, "*.jsonl")
             .Where(f => !SessionFiles.IsSidecar(f))
+            //the caller's own files are always the newest, so they would take every top rank with turns the model already holds
+            .Where(f => !ctx.SessionFiles.Any(own => PathEquals(f, own)))
             .OrderBy(f => f, StringComparer.Ordinal)   //filenames embed UTC ticks, so ordinal order is chronological
             .Where(f => ClassifyScope(f, root) == Scope.InScope)
             .ToArray();
@@ -115,6 +117,9 @@ public sealed class RecallMemoryTool : ITool
         return c.StartsWith(r + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase);
     }
 
+    private static bool PathEquals(string a, string b) =>
+        string.Equals(Path.GetFullPath(a), Path.GetFullPath(b), StringComparison.OrdinalIgnoreCase);
+
     private static string NormalizeForCompare(string path) =>
         Path.GetFullPath(path).TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
 
@@ -151,6 +156,7 @@ public sealed class RecallMemoryTool : ITool
             catch (JsonException) { continue; }   //skip a line that will not parse, with no warning
 
             turn++;
+            if (role == "system") continue;   //the system record holds the index and the context files and matches almost any query
             var overlap = CountOverlap(content, terms);
             if (overlap == 0) continue;
 

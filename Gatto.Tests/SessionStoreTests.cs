@@ -128,6 +128,26 @@ public class SessionStoreTests : IDisposable
         Assert.Null(store.CurrentPath);                 //the path reads null once StartNew has run, so read it first
     }
 
+    //a resume copies the loaded file's turns into context, so the store names that file until a new session begins
+    [Fact]
+    public void ADOPT_RECORDS_THE_FILE_IT_RESUMED_FROM_AND_START_NEW_CLEARS_IT()
+    {
+        var store = new SessionStore(_home, _cwd);
+        Assert.Null(store.ResumedFrom);
+
+        var loaded = Path.Combine(_home, "sessions", "earlier.jsonl");
+        var identity = new SessionIdentity(Guid.NewGuid(), DateTimeOffset.Now);
+        store.Adopt(identity, loaded);
+        Assert.Equal(loaded, store.ResumedFrom);
+        Assert.Equal(identity, store.Identity);
+
+        store.StartSuccessor();
+        Assert.Equal(loaded, store.ResumedFrom);        //a compaction successor still holds the resumed turns in its chain
+
+        store.StartNew();
+        Assert.Null(store.ResumedFrom);
+    }
+
     [Fact]
     public void Concurrent_saves_on_one_store_do_not_crash()
     {

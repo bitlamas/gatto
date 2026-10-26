@@ -20,6 +20,7 @@ public sealed class SessionStore(string homePath, string cwd)
     public string Cwd { get; } = Path.GetFullPath(cwd);
 
     private string? _currentFile;
+    private string? _resumedFrom;
     private readonly object _saveLock = new();
 
     //the file the session will write and the session it belongs to, chosen when the session begins, so a shell call before the first save knows both
@@ -38,6 +39,9 @@ public sealed class SessionStore(string homePath, string cwd)
     //the file the next Save writes to, or null before the first Save and after StartNew. read this before StartNew, which nulls it
     public string? CurrentPath { get { lock (_saveLock) return _currentFile; } }
 
+    //the file a resume loaded, whose turns are now in context and in the next file this store writes. null until a resume
+    public string? ResumedFrom { get { lock (_saveLock) return _resumedFrom; } }
+
     //the live session, which every transcript of it names and every shell child reads
     public SessionIdentity Identity { get { lock (_saveLock) return _begun.Identity; } }
 
@@ -51,6 +55,7 @@ public sealed class SessionStore(string homePath, string cwd)
         lock (_saveLock)
         {
             _currentFile = null;
+            _resumedFrom = null;
             _begun = Begin(homePath, cwd, null);
         }
     }
@@ -67,9 +72,13 @@ public sealed class SessionStore(string homePath, string cwd)
     }
 
     //a resumed session keeps its own identity, though its next save opens a new file
-    public void Adopt(SessionIdentity identity)
+    public void Adopt(SessionIdentity identity, string resumedFrom)
     {
-        lock (_saveLock) _begun = (_begun.File, identity);
+        lock (_saveLock)
+        {
+            _begun = (_begun.File, identity);
+            _resumedFrom = resumedFrom;
+        }
     }
 
     //the name rides the identity, so a successor and a resume carry it and /new drops it. the next save writes it

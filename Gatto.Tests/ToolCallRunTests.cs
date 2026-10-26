@@ -28,6 +28,7 @@ file sealed class TasksContext(string cwd, BackgroundTasks tasks) : IToolContext
     public string Cwd => cwd;
     public string HomePath => cwd;
     public IUserPrompter? Prompter => null;
+    public IReadOnlyList<string> SessionFiles { get; } = [Path.Combine(cwd, "own.jsonl")];
     public BackgroundTasks? Tasks => tasks;
 }
 
@@ -56,5 +57,6 @@ public sealed class ToolCallRunTests : IDisposable
         Assert.NotNull(probe.Seen);
         Assert.NotSame(context, probe.Seen);   //the traced wrapper, not the session's own context
         Assert.Same(tasks, probe.Seen!.Tasks);
+        Assert.Equal(context.SessionFiles, probe.Seen.SessionFiles);
     }
 }

@@ -32,6 +32,9 @@ public interface IToolContext
     //the live session a shell child is told about, read at each call since /new and a resume change it. null where no session exists
     Gatto.Core.SessionIdentity? Session => null;
 
+    //the transcript files whose turns this session already holds, the one being written and the one resumed from, so a tool can leave the caller's own turns out. empty where no session exists
+    IReadOnlyList<string> SessionFiles => [];
+
     //the process's sandbox, read at each call so a run_agent child's shell is confined through its parent's context. null where none exists
     Gatto.Core.Sandbox.SandboxState? Sandbox => null;
 

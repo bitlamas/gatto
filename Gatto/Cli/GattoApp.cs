@@ -35,6 +35,7 @@ file sealed class AppToolContext(string cwd, string home, IUserPrompter? prompte
     public string HomePath => home;
     public IUserPrompter? Prompter => prompter;
     public SessionIdentity? Session => sessions.Identity;
+    public IReadOnlyList<string> SessionFiles => new[] { sessions.CurrentPath, sessions.ResumedFrom }.OfType<string>().ToList();
     public Gatto.Core.Sandbox.SandboxState? Sandbox => sandbox;
 
     //null at construction, and the rich face alone sets it when it starts, so -p and the plain face run the flag in the foreground
@@ -949,7 +950,7 @@ public static class GattoApp
             if (continuePath is { } contPath && sessions.LoadPath(contPath) is { } prior)
             {
                 //a resume is the same session, so its next file and its shell children carry the resumed one's identity
-                if (SessionStore.IdentityOf(contPath) is { } resumed) sessions.Adopt(resumed);
+                if (SessionStore.IdentityOf(contPath) is { } resumed) sessions.Adopt(resumed, contPath);
                 //reload the prior transcript without its stored system message, the decision below picks the one that leads
                 convo.Load(prior.Where(m => m.Role != "system"));
 

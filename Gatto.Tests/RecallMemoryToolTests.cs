@@ -10,6 +10,7 @@ public sealed class RecallTestContext(string cwd, string homePath) : IToolContex
     public string Cwd => cwd;
     public string HomePath => homePath;
     public IUserPrompter? Prompter => null;
+    public IReadOnlyList<string> SessionFiles { get; set; } = [];
 }
 
 public class RecallMemoryToolTests : IDisposable
@@ -396,5 +397,106 @@ public class RecallMemoryToolTests : IDisposable
         Assert.Contains(excerpts, e => e == "quarterly report findings");                  //the assistant excerpt has its control tokens stripped
         Assert.Contains(excerpts, e => e == "<|im_start|>quarterly template<|im_end|>");   //the tool excerpt stays verbatim.
         Assert.Contains(excerpts, e => e == "about the quarterly <|tool_call_begin|> token"); //the user excerpt stays verbatim.
+    }
+
+    private static string SessionOf(JsonElement hit) => hit.GetProperty("session").GetString()!;
+
+    //the caller's file is the newest and holds the best match, which the model already has in context
+    [Fact]
+    public async Task THE_CALLERS_OWN_FILE_NEVER_HITS_AND_THE_NEXT_NEWEST_TAKES_RECENCY()
+    {
+        var older = WriteSessionFile("0001-older.jsonl", Proj, ("user", "the widget broke", null));
+        var own = WriteSessionFile("0002-own.jsonl", Proj, ("user", "the widget broke again, widget broke", null));
+        var ctx = new RecallTestContext(Proj, Home) { SessionFiles = [own] };
+
+        var result = await new RecallMemoryTool().ExecuteAsync(Args("""{"query":"widget broke"}"""), ctx, default);
+
+        var hit = Assert.Single(ParseHits(result.Text));
+        Assert.Equal(older, SessionOf(hit));
+        Assert.Equal(1.5, hit.GetProperty("score").GetDouble());   //full overlap plus half of rank 1.0
+    }
+
+    //a compaction successor shares its predecessor's session id, and the predecessor holds turns the summary lost
+    [Fact]
+    public async Task A_COMPACTION_PREDECESSOR_WITH_THE_SAME_SESSION_ID_STILL_HITS()
+    {
+        var id = Guid.NewGuid().ToString();
+        string Write(string name, string content)
+        {
+            Directory.CreateDirectory(SessionsDir);
+            var path = Path.Combine(SessionsDir, name);
+            File.WriteAllLines(path,
+            [
+                JsonSerializer.Serialize(new { role = "system", content = "…", schema_version = 1, cwd = Proj, session_id = id, session_start = "2026-10-25T10:00:00-04:00" }),
+                JsonSerializer.Serialize(new { role = "user", content }),
+            ]);
+            return path;
+        }
+        var predecessor = Write("0001-before.jsonl", "the gasket size was twelve");
+        var successor = Write("0002-after.jsonl", "summary of the earlier talk");
+        var ctx = new RecallTestContext(Proj, Home) { SessionFiles = [successor] };
+
+        var result = await new RecallMemoryTool().ExecuteAsync(Args("""{"query":"gasket"}"""), ctx, default);
+
+        Assert.Equal(predecessor, SessionOf(Assert.Single(ParseHits(result.Text))));
+    }
+
+    //a resume copies the loaded file's turns into context, so that file is the caller's own as much as the one being written
+    [Fact]
+    public async Task THE_FILE_A_SESSION_RESUMED_FROM_NEVER_HITS()
+    {
+        var oldest = WriteSessionFile("0001-oldest.jsonl", Proj, ("user", "the widget broke", null));
+        var resumed = WriteSessionFile("0002-resumed.jsonl", Proj, ("user", "the widget broke", null));
+        var writing = WriteSessionFile("0003-writing.jsonl", Proj, ("user", "the widget broke", null));
+        var ctx = new RecallTestContext(Proj, Home) { SessionFiles = [writing, resumed] };
+
+        var result = await new RecallMemoryTool().ExecuteAsync(Args("""{"query":"widget"}"""), ctx, default);
+
+        Assert.Equal(oldest, SessionOf(Assert.Single(ParseHits(result.Text))));
+    }
+
+    //the system record holds the index and the context files, and a skipped record still counts so every turn pointer stays put
+    [Fact]
+    public async Task A_SYSTEM_RECORD_NEVER_HITS_AND_STILL_COUNTS_AS_A_TURN()
+    {
+        Directory.CreateDirectory(SessionsDir);
+        var path = Path.Combine(SessionsDir, "0001-a.jsonl");
+        File.WriteAllLines(path,
+        [
+            JsonSerializer.Serialize(new { role = "system", content = "memory index: the widget fact", schema_version = 1, cwd = Proj }),
+            JsonSerializer.Serialize(new { role = "user", content = "the widget broke" }),
+        ]);
+
+        var result = await new RecallMemoryTool().ExecuteAsync(Args("""{"query":"widget"}"""), Ctx, default);
+
+        var hit = Assert.Single(ParseHits(result.Text));
+        Assert.Equal(2, hit.GetProperty("turn").GetInt32());
+        Assert.Equal("the widget broke", hit.GetProperty("excerpt").GetString());
+    }
+
+    [Fact]
+    public async Task EMPTY_SESSION_FILES_SCANS_EVERY_FILE()
+    {
+        var older = WriteSessionFile("0001-older.jsonl", Proj, ("user", "the widget broke", null));
+        var newer = WriteSessionFile("0002-newer.jsonl", Proj, ("user", "the widget broke", null));
+        var ctx = new RecallTestContext(Proj, Home) { SessionFiles = [] };
+
+        var result = await new RecallMemoryTool().ExecuteAsync(Args("""{"query":"widget"}"""), ctx, default);
+
+        Assert.Equal([newer, older], ParseHits(result.Text).Select(SessionOf));
+    }
+
+    //the store and the scan can spell one file differently, so the comparison is on the full path with case folded
+    [Fact]
+    public async Task SESSION_FILES_COMPARE_FULL_PATHS()
+    {
+        var older = WriteSessionFile("0001-older.jsonl", Proj, ("user", "the widget broke", null));
+        WriteSessionFile("0002-own.jsonl", Proj, ("user", "the widget broke", null));
+        var spelled = Path.Combine(SessionsDir, "..", "SESSIONS", "0002-OWN.jsonl");
+        var ctx = new RecallTestContext(Proj, Home) { SessionFiles = [spelled] };
+
+        var result = await new RecallMemoryTool().ExecuteAsync(Args("""{"query":"widget"}"""), ctx, default);
+
+        Assert.Equal(older, SessionOf(Assert.Single(ParseHits(result.Text))));
     }
 }

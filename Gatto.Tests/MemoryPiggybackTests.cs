@@ -202,11 +202,20 @@ public sealed class MemoryPiggybackTests : IDisposable
     public void BankCandidates_CollidingSlugs_GetNumberedSuffixes()
     {
         //two facts whose first four words match get numbered slugs. the bank only appends, so a wrong fact sits beside a right one and both stay visible
-        MemoryPiggyback.BankCandidates(_root, new[] { "- the same four words here" });
-        MemoryPiggyback.BankCandidates(_root, new[] { "- the same four words DIFFERENT" });
+        MemoryPiggyback.BankCandidates(_root, new[] { "- alpha beta gamma delta one" });
+        MemoryPiggyback.BankCandidates(_root, new[] { "- alpha beta gamma delta two" });
 
-        Assert.True(File.Exists(MemoryDir.PathFor(_root, "c-the-same-four-words")));
-        Assert.True(File.Exists(MemoryDir.PathFor(_root, "c-the-same-four-words-2")));
+        Assert.True(File.Exists(MemoryDir.PathFor(_root, "c-alpha-beta-gamma-delta")));
+        Assert.True(File.Exists(MemoryDir.PathFor(_root, "c-alpha-beta-gamma-delta-2")));
+    }
+
+    [Fact]
+    public void A_HARVESTED_BULLET_OPENING_WITH_THE_LANDS_UNDER_THE_SLUG_WITHOUT_IT()
+    {
+        var (banked, _) = MemoryPiggyback.BankCandidates(_root, new[] { "- The build cache lives in obj" });
+
+        Assert.Equal(1, banked);
+        Assert.Equal("- The build cache lives in obj\n", FactText("c-build-cache-lives-obj"));
     }
 
     [Fact]

@@ -87,7 +87,8 @@ public sealed class BackgroundEndRenderTests
     }
 }
 
-//the plain face has no block, so a restored end prints its head line as gatto's own line and nothing of its output
+//the plain face has no block, so a restored end prints its head line as gatto's own line and nothing of its output. it swaps Console, so it joins the serial collection
+[Collection("e2e")]
 public sealed class BackgroundEndPlainReplayTests : IDisposable
 {
     private readonly TextReader _in = Console.In;

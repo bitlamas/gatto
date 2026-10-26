@@ -54,6 +54,7 @@ file sealed class FullContext(string cwd, BackgroundTasks tasks, Gatto.Core.Sand
     public string HomePath => Path.Combine(cwd, "home");
     public IUserPrompter? Prompter { get; } = new NoPrompter();
     public Gatto.Core.SessionIdentity? Session { get; } = new(Guid.NewGuid(), DateTimeOffset.Now, "named");
+    public IReadOnlyList<string> SessionFiles { get; } = [Path.Combine(cwd, "own.jsonl")];
     public Gatto.Core.Sandbox.SandboxState? Sandbox => sandbox;
     public BackgroundTasks? Tasks => tasks;
 }
@@ -310,6 +311,7 @@ public sealed class RunAgentToolTests : IDisposable
         Assert.Same(parent.Prompter, seen.Prompter);
         Assert.Same(parent.Session, seen.Session);
         Assert.Same(parent.Sandbox, seen.Sandbox);
+        Assert.Equal(parent.SessionFiles, seen.SessionFiles);
     }
 
     [Fact]
