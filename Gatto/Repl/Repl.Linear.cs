@@ -502,12 +502,12 @@ public sealed partial class Repl
             queue.Texts(), [], Cats.Face(_glyphs), KnownCommands(),
             async () =>
             {
-                s.Renderer.CommitBackground(record);
+                if (!entry.Drawn) s.Renderer.CommitBackground(record);   //a parked end's block stayed on screen from its first take
                 var kept = await RunModelTurnAsync(s, [],
                     ct => RunTurnGuardedAsync(loop, convo, record, s.Renderer, sessions, ct, s.Painter.Model, serverGone), appCt);
                 //a turn that rolled back before its first reply leaves the end owed, so it waits at the head of the queue for the next message
                 if (kept) _tasks?.Delivered(end.Number);
-                else lock (s.Gate) { queue.Park(entry); s.Painter.State.QueueTexts = queue.Texts(); }
+                else lock (s.Gate) { queue.Park(entry with { Drawn = true }); s.Painter.State.QueueTexts = queue.Texts(); }
                 return false;
             },
             promptEstimate: ScaledPromptEstimate(ContextBudget.Estimate(convo.Messages), _usageState.Ratio),

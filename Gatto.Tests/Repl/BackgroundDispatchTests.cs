@@ -179,6 +179,31 @@ public sealed class BackgroundDispatchTests : IDisposable
         Assert.Single(h.Convo.Messages, m => m.Background is not null);
     }
 
+    //the block drawn before the failed request stands for the parked end, so the retake draws none
+    [Fact]
+    public async Task AN_END_WHOSE_TURN_ROLLS_BACK_DRAWS_ITS_BLOCK_ONCE()
+    {
+        var chrome = new Gatto.Repl.Render.Chrome.ChromeHandle();
+        var h = Harness(chrome: chrome);
+        StartsInTheBackground(h.Client, "Write-Output 'bg done'");
+        h.Client.EnqueueThrow(new GattoConnectionException("the server went away"));
+        Says(h.Client, "seen it");
+        Says(h.Client, "next answered");
+        var blocks = -1;
+
+        var run = h.RunAsync(30_000);
+        h.Keys.Line("go");
+        Assert.True(await h.UntilAsync(() => h.Saw("the server went away") && QueueHoldsAnEnd(chrome), Waits.Bound), "the rolled-back end did not wait in the queue rows");
+        h.Keys.Line("next");
+        Assert.True(await h.UntilAsync(() => h.Saw("next answered"), Waits.Bound), "the typed message never ran");
+        blocks = chrome.Painter!.Model.Items.Count(i => i is Gatto.Repl.Render.BackgroundEndItem);
+        h.Keys.Line("/quit");
+        await run;
+
+        Assert.Equal(1, blocks);
+        Assert.Single(h.Convo.Messages, m => m.Background is not null);
+    }
+
     //the end's turn has its own token, so an Esc stops it, and the loop records the cancelled reply, so the record stays and the model reads it next turn
     [Fact]
     public async Task ESC_STOPS_AN_END_S_TURN_AND_THE_RECORD_STAYS_IN_THE_CONVERSATION()

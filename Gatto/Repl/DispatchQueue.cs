@@ -4,7 +4,7 @@ using Gatto.Repl.Render.Chrome;
 namespace Gatto.Repl;
 
 //one queued item, a typed message or a background task's end, which the dispatcher sends on its own arm
-internal readonly record struct QueueEntry(string Text, BackgroundEnd? End)
+internal readonly record struct QueueEntry(string Text, BackgroundEnd? End, bool Drawn = false)   //drawn is a parked end whose block is on screen
 {
     public bool IsTask => End is not null;
 }
