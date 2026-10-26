@@ -14,7 +14,8 @@ public sealed class MemoryWriteTool(Func<int> indexBudgetTokens) : ITool
         "listed from the next session or /new — not this one. One fact per slug; a fact's first line " +
         "is auto-listed in every future session's Memory block, so revising means writing the same " +
         "slug again, never adding a duplicate. Args: slug (lowercase-hyphen name; reuse an existing " +
-        "slug to revise that fact), content (line 1: the fact as one \"- \" bullet; optional detail " +
+        "slug to revise that fact), content (line 1: the fact as one \"- \" bullet, stated as the rule " +
+        "to follow, never as the mistake to avoid; optional detail " +
         "lines below), mode (\"write\" = create or overwrite the fact's file; \"delete\" = retire it, " +
         "content must be empty).";
 

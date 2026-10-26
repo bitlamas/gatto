@@ -668,7 +668,7 @@ public class RoleCompositionTests
         Assert.DoesNotContain("memory_write", c.SystemText, StringComparison.Ordinal);
     }
 
-    //the three write paths must teach one index shape, or the store ends half bulleted. these tests pin the instruction rather than a model's obedience
+    //the three paths share one bullet shape, and the clause about what a fact states goes only where a fact is written
 
     [Fact]
     public void Nudge_And_ToolDescription_TeachTheSameIndexFormat_AsTheCompactionTemplate()
@@ -679,6 +679,17 @@ public class RoleCompositionTests
         Assert.Contains(format, Gatto.Core.Loop.Compactor.TemplatePromptForTests, StringComparison.Ordinal);
         Assert.Contains(format, RoleComposition.MemoryNudge, StringComparison.Ordinal);
         Assert.Contains(format, new MemoryWriteTool(() => 1000).Description, StringComparison.Ordinal);
+    }
+
+    //the nudge rides every prefix and says the shape of a line, so the clause stays out of it
+    [Fact]
+    public void THE_RULE_CLAUSE_IS_IN_THE_TWO_WRITE_PATHS_AND_NOT_IN_THE_NUDGE()
+    {
+        const string clause = "stated as the rule to follow, never as the mistake to avoid";
+
+        Assert.Contains(clause, Gatto.Core.Loop.Compactor.TemplatePromptForTests, StringComparison.Ordinal);
+        Assert.Contains(clause, new MemoryWriteTool(() => 1000).Description, StringComparison.Ordinal);
+        Assert.DoesNotContain(clause, RoleComposition.MemoryNudge, StringComparison.Ordinal);
     }
 
     [Fact]

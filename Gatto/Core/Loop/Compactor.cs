@@ -33,9 +33,10 @@ public sealed class Compactor(IChatClient client, string model, RequestShape? sh
         "(e.g. 'PowerShell 5.1 has no &&').\n" +
         "Current state: where things stand right now.\n" +
         NextStepHeading + ": the single most useful thing to do next.\n" +
-        //keep this section last, the extractor takes everything after its heading. one template and one extractor, so it is emitted even with memory off
+        //keep this section last, the extractor takes everything after its heading. one template and one extractor, so it is emitted even with memory off. its words are gated, so reword them with a gate
         MemoryPiggyback.Heading + ": durable project facts learned this session that the next session would " +
-        "otherwise rediscover. Exactly one \"- \" bullet per fact, no commentary, or exactly the " +
+        "otherwise rediscover. Exactly one \"- \" bullet per fact, stated as the rule to follow, never " +
+        "as the mistake to avoid, no commentary, or exactly the " +
         "word none. This must be the last section.\n\n" +
         "Weight the headings to the work: an exploration/research turn must preserve findings in " +
         "specific detail; an execution turn should emphasize decisions, actions, and state. Fill " +
