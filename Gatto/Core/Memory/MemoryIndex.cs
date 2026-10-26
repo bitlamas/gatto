@@ -1,10 +1,10 @@
 namespace Gatto.Core.Memory;
 
-//compose the model-facing index in the prompt from the fact files, capped at chars÷4, with no aggregate file stored on disk
+//compose the model-facing index in the prompt from the fact files, capped at the measured ratio, with no aggregate file stored on disk
 public static class MemoryIndex
 {
-    //the same chars÷4 estimate ContextBudget.CharsPerToken and MemoryWriteTool use, so retune the ratio in all three places
-    private const int CharsPerToken = 4;
+    //characters per token measured on the index text of a local tokenizer, lower than the four used for messages because paths and backticks tokenize short
+    internal const double CharsPerToken = 3.3;
 
     //null Text means the caller omits the whole ## Memory block, and TruncatedLines counts the whole lines the budget dropped
     public sealed record LoadResult(string? Text, int TruncatedLines);
@@ -59,9 +59,9 @@ public static class MemoryIndex
             var first = StripCr(split.Length > 0 ? split[0] : "");
             if (string.IsNullOrWhiteSpace(first)) continue;
 
-            //only point at the file when a line after the first has content, an empty invitation costs a turn
-            var hasDetail = split.Skip(1).Any(l => !string.IsNullOrWhiteSpace(StripCr(l)));
-            lines.Add(hasDetail ? $"{first} → {Path.GetFileName(path)}" : first);
+            //point at the file only when a line after the first has content, and say how many so a read is a priced turn
+            var detail = split.Skip(1).Count(l => !string.IsNullOrWhiteSpace(StripCr(l)));
+            lines.Add(detail > 0 ? $"{first} → {Path.GetFileName(path)} (+{Plural.Of(detail, "line")})" : first);
         }
 
         return lines;

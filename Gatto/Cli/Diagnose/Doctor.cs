@@ -633,7 +633,7 @@ public sealed class Doctor(
         //report the effective budget and which source decided it, a derived number with no provenance sends the operator hunting
         var budget = config.MemoryIndexBudget is int b
             ? $"{b} tokens (gatto.json)"
-            : $"{GattoApp.DerivedMemoryBudget(null)} tokens (derived {g.Dot} no model armed; a model's context sets it, capped 1000{g.Range}4000)";
+            : $"{GattoApp.DerivedMemoryBudget(null)} tokens (derived {g.Dot} no model armed; a model's context sets it, capped {GattoApp.MemoryBudgetFloor}{g.Range}{GattoApp.MemoryBudgetCeiling})";
         return new CheckResult(true,
             $"memory: enabled {g.Dot} {facts} fact{(facts == 1 ? "" : "s")} in {Short(Path.Combine(cwd, ".gatto", "memory"), cwd)}, index budget {budget}");
     }

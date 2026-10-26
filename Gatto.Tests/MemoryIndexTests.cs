@@ -47,7 +47,7 @@ public sealed class MemoryIndexTests : IDisposable
         MemoryDir.Write(_root, "c-aaa-harvested", "- harvested aaaaaaaaaaaaaaaaaaaaaaaaaaaaaa");
         MemoryDir.Write(_root, "zzz-curated", "- curated cccccccccccccccccccccccccccccc");
 
-        var r = MemoryIndex.Compose(_root, 11);   //budget 11 is a cap of 44 characters, so the curated line fits and the harvested one doesn't
+        var r = MemoryIndex.Compose(_root, 13);   //budget 13 is a cap of 42.9 characters, so the curated line fits and the harvested one doesn't
 
         Assert.Equal("- curated cccccccccccccccccccccccccccccc", r.Text);
         Assert.Equal(1, r.TruncatedLines);
@@ -127,26 +127,31 @@ public sealed class MemoryIndexTests : IDisposable
     [Fact]
     public void Boundary_LastWholeLineAtExactlyCapIncluded()
     {
-        //two lines cost 5 each with the newline, so budget 3 (a cap of 12) fits both and nothing is dropped
-        MemoryDir.Write(_root, "a", "- xx");
-        MemoryDir.Write(_root, "b", "- xx");
+        //three lines cost 11 each with the newline, so budget 10 (a cap of 33) fits all three and nothing is dropped
+        MemoryDir.Write(_root, "a", "- xxxxxxxx");
+        MemoryDir.Write(_root, "b", "- xxxxxxxx");
+        MemoryDir.Write(_root, "c", "- xxxxxxxx");
 
-        var r = MemoryIndex.Compose(_root, 3);
+        var r = MemoryIndex.Compose(_root, 10);
 
-        Assert.Equal("- xx\n- xx", r.Text);
+        Assert.Equal("- xxxxxxxx\n- xxxxxxxx\n- xxxxxxxx", r.Text);
         Assert.Equal(0, r.TruncatedLines);
     }
 
     [Fact]
     public void Boundary_OneCharOver_WholeLineDropped_AndCounted()
     {
-        //each line is 42 chars, so budget 11 (a cap of 44) fits exactly one and drops the rest
-        for (var i = 0; i < 10; i++) MemoryDir.Write(_root, $"fact-{i}", "- " + new string('x', 40));
+        //budget 7 is a cap of 23.1, so a 22-char line costs 23 and carries, a 23-char line costs 24 and drops
+        for (var i = 0; i < 10; i++) MemoryDir.Write(_root, $"fact-{i}", "- " + new string('x', 20));
 
-        var r = MemoryIndex.Compose(_root, 11);
+        var r = MemoryIndex.Compose(_root, 7);
 
         Assert.Equal(9, r.TruncatedLines);
         Assert.DoesNotContain("\n", r.Text!);   //truncation drops whole lines, so the index never surfaces half a fact
+
+        foreach (var f in MemoryDir.FactFiles(_root)) File.Delete(f);
+        MemoryDir.Write(_root, "long", "- " + new string('x', 21));
+        Assert.Equal((string?)"", MemoryIndex.Compose(_root, 7).Text);
     }
 
     [Fact]
@@ -166,6 +171,56 @@ public sealed class MemoryIndexTests : IDisposable
     {
         WriteRaw("crlf.md", "- a fact\r\nsome detail\r\n");
 
-        Assert.Equal("- a fact → crlf.md", MemoryIndex.Compose(_root, 1000).Text);
+        Assert.Equal("- a fact → crlf.md (+1 line)", MemoryIndex.Compose(_root, 1000).Text);
+    }
+
+    //five planted facts of 31 characters cost 32 each, so the cap of budget times the ratio carries the whole lines it covers
+    [Theory]
+    [InlineData(10, 1)]   //a cap of 33
+    [InlineData(20, 2)]   //a cap of 66
+    [InlineData(49, 5)]   //a cap of 161.7, and five lines cost 160
+    public void A_PLANTED_STORE_CARRIES_THE_LINES_THE_CAP_COVERS(int budget, int carried)
+    {
+        for (var i = 0; i < 5; i++) MemoryDir.Write(_root, $"fact-{i}", $"- fact {i} " + new string('x', 22));
+
+        var r = MemoryIndex.Compose(_root, budget);
+
+        Assert.Equal(carried, r.Text!.Split('\n').Length);
+        Assert.Equal(5 - carried, r.TruncatedLines);
+    }
+
+    //the pointer says how long the body is, so the model can price a read before it spends a turn
+    [Fact]
+    public void A_FILE_WITH_THREE_BODY_LINES_POINTS_WITH_PLUS_THREE()
+    {
+        MemoryDir.Write(_root, "deep", "- has detail\none\ntwo\nthree");
+
+        Assert.Equal("- has detail → deep.md (+3 lines)", MemoryIndex.Compose(_root, 1000).Text);
+    }
+
+    [Fact]
+    public void ONE_BODY_LINE_POINTS_IN_THE_SINGULAR()
+    {
+        MemoryDir.Write(_root, "deep", "- has detail\nthe detail line");
+
+        Assert.Equal("- has detail → deep.md (+1 line)", MemoryIndex.Compose(_root, 1000).Text);
+    }
+
+    [Fact]
+    public void BLANK_BODY_LINES_ARE_NOT_COUNTED()
+    {
+        WriteRaw("spaced.md", "- has detail\n\nfirst\n   \n\nsecond\n\n");
+
+        Assert.Equal("- has detail → spaced.md (+2 lines)", MemoryIndex.Compose(_root, 1000).Text);
+    }
+
+    [Fact]
+    public void THE_UNCAPPED_INDEX_CARRIES_THE_SAME_SUFFIX()
+    {
+        MemoryDir.Write(_root, "plain", "- just a fact");
+        MemoryDir.Write(_root, "deep", "- has detail\none\ntwo");
+
+        Assert.Equal(MemoryIndex.Compose(_root, 1000).Text, MemoryIndex.ComposeUncapped(_root));
+        Assert.Contains("- has detail → deep.md (+2 lines)", MemoryIndex.ComposeUncapped(_root));
     }
 }

@@ -932,6 +932,8 @@ public class DoctorTests : IDisposable
         Assert.StartsWith("✓", line);
         Assert.Contains("enabled", line);
         Assert.Contains("2 facts", line);
+        Assert.Contains("index budget 1700 tokens (derived", line);
+        Assert.Contains("capped 1700–4000)", line);   //the row reads the floor and the ceiling from the constants it describes
     }
 
     [Fact]

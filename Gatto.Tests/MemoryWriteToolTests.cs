@@ -124,7 +124,7 @@ public class MemoryWriteToolTests : IDisposable
     public async Task Advisory_MeasuresTheUNCAPPEDIndex_SoItCanExceed100Percent()
     {
         //the advisory measures the uncapped index. a capped one can't pass 100%, and a tight budget reads zero exactly when the warning matters
-        var tool = Tool(budget: 5);   //budget 5 is about 20 characters, one fact already passes it
+        var tool = Tool(budget: 5);   //budget 5 is about 17 characters, one fact already passes it
         for (var i = 0; i < 6; i++)
             await Run(tool, $$"""{"slug":"fact-{{i}}","content":"- {{new string('x', 30)}}","mode":"write"}""");
 
@@ -147,6 +147,30 @@ public class MemoryWriteToolTests : IDisposable
         var after = await Run(tool, """{"slug":"b","content":"- another fact","mode":"write"}""");
 
         Assert.Contains("% of budget", after.Text);
+    }
+
+    //the advisory and the composer count at the same ratio, so a store the composer cannot carry whole reads at 100 or more
+    [Fact]
+    public async Task THE_ADVISORY_READS_AT_LEAST_100_WHERE_THE_COMPOSER_DROPS_A_LINE()
+    {
+        var tool = Tool(budget: 15);
+        await Run(tool, $$"""{"slug":"a","content":"- {{new string('x', 30)}}","mode":"write"}""");
+        var r = await Run(tool, $$"""{"slug":"b","content":"- {{new string('y', 30)}}","mode":"write"}""");
+
+        Assert.Equal(1, MemoryIndex.Compose(_dir, 15).TruncatedLines);
+        var pct = int.Parse(System.Text.RegularExpressions.Regex.Match(r.Text, @"at (\d+)% of budget").Groups[1].Value);
+        Assert.True(pct >= 100, $"advisory read {pct}%");
+    }
+
+    //budget 7 is a cap of 23.1 and a 23-char line costs 24, so the composer drops it. without the last newline the measure read 99
+    [Fact]
+    public async Task THE_ADVISORY_COUNTS_THE_LAST_NEWLINE_THE_COMPOSER_CHARGES()
+    {
+        var r = await Run(Tool(budget: 7), $$"""{"slug":"a","content":"- {{new string('x', 21)}}","mode":"write"}""");
+
+        Assert.Equal("", MemoryIndex.Compose(_dir, 7).Text);
+        var pct = int.Parse(System.Text.RegularExpressions.Regex.Match(r.Text, @"at (\d+)% of budget").Groups[1].Value);
+        Assert.True(pct >= 100, $"advisory read {pct}%");
     }
 
     [Fact]

@@ -15,7 +15,7 @@ public static class ContextBudget
     //a cut goes down to 60% of the window, so 30% of growth passes before the prefix moves again, where cutting to just under 90% moved it on most rounds
     private const double ElideDownToFraction = 0.60;
 
-    //same chars/4 heuristic as MemoryIndex.CharsPerToken but a separate constant, the two must be retuned together
+    //chars over four for message text, which stays at four while the memory index uses its own measured ratio
     private const int CharsPerToken = 4;
 
     //the newest three rounds are safe from elision. this window is for elision only, a per-turn use would slide the prefix every turn

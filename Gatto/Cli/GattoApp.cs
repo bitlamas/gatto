@@ -1179,12 +1179,13 @@ public static class GattoApp
         }
     }
 
-    //2% of the model's context, clamped to 1000 and 4000 tokens, since the index is in every prefix and must stay glanceable
+    internal const int MemoryBudgetFloor = 1700, MemoryBudgetCeiling = 4000;
+
+    //a slice of the model's context clamped to a floor that carries the facts that change a first move and a ceiling that keeps the block glanceable in every prefix
     internal static int DerivedMemoryBudget(int? modelContext)
     {
-        const int floor = 1000, ceiling = 4000;
-        if (modelContext is not int ctx || ctx <= 0) return floor;   //an unknown context takes the floor rather than a guess
-        return Math.Clamp(ctx * 2 / 100, floor, ceiling);
+        if (modelContext is not int ctx || ctx <= 0) return MemoryBudgetFloor;   //an unknown context takes the floor rather than a guess
+        return Math.Clamp(ctx * 2 / 100, MemoryBudgetFloor, MemoryBudgetCeiling);
     }
 
     //the one truncation sentence for the launch line and every reload warning, so the wording cannot drift and truncation is never silent

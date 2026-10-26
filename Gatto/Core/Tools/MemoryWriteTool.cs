@@ -63,7 +63,8 @@ public sealed class MemoryWriteTool(Func<int> indexBudgetTokens) : ITool
         if (budget <= 0) return "";   //a misconfigured non-positive budget must never divide by zero
 
         var chars = MemoryIndex.ComposeUncapped(root).Length;
-        var pct = 100 * (chars / 4) / budget;
+        if (chars > 0) chars += 1;   //the composer charges every line its newline, so the measure adds the one the joined text lacks
+        var pct = (int)(100 * (chars / MemoryIndex.CharsPerToken) / budget);
         return pct >= 80 ? $"\nmemory index at {pct}% of budget — prune or shorten facts" : "";
     }
 

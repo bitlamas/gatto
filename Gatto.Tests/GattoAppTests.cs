@@ -2426,11 +2426,11 @@ public class GattoAppTests : IDisposable
     [Fact]
     public async Task Launch_ModelIndexBudget_OverridesTheGlobalOne_AndTheBlockCarriesTheTruncationNote()
     {
-        //each fact is ~11 chars, so the model's 3-token budget of 12 chars admits exactly the first line.
+        //each fact costs 11 chars, so the model's 4-token budget of 13.2 chars admits exactly the first line.
         WriteMemoryFacts("- aaaaaaaa", "- bbbbbbbb", "- cccccccc");
         await using var server = await LaunchWithMemoryAsync(
             configExtra: ""","memory":{"index_budget":1000}""",
-            profileExtra: "\"memory\":{\"index_budget\":3}");
+            profileExtra: "\"memory\":{\"index_budget\":4}");
 
         var system = SystemTextOf(server);
         Assert.Contains("- aaaaaaaa", system, StringComparison.Ordinal);
