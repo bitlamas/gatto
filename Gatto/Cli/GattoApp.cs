@@ -341,6 +341,7 @@ public static class GattoApp
         {
             if (LoadHome() is { } homeExit) return homeExit;
             Begin();
+            if (RefuseEmptyContinue() is { } continueExit) return continueExit;
             LoadExtensions();
             if (ResolveLaunch() is { } roleExit) return roleExit;
             RegisterTools();
@@ -395,6 +396,14 @@ public static class GattoApp
 
             cwd = Environment.CurrentDirectory;
             return null;
+        }
+
+        //a bare --continue with nothing to resume is a usage error, a fresh session in its place would read as the resume the user asked for
+        private int? RefuseEmptyContinue()
+        {
+            if (!args.Continue || continueById is not null || sessions.LatestPathForCwd() is not null) return null;
+            Console.Error.WriteLine("--continue: no saved session in this folder");
+            return 2;
         }
 
         private void Begin()

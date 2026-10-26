@@ -726,7 +726,7 @@ public sealed partial class Repl
         }
         if (SlashGate.TryMatchCommand(trimmed, "/name", out var nameArg))
         {
-            if (NameCommand(nameArg) is { } answer) s.Renderer.CommitSystem(answer);
+            if (NameCommand(nameArg, s.Painter.Model) is { } answer) s.Renderer.CommitSystem(answer);
             //the tab and the composer read the name now, past the folder latch
             if (sessionName is { } named) s.Painter.AltScreen.Name(TerminalTitle.Named(named));
             s.Refresh();

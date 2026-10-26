@@ -335,4 +335,22 @@ public sealed class SessionNameTests : IDisposable
         Assert.DoesNotContain("named " + Name, sw.ToString(), StringComparison.Ordinal);
         Assert.Contains("name: " + Name, sw.ToString(), StringComparison.Ordinal);
     }
+
+    //a name given before any turn would otherwise live only on the screen, and a resume by that name finds nothing
+    [Fact]
+    public async Task A_NAME_SET_BEFORE_ANY_TURN_IS_ON_DISK_AT_ONCE_AND_RESOLVES()
+    {
+        var store = new SessionStore(_home, _cwd);
+        var repl = PlainRepl(Convo(), store);
+        Console.SetOut(new StringWriter());
+        Console.SetIn(new StringReader("/name " + Name + "\n/quit\n"));
+
+        await repl.RunAsync(CancellationToken.None);
+
+        var path = store.CurrentPath;
+        Assert.NotNull(path);
+        Assert.True(File.Exists(path));
+        Assert.Equal(Name, SessionStore.IdentityOf(path)!.Name);
+        Assert.Equal(Path.GetFullPath(path), Path.GetFullPath(SessionStore.ResolvePathById(_home, Name)));
+    }
 }

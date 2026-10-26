@@ -3132,6 +3132,29 @@ public class GattoAppTests : IDisposable
         Assert.DoesNotContain(line, stderr.ToString(), StringComparison.Ordinal);
     }
 
+    //a bare --continue in a folder with no session is a usage error, not a fresh session dressed as a resume
+    [Fact]
+    public async Task A_BARE_CONTINUE_WITH_NO_SAVED_SESSION_EXITS_TWO_AND_SAYS_SO()
+    {
+        await using var server = new FakeOpenAiServer();
+        UseHome();
+        WriteConfig($$$"""
+            {"endpoints":{"local":{"base_url":"{{{server.BaseUrl}}}"}},
+             "default_endpoint":"local","default_model":"model-x"}
+            """);
+        WriteRole("generalist", "{}");
+        WriteModel("model-x", port: 1, profileExtra: "#auto_serve#: false".Replace('#', '"'));
+        var stderr = new StringWriter();
+        Console.SetIn(new StringReader("/quit"));
+        Console.SetOut(new StringWriter());
+        Console.SetError(stderr);
+
+        Assert.Equal(2, await GattoApp.RunAsync(new[] { "--continue" }));
+
+        Assert.Contains("--continue: no saved session in this folder", stderr.ToString(), StringComparison.Ordinal);
+        Assert.Empty(Directory.Exists(Path.Combine(_home, "sessions")) ? Directory.GetFiles(Path.Combine(_home, "sessions"), "*.jsonl") : Array.Empty<string>());
+    }
+
     //a connect session never used the server this home records, so the key leaves that record alone.
     [Fact]
     public async Task A_CONNECT_SESSION_STOPS_NOTHING_WITH_STOP_SERVER_ON_EXIT()
