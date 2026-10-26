@@ -72,7 +72,9 @@ public sealed class ToolBlockOpensTests
     private static void AssertOpens(bool opens, ChromePainter p, VtScreenSurface s, ToolBlockItem b, string tool, string where)
     {
         var index = p.Model.Items.ToList().IndexOf(b);
-        Assert.True(opens == s.Viewport.Any(v => v.Contains(ShellBlockRender.ExpandWords, StringComparison.Ordinal)), $"{where}: link\n{Screen(s)}");
+        var link = s.Viewport.Any(v => v.Contains(ShellBlockRender.ExpandWords, StringComparison.Ordinal)
+            || v.TrimEnd().EndsWith(" " + GlyphSet.Unicode.Triangle, StringComparison.Ordinal));   //the words, or the triangle on a block past the hints
+        Assert.True(opens == link, $"{where}: link\n{Screen(s)}");
         p.Focus.Prev(p.Width, p.ViewportRows());
         Assert.True(opens == (p.Focus.Focused == index), $"{where}: focus stop");
         p.Focus.Clear();
@@ -145,10 +147,13 @@ public sealed class ToolBlockOpensTests
     }
 
     [Fact]
-    public void A_row_whose_link_left_for_room_still_opens_by_its_header()
+    public void A_ROW_TOO_NARROW_FOR_ITS_WORDS_CUTS_THEM_AND_KEEPS_ITS_LINK()
     {
         var (p, s, b) = Committed(24, Read(), new ToolResult(string.Join("\n", Enumerable.Range(1, 8).Select(i => $"line {i}")), Gloss: "8 lines"));
-        Assert.DoesNotContain(s.Viewport, v => v.Contains(ShellBlockRender.ExpandWords, StringComparison.Ordinal));
+        var row = s.Viewport.Single(v => v.Contains(GlyphSet.Unicode.Elbow, StringComparison.Ordinal)).TrimEnd();
+        Assert.EndsWith(ShellBlockRender.ExpandWords, row, StringComparison.Ordinal);
+        Assert.Contains(GlyphSet.Unicode.Ellipsis, row, StringComparison.Ordinal);
+        Assert.DoesNotContain("8 lines", row, StringComparison.Ordinal);
         PressHeader(p, s, "read_file");
         Assert.False(b.Collapsed, Screen(s));
     }

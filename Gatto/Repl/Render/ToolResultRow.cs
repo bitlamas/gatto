@@ -16,8 +16,8 @@ public static class ToolResultRow
     public static string Plain(ToolGlossParts p, Theme theme, GlyphSet g) =>
         p.Error is { } e ? theme.Paint(ErrorHead(e, g), Theme.Err) : p.Words + p.Tok;
 
-    //the token count goes first, then an error line is cut, then the link goes whole, since a cut link reads as another word
-    public static ToolRowLayout Layout(ToolGlossParts p, bool linkable, bool open, int width, Theme theme, GlyphSet g)
+    //the token count goes first, then the words are cut, then the link goes whole, since a cut link reads as another word
+    public static ToolRowLayout Layout(ToolGlossParts p, bool linkable, bool open, bool words, int width, Theme theme, GlyphSet g)
     {
         var none = new ToolRowLayout(Plain(p, theme, g), 1, 0, 0);
         if (!linkable) return none;
@@ -26,21 +26,23 @@ public static class ToolResultRow
         var head = p.Error is { } e ? ErrorHead(e, g) : null;
         //one error line shown whole leaves nothing for the link to open
         if (head is not null && p.ErrorWhole && UnicodeWidth.Of(p.Error!) <= ErrorCells && Cells(head) <= room) return none;
-        var sep = $" {g.Dot} ";
-        var link = open ? ShellBlockRender.CollapseWords : ShellBlockRender.ExpandWords;
+        var glyph = !open && !words;   //a closed block past the hints ends on the triangle alone
+        var sep = glyph ? " " : $" {g.Dot} ";
+        var link = glyph ? g.Triangle : open ? ShellBlockRender.CollapseWords : ShellBlockRender.ExpandWords;
         var linkCells = Cells(sep) + Cells(link);
-        var headCells = head is null ? Cells(p.Words) : Cells(head);
+        var shown = head is null ? p.Words : theme.Paint(head, Theme.Err);
+        var headCells = Cells(shown);
         var tok = headCells + linkCells + Cells(p.Tok) <= room ? p.Tok : "";
         if (headCells + linkCells > room)
         {
             var avail = room - linkCells;
-            if (head is null || avail < 1 + Cells(g.Ellipsis))
-                return none with { Gloss = head is null ? p.Words : theme.Paint(head, Theme.Err), Opens = true };
-            head = TermText.TruncateCells(head, avail, g);
-            headCells = Cells(head);
+            if (avail < 1 + Cells(g.Ellipsis)) return none with { Gloss = shown, Opens = true };
+            shown = head is null ? TermText.TruncateCells(p.Words, avail, g) : theme.Paint(TermText.TruncateCells(head, avail, g), Theme.Err);
+            headCells = Cells(shown);
         }
-        var start = prefix + headCells + Cells(sep);
-        var painted = (head is null ? p.Words : theme.Paint(head, Theme.Err)) + theme.Paint(sep, Theme.Dim) + theme.Paint(link, Theme.Thought) + tok;
+        var linkPainted = theme.Paint(sep, Theme.Dim) + theme.Paint(link, Theme.Thought);
+        var start = prefix + headCells + (glyph ? Cells(tok) : 0) + Cells(sep);
+        var painted = glyph ? shown + tok + linkPainted : shown + linkPainted + tok;
         return new ToolRowLayout(painted, 1, start, start + Cells(link), Opens: true);
     }
 

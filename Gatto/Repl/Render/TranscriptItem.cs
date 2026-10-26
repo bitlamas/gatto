@@ -147,6 +147,15 @@ public record ToolBlockItem(string Name, string Args, string Gloss, bool HasResu
     private bool Linkable => !Refused && (Name is "write_file" or "edit_file" ? Body.Rows.Count > 0
         : !string.IsNullOrWhiteSpace(FullResult) && !(Name is "grep" or "glob" && FullResult == Globbing.NoMatches));
 
+    //the link's words on a closed block, set by the model from how many blocks before it could open, and the triangle alone when false
+    public bool LinkWords { get; set; } = true;
+
+    //a theme for the count alone, since at an unbounded width no colour changes whether a block opens
+    private static readonly Theme CountTheme = new(new TermCaps(true, true));
+
+    //whether the block opens with the width unbounded, so the model counts it as it is appended by the rule that draws the link
+    internal bool CanOpen => Opens(0, CountTheme, GlyphSet.Unicode);
+
     public ToolRowLayout LinkLayout(int width, Theme theme, GlyphSet? glyphs) => LinkLayout(width, theme, glyphs, !Collapsed);
 
     private ToolRowLayout LinkLayout(int width, Theme theme, GlyphSet? glyphs, bool open)
@@ -158,7 +167,7 @@ public record ToolBlockItem(string Name, string Args, string Gloss, bool HasResu
             : Name == "write_file" && !Failed && WriteContent is not null ? Parts with { Words = WriteWords(Body.Rows.Count, RawGloss, theme, g) }
             : Name == "edit_file" && !Failed && Body.Diff is { } diff ? Parts with { Words = EditWords(diff, theme, g) }
             : Parts;
-        return ToolResultRow.Layout(parts, Linkable, open, width, theme, g);
+        return ToolResultRow.Layout(parts, Linkable, open, LinkWords, width, theme, g);
     }
 
     //the pattern of a grep call, so the open rows can mark what it matched. the call supplies it, nothing is saved
@@ -340,7 +349,7 @@ public record ToolBlockItem(string Name, string Args, string Gloss, bool HasResu
 
     public virtual ShellBlockLayout ShellLayout(int width, Theme theme, GlyphSet? glyphs) =>
         ShellBlockRender.Layout(
-            new ShellBlockInput(FullArgs, Output, FullResult.Length, RawGloss, Gloss, HasResult, Role, BulletTint, FollowUp),
+            new ShellBlockInput(FullArgs, Output, FullResult.Length, RawGloss, Gloss, HasResult, Role, BulletTint, FollowUp, LinkWords: LinkWords),
             new ShellBlockState(Collapsed, View, OutputTop, CommandFromTail), width, theme, glyphs ?? GlyphSet.Unicode);
 
 }

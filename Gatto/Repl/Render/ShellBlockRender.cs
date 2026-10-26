@@ -9,12 +9,12 @@ namespace Gatto.Repl.Render;
 
 public enum ShellView { Window, All }
 
-public enum ShellInk { Ok, Warn, Err, ErrLine, Dim, Link, OutLine }
+public enum ShellInk { Ok, Warn, Err, ErrLine, Dim, Link, OutLine, Tok }
 
 public enum ShellAction { None, ShowAll, ShowLess }
 
 public sealed record ShellBlockInput(string Command, ShellOutput Output, int ResultChars, string? RawGloss, string PaintedGloss,
-    bool HasResult, string Role, RgbColor? BulletTint = null, string? FollowUp = null, string? Marker = null)
+    bool HasResult, string Role, RgbColor? BulletTint = null, string? FollowUp = null, string? Marker = null, bool LinkWords = true)
 {
     public static ShellBlockInput Live(string command, string role, string? marker) =>
         new(command, ShellOutput.Empty, 0, null, "", HasResult: false, role, Marker: marker);
@@ -83,10 +83,10 @@ public static class ShellBlockRender
                 List<(string Text, ShellInk Ink)> Words(bool isOpen)
                 {
                     var only = isOpen ? null : OnlyLine(input.Output, exit);
-                    var words = ResultWords(input.Output, exit, isOpen, input.ResultChars, entries.Count, g, only, hidesCommand).ToList();
+                    var words = ResultWords(input.Output, exit, isOpen, input.ResultChars, entries.Count, g, only, hidesCommand, input.LinkWords).ToList();
                     //the whole line or the link, a cut line would pass for the full output
                     return only is not null && words.Sum(p => UnicodeWidth.Of(Clean(p))) > room
-                        ? ResultWords(input.Output, exit, isOpen, input.ResultChars, entries.Count, g).ToList() : words;
+                        ? ResultWords(input.Output, exit, isOpen, input.ResultChars, entries.Count, g, words: input.LinkWords).ToList() : words;
                 }
                 var shownWords = Words(open);
                 (gloss, linkStart, linkEnd) = PaintWords(shownWords, room, theme, g);
@@ -120,9 +120,21 @@ public static class ShellBlockRender
             outputFirst, outputShown, entries.Count, footerRow, actionStart, actionEnd, action, hides, opens);
     }
 
-    //the words of the result row, in pieces so the paint and the plain renderer share them
+    //the words of the result row, in pieces so the paint and the plain renderer share them. a closed block without words moves its link to the row's end as the triangle
     public static IReadOnlyList<(string Text, ShellInk Ink)> ResultWords(ShellOutput output, int exit, bool open, int resultChars, int entries, GlyphSet g,
-        string? only = null, bool opens = true)
+        string? only = null, bool opens = true, bool words = true)
+    {
+        var pieces = Pieces(output, exit, open, resultChars, entries, g, only, opens);
+        var at = pieces.FindIndex(p => p.Ink == ShellInk.Link);
+        if (open || words || at < 1) return pieces;
+        pieces.RemoveRange(at - 1, 2);
+        pieces.Add((" ", ShellInk.Dim));
+        pieces.Add((g.Triangle, ShellInk.Link));
+        return pieces;
+    }
+
+    private static List<(string Text, ShellInk Ink)> Pieces(ShellOutput output, int exit, bool open, int resultChars, int entries, GlyphSet g,
+        string? only, bool opens)
     {
         var dot = $" {g.Dot} ";
         var link = open ? CollapseWords : ExpandWords;
@@ -138,7 +150,7 @@ public static class ShellBlockRender
             if (lastErr is not null) { w.Add((dot, ShellInk.Dim)); w.Add(($"stderr {output.Stderr.Count.ToString(CultureInfo.InvariantCulture)}", ShellInk.Warn)); }
             if (only is not null) { w.Add((dot, ShellInk.Dim)); w.Add((only, ShellInk.OutLine)); }
             if (only is null || opens) { w.Add((dot, ShellInk.Dim)); w.Add((link, ShellInk.Link)); }
-            if (tok.Length > 0) w.Add((tok, ShellInk.Dim));
+            if (tok.Length > 0) w.Add((tok, ShellInk.Tok));
             return w;
         }
         if (!output.StdoutBlank)
@@ -149,7 +161,7 @@ public static class ShellBlockRender
             if (lastErr is not null) { w.Add((dot, ShellInk.Dim)); w.Add((lastErr, ShellInk.ErrLine)); }
             w.Add((dot, ShellInk.Dim));
             w.Add((link, ShellInk.Link));
-            if (tok.Length > 0) w.Add((tok, ShellInk.Dim));
+            if (tok.Length > 0) w.Add((tok, ShellInk.Tok));
             return w;
         }
         w.Add((g.Bad, ShellInk.Err));
@@ -217,18 +229,21 @@ public static class ShellBlockRender
         return list;
     }
 
-    //the stderr piece is cut first, so the link and the token count stay while any stderr text fits
+    //the token count goes first, then the stderr line is cut, then the link goes whole
     private static (string Painted, int LinkStart, int LinkEnd) PaintWords(IReadOnlyList<(string Text, ShellInk Ink)> words, int room, Theme theme, GlyphSet g)
     {
         var pieces = words.Select(p => (Text: Clean(p), p.Ink)).ToList();
-        var total = pieces.Sum(p => UnicodeWidth.Of(p.Text));
+        int Total() => pieces.Sum(p => UnicodeWidth.Of(p.Text));
+        if (Total() > room) pieces.RemoveAll(p => p.Ink == ShellInk.Tok);
         var errAt = pieces.FindIndex(p => p.Ink == ShellInk.ErrLine);
-        if (total > room && errAt >= 0)
+        if (Total() > room && errAt >= 0)
         {
-            var avail = room - (total - UnicodeWidth.Of(pieces[errAt].Text));
+            var avail = room - (Total() - UnicodeWidth.Of(pieces[errAt].Text));
             if (avail >= 1 + UnicodeWidth.Of(g.Ellipsis)) pieces[errAt] = (TermText.TruncateCells(pieces[errAt].Text, avail, g), ShellInk.ErrLine);
             else pieces.RemoveRange(errAt - 1, 2);
         }
+        var linkAt = pieces.FindIndex(p => p.Ink == ShellInk.Link);
+        if (Total() > room && linkAt >= 1) pieces.RemoveRange(linkAt - 1, 2);
         var sb = new System.Text.StringBuilder();
         int col = 0, linkStart = 0, linkEnd = 0;
         foreach (var (text, ink) in pieces)

@@ -11,6 +11,7 @@ public sealed class TranscriptModel(string role)
     private bool _openReasoning;
     private TranscriptItem? _openItem;
     private int _reasoningCount;   //how many reasoning blocks the session has had, the first 2 get the click teaser
+    private int _linkCount;   //how many tool blocks that can open the session has had, the first 2 keep the link's words
 
     public IReadOnlyList<TranscriptItem> Items => _items;
 
@@ -34,7 +35,8 @@ public sealed class TranscriptModel(string role)
     {
         CloseOpen();
         _items.Clear();
-        _reasoningCount = 0;   //a fresh session starts the count again, so the click teaser comes back
+        _reasoningCount = 0;   //a fresh session or a compaction starts both counts again, so the words come back
+        _linkCount = 0;
         OnReset?.Invoke();
     }
 
@@ -93,6 +95,7 @@ public sealed class TranscriptModel(string role)
     {
         CloseOpen();
         item.LeadingBlank = _items.Count > 0;   //one blank separator before every item after the first
+        if (item is ToolBlockItem tb) tb.LinkWords = tb.CanOpen && ++_linkCount <= 2;   //a block that opens only on a narrow row takes no hint and shows the triangle there
         _items.Add(item);
         OnAppendedOrExtended?.Invoke(item);
     }
