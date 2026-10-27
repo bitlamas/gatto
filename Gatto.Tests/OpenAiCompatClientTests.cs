@@ -277,6 +277,43 @@ public class OpenAiCompatClientTests
     }
 
     [Fact]
+    public async Task A_CHUNK_THAT_TOUCHES_TWO_CALLS_REPORTS_EACH_BY_ITS_INDEX()
+    {
+        await using var s = new FakeOpenAiServer();
+        s.Enqueue(new FakeResponse(Frames: new[]
+        {
+            Chunk("{\"tool_calls\":[{\"index\":0,\"id\":\"c1\",\"function\":{\"name\":\"grep\",\"arguments\":\"{\\\"pattern\\\":\\\"a\\\"}\"}},{\"index\":1,\"id\":\"c2\",\"function\":{\"name\":\"glob\",\"arguments\":\"{\\\"pattern\\\":\"}}]}"),
+            Chunk("{}", finish: "tool_calls"),
+            "data: [DONE]\n\n",
+        }));
+
+        var deltas = (await Collect(Client(s), Req())).OfType<StreamEvent.ToolCallDelta>().ToList();
+
+        Assert.Equal(new[] { 0, 1 }, deltas.Select(d => d.Index));
+        Assert.Equal(("grep", "{\"pattern\":\"a\"}"), (deltas[0].Name, deltas[0].PartialArguments));
+        Assert.Equal(("glob", "{\"pattern\":"), (deltas[1].Name, deltas[1].PartialArguments));
+    }
+
+    [Fact]
+    public async Task A_STREAM_THAT_GOES_BACK_TO_AN_EARLIER_INDEX_REPORTS_THAT_CALL()
+    {
+        await using var s = new FakeOpenAiServer();
+        s.Enqueue(new FakeResponse(Frames: new[]
+        {
+            Chunk("{\"tool_calls\":[{\"index\":0,\"id\":\"c1\",\"function\":{\"name\":\"grep\",\"arguments\":\"{\\\"pat\"}}]}"),
+            Chunk("{\"tool_calls\":[{\"index\":1,\"id\":\"c2\",\"function\":{\"name\":\"glob\",\"arguments\":\"{}\"}}]}"),
+            Chunk("{\"tool_calls\":[{\"index\":0,\"function\":{\"arguments\":\"tern\\\":\\\"a\\\"}\"}}]}"),
+            Chunk("{}", finish: "tool_calls"),
+            "data: [DONE]\n\n",
+        }));
+
+        var deltas = (await Collect(Client(s), Req())).OfType<StreamEvent.ToolCallDelta>().ToList();
+
+        Assert.Equal(new[] { 0, 1, 0 }, deltas.Select(d => d.Index));
+        Assert.Equal(("grep", "{\"pattern\":\"a\"}"), (deltas[2].Name, deltas[2].PartialArguments));
+    }
+
+    [Fact]
     public async Task Dropped_stream_mid_tool_call_yields_truncated_and_never_tool_ready()
     {
         await using var s = new FakeOpenAiServer();
@@ -290,8 +327,7 @@ public class OpenAiCompatClientTests
         var events = await Collect(Client(s), Req());
 
         Assert.DoesNotContain(events, e => e is StreamEvent.ToolCallReady);
-        var trunc = Assert.IsType<StreamEvent.Truncated>(events[^1]);
-        Assert.True(trunc.DroppedInFlightToolCall);
+        Assert.IsType<StreamEvent.Truncated>(events[^1]);
     }
 
     [Fact]

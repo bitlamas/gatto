@@ -185,6 +185,28 @@ public class ChromeTickerTests
         Assert.Null(ticker.CompletionRow());
     }
 
+    //the stack is chrome of the turn, so a stop clears it with the live row
+    [Fact]
+    public void A_STOP_CLEARS_THE_WAITING_CALLS_WITH_THE_LIVE_ROW()
+    {
+        var (_, painter, gate) = NewPainter();
+        var ticker = new ChromeTicker(painter, gate) { Running = () => [] };
+        ticker.StartTurn("cat");
+        lock (gate)
+        {
+            painter.State.Tool = ("shell", "");
+            painter.State.Waiting = [("shell", "git status")];
+            painter.State.WaitingAbove = 1;
+        }
+        ticker.StopTurn();
+        lock (gate)
+        {
+            Assert.Null(painter.State.Tool);
+            Assert.Empty(painter.State.Waiting);
+            Assert.Equal(0, painter.State.WaitingAbove);
+        }
+    }
+
     [Fact]
     public void PurrRow_Format_KaomojiFramesElapsedTokens()
     {

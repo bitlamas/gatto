@@ -15,14 +15,28 @@ public sealed class RecordingObserver : ITurnObserver
     public List<string> Warnings = new();
     public List<Usage> Usages = new();
     public List<string> Events = new();
+    public List<int> DeltaIndices = new();
+    public List<string> Order = new();
+    //what the observer was handed when the round's calls were saved, and a probe run at that moment
+    public List<ToolCall>? Recorded;
+    public Action? OnRecorded;
     public void OnTextDelta(string t) => Text += t;
     public void OnReasoningDelta(string t) { }
     //must match ITurnObserver.OnToolCallDelta exactly, otherwise the interface's default body runs and nothing is recorded
-    public void OnToolCallDelta(string? name = null, string? partialArguments = null) =>
+    public void OnToolCallDelta(string? name = null, string? partialArguments = null, int index = 0)
+    {
         Events.Add("tool_call_delta" + (name is null ? "" : ":" + name));
+        DeltaIndices.Add(index);
+    }
+    public void OnToolCallsRecorded(IReadOnlyList<ToolCall> calls)
+    {
+        Order.Add("recorded");
+        Recorded = calls.ToList();
+        OnRecorded?.Invoke();
+    }
     //must match ITurnObserver.OnPromptProgress exactly, otherwise the interface's default body runs and nothing is recorded
     public void OnPromptProgress(long total, long processed) => Events.Add($"prompt_progress:{processed}/{total}");
-    public void OnToolCallStart(ToolCall c) { }
+    public void OnToolCallStart(ToolCall c) => Order.Add("start:" + c.Id);
     public void OnToolResult(ToolCall c, ToolResult r) => Results.Add((c, r));
     public void OnWarning(string m) => Warnings.Add(m);
     public void OnUsage(Usage u) => Usages.Add(u);
@@ -293,6 +307,7 @@ public class AgentLoopTests
 
         Assert.Contains("tool_call_delta", obs.Events);          //a delta with no name must still reach the observer.
         Assert.Contains("tool_call_delta:echo", obs.Events);      //the event must include the tool name once the model streams it.
+        Assert.Equal(new[] { 0, 0 }, obs.DeltaIndices);           //the index reaches the observer with every delta
     }
 
     [Fact]
@@ -382,20 +397,143 @@ public class AgentLoopTests
         Assert.DoesNotContain(obs.Warnings, w => w.Contains("turn truncated"));
     }
 
+    private static StreamEvent[] ThreeBegun() =>
+    [
+        new StreamEvent.ToolCallDelta("echo", "{\"msg\":\"a\"}", 0),
+        new StreamEvent.ToolCallDelta("echo", "{\"msg\":\"b\"}", 1),
+        new StreamEvent.ToolCallDelta("echo", "{\"ms", 2),
+    ];
+
+    [Fact]
+    public async Task A_DROPPED_STREAM_WITH_3_CALLS_BEGUN_SAYS_3_DISCARDED()
+    {
+        var (loop, client, _, convo, obs) = Setup(new EchoTool());
+        client.EnqueueTurn([.. ThreeBegun(), new StreamEvent.Truncated()]);
+
+        await loop.RunTurnAsync(convo, "go", obs, default);
+
+        Assert.Contains("turn truncated · 3 tool calls discarded, not run", obs.Warnings);
+    }
+
+    [Fact]
+    public async Task A_CANCEL_MID_STREAM_WITH_3_CALLS_BEGUN_SAYS_3_DISCARDED()
+    {
+        using var cts = new CancellationTokenSource();
+        var (loop, client, _, convo, obs) = Setup(new EchoTool());
+        client.EnqueueTurn([.. ThreeBegun(), new StreamEvent.ToolCallDelta("echo", "g\":\"c\"}", 2), new StreamEvent.Finished("tool_calls", null)]);
+        var seen = 0;
+        var probe = new CancelAtObserver(obs, () => { if (++seen == 3) cts.Cancel(); });
+
+        var outcome = await loop.RunTurnAsync(convo, "go", probe, cts.Token);
+
+        Assert.Equal(TurnOutcome.Cancelled, outcome.Outcome);
+        Assert.Contains("turn cancelled · 3 tool calls discarded, not run", obs.Warnings);
+    }
+
+    //forwards to a recording observer and runs an action at each tool call delta, so a test can cancel mid-stream
+    private sealed class CancelAtObserver(RecordingObserver inner, Action onDelta) : ITurnObserver
+    {
+        public void OnTextDelta(string text) => inner.OnTextDelta(text);
+        public void OnReasoningDelta(string text) => inner.OnReasoningDelta(text);
+        public void OnToolCallDelta(string? name = null, string? partialArguments = null, int index = 0)
+        {
+            inner.OnToolCallDelta(name, partialArguments, index);
+            onDelta();
+        }
+        public void OnToolCallStart(ToolCall call) => inner.OnToolCallStart(call);
+        public void OnToolResult(ToolCall call, ToolResult result) => inner.OnToolResult(call, result);
+        public void OnWarning(string message) => inner.OnWarning(message);
+        public void OnUsage(Usage usage) => inner.OnUsage(usage);
+    }
+
+    [Fact]
+    public async Task A_DROP_BEFORE_ANY_CALL_SAYS_TURN_TRUNCATED_ALONE()
+    {
+        var (loop, client, _, convo, obs) = Setup(new EchoTool());
+        client.EnqueueTurn(new StreamEvent.TextDelta("part"), new StreamEvent.ToolCallDelta(), new StreamEvent.Truncated());
+
+        await loop.RunTurnAsync(convo, "go", obs, default);
+
+        Assert.Contains("turn truncated", obs.Warnings);
+    }
+
+    [Fact]
+    public async Task ONE_CALL_BEGUN_SAYS_1_TOOL_CALL()
+    {
+        var (loop, client, _, convo, obs) = Setup(new EchoTool());
+        client.EnqueueTurn(new StreamEvent.ToolCallDelta("echo", "{\"m", 0), new StreamEvent.Truncated());
+
+        await loop.RunTurnAsync(convo, "go", obs, default);
+
+        Assert.Contains("turn truncated · 1 tool call discarded, not run", obs.Warnings);
+    }
+
+    [Fact]
+    public async Task THE_RECORDED_CALLS_REACH_THE_OBSERVER_AFTER_THE_SAVE_AND_BEFORE_THE_FIRST_START()
+    {
+        var home = Directory.CreateTempSubdirectory("gatto-home-").FullName;
+        var cwd = Directory.CreateTempSubdirectory("gatto-cwd-").FullName;
+        try
+        {
+            Directory.CreateDirectory(Path.Combine(home, "sessions"));
+            var (loop, client, _, _, obs) = Setup(new EchoTool());
+            loop.OnRoundPersisted = new SessionStore(home, cwd).Save;
+            var calls = new[] { new ToolCall("c1", "echo", "{\"msg\":\"a\"}"), new ToolCall("c2", "echo", "{\"msg\":\"b\"}") };
+            client.EnqueueTurn(new StreamEvent.ToolCallReady(calls[0]), new StreamEvent.ToolCallReady(calls[1]), new StreamEvent.Finished("tool_calls", null));
+            client.EnqueueTurn(new StreamEvent.TextDelta("done"), new StreamEvent.Finished("stop", null));
+            string? seen = null;
+            obs.OnRecorded = () => seen = RoundPersistenceTests.OnDisk(home, cwd);
+
+            await loop.RunTurnAsync(new Conversation("sys"), "go", obs, default);
+
+            Assert.Equal(calls, obs.Recorded);
+            RoundPersistenceTests.AssertAskedAndUnanswered(seen, "c2");   //the file held the calls, unanswered, when the observer was told
+            Assert.Equal(new[] { "recorded", "start:c1", "start:c2" }, obs.Order);
+        }
+        finally
+        {
+            Directory.Delete(home, true);
+            Directory.Delete(cwd, true);
+        }
+    }
+
+    [Fact]
+    public async Task A_CANCEL_AFTER_THE_STREAM_SAYS_REMAINING_CALLS_CANCELLED()
+    {
+        using var cts = new CancellationTokenSource();
+        var (loop, client, _, convo, obs) = Setup(new EchoTool());
+        client.EnqueueTurn(new StreamEvent.ToolCallReady(new ToolCall("c1", "echo", "{\"msg\":\"a\"}")), new StreamEvent.Finished("tool_calls", null));
+        obs.OnRecorded = cts.Cancel;
+
+        await loop.RunTurnAsync(convo, "go", obs, cts.Token);
+
+        Assert.Contains("turn cancelled · remaining tool calls cancelled, not run", obs.Warnings);
+    }
+
+    [Fact]
+    public void NO_LINE_HOLDS_AN_EM_DASH()
+    {
+        var source = File.ReadAllText(Path.Combine(Census.SourceTree.RepoRoot(), "Gatto", "Core", "Loop", "TurnLines.cs"));
+        var lines = source.Split('\n').Where(l => l.Contains("discarded, not run") || l.Contains("remaining tool calls cancelled")).ToList();
+        Assert.Equal(2, lines.Count);
+        Assert.All(lines, l => Assert.DoesNotContain("—", l));
+    }
+
     [Fact]
     public async Task Truncated_stream_discards_pending_calls_and_marks_text()
     {
         var (loop, client, _, convo, obs) = Setup(new EchoTool());
         client.EnqueueTurn(
             new StreamEvent.TextDelta("part"),
-            new StreamEvent.Truncated(DroppedInFlightToolCall: true));
+            new StreamEvent.ToolCallDelta("echo", "{\"m", 0),
+            new StreamEvent.Truncated());
 
         var outcome = await loop.RunTurnAsync(convo, "go", obs, default);
 
         Assert.Equal(TurnOutcome.Truncated, outcome.Outcome);
         Assert.Empty(obs.Results);                       //a truncated turn must execute no tool.
         Assert.Contains("[truncated]", convo.Messages[^1].Content);
-        Assert.Contains(obs.Warnings, w => w.Contains("tool call"));
+        Assert.Contains(obs.Warnings, w => w.Contains("1 tool call discarded"));
     }
 
     [Fact]
@@ -1350,7 +1488,7 @@ public class AgentLoopTests
         var (loop, client, _, convo, obs) = Setup();
         client.EnqueueTurn(
             new StreamEvent.TextDelta("<|tool_call_begin|>partial"),
-            new StreamEvent.Truncated(false));
+            new StreamEvent.Truncated());
 
         await loop.RunTurnAsync(convo, "hi", obs, default);
 

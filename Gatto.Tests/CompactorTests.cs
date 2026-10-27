@@ -647,7 +647,7 @@ public class CompactorTests
             var countBefore = convo.Count;
 
             var client = new FakeChatClient();
-            client.EnqueueTurn(new StreamEvent.TextDelta("half"), new StreamEvent.Truncated(false));   //a truncated turn makes the summary null.
+            client.EnqueueTurn(new StreamEvent.TextDelta("half"), new StreamEvent.Truncated());   //a truncated turn makes the summary null.
             var obs = new RecordingObserver();
 
             var newConvo = await Gatto.Repl.Repl.CompactAsync(

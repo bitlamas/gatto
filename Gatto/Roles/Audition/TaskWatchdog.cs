@@ -61,7 +61,7 @@ internal sealed class TaskWatchdog : ITurnObserver
 
     public void OnTextDelta(string text) => Tick();
     public void OnReasoningDelta(string text) => Tick();
-    public void OnToolCallDelta(string? name = null, string? partialArguments = null) => Tick();
+    public void OnToolCallDelta(string? name = null, string? partialArguments = null, int index = 0) => Tick();
 
     //the time is gatto's now, so the clock stops until the tool answers
     public void OnToolCallStart(ToolCall call) => Arm(Timeout.InfiniteTimeSpan);

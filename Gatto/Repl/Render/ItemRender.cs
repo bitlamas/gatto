@@ -354,7 +354,10 @@ public static class ItemRender
 
     private static List<RenderedRow> SystemRowsCore(string text, Theme theme, int width, GlyphSet g) =>
         GutterWrap.RowsTagged(theme.Paint(g.Sharp, Theme.Warn) + " ", g.Sharp + " ",
-            TermText.Sanitize(text), width, s => theme.Paint(s, Theme.Warn)).ToList();
+            OwnDot(TermText.Sanitize(text), g), width, s => theme.Paint(s, Theme.Warn)).ToList();
+
+    //a line from the loop holds the middle dot as written, and the row draws the set's own, as a background end's head does
+    public static string OwnDot(string text, GlyphSet g) => text.Replace($" {GlyphSet.Unicode.Dot} ", $" {g.Dot} ");
 
     public static List<string> SystemRows(string text, Theme theme, int width,
         GlyphSet? glyphs) =>

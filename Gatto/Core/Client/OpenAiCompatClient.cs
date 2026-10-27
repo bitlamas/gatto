@@ -133,7 +133,7 @@ public sealed class OpenAiCompatClient : IChatClient, Gatto.Core.Client.ITokenCo
             }
             if (streamDied)
             {
-                yield return new StreamEvent.Truncated(pending.Count > 0);
+                yield return new StreamEvent.Truncated();
                 yield break;
             }
 
@@ -150,7 +150,7 @@ public sealed class OpenAiCompatClient : IChatClient, Gatto.Core.Client.ITokenCo
             if (malformed)
             {
                 //degrade rather than crash, a garbled chunk ends the turn as truncation
-                yield return new StreamEvent.Truncated(pending.Count > 0);
+                yield return new StreamEvent.Truncated();
                 yield break;
             }
             using var _doc = doc!;
@@ -199,6 +199,7 @@ public sealed class OpenAiCompatClient : IChatClient, Gatto.Core.Client.ITokenCo
                     if (delta.TryGetProperty("tool_calls", out var calls) && calls.ValueKind == JsonValueKind.Array)
                     {
                         var sawFragment = false;
+                        var touched = new List<int>();
                         foreach (var call in calls.EnumerateArray())
                         {
                             sawFragment = true;
@@ -206,6 +207,7 @@ public sealed class OpenAiCompatClient : IChatClient, Gatto.Core.Client.ITokenCo
                             if (!call.TryGetProperty("index", out var indexProp) || indexProp.ValueKind != JsonValueKind.Number)
                                 continue;
                             var idx = indexProp.GetInt32();
+                            if (!touched.Contains(idx)) touched.Add(idx);
                             if (!pending.TryGetValue(idx, out var acc)) acc = ("", "", new StringBuilder());
                             if (call.TryGetProperty("id", out var id) && id.ValueKind == JsonValueKind.String)
                                 acc.Id = id.GetString()!;
@@ -219,15 +221,15 @@ public sealed class OpenAiCompatClient : IChatClient, Gatto.Core.Client.ITokenCo
                             pending[idx] = acc;
                         }
 
-                        //emit after the accumulation so the event has what is known so far, the highest index is the newest call
-                        if (sawFragment && pending.Count > 0)
+                        //one event per call the chunk touched, so a row takes its own call's fragments in whatever order they arrive
+                        foreach (var idx in touched)
                         {
-                            var live = pending[pending.Keys.Max()];
+                            var acc = pending[idx];
                             chunkEvents.Add(new StreamEvent.ToolCallDelta(
-                                live.Name.Length > 0 ? live.Name : null,
-                                live.Args.Length > 0 ? live.Args.ToString() : null));
+                                acc.Name.Length > 0 ? acc.Name : null,
+                                acc.Args.Length > 0 ? acc.Args.ToString() : null, idx));
                         }
-                        else if (sawFragment)
+                        if (sawFragment && touched.Count == 0)
                         {
                             chunkEvents.Add(new StreamEvent.ToolCallDelta());
                         }
@@ -267,7 +269,7 @@ public sealed class OpenAiCompatClient : IChatClient, Gatto.Core.Client.ITokenCo
         if (finishReason is null)
         {
             //no finish_reason means the stream was cut short, discard the partial tool calls
-            yield return new StreamEvent.Truncated(pending.Count > 0);
+            yield return new StreamEvent.Truncated();
             yield break;
         }
 

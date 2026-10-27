@@ -28,6 +28,10 @@ public sealed class ChromeState
     public string? ToolInput;          //the running shell call's full command, line breaks kept, and null for any other tool
     public string? ToolWait;           //the ticker's "waiting for your input …" suffix on the tool row
     public string? ToolProgress;       //the run_agent liveness row, "<agent> · turn N", replaced in place
+    //the written calls that are not running, in the order written, drawn dim with the waiting word
+    public IReadOnlyList<(string Name, string Args)> Waiting = [];
+    //how many of them stand above the live row, every one while the stream runs and none once a call runs
+    public int WaitingAbove;
     public string? Notice;             //a status row that shows for a moment, such as a working notice
     public string? PurrText;           //the full purr row text, composed by the ticker, null when hidden
     //the background tasks still running, filled by the ticker each tick, empty when none runs
@@ -344,6 +348,7 @@ public sealed class ChromePainter
         //a panel over the live call may take that call's rows, which repeat what the prompt shows, and the clamp drops them when it does
         if (State.PanelUp) return n + NewestQueuedMessageReservation(width, height);
         if (State.Tool is not null) n += 2 + (State.ToolProgress is not null ? 1 : 0);            //two rows, a blank and the tool bullet, plus one more for the progress row
+        if (State.Waiting.Count > 0) n += State.Waiting.Count + (State.Tool is null ? 1 : 0);       //a row per waiting call, and the stack's own blank when no call is live
         if (State.Tool is { } live && live.Name == "shell" && State.ToolInput is { } liveCommand)   //the live shell rows past the bullet, and the wait row under them
             n += ShellBlockRender.Layout(ShellBlockInput.Live(liveCommand, RoleForTint, null), ShellBlockState.Closed, width, _theme, _glyphs).Rows.Count - 1 + (State.ToolWait is not null ? 1 : 0);
         n += NewestQueuedMessageReservation(width, height);
@@ -512,10 +517,40 @@ public sealed class ChromePainter
             regionCounters[region] = n + 1;
             return n;
         }
+        //a waiting call's row is the header its block commits with, the ring and the word dim and steady, and the word wins the room as the wait suffix does
+        void WaitingRow((string Name, string Args) call)
+        {
+            var ring = ItemRender.ToolMarkerOf(_glyphs);
+            var word = $"{_glyphs.Dot} waiting";
+            var wordR = " " + _theme.Paint(word, Theme.Dim);
+            if (call.Name == "shell")
+            {
+                var headWidth = width > 0 ? Math.Max(1, width - 1 - UnicodeWidth.Of(word)) : width;
+                var head = ShellBlockRender.Layout(ShellBlockInput.Live(call.Args, RoleForTint, _theme.Paint(ring, Theme.Dim)), ShellBlockState.Closed, headWidth, _theme, _glyphs).Rows[0].Text;
+                fixedRows.Add((head + wordR, TermText.StripAnsiForWidth(head) + " " + word, "waiting", ChromeRegion.Tool, NextRow(ChromeRegion.Tool)));
+                return;
+            }
+            var args = call.Args;
+            if (width > 0)
+            {
+                var budget = width - (2 + UnicodeWidth.Of(call.Name) + 1 + 1 + UnicodeWidth.Of(word));
+                if (UnicodeWidth.Of(args) > budget)
+                    args = budget < 8 ? "" : TermText.TruncateCells(args, budget, glyphs: _glyphs);
+            }
+            var line = args.Length > 0 ? call.Name + " " + args : call.Name;
+            var lineR = _theme.Paint(call.Name, Theme.ToolName) + (args.Length > 0 ? " " + ItemRender.PaintToolArgs(call.Name, args, _theme) : "");
+            fixedRows.Add((_theme.Paint(ring, Theme.Dim) + " " + lineR + wordR, ring + " " + line + " " + word, "waiting", ChromeRegion.Tool, NextRow(ChromeRegion.Tool)));
+        }
+        var waiting = State.Waiting;
+        var above = State.Tool is null ? 0 : Math.Clamp(State.WaitingAbove, 0, waiting.Count);
+        //with no call live the stack keeps the blank above it, dropped with the folded row so a count never loses its separator
+        if (State.Tool is null && waiting.Count > 0)
+            fixedRows.Add(("", "", "folded", ChromeRegion.Tool, NextRow(ChromeRegion.Tool)));
         if (State.Tool is { } t)
         {
             //the blank above the live tool bullet separates it from the transcript above, tagged so the clamp drops it with the tool
             fixedRows.Add(("", "", "tool", ChromeRegion.Tool, NextRow(ChromeRegion.Tool)));
+            for (var k = 0; k < above; k++) WaitingRow(waiting[k]);
             //the off phase paints a space in the dot cell, the row repaints every tick so alignment holds
             var dot = State.BlinkOn ? _theme.Paint(ItemRender.ToolMarkerOf(_glyphs), _theme.RoleTint(RoleForTint)) : " ";
             var args = t.Args;
@@ -554,6 +589,7 @@ public sealed class ChromePainter
         if (State.ToolProgress is { } tp)
             fixedRows.Add((GutterWrap.Hang + _theme.Paint(tp, Theme.Dim), GutterWrap.Hang + tp, "tool",
                 ChromeRegion.Tool, NextRow(ChromeRegion.Tool)));
+        for (var k = above; k < waiting.Count; k++) WaitingRow(waiting[k]);
         //a notice and the purr each get a blank row above, tagged with their category so the clamp drops the pair together
         if (State.Notice is { } n)
         {
@@ -673,16 +709,24 @@ public sealed class ChromePainter
         var room = budgetRows - frameRows - fixedRows.Count;
         var tailStart = room >= tailRows.Count ? 0 : Math.Max(0, tailRows.Count - Math.Max(0, room));
 
-        //drop whole categories in order, older queue, notice, tool, purr, and the newest message last, so a queued message is never hidden before the purr
+        //drop whole categories in order, older queue, notice, the waiting calls, their count, tool, purr, and the newest message last, so a queued message is never hidden before the purr
         var keptTail = tailRows.Count - tailStart;
         var overflow = keptTail + fixedRows.Count + frameRows - budgetRows;
         if (overflow > 0)
-            foreach (var category in new[] { "queue", "tasks", "notice", "tool", "purr", NewestQueue })
+            foreach (var category in new[] { "queue", "tasks", "notice", "waiting", "folded", "tool", "purr", NewestQueue })
             {
                 if (overflow <= 0) break;
+                var at = fixedRows.FindIndex(row => row.Category == category);
                 var before = fixedRows.Count;
                 fixedRows.RemoveAll(row => row.Category == category);
                 overflow -= before - fixedRows.Count;
+                //the stack folds to one row that counts it where its first row stood, so no call leaves the screen uncounted
+                if (category == "waiting" && at >= 0)
+                {
+                    var v = GutterWrap.Hang + Gatto.Core.Plural.Of(waiting.Count, "call") + " waiting";
+                    fixedRows.Insert(at, (_theme.Paint(v, Theme.Dim), v, "folded", ChromeRegion.Tool, at));
+                    overflow++;
+                }
             }
 
         for (var i = tailStart; i < tailRows.Count; i++)

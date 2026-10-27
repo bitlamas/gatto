@@ -37,9 +37,9 @@ public abstract record StreamEvent
     //prefill progress from llama-server when the request asks for return_progress, it arrives before any delta
     public sealed record PromptProgress(long Total, long Processed) : StreamEvent;
     //a tool call being assembled, the partial arguments are raw mid-stream JSON and must be treated as unparseable text
-    public sealed record ToolCallDelta(string? Name = null, string? PartialArguments = null) : StreamEvent;
+    public sealed record ToolCallDelta(string? Name = null, string? PartialArguments = null, int Index = 0) : StreamEvent;
     public sealed record ToolCallReady(ToolCall Call) : StreamEvent;
     //the Timings argument defaults to null so existing 2-arg call sites stay source-compatible
     public sealed record Finished(string? FinishReason, Usage? Usage, string? Timings = null) : StreamEvent;
-    public sealed record Truncated(bool DroppedInFlightToolCall) : StreamEvent;
+    public sealed record Truncated() : StreamEvent;
 }

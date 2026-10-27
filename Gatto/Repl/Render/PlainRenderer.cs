@@ -44,7 +44,7 @@ public sealed class PlainRenderer(ReasoningMode reasoning = ReasoningMode.Collap
     public void OnWarning(string m)
     {
         //the warning text can come from the endpoint, so strip control bytes like every other plain output
-        m = TermText.Sanitize(m);
+        m = ItemRender.OwnDot(TermText.Sanitize(m), _glyphs);
         Console.ForegroundColor = ConsoleColor.Yellow;
         Console.WriteLine($"\n! {m}");
         Console.ResetColor();

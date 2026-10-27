@@ -27,8 +27,12 @@ public interface ITurnObserver
 {
     void OnTextDelta(string text);
     void OnReasoningDelta(string text);
-    //fires per chunk, for the rich renderer only. partialArguments is incomplete mid-stream JSON, so never parse it expecting success
-    void OnToolCallDelta(string? name = null, string? partialArguments = null) { }
+    //fires per call a chunk touched, for the rich renderer only. partialArguments is incomplete mid-stream JSON, so never parse it expecting success, and index says which call it belongs to
+    void OnToolCallDelta(string? name = null, string? partialArguments = null, int index = 0) { }
+    //the round's calls once the message holding them is saved, before the first runs, the calls a stopped turn still owes a cancelled row
+    void OnToolCallsRecorded(IReadOnlyList<ToolCall> calls) { }
+    //a saved call a stopped round answered as cancelled, told right after its answer and before the line, so a renderer commits it where the record holds it
+    void OnToolCallCancelled(ToolCall call) { }
     //the server's prefill progress for the request in flight, and only the rich renderer shows it
     void OnPromptProgress(long total, long processed) { }
     //the traced turn's span, told before the first round, so a renderer can open its delta spans under it
@@ -248,7 +252,7 @@ public sealed class AgentLoop(
             var reasoning = new StringBuilder();   //the reasoning_content accumulated for this turn
             var calls = new List<ToolCall>();
             var truncated = false;
-            var droppedCall = false;
+            var begun = new HashSet<int>();   //the calls the stream began, by index, which a stopped turn counts when it says what it discarded
             var cancelled = false;
             //the round's usage and timings, threaded onto the completed turn's AddAssistant below. the truncated and empty-turn paths deliberately record neither
             Usage? turnUsage = null;
@@ -290,7 +294,10 @@ public sealed class AgentLoop(
                     {
                         case StreamEvent.TextDelta t: text.Append(t.Text); observer.OnTextDelta(t.Text); break;
                         case StreamEvent.ReasoningDelta r: reasoning.Append(r.Text); observer.OnReasoningDelta(r.Text); break;
-                        case StreamEvent.ToolCallDelta d: observer.OnToolCallDelta(d.Name, d.PartialArguments); break;
+                        case StreamEvent.ToolCallDelta d:
+                            if (d.Name is not null || d.PartialArguments is not null) begun.Add(d.Index);
+                            observer.OnToolCallDelta(d.Name, d.PartialArguments, d.Index);
+                            break;
                         case StreamEvent.PromptProgress pg: observer.OnPromptProgress(pg.Total, pg.Processed); break;
                         case StreamEvent.ToolCallReady c: calls.Add(c.Call); break;
                         case StreamEvent.Finished f:
@@ -307,7 +314,7 @@ public sealed class AgentLoop(
                             if (f.FinishReason == "length")
                                 Warn("response truncated by token limit (finish_reason=length)");
                             break;
-                        case StreamEvent.Truncated tr: truncated = true; droppedCall = tr.DroppedInFlightToolCall; break;
+                        case StreamEvent.Truncated: truncated = true; break;
                     }
                 }
             }
@@ -359,9 +366,7 @@ public sealed class AgentLoop(
                 //mark the partial output and drop the in-flight calls, a Ctrl+C says cancelled rather than truncated
                 convo.AddAssistant(cleanText + " [truncated]", reasoningContent: cleanReasoning, stripped: strippedCount);
                 var what = cancelled ? "turn cancelled" : "turn truncated";
-                Warn(droppedCall
-                    ? what + " — an in-flight tool call was discarded, not executed"
-                    : what);
+                Warn(TurnLines.Discarded(what, begun.Count));
                 return new TurnResult(
                     cancelled ? TurnOutcome.Cancelled : TurnOutcome.Truncated,
                     finishReason, cancelled ? null : TruncationKind.Stream, round, lastWarning);
@@ -391,13 +396,17 @@ public sealed class AgentLoop(
 
             //persist before running the calls, so a tool that hangs still leaves its call in the session file
             Persist(convo, observer);
+            observer.OnToolCallsRecorded(calls);
 
             //answer this call and every remaining call so --continue reads a balanced transcript, then end the turn
             TurnResult CancelFrom(int first)
             {
                 for (var j = first; j < calls.Count; j++)
+                {
                     convo.AddToolResult(calls[j].Id, new ToolResult(LoopErrors.Cancelled, IsError: true));
-                Warn("turn cancelled — remaining tool calls marked cancelled, not executed");
+                    observer.OnToolCallCancelled(calls[j]);
+                }
+                Warn(TurnLines.RemainingCancelled);
                 return new TurnResult(TurnOutcome.Cancelled, finishReason, null, round, lastWarning);
             }
 

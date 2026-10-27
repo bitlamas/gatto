@@ -236,6 +236,8 @@ public sealed class ChromeTicker(ChromePainter painter, object gate, ISlotsReade
             painter.State.ToolInput = null;
             painter.State.ToolWait = null;
             painter.State.ToolProgress = null;
+            painter.State.Waiting = [];
+            painter.State.WaitingAbove = 0;
             if (!repaint) return;   //the caller's commit paints this change right after
             try { painter.Repaint(); }
             catch (Exception ex) { _faulted = true; Report(ex); }

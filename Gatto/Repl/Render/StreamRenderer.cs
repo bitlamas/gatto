@@ -60,8 +60,13 @@ public sealed class StreamRenderer : ITurnObserver
     private bool _degraded;
     //an answered prompt held while the tool bullet is still chrome, so the answer can't commit above the line that announces the tool. freed by OnToolResult
     private List<string>? _pendingPrompt;
-    //system lines held while a tool bullet is still chrome, so the line can't commit above the bullet it is about. flushed by OnToolResult or EndTurn
+    //system lines held while a saved call is unanswered, so a line cannot commit above the block it is about
     private List<string>? _pendingSystem;
+
+    //the calls of the message being streamed, by index, each holding its own fragments
+    private readonly SortedDictionary<int, (string Name, string? Partial)> _written = new();
+    //the round's saved calls not yet answered, the only calls a stopped turn commits as cancelled
+    private List<ToolCall>? _recorded;
 
     //the answer for the running call, consumed by the next OnToolResult. it clears at the start of a turn, so an aborted turn can't mark the next one's tool row
     private PermissionOutcomeKind? _permissionOutcome;
@@ -146,11 +151,15 @@ public sealed class StreamRenderer : ITurnObserver
             _pendingSystem = null;
             _permissionOutcome = null;   //cleared for the same reason, a decision from an earlier turn must not mark the next one
             _permissionScope = null;
+            _written.Clear();
+            _recorded = null;
             _model?.CloseOpen();   //no open model item may cross the turn boundary
             if (_degraded) return;
             try
             {
                 _painter.State.Thinking = false;
+                _painter.State.Waiting = [];
+                _painter.State.WaitingAbove = 0;
                 ClearTail();
                 _painter.Repaint();
             }
@@ -164,7 +173,7 @@ public sealed class StreamRenderer : ITurnObserver
         lock (_gate) { _last = previous._last; _blankPending = previous._blankPending; }
     }
 
-    //commits the open tail line and a stranded tool bullet as cancelled, so an aborted turn still records the call. the dispatch bracket calls this before StopTurn
+    //commits the open tail line and every saved call left unanswered as cancelled, so the screen holds what a resume draws. the dispatch bracket calls this before StopTurn
     public void EndTurn()
     {
         lock (_gate)
@@ -176,23 +185,14 @@ public sealed class StreamRenderer : ITurnObserver
                 if (_inReasoning) CloseReasoningBlock();
                 else FlushOpenLine();
                 _model?.CloseOpen();   //the open model item closes at turn end, a second close here is harmless
-                if (_painter.State.Tool is { } t)
-                {
-                    var cancelled = _theme.Paint(_glyphs.Bad + " cancelled", Theme.Err);
-                    var cancelInput = _painter.State.ToolInput ?? "";
-                    var item = new ToolBlockItem(t.Name, t.Args, cancelled, HasResult: true, StampRole)
-                        { Collapsed = true, FullResult = "", FullArgs = cancelInput };   //the block commits closed, the user opens it on the transcript
-                    _painter.State.Tool = null;   //drops the live bullet now that the pair is committed
-                    _painter.State.ToolWait = null;
-                    _painter.State.ToolProgress = null;
-                    _painter.State.ToolInput = null;
-                    _model?.Append(item);
-                    CommitRows(TapRows(item));
-                    _last = LastWrite.Tool;
-                    _blockOpen = false;
-                    _blankPending = true;         //the tool block has closed, so the next commit leads with a blank row
-                }
-                FlushPendingSystem();             //flush the held system lines now, after the tool block
+                ClearLiveTool();
+                //a written call that was never saved commits nothing, the record holds none of it
+                foreach (var call in _recorded ?? []) CommitCancelled(call);
+                _recorded = null;
+                _written.Clear();
+                _painter.State.Waiting = [];
+                _painter.State.WaitingAbove = 0;
+                FlushPendingSystem();             //flush the held system lines now, after the tool blocks
                 _painter.State.Thinking = false;
                 ClearTail();
                 _painter.Repaint();
@@ -200,6 +200,32 @@ public sealed class StreamRenderer : ITurnObserver
             catch (Exception) { Degrade(); }
         }
     }
+
+    //a saved call the turn answered as cancelled, red and closed as its resume draws it
+    private void CommitCancelled(ToolCall call)
+    {
+        var cancelled = _theme.Paint(_glyphs.Bad + " cancelled", Theme.Err);
+        var item = new ToolBlockItem(TermText.Sanitize(call.Name), TermText.Sanitize(HeaderArgs(call.Name, call.ArgumentsJson)), cancelled, HasResult: true, StampRole)
+            { Collapsed = true, FullResult = "", FullArgs = ItemRender.FullArgsOf(call.Name, call.ArgumentsJson), BulletTint = Theme.Err };
+        _model?.Append(item);
+        CommitRows(TapRows(item));
+        _last = LastWrite.Tool;
+        _blockOpen = false;
+        _blankPending = true;         //the tool block has closed, so the next commit leads with a blank row
+    }
+
+    //the loop names each call it cancelled before its line, so the blocks and then the line are in the model when the turn is saved
+    public void OnToolCallCancelled(ToolCall call) => Guarded(
+        () =>
+        {
+            ClearLiveTool();
+            _recorded?.RemoveAll(c => c.Id == call.Id);
+            _painter.State.Waiting = [.. (_recorded ?? []).Select(c => WaitingRow(TermText.Sanitize(c.Name), c.ArgumentsJson))];
+            _painter.State.WaitingAbove = 0;
+            CommitCancelled(call);
+            FlushPendingSystem();   //a line raised while this call ran follows its block, anchored after its answer
+        },
+        () => { });
 
     //stream events
 
@@ -246,15 +272,15 @@ public sealed class StreamRenderer : ITurnObserver
     }
 
     //nothing to paint here (the purr is the ticker's), but an open prose line is finished once a tool call starts, so commit it
-    public void OnToolCallDelta(string? name = null, string? partialArguments = null)
+    public void OnToolCallDelta(string? name = null, string? partialArguments = null, int index = 0)
     {
         var span = _trace.Open(Gatto.Core.Trace.Delta, _turnSpan);
         var before = Counts();
-        ToolCallDelta(name, partialArguments);
+        ToolCallDelta(name, partialArguments, index);
         CloseDelta(span, "tool_call", partialArguments?.Length ?? 0, before);   //the arguments streamed so far, which each chunk resends whole
     }
 
-    private void ToolCallDelta(string? name, string? partialArguments) => Guarded(
+    private void ToolCallDelta(string? name, string? partialArguments, int index) => Guarded(
         () =>
         {
             //the model is emitting, so the purr must not say it is reading context while tool arguments stream
@@ -263,16 +289,60 @@ public sealed class StreamRenderer : ITurnObserver
             else FlushOpenLine();
             _painter.State.Thinking = false;
 
-            //name and preview show from the first fragments (shell decodes its command). the row is chrome, so StopTurn clears it if the stream drops
-            if (name is { Length: > 0 })
-            {
-                var clean = TermText.Sanitize(name);
-                var shell = clean == "shell";
-                _painter.State.Tool = (clean, shell ? "" : TermText.Sanitize(ItemRender.EarlyArgsPreview(partialArguments)));
-                if (shell) _painter.State.ToolInput = ItemRender.ShellCommandText(PartialJson.StringValue(partialArguments, "command") ?? "");
-            }
+            //the row is chrome, and a stream that ends unsaved commits nothing of it
+            if (name is { Length: > 0 }) _written[index] = (TermText.Sanitize(name), partialArguments);
+            if (_written.Count > 0) ShowWritten();
 
             PaintTail();
+        },
+        () => { });
+
+    //the newest call is the live row, its name and preview showing from the first fragments (shell decodes its command), and every earlier call waits above it
+    private void ShowWritten()
+    {
+        var st = _painter.State;
+        var live = _written.Keys.Last();
+        var (name, partial) = _written[live];
+        var shell = name == "shell";
+        st.Tool = (name, shell ? "" : TermText.Sanitize(ItemRender.EarlyArgsPreview(partial)));
+        st.ToolInput = shell ? ItemRender.ShellCommandText(PartialJson.StringValue(partial, "command") ?? "") : null;
+        st.Waiting = [.. _written.Where(e => e.Key != live).Select(e => WaitingRow(e.Value.Name, e.Value.Partial))];
+        st.WaitingAbove = st.Waiting.Count;
+    }
+
+    //the saved calls after the running one wait under it
+    private void ShowWaiting(ToolCall running)
+    {
+        var st = _painter.State;
+        st.Waiting = [.. (_recorded ?? []).Where(c => c.Id != running.Id).Select(c => WaitingRow(TermText.Sanitize(c.Name), c.ArgumentsJson))];
+        st.WaitingAbove = 0;
+    }
+
+    //a waiting call's row: a shell call's command for its head row, any other the header its block commits with once its arguments parse, the early preview before
+    private (string Name, string Args) WaitingRow(string name, string? json) =>
+        (name, name == "shell"
+            ? ItemRender.ShellCommandText(PartialJson.StringValue(json, "command") ?? "")
+            : TermText.Sanitize(Parses(json) ? HeaderArgs(name, json!) : ItemRender.EarlyArgsPreview(json)));
+
+    private static bool Parses(string? json)
+    {
+        if (json is not { Length: > 0 }) return false;
+        try { using var _ = JsonDocument.Parse(json); return true; }
+        catch (JsonException) { return false; }
+    }
+
+    //the round's calls once saved: the first is the next to run, so it takes the live row and the rest wait under it
+    public void OnToolCallsRecorded(IReadOnlyList<ToolCall> calls) => Guarded(
+        () =>
+        {
+            _recorded = [.. calls];
+            _written.Clear();
+            if (calls.Count == 0) return;
+            var first = calls[0];
+            _painter.State.Tool = (TermText.Sanitize(first.Name), TermText.Sanitize(HeaderArgs(first.Name, first.ArgumentsJson)));
+            _painter.State.ToolInput = ItemRender.FullArgsOf(first.Name, first.ArgumentsJson);
+            ShowWaiting(first);
+            _painter.Repaint();
         },
         () => { });
 
@@ -291,6 +361,8 @@ public sealed class StreamRenderer : ITurnObserver
             _painter.State.Thinking = false;
             _painter.State.Tool = (TermText.Sanitize(call.Name), TermText.Sanitize(HeaderArgs(call.Name, call.ArgumentsJson)));
             _painter.State.ToolInput = ItemRender.FullArgsOf(call.Name, call.ArgumentsJson);
+            if (_recorded?.Any(c => c.Id == call.Id) != true) (_recorded ??= []).Add(call);   //a replayed call was never recorded, and it leaves at its result
+            ShowWaiting(call);
             _painter.Repaint();          //repaint, the bullet is chrome with a blinking dot while the tool runs
             _last = LastWrite.Tool;
             _blockOpen = false;
@@ -332,10 +404,8 @@ public sealed class StreamRenderer : ITurnObserver
             var followUp = outcome == PermissionOutcomeKind.AutoApproved && outcomeScope is { Length: > 0 }
                 ? AutoApprovedPrefix + outcomeScope : null;
 
-            _painter.State.Tool = null;   //drops the live bullet now that the pair is committed
-            _painter.State.ToolWait = null;
-            _painter.State.ToolProgress = null;
-            _painter.State.ToolInput = null;
+            ClearLiveTool();   //drops the live bullet now that the pair is committed
+            _recorded?.RemoveAll(c => c.Id == call.Id);   //the waiting rows already leave the running call out
             //the gloss is computed once here, the item and the tap rows read it, so the two cannot drift
             var gloss = outcomeGloss ?? ItemRender.ToolGloss(result, _theme, _glyphs);
             //append the whole tool block as one item before the paint. a write's content and an edit's strings come from the call args, so live and resumed blocks match
@@ -368,6 +438,15 @@ public sealed class StreamRenderer : ITurnObserver
             OnContextChanged?.Invoke();
         },
         () => _surface.Write(PlainRenderer.ResultLine(call, result, _glyphs) + "\n"));
+
+    //drops the live row once its call has a block, or once the turn that ran it ends
+    private void ClearLiveTool()
+    {
+        _painter.State.Tool = null;
+        _painter.State.ToolWait = null;
+        _painter.State.ToolProgress = null;
+        _painter.State.ToolInput = null;
+    }
 
     //a liveness line for a long tool run, drawn as a dim chrome row that replaces itself in place. committing it would put it above the live bullet
     public void OnSubagentProgress(string message) => Guarded(
@@ -404,7 +483,7 @@ public sealed class StreamRenderer : ITurnObserver
             });
     }
 
-    //the ♯ system line: a blank-separated, Warn-painted gutter block. while a tool bullet is chrome the line is buffered and flushed after the block
+    //the ♯ system line: a blank-separated, Warn-painted gutter block. while a saved call is unanswered the line is buffered and flushed after the block
     public void CommitSystem(string message) => CommitSystem(message, transient: false);
 
     //a transient row is shown and never saved, for a fact about this launch alone
@@ -414,22 +493,27 @@ public sealed class StreamRenderer : ITurnObserver
         Guarded(
             () =>
             {
-                if (_painter.State.Tool is not null)
+                if (_recorded is { Count: > 0 })   //a running call is a saved one, and a row the deltas set may never be saved, so it holds no line
                 {
                     (_pendingSystem ??= new List<string>()).Add(message);
                     return;
                 }
-                if (_inReasoning) CloseReasoningBlock();
-                else FlushOpenLine();
-                if (_last != LastWrite.None) _blankPending = true;
-                _model?.Append(new SystemLineItem(message, After()) { Transient = transient });   //append before the paint
-                CommitRows(GutterWrap.Rows(_theme.Paint($"{_glyphs.Sharp}", Theme.Warn) + " ", $"{_glyphs.Sharp} ", message,
-                    _surface.Width, s => _theme.Paint(s, Theme.Warn)).ToList());
-                _last = LastWrite.Text;
-                _blockOpen = false;
-                _blankPending = true;   //the system block has closed, so the next commit leads with a blank row
+                CommitSystemNow(message, transient);
             },
             () => _surface.Write("\n! " + message + "\n"));
+    }
+
+    //the caller holds the gate and has decided the line commits here, so it is never held again
+    private void CommitSystemNow(string message, bool transient)
+    {
+        if (_inReasoning) CloseReasoningBlock();
+        else FlushOpenLine();
+        if (_last != LastWrite.None) _blankPending = true;
+        _model?.Append(new SystemLineItem(message, After()) { Transient = transient });   //append before the paint
+        CommitRows(ItemRender.SystemRows(message, _theme, _surface.Width, _glyphs));
+        _last = LastWrite.Text;
+        _blockOpen = false;
+        _blankPending = true;   //the system block has closed, so the next commit leads with a blank row
     }
 
     //a background task's end as a closed shell block under its head line, live and on restore alike, appended before the paint
@@ -740,12 +824,12 @@ public sealed class StreamRenderer : ITurnObserver
         return body;
     }
 
-    //commit the ♯ lines buffered while a tool bullet was chrome. the caller holds the gate and State.Tool is null, so the CommitSystem calls commit directly
+    //commit the ♯ lines buffered while a tool row was chrome, right after the block they were raised under, never past the blocks after it
     private void FlushPendingSystem()
     {
         if (_pendingSystem is not { } pending) return;
         _pendingSystem = null;
-        foreach (var m in pending) CommitSystem(m);
+        foreach (var m in pending) CommitSystemNow(m, transient: false);
     }
 
     private void OpenReasoningBlock()

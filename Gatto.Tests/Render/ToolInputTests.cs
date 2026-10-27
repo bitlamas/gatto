@@ -114,26 +114,28 @@ public sealed class ToolInputTests
         }
     }
 
+    //a call stopped while it ran commits as the record holds it, so the live block and its resume are one, red and closed
     [Fact]
-    public void A_cancelled_shell_block_opens_to_its_command_without_a_result_rail()
+    public void A_cancelled_shell_block_is_red_and_closed_as_its_resume_is()
     {
         var (r, p, _) = Wire(80, 20);
+        var call = ShellCall(LongCommand);
         r.BeginTurn();
-        r.OnToolCallStart(ShellCall(LongCommand));
+        r.OnToolCallStart(call);
         r.EndTurn();
 
         var index = p.Model.Items.ToList().FindIndex(it => it is ToolBlockItem);
         var item = (ToolBlockItem)p.Model.Items[index];
-        Assert.Equal(LongCommand, item.FullArgs);
-        Assert.True(p.Focus.IsCollapsible(index, p.Width));
+        Assert.Equal(Theme.Err, item.BulletTint);
+        Assert.True(item.Collapsed);
+        Assert.False(p.Focus.IsCollapsible(index, p.Width));
 
-        p.Focus.Focus(index, p.Width, p.ViewportRows(), reveal: false);
-        p.Focus.Toggle(index, p.Width, p.ViewportRows());
-        Assert.False(item.Collapsed);
-        var rows = item.Render(80, T, GlyphSet.Unicode).Select(Visible).ToList();
-        Assert.Contains(rows, row => row.Contains("Format-Table", StringComparison.Ordinal));
-        Assert.Contains(rows, row => row.Contains("cancelled", StringComparison.Ordinal));
-        Assert.DoesNotContain(rows, row => row.Contains($"{GlyphSet.Unicode.Box.Vertical} ", StringComparison.Ordinal));
+        var convo = new Conversation("sys");
+        convo.AddAssistant("", new[] { call });
+        convo.AddToolResult(call.Id, new ToolResult(Gatto.Core.Loop.LoopErrors.Cancelled, IsError: true));
+        var (_, resumed) = TranscriptStore.Rebuild(TranscriptStore.BuildLines(p.Model, convo), T, "coder", GlyphSet.Unicode);
+        var back = resumed.Items.OfType<ToolBlockItem>().Single();
+        Assert.Equal(item.Render(80, T, GlyphSet.Unicode).Select(Visible), back.Render(80, T, GlyphSet.Unicode).Select(Visible));
     }
 
     [Fact]
