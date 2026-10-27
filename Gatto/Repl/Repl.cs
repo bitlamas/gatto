@@ -206,6 +206,9 @@ public sealed partial class Repl(
     //hands a refused message back to the live composer, inserting it because the composer is already mid-Read when the refusal is known
     private Action<string>? _restoreComposer;
 
+    //the loop's take at a round boundary, armed by the rich loop alone, so every other face and every child turn delivers nothing mid-turn
+    private Func<IReadOnlyList<string>>? _takeQueued;
+
     //asks whether a large batch of images should go, and how durably the answer holds. null outside the rich loop, which has no way to ask
     private Func<int, int, ConfirmAttachAnswer>? _confirmAttach;
 
@@ -329,9 +332,14 @@ public sealed partial class Repl(
     public static bool ShouldWarnContextFit(int estimateTokens, int? budgetTokens, bool alreadyWarned) =>
         !alreadyWarned && budgetTokens is int b && b > 0 && estimateTokens > b;
 
+    //a caller that knows the prompt alone, its images those of the newest user record
+    internal Task<CompactionResult?> AutoCompactAsync(
+        CompactionReason reason, string currentUserPrompt, ITurnObserver observer, CancellationToken ct, long traceParent = 0) =>
+        AutoCompactAsync(reason, Compactor.PromptOnly(currentUserPrompt, convo), observer, ct, traceParent);
+
     //the auto-compact body, it strips the memory scaffolding instead of banking it and leaves everything untouched on a null summary
     internal async Task<CompactionResult?> AutoCompactAsync(
-        CompactionReason reason, string currentUserPrompt, ITurnObserver observer, CancellationToken ct, long traceParent = 0)
+        CompactionReason reason, TurnSoFar turn, ITurnObserver observer, CancellationToken ct, long traceParent = 0)
     {
         SetReasoningPassthrough(observer, true);             //the dimmed summary is not reasoning
         string? summary;
@@ -347,7 +355,7 @@ public sealed partial class Repl(
         if (summary is null) return null;                    //nothing is touched, the summarizer call was the only fallible work
 
         //all fallible work done, adopt atomically from here
-        var (result, stripped) = Compactor.RebuildMidTurn(summary, convo, currentUserPrompt, observer, sessions, recomposeSystem, _glyphs.Dot);
+        var (result, stripped) = Compactor.RebuildMidTurn(summary, convo, turn, observer, sessions, recomposeSystem, _glyphs.Dot);
         _lastCompactSummary = stripped;                       //the rich loop shows it as the new session's lead, as after /compact
         _offered = false;                                     //a fresh session may cross 85% again
         _usageState.Clear();                                  //cleared so a re-fire needs fresh over-threshold evidence
@@ -364,6 +372,10 @@ public sealed partial class Repl(
         public Task<CompactionResult?> CompactAsync(
             CompactionReason reason, string currentUserPrompt, ITurnObserver observer, long traceParent, CancellationToken ct)
             => repl.AutoCompactAsync(reason, currentUserPrompt, observer, ct, traceParent);
+
+        public Task<CompactionResult?> CompactAsync(
+            CompactionReason reason, TurnSoFar turn, ITurnObserver observer, long traceParent, CancellationToken ct)
+            => repl.AutoCompactAsync(reason, turn, observer, ct, traceParent);
 
         public string? LastFailure => repl._lastAutoCompactFailure;
     }
@@ -442,14 +454,15 @@ public sealed partial class Repl(
     public static Task<bool> RunTurnGuardedAsync(
         AgentLoop loop, Conversation convo, string input, ITurnObserver renderer,
         SessionStore? sessions, CancellationToken ct, TranscriptModel? model = null,
-        IReadOnlyList<ImageRef>? images = null, Func<string?>? serverGone = null) =>
-        GuardedAsync(loop, convo, () => loop.RunTurnAsync(convo, input, renderer, ct, images), renderer, sessions, model, serverGone);
+        IReadOnlyList<ImageRef>? images = null, Func<string?>? serverGone = null, Func<IReadOnlyList<string>>? takeQueued = null) =>
+        GuardedAsync(loop, convo, () => loop.RunTurnAsync(convo, input, renderer, ct, images, takeQueued: takeQueued), renderer, sessions, model, serverGone);
 
     //the same guard for a turn whose user record is built already, a background task's end
     public static Task<bool> RunTurnGuardedAsync(
         AgentLoop loop, Conversation convo, ChatMessage record, ITurnObserver renderer,
-        SessionStore? sessions, CancellationToken ct, TranscriptModel? model = null, Func<string?>? serverGone = null) =>
-        GuardedAsync(loop, convo, () => loop.RunTurnAsync(convo, record, renderer, ct), renderer, sessions, model, serverGone);
+        SessionStore? sessions, CancellationToken ct, TranscriptModel? model = null, Func<string?>? serverGone = null,
+        Func<IReadOnlyList<string>>? takeQueued = null) =>
+        GuardedAsync(loop, convo, () => loop.RunTurnAsync(convo, record, renderer, ct, takeQueued: takeQueued), renderer, sessions, model, serverGone);
 
     private static async Task<bool> GuardedAsync(AgentLoop loop, Conversation convo, Func<Task<TurnResult>> turn,
         ITurnObserver renderer, SessionStore? sessions, TranscriptModel? model, Func<string?>? serverGone)

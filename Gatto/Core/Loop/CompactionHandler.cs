@@ -17,9 +17,17 @@ public interface ICompactionHandler
         CompactionReason reason, string currentUserPrompt, ITurnObserver observer, long traceParent, CancellationToken ct) =>
         CompactAsync(reason, currentUserPrompt, observer, ct);
 
+    //the same compaction told the whole turn so far, which a rebuilding handler continues from and every other handler reads as its prompt alone
+    Task<CompactionResult?> CompactAsync(
+        CompactionReason reason, TurnSoFar turn, ITurnObserver observer, long traceParent, CancellationToken ct) =>
+        CompactAsync(reason, turn.Prompt, observer, traceParent, ct);
+
     //why the last null came back in words the user can read, or null when the handler cannot tell
     string? LastFailure => null;
 }
 
 //the shape ReplaceAll expects, SystemText as the only system message at index 0 and Messages as the rest
 public sealed record CompactionResult(string SystemText, IReadOnlyList<ChatMessage> Messages, SessionBaseline? Baseline);
+
+//what a mid-turn rebuild continues: the turn's own prompt and images, and each message delivered inside the turn, verbatim and in order
+public sealed record TurnSoFar(string Prompt, IReadOnlyList<string> Delivered, IReadOnlyList<ImageRef>? Images);

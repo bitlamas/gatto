@@ -33,6 +33,8 @@ public interface ITurnObserver
     void OnToolCallsRecorded(IReadOnlyList<ToolCall> calls) { }
     //a saved call a stopped round answered as cancelled, told right after its answer and before the line, so a renderer commits it where the record holds it
     void OnToolCallCancelled(ToolCall call) { }
+    //a queued message the loop delivered at a round boundary, told after its record is saved, so a renderer commits it where the record sits
+    void OnQueuedDelivered(ChatMessage record) { }
     //the server's prefill progress for the request in flight, and only the rich renderer shows it
     void OnPromptProgress(long total, long processed) { }
     //the traced turn's span, told before the first round, so a renderer can open its delta spans under it
@@ -130,29 +132,30 @@ public sealed class AgentLoop(
     private ChatMessage[]? _lastSent;
     private ChatMessage[]? _lastSentFrom;
 
-    //images for this user turn, since the loop adds the user message itself, and a run_agent child passes its tool span and role
+    //images for this user turn, since the loop adds the user message itself, and a run_agent child passes its tool span and role. takeQueued hands over what was typed during the turn, null on every face but the rich one
     public Task<TurnResult> RunTurnAsync(
         Conversation convo, string userMessage, ITurnObserver observer, CancellationToken ct,
-        IReadOnlyList<ImageRef>? images = null, long traceParent = 0, string? agent = null) =>
-        RunTurnAsync(convo, convo.UserRecord(userMessage, images), observer, ct, traceParent, agent);
+        IReadOnlyList<ImageRef>? images = null, long traceParent = 0, string? agent = null,
+        Func<IReadOnlyList<string>>? takeQueued = null) =>
+        RunTurnAsync(convo, convo.UserRecord(userMessage, images), observer, ct, traceParent, agent, takeQueued);
 
     //a turn whose user message is a record built already, a background task's end among them, appended as given
     public Task<TurnResult> RunTurnAsync(
         Conversation convo, ChatMessage userRecord, ITurnObserver observer, CancellationToken ct,
-        long traceParent = 0, string? agent = null) =>
+        long traceParent = 0, string? agent = null, Func<IReadOnlyList<string>>? takeQueued = null) =>
         _trace.Enabled
-            ? TracedTurnAsync(convo, userRecord, observer, ct, traceParent, agent)
-            : RunTurnCoreAsync(convo, userRecord, observer, ct, 0, agent);
+            ? TracedTurnAsync(convo, userRecord, observer, ct, traceParent, agent, takeQueued)
+            : RunTurnCoreAsync(convo, userRecord, observer, ct, 0, agent, takeQueued);
 
     private async Task<TurnResult> TracedTurnAsync(
         Conversation convo, ChatMessage userRecord, ITurnObserver observer, CancellationToken ct,
-        long traceParent, string? agent)
+        long traceParent, string? agent, Func<IReadOnlyList<string>>? takeQueued)
     {
         var span = _trace.Open(Trace.Turn, traceParent);
         observer.OnTurnSpan(span.Id);
         var seq = convo.Count;   //the user record's index among the chat records, which the turn is about to append
         TurnResult? result = null;
-        try { return result = await RunTurnCoreAsync(convo, userRecord, observer, ct, span.Id, agent); }
+        try { return result = await RunTurnCoreAsync(convo, userRecord, observer, ct, span.Id, agent, takeQueued); }
         finally
         {
             //a child's conversation is never saved, so its turn names the role and carries no seq
@@ -168,14 +171,17 @@ public sealed class AgentLoop(
 
     private async Task<TurnResult> RunTurnCoreAsync(
         Conversation convo, ChatMessage userRecord, ITurnObserver observer, CancellationToken ct,
-        long turnSpan, string? agent)
+        long turnSpan, string? agent, Func<IReadOnlyList<string>>? takeQueued)
     {
         //what a compaction continues from, and a background end's head line stands for its output there
         var userMessage = PromptOf(userRecord);
+        //the texts delivered inside this turn, kept here because a compaction's rebuild drops their records and must still carry them verbatim
+        var delivered = new List<string>();
         //an unarmed loop measures the server's count too, so a subagent's elision decides on it as a session's does
         usageState ??= new ContextUsageState();
         //the current turn's user-message index, captured before AddUser, and the prompt_suffix splice target
         var turnUserIndex = convo.Count;
+        TurnSoFar SoFar() => new(userMessage, [.. delivered], convo.Messages[turnUserIndex].Images);   //the turn's images from its own record, which a rebuild moves to index 1
         //the index at each round's start, which ElideBefore reads to protect the recent rounds. a compaction clears it with the conversation these indices describe
         var roundStarts = new List<int>();
         var elisionWarned = false;   //the elision warning fires once per turn rather than once per round-trip
@@ -228,7 +234,7 @@ public sealed class AgentLoop(
                 //announce before the await, so the wait is explained while it happens. quote the same figure the trigger acted on, or the line names a different percentage
                 observer.OnWarning(
                     $"auto-compacting at {(int)Math.Round(100.0 * used / win)}% — summarizing the session, this can take a while");
-                var rebuilt = await compactor.CompactAsync(CompactionReason.Proactive, userMessage, observer, turnSpan, ct);
+                var rebuilt = await compactor.CompactAsync(CompactionReason.Proactive, SoFar(), observer, turnSpan, ct);
                 if (rebuilt is not null)
                 {
                     convo.ReplaceAll(rebuilt.SystemText, rebuilt.Messages, rebuilt.Baseline);
@@ -329,7 +335,7 @@ public sealed class AgentLoop(
                     usageState?.Record(actual, estimateAtRequest, requestMessages.Count);
                 //say it before the summarize, since the user just saw a request fail and silence would read as a hang
                 observer.OnWarning("context overflowed — compacting and retrying this turn");
-                var rebuilt = await compaction.CompactAsync(CompactionReason.Overflow, userMessage, observer, turnSpan, ct);
+                var rebuilt = await compaction.CompactAsync(CompactionReason.Overflow, SoFar(), observer, turnSpan, ct);
                 if (rebuilt is null)
                 {
                     _autoCompactOff = true;
@@ -452,6 +458,21 @@ public sealed class AgentLoop(
             {
                 Warn("turn cancelled");
                 return new TurnResult(TurnOutcome.Cancelled, finishReason, null, round, lastWarning);
+            }
+
+            //what was queued during the round goes in after its results and before the next request, tail content, so the prefix holds
+            if (takeQueued?.Invoke() is { Count: > 0 } queued)
+            {
+                var records = new List<ChatMessage>(queued.Count);
+                foreach (var typed in queued)
+                {
+                    var record = convo.UserRecord(typed);
+                    convo.Append(record);
+                    records.Add(record);
+                }
+                delivered.AddRange(queued);
+                Persist(convo, observer);
+                foreach (var record in records) observer.OnQueuedDelivered(record);
             }
         }
     }

@@ -227,6 +227,9 @@ public sealed class StreamRenderer : ITurnObserver
         },
         () => { });
 
+    //a message the loop delivered at a round boundary, the same ❯ block a resume draws from its record, between the round's results and the next reply
+    public void OnQueuedDelivered(ChatMessage record) => CommitUser((record.Content ?? "").Split('\n'));
+
     //stream events
 
     public void OnTextDelta(string text)

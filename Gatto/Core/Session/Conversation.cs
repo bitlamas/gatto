@@ -56,7 +56,7 @@ public sealed class Conversation
     public ChatMessage BackgroundRecord(int number, string text, string gloss, bool isError) =>
         new("user", text, IsError: isError, Gloss: gloss, Ts: _now(), Background: number);
 
-    //a record built by UserRecord or BackgroundRecord, the one append a turn makes for its user message
+    //a record built by UserRecord or BackgroundRecord, the user record a turn opens with, and each queued message the loop delivers inside it
     public void Append(ChatMessage record) => _messages.Add(record);
     //stripped says how many control tokens already came out of text, callers pass pre-stripped text and the strip stays at the loop seam
     public void AddAssistant(string text, IReadOnlyList<ToolCall>? toolCalls = null,

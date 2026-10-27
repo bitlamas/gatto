@@ -181,4 +181,110 @@ public class DispatchQueueTests
         Assert.Equal(200, got.Distinct().Count());
         Assert.Equal(Enumerable.Range(0, 200).Select(i => "m" + i).ToList(), got);   //the consumer received every message in queue order.
     }
+
+    [Fact]
+    public async Task THE_TURN_TAKES_PLAIN_MESSAGES_AND_LETTERS_IN_ORDER_AND_LEAVES_THE_REST_WITH_THEIR_PERMITS()
+    {
+        var q = new DispatchQueue(10);
+        q.TryEnqueue("one");
+        q.TryEnqueue("/compact", EntryKind.Command);
+        q.EnqueueWatch("C:\\inbox\\a.md\n\nletter a");
+        q.EnqueueTask(End(1));
+        q.TryEnqueue("look at [Image #1]", EntryKind.Attachment);
+        q.TryEnqueue("two");
+
+        var taken = q.TakeQueuedForTurn(watchBudget: 6);
+
+        Assert.Equal([("one", EntryKind.Plain), ("C:\\inbox\\a.md\n\nletter a", EntryKind.Watch), ("two", EntryKind.Plain)],
+            taken.Select(e => (e.Text, e.Kind)));
+        using var cts = Deadline();
+        Assert.Equal("/compact", (await q.TakeAsync(cts.Token))?.Text);
+        Assert.Equal(1, (await q.TakeAsync(cts.Token))?.End?.Number);
+        Assert.Equal("look at [Image #1]", (await q.TakeAsync(cts.Token))?.Text);
+        await Blocks(q);   //one permit went with each taken entry, so nothing phantom is left
+    }
+
+    [Fact]
+    public void THE_TURN_TAKES_NOTHING_FROM_A_QUEUE_OF_ENDS()
+    {
+        var q = new DispatchQueue(10);
+        q.EnqueueTask(End(1));
+        q.EnqueueTask(End(2));
+        Assert.Empty(q.TakeQueuedForTurn(watchBudget: 6));
+        Assert.Equal(2, q.Count);
+    }
+
+    [Fact]
+    public async Task A_BUDGET_OF_TWO_OVER_EIGHT_LETTERS_TAKES_TWO_AND_LEAVES_SIX_SHOWN()
+    {
+        var q = new DispatchQueue(10);
+        for (var i = 1; i <= 8; i++) q.EnqueueWatch($"C:\\inbox\\{i}.md\n\nletter {i}");
+
+        var taken = q.TakeQueuedForTurn(watchBudget: 2);
+
+        Assert.Equal(["C:\\inbox\\1.md\n\nletter 1", "C:\\inbox\\2.md\n\nletter 2"], taken.Select(e => e.Text));
+        Assert.Equal(Enumerable.Range(3, 6).Select(i => ($"C:\\inbox\\{i}.md", true)), q.Texts().Select(v => (v.Text, v.Task)));
+        using var cts = Deadline();
+        for (var i = 3; i <= 8; i++) Assert.Equal(EntryKind.Watch, (await q.TakeAsync(cts.Token))?.Kind);
+        await Blocks(q);
+    }
+
+    [Fact]
+    public void A_LETTER_IS_NEVER_REFUSED_AND_NEVER_COUNTED_TOWARD_THE_CAP()
+    {
+        var q = new DispatchQueue(2);
+        for (var i = 0; i < 5; i++) q.EnqueueWatch($"C:\\inbox\\{i}.md\n\nbody");
+        Assert.True(q.TryEnqueue("a"));
+        Assert.True(q.TryEnqueue("b", EntryKind.Command));
+        Assert.False(q.TryEnqueue("c", EntryKind.Attachment));
+        Assert.Equal(7, q.Count);
+        Assert.Equal(("C:\\inbox\\0.md", true), q.Texts().Select(v => (v.Text, v.Task)).First());
+    }
+
+    [Fact]
+    public async Task THE_PULL_RETURNS_TYPED_TEXT_ONLY_AND_LEAVES_LETTERS_QUEUED()
+    {
+        var q = new DispatchQueue(10);
+        q.TryEnqueue("a");
+        q.EnqueueWatch("C:\\inbox\\x.md\n\nletter");
+        q.TryEnqueue("/role coder", EntryKind.Command);
+
+        Assert.Equal(["a", "/role coder"], q.DrainAll());
+        using var cts = Deadline();
+        Assert.Equal(EntryKind.Watch, (await q.TakeAsync(cts.Token))?.Kind);
+        await Blocks(q);
+    }
+
+    [Fact]
+    public async Task DROP_WATCH_TAKES_QUEUED_AND_PARKED_LETTERS_AND_LEAVES_MESSAGES_AND_ENDS()
+    {
+        var q = new DispatchQueue(10);
+        q.EnqueueWatch("C:\\inbox\\a.md\n\nletter a");
+        q.TryEnqueue("typed");
+        q.EnqueueTask(End(1));
+        q.Park(new QueueEntry("C:\\inbox\\b.md\n\nletter b", null, Drawn: true, Kind: EntryKind.Watch, Counted: true));
+
+        q.DropWatch();
+
+        Assert.Equal(["typed", "background task 1 ended · exit 0 · 1s"], q.Texts().Select(v => v.Text));
+        using var cts = Deadline();
+        Assert.Equal("typed", (await q.TakeAsync(cts.Token))?.Text);
+        Assert.Equal(1, (await q.TakeAsync(cts.Token))?.End?.Number);
+        await Blocks(q);
+    }
+
+    [Fact]
+    public async Task A_PARKED_LETTER_KEEPS_ITS_COUNTED_MARK_AND_GOES_BEFORE_THE_NEXT_ENTRY()
+    {
+        var q = new DispatchQueue(10);
+        q.Park(new QueueEntry("C:\\inbox\\a.md\n\nletter a", null, Drawn: true, Kind: EntryKind.Watch, Counted: true));
+        await Blocks(q);
+
+        q.TryEnqueue("next");
+        using var cts = Deadline();
+        var retaken = await q.TakeAsync(cts.Token);
+        Assert.True(retaken is { Kind: EntryKind.Watch, Counted: true, Drawn: true });
+        Assert.Equal("next", (await q.TakeAsync(cts.Token))?.Text);
+        await Blocks(q);
+    }
 }

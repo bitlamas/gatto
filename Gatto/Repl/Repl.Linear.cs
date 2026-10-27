@@ -122,6 +122,15 @@ public sealed partial class Repl
         //the one pusher, called when the queue changes, so the chrome and the queue cannot part
         void PublishQueueLocked() => s.Painter.State.QueueTexts = queue.Texts();
 
+        //what the loop delivers at a round boundary, the row redrawn without it before the renderer commits its block. runs on the loop's thread, so the paint takes the gate
+        _takeQueued = () =>
+        {
+            var taken = queue.TakeQueuedForTurn(int.MaxValue);
+            if (taken.Count == 0) return [];
+            lock (s.Gate) { if (!stopped) { PublishQueueLocked(); RedrawLocked(lastView); } }
+            return [.. taken.Select(e => e.Text)];
+        };
+
         //the one arming site of the background tasks, so -p, the plain face and a run_agent child run the flag in the foreground
         var tasks = new Gatto.Core.Tools.BackgroundTasks();
         //the sink is set before the context is armed, since an end with no sink is dropped
@@ -224,7 +233,10 @@ public sealed partial class Repl
                         rejected = carry;
                         continue;
                     }
-                    if (queue.TryEnqueue(text))
+                    //the pending pastes live under the gate, and the file scan runs outside it so the painter never waits on a disk
+                    bool pasted;
+                    lock (s.Gate) pasted = ImageAttach.ReferencedIn(text, _pendingPaste).Count > 0;
+                    if (queue.TryEnqueue(text, QueueKind(text, KnownCommands(), pasted, cwd)))
                     {
                         //one repaint clears the composer and shows the new queued row
                         lock (s.Gate) { PublishQueueLocked(); RedrawLocked(idleView); }
@@ -283,6 +295,7 @@ public sealed partial class Repl
             {
                 armTasks?.Invoke(null);
                 _tasks = null;
+                _takeQueued = null;
                 tasks.Dispose();
             }
             s.RestoreMouseMode?.Invoke();   //restore the shell's mouse and QuickEdit mode (idempotent, the degrade path and the exit hooks call it too)
@@ -504,7 +517,7 @@ public sealed partial class Repl
             {
                 if (!entry.Drawn) s.Renderer.CommitBackground(record);   //a parked end's block stayed on screen from its first take
                 var kept = await RunModelTurnAsync(s, [],
-                    ct => RunTurnGuardedAsync(loop, convo, record, s.Renderer, sessions, ct, s.Painter.Model, serverGone), appCt);
+                    ct => RunTurnGuardedAsync(loop, convo, record, s.Renderer, sessions, ct, s.Painter.Model, serverGone, _takeQueued), appCt);
                 //a turn that rolled back before its first reply leaves the end owed, so it waits at the head of the queue for the next message
                 if (kept) _tasks?.Delivered(end.Number);
                 else lock (s.Gate) { queue.Park(entry with { Drawn = true }); s.Painter.State.QueueTexts = queue.Texts(); }
@@ -530,6 +543,16 @@ public sealed partial class Repl
             new(null, Array.Empty<ImageAttach.Notice>(), lines);
 
         internal bool Refused => RefusalLines is not null;
+    }
+
+    //what a typed text is in the queue: a command or a message that attaches waits for the dispatcher, so a mid-turn delivery is text only. any notice counts, an ambiguous name is a refusal there
+    internal static EntryKind QueueKind(string text, IReadOnlyList<SlashCommands.Cmd> known, bool pasted, string cwd)
+    {
+        var trimmed = text.Trim();
+        if (known.Any(c => SlashGate.TryMatchCommand(trimmed, c.Name, out _))) return EntryKind.Command;
+        if (pasted) return EntryKind.Attachment;
+        var scan = ImageAttach.Candidates(text, cwd);
+        return scan.Found.Count > 0 || scan.Notices.Count > 0 ? EntryKind.Attachment : EntryKind.Plain;
     }
 
     //decides what this message attaches and commits nothing, so the caller owns the user-visible consequences and the pastes survive a refusal
@@ -817,7 +840,7 @@ public sealed partial class Repl
         if (trimmed == "/init") input = InitPrompt.Text;   //sent through the normal turn below, as if the user had typed it
 
         await RunModelTurnAsync(s, attach.Notices,
-            ct => RunTurnGuardedAsync(loop, convo, input, s.Renderer, sessions, ct, s.Painter.Model, attach.Images, serverGone), appCt);
+            ct => RunTurnGuardedAsync(loop, convo, input, s.Renderer, sessions, ct, s.Painter.Model, attach.Images, serverGone, _takeQueued), appCt);
         return false;
     }
 

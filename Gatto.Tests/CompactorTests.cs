@@ -905,13 +905,97 @@ public class CompactorTests
         var end = convo.BackgroundRecord(1, "background task 1 ended · exit 2 · 3s\nthe output", "exit 2", isError: true);
         convo.Append(end);
 
-        var (result, _) = Compactor.RebuildMidTurn("summary", convo, AgentLoop.PromptOf(end), new NullObserver(),
+        var (result, _) = Compactor.RebuildMidTurn("summary", convo, new TurnSoFar(AgentLoop.PromptOf(end), [], end.Images), new NullObserver(),
             null, () => new ComposedSystem("sys", null), "·");
 
         var prompt = Assert.Single(result.Messages);
         Assert.Contains("background task 1 ended · exit 2 · 3s", prompt.Content, StringComparison.Ordinal);
         Assert.DoesNotContain("the output", prompt.Content, StringComparison.Ordinal);
         Assert.Null(prompt.Images);
+    }
+
+    private sealed class WarningObserver : ITurnObserver
+    {
+        public List<string> Warnings = new();
+        public void OnTextDelta(string text) { }
+        public void OnReasoningDelta(string text) { }
+        public void OnToolCallStart(ToolCall call) { }
+        public void OnToolResult(ToolCall call, ToolResult result) { }
+        public void OnWarning(string message) => Warnings.Add(message);
+        public void OnUsage(Usage usage) { }
+    }
+
+    [Fact]
+    public void AFTER_A_DELIVERY_THE_TURN_CARRIES_ITS_OWN_IMAGE_AND_THE_DELIVERED_TEXT_VERBATIM()
+    {
+        var shot = new ImageRef(@"C:\shot.png", 10, "abc", "image/png");
+        var convo = new Conversation("sys");
+        convo.AddUser("what is wrong in this screenshot", [shot]);
+        convo.AddAssistant("", [new ToolCall("c1", "read_file", "{}")]);
+        convo.AddToolResult("c1", new ToolResult("file text"));
+        convo.AddUser("and say \"why\" in one line");
+        var obs = new WarningObserver();
+
+        var (result, _) = Compactor.RebuildMidTurn("summary", convo,
+            new TurnSoFar("what is wrong in this screenshot", ["and say \"why\" in one line"], [shot]), obs,
+            null, () => new ComposedSystem("sys", null), "·");
+
+        var prompt = Assert.Single(result.Messages);
+        Assert.Equal([shot], prompt.Images);
+        Assert.Equal(["1 carried forward"], obs.Warnings);
+        Assert.Contains("\"\"\"\nand say \"why\" in one line\n\"\"\"", prompt.Content, StringComparison.Ordinal);
+        Assert.True(prompt.Content!.IndexOf("what is wrong", StringComparison.Ordinal) < prompt.Content.IndexOf("and say", StringComparison.Ordinal));
+        Assert.EndsWith(Compactor.ContinuationDirective, prompt.Content, StringComparison.Ordinal);
+    }
+
+    //rebuilds through the real rebuild and keeps what each compaction was told
+    private sealed class RebuildingHandler(Conversation convo) : ICompactionHandler
+    {
+        public List<TurnSoFar> Told = new();
+        public Task<CompactionResult?> CompactAsync(CompactionReason reason, string currentUserPrompt, ITurnObserver observer, CancellationToken ct) =>
+            throw new InvalidOperationException("the loop asked with the prompt alone");
+        public Task<CompactionResult?> CompactAsync(CompactionReason reason, TurnSoFar turn, ITurnObserver observer, long traceParent, CancellationToken ct)
+        {
+            Told.Add(turn);
+            var (result, _) = Compactor.RebuildMidTurn("summary", convo, turn, observer, null, () => new ComposedSystem("sys", null), "·");
+            return Task.FromResult<CompactionResult?>(result);
+        }
+    }
+
+    [Fact]
+    public async Task TWO_COMPACTIONS_IN_ONE_TURN_WITH_A_DELIVERY_BEFORE_EACH_HOLD_BOTH_TEXTS()
+    {
+        var shot = new ImageRef(@"C:\shot.png", 10, "abc", "image/png");
+        var convo = new Conversation("sys");
+        var handler = new RebuildingHandler(convo);
+        var client = new FakeChatClient();
+        var reg = new ToolRegistry();
+        reg.Register(new EchoTool());
+        var loop = new AgentLoop(client, reg, new HookBus(), new TestToolContext(Path.GetTempPath()), "m", compaction: handler);
+        static StreamEvent[] Call(string id) => [new StreamEvent.ToolCallReady(new ToolCall(id, "echo", "{\"msg\":\"yo\"}")), new StreamEvent.Finished("tool_calls", null)];
+        client.EnqueueTurn(Call("c1"));
+        client.EnqueueThrow(new GattoContextOverflowException("over", null, null));
+        client.EnqueueTurn(Call("c2"));
+        client.EnqueueThrow(new GattoContextOverflowException("over again", null, null));
+        client.EnqueueTurn(new StreamEvent.TextDelta("done"), new StreamEvent.Finished("stop", null));
+        var queued = new Queue<string[]>([["first"], ["second"]]);
+
+        await loop.RunTurnAsync(convo, "look at it", new NullObserver(), default, images: [shot],
+            takeQueued: () => queued.Count > 0 ? queued.Dequeue() : []);
+
+        Assert.Equal([["first"], ["first", "second"]], handler.Told.Select(t => t.Delivered.ToArray()));
+        Assert.All(handler.Told, t => Assert.Equal("look at it", t.Prompt));
+        Assert.All(handler.Told, t => Assert.Equal([shot], t.Images!));
+        var continuation = convo.Messages[1].Content!;
+        Assert.Equal(1, CountOf(continuation, "\nfirst\n"));
+        Assert.Equal(1, CountOf(continuation, "\nsecond\n"));
+    }
+
+    private static int CountOf(string text, string part)
+    {
+        var n = 0;
+        for (var i = text.IndexOf(part, StringComparison.Ordinal); i >= 0; i = text.IndexOf(part, i + 1, StringComparison.Ordinal)) n++;
+        return n;
     }
 
     [Fact]

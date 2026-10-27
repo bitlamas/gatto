@@ -63,15 +63,19 @@ file sealed class OneShotCompaction(
         CompactionReason reason, string currentUserPrompt, ITurnObserver observer, CancellationToken ct) =>
         CompactAsync(reason, currentUserPrompt, observer, 0, ct);
 
+    public Task<CompactionResult?> CompactAsync(
+        CompactionReason reason, string currentUserPrompt, ITurnObserver observer, long traceParent, CancellationToken ct) =>
+        CompactAsync(reason, Compactor.PromptOnly(currentUserPrompt, convo), observer, traceParent, ct);
+
     public async Task<CompactionResult?> CompactAsync(
-        CompactionReason reason, string currentUserPrompt, ITurnObserver observer, long traceParent, CancellationToken ct)
+        CompactionReason reason, TurnSoFar turn, ITurnObserver observer, long traceParent, CancellationToken ct)
     {
         var compactor = new Compactor(client, model, loop.RequestShape, loop.Trace);
         var summary = await compactor.SummarizeAsync(convo, observer, ct, windowTokens: window, ratio: usage.Ratio, midTurn: true,
             reason: reason.ToString(), traceParent: traceParent);
         LastFailure = compactor.LastFailure;
         if (summary is null) return null;
-        var (rebuilt, _) = Compactor.RebuildMidTurn(summary, convo, currentUserPrompt, observer, sessions, recompose, dot);
+        var (rebuilt, _) = Compactor.RebuildMidTurn(summary, convo, turn, observer, sessions, recompose, dot);
         return rebuilt;
     }
 }

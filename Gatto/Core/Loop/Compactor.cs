@@ -235,11 +235,16 @@ public sealed class Compactor(IChatClient client, string model, RequestShape? sh
         "file contents, and findings recorded there are already established — do not re-read files or " +
         "re-explore to reconfirm them. Continue directly with the summary's \"" + NextStepHeading + "\".]";
 
-    //keep the prompt verbatim (the summary can be wrong) and put the label before it and the directive after
-    public static string BuildContinuationPrompt(string originalPrompt) =>
+    //keep the prompt and each message delivered inside the turn verbatim (the summary can be wrong), each under its label, and the directive after
+    public static string BuildContinuationPrompt(string originalPrompt, IReadOnlyList<string>? delivered = null) =>
         "Original request (context — already in progress; do NOT start it over):\n"
         + "\"\"\"\n" + originalPrompt + "\n\"\"\"\n\n"
+        + string.Concat((delivered ?? []).Select(d => "Sent while it ran (context — already delivered):\n\"\"\"\n" + d + "\n\"\"\"\n\n"))
         + ContinuationDirective;
+
+    //a turn told by its prompt alone, its images those of the newest user record, which is the turn's own when nothing was delivered inside it
+    public static TurnSoFar PromptOnly(string prompt, Conversation convo) =>
+        new(prompt, [], convo.Messages.LastOrDefault(m => m.Role == "user")?.Images);
 
     //the labeled block a fresh session leads with, composed into the system text rather than added as messages
     public static string BuildContext(string summary, string oldSessionFile, (string User, string Assistant)? lastExchange)
@@ -258,7 +263,7 @@ public sealed class Compactor(IChatClient client, string model, RequestShape? sh
 
     //one rebuild for a session and -p, since --continue slices from its ContextMarker. the summary has succeeded
     public static (CompactionResult Result, string Summary) RebuildMidTurn(
-        string summary, Conversation convo, string currentUserPrompt, ITurnObserver observer,
+        string summary, Conversation convo, TurnSoFar turn, ITurnObserver observer,
         SessionStore? sessions, Func<ComposedSystem> recompose, string dot)
     {
         //strip the memory section here, a mid-turn compaction never banks and its scaffolding must stay out of the rebuilt prefix
@@ -269,7 +274,7 @@ public sealed class Compactor(IChatClient client, string model, RequestShape? sh
         var composed = recompose();                          //a fresh read of the context files on disk, so the prompt matches what is there now
         var systemText = composed.Text + "\n\n" + BuildContext(summary, oldPath ?? "(unsaved session)", lastExchange: null);
         //the continuation keeps this turn's images, they are the material of the task being continued rather than history that becomes text
-        var carried = convo.Messages.LastOrDefault(m => m.Role == "user")?.Images;
+        var carried = turn.Images;
         //the dropped count is the total minus what the continuation kept, so the line reports what actually happened
         var totalImages = convo.Messages.Sum(m => m.Images?.Count ?? 0);
         var carriedCount = carried?.Count ?? 0;
@@ -280,7 +285,7 @@ public sealed class Compactor(IChatClient client, string model, RequestShape? sh
                 droppedImages > 0 ? $"{droppedImages} image{(droppedImages == 1 ? "" : "s")} dropped" : null,
                 carriedCount > 0 ? $"{carriedCount} carried forward" : null,
             }.Where(x => x is not null)));
-        var messages = new[] { new ChatMessage("user", BuildContinuationPrompt(currentUserPrompt), Images: carried) };
+        var messages = new[] { new ChatMessage("user", BuildContinuationPrompt(turn.Prompt, turn.Delivered), Images: carried) };
         //no session_summary hook fires for a mid-turn compaction, the user did not choose this boundary
         return (new CompactionResult(systemText, messages, composed.Baseline), summary);
     }
