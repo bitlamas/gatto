@@ -209,6 +209,13 @@ public sealed partial class Repl(
     //the loop's take at a round boundary, armed by the rich loop alone, so every other face and every child turn delivers nothing mid-turn
     private Func<IReadOnlyList<string>>? _takeQueued;
 
+    //the armed watch, read and set under s.Gate, null when nothing is watched
+    private Watch? _watch;
+    internal Watch? WatchForTest => Volatile.Read(ref _watch);
+
+    //hands a letter to the queue under the gate, and drops it once its watch is no longer the armed one or the session has stopped
+    private Func<Watch, string, bool>? _watchSink;
+
     //asks whether a large batch of images should go, and how durably the answer holds. null outside the rich loop, which has no way to ask
     private Func<int, int, ConfirmAttachAnswer>? _confirmAttach;
 

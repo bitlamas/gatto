@@ -81,9 +81,70 @@ public sealed partial class Repl
         if (words.Length == 0 || words[0] != "kill") return false;
         var which = words.Length > 1 ? words[1] : "";
         if (!(int.TryParse(which, out var number) && _tasks?.Kill(number, Gatto.Core.Tools.BackgroundTasks.ByTasks) == true))
-            s.Renderer.CommitSystem($"no background task {which}", transient: true);
+            s.Renderer.CommitSystemBetweenBlocks($"no background task {which}", transient: true);
         return true;
     }
+
+    //the watch acts at once on the composer thread, at rest and during a turn, reaches no model and never enters the queue. its line waits for a streaming block to close
+    private bool WatchNow(string text, RichState s, DispatchQueue queue)
+    {
+        if (!SlashGate.TryMatchCommand(text.Trim(), "/watch", out var arg)) return false;
+        arg = arg.Trim();
+        string line;
+        if (arg == "off")
+        {
+            line = _watch is null ? "not watching" : "watch off";
+            Disarm(s, queue);
+        }
+        else if (arg.Length == 0 && _watch is { } armed)
+        {
+            if (armed.Paused) armed.Lift();
+            line = $"watching {Shown(armed.Folder)}";
+        }
+        else
+        {
+            var folder = arg.Length == 0
+                ? Path.Combine(cwd, ".gatto", "mailbox", MailboxName(Gatto.Core.Models.ServedModelName.Display(modelName)))
+                : Path.Combine(cwd, arg);
+            try
+            {
+                //a failed arm leaves the watch that was armed as it was
+                var w = Watch.Arm(folder, _watchSink!, row => s.Renderer.CommitSystemBeforeNextReply(row));
+                Disarm(s, queue);
+                lock (s.Gate) _watch = w;
+                w.Start();
+                line = $"watching {Shown(w.Folder)}";
+            }
+            catch (Exception ex) { line = $"watch failed: {ex.Message}"; }
+        }
+        s.Renderer.CommitSystemBetweenBlocks(line);
+        return true;
+    }
+
+    //the folder as the screen shows it, the profile read as ~, while the watch and every letter keep the absolute path
+    private static string Shown(string folder)
+    {
+        string profile;
+        try { profile = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile); }
+        catch (Exception) { return folder; }
+        return HomePath.AbbreviateProfile(folder, profile);
+    }
+
+    //the watch goes, and the letters it queued with it, which stay in the folder for the next arm
+    private void Disarm(RichState s, DispatchQueue queue)
+    {
+        lock (s.Gate)
+        {
+            _watch?.Dispose();
+            _watch = null;
+            queue.DropWatch();
+            s.Painter.State.QueueTexts = queue.Texts();
+        }
+    }
+
+    //a model id as a folder name, each character a path cannot hold, a cloud id's slash or colon, turned into a hyphen
+    internal static string MailboxName(string modelId) =>
+        string.Concat(modelId.Select(c => Path.GetInvalidFileNameChars().Contains(c) ? '-' : c));
 
     //the answers that are text already, /help, /tools, /tasks and the list view of /permissions
     private Func<int, IReadOnlyList<string>> ReadOnlyAnswer(string trimmed, RichState s)

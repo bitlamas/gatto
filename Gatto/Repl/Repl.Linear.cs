@@ -125,10 +125,27 @@ public sealed partial class Repl
         //what the loop delivers at a round boundary, the row redrawn without it before the renderer commits its block. runs on the loop's thread, so the paint takes the gate
         _takeQueued = () =>
         {
-            var taken = queue.TakeQueuedForTurn(int.MaxValue);
+            Watch? watch;
+            lock (s.Gate) watch = _watch;
+            //the letters the watch's budget allows, and what was taken told back to it in queue order, so a typed message between two letters resets the count where it stood
+            var taken = queue.TakeQueuedForTurn(watch?.Budget() ?? int.MaxValue);
             if (taken.Count == 0) return [];
+            watch?.Taken(taken.Select(e => e.Kind));
             lock (s.Gate) { if (!stopped) { PublishQueueLocked(); RedrawLocked(lastView); } }
             return [.. taken.Select(e => e.Text)];
+        };
+
+        //the letter lands in the row the moment it is read, mid-turn included, and a letter of a watch that was moved, turned off or ended by /new is dropped
+        _watchSink = (watch, text) =>
+        {
+            lock (s.Gate)
+            {
+                if (stopped || !ReferenceEquals(_watch, watch)) return false;
+                queue.EnqueueWatch(text);
+                PublishQueueLocked();
+                RedrawLocked(lastView);
+                return true;
+            }
         };
 
         //the one arming site of the background tasks, so -p, the plain face and a run_agent child run the flag in the foreground
@@ -224,6 +241,13 @@ public sealed partial class Repl
                         rejected = carry;
                         continue;
                     }
+                    //the watch is armed, moved or turned off at once, at rest and during a turn alike, and never waits in the queue
+                    if (WatchNow(text, s, queue))
+                    {
+                        lock (s.Gate) { if (!stopped) RedrawLocked(idleView); }
+                        rejected = carry;
+                        continue;
+                    }
                     //a command that only reads answers at once while a turn runs, drawn where the composer was, and never waits in the queue
                     if (BypassNow(text, s) is { } answer)
                     {
@@ -296,6 +320,8 @@ public sealed partial class Repl
                 armTasks?.Invoke(null);
                 _tasks = null;
                 _takeQueued = null;
+                _watchSink = null;
+                lock (s.Gate) { _watch?.Dispose(); _watch = null; }
                 tasks.Dispose();
             }
             s.RestoreMouseMode?.Invoke();   //restore the shell's mouse and QuickEdit mode (idempotent, the degrade path and the exit hooks call it too)
@@ -449,6 +475,8 @@ public sealed partial class Repl
     {
         //a background task's end takes its own arm before the gate, since the user did not type it
         if (entry.End is { } end) return await DispatchBackgroundAsync(entry, end, s, queue, appCt);
+        //a letter takes its own arm too, the user did not type it either
+        if (entry.Kind == EntryKind.Watch) return await DispatchWatchAsync(entry, s, queue, appCt);
         var input = entry.Text;
         //refuses an unknown command above the bracket, and clears the composer instead of handing the text back since a restore races the composer's own paint
         var submitted = input;   //what was typed, the bracket classifies this rather than the stripped text
@@ -494,7 +522,7 @@ public sealed partial class Repl
     //how many tasks the coming /new ended, said in the new transcript after its rotation
     private int _endedAtNew;
 
-    //under the gate the generation advances first, so no end composed from here on is enqueued, then the queued and parked ends go with the conversation
+    //under the gate the generation advances first, so no end composed from here on is enqueued, then the queued and parked ends go with the conversation. the watch goes too, a new conversation is a new seat
     private void EndTasksForNew(RichState s, DispatchQueue queue)
     {
         lock (s.Gate)
@@ -503,6 +531,30 @@ public sealed partial class Repl
             queue.DropTasks();
             s.Painter.State.QueueTexts = queue.Texts();
         }
+        Disarm(s, queue);
+    }
+
+    //a letter at rest, on its own arm like an end: no gate, no attachments, the pending paste left pending, counted once however often a rollback parks it
+    private async Task<bool> DispatchWatchAsync(QueueEntry entry, RichState s, DispatchQueue queue, CancellationToken appCt)
+    {
+        var head = entry.Text.Split('\n')[0].TrimEnd('\r');
+        return await DispatchBracketAsync(s.Gate, s.Painter, s.Ticker, () => s.Renderer,
+            queue.Texts(), [], Cats.Face(_glyphs), KnownCommands(),
+            async () =>
+            {
+                if (!entry.Drawn) s.Renderer.CommitUser(entry.Text.Split('\n'));   //a parked letter's block stayed on screen from its first take
+                Watch? watch;
+                lock (s.Gate) watch = _watch;
+                if (!entry.Counted) watch?.Taken([EntryKind.Watch]);   //after its block, so a pause row follows the letter that reached K
+                var record = convo.UserRecord(entry.Text);
+                var kept = await RunModelTurnAsync(s, [],
+                    ct => RunTurnGuardedAsync(loop, convo, record, s.Renderer, sessions, ct, s.Painter.Model, serverGone, _takeQueued), appCt);
+                //a turn that rolled back before its first reply leaves the letter owed, so it waits at the head of the queue for the next entry
+                if (!kept) lock (s.Gate) { queue.Park(entry with { Drawn = true, Counted = true }); s.Painter.State.QueueTexts = queue.Texts(); }
+                return false;
+            },
+            promptEstimate: ScaledPromptEstimate(ContextBudget.Estimate(convo.Messages), _usageState.Ratio),
+            purrSet: purrSet, classifyAs: head);
     }
 
     //a background task's end, on its own arm: no gate, no attachments and no typed echo, so a pending paste stays pending
@@ -839,6 +891,10 @@ public sealed partial class Repl
         }
         if (trimmed == "/init") input = InitPrompt.Text;   //sent through the normal turn below, as if the user had typed it
 
+        //a typed message reaching the model resets the watch's count, and a pause stays until /watch lifts it
+        Watch? watch;
+        lock (s.Gate) watch = _watch;
+        watch?.Typed();
         await RunModelTurnAsync(s, attach.Notices,
             ct => RunTurnGuardedAsync(loop, convo, input, s.Renderer, sessions, ct, s.Painter.Model, attach.Images, serverGone, _takeQueued), appCt);
         return false;

@@ -61,7 +61,9 @@ public sealed class StreamRenderer : ITurnObserver
     //an answered prompt held while the tool bullet is still chrome, so the answer can't commit above the line that announces the tool. freed by OnToolResult
     private List<string>? _pendingPrompt;
     //system lines held while a saved call is unanswered, so a line cannot commit above the block it is about
-    private List<string>? _pendingSystem;
+    private List<(string Text, bool Transient)>? _pendingSystem;
+    //between BeginTurn and EndTurn, so a line typed at rest never waits for a turn
+    private bool _inTurn;
 
     //the calls of the message being streamed, by index, each holding its own fragments
     private readonly SortedDictionary<int, (string Name, string? Partial)> _written = new();
@@ -144,6 +146,7 @@ public sealed class StreamRenderer : ITurnObserver
         {
             _tail.Clear();
             _block = BlockState.Normal;
+            _inTurn = true;
             _inReasoning = false;
             _blockOpen = false;   //the blank flag and the last kind are transcript state and survive the turn boundary, or the blank row after the user echo is lost
             //an aborted turn leaves the prompt buffer filled, so it is cleared here or the block surfaces under the next turn's first tool bullet
@@ -178,6 +181,7 @@ public sealed class StreamRenderer : ITurnObserver
     {
         lock (_gate)
         {
+            _inTurn = false;
             if (_degraded) return;
             try
             {
@@ -243,6 +247,7 @@ public sealed class StreamRenderer : ITurnObserver
         Guarded(
             () =>
             {
+                FlushHeldAtReplyStart();
                 if (_inReasoning) CloseReasoningBlock();
                 _painter.State.Thinking = false;
                 _last = LastWrite.Text;
@@ -264,6 +269,7 @@ public sealed class StreamRenderer : ITurnObserver
         Guarded(
             () =>
             {
+                FlushHeldAtReplyStart();
                 if (!_inReasoning) OpenReasoningBlock();
                 _painter.State.Thinking = false;
                 _last = LastWrite.Text;
@@ -288,6 +294,7 @@ public sealed class StreamRenderer : ITurnObserver
         {
             //the model is emitting, so the purr must not say it is reading context while tool arguments stream
             _ticker.MarkStreaming();
+            FlushHeldAtReplyStart();
             if (_inReasoning) CloseReasoningBlock();
             else FlushOpenLine();
             _painter.State.Thinking = false;
@@ -498,12 +505,48 @@ public sealed class StreamRenderer : ITurnObserver
             {
                 if (_recorded is { Count: > 0 })   //a running call is a saved one, and a row the deltas set may never be saved, so it holds no line
                 {
-                    (_pendingSystem ??= new List<string>()).Add(message);
+                    (_pendingSystem ??= []).Add((message, false));
                     return;
                 }
                 CommitSystemNow(message, transient);
             },
             () => _surface.Write("\n! " + message + "\n"));
+    }
+
+    //a line a command answers from the composer while a turn may stream. it waits while a prose or reasoning block is open, so it never cuts the reply in two
+    public void CommitSystemBetweenBlocks(string message, bool transient = false)
+    {
+        message = TermText.Sanitize(message);
+        Guarded(
+            () =>
+            {
+                if (_inTurn && (_inReasoning || _blockOpen || _tail.Length > 0 || _recorded is { Count: > 0 }))
+                {
+                    (_pendingSystem ??= []).Add((message, transient));
+                    return;
+                }
+                CommitSystemNow(message, transient);
+            },
+            () => _surface.Write("\n! " + message + "\n"));
+    }
+
+    //a line raised at a round boundary, before the loop draws what it delivers there. it follows those blocks: it waits for the next reply to begin or the turn to end
+    public void CommitSystemBeforeNextReply(string message)
+    {
+        message = TermText.Sanitize(message);
+        Guarded(
+            () =>
+            {
+                if (_inTurn) (_pendingSystem ??= []).Add((message, false));
+                else CommitSystemNow(message, transient: false);
+            },
+            () => _surface.Write("\n! " + message + "\n"));
+    }
+
+    //a reply begins: the lines held for it commit first, unless a block is still open, which keeps them for its own close
+    private void FlushHeldAtReplyStart()
+    {
+        if (!_inReasoning && !_blockOpen && _tail.Length == 0 && _recorded is not { Count: > 0 }) FlushPendingSystem();
     }
 
     //the caller holds the gate and has decided the line commits here, so it is never held again
@@ -832,7 +875,7 @@ public sealed class StreamRenderer : ITurnObserver
     {
         if (_pendingSystem is not { } pending) return;
         _pendingSystem = null;
-        foreach (var m in pending) CommitSystemNow(m, transient: false);
+        foreach (var (text, transient) in pending) CommitSystemNow(text, transient);
     }
 
     private void OpenReasoningBlock()

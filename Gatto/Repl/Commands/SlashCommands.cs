@@ -61,6 +61,8 @@ public static class SlashCommands
         new("/context", "", "show what fills the context window", BypassesQueue: true),
         //the kill acts at once on its own arm, during a turn too, and the list answers in the panel then
         new("/tasks", "[kill <n>]", "list the background tasks, or end one", BypassesQueue: true),
+        //acts at once on the composer like a kill, at rest and during a turn, so no bypass flag: that path answers in a panel, this one in a line
+        new("/watch", "[folder|off]", "send each new letter in a folder to the model"),
         //like /remember, the input becomes InitPrompt and is dispatched as if typed
         new("/init", "", "survey the project, write GATTO.md", ReachesModel: true),
         new("/quit", "", "exit"),

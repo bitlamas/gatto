@@ -300,6 +300,9 @@ public sealed class RichReplHarness
     //the model the session believes it runs, which the banner row would hide since it keeps the launch name
     public string ModelName => _repl.ModelNameForTest;
 
+    //the armed watch, null when nothing is watched, for a test of what a letter's count did
+    internal Gatto.Repl.Watch? Watch => _repl.WatchForTest;
+
     //everything the session wrote with its escapes, for a test of the terminal modes it set
     public string RawWritten() => _tap.Raw();
 
