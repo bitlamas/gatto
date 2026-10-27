@@ -133,4 +133,19 @@ public static class ToolBody
         foreach (var note in parse.Notes) rows.Add(new ToolBodyRow(note, BodyKind.Note, BodyInk.Note));
         return rows;
     }
+
+    //a heading per question, then a row per choice, or skipped in the note ink. a typed answer of several lines takes a row per line
+    public static IReadOnlyList<ToolBodyRow> Ask(IReadOnlyList<AskPair> pairs)
+    {
+        var rows = new List<ToolBodyRow>();
+        foreach (var pair in pairs)
+        {
+            rows.Add(new ToolBodyRow(pair.Question, BodyKind.Heading, BodyInk.Heading));
+            if (pair.Chosen.Count == 0) rows.Add(new ToolBodyRow("skipped", BodyKind.Plain, BodyInk.Note));
+            foreach (var choice in pair.Chosen)
+                foreach (var line in choice.Replace("\r\n", "\n").Split('\n'))
+                    rows.Add(new ToolBodyRow(line, BodyKind.Plain, BodyInk.Text));
+        }
+        return rows;
+    }
 }

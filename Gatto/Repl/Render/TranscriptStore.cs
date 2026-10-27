@@ -83,7 +83,7 @@ public static class TranscriptStore
                     if (m.ToolCalls is { } calls)
                         //the raw arguments are kept so the tool block can derive its write preview, the record holds them already
                         foreach (var c in calls)
-                            pendingTool[c.Id] = (c.Name, ItemRender.CompactArgs(c.ArgumentsJson), c.ArgumentsJson);
+                            pendingTool[c.Id] = (c.Name, ItemRender.HeaderArgs(c.Name, c.ArgumentsJson, glyphs), c.ArgumentsJson);
                     break;
                 case "tool":
                     //the gatto role, the error flag and the gloss are the stamped fields. role is the fallback for a record written before those fields existed
@@ -104,6 +104,7 @@ public static class TranscriptStore
                               BulletTint = refusal is null ? null : Theme.Err,
                               FullArgs = ItemRender.FullArgsOf(pt.Name, pt.RawArgs),
                               GrepPattern = GrepRows.PatternOf(pt.Name, pt.RawArgs), BodyStart = ToolBody.StartOf(pt.Name, pt.RawArgs),
+                              AskArgs = pt.Name == "ask_user" ? pt.RawArgs : null,
                               EditOld = editOld, EditNew = editNew, WriteContent = writeContent,
                               FileLanguage = SyntaxHighlight.LanguageOfToolCall(pt.Name, pt.RawArgs), EditAt = m.View, IsError = m.IsError });
                     }

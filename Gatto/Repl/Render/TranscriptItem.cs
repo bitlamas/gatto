@@ -176,6 +176,9 @@ public record ToolBlockItem(string Name, string Args, string Gloss, bool HasResu
     //the file line the first row of a read shows. the call supplies it, nothing is saved
     public int BodyStart { get; init; } = 1;
 
+    //an ask_user call's arguments, kept so the block can show the questions, read from the call on both paths and never saved
+    public string? AskArgs { get; init; }
+
     //an edit's two strings, a write's content and the file's language, read from the call's arguments on both paths and never saved
     public string? EditOld { get; init; }
     public string? EditNew { get; init; }
@@ -192,10 +195,11 @@ public record ToolBlockItem(string Name, string Args, string Gloss, bool HasResu
     private bool Failed => IsError || Parts?.Error is not null;
 
     private sealed record BodyKey(string Name, string FullResult, string? RawGloss, int BodyStart, string? GrepPattern, bool HasResult, bool Error,
-        bool Failed, string? EditOld, string? EditNew, string? WriteContent, CodeLanguage Language, EditView? EditAt);
+        bool Failed, string? EditOld, string? EditNew, string? WriteContent, CodeLanguage Language, EditView? EditAt, string? AskArgs);
 
     //the grep parse, the body rows, the marks and a write's roles, built together from the inputs they are keyed on
-    private sealed record BodyCache(BodyKey Key, GrepParse? Grep, IReadOnlyList<ToolBodyRow> Rows, Regex? Marks, SpanRole[]? Roles, int[]? Offsets, EditDiff? Diff);
+    private sealed record BodyCache(BodyKey Key, GrepParse? Grep, IReadOnlyList<ToolBodyRow> Rows, Regex? Marks, SpanRole[]? Roles, int[]? Offsets, EditDiff? Diff,
+        bool Wrap = false);   //an ask's rows wrap in the window
 
     private BodyCache? _body;
 
@@ -205,13 +209,15 @@ public record ToolBlockItem(string Name, string Args, string Gloss, bool HasResu
         get
         {
             var key = new BodyKey(Name, FullResult, RawGloss, BodyStart, GrepPattern, HasResult, Parts?.Error is not null,
-                Failed, EditOld, EditNew, WriteContent, FileLanguage, EditAt);
+                Failed, EditOld, EditNew, WriteContent, FileLanguage, EditAt, AskArgs);
             if (_body is { } b && b.Key == key) return b;
             var grep = Name == "grep" && HasResult && Parts is { Error: null } ? GrepRows.Parse(FullResult) : null;
             var diff = Name == "edit_file" && !Failed && EditOld is { } o && EditNew is { } n ? Diff(o, n, EditAt) : null;
+            var ask = Name == "ask_user" && HasResult && !Failed ? AskRows.Parse(AskArgs, FullResult) : null;
             IReadOnlyList<ToolBodyRow> rows = diff is not null ? ToolBody.Edit(diff, EditAt)
                 : Name is "write_file" or "edit_file" ? ChangeBody()
                 : Parts?.Error is not null ? ToolBody.Plain(FullResult, error: true)
+                : ask is not null ? ToolBody.Ask(ask)
                 : grep is not null ? ToolBody.Grep(grep)
                 : Name is "grep" or "glob" && FullResult == Globbing.NoMatches ? Array.Empty<ToolBodyRow>()
                 : Name == "read_file" ? ToolBody.ReadFile(FullResult, RawGloss, BodyStart) ?? ToolBody.Plain(FullResult)
@@ -226,7 +232,7 @@ public record ToolBlockItem(string Name, string Args, string Gloss, bool HasResu
                 offsets = new int[clean.Count];
                 for (var i = 1; i < clean.Count; i++) offsets[i] = offsets[i - 1] + clean[i - 1].Length + 1;
             }
-            var built = new BodyCache(key, grep, rows, grep is null ? null : GrepRowsRender.Marks(GrepPattern), roles, offsets, diff);
+            var built = new BodyCache(key, grep, rows, grep is null ? null : GrepRowsRender.Marks(GrepPattern), roles, offsets, diff, Wrap: ask is not null);
             _body = built;
             return built;
         }
@@ -327,7 +333,7 @@ public record ToolBlockItem(string Name, string Args, string Gloss, bool HasResu
             var unit = body.Rows.Any(r => r.Kind is BodyKind.Heading or BodyKind.Note) ? "row" : "line";
             var marks = body.Grep is not null ? GrepRowsRender.Painter(body.Marks, theme) : WritePainter(body, theme);
             var part = body.Diff is not null ? OtherChanges(body.Rows) : null;
-            var window = ToolWindow.Layout(new WindowInput(body.Rows, NumbersAlways: true, unit, Marks: marks, FooterPart: part), new WindowState(View, OutputTop), width, theme, g);
+            var window = ToolWindow.Layout(new WindowInput(body.Rows, NumbersAlways: true, unit, Marks: marks, FooterPart: part, Wrap: body.Wrap), new WindowState(View, OutputTop), width, theme, g);
             outputFirst = rows.Count;
             shown = window.Shown;
             if (window.FooterRow >= 0) footerRow = outputFirst + window.FooterRow;

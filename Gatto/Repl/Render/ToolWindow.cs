@@ -8,7 +8,7 @@ namespace Gatto.Repl.Render;
 //the marks painter takes a body row's index, its sanitized text, a start and a length, and paints that piece. the footer part takes the top and the rows shown
 public sealed record WindowInput(IReadOnlyList<ToolBodyRow> Body, bool NumbersAlways, string Unit,
     bool HidesOutside = false, string? OutsideAction = null, Func<int, string, int, int, string>? Marks = null,
-    Func<int, int, string?>? FooterPart = null);
+    Func<int, int, string?>? FooterPart = null, bool Wrap = false);
 
 public readonly record struct WindowState(ShellView View, int Top);
 
@@ -46,7 +46,7 @@ public static class ToolWindow
         //a match at the top keeps its path above it, added so no row of the body is hidden
         if (!showAll && Sticky(body, top)) cut |= AddRow(rows, body[top].Heading, body[body[top].Heading], false, f);
         for (var i = showAll ? 0 : top; i < (showAll ? body.Count : top + bodyShown); i++)
-            cut |= AddRow(rows, i, body[i], showAll, f);
+            cut |= AddRow(rows, i, body[i], showAll || input.Wrap, f) && !input.Wrap;   //a wrapping window never cuts, its rows wrap as show all's do
         //a row cut at the window's edge hides its rest as much as a row below the window does
         var hides = taller || input.HidesOutside || cut;
         //a last position with fewer rows keeps the window's height, so the transcript under it does not move

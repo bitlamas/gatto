@@ -289,7 +289,7 @@ public sealed class StreamRenderer : ITurnObserver
             CommitRows(new List<string>());   //commits nothing, which flushes a pending blank separator
             //the name and args are untrusted and sit right above the permission prompt, so strip control bytes that could forge an allow line
             _painter.State.Thinking = false;
-            _painter.State.Tool = (TermText.Sanitize(call.Name), TermText.Sanitize(CompactArgs(call.ArgumentsJson)));
+            _painter.State.Tool = (TermText.Sanitize(call.Name), TermText.Sanitize(HeaderArgs(call.Name, call.ArgumentsJson)));
             _painter.State.ToolInput = ItemRender.FullArgsOf(call.Name, call.ArgumentsJson);
             _painter.Repaint();          //repaint, the bullet is chrome with a blinking dot while the tool runs
             _last = LastWrite.Tool;
@@ -323,7 +323,7 @@ public sealed class StreamRenderer : ITurnObserver
             _ticker.AddToolResultChars(result.Text.Length);
             //sanitize the result text and gloss before truncation, and send a multi-line error through ErrorPreview so its newlines survive
             var name = TermText.Sanitize(call.Name);
-            var args = TermText.Sanitize(CompactArgs(call.ArgumentsJson));
+            var args = TermText.Sanitize(HeaderArgs(call.Name, call.ArgumentsJson));
 
             //a refusal's result text is the gate's nudge to the model, so the row shows the fact. the red ● keeps a refusal visible in a long turn
             var bulletTint = outcome is PermissionOutcomeKind.Denied or PermissionOutcomeKind.Cancelled
@@ -352,6 +352,7 @@ public sealed class StreamRenderer : ITurnObserver
                 FullArgs = ItemRender.FullArgsOf(call.Name, call.ArgumentsJson),
                 GrepPattern = GrepRows.PatternOf(call.Name, call.ArgumentsJson),
                 BodyStart = ToolBody.StartOf(call.Name, call.ArgumentsJson),
+                AskArgs = call.Name == "ask_user" ? call.ArgumentsJson : null,
                 EditOld = editOld, EditNew = editNew, WriteContent = writeContent,
                 FileLanguage = SyntaxHighlight.LanguageOfToolCall(call.Name, call.ArgumentsJson),
                 EditAt = result.View,
@@ -804,8 +805,8 @@ public sealed class StreamRenderer : ITurnObserver
         st.TailBlank = false;
     }
 
-    //the live argument preview comes from ItemRender.CompactArgs, keep it a one-line delegation so there is one formatter
-    private static string CompactArgs(string json) => ItemRender.CompactArgs(json);
+    //the live argument preview comes from ItemRender.HeaderArgs, keep it a one-line delegation so there is one formatter
+    private string HeaderArgs(string name, string json) => ItemRender.HeaderArgs(name, json, _glyphs);
 
     //the degraded [tool] line truncates by char count, the rich path measures cells
     private static string TruncateChars(string s, int max, GlyphSet g) =>

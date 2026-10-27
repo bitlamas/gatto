@@ -389,6 +389,10 @@ public static class ItemRender
         return new ToolGlossParts(words, tok, null, false);
     }
 
+    //the preview after a tool's name, an ask's count of questions or any other call's compact arguments, in the session's glyph set
+    public static string HeaderArgs(string name, string json, GlyphSet? glyphs) =>
+        name == "ask_user" ? (AskRows.QuestionsOf(json) is int n ? Plural.Of(n, "question") : "") : CompactArgs(json, glyphs: glyphs);
+
     //the one-line argument preview after a tool's name, driven by the keys: bodies are dropped, one identifier leads, and the rest is labelled
     public static string CompactArgs(string json, string? cwd = null, GlyphSet? glyphs = null, string? profile = null)
     {
