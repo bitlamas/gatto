@@ -4,6 +4,9 @@ using Gatto.Terminal;
 
 namespace Gatto.Repl.Render;
 
+//how the chrome meets a scroll: pinned whole, scrolled whole, or split with the composer's group held
+public enum ChromeMode { Pinned, Scrolls, Split }
+
 //the alt-screen frame is redrawn each paint with no scrollback touched, and Stop() must run before AltScreen.Restore so a late tick can't paint chrome
 public sealed class ViewportCompositor(ITermSurface surface, LineIndex index, object gate,
     GlyphSet? glyphs)
@@ -22,8 +25,16 @@ public sealed class ViewportCompositor(ITermSurface surface, LineIndex index, ob
     //the model-item index focused for expand and collapse, or null, and its rows get a reverse-video marker while it is in the window
     public int? FocusedItemIndex { get; set; }
 
-    //true makes the offset count the chrome as the document's last rows, so a scrolled view shows the chrome's top rows or none of it
-    public bool ChromeScrolls { get; set; }
+    //how much of the chrome the offset counts as the document's last rows, set by the painter before each paint
+    public ChromeMode Mode { get; set; }
+
+    //the frame of the composer's group, the trailing composer and rule rows, is what split holds at the bottom
+    public static int FrameStart(IReadOnlyList<ChromeRow> rows)
+    {
+        var i = rows.Count;
+        while (i > 0 && rows[i - 1].Region is ChromeRegion.Composer or ChromeRegion.Rule) i--;
+        return i;
+    }
 
     //the live selection, set by the mouse sink at wire time, self-clearing on reflow or mutation so a same-width repaint keeps it
     public SelectionController? Selection { get; set; }
@@ -121,23 +132,39 @@ public sealed class ViewportCompositor(ITermSurface surface, LineIndex index, ob
 
         //the whole block, which the selection and the copy read, while only its top rows may be on screen
         var wholeChrome = chromeRows;
-        if (ChromeScrolls && !following && bottomOffset > 0)
+        var scrolls = Mode == ChromeMode.Scrolls;
+        if (scrolls && !following && bottomOffset > 0)
         {
             //the chrome's bottom rows leave first, and the offset left over is the transcript's own
             var away = System.Math.Min(bottomOffset, chromeRows.Count);
             chromeRows = chromeRows.Take(chromeRows.Count - away).ToList();
             bottomOffset -= away;
         }
-        var chromeGone = ChromeScrolls && chromeRows.Count == 0 && wholeChrome.Count > 0;
+        //split scrolls the working rows, holds the composer's group, and puts the hint between them
+        IReadOnlyList<ChromeRow> held = System.Array.Empty<ChromeRow>();
+        var frameStart = 0;
+        var splitHint = false;
+        var workingAway = 0;
+        if (Mode == ChromeMode.Split)
+        {
+            frameStart = FrameStart(chromeRows);
+            held = chromeRows.Skip(frameStart).ToList();
+            splitHint = !following && height - held.Count > 2;
+            var below = bottomOffset + (splitHint ? 1 : 0);   //the hint takes the scrolled region's bottom row, so the window's top row stays
+            workingAway = System.Math.Min(below, frameStart);
+            chromeRows = chromeRows.Take(frameStart - workingAway).ToList();
+            bottomOffset = below - workingAway;
+        }
+        var chromeGone = scrolls && chromeRows.Count == 0 && wholeChrome.Count > 0;
 
-        var transcriptHeight = height - chromeRows.Count;
+        var transcriptHeight = height - chromeRows.Count - held.Count - (splitHint ? 1 : 0);
 
         //the scrolled-up hint floats above the chrome and says how much is below and how to reach it, on the bottom transcript row. a scrolling chrome shows it only once the chrome is gone
-        var showHint = !following && transcriptHeight > 1 && (ChromeScrolls ? chromeGone : bottomOffset > 0);
+        var showHint = Mode != ChromeMode.Split && !following && transcriptHeight > 1 && (scrolls ? chromeGone : bottomOffset > 0);
         //a waiting prompt with a row off the window pins one row at the window's bottom that says so, in the hint's place
         var lastPromptRow = -1;
         for (var i = 0; i < wholeChrome.Count; i++) if (wholeChrome[i].Region == ChromeRegion.Prompt) lastPromptRow = i;
-        var showPin = ChromeScrolls && chrome.PromptWaits && lastPromptRow >= chromeRows.Count && transcriptHeight > 1;
+        var showPin = scrolls && chrome.PromptWaits && lastPromptRow >= chromeRows.Count && transcriptHeight > 1;
         if (showPin) { showHint = false; transcriptHeight -= 1; }
         //moving the offset with the height keeps the window's top row fixed and displaces the bottom one, the row the hint takes
         var contentOffset = bottomOffset + (showPin ? 1 : 0);
@@ -159,7 +186,7 @@ public sealed class ViewportCompositor(ITermSurface surface, LineIndex index, ob
             }
 
         //keep one blank row above the hint. if the last row has text it goes away (the hint counts it)
-        var hintGap = showHint && content.Count > 1 && TermText.StripAnsiForWidth(content[^1]).Trim().Length > 0;
+        var hintGap = (showHint || splitHint && chromeRows.Count == 0) && content.Count > 1 && TermText.StripAnsiForWidth(content[^1]).Trim().Length > 0;
         if (hintGap) { content[^1] = ""; meta.RemoveAt(meta.Count - 1); }
 
         //item targets are built at paint time, where the item is in hand and the hit test has no model. a padding row left out of the map answers NoTarget
@@ -178,10 +205,15 @@ public sealed class ViewportCompositor(ITermSurface surface, LineIndex index, ob
 
         //the chrome rows sit after the transcript and the hint, computed here so the map and the paint can't disagree
         var chromeStart = transcriptHeight + (showHint ? 1 : 0);
-        var chromeRowMap = new Dictionary<int, int>(chromeRows.Count);
+        var chromeRowMap = new Dictionary<int, int>(chromeRows.Count + held.Count);
         for (var j = 0; j < chromeRows.Count; j++) chromeRowMap[chromeStart + j] = j;
+        //split's held rows sit after the working rows on screen and the hint, each mapped to its own index in the whole block
+        var splitHintRow = transcriptHeight + chromeRows.Count;
+        var heldStart = splitHintRow + (splitHint ? 1 : 0);
+        for (var k = 0; k < held.Count; k++) chromeRowMap[heldStart + k] = frameStart + k;
 
-        _layout = new FrameLayout(width, height, showHint ? transcriptHeight : showPin ? height - 1 : -1, hitRows, cellRows, chromeRowMap, wholeChrome);
+        var hintRow = showHint ? transcriptHeight : splitHint ? splitHintRow : showPin ? height - 1 : -1;
+        _layout = new FrameLayout(width, height, hintRow, hitRows, cellRows, chromeRowMap, wholeChrome);
 
         //the transcript is bottom-anchored against the chrome, so a short session pads blanks at the top. the frame ends holding exactly height rows, transcript plus hint plus chrome
         var frame = new List<string>(height);
@@ -189,13 +221,16 @@ public sealed class ViewportCompositor(ITermSurface surface, LineIndex index, ob
         frame.AddRange(content);
         if (showHint) frame.Add(JumpHint(contentOffset + (hintGap ? 1 : 0), width));   //the floating hint, just above the chrome, in the row the transcript gave up
         frame.AddRange(chromeRows.Select(r => r.Rendered));
+        if (splitHint) frame.Add(JumpHint(workingAway + contentOffset + (hintGap ? 1 : 0), width));   //above the composer's rule, counting the working rows below the window too
+        frame.AddRange(held.Select(r => r.Rendered));
         if (showPin) frame.Add(PromptPin(width));   //below the chrome rows still on screen, on the window's last row
 
         //a caret whose chrome row scrolled away is parked and hidden
-        var caretShown = chrome.CaretRow - dropped < chromeRows.Count;
+        var caretIndex = chrome.CaretRow - dropped;
+        var caretShown = held.Count > 0 ? caretIndex >= frameStart : caretIndex < chromeRows.Count;
         var caretRow = System.Math.Min(
-            transcriptHeight + (showHint ? 1 : 0)
-                + System.Math.Clamp(chrome.CaretRow - dropped, 0, System.Math.Max(0, chromeRows.Count - 1)),
+            held.Count > 0 ? heldStart + System.Math.Clamp(caretIndex - frameStart, 0, held.Count - 1)
+                : transcriptHeight + (showHint ? 1 : 0) + System.Math.Clamp(caretIndex, 0, System.Math.Max(0, chromeRows.Count - 1)),
             height - 1);   //never address a row past the last one, which an empty chrome would allow
         var caretCol = System.Math.Clamp(chrome.CaretCol, 0, System.Math.Max(0, width - 1));
 

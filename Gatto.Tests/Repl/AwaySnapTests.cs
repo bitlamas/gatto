@@ -157,51 +157,66 @@ public class AwaySnapTests : IDisposable
     //the scroll sink took PgUp and the editor never sampled after it, so the script's sample gate is released here, as the editor's next sample would
     private static void Release(RichReplHarness h) => _ = h.Keys.KeyAvailable;
 
+    //the view is off the bottom once the jump hint or the prompt's pin is on screen, both of which only a scrolled view draws
+    private static bool Scrolled(RichReplHarness h) => h.FinalFrame().Any(r => r.Contains("Ctrl+End or click", StringComparison.Ordinal));
+
     private static string Reply => string.Join("\n", Enumerable.Range(0, 100).Select(i => $"line {i}"));
 
+    //in prose the composer holds the bottom, so a letter typed while scrolled up lands in it and the view stays where the reader put it
     [Fact]
-    public async Task A_letter_typed_while_away_returns_the_view_and_lands_in_the_composer()
+    public async Task A_LETTER_TYPED_WHILE_SCROLLED_IN_PROSE_LANDS_IN_THE_COMPOSER_AND_THE_VIEW_STAYS()
     {
         var h = Rig();
         h.Client.EnqueueTurn(new StreamEvent.TextDelta(Reply), new StreamEvent.Finished("stop", null));
         var stage = 0;
+        var top = "";
 
         await h.RunUntilAsync(() =>
         {
             if (stage == 0 && h.Saw("line 99") && h.Keys.Pending == 0 && h.Surface.CursorVisible) { h.Keys.Key(PageUp); stage = 1; }
-            else if (stage == 1 && !h.Surface.CursorVisible) { Release(h); h.Keys.Key(Key('a', ConsoleKey.A)); stage = 2; }
-            return stage == 2 && h.Surface.CursorVisible && h.ScreenText().Contains("❯ a", StringComparison.Ordinal);
+            else if (stage == 1 && Scrolled(h)) { top = h.FinalFrame()[0]; Release(h); h.Keys.Key(Key('a', ConsoleKey.A)); stage = 2; }
+            return stage == 2 && h.Surface.CursorVisible && h.ScreenText().Contains("❯ a", StringComparison.Ordinal) && h.FinalFrame()[0] == top;
         });
     }
 
-    //holds the turn open until it is cancelled
+    //holds the turn open until it is cancelled, and says when it was
     private sealed class HoldTool : ITool
     {
+        public volatile bool Stopped;
         public string Name => "hold";
         public string Description => "holds the turn open";
         public JsonElement ParametersSchema => JsonDocument.Parse("""{"type":"object"}""").RootElement;
         public async Task<ToolResult> ExecuteAsync(JsonElement args, IToolContext ctx, CancellationToken ct)
         {
-            await Task.Delay(Timeout.Infinite, ct);
+            try { await Task.Delay(Timeout.Infinite, ct); }
+            catch (OperationCanceledException) { Stopped = true; throw; }
             return new ToolResult("held");
         }
     }
 
-    //no prompt waits, so Esc does what it does today and stops the turn, and the view returns as for any key
+    //no prompt waits, so Esc stops the turn as it does today, and in prose the view stays where it is
     [Fact]
-    public async Task Esc_while_away_with_no_prompt_stops_the_turn_and_returns_the_view()
+    public async Task ESC_WHILE_SCROLLED_IN_PROSE_STOPS_THE_TURN()
     {
         var reg = new ToolRegistry();
-        reg.Register(new HoldTool());
+        var hold = new HoldTool();
+        reg.Register(hold);
         var h = Rig(reg);
         h.Client.EnqueueTurn(new StreamEvent.TextDelta(Reply), new StreamEvent.ToolCallReady(new ToolCall("c1", "hold", "{}")), new StreamEvent.Finished("tool_calls", null));
         var stage = 0;
+        var top = "";
 
         await h.RunUntilAsync(() =>
         {
             if (stage == 0 && h.Saw("line 99") && h.Saw("hold") && h.Keys.Pending == 0) { h.Keys.Key(PageUp); stage = 1; }
-            else if (stage == 1 && !h.Surface.CursorVisible) { Release(h); h.Keys.Key(Esc); stage = 2; }
-            return stage == 2 && h.Saw("turn cancelled") && h.Surface.CursorVisible;
+            else if (stage == 1 && Scrolled(h)) { top = h.FinalFrame()[0]; Release(h); h.Keys.Key(Esc); stage = 2; }
+            else if (stage == 2 && hold.Stopped && h.Surface.CursorVisible)
+            {
+                //the turn stopped below a view that held still
+                Assert.Equal(top, h.FinalFrame()[0]);
+                Release(h); h.Keys.Key(Key('\0', ConsoleKey.End, ctrl: true)); stage = 3;
+            }
+            return stage == 3 && h.Saw("turn cancelled") && h.Surface.CursorVisible;
         });
     }
 
@@ -262,7 +277,7 @@ public class AwaySnapTests : IDisposable
             {
                 case 0 when h.Saw("line 99") && h.Saw("wait") && h.Keys.Pending == 0:
                     h.Keys.Key(PageUp); stage = 1; break;
-                case 1 when !h.Surface.CursorVisible:
+                case 1 when Scrolled(h):
                     top = h.FinalFrame()[0]; released.TrySetResult(); stage = 2; break;
                 case 2 when Pinned().StartsWith("↓ a prompt is waiting for your answer", StringComparison.Ordinal):
                     //the view held while the prompt opened

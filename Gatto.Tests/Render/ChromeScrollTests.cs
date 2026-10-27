@@ -6,14 +6,18 @@ using Gatto.Terminal.Tests.Fakes;
 
 namespace Gatto.Tests.Render;
 
-//with the mouse on, the chrome is the last rows of one document, so scrolling up moves it down and off the window and the transcript takes its rows
+//with the mouse on, a prompt's chrome is the last rows of one document, and in prose only the working rows are, the composer's group holding the bottom
 public class ChromeScrollTests
 {
     private static readonly Theme T = new(new TermCaps(true, true));
     private const int W = 60;
     private const int H = 30;
 
-    private static (ChromePainter P, VtScreenSurface S) Wire(bool chromeScrolls = true)
+    //the shape an ask_user free-text step draws, a question, an option and the typed row with the caret on it
+    private static readonly string[] AskStep = ["  What should the package be called?", "  1. gatto", "  2. gatto-lite"];
+
+    //a prompt pins its row once one leaves the window, so a test of the bare scroll-away takes an info panel, which pins nothing
+    private static (ChromePainter P, VtScreenSurface S) Wire(bool chromeScrolls = true, bool prompt = false, bool live = false, bool info = false)
     {
         var s = new VtScreenSurface(W, H);
         var gate = new object();
@@ -26,7 +30,16 @@ public class ChromeScrollTests
             ChromeScrolls = chromeScrolls,
         };
         p.State.Composer = new EditorView(new List<string> { "" }, 0, 0);
+        if (live)
+        {
+            p.State.Tool = ("grep", "pattern");
+            p.State.PurrText = "purring 3s";
+            p.State.Tasks = [(1, "dotnet build", TimeSpan.FromSeconds(4))];
+            p.State.QueueTexts = [new QueueEntryView("the next message", false)];
+        }
         p.AltScreen.Enter();
+        if (prompt) p.SetPanelFactory((_, _) => new PanelContent(AskStep, Caret: (2, 5)));
+        if (info) p.SetInfoPanel((_, _) => AskStep);
         p.Repaint();
         return (p, s);
     }
@@ -47,7 +60,7 @@ public class ChromeScrollTests
     [Fact]
     public void Scrolled_up_the_chrome_keeps_its_top_rows_and_the_transcript_takes_the_rest()
     {
-        var (p, s) = Wire();
+        var (p, s) = Wire(info: true);
         var chrome = Chrome(p);
         var c = chrome.Count;
 
@@ -65,7 +78,7 @@ public class ChromeScrollTests
     [Fact]
     public void The_jump_hint_shows_only_once_the_chrome_is_gone()
     {
-        var (p, s) = Wire();
+        var (p, s) = Wire(prompt: true);
         var c = Chrome(p).Count;
 
         Up(p, c);
@@ -80,7 +93,7 @@ public class ChromeScrollTests
     [Fact]
     public void The_caret_hides_once_its_row_is_scrolled_away()
     {
-        var (p, s) = Wire();
+        var (p, s) = Wire(prompt: true);
         var block = p.ComposeChromeBlock(W, H);
         var below = block.Rows.Count - block.CaretRow;   //rows from the caret's row to the chrome's last row
         Assert.True(s.CursorVisible);
@@ -95,7 +108,7 @@ public class ChromeScrollTests
     [Fact]
     public void A_press_on_a_partly_shown_chrome_maps_to_the_row_drawn_there()
     {
-        var (p, s) = Wire();
+        var (p, s) = Wire(prompt: true);
         var c = Chrome(p).Count;
         Up(p, 2);
         var topRule = H - (c - 2);
@@ -112,7 +125,7 @@ public class ChromeScrollTests
     [Fact]
     public void A_chrome_selection_survives_a_one_row_scroll_and_the_rows_stay_whole()
     {
-        var (p, s) = Wire();
+        var (p, s) = Wire(prompt: true);
         var c = Chrome(p).Count;
         Up(p, 1);
         var topRule = H - (c - 1);
@@ -131,7 +144,7 @@ public class ChromeScrollTests
     [Fact]
     public void A_transcript_drag_into_the_partly_shown_chrome_extends_to_the_transcript_edge()
     {
-        var (p, s) = Wire();
+        var (p, s) = Wire(prompt: true);
         var c = Chrome(p).Count;
         Up(p, 2);
         var topRule = H - (c - 2);
@@ -147,7 +160,7 @@ public class ChromeScrollTests
     [Fact]
     public void A_chrome_drag_up_into_the_transcript_clamps_to_the_first_chrome_row_on_screen()
     {
-        var (p, s) = Wire();
+        var (p, s) = Wire(prompt: true);
         var c = Chrome(p).Count;
         Up(p, 2);
         var topRule = H - (c - 2);
@@ -258,7 +271,7 @@ public class ChromeScrollTests
     [Fact]
     public void Streaming_while_away_holds_the_view_and_the_hint_count_grows()
     {
-        var (p, s) = Wire();
+        var (p, s) = Wire(info: true);
         Up(p, 20);
         var before = Screen(s);
 
@@ -273,7 +286,7 @@ public class ChromeScrollTests
     [Fact]
     public void Streaming_while_partly_away_slides_the_chrome_down()
     {
-        var (p, s) = Wire();
+        var (p, s) = Wire(info: true);
         var chrome = Chrome(p);
         Up(p, 1);
         var top = Screen(s)[0];
@@ -299,5 +312,195 @@ public class ChromeScrollTests
         Assert.Equal(chrome, screen.Skip(H - c));
         Assert.Contains("Ctrl+End", screen[H - c - 1], StringComparison.Ordinal);
         Assert.True(s.CursorVisible);
+    }
+
+    //the prose composer at a width of its own, with or without the working rows of a running turn
+    private static (ChromePainter P, VtScreenSurface S) WireAt(int width, bool live = true)
+    {
+        var s = new VtScreenSurface(width, H);
+        var model = new TranscriptModel("coder");
+        model.Append(new AssistantBlockItem([.. Enumerable.Range(0, 200).Select(i => $"t{i:000}")], "coder"));
+        var p = new ChromePainter(s, T, new object(), model)
+        {
+            Frame = new InputFrame(s, T, "coder", new StatusInfo(@"C:\proj", "qwen", "coder", new CtxState(), @"C:\Users\x"), glyphs: GlyphSet.Unicode),
+            RoleForTint = "coder",
+            ChromeScrolls = true,
+        };
+        p.State.Composer = new EditorView(new List<string> { "" }, 0, 0);
+        if (live)
+        {
+            p.State.Tool = ("grep", "pattern");
+            p.State.PurrText = "purring 3s";
+            p.State.Tasks = [(1, "dotnet build", TimeSpan.FromSeconds(4))];
+            p.State.QueueTexts = [new QueueEntryView("the next message", false)];
+        }
+        p.AltScreen.Enter();
+        p.Repaint();
+        return (p, s);
+    }
+
+    private static void UpAt(ChromePainter p, int rows, int width)
+    {
+        p.Scroll.ScrollBy(rows, width, p.ViewportRows());
+        p.Repaint();
+    }
+
+    //the composer's group and the working rows above it, as the painter composes them at the width
+    private static (List<string> Working, List<string> Frame, int FrameStart) Groups(ChromePainter p, int width)
+    {
+        var rows = p.ComposeChromeBlock(width, H).Rows;
+        var at = ViewportCompositor.FrameStart(rows);
+        var visible = rows.Select(r => r.Visible.TrimEnd()).ToList();
+        return (visible.Take(at).ToList(), visible.Skip(at).ToList(), at);
+    }
+
+    [Theory]
+    [InlineData(80)]
+    [InlineData(120)]
+    public void SCROLLED_UP_IN_PROSE_THE_COMPOSER_GROUP_HOLDS_AND_THE_WORKING_ROWS_SCROLL(int width)
+    {
+        var (p, s) = WireAt(width);
+        var (working, frame, _) = Groups(p, width);
+        Assert.Contains(working, r => r.Contains("purring", StringComparison.Ordinal));
+        Assert.Contains(working, r => r.Contains("1 background", StringComparison.Ordinal));
+
+        UpAt(p, 1, width);
+        var screen = Screen(s);
+        Assert.Equal(frame, screen.Skip(H - frame.Count));
+        Assert.DoesNotContain(working.Last(r => r.Length > 0), screen.Take(H - frame.Count - 1));   //the last working row with text, the queued message, is the first to scroll off
+
+        UpAt(p, working.Count + 5, width);
+        screen = Screen(s);
+        Assert.Equal(frame, screen.Skip(H - frame.Count));
+        Assert.DoesNotContain(screen, r => r.Contains("purring", StringComparison.Ordinal) || r.Contains("1 background", StringComparison.Ordinal)
+            || r.Contains("the next message", StringComparison.Ordinal) || r.Contains("grep pattern", StringComparison.Ordinal));
+        Assert.Contains("t1", string.Join("\n", screen.Take(H - frame.Count - 1)), StringComparison.Ordinal);
+    }
+
+    [Theory]
+    [InlineData(80)]
+    [InlineData(120)]
+    public void THE_JUMP_HINT_STANDS_ABOVE_THE_COMPOSERS_RULE_WHILE_SCROLLED_IN_PROSE(int width)
+    {
+        var (p, s) = WireAt(width);
+        var (_, frame, _) = Groups(p, width);
+        Assert.DoesNotContain(Screen(s), r => r.Contains("Ctrl+End", StringComparison.Ordinal));
+        foreach (var rows in new[] { 1, 20 })
+        {
+            UpAt(p, rows, width);
+            var hint = Screen(s)[H - frame.Count - 1];
+            Assert.Contains("more · Ctrl+End or click", hint, StringComparison.Ordinal);
+        }
+        Assert.True(HintCount(Screen(s)[H - frame.Count - 1]) >= 21);   //twenty rows and the one the hint takes, working rows and transcript together
+    }
+
+    [Theory]
+    [InlineData(80)]
+    [InlineData(120)]
+    public void STREAMING_WHILE_SCROLLED_IN_PROSE_HOLDS_THE_TOP_ROW_AND_THE_HINT_COUNT_GROWS(int width)
+    {
+        var (p, s) = WireAt(width);
+        var (_, frame, _) = Groups(p, width);
+        UpAt(p, 20, width);
+        var before = Screen(s);
+
+        Stream(p, 7);
+        var after = Screen(s);
+
+        Assert.Equal(before[0], after[0]);
+        Assert.Equal(HintCount(before[H - frame.Count - 1]) + 8, HintCount(after[H - frame.Count - 1]));   //7 rows and the block's leading blank
+        Assert.Equal(frame, after.Skip(H - frame.Count));
+    }
+
+    [Theory]
+    [InlineData(80)]
+    [InlineData(120)]
+    public void A_PRESS_ON_THE_COMPOSER_MAPS_TO_ITS_ROW_WHILE_SCROLLED_IN_PROSE(int width)
+    {
+        var (p, s) = WireAt(width);
+        var (_, frame, at) = Groups(p, width);
+        UpAt(p, 20, width);
+
+        p.Mouse.Handle(Press(3, H - frame.Count), width, p.ViewportRows());
+
+        Assert.Equal(at, p.Selection.ChromeCurrent!.Value.Anchor.Row);
+    }
+
+    [Theory]
+    [InlineData(80)]
+    [InlineData(120)]
+    public void THE_CARET_STAYS_ON_THE_COMPOSER_WHILE_SCROLLED_IN_PROSE(int width)
+    {
+        var (p, s) = WireAt(width);
+        UpAt(p, 20, width);
+        Assert.True(s.CursorVisible);
+        UpAt(p, 80, width);
+        Assert.True(s.CursorVisible);
+    }
+
+    [Theory]
+    [InlineData(80)]
+    [InlineData(120)]
+    public void A_TYPED_KEY_IN_PROSE_LEAVES_THE_VIEW(int width)
+    {
+        var (p, s) = WireAt(width);
+        UpAt(p, 20, width);
+        var top = Screen(s)[0];
+
+        Assert.False(p.Away);
+        Assert.Null(Gatto.Repl.Repl.DecideAway(p.Away, p.PromptHidden(), copyWithSelection: false));
+        p.State.Composer = new EditorView(new List<string> { "a" }, 0, 1);
+        p.Repaint();
+
+        Assert.False(p.Scroll.Following);
+        Assert.Equal(top, Screen(s)[0]);
+        Assert.Contains(Screen(s), r => r.StartsWith("❯ a", StringComparison.Ordinal));
+    }
+
+    [Theory]
+    [InlineData(80)]
+    [InlineData(120)]
+    public void A_PROMPT_OPENING_WHILE_SCROLLED_UP_KEEPS_THE_TOP_ROW_AND_PINS_ITS_ROW(int width)
+    {
+        var (p, s) = WireAt(width, live: false);
+        UpAt(p, 20, width);
+        var top = Screen(s)[0];
+
+        p.SetPanel(Prompt);
+
+        Assert.Equal(top, Screen(s)[0]);
+        Assert.Equal(Pin, Screen(s)[^1]);
+        Assert.True(p.Away);
+    }
+
+    [Theory]
+    [InlineData(80)]
+    [InlineData(120)]
+    public void A_PROMPT_CLOSING_WHILE_SCROLLED_UP_KEEPS_THE_TOP_ROW_AND_THE_COMPOSER_GROUP_HOLDS(int width)
+    {
+        var (p, s) = WireAt(width, live: false);
+        p.SetPanel(Prompt);
+        UpAt(p, 20, width);
+        var top = Screen(s)[0];
+
+        p.SetPanel(null);
+        var (_, frame, _) = Groups(p, width);
+
+        Assert.Equal(top, Screen(s)[0]);
+        Assert.Equal(frame, Screen(s).Skip(H - frame.Count));
+        Assert.False(p.Away);
+    }
+
+    [Theory]
+    [InlineData(80)]
+    [InlineData(120)]
+    public void AN_INFO_PANEL_SCROLLS_AWAY_AS_A_PROMPT_DOES(int width)
+    {
+        var (p, s) = WireAt(width, live: false);
+        p.SetInfoPanel((_, _) => ["  context", "  rows", "  more rows"]);
+        UpAt(p, 40, width);
+
+        Assert.DoesNotContain(Screen(s), r => r.Contains("qwen", StringComparison.Ordinal));
+        Assert.True(p.Away);
     }
 }

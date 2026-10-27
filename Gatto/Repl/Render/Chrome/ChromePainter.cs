@@ -240,11 +240,14 @@ public sealed class ChromePainter
         }
     }
 
-    //true makes the chrome the last rows of one document that scrolls with the transcript, armed only with mouse capture on
-    public bool ChromeScrolls { get => _compositor.ChromeScrolls; init => _compositor.ChromeScrolls = value; }
+    //true when the mouse is on, so the chrome may scroll with the transcript
+    public bool ChromeScrolls { get; init; }
 
-    //true while the chrome scrolls with the transcript and the view is off the bottom, so part of the chrome is off the window
-    public bool Away { get { lock (_gate) return ChromeScrolls && !_scroll.Following; } }
+    //a prompt or a panel scrolls away whole, the prose composer holds the bottom and its working rows scroll
+    private ChromeMode ModeNow => !ChromeScrolls ? ChromeMode.Pinned : State.PanelUp ? ChromeMode.Scrolls : ChromeMode.Split;
+
+    //true while a prompt's chrome has scrolled partly off the window
+    public bool Away { get { lock (_gate) return ModeNow == ChromeMode.Scrolls && !_scroll.Following; } }
 
     //true while a prompt waits with a row of it off the window, an info panel is an answer and never counts
     public bool PromptHidden()
@@ -263,18 +266,26 @@ public sealed class ChromePainter
     }
 
     //one full-frame paint, the transcript window bottom-anchored at the scroll offset plus the chrome block pinned to the bottom
-    private void DriveCompositor() =>
+    private void DriveCompositor()
+    {
+        _compositor.Mode = ModeNow;
         _compositor.Paint(_scroll.BottomOffset(_surface.Width, ViewportRowsLocked()), _scroll.Following);
+    }
 
-    //the height the scroll controller pages against: the transcript above the chrome, or the whole window when the chrome scrolls with it
+    //the height the scroll controller pages against, the window less whatever the mode holds still
     public int ViewportRows() { lock (_gate) return ViewportRowsLocked(); }
 
     private int ViewportRowsLocked()
     {
-        if (!ChromeScrolls) return TranscriptRows();
+        var mode = ModeNow;
+        if (mode == ChromeMode.Pinned) { _scroll.ChromeRows = 0; return TranscriptRows(); }
         var h = _surface.Height <= 0 ? ViewportCompositor.HeightFloor : _surface.Height;
-        _scroll.ChromeRows = System.Math.Min(ComposeChromeBlock(_surface.Width, h).Rows.Count, h);
-        return h;
+        var rows = ComposeChromeBlock(_surface.Width, h).Rows;
+        var shown = rows.Skip(System.Math.Max(0, rows.Count - h)).ToList();   //the frame keeps the block's bottom rows when it is taller than the window
+        if (mode == ChromeMode.Scrolls) { _scroll.ChromeRows = shown.Count; return h; }
+        var frameStart = ViewportCompositor.FrameStart(shown);
+        _scroll.ChromeRows = frameStart;
+        return System.Math.Max(1, h - (shown.Count - frameStart));
     }
 
     private int TranscriptRows()
