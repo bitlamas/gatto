@@ -34,7 +34,6 @@ public class ChromeScrollTests
         {
             p.State.Tool = ("grep", "pattern");
             p.State.PurrText = "purring 3s";
-            p.State.Tasks = [(1, "dotnet build", TimeSpan.FromSeconds(4))];
             p.State.QueueTexts = [new QueueEntryView("the next message", false)];
         }
         p.AltScreen.Enter();
@@ -331,7 +330,6 @@ public class ChromeScrollTests
         {
             p.State.Tool = ("grep", "pattern");
             p.State.PurrText = "purring 3s";
-            p.State.Tasks = [(1, "dotnet build", TimeSpan.FromSeconds(4))];
             p.State.QueueTexts = [new QueueEntryView("the next message", false)];
         }
         p.AltScreen.Enter();
@@ -362,7 +360,6 @@ public class ChromeScrollTests
         var (p, s) = WireAt(width);
         var (working, frame, _) = Groups(p, width);
         Assert.Contains(working, r => r.Contains("purring", StringComparison.Ordinal));
-        Assert.Contains(working, r => r.Contains("1 background", StringComparison.Ordinal));
 
         UpAt(p, 1, width);
         var screen = Screen(s);
@@ -372,7 +369,7 @@ public class ChromeScrollTests
         UpAt(p, working.Count + 5, width);
         screen = Screen(s);
         Assert.Equal(frame, screen.Skip(H - frame.Count));
-        Assert.DoesNotContain(screen, r => r.Contains("purring", StringComparison.Ordinal) || r.Contains("1 background", StringComparison.Ordinal)
+        Assert.DoesNotContain(screen, r => r.Contains("purring", StringComparison.Ordinal)
             || r.Contains("the next message", StringComparison.Ordinal) || r.Contains("grep pattern", StringComparison.Ordinal));
         Assert.Contains("t1", string.Join("\n", screen.Take(H - frame.Count - 1)), StringComparison.Ordinal);
     }

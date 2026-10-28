@@ -167,6 +167,70 @@ public class SelectPromptTests
         Assert.Equal(0, Chosen(outcome));
     }
 
+    //a poll whose row is only a repaint key paints no watch row, and its arrival names the cursor it left
+    [Fact]
+    public void A_POLL_THAT_RENDERS_NO_ROW_PAINTS_NONE_AND_ITS_ARRIVAL_CARRIES_THE_CURSOR()
+    {
+        var clock = new ScriptedClock();
+        var checks = 0;
+        var surface = new RecordingSurface();
+        var spec = Spec(new SelectOption("one"), new SelectOption("two")) with
+        {
+            InitialCursor = 1,
+            Poll = new PollSpec(Arrived: () => ++checks >= 2, Row: ms => $"key {ms}", Clock: clock,
+                Interval: TimeSpan.FromSeconds(1), RenderRow: false),
+        };
+
+        var outcome = new SelectPrompt(surface, T, new ScriptedKeys([])).Show(spec);
+
+        Assert.Equal(1, Assert.IsType<SelectOutcome.Arrived>(outcome).Cursor);
+        Assert.DoesNotContain("key ", surface.Text, StringComparison.Ordinal);
+    }
+
+    //the close token ends a prompt waiting on its poll clock and one blocked in a key read, each as a cancel and not as a throw
+    [Fact]
+    public async Task A_CLOSE_ENDS_A_SLEEPING_POLL_AND_A_BLOCKED_READ_AS_A_CANCEL()
+    {
+        using var sleeping = new CancellationTokenSource();
+        var polled = Spec(new SelectOption("a")) with
+        {
+            Close = sleeping.Token,
+            Poll = new PollSpec(Arrived: () => false, Row: _ => "", Clock: null, Interval: TimeSpan.FromSeconds(1),
+                RenderRow: false, ClockFor: _ => new ScopePollClock(null, sleeping.Token)),
+        };
+        var poll = Task.Run(() => new SelectPrompt(new RecordingSurface(), T, new ScriptedKeys([])).Show(polled));
+        await Task.Delay(100);
+        sleeping.Cancel();
+        Assert.IsType<SelectOutcome.Cancelled>(await poll.WaitAsync(Waits.Bound));
+
+        using var reading = new CancellationTokenSource();
+        var keys = new System.Collections.Concurrent.BlockingCollection<ConsoleKeyInfo>();
+        var read = Task.Run(() => new SelectPrompt(new RecordingSurface(), T, new ChannelKeys(keys))
+            .Show(Spec(new SelectOption("a")) with { Close = reading.Token }));
+        await Task.Delay(100);
+        reading.Cancel();
+        Assert.IsType<SelectOutcome.Cancelled>(await read.WaitAsync(Waits.Bound));
+    }
+
+    //a key read that blocks until a key or the token, as the pump's channel does
+    private sealed class ChannelKeys(System.Collections.Concurrent.BlockingCollection<ConsoleKeyInfo> ch) : IKeySource
+    {
+        public bool KeyAvailable => ch.Count > 0;
+        public ConsoleKeyInfo ReadKey() => ch.Take();
+        public ConsoleKeyInfo ReadKey(CancellationToken ct) => ch.Take(ct);
+    }
+
+    //a prompt with neither a close nor a poll flag reads its key as before, so the turn's own cancel still propagates
+    [Fact]
+    public void A_SPEC_WITHOUT_A_CLOSE_LETS_THE_TURN_CANCEL_PROPAGATE()
+    {
+        using var turn = new CancellationTokenSource();
+        turn.Cancel();
+        var keys = new System.Collections.Concurrent.BlockingCollection<ConsoleKeyInfo>();
+        Assert.ThrowsAny<OperationCanceledException>(() =>
+            new SelectPrompt(new RecordingSurface(), T, new ChannelKeys(keys)).Show(Spec(new SelectOption("a")) with { Cancel = turn.Token }));
+    }
+
     [Fact]
     public void THE_COMPLETION_ECHO_WRAPS_the_answer_instead_of_TRUNCATING_it()
     {

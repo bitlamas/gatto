@@ -57,8 +57,8 @@ public sealed class InputPump
         }
     }
 
-    //keys arriving while the scope is open go only to it. dispose discards unread keys, replaying a modal answer into the composer is the bug
-    public FocusScope PushFocus()
+    //keys arriving while the scope is open go only to it. dispose discards unread keys, replaying a modal answer into the composer is the bug. wait false is a scope the turn does not wait on, so it fires no wait sink
+    public FocusScope PushFocus(bool wait = true)
     {
         var ch = new BlockingCollection<ConsoleKeyInfo>();
         Action? modalPushSink;
@@ -72,9 +72,9 @@ public sealed class InputPump
             modalWaitSink = _modalWaitSink;
         }
         modalPushSink?.Invoke();   //fired outside the lock, a caller sink under it can invert lock order
-        //fires on every push, the born-completed scope included, so the pop pairs stay balanced
-        modalWaitSink?.Invoke(true);
-        return new FocusScope(this, ch);
+        //fires on every waiting push, the born-completed scope included, so the pop pairs stay balanced
+        if (wait) modalWaitSink?.Invoke(true);
+        return new FocusScope(this, ch, wait);
     }
 
     //hands a key to the composer as if typed. kept because InputPumpTests pins that contract
@@ -84,12 +84,12 @@ public sealed class InputPump
     }
 
     //gestures go onto the same channel as keys, arrival order kept, one writer of selection. the coordinates must already be resolved, this only enqueues
-    public void EnqueueComposerGesture(ComposerInput.Select gesture)
+    public void EnqueueComposerGesture(ComposerInput gesture)
     {
         try { _composer.Add(gesture); } catch (InvalidOperationException) { } //pump dead, drop it
     }
 
-    private void Pop(BlockingCollection<ConsoleKeyInfo> ch)
+    private void Pop(BlockingCollection<ConsoleKeyInfo> ch, bool wait)
     {
         Action<bool>? modalWaitSink;
         lock (_lock)
@@ -98,7 +98,7 @@ public sealed class InputPump
             modalWaitSink = _modalWaitSink;
         }
         ch.CompleteAdding();
-        modalWaitSink?.Invoke(false);   //outside the lock, exactly like the push half
+        if (wait) modalWaitSink?.Invoke(false);   //outside the lock, exactly like the push half
     }
 
     //scroll keys go to this sink before the focus stack, so paging works during a modal. plain home and end aren't scroll keys and reach the composer
@@ -297,10 +297,11 @@ public sealed class InputPump
     {
         private readonly InputPump _pump;
         private readonly BlockingCollection<ConsoleKeyInfo> _ch;
+        private readonly bool _wait;
 
-        internal FocusScope(InputPump pump, BlockingCollection<ConsoleKeyInfo> ch)
+        internal FocusScope(InputPump pump, BlockingCollection<ConsoleKeyInfo> ch, bool wait)
         {
-            _pump = pump; _ch = ch;
+            _pump = pump; _ch = ch; _wait = wait;
             Keys = new ChannelKeySource(ch, () => pump._source.KeyDownAvailable);   //the scope's peek still reads the source
         }
 
@@ -312,7 +313,7 @@ public sealed class InputPump
         //test-only: keys routed into this channel but unread. wait here rather than on the peek, which can fire before routing
         internal int PendingCount => _ch.Count;
 
-        public void Dispose() => _pump.Pop(_ch);
+        public void Dispose() => _pump.Pop(_ch, _wait);
     }
 
     private sealed class ChannelKeySource(BlockingCollection<ConsoleKeyInfo> ch, Func<bool> sourcePeek) : IKeySource

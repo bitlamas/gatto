@@ -34,8 +34,6 @@ public sealed class ChromeState
     public int WaitingAbove;
     public string? Notice;             //a status row that shows for a moment, such as a working notice
     public string? PurrText;           //the full purr row text, composed by the ticker, null when hidden
-    //the background tasks still running, filled by the ticker each tick, empty when none runs
-    public IReadOnlyList<(int Number, string Command, TimeSpan Elapsed)> Tasks = [];
     public bool BlinkOn = true;        //the ticker-driven 500 ms phase for the tool dot
     //true while reasoning is suppressed, the ticker adds " ~ thinking" to the purr row
     public bool Thinking;
@@ -87,6 +85,12 @@ public sealed class ChromePainter
 
     //where a triangle press goes, set by the Repl once its status record exists. called on the pump thread under the gate
     public Action<int>? StatusHintSink { get; set; }
+
+    //where a press on the background cell goes, the same thread and gate as the triangles
+    public Action? StatusCellSink { get; set; }
+
+    //what runs between turns, asked at each compose under the gate, null in a session that arms no background tasks
+    public Func<BackgroundFacts>? BackgroundFactsReader { get; set; }
     private int _composerTop;   //the composer window's first region row, kept across paints and moved only by the caret
     //the prompt panel's own scroll window, driven by MouseController through the onComposerScroll callback wired in the constructor. public for tests
     private readonly ComposerScroll _composerScroll = new();
@@ -136,7 +140,7 @@ public sealed class ChromePainter
             onComposerSelect: onComposerSelect, composerLayout: () => _lastComposerLayout,
             //the Repl's mouse sink already holds the gate and repaints after every Handle call, so this callback must not repaint or lock again
             onComposerScroll: n => { if (!State.PanelUp) return false; _composerScroll.ScrollBy(n); return true; },
-            statusCellAt: StatusCellAt, onStatusHint: d => StatusHintSink?.Invoke(d),
+            statusCellAt: StatusCellAt, onStatusHint: d => StatusHintSink?.Invoke(d), onStatusCell: () => StatusCellSink?.Invoke(),
             panelHoldsKeys: () => State.PanelUp && !State.PanelInfo);
     }
 
@@ -178,29 +182,50 @@ public sealed class ChromePainter
     }
 
     //the rows are re-derived from the factory at the live width on every compose, which is what makes a resize repaint re-wrap them
-    public void SetPanelFactory(Func<int, IReadOnlyList<string>> factory) =>
+    public Func<int, int, PanelContent> SetPanelFactory(Func<int, IReadOnlyList<string>> factory) =>
         SetPanelFactory((w, _) => new PanelContent(factory(w)));
 
     //rows and a row allowance, for a caller whose panel is sized by the space it gets. no caret, the wizard's panels take input through the face's key loop
-    public void SetPanelFactory(Func<int, int, IReadOnlyList<string>> factory) =>
+    public Func<int, int, PanelContent> SetPanelFactory(Func<int, int, IReadOnlyList<string>> factory) =>
         SetPanelFactory((w, h) => new PanelContent(factory(w, h)));
 
     //the width-only form for a caller with no height opinion, SelectPrompt's option list is as long as the list rather than the screen
-    public void SetPanelFactory(Func<int, PanelContent> factory) =>
+    public Func<int, int, PanelContent> SetPanelFactory(Func<int, PanelContent> factory) =>
         SetPanelFactory((w, _) => factory(w));
 
-    //the caret-aware form, the factory reports the caret at each width and the panel's own height budget so a vertical resize re-asks it
-    public void SetPanelFactory(Func<int, int, PanelContent> factory)
+    //the caret-aware form, the factory reports the caret at each width and the panel's own height budget so a vertical resize re-asks it. it returns the factory the slot holds, the one its owner's clear names
+    public Func<int, int, PanelContent> SetPanelFactory(Func<int, int, PanelContent> factory)
     {
         lock (_gate)
         {
-            if (_tornDown) return;
+            if (_tornDown) return factory;
             State.PanelFactory = factory;
             State.PanelInfo = false;
             State.PanelKeepsRoom = false;   //a new panel is first asked at the half, its own content then says whether it keeps the room
             _composerScroll.Reset();   //a new factory is always a new panel, so reset the scroll
             RefreshPanel(factory(_surface.Width, PanelRowsAvailable()));
             DriveCompositor();
+            return factory;
+        }
+    }
+
+    //the static-rows twin of ClearPanel, the rows a flow published by SetPanel and nothing published since
+    public void ClearPanelRows(IReadOnlyList<string>? own)
+    {
+        lock (_gate)
+        {
+            if (_tornDown || own is null || State.PanelFactory is not null || !ReferenceEquals(State.PanelRows, own)) return;
+            SetPanel(null);
+        }
+    }
+
+    //clears the slot only while it still holds the owner's factory, so a prompt leaving late cannot blank one that took the slot after it
+    public void ClearPanel(Func<int, int, PanelContent>? own)
+    {
+        lock (_gate)
+        {
+            if (_tornDown || own is null || !ReferenceEquals(State.PanelFactory, own)) return;
+            SetPanel(null);
         }
     }
 
@@ -363,7 +388,6 @@ public sealed class ChromePainter
     {
         var n = 0;
         if (State.PurrText is not null) n += 2;                                                  //two rows, a blank and the purr line
-        if (State.Tasks.Count > 0) n += 2;                                                       //a blank and the tasks row, kept under a panel too
         //a panel over the live call may take that call's rows, which repeat what the prompt shows, and the clamp drops them when it does
         if (State.PanelUp) return n + NewestQueuedMessageReservation(width, height);
         if (State.Tool is not null) n += 2 + (State.ToolProgress is not null ? 1 : 0);            //two rows, a blank and the tool bullet, plus one more for the progress row
@@ -411,33 +435,6 @@ public sealed class ChromePainter
 
     private static readonly string[] ProbePanel = [""];
 
-    //a command head is never cut below this many cells, a shorter head says nothing, so a task that cannot keep it goes to the more tail
-    private const int TaskHeadCells = 8;
-
-    //the tasks row: the ring, the count, then each task's number, the first line of its command and its timer, as many as fit and then the more tail
-    internal (string Rendered, string Visible) TasksRow(IReadOnlyList<(int Number, string Command, TimeSpan Elapsed)> tasks, int width)
-    {
-        var g = _glyphs;
-        var sep = $"  {g.Dot}  ";
-        var lead = $"{g.Ring}  {tasks.Count} background";
-        var room = width > 0 ? width : int.MaxValue;
-        for (var shown = tasks.Count; shown >= 1; shown--)
-        {
-            var tail = shown < tasks.Count ? $"{sep}+{tasks.Count - shown} more" : "";
-            var parts = tasks.Take(shown).Select(t => (Num: t.Number + " ", Time: " " + Gatto.Core.ElapsedText.Of(t.Elapsed),
-                Head: TermText.Sanitize(t.Command.Split('\n')[0].Trim()))).ToList();
-            var fixedCells = UnicodeWidth.Of(lead) + UnicodeWidth.Of(tail) + parts.Sum(p => UnicodeWidth.Of(sep + p.Num + p.Time));
-            var perHead = room == int.MaxValue ? int.MaxValue : (room - fixedCells) / shown;
-            if (perHead < TaskHeadCells && parts.Any(p => UnicodeWidth.Of(p.Head) > perHead)) continue;
-            var body = string.Concat(parts.Select(p => sep + p.Num
-                + (UnicodeWidth.Of(p.Head) > perHead ? TermText.TruncateCells(p.Head, perHead, glyphs: g) : p.Head) + p.Time));
-            var visible = lead + body + tail;
-            return (_theme.Paint(g.Ring, Theme.Dim) + visible[g.Ring.Length..], visible);
-        }
-        var none = $"{lead}{sep}+{tasks.Count} more";
-        return (_theme.Paint(g.Ring, Theme.Dim) + none[g.Ring.Length..], none);
-    }
-
     //a window marks its hidden rows only when a row is left between the two marks for the caret
     internal const int MarkedWindowRows = 3;
 
@@ -466,8 +463,10 @@ public sealed class ChromePainter
     {
         var composed = Compose(width, height);
         var caretRow = System.Math.Max(0, composed.Rows.Count - 1 - composed.CaretUpFromEnd);
-        //the cursor stays visible unless the frame shows an input-less panel, or a scroll left its caret row outside the window
-        var caretVisible = !State.PanelUp || (State.PanelCaretVisible && composed.CaretInWindow);
+        //the cursor hides for an input-less panel, a caret row scrolled out of the window, or a selected background cell while the cell is on
+        var caretVisible = State.PanelUp
+            ? State.PanelCaretVisible && composed.CaretInWindow
+            : State.Composer.CaretVisible || BackgroundFactsReader?.Invoke().CellOn != true;
         return new ChromeBlock(composed.Rows, caretRow, composed.CaretCol, caretVisible) { PromptWaits = State.PanelUp && !State.PanelInfo };
     }
 
@@ -621,13 +620,6 @@ public sealed class ChromePainter
             fixedRows.Add(("", "", "purr", ChromeRegion.Purr, NextRow(ChromeRegion.Purr)));
             fixedRows.Add((_theme.Paint(p, _theme.RoleTint(RoleForTint)), p, "purr", ChromeRegion.Purr, NextRow(ChromeRegion.Purr)));
         }
-        //the running background tasks after the purr and before the queue, with a blank above, both dropped together
-        if (State.Tasks.Count > 0)
-        {
-            var (tr, tv) = TasksRow(State.Tasks, width);
-            fixedRows.Add(("", "", "tasks", ChromeRegion.Tasks, NextRow(ChromeRegion.Tasks)));
-            fixedRows.Add((tr, tv, "tasks", ChromeRegion.Tasks, NextRow(ChromeRegion.Tasks)));
-        }
 
         //the clamp is computed before the frame, since a too-tall panel can only be trimmed on the way in
         var budgetRows = BudgetRows(height);
@@ -638,7 +630,9 @@ public sealed class ChromePainter
         //an empty panel is not a panel, so SetPanel([]) leaves the editor rows showing. the frame guards it too, this read is the product rule
         var panel = State.PanelUp ? State.PanelRows : null;
         var panelCaret = panel is null ? null : State.PanelCaret;
-        var frame = Frame.Compose(State.Composer, panelRows: panel, panelCaret: panelCaret);
+        //what runs between turns, read once per compose under the gate so the cell and its hint come from one read
+        var facts = BackgroundFactsReader?.Invoke() ?? default;
+        var frame = Frame.Compose(State.Composer, panelRows: panel, panelCaret: panelCaret, facts: facts);
         //asks PanelRowsAvailable rather than comparing TotalRows, so the offered and enforced numbers stay one expression, and each call makes a probe frame
         var panelAllowed = PanelRowsAvailable(width, height);
         var caretInWindow = true;
@@ -661,7 +655,7 @@ public sealed class ChromePainter
                 caretInWindow = shifted >= 0 && shifted < panelAllowed;
                 panelCaret = (Math.Max(0, shifted), pc.Col);
             }
-            frame = Frame.Compose(State.Composer, panelRows: panel, panelCaret: panelCaret);
+            frame = Frame.Compose(State.Composer, panelRows: panel, panelCaret: panelCaret, facts: facts);
         }
         else if (panel is null && frame.EditorRowTags.Count is var total && total > ComposerRowsAvailable(width, height))
         {
@@ -671,7 +665,8 @@ public sealed class ChromePainter
             var top = Math.Min(_composerTop, caret);
             top = Math.Max(top, caret - composerAllowed + 1);
             _composerTop = ClearOfMarks(Math.Clamp(top, 0, total - composerAllowed), caret, total, composerAllowed);
-            frame = Frame.Compose(State.Composer, editorWindow: (_composerTop, composerAllowed), markHidden: composerAllowed >= MarkedWindowRows);
+            frame = Frame.Compose(State.Composer, editorWindow: (_composerTop, composerAllowed), markHidden: composerAllowed >= MarkedWindowRows,
+                facts: facts);
         }
         //caches the layout this frame was built from, and a panel frame reports null, which the mouse's layout bail expects
         _lastComposerLayout = frame.Composer;
@@ -735,7 +730,7 @@ public sealed class ChromePainter
         var keptTail = tailRows.Count - tailStart;
         var overflow = keptTail + fixedRows.Count + frameRows - budgetRows;
         if (overflow > 0)
-            foreach (var category in new[] { "queue", "tasks", "notice", "waiting", "folded", "tool", "purr", NewestQueue })
+            foreach (var category in new[] { "queue", "notice", "waiting", "folded", "tool", "purr", NewestQueue })
             {
                 if (overflow <= 0) break;
                 var at = fixedRows.FindIndex(row => row.Category == category);

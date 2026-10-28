@@ -92,6 +92,8 @@ public sealed partial class Repl
         };
         _confirmAttach = (count, _) =>
         {
+            //the dispatcher's prompt takes the panel slot around its Show, so an open background panel closes first
+            using var slot = _chrome?.HoldModalSlot?.Invoke();
             var spec = ConfirmAttach.Spec(count);
             var outcome = ConfirmAttachForTest is { } forTest
                 ? forTest(spec)
@@ -110,17 +112,19 @@ public sealed partial class Repl
         //feeds the ctx estimate and rebuilds the status frame, and the painter is retargeted here so it never composes against a stale one
         void RefreshStatus()
         {
-            //the one context figure, the same expression the compactor evaluates, and it must precede the estimate fallback
-            ctx.RecordUsedTokens(ContextBudget.UsedTokens(convo, _usageState));
-            ctx.RecordEstimate(ContextBudget.Estimate(convo.Messages), contextBudget);
+            //the one context figure, the compactor's expression over a copy, since a press refreshes from the pump thread while a turn appends
+            var messages = convo.MessagesSnapshot();
+            ctx.RecordUsedTokens(ContextBudget.UsedTokens(messages, _usageState));
+            ctx.RecordEstimate(ContextBudget.Estimate(messages), contextBudget);
             //the Alt+V hint is listed while the clipboard holds an image, ahead of the focus hint, and the check is safe on every refresh
             var pasteImage = _clipboardImages?.Available() is not null and not Gatto.Terminal.ClipboardImageKind.None;
             IReadOnlyList<HintKind> lastKinds;
             int lastShown;
-            lock (gate) { lastKinds = painter.LastHintKinds; lastShown = painter.LastHintShown; }
+            bool cellOn;
+            lock (gate) { lastKinds = painter.LastHintKinds; lastShown = painter.LastHintShown; cellOn = BackgroundFactsNow(editor).CellOn; }
             var picked = PickHints(pasteImage, painter.Focus.Focused is not null,
                 painter.Model.Items.OfType<ReasoningItem>().Any(r => r.Collapsed), focusTaught,
-                lastKinds, lastShown, status.HintIndex, [], _glyphs);
+                lastKinds, lastShown, status.HintIndex, cellOn ? [HintKind.Background] : [], _glyphs);
             focusTaught = picked.Taught;
             var usage = readUsage?.Invoke() ?? (null, null);
             status = status with
@@ -150,6 +154,13 @@ public sealed partial class Repl
         s.Refresh();
         //stashed where this local and s can both reach it, idempotent and null when mouse is off
         s.RestoreMouseMode = () => inputMode?.Restore();
+
+        //the cell reads the registry, the watch and the editor's selection at each paint, under the gate the painter already holds
+        painter.BackgroundFactsReader = () => BackgroundFactsNow(editor);
+        //a press on the cell goes to the composer task as a gesture, where the panel opens, never on the pump thread that reads the console
+        painter.StatusCellSink = () => keys.EnqueueComposerGesture(new ComposerInput.OpenBackground());
+        s.Pump = keys;
+        if (_chrome is not null) _chrome.HoldModalSlot = () => HoldModalSlot(s);
 
         //a triangle press steps the chosen hint through the list the last paint composed, and the mouse sink's own refresh and repaint then paint it
         painter.StatusHintSink = delta =>

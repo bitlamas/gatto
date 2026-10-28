@@ -83,8 +83,10 @@ public sealed record SelectHeading(int BeforeOption, string Text);
 
 //the user never presses, gatto watches, so this screen's successor is itself. the arrival sentence comes from ArrivedLabel, a null one commits nothing
 public sealed record PollSpec(
-    Func<bool> Arrived, Func<long, string> Row, IPollClock Clock, TimeSpan Interval,
-    string? ArrivedLabel = null);
+    Func<bool> Arrived, Func<long, string> Row, IPollClock? Clock, TimeSpan Interval,
+    string? ArrivedLabel = null,
+    bool RenderRow = true,   //false keeps Row as the repaint key alone, for a screen whose rows change and which paints no watch row
+    Func<Gatto.Terminal.InputPump.FocusScope?, IPollClock>? ClockFor = null);   //a clock over the scope Show pushes, asked after the push and winning over Clock
 
 //the watch's clock sits on the poll spec rather than the widget, so other screens are unchanged. it is not a general clock, other timing sites keep Stopwatch
 public interface IPollClock
@@ -128,7 +130,9 @@ public sealed record SelectSpec(
     //the detail at a row cap, asked when the panel is taller than its room, DetailRows holds it at the full cap
     Func<int, IReadOnlyList<DetailRow>>? DetailAt = null,
     //the panel takes the whole room rather than half the window, set by a prompt whose detail is the thing being approved
-    bool KeepsRoom = false);
+    bool KeepsRoom = false,
+    //a token another thread signals to end the prompt as a cancel, so a prompt that must take the panel slot can close this one first
+    CancellationToken Close = default);
 
 //how a SelectPrompt resolved, the widget gives no meaning to any outcome, the callers do
 public abstract record SelectOutcome
@@ -148,7 +152,7 @@ public abstract record SelectOutcome
     public sealed record Control(char Key, int Cursor) : SelectOutcome;
 
     //the thing being watched for turned up with nobody pressing a key, the only outcome the widget reaches on its own
-    public sealed record Arrived : SelectOutcome;
+    public sealed record Arrived(int Cursor = 0) : SelectOutcome;
 }
 
 //how a panel line read ended, three outcomes. escape backs out to whatever opened the panel, so it must not read as a dead pump or a cancel
@@ -214,7 +218,7 @@ public sealed class SelectPrompt(   //single-select, multi-select and the free-t
     private const char Del = (char)0x7F;
 
     //blocks until the prompt resolves, modal focus held for the whole call. rows go inside the composer frame when a painter is armed, inline otherwise
-    public SelectOutcome Show(SelectSpec spec)
+    public SelectOutcome Show(SelectSpec spec, bool wait = true)
     {
         var options = spec.Options;
         var multi = spec.MultiSelect;
@@ -262,8 +266,12 @@ public sealed class SelectPrompt(   //single-select, multi-select and the free-t
         var painter = chrome?.Painter is { Alive: true } p ? p : null;   //a torn-down painter would take the keys and render nowhere
 
         //this push must stay above the first render, the first write after it is the focus-is-armed signal a pump test polls on
-        using var focus = pump?.PushFocus();
+        using var focus = pump?.PushFocus(wait);
         var k = focus?.Keys ?? keys;
+        //the read waits on the turn token and on the close, and a close alone resolves as a cancel rather than an exception out of Show
+        using var linked = CancellationTokenSource.CreateLinkedTokenSource(spec.Cancel, spec.Close);
+        var readToken = spec.Close.CanBeCanceled ? linked.Token : spec.Cancel;
+        var clock = spec.Poll is { } watchSpec ? watchSpec.ClockFor?.Invoke(focus) ?? watchSpec.Clock : null;
 
         //the cursor goes to the nearest row that accepts it, so an InitialCursor pointing at a disabled row never parks the user there
         bool Landable(int i) => IsFreeText(i) || OptionAt(i) >= options.Count || !options[OptionAt(i)].Disabled;
@@ -285,6 +293,9 @@ public sealed class SelectPrompt(   //single-select, multi-select and the free-t
 
         //the inline path hides the hardware cursor and restores it in the finally. drain type-ahead, those keys answer a question the user has not seen yet
         if (spec.DrainTypeAhead) while (k.KeyAvailable) k.ReadKey();
+
+        //the factory this prompt last published, the one its clear may remove
+        Func<int, int, PanelContent>? published = null;
 
         //the watch's live row, null on every screen that does not watch so those screens render as before
         string? pollRow = null;
@@ -308,9 +319,10 @@ public sealed class SelectPrompt(   //single-select, multi-select and the free-t
                     //armed so the first tick checks, the file may already be there and a wasted interval would be the screen doing nothing
                     var lastCheckMs = -(long)poll.Interval.TotalMilliseconds;
 
-                    while (!poll.Clock.WaitForKey(FrameInterval))
+                    while (!clock!.WaitForKey(FrameInterval))
                     {
-                        var now = poll.Clock.ElapsedMs;
+                        if (spec.Close.IsCancellationRequested) return Done(new SelectOutcome.Cancelled());
+                        var now = clock.ElapsedMs;
                         if (poll.Row(now) is var fresh && fresh != pollRow)
                         {
                             pollRow = fresh;
@@ -323,11 +335,17 @@ public sealed class SelectPrompt(   //single-select, multi-select and the free-t
                         if (poll.Arrived()) { arrived = true; break; }
                     }
 
-                    if (arrived) return Done(new SelectOutcome.Arrived());
+                    if (arrived) return Done(new SelectOutcome.Arrived(cursor));
                 }
 
                 if (painter is null) WaitForKeyOrResize();
-                var key = k.ReadKey(spec.Cancel);
+                if (spec.Close.IsCancellationRequested) return Done(new SelectOutcome.Cancelled());
+                ConsoleKeyInfo key;
+                try { key = k.ReadKey(readToken); }
+                catch (OperationCanceledException) when (spec.Close.IsCancellationRequested && !spec.Cancel.IsCancellationRequested)
+                {
+                    return Done(new SelectOutcome.Cancelled());
+                }
                 switch (key.Key)
                 {
                     case ConsoleKey.UpArrow:
@@ -429,7 +447,7 @@ public sealed class SelectPrompt(   //single-select, multi-select and the free-t
         }
         finally
         {
-            painter?.SetPanel(null);   //unconditional, an aborted read must not pin a dead panel
+            painter?.ClearPanel(published);   //this prompt's own factory only, an aborted read must not pin a dead panel and a prompt that took the slot must not lose it
             if (painter is null)
             {
                 if (spec.EchoOnCompletion) EraseAndEcho();
@@ -551,7 +569,7 @@ public sealed class SelectPrompt(   //single-select, multi-select and the free-t
             var atCursor = cursor;
             var picked = (bool[])selected.Clone();
             var draft = freeBuf.ToString();
-            painter!.SetPanelFactory((w, room) =>
+            published = painter!.SetPanelFactory((w, room) =>
                 new PanelContent(Rows(w, room, atCursor, picked, draft, out var inputCaret), inputCaret, spec.KeepsRoom));
         }
 
@@ -987,7 +1005,7 @@ public sealed class SelectPrompt(   //single-select, multi-select and the free-t
             }
 
             //the watch row sits above the footer and below the options, since it says what gatto is doing. the caller composes its text and the widget only sanitizes it
-            if (pollRow is { Length: > 0 } watching)
+            if (pollRow is { Length: > 0 } watching && spec.Poll?.RenderRow != false)
             {
                 rows.Add("");
                 rows.Add(Fit(Indent + theme.Paint(TermText.Sanitize(watching), Theme.Dim), w));

@@ -58,6 +58,14 @@ public sealed class BackgroundDispatchTests : IDisposable
     private static void Says(FakeChatClient client, string text) =>
         client.EnqueueTurn(new StreamEvent.TextDelta(text), new StreamEvent.Finished("stop", null));
 
+    //a panel reads its last key without sampling, as every modal does, so the test samples once that key has left and the composer gets the next
+    private static async Task ReleaseAfterPanel(RichReplHarness h)
+    {
+        await h.UntilAsync(() => h.Keys.Pending == 0, Waits.Bound);
+        await Task.Delay(100);
+        _ = h.Keys.KeyAvailable;
+    }
+
     private static ChatMessage? LastUserOf(ChatRequest request) => request.Messages.LastOrDefault(m => m.Role == "user");
 
     //each request's last user record as it was sent, since a request's message list is the live conversation
@@ -267,9 +275,9 @@ public sealed class BackgroundDispatchTests : IDisposable
 
         var run = h.RunAsync(30_000);
         Assert.True(await h.UntilAsync(() => h.Saw("started"), Waits.Bound), "the first turn never ended");
-        //the row the idle ticker keeps after the turn, the count, the number and the command's head
-        Assert.True(await h.UntilAsync(() => h.ScreenText().Contains("1 background  \u00b7  1 Start-Sleep -Seconds 120"), Waits.Bound),
-            "the tasks row never showed after the turn ended");
+        //the status line's cell after the turn, read from the registry at each paint
+        Assert.True(await h.UntilAsync(() => h.ScreenText().Contains("1 shell"), Waits.Bound),
+            "the cell never showed after the turn ended");
         h.Keys.Line("/quit");
         await run;
 
@@ -287,7 +295,7 @@ public sealed class BackgroundDispatchTests : IDisposable
 
         await h.RunAsync(30_000);
 
-        Assert.Contains($"{Sharp} {Gatto.Repl.Repl.NoBackgroundTasks}", h.Written(), StringComparison.Ordinal);
+        Assert.Contains(Gatto.Repl.Repl.NoBackgroundTasks, h.Written(), StringComparison.Ordinal);
         Assert.Empty(h.Client.Requests);
     }
 
@@ -312,6 +320,8 @@ public sealed class BackgroundDispatchTests : IDisposable
                 h.Keys.Line("/tasks");
                 listed = await h.UntilAsync(() => h.ScreenText().Contains($"2  ended {GlyphSet.Unicode.Dot} exit 0, waiting for the model  Write-Output 'quick'")
                     && h.ScreenText().Contains("1  running "), Waits.Bound);
+                h.Keys.Key(Esc);   //the panel is modal, so it closes before the session goes on
+                await ReleaseAfterPanel(h);
             };
             return Task.CompletedTask;
         };
@@ -328,7 +338,7 @@ public sealed class BackgroundDispatchTests : IDisposable
 
     //the turn is held open on its request, so the command is typed while a turn is in flight and answers in the panel
     [Fact]
-    public async Task TASKS_DURING_A_TURN_ANSWERS_IN_THE_PANEL_AND_KILL_ENDS_A_TASK_AT_ONCE()
+    public async Task TASKS_DURING_A_TURN_OPENS_THE_PANEL_AND_X_ENDS_A_TASK_AT_ONCE()
     {
         var h = Harness();
         StartsInTheBackground(h.Client, "Start-Sleep -Seconds 120");
@@ -345,8 +355,10 @@ public sealed class BackgroundDispatchTests : IDisposable
                 {
                     h.Keys.Line("/tasks");
                     listed = await h.UntilAsync(() => h.ScreenText().Contains("1  running "), Waits.Bound);
-                    h.Keys.Line("/tasks kill 1");
+                    h.Keys.Key(new ConsoleKeyInfo('x', ConsoleKey.X, false, false, false));
                     killed = await h.UntilAsync(() => h.Tasks?.Running.Count == 0, Waits.Bound);
+                    h.Keys.Key(Esc);
+                    await ReleaseAfterPanel(h);
                 };
                 return Task.CompletedTask;
             };
@@ -363,7 +375,7 @@ public sealed class BackgroundDispatchTests : IDisposable
 
         Assert.True(listed, "the panel never listed the running task during the turn");
         Assert.True(killed, "the kill did not end the task while the turn ran");
-        Assert.DoesNotContain(h.Convo.Messages, m => m.Role == "user" && m.Background is null && m.Content?.StartsWith("/tasks", StringComparison.Ordinal) == true);   //neither command was sent as a message
+        Assert.DoesNotContain(h.Convo.Messages, m => m.Role == "user" && m.Background is null && m.Content?.StartsWith("/tasks", StringComparison.Ordinal) == true);   //the command was not sent as a message
         var end = Assert.Single(h.Convo.Messages, m => m.Background is not null);
         Assert.StartsWith("background task 1 killed by /tasks · ", end.Content, StringComparison.Ordinal);
         Assert.DoesNotContain("ended background task", h.Written(), StringComparison.Ordinal);   //a successful kill prints no row of its own

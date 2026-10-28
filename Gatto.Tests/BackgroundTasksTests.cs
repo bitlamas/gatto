@@ -47,6 +47,49 @@ public sealed class BackgroundTasksTests : IDisposable
 
     private const string Sleeper = "Start-Sleep -Seconds 120";
 
+    //the start sink fires once per start with the number, after the registry holds the task, so a repaint it asks for counts it
+    [Fact]
+    public async Task STARTED_FIRES_ONCE_PER_START_WITH_THE_REGISTRY_ALREADY_HOLDING_THE_TASK()
+    {
+        var seen = new ConcurrentQueue<(int Number, int Running)>();
+        _tasks.Started = n => seen.Enqueue((n, _tasks.Running.Count(t => t.Task.Number == n)));
+        var (first, _) = await Start(Sleeper);
+        var (second, _) = await Start(Sleeper);
+        Assert.Equal([(first, 1), (second, 1)], seen.ToArray());
+    }
+
+    //the output so far is a copy taken under the drain's gate, and a number the registry does not hold reads as null
+    [Fact]
+    public async Task OUTPUT_SO_FAR_READS_WHAT_A_RUNNING_TASK_HAS_WRITTEN()
+    {
+        var (n, _) = await Start("Write-Output 'first line'; [Console]::Error.WriteLine('a warning'); Start-Sleep -Seconds 120");
+        Waits.Until(() => _tasks.OutputSoFar(n) is { } o && o.Out.Contains("first line") && o.Err.Contains("a warning"),
+            () => $"the output never arrived: {_tasks.OutputSoFar(n)}");
+        Assert.Null(_tasks.OutputSoFar(999));
+    }
+
+    //a live handle runs its clock while the task runs, shows a kill's gloss at once, and stays readable once the end is delivered
+    [Fact]
+    public async Task A_LIVE_HANDLE_SHOWS_THE_RUNTIME_THE_KILL_AND_OUTLIVES_DELIVERY()
+    {
+        var (n, _) = await Start(Sleeper);
+        var handle = Assert.Single(_tasks.Live);
+        Assert.Equal(n, handle.Number);
+        Assert.Null(handle.Gloss);
+        var before = handle.Elapsed;
+        await Task.Delay(50);
+        Assert.True(handle.Elapsed > before, "the clock did not move");
+
+        Assert.True(_tasks.Kill(n, BackgroundTasks.ByTasks));
+        Assert.Equal("killed", handle.Gloss);
+        await Ended(n);
+        var stopped = handle.Elapsed;
+        _tasks.Delivered(n);
+        Assert.Empty(_tasks.Live);
+        Assert.Equal("killed", handle.Gloss);
+        Assert.Equal(stopped, handle.Elapsed);   //an ended row stops counting
+    }
+
     [Fact]
     public async Task THE_START_RESULT_NAMES_THE_TASK_AND_NUMBERS_START_AT_1_AND_NEVER_REPEAT()
     {

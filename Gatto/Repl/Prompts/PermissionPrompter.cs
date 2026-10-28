@@ -85,6 +85,8 @@ public sealed class RichPermissionPrompter(
         //the painter must be alive, SetPanel is a no-op after Teardown so a dead one would swallow the keypress and show nothing
         var painter = chrome?.Painter is { Alive: true } p ? p : null;
 
+        //the slot is held from before the push to the end of the reason line, so the background panel cannot open between the two and take the keys
+        using var slot = chrome?.HoldModalSlot?.Invoke();
         //push one focus scope for the options and the reason line, and hand the widget pump: null, its own closes when Show returns
         using var focus = pump?.PushFocus();
         var k = focus?.Keys ?? keys;
@@ -194,6 +196,8 @@ public sealed class RichPermissionPrompter(
                 }
             }
 
+            //the rows this flow last published, the only ones its clear may remove
+            IReadOnlyList<string>? published = null;
             try
             {
                 //head must return a fresh list per render, empty until a refusal puts the notice above the input line
@@ -201,7 +205,8 @@ public sealed class RichPermissionPrompter(
                 while (true)
                 {
                     var line = SelectPrompt.ReadLinePanel(
-                        k, () => new List<string>(notice), ReasonPrefix, WrapReasonLine, painter.SetPanel, TurnToken());
+                        k, () => new List<string>(notice), ReasonPrefix, WrapReasonLine,
+                        rows => { published = rows; painter.SetPanel(rows); }, TurnToken());
                     switch (line.Status)
                     {
                         case PanelLineStatus.Dead: throw new OperationCanceledException(DeadPumpMessage);
@@ -219,8 +224,8 @@ public sealed class RichPermissionPrompter(
             }
             finally
             {
-                //clear the panel whatever happens, an aborted read must not pin a dead panel over the composer
-                painter.SetPanel(null);
+                //clear this flow's own rows whatever happens, an aborted read must not pin a dead panel and a later prompt's must stay
+                painter.ClearPanelRows(published);
             }
         }
     }

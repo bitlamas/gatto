@@ -135,6 +135,90 @@ public class LineEditorTests : IDisposable
 
     private static ConsoleKeyInfo Enter(bool shift = false) => new('\r', ConsoleKey.Enter, shift, false, false);
     private static ConsoleKeyInfo Key(ConsoleKey k, bool ctrl = false) => new('\0', k, false, false, ctrl);
+
+    //keys, then the composer gestures a test names, read in order, the last key a submit so Read returns
+    private sealed class MixedInput(IEnumerable<ComposerInput> items) : IComposerSource
+    {
+        private readonly Queue<ComposerInput> _q = new(items);
+        public bool KeyAvailable => false;
+        public ComposerInput Read() => _q.Dequeue();
+    }
+
+    private static ComposerInput In(ConsoleKeyInfo k) => new ComposerInput.Key(k);
+
+    //the bottom row with nothing to recall selects the cell on Down while it is on, the draft kept and the caret gone, and Enter then opens
+    [Fact]
+    public void Down_selects_the_cell_and_Enter_opens_it_with_the_draft_kept()
+    {
+        var opened = 0;
+        var views = new List<EditorView>();
+        var editor = new LineEditor(new ScriptedKeys([Key(ConsoleKey.DownArrow), Enter(), Enter()]), H());
+        var sent = editor.Read(views.Add, initial: "a draft", canSelectCell: () => true, openBackground: () => opened++);
+        Assert.Equal("a draft", sent);
+        Assert.Equal(1, opened);
+        Assert.Contains(views, v => !v.CaretVisible && v.Lines[0] == "a draft");
+        Assert.True(views[^1].CaretVisible);
+    }
+
+    //with the cell off Down does what it did, nothing, and a history walk's Down recalls before it ever selects
+    [Fact]
+    public void Down_with_the_cell_off_or_mid_walk_selects_nothing()
+    {
+        var opened = 0;
+        var off = new LineEditor(new ScriptedKeys([Key(ConsoleKey.DownArrow), Enter()]), H());
+        Assert.Equal("x", off.Read(_ => { }, initial: "x", canSelectCell: () => false, openBackground: () => opened++));
+        Assert.False(off.CellSelected);
+
+        var h = H();
+        h.Record("older");
+        var walk = new LineEditor(new ScriptedKeys([Key(ConsoleKey.UpArrow), Key(ConsoleKey.DownArrow), Enter()]), h);
+        Assert.Equal("", walk.Read(_ => { }, canSelectCell: () => true, openBackground: () => opened++));
+        Assert.Equal(0, opened);
+    }
+
+    //on the selected cell Up and Esc give the caret back, Space opens, and a typed character gives it back and is inserted
+    [Fact]
+    public void The_selection_gives_the_caret_back_on_any_other_key()
+    {
+        var opened = 0;
+        var keys = new ScriptedKeys([Key(ConsoleKey.DownArrow), Key(ConsoleKey.UpArrow), Key(ConsoleKey.DownArrow), Key(ConsoleKey.Escape),
+            Key(ConsoleKey.DownArrow), new ConsoleKeyInfo(' ', ConsoleKey.Spacebar, false, false, false),
+            Key(ConsoleKey.DownArrow), K('z'), Enter()]);
+        var editor = new LineEditor(keys, H());
+        Assert.Equal("az", editor.Read(_ => { }, initial: "a", canSelectCell: () => true, openBackground: () => opened++));
+        Assert.Equal(1, opened);
+    }
+
+    //a press on the cell opens at once with no selection step
+    [Fact]
+    public void The_cell_gesture_opens_with_no_selection()
+    {
+        var opened = 0;
+        var editor = new LineEditor(new MixedInput([new ComposerInput.OpenBackground(), In(K('q')), In(Enter())]), H());
+        Assert.Equal("q", editor.Read(_ => { }, canSelectCell: () => true, openBackground: () => opened++));
+        Assert.Equal(1, opened);
+        Assert.False(editor.CellSelected);
+    }
+
+    //the cell going off while selected gives the next key back to the composer whole
+    [Fact]
+    public void A_cell_that_went_off_gives_the_key_to_the_composer()
+    {
+        var on = true;
+        var opened = 0;
+        var editor = new LineEditor(new ProbeKeys([Key(ConsoleKey.DownArrow), Enter(), Enter()], i => { if (i == 1) on = false; }), H());
+        Assert.Equal("d", editor.Read(_ => { }, initial: "d", canSelectCell: () => on, openBackground: () => opened++));
+        Assert.Equal(0, opened);
+    }
+
+    //a hook before each read, the only window to change state between two keys
+    private sealed class ProbeKeys(IEnumerable<ConsoleKeyInfo> keys, Action<int> before) : IComposerSource
+    {
+        private readonly Queue<ConsoleKeyInfo> _q = new(keys);
+        private int _n;
+        public bool KeyAvailable => false;
+        public ComposerInput Read() { before(_n++); return new ComposerInput.Key(_q.Dequeue()); }
+    }
     private static ConsoleKey CharToKey(char c) => char.IsAsciiLetterUpper(char.ToUpperInvariant(c))
         ? (ConsoleKey)char.ToUpperInvariant(c) : ConsoleKey.Spacebar;
 

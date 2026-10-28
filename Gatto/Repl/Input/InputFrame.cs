@@ -26,7 +26,14 @@ public enum HintKind { Paste, Focus, Teaser, Background }
 public sealed record StatusHint(HintKind Kind, IReadOnlyList<string> Forms);
 
 //what a press on the status line can land on
-public enum StatusCell { Folder, Branch, Model, Tokens, Ctx, Quota, Cost, Hint, HintNext }
+public enum StatusCell { Folder, Branch, Model, Tokens, Ctx, Background, Quota, Cost, Hint, HintNext }
+
+//what runs between turns as the painter reads it under the gate at each paint, never stored on the status record
+public readonly record struct BackgroundFacts(int Running, bool WatchArmed, bool WatchPaused, bool CellSelected)
+{
+    //the cell is on while a shell runs or a watch is armed
+    public bool CellOn => Running > 0 || WatchArmed;
+}
 
 //one painted piece of the status line and its columns, the start inclusive and the end exclusive
 public readonly record struct StatusCellSpan(StatusCell Kind, int Start, int End);
@@ -59,7 +66,8 @@ public sealed class InputFrame(ITermSurface surface, Theme theme, string? role, 
 
     //pure layout, no pixels (ChromePainter owns the chrome stack). panelRows swaps in a modal prompt's rows: no composer layout, and view goes unread
     public FrameLayout Compose(EditorView view, IReadOnlyList<string>? panelRows = null,
-        (int Row, int Col)? panelCaret = null, (int Top, int Count)? editorWindow = null, bool markHidden = false)
+        (int Row, int Col)? panelCaret = null, (int Top, int Count)? editorWindow = null, bool markHidden = false,
+        BackgroundFacts facts = default)
     {
         var width = surface.Width;
         var framed = width >= MinFramedWidth;
@@ -90,7 +98,7 @@ public sealed class InputFrame(ITermSurface surface, Theme theme, string? role, 
             visibleRows.Add(bottomV);
             screenRows.Add(1);
 
-            var row = StatusCore(status, width, theme, _glyphs);
+            var row = StatusCore(status, facts, width, theme, _glyphs);
             statusRow = row;
             rendered.Add(row.Rendered);
             visibleRows.Add(row.Visible);
@@ -235,12 +243,13 @@ public sealed class InputFrame(ITermSurface surface, Theme theme, string? role, 
         GlyphSet? glyphs = null, string? name = null) =>
         TopRuleCore(role, wild, width, theme, hint, glyphs, name).visible;
 
-    public static string BuildStatusLine(StatusInfo s, int width, Theme theme, GlyphSet? glyphs) =>
-        StatusCore(s, width, theme, glyphs).Rendered;
+    public static string BuildStatusLine(StatusInfo s, int width, Theme theme, GlyphSet? glyphs, BackgroundFacts facts = default) =>
+        StatusCore(s, facts, width, theme, glyphs).Rendered;
 
     //the status line's pieces by column at one width, so a test asks where a cell is rather than counting
-    internal static IReadOnlyList<StatusCellSpan> StatusCellsOf(StatusInfo s, int width, Theme theme, GlyphSet? glyphs) =>
-        StatusCore(s, width, theme, glyphs).Cells;
+    internal static IReadOnlyList<StatusCellSpan> StatusCellsOf(StatusInfo s, int width, Theme theme, GlyphSet? glyphs,
+        BackgroundFacts facts = default) =>
+        StatusCore(s, facts, width, theme, glyphs).Cells;
 
     //internals
 
@@ -308,17 +317,23 @@ public sealed class InputFrame(ITermSurface surface, Theme theme, string? role, 
     private const int FolderGone = 3, ModelBare = 3;
 
     //the hints the fill composes, in the ruled order. the frame and the Repl's refresh read this one list
-    internal static IReadOnlyList<StatusHint> ComposedHints(StatusInfo s) => s.Hints ?? [];
+    internal static IReadOnlyList<StatusHint> ComposedHints(StatusInfo s, BackgroundFacts facts) =>
+        facts.CellOn ? [.. s.Hints ?? [], BackgroundHint(facts.CellSelected)] : s.Hints ?? [];
+
+    //the background hint's two states, the caret in the composer or the cell selected, each in its two forms
+    internal static StatusHint BackgroundHint(bool selected) => new(HintKind.Background, selected
+        ? ["Enter opens what runs in the background", "Enter opens the background"]
+        : ["Down selects what runs in the background", "Down selects the background"]);
 
     //one physical row at any width: the ladder finds the base, the fill gives back what fits, then the hint
-    private static StatusRow StatusCore(StatusInfo s, int width, Theme theme, GlyphSet? glyphs)
+    private static StatusRow StatusCore(StatusInfo s, BackgroundFacts facts, int width, Theme theme, GlyphSet? glyphs)
     {
         var g = glyphs ?? GlyphSet.Unicode;
-        var hints = ComposedHints(s);
+        var hints = ComposedHints(s, facts);
         var kinds = hints.Select(h => h.Kind).ToList();
 
         //a non-positive width skips the ladder and the fill, the test and plain cases
-        if (width <= 0) return Finish(Assemble(s, theme, MapOf(0), g), null);
+        if (width <= 0) return Finish(Assemble(s, facts, theme, MapOf(0), g), null);
 
         int[]? map = null;
         for (var rung = 0; rung <= ModelShort && map is null; rung++)
@@ -330,7 +345,7 @@ public sealed class InputFrame(ITermSurface surface, Theme theme, string? role, 
             var floor = MapOf(ModelShort);
             floor[(int)Piece.Folder] = FolderGone;
             if (!Fits(floor)) floor[(int)Piece.Model] = ModelBare;
-            var cut = Finish(Assemble(s, theme, floor, g), null);
+            var cut = Finish(Assemble(s, facts, theme, floor, g), null);
             if (UnicodeWidth.Of(cut.Visible) <= width) return cut;
             var cells = cut.Cells.Where(c => c.Start < width).Select(c => c with { End = Math.Min(c.End, width) }).ToList();
             return cut with
@@ -355,7 +370,7 @@ public sealed class InputFrame(ITermSurface surface, Theme theme, string? role, 
                 if (TryForm(piece, f, onlyFrom: at)) break;
         }
 
-        var parts = Assemble(s, theme, map, g);
+        var parts = Assemble(s, facts, theme, map, g);
         if (hints.Count == 0) return Finish(parts, null);
 
         //the hint last, the chosen one in its longest form that fits, its triangle counted when a second hint is live
@@ -367,7 +382,7 @@ public sealed class InputFrame(ITermSurface surface, Theme theme, string? role, 
                 return Finish(parts, (form, arrow > 0, chosen));
         return Finish(parts, null);
 
-        bool Fits(int[] m) => VisWidth(Assemble(s, theme, m, g), g) <= width;
+        bool Fits(int[] m) => VisWidth(Assemble(s, facts, theme, m, g), g) <= width;
 
         //moves one piece to a form and keeps it when the row still fits, from the form named only
         bool TryForm(Piece piece, int form, int onlyFrom)
@@ -447,7 +462,7 @@ public sealed class InputFrame(ITermSurface surface, Theme theme, string? role, 
     }
 
     //the footer's sections at one map of forms. the mark, the effort, ctx and the quota or cost are never shed, the floor keeps the mark and the effort too
-    private static List<Part> Assemble(StatusInfo s, Theme theme, int[] map, GlyphSet g)
+    private static List<Part> Assemble(StatusInfo s, BackgroundFacts facts, Theme theme, int[] map, GlyphSet g)
     {
         var parts = new List<Part>();
         void Add(Piece piece, StatusCell kind, RgbColor ink)
@@ -461,6 +476,10 @@ public sealed class InputFrame(ITermSurface surface, Theme theme, string? role, 
         Add(Piece.Model, StatusCell.Model, Theme.Dim);
         Add(Piece.Tokens, StatusCell.Tokens, Theme.Dim);
         if (s.Ctx?.Percent is int p) Add(Piece.Ctx, StatusCell.Ctx, p >= 80 ? Theme.Warn : Theme.Dim);
+
+        //what runs between turns, never shed, and when Down has selected it the band a footer word takes under the pointer, in the accent
+        if (BackgroundCell(facts, g) is { } cell)
+            parts.Add(new Part(cell, facts.CellSelected ? SelectedCell(cell, theme) : theme.Paint(cell, Theme.Dim), StatusCell.Background));
 
         //the provider supplies the numbers and core writes the words, a quota turns warn with few requests left, or when low against a reported total
         if (s.Quota is { } q)
@@ -504,6 +523,19 @@ public sealed class InputFrame(ITermSurface surface, Theme theme, string? role, 
             col += w;
         }
         return (rendered.ToString(), visible.ToString(), cells);
+    }
+
+    //the selected cell's paint, the band then the accent, one reset at the end so the band ends with the word
+    internal static string SelectedCell(string cell, Theme theme) =>
+        Ansi.Bg(theme.Map(Theme.UserInputBg), theme.TrueColor) + theme.Paint(cell, Theme.Accent);
+
+    //the cell's words: the shells that run, then the watch, absent when both are
+    internal static string? BackgroundCell(BackgroundFacts facts, GlyphSet g)
+    {
+        var words = new List<string>();
+        if (facts.Running > 0) words.Add(facts.Running == 1 ? "1 shell" : $"{facts.Running} shells");
+        if (facts.WatchArmed) words.Add(facts.WatchPaused ? "watch paused" : "watch");
+        return words.Count == 0 ? null : string.Join(SepOf(g), words);
     }
 
     //section text

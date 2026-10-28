@@ -146,14 +146,9 @@ public sealed partial class Repl
     internal static string MailboxName(string modelId) =>
         string.Concat(modelId.Select(c => Path.GetInvalidFileNameChars().Contains(c) ? '-' : c));
 
-    //the answers that are text already, /help, /tools, /tasks and the list view of /permissions
+    //the answers that are text already, /help, /tools and the list view of /permissions. /tasks opens the background panel before the bypass is asked
     private Func<int, IReadOnlyList<string>> ReadOnlyAnswer(string trimmed, RichState s)
     {
-        if (trimmed == "/tasks")
-        {
-            var lines = TasksLines();
-            return _ => lines.Count == 0 ? ["  " + NoBackgroundTasks] : [.. lines.Select(l => "  " + l)];
-        }
         if (trimmed == "/help")
         {
             var known = KnownCommands();

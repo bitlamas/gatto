@@ -6,6 +6,29 @@ namespace Gatto.Tests;
 
 public class ConversationTests
 {
+    //a reader off the turn's thread copies the list whole while the turn appends, so the footer's estimate never throws mid-append
+    [Fact]
+    public void A_snapshot_taken_during_appends_never_throws_and_counts_whole()
+    {
+        var c = new Conversation("sys");
+        var stop = false;
+        var writer = Task.Run(() =>
+        {
+            for (var i = 0; i < 20_000 && !Volatile.Read(ref stop); i++) c.AddUser("q" + i);
+        });
+        var reads = 0;
+        while (!writer.IsCompleted && reads < 100)
+        {
+            var copy = c.MessagesSnapshot();
+            _ = Gatto.Core.Loop.ContextBudget.Estimate(copy);
+            Assert.All(copy, m => Assert.NotNull(m));
+            reads++;
+        }
+        Volatile.Write(ref stop, true);
+        Assert.True(writer.Wait(Gatto.Tests.Fakes.Waits.Bound));
+        Assert.Equal(c.Count, c.MessagesSnapshot().Count);
+    }
+
     //the timestamp is stamped at creation and survives a load. a save rewrites the whole file, so stamping at write time would reset every record
     [Fact]
     public void Conversation_stamps_creation_ts_from_the_injected_clock_and_Load_preserves_it()

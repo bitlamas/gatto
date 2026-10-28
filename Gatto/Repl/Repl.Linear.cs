@@ -22,8 +22,8 @@ public sealed partial class Repl
         Ready();
         var idleView = new EditorView(new List<string> { "" }, 0, 0);
         var lastView = idleView;         //written and read only under the gate, see RedrawLocked
-        //reads lastView by reference so it sees the current composer contents, and it is set before the first dispatch
-        s.ComposerEmpty = () => lastView.Lines.Count == 1 && lastView.Lines[0].Length == 0;
+        //reads lastView by reference so it sees the current composer contents, and a selected background cell counts as content so Esc goes to the editor rather than the turn
+        s.ComposerEmpty = () => lastView.Lines.Count == 1 && lastView.Lines[0].Length == 0 && lastView.CaretVisible;
         var stopped = false;             //teardown latch, written and read only under the gate
         var endedTasks = 0;              //the background tasks the teardown ended, which the exit block says
         var degraded = false;            //renderer degrade latch, written and read only under the gate
@@ -162,10 +162,13 @@ public sealed partial class Repl
                 RedrawLocked(lastView);
             }
         };
+        //a start repaints so the status line's cell counts the new shell at once, the cell reads the registry at paint
+        tasks.Started = _ =>
+        {
+            lock (s.Gate) { if (!stopped) RedrawLocked(lastView); }
+        };
         _tasks = tasks;
         armTasks?.Invoke(tasks);
-        //the ticker reads the running tasks each tick, so their row moves in a turn and out of one
-        s.Ticker.Running = () => [.. tasks.Running.Select(t => (t.Task.Number, t.Task.Command, t.Elapsed))];
 
         //one fault slot shared with the composer and resize tasks, the first fault wins, and the cancel is punted off the timer thread
         void OnChromeFault(Exception ex)
@@ -219,7 +222,9 @@ public sealed partial class Repl
                             //a Ctrl+C with Ctrl+A's selection live copies through the same clipboard instance as a drag, no gate needed
                             onCopyText: text => clip.TrySet(text),
                             //every composer-selection set-site clears any live transcript or chrome span, so one selection domain is live at most
-                            onComposerSelectionSet: BuildComposerSelectionSetHook(s.Painter, s.Gate, () => stopped));
+                            onComposerSelectionSet: BuildComposerSelectionSetHook(s.Painter, s.Gate, () => stopped),
+                            canSelectCell: () => { lock (s.Gate) return BackgroundFactsNow(null).CellOn; },
+                            openBackground: () => OpenBackgroundOrSay(s));
                     }
                     catch (ComposerPaintException) { throw; }   //a paint bug, rethrown so it is not mistaken for pump death
                     catch (Exception)
@@ -244,6 +249,14 @@ public sealed partial class Repl
                     //the watch is armed, moved or turned off at once, at rest and during a turn alike, and never waits in the queue
                     if (WatchNow(text, s, queue))
                     {
+                        lock (s.Gate) { if (!stopped) RedrawLocked(idleView); }
+                        rejected = carry;
+                        continue;
+                    }
+                    //what runs opens on this task, at rest and during a turn alike, the same panel Down and Enter and a press on the cell open
+                    if (text.Trim() == "/tasks")
+                    {
+                        OpenBackgroundOrSay(s);
                         lock (s.Gate) { if (!stopped) RedrawLocked(idleView); }
                         rejected = carry;
                         continue;
@@ -396,10 +409,10 @@ public sealed partial class Repl
             lock (gate)
             {
                 markStopped();
-                ended = endTasks?.Invoke() ?? 0;   //before the ticker stops, so no running task keeps its idle loop alive past the teardown
+                ended = endTasks?.Invoke() ?? 0;   //the running tasks end with the session
                 ticker.StopTurn();          //idempotent, and its own paint faults go to OnFault
                 ticker.OnFault = null;
-                if (chrome is not null) { chrome.Painter = null; chrome.Renderer = null; }
+                if (chrome is not null) { chrome.Painter = null; chrome.Renderer = null; chrome.HoldModalSlot = null; }
                 painter.Teardown();          //idempotent, it erases the chrome and never paints again
             }
         }
@@ -458,6 +471,15 @@ public sealed partial class Repl
 
         //the live composer-empty predicate, a closure over the published view so every read sees the current contents (null means empty until the loop starts)
         public Func<bool>? ComposerEmpty;
+
+        //the panel slot's one owner at a time: the background panel tries it, a turn-thread prompt waits for it and holds it through its whole flow
+        public readonly SemaphoreSlim ModalSlot = new(1, 1);
+
+        //the open background panel's close, replaced per open and null while none is open, read and swapped under the gate
+        public CancellationTokenSource? BackgroundClose;
+
+        //the pump the background panel pushes its focus on
+        public InputPump? Pump;
     }
 
     //a line of image placeholders and one command, in any order, is that command, and the placeholders go back to the composer as typed. null for any other line, a // escape included
@@ -766,14 +788,6 @@ public sealed partial class Repl
             { s.Renderer.CommitSystem("no tools are armed this session"); return false; }
             s.Renderer.CommitSystem(CommandText.ToolsHeadline(tools.Count));
             s.Renderer.CommitListing(CommandText.ToolsSpec(tools, policy, s.Glyphs));
-            return false;
-        }
-        if (trimmed == "/tasks")
-        {
-            //one ♯ row per task at rest, as /permissions commits its grants, and the honest empty when none runs
-            var lines = TasksLines();
-            if (lines.Count == 0) s.Renderer.CommitSystem(NoBackgroundTasks);
-            foreach (var line in lines) s.Renderer.CommitSystem(line);
             return false;
         }
         if (trimmed == "/compact")

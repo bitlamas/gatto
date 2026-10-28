@@ -119,6 +119,29 @@ public class InfoPanelTests
             Gatto.Repl.Repl.DecideCancel(ConsoleKey.Escape, false, true, true, infoUp: p.State.PanelInfo));
     }
 
+    //a prompt leaving late clears its own panel only, so one that took the slot after it keeps its rows
+    [Fact]
+    public void A_clear_names_its_owner_and_leaves_a_later_panel()
+    {
+        var p = Painter();
+        var mine = p.SetPanelFactory((w, _) => new PanelContent(["background"]));
+        var theirs = p.SetPanelFactory((w, _) => new PanelContent(["Allow write_file?"]));
+        p.ClearPanel(mine);
+        Assert.Equal(["Allow write_file?"], p.State.PanelRows);
+        p.ClearPanel(theirs);
+        Assert.False(p.State.PanelUp);
+
+        IReadOnlyList<string> reason = ["reason: "];
+        p.SetPanel(reason);
+        var later = p.SetPanelFactory((w, _) => new PanelContent(["the next prompt"]));
+        p.ClearPanelRows(reason);
+        Assert.Equal(["the next prompt"], p.State.PanelRows);
+        p.ClearPanel(later);
+        p.SetPanel(reason);
+        p.ClearPanelRows(reason);
+        Assert.False(p.State.PanelUp);
+    }
+
     //a permission or ask_user prompt sets its own panel, which replaces the answer, and closing the prompt brings nothing back
     [Fact]
     public void A_prompt_replaces_an_open_info_panel()

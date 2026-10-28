@@ -301,6 +301,24 @@ public class InputPumpTests
         lock (seen) Assert.Equal(new[] { true, false }, seen);
     }
 
+    //a scope the turn does not wait on fires no edge on either side, and it still pops by identity
+    [Fact]
+    public void ModalWaitSink_IsQuietForAScopeThatIsNotAWait()
+    {
+        var src = new FeedSource();
+        var pump = new InputPump(new KeyInputSource(src));
+        pump.Start();
+        var seen = new List<bool>();
+        pump.SetModalWaitSink(open => { lock (seen) seen.Add(open); });
+
+        var waiting = pump.PushFocus();
+        var quiet = pump.PushFocus(wait: false);
+        waiting.Dispose();
+        quiet.Dispose();
+
+        lock (seen) Assert.Equal(new[] { true, false }, seen);
+    }
+
     //nested scopes report every edge, the pump never flattens them. the consumer decides that a prompt over a prompt is one wait
     [Fact]
     public void ModalWaitSink_ReportsNestedScopesSeparately()

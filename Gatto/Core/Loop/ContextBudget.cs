@@ -57,14 +57,20 @@ public static class ContextBudget
 
     //estimated tokens added since the last server reading, scaled by the ratio, and 0 when there is no reading yet
     public static int GrowthSinceLastRequest(Conversation convo, ContextUsageState usage) =>
-        usage.LastMessageCount is int from && from < convo.Messages.Count
-            ? (int)(Estimate(convo.Messages.Skip(from)) * usage.Ratio)
+        GrowthSinceLastRequest(convo.Messages, usage);
+
+    //the same figure over a list, which a reader off the turn's thread passes as a copy
+    public static int GrowthSinceLastRequest(IReadOnlyList<ChatMessage> messages, ContextUsageState usage) =>
+        usage.LastMessageCount is int from && from < messages.Count
+            ? (int)(Estimate(messages.Skip(from)) * usage.Ratio)
             : 0;
 
     //one source for the context figure, server truth plus what has been appended since, and never strip the growth term
-    public static int? UsedTokens(Conversation convo, ContextUsageState? usage) =>
+    public static int? UsedTokens(Conversation convo, ContextUsageState? usage) => UsedTokens(convo.Messages, usage);
+
+    public static int? UsedTokens(IReadOnlyList<ChatMessage> messages, ContextUsageState? usage) =>
         usage?.LastPromptTokens is int lastPrompt
-            ? lastPrompt + GrowthSinceLastRequest(convo, usage)
+            ? lastPrompt + GrowthSinceLastRequest(messages, usage)
             : null;
 
     //the request copy only, a record with an update goes out as the update, a blank line, then the typed text

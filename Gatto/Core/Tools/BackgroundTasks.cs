@@ -45,9 +45,49 @@ public sealed class BackgroundTasks : IDisposable
     //where each end goes, set by the face that armed the registry. called on the task's own thread
     public Action<BackgroundEnd>? Ended { get; set; }
 
+    //where each start goes, the task's number, called on the starting thread once the registry holds the task
+    public Action<int>? Started { get; set; }
+
+    //one task read live: its runtime and its gloss come from the task itself, so it stays readable once its end is delivered and shows a kill at once
+    public sealed class BackgroundLive
+    {
+        private readonly Entry _e;
+
+        internal BackgroundLive(Entry e) => _e = e;
+
+        public int Number => _e.Task.Number;
+        public string Command => _e.Task.Command;
+
+        //the clock while it runs, the claim's after, so an ended row stops counting
+        public TimeSpan Elapsed => _e.Claim.Value is { } t ? t.Elapsed : _e.Clock.Elapsed;
+
+        //exit N or killed, null while it runs
+        public string? Gloss => _e.Claim.Value?.Gloss;
+
+        //what it has written so far, both streams copied under the gate the drains append under
+        public (string Out, string Err) OutputSoFar()
+        {
+            lock (_e.Gate) return (_e.Out.ToString(), _e.Err.ToString());
+        }
+    }
+
+    //one handle per task the snapshot lists, running and ended alike, oldest first
+    public IReadOnlyList<BackgroundLive> Live
+    {
+        get { lock (_lock) return [.. _tasks.Values.Select(e => new BackgroundLive(e))]; }
+    }
+
+    //what a task has written so far, null for a number the registry does not hold
+    public (string Out, string Err)? OutputSoFar(int number)
+    {
+        Entry? e;
+        lock (_lock) _tasks.TryGetValue(number, out e);
+        return e is null ? null : new BackgroundLive(e).OutputSoFar();
+    }
+
     public int Generation { get { lock (_lock) return _generation; } }
 
-    private sealed class Entry(BackgroundTask task, ShellTool.Started started)
+    internal sealed class Entry(BackgroundTask task, ShellTool.Started started)
     {
         public readonly BackgroundTask Task = task;
         public readonly ShellTool.Started Started = started;
@@ -72,6 +112,8 @@ public sealed class BackgroundTasks : IDisposable
             entry = new Entry(task, started);
             _tasks[task.Number] = entry;
         }
+        try { Started?.Invoke(entry.Task.Number); }
+        catch (Exception) { }   //a sink that throws must not leave the task unstarted, the registry already holds it
         _ = Task.Run(() => RunAsync(entry), CancellationToken.None);
         return entry.Task.Number;
     }

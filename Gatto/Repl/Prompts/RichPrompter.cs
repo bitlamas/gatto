@@ -80,6 +80,8 @@ public sealed class RichPrompter(   //nothing is committed to scrollback, and th
         if (questions.Count == 0)
             return Task.FromResult<IReadOnlyList<AskAnswer>>(Array.Empty<AskAnswer>());
 
+        //the panel slot for the whole call too, a turn-thread ask closes the background panel first and keeps it shut until the last step
+        using var slot = chrome?.HoldModalSlot?.Invoke();
         //modal focus for the whole call, the widget's scope closes when Show returns and the pump would eat the next step's keys
         using var focus = pump?.PushFocus();   //one focus scope for every step, since a scope per step would let the composer drain the keys between two questions
         var k = focus?.Keys ?? keys;

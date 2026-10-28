@@ -94,95 +94,21 @@ public class ChromeTickerTests
     private static async Task Polled(Changes polled, Func<int> calls, int want) =>
         Assert.True(await polled.UntilAsync(() => calls() >= want, Waits.Bound), $"the reader saw {calls()} of {want} polls");
 
-    //a stand-in for the registry's running list, its timers read off one clock so a second of wall time moves each row
-    private sealed class FakeRunning
-    {
-        private readonly Stopwatch _clock = Stopwatch.StartNew();
-        private readonly object _lock = new();
-        private List<(int Number, string Command)> _tasks = [];
-
-        public void Set(params (int Number, string Command)[] tasks) { lock (_lock) _tasks = [.. tasks]; }
-
-        public IReadOnlyList<(int Number, string Command, TimeSpan Elapsed)> Read()
-        {
-            lock (_lock) return [.. _tasks.Select(t => (t.Number, t.Command, _clock.Elapsed + TimeSpan.FromSeconds(t.Number)))];
-        }
-    }
-
-    private static string TasksText(ChromePainter painter, object gate)
-    {
-        lock (gate) return string.Join("|", painter.State.Tasks.Select(t => t.Number + " " + Gatto.Core.ElapsedText.Of(t.Elapsed)));
-    }
-
-    //a frozen timer is a row without motion, so with no turn the loop keeps painting the tasks row, one second at a time
+    //the ticker is the turn's alone: a stop ends its loop, so no purr comes back after it whatever runs in the background
     [Fact]
-    public async Task WITH_NO_TURN_THE_TASKS_ROW_STILL_MOVES()
+    public async Task A_STOP_ENDS_THE_LOOP_AND_NOTHING_KEEPS_IT_ALIVE()
     {
         var (_, painter, gate) = NewPainter();
-        var running = new FakeRunning();
-        running.Set((1, "dotnet watch run"));
-        var ticker = new ChromeTicker(painter, gate) { Running = running.Read };
+        var ticker = new ChromeTicker(painter, gate);
         ticker.StartTurn("cat");
-        await Painted(painter, () => TasksText(painter, gate).Length > 0, () => "the tasks row never came in the turn");
-
+        await Painted(painter, () => painter.State.PurrText is not null, () => "the turn never purred");
         ticker.StopTurn();
-        string first;
-        lock (gate) { Assert.Null(painter.State.PurrText); first = TasksText(painter, gate); }
-        await Painted(painter, () => TasksText(painter, gate) != first && TasksText(painter, gate).Length > 0,
-            () => $"the idle row stayed at {TasksText(painter, gate)}");
-        lock (gate) Assert.Null(painter.State.PurrText);   //nothing of the purr while idle
-    }
-
-    [Fact]
-    public async Task THE_IDLE_LOOP_ENDS_AND_THE_ROW_GOES_WHEN_THE_LAST_TASK_ENDS()
-    {
-        var (_, painter, gate) = NewPainter();
-        var running = new FakeRunning();
-        running.Set((1, "a server"));
-        var ticker = new ChromeTicker(painter, gate) { Running = running.Read };
-        ticker.StartTurn("cat");
-        await Painted(painter, () => TasksText(painter, gate).Length > 0, () => "the tasks row never came");
-        ticker.StopTurn();
-
-        running.Set();
-        await Painted(painter, () => TasksText(painter, gate).Length == 0, () => "the row stayed after the last task ended");
-
-        ticker.StartTurn("cat");   //the loop ended, so a new turn starts its own
-        await Painted(painter, () => painter.State.PurrText is not null, () => "a turn after the idle loop ended never purred");
-        ticker.StopTurn();
+        await Task.Delay(400);
         lock (gate) Assert.Null(painter.State.PurrText);
-    }
-
-    [Fact]
-    public async Task A_TURN_STARTING_WHILE_IDLE_COMES_UP_WHOLE_AND_THE_TASKS_ROW_KEEPS_MOVING()
-    {
-        var (_, painter, gate) = NewPainter();
-        var running = new FakeRunning();
-        running.Set((1, "a server"));
-        var ticker = new ChromeTicker(painter, gate) { Running = running.Read };
-        ticker.StartTurn("cat");
-        await Painted(painter, () => TasksText(painter, gate).Length > 0, () => "the tasks row never came");
-        ticker.StopTurn();
-
-        ticker.StartTurn("next");
-        await Painted(painter, () => painter.State.PurrText?.StartsWith("next", StringComparison.Ordinal) == true,
-            () => $"the new turn's purr never came, the row read {painter.State.PurrText}");
-        var during = TasksText(painter, gate);
-        await Painted(painter, () => TasksText(painter, gate) != during, () => "the tasks row froze in the new turn");
-        ticker.StopTurn();
-        ticker.StopTurn();   //a stop while idle ends the loop, as the teardown's does
-        lock (gate) Assert.Empty(painter.State.Tasks);
-    }
-
-    [Fact]
-    public void A_STOP_WITH_NO_RUNNING_TASK_STOPS_AS_BEFORE()
-    {
-        var (_, painter, gate) = NewPainter();
-        var ticker = new ChromeTicker(painter, gate) { Running = () => [] };
-        ticker.StartTurn("cat");
-        ticker.StopTurn();
-        lock (gate) Assert.Empty(painter.State.Tasks);
         Assert.Null(ticker.CompletionRow());
+        ticker.StartTurn("next");   //a new turn starts its own loop
+        await Painted(painter, () => painter.State.PurrText?.StartsWith("next", StringComparison.Ordinal) == true, () => "the next turn never purred");
+        ticker.StopTurn();
     }
 
     //the stack is chrome of the turn, so a stop clears it with the live row
@@ -190,7 +116,7 @@ public class ChromeTickerTests
     public void A_STOP_CLEARS_THE_WAITING_CALLS_WITH_THE_LIVE_ROW()
     {
         var (_, painter, gate) = NewPainter();
-        var ticker = new ChromeTicker(painter, gate) { Running = () => [] };
+        var ticker = new ChromeTicker(painter, gate);
         ticker.StartTurn("cat");
         lock (gate)
         {

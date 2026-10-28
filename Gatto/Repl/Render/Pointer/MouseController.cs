@@ -10,7 +10,8 @@ public sealed class MouseController(
     int wheelLines, SelectionController selection, Theme theme, Func<long>? now = null,
     Action<int, int, ComposerGesture>? onComposerSelect = null, Func<ComposerLayout?>? composerLayout = null,
     GlyphSet? glyphs = null, Func<int, bool>? onComposerScroll = null,
-    Func<int, StatusCell?>? statusCellAt = null, Action<int>? onStatusHint = null, Func<bool>? panelHoldsKeys = null)
+    Func<int, StatusCell?>? statusCellAt = null, Action<int>? onStatusHint = null, Func<bool>? panelHoldsKeys = null,
+    Action? onStatusCell = null)
 {
     //the status line's row among the rule rows: the top rule, the bottom rule, then the status line
     private const int StatusRuleRow = 2;
@@ -106,12 +107,20 @@ public sealed class MouseController(
                     focus.Focus(i, width, height, reveal: false);
                 break;   //a header row always toggles, a body row goes to StartDrag below
             case ChromeTarget ct:
-                //a triangle press steps the hint, and under a prompt that holds the keys it is the drag it always was
+                //a triangle press steps the hint and a cell press opens what runs, and under a prompt that holds the keys either is the drag it always was
                 if (ct is { Region: ChromeRegion.Rule, RegionRow: StatusRuleRow } && panelHoldsKeys?.Invoke() != true
-                    && onStatusHint is not null && statusCellAt?.Invoke(e.X) is StatusCell.HintNext)
+                    && statusCellAt?.Invoke(e.X) is { } cell)
                 {
-                    onStatusHint(1);
-                    return;
+                    if (cell == StatusCell.HintNext && onStatusHint is not null)
+                    {
+                        onStatusHint(1);
+                        return;
+                    }
+                    if (cell == StatusCell.Background && onStatusCell is not null)
+                    {
+                        onStatusCell();
+                        return;
+                    }
                 }
                 //a chrome press starts a chrome drag, BeginChromeDrag clears any live transcript selection
                 if (ct.Region == ChromeRegion.Composer) focus.Clear();   //a composer click ends the keyboard focus and removes its accent bar

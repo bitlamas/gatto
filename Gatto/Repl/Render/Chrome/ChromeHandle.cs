@@ -8,4 +8,7 @@ public sealed class ChromeHandle
 
     //commits the answered prompt block to scrollback, set and cleared together with Painter
     public volatile StreamRenderer? Renderer;
+
+    //a turn-thread prompt takes the panel slot through this before it pushes its focus and holds it until its whole flow returns, closing the background panel first. null outside a rich session
+    public volatile Func<IDisposable?>? HoldModalSlot;
 }

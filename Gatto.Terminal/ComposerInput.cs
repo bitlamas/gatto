@@ -8,6 +8,9 @@ public abstract record ComposerInput
 
     //a mouse-resolved composer-select gesture, where Kind says which end it is and Clear ignores Line and Col. the pump enqueues it, the editor thread applies it
     public sealed record Select(int Line, int Col, ComposerGesture Kind) : ComposerInput;
+
+    //a press on the status line's background cell, which opens what runs from the editor's own thread with no selection step
+    public sealed record OpenBackground : ComposerInput;
 }
 
 //which end of a composer-select gesture Select names, plus Clear, sent when a transcript selection starts elsewhere and drops the composer's own

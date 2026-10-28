@@ -5,7 +5,8 @@ namespace Gatto.Repl.Input;
 
 //the editor state a redraw reads, with SelStart/SelEnd as the normalized (anchor, caret) range, both null when no selection is live
 public sealed record EditorView(IReadOnlyList<string> Lines, int CursorLine, int CursorCol,
-    (int Line, int Col)? SelStart = null, (int Line, int Col)? SelEnd = null);
+    (int Line, int Col)? SelStart = null, (int Line, int Col)? SelEnd = null,
+    bool CaretVisible = true);   //false while Down has selected the status line's background cell
 
 //multiline editing and history over a redraw callback, with width making up/down move by display row of a wrapped line
 public sealed class LineEditor(IComposerSource input, History history, Func<int>? width = null,
@@ -61,6 +62,14 @@ public sealed class LineEditor(IComposerSource input, History history, Func<int>
     //true while a composer selection is live, and the cancel sink must not read it (Esc already reaches the editor's own deselect)
     public bool HasComposerSelection => _selAnchor is not null;
 
+    //whether the background cell is on, asked when Down would select it and at each key while it is selected
+    private Func<bool>? _canSelectCell;
+    private Action? _openBackground;
+
+    //true while Down has moved the selection to the background cell, the draft kept and the caret gone. written and read on the editor's thread
+    private bool _cellSelected;
+    public bool CellSelected => _cellSelected;
+
     //a paste's trailing newline is an Enter with a bursty predecessor and nothing behind it, so it's stripped and a paste never auto-submits
     private bool _thisBursty, _prevBursty;
 
@@ -68,9 +77,13 @@ public sealed class LineEditor(IComposerSource input, History history, Func<int>
     public string Read(Action<EditorView> redraw, string? initial = null,
         Func<IReadOnlyList<string>>? pullQueue = null, ArmedChord? chords = null, Action? onQuit = null,
         Action? onHintChanged = null,
-        Action<string>? onCopyText = null, Action? onComposerSelectionSet = null)
+        Action<string>? onCopyText = null, Action? onComposerSelectionSet = null,
+        Func<bool>? canSelectCell = null, Action? openBackground = null)
     {
         _pullQueue = pullQueue;
+        _canSelectCell = canSelectCell;
+        _openBackground = openBackground;
+        _cellSelected = false;
         _chords = chords;
         _onQuit = onQuit;
         _onHintChanged = onHintChanged;
@@ -109,6 +122,12 @@ public sealed class LineEditor(IComposerSource input, History history, Func<int>
                 }
                 catch (Exception) { } //exotic key state, ignore the key
             }
+            else if (ev is ComposerInput.OpenBackground)
+            {
+                //a press on the cell opens at once, with no selection step, and the open says its own failure
+                _cellSelected = false;
+                _openBackground?.Invoke();
+            }
             else if (ev is ComposerInput.Select sel)
             {
                 //the gesture arrives already resolved against a layout snapshot, so this thread only sets the selection and does no layout work
@@ -130,6 +149,17 @@ public sealed class LineEditor(IComposerSource input, History history, Func<int>
 
     private string? Handle(ConsoleKeyInfo k)
     {
+        //with the cell selected, Enter or Space opens what runs, Up or Esc gives the caret back, and any other key gives it back and goes on to the composer
+        if (_cellSelected)
+        {
+            _cellSelected = false;
+            if (_canSelectCell?.Invoke() == true && k.Modifiers == 0)
+            {
+                if (k.Key is ConsoleKey.Enter or ConsoleKey.Spacebar) { _openBackground?.Invoke(); return null; }
+                if (k.Key is ConsoleKey.UpArrow or ConsoleKey.Escape) return null;
+            }
+        }
+
         //a live selection is consumed by the next edit, and a plain Left/Right collapses to the near edge without falling through to Move
         if (HasComposerSelection && !IsShiftArrow(k))
         {
@@ -480,7 +510,7 @@ public sealed class LineEditor(IComposerSource input, History history, Func<int>
         if (budget <= 0)
         {
             if (up) { if (_line > 0) { _line--; ClampCol(); } else if (!TryPullQueue()) PullHistory(older: true); }
-            else { if (_line < _lines.Count - 1) { _line++; ClampCol(); } else PullHistory(older: false); }
+            else { if (_line < _lines.Count - 1) { _line++; ClampCol(); } else SelectCellOrRecall(); }
             return;
         }
 
@@ -495,7 +525,7 @@ public sealed class LineEditor(IComposerSource input, History history, Func<int>
         else
         {
             if (row < layout.RowCount - 1) (_line, _col) = layout.ComposerCellToPosition(row + 1, cell);
-            else PullHistory(older: false);                          //the bottom display row recalls newer history, or the draft
+            else SelectCellOrRecall();                               //the bottom display row recalls newer history, or the draft, or selects the cell
         }
     }
 
@@ -517,14 +547,21 @@ public sealed class LineEditor(IComposerSource input, History history, Func<int>
         return col;
     }
 
-    private void PullHistory(bool older)
+    //the bottom row recalls first, and selects the background cell only when nothing was recalled and the cell is on, it never opens the panel
+    private void SelectCellOrRecall()
+    {
+        if (!PullHistory(older: false) && _canSelectCell?.Invoke() == true) _cellSelected = true;
+    }
+
+    private bool PullHistory(bool older)
     {
         var text = older ? history.Older(string.Join("\n", _lines)) : history.Newer();
-        if (text is null) return;
+        if (text is null) return false;
         _lines = new List<string>(text.Split('\n'));
         if (_lines.Count == 0) _lines.Add("");
         _line = _lines.Count - 1;
         _col = _lines[_line].Length;
+        return true;
     }
 
     private void DeleteWordBack()
@@ -573,7 +610,7 @@ public sealed class LineEditor(IComposerSource input, History history, Func<int>
     private EditorView View()
     {
         var r = SelRange();
-        return new(_lines.ToList(), _line, _col, r?.Start, r?.End);
+        return new(_lines.ToList(), _line, _col, r?.Start, r?.End, CaretVisible: !_cellSelected);
     }
 
     //the composer's contents for a caller that has to repaint, since a refusal arrives while the editor sits in Read with no key coming

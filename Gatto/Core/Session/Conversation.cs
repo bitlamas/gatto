@@ -7,6 +7,9 @@ public sealed class Conversation
 {
     private readonly List<ChatMessage> _messages = new();
 
+    //every write takes this, so a reader on another thread can copy the list whole while a turn appends
+    private readonly object _write = new();
+
     //stamp a message's Ts when it is created, a write-time stamp would re-date every old record with the latest save clock
     private readonly Func<DateTime> _now;
 
@@ -21,6 +24,9 @@ public sealed class Conversation
 
     public IReadOnlyList<ChatMessage> Messages => _messages;
     public int Count => _messages.Count;
+
+    //a copy taken under the write lock, for a reader off the turn's thread that walks the whole list
+    public IReadOnlyList<ChatMessage> MessagesSnapshot() { lock (_write) return [.. _messages]; }
 
     //what the system message was composed from, set only with the text so the two cannot part
     public SessionBaseline? Baseline { get; private set; }
@@ -57,29 +63,32 @@ public sealed class Conversation
         new("user", text, IsError: isError, Gloss: gloss, Ts: _now(), Background: number);
 
     //a record built by UserRecord or BackgroundRecord, the user record a turn opens with, and each queued message the loop delivers inside it
-    public void Append(ChatMessage record) => _messages.Add(record);
+    public void Append(ChatMessage record) { lock (_write) _messages.Add(record); }
     //stripped says how many control tokens already came out of text, callers pass pre-stripped text and the strip stays at the loop seam
     public void AddAssistant(string text, IReadOnlyList<ToolCall>? toolCalls = null,
         Usage? usage = null, string? timings = null, string? reasoningContent = null, int stripped = 0,
         ShapeMark? shape = null) =>
-        _messages.Add(new ChatMessage("assistant", text.Length > 0 ? text : null, toolCalls,
+        Append(new ChatMessage("assistant", text.Length > 0 ? text : null, toolCalls,
             GattoRole: GattoRole, Ts: _now(), Usage: usage, Timings: timings,
             ReasoningContent: string.IsNullOrEmpty(reasoningContent) ? null : reasoningContent,
             Stripped: stripped, Shape: shape));
     public void AddToolResult(string toolCallId, ToolResult result) =>
-        _messages.Add(new ChatMessage("tool", result.Text, ToolCallId: toolCallId,
+        Append(new ChatMessage("tool", result.Text, ToolCallId: toolCallId,
             GattoRole: GattoRole, IsError: result.IsError, Gloss: result.Gloss, Ts: _now(), View: result.View));
 
     //each message keeps the Ts it was parsed with, so resumed history holds its original times
-    public void Load(IEnumerable<ChatMessage> messages) => _messages.AddRange(messages);
+    public void Load(IEnumerable<ChatMessage> messages) { lock (_write) _messages.AddRange(messages); }
 
     //re-seed the composed prompt, replacing the system message at index 0 or inserting one there
     public void ReplaceSystem(string text, SessionBaseline? baseline)
     {
-        if (_messages.Count > 0 && _messages[0].Role == "system")
-            _messages[0] = new ChatMessage("system", text, Ts: _now());
-        else
-            _messages.Insert(0, new ChatMessage("system", text, Ts: _now()));
+        lock (_write)
+        {
+            if (_messages.Count > 0 && _messages[0].Role == "system")
+                _messages[0] = new ChatMessage("system", text, Ts: _now());
+            else
+                _messages.Insert(0, new ChatMessage("system", text, Ts: _now()));
+        }
         Baseline = baseline;
         SetPendingUpdate(null);
     }
@@ -92,7 +101,7 @@ public sealed class Conversation
         if (_updateCarrier is { } carrier)
             for (var i = count; i < _messages.Count; i++)
                 if (ReferenceEquals(_messages[i], carrier)) { PendingUpdate = carrier.Update; _updateCarrier = null; break; }
-        _messages.RemoveRange(count, _messages.Count - count);
+        lock (_write) _messages.RemoveRange(count, _messages.Count - count);
     }
 
     //swap the whole transcript in place, a running loop holds this object so a fresh Conversation would be invisible
@@ -100,10 +109,13 @@ public sealed class Conversation
     {
         Baseline = baseline;
         SetPendingUpdate(null);
-        _messages.Clear();
-        _messages.Add(new ChatMessage("system", systemText, Ts: _now()));
         //handler-built messages arrive bare, so stamp the ones without a Ts and leave an existing Ts alone
-        foreach (var m in messages)
-            _messages.Add(m.Ts is null ? m with { Ts = _now() } : m);
+        lock (_write)
+        {
+            _messages.Clear();
+            _messages.Add(new ChatMessage("system", systemText, Ts: _now()));
+            foreach (var m in messages)
+                _messages.Add(m.Ts is null ? m with { Ts = _now() } : m);
+        }
     }
 }

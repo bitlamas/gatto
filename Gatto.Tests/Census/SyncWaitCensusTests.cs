@@ -39,6 +39,8 @@ public class SyncWaitCensusTests
         ["Gatto/Core/Acquire/TokenizerMemory.cs"] = 2,
         ["Gatto/Core/Hardware/HardwareProbe.cs"] = 3,
         ["Gatto/Extensions/ExtensionHost.cs"] = 1,
+        //the panel slot: a try that never blocks, and a prompt's wait bounded per round while it signals the open panel to close
+        ["Gatto/Repl/Repl.Background.cs"] = 2,
         ["Gatto/Repl/DispatchQueue.cs"] = 1,
     };
 

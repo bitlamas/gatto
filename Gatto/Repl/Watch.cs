@@ -28,6 +28,15 @@ internal sealed class Watch : IDisposable
 
     public bool Paused { get { lock (_lock) return _paused; } }
 
+    //the letters taken since the last typed message, read against K
+    public int Count { get { lock (_lock) return _count; } }
+
+    //the letters this watch has handed over, by file name in name order
+    public IReadOnlyList<string> Seen
+    {
+        get { lock (_lock) return [.. _seen.Select(Path.GetFileName).OfType<string>().Order(StringComparer.OrdinalIgnoreCase)]; }
+    }
+
     private Watch(string folder, Func<Watch, string, bool> enqueue, Action<string> row)
     {
         Folder = folder;

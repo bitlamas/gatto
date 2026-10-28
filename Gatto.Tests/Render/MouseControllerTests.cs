@@ -907,7 +907,7 @@ public sealed class MouseControllerTests
         };
         var cells = new List<StatusCellSpan>
         {
-            new(StatusCell.Folder, 2, 3), new(StatusCell.Model, 6, 7),
+            new(StatusCell.Folder, 2, 3), new(StatusCell.Model, 6, 7), new(StatusCell.Background, 8, 10),
             new(StatusCell.Hint, 10, 14), new(StatusCell.HintNext, 14, 16),
         };
         var s = new VtScreenSurface(40, 10);
@@ -926,7 +926,7 @@ public sealed class MouseControllerTests
         };
         h.Mc = new MouseController(comp, scroll, focus, model, wheelLines: 3, selection, T, () => h.Clock,
             statusCellAt: x => cells.FirstOrDefault(c => x >= c.Start && x < c.End) is { End: > 0 } c ? c.Kind : null,
-            onStatusHint: steps.Add, panelHoldsKeys: () => promptHolds);
+            onStatusHint: steps.Add, panelHoldsKeys: () => promptHolds, onStatusCell: () => steps.Add(0));
         return (h, steps, () => promptHolds);
     }
 
@@ -980,5 +980,25 @@ public sealed class MouseControllerTests
 
         Assert.Empty(steps);
         Assert.NotNull(h.Selection.ChromeCurrent);
+    }
+
+    //a press on the background cell calls the cell callback and starts no drag, and under a prompt it is the drag
+    [Fact]
+    public void A_press_on_the_background_cell_opens_it_unless_a_prompt_holds_the_keys()
+    {
+        var (h, steps, _) = StatusHarness();
+        h.Paint();
+        var y = StatusRowY(h);
+        h.PressAt(9, y);
+        h.MoveAt(4, y);
+        Assert.Equal([0], steps);
+        Assert.Null(h.Selection.ChromeCurrent);
+
+        var (held, heldSteps, _) = StatusHarness(promptHolds: true);
+        held.Paint();
+        held.PressAt(9, StatusRowY(held));
+        held.MoveAt(4, StatusRowY(held));
+        Assert.Empty(heldSteps);
+        Assert.NotNull(held.Selection.ChromeCurrent);
     }
 }
