@@ -105,7 +105,7 @@ public sealed partial class Repl
             Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), Wild: wild?.On == true,
             Thinking: thinkingName, ThinkingToggle: thinkingToggle, Cloud: cloud, SessionName: sessionName);
         var frame = new InputFrame(surface, theme, DisplayRole(), status, _glyphs, KnownCommands);
-        var focusTaught = false;   //the one-shot teaser for the first collapsed reasoning block, set once it has fired
+        var focusTaught = false;   //the teaser for the first collapsed reasoning block, latched once it has left the chosen hint
 
         //feeds the ctx estimate and rebuilds the status frame, and the painter is retargeted here so it never composes against a stale one
         void RefreshStatus()
@@ -113,19 +113,21 @@ public sealed partial class Repl
             //the one context figure, the same expression the compactor evaluates, and it must precede the estimate fallback
             ctx.RecordUsedTokens(ContextBudget.UsedTokens(convo, _usageState));
             ctx.RecordEstimate(ContextBudget.Estimate(convo.Messages), contextBudget);
-            //the Alt+V hint appears while the clipboard holds an image, takes precedence over the focus hint, and the check is safe on every refresh
-            var pasteHint = _clipboardImages?.Available() is not null
-                and not Gatto.Terminal.ClipboardImageKind.None
-                ? "Alt+V to paste the image on your clipboard"
-                : null;
-            var focusHint = pasteHint ?? ComputeFocusHint(painter.Focus.Focused is not null,
-                painter.Model.Items.OfType<ReasoningItem>().Any(r => r.Collapsed), ref focusTaught, _glyphs);
+            //the Alt+V hint is listed while the clipboard holds an image, ahead of the focus hint, and the check is safe on every refresh
+            var pasteImage = _clipboardImages?.Available() is not null and not Gatto.Terminal.ClipboardImageKind.None;
+            IReadOnlyList<HintKind> lastKinds;
+            int lastShown;
+            lock (gate) { lastKinds = painter.LastHintKinds; lastShown = painter.LastHintShown; }
+            var picked = PickHints(pasteImage, painter.Focus.Focused is not null,
+                painter.Model.Items.OfType<ReasoningItem>().Any(r => r.Collapsed), focusTaught,
+                lastKinds, lastShown, status.HintIndex, [], _glyphs);
+            focusTaught = picked.Taught;
             var usage = readUsage?.Invoke() ?? (null, null);
             status = status with
             {
                 Model = modelName, Role = roleName, Branch = GitBranch.Read(cwd), SessionName = sessionName,
                 TokensUp = tokensUp, TokensDown = tokensDown, Wild = wild?.On == true, Thinking = thinkingName,
-                ThinkingToggle = thinkingToggle, FocusHint = focusHint,
+                ThinkingToggle = thinkingToggle, Hints = picked.Hints, HintIndex = picked.Index,
                 //an expired arm yields null at repaint so the chord hint vanishes on its own, and the paste hint wins over it
                 ChordHint = LivePasteHint() ?? chords.Hint,
                 Quota = usage.Quota, Cost = usage.Cost,
@@ -148,6 +150,15 @@ public sealed partial class Repl
         s.Refresh();
         //stashed where this local and s can both reach it, idempotent and null when mouse is off
         s.RestoreMouseMode = () => inputMode?.Restore();
+
+        //a triangle press steps the chosen hint through the list the last paint composed, and the mouse sink's own refresh and repaint then paint it
+        painter.StatusHintSink = delta =>
+        {
+            var n = painter.LastHintKinds.Count;
+            if (n < 2) return;
+            var at = Math.Max(0, painter.LastHintShown);
+            status = status with { HintIndex = ((at + delta) % n + n) % n };
+        };
 
         //global like scroll, registered once after s.Refresh so the sink can call it, and the painter owns focus so a /role swap keeps it
         keys.SetFocusSink(fk =>

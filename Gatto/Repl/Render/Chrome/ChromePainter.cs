@@ -78,6 +78,15 @@ public sealed class ChromePainter
     private bool _tornDown;
     //the layout the last Compose built, so the mouse reads the snapshot the displayed frame used
     private ComposerLayout? _lastComposerLayout;
+    //the status line's pieces by column as last painted, what a press on that row resolves through
+    private IReadOnlyList<StatusCellSpan> _lastStatusCells = [];
+
+    //the hint list the last paint composed and the index it painted, -1 for none, which a triangle steps and a refresh keeps by kind
+    public IReadOnlyList<HintKind> LastHintKinds { get; private set; } = [];
+    public int LastHintShown { get; private set; } = -1;
+
+    //where a triangle press goes, set by the Repl once its status record exists. called on the pump thread under the gate
+    public Action<int>? StatusHintSink { get; set; }
     private int _composerTop;   //the composer window's first region row, kept across paints and moved only by the caret
     //the prompt panel's own scroll window, driven by MouseController through the onComposerScroll callback wired in the constructor. public for tests
     private readonly ComposerScroll _composerScroll = new();
@@ -126,7 +135,17 @@ public sealed class ChromePainter
             glyphs: _glyphs,
             onComposerSelect: onComposerSelect, composerLayout: () => _lastComposerLayout,
             //the Repl's mouse sink already holds the gate and repaints after every Handle call, so this callback must not repaint or lock again
-            onComposerScroll: n => { if (!State.PanelUp) return false; _composerScroll.ScrollBy(n); return true; });
+            onComposerScroll: n => { if (!State.PanelUp) return false; _composerScroll.ScrollBy(n); return true; },
+            statusCellAt: StatusCellAt, onStatusHint: d => StatusHintSink?.Invoke(d),
+            panelHoldsKeys: () => State.PanelUp && !State.PanelInfo);
+    }
+
+    //the status piece under a column of the last painted status line, null between pieces
+    private StatusCell? StatusCellAt(int x)
+    {
+        foreach (var c in _lastStatusCells)
+            if (x >= c.Start && x < c.End) return c.Kind;
+        return null;
     }
 
     public void Repaint() { lock (_gate) { if (!_tornDown) DriveCompositor(); } }
@@ -656,6 +675,9 @@ public sealed class ChromePainter
         }
         //caches the layout this frame was built from, and a panel frame reports null, which the mouse's layout bail expects
         _lastComposerLayout = frame.Composer;
+        _lastStatusCells = frame.StatusCells ?? [];
+        LastHintKinds = frame.StatusHints ?? [];
+        LastHintShown = frame.StatusHintShown;
 
         var frameRows = frame.TotalRows;
 

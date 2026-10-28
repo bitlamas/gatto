@@ -18,6 +18,13 @@ public static class FocusKeys
     private static string HintCore(GlyphSet g) =>
         MoveKeyNameOf(g) + " move " + g.Dot + " " + ToggleKeyName + " expand/collapse";
 
+    //the hint's short form, the same three keys and shorter deeds, from the same keymap as the long one
+    public static string ShortHintOf(GlyphSet? glyphs)
+    {
+        var g = glyphs ?? GlyphSet.Unicode;
+        return MoveKeyNameOf(g) + " moves " + g.Dot + " " + ToggleKeyName + " toggles";
+    }
+
     //maps a keystroke to a focus action, or null. the Alt guard lets an AltGr character reach the composer, and Shift is allowed through on purpose
     public static FocusKey? Of(ConsoleKeyInfo k)
     {

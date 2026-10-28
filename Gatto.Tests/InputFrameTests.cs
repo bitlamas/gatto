@@ -28,7 +28,7 @@ public class InputFrameTests
     [Fact]   //the footer shows the hint when it is set and leaves it out when it is not
     public void Footer_shows_the_focus_keymap_hint_when_set()
     {
-        var hinted = Status() with { FocusHint = FocusKeys.HintOf(glyphs: GlyphSet.Unicode) };
+        var hinted = Status() with { Hints = [new StatusHint(HintKind.Focus, [FocusKeys.HintOf(glyphs: GlyphSet.Unicode)])] };
         Assert.Contains("Ctrl+R", StripSgr(InputFrame.BuildStatusLine(hinted, 200, T, glyphs: GlyphSet.Unicode)), StringComparison.Ordinal);
         Assert.DoesNotContain("Ctrl+R", StripSgr(InputFrame.BuildStatusLine(Status(), 200, T, glyphs: GlyphSet.Unicode)), StringComparison.Ordinal);
     }
@@ -36,7 +36,7 @@ public class InputFrameTests
     [Fact]
     public void Focus_keymap_hint_is_flush_right_on_a_wide_footer()
     {
-        var hinted = Status() with { FocusHint = FocusKeys.HintOf(glyphs: GlyphSet.Unicode) };
+        var hinted = Status() with { Hints = [new StatusHint(HintKind.Focus, [FocusKeys.HintOf(glyphs: GlyphSet.Unicode)])] };
         var visible = StripSgr(InputFrame.BuildStatusLine(hinted, 200, T, glyphs: GlyphSet.Unicode));
         Assert.EndsWith(FocusKeys.HintOf(glyphs: GlyphSet.Unicode), visible, StringComparison.Ordinal);   //the hint is the last text on the row.
         Assert.Equal(200, UnicodeWidth.Of(visible));                          //the row is padded to the full width.
@@ -47,7 +47,7 @@ public class InputFrameTests
     [Fact]   //the hint drops before any of the core is elided
     public void Focus_keymap_hint_drops_first_when_the_footer_is_tight()
     {
-        var hinted = Status() with { FocusHint = FocusKeys.HintOf(glyphs: GlyphSet.Unicode) };
+        var hinted = Status() with { Hints = [new StatusHint(HintKind.Focus, [FocusKeys.HintOf(glyphs: GlyphSet.Unicode)])] };
         //45 fits the core on its own, and the core plus the hint needs more
         var visible = StripSgr(InputFrame.BuildStatusLine(hinted, 45, T, glyphs: GlyphSet.Unicode));
         Assert.DoesNotContain("Ctrl+R", visible, StringComparison.Ordinal);

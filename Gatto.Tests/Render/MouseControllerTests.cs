@@ -894,4 +894,91 @@ public sealed class MouseControllerTests
         var ev = Assert.IsType<ComposerInput.Select>(pump.Composer.Read());
         Assert.Equal(ComposerGesture.Clear, ev.Kind);
     }
+
+    //the frame's three rule rows, the status line last with a triangle at each end of its hint slot
+    private static (Harness H, List<int> Steps, Func<bool> Held) StatusHarness(bool promptHolds = false)
+    {
+        var rows = new List<ChromeRow>
+        {
+            new("── gatto ──", "── gatto ──", false, 0, ChromeRegion.Rule, 0),
+            new("❯ ", "❯ ", false, 0, ChromeRegion.Composer, 0),
+            new("───────────", "───────────", false, 0, ChromeRegion.Rule, 1),
+            new("  ~ · m   hint ▸", "  ~ · m   hint ▸", false, 0, ChromeRegion.Rule, 2),
+        };
+        var cells = new List<StatusCellSpan>
+        {
+            new(StatusCell.Folder, 2, 3), new(StatusCell.Model, 6, 7),
+            new(StatusCell.Hint, 10, 14), new(StatusCell.HintNext, 14, 16),
+        };
+        var s = new VtScreenSurface(40, 10);
+        s.Write(Ansi.AltScreenEnter);
+        var model = new TranscriptModel("generalist");
+        var index = new LineIndex(model, T, glyphs: GlyphSet.Unicode);
+        var scroll = new ScrollController(model, index);
+        var comp = new ViewportCompositor(s, index, new object(), glyphs: GlyphSet.Unicode) { ComposeChrome = (_, _) => new ChromeBlock(rows, 1, 2) };
+        var focus = new FocusController(model, index, scroll, comp);
+        var selection = new SelectionController(model);
+        var steps = new List<int>();
+        var h = new Harness
+        {
+            S = s, Comp = comp, Scroll = scroll, Focus = focus, Selection = selection, Model = model,
+            Mc = null!, W = 40, VpRows = 6,
+        };
+        h.Mc = new MouseController(comp, scroll, focus, model, wheelLines: 3, selection, T, () => h.Clock,
+            statusCellAt: x => cells.FirstOrDefault(c => x >= c.Start && x < c.End) is { End: > 0 } c ? c.Kind : null,
+            onStatusHint: steps.Add, panelHoldsKeys: () => promptHolds);
+        return (h, steps, () => promptHolds);
+    }
+
+    private static int StatusRowY(Harness h) =>
+        h.RowWhere(t => t is ChromeTarget { Region: ChromeRegion.Rule, RegionRow: 2 });
+
+    //a press on the triangle steps the hint forward and starts no drag, and a press on the hint's words steps nothing
+    [Fact]
+    public void A_press_on_the_triangle_steps_the_hint_and_starts_no_drag()
+    {
+        var (h, steps, _) = StatusHarness();
+        h.Paint();
+        var y = StatusRowY(h);
+
+        h.PressAt(15, y);
+        h.MoveAt(4, y);
+        h.ReleaseAt(4, y);
+
+        Assert.Equal([1], steps);
+        Assert.Null(h.Selection.ChromeCurrent);
+
+        h.PressAt(11, y);
+        Assert.Equal([1], steps);
+    }
+
+    //a press elsewhere on the status line is the chrome drag it was
+    [Fact]
+    public void A_press_elsewhere_on_the_status_line_starts_the_drag()
+    {
+        var (h, steps, _) = StatusHarness();
+        h.Paint();
+        var y = StatusRowY(h);
+
+        h.PressAt(2, y);
+        h.MoveAt(7, y);
+
+        Assert.Empty(steps);
+        Assert.NotNull(h.Selection.ChromeCurrent);
+    }
+
+    //under a prompt that holds the keys a triangle press is the drag too, the panel slot has one owner
+    [Fact]
+    public void A_press_on_a_triangle_under_a_prompt_starts_the_drag()
+    {
+        var (h, steps, _) = StatusHarness(promptHolds: true);
+        h.Paint();
+        var y = StatusRowY(h);
+
+        h.PressAt(15, y);
+        h.MoveAt(4, y);
+
+        Assert.Empty(steps);
+        Assert.NotNull(h.Selection.ChromeCurrent);
+    }
 }

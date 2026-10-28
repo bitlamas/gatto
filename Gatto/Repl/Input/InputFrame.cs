@@ -11,12 +11,25 @@ public sealed record StatusInfo(
     string Cwd, string Model, string Role, CtxState Ctx, string UserProfile,
     string? Branch = null, long TokensUp = 0, long TokensDown = 0, bool Wild = false,
     string? Thinking = null, bool ThinkingToggle = false,
-    string? FocusHint = null,   //the Ctrl+↑/↓/R keymap, shown while focus is active (or as the first-collapse teaser)
+    IReadOnlyList<StatusHint>? Hints = null,   //the live hints in the ruled order, the paste hint first
+    int HintIndex = 0,          //the chosen hint's place in the composed list, clamped against it at compose
     string? ChordHint = null,   //the live Esc·Esc / Ctrl+C·Ctrl+C hint, drawn in the top rule's label slot
     bool Cloud = false,         //the endpoint is in the cloud, and the mark stands before the model
     Gatto.Core.Client.QuotaReading? Quota = null,
     decimal? Cost = null,       //the session sum of what the provider reported as cost, null when it reported none
     string? SessionName = null);   //the name /name gave the session, which takes the word gatto's place on the top rule
+
+//which hint a status slot holds, what a refresh matches on, since a hint's words can change while it stays the same hint
+public enum HintKind { Paste, Focus, Teaser, Background }
+
+//one status hint and its forms, longest first, each naming the key and what it does
+public sealed record StatusHint(HintKind Kind, IReadOnlyList<string> Forms);
+
+//what a press on the status line can land on
+public enum StatusCell { Folder, Branch, Model, Tokens, Ctx, Quota, Cost, Hint, HintNext }
+
+//one painted piece of the status line and its columns, the start inclusive and the end exclusive
+public readonly record struct StatusCellSpan(StatusCell Kind, int Start, int End);
 
 //the composed rows and the caret's row and column. the Composer field is the layout a mouse gesture must map through, null in an unframed frame
 public sealed record FrameLayout(
@@ -27,7 +40,10 @@ public sealed record FrameLayout(
     int PanelRowCount = 0,
     int EditorWindowTop = 0,       //the first composer region row emitted, 0 when every row is
     int CursorRegionRow = 0,       //the caret's composer region row, counted over every row, emitted or not
-    IReadOnlyList<int>? MarkRows = null);   //the editor rows drawn as a hidden-rows mark, which stand for no line a press could land on
+    IReadOnlyList<int>? MarkRows = null,   //the editor rows drawn as a hidden-rows mark, which stand for no line a press could land on
+    IReadOnlyList<StatusCellSpan>? StatusCells = null,   //the status line's pieces by column, what a press on that row resolves through
+    IReadOnlyList<HintKind>? StatusHints = null,   //the composed hint list, the one a triangle steps through
+    int StatusHintShown = -1);   //the index of the hint painted, -1 when none fit
 
 //the framed typing area: top rule with its role label, null on the default role, editor rows, bottom rule, status line. composes layout only, ChromePainter writes every byte
 public sealed class InputFrame(ITermSurface surface, Theme theme, string? role, StatusInfo status,
@@ -65,6 +81,7 @@ public sealed class InputFrame(ITermSurface surface, Theme theme, string? role, 
         var editorStart = rendered.Count;
 
         //the bottom rule and status pair go out together when framed, in both the editor and the panel branch (ChromePainter's editorStart arithmetic needs it)
+        StatusRow? statusRow = null;
         void AddFooter()
         {
             if (!framed) return;
@@ -73,10 +90,11 @@ public sealed class InputFrame(ITermSurface surface, Theme theme, string? role, 
             visibleRows.Add(bottomV);
             screenRows.Add(1);
 
-            var (statR, statV) = StatusCore(status, width, theme, _glyphs);
-            rendered.Add(statR);
-            visibleRows.Add(statV);
-            screenRows.Add(UnicodeWidth.Rows(statV, width));
+            var row = StatusCore(status, width, theme, _glyphs);
+            statusRow = row;
+            rendered.Add(row.Rendered);
+            visibleRows.Add(row.Visible);
+            screenRows.Add(UnicodeWidth.Rows(row.Visible, width));
         }
 
         if (panelRows is { Count: > 0 })
@@ -110,7 +128,8 @@ public sealed class InputFrame(ITermSurface surface, Theme theme, string? role, 
             var panelCol = width > 0 ? Math.Min(caretCells, width - 1) : caretCells;
 
             return new FrameLayout(rendered, visibleRows, screenRows, panelTotal, panelCursorRow, panelCol,
-                Array.Empty<(bool, int)>(), Composer: null, PanelRowCount: panelRows.Count);
+                Array.Empty<(bool, int)>(), Composer: null, PanelRowCount: panelRows.Count,
+                StatusCells: statusRow?.Cells, StatusHints: statusRow?.Hints, StatusHintShown: statusRow?.Shown ?? -1);
         }
 
         //2 cells for the prompt or hang and 1 for the \ mark, so a marked row never reaches the edge. the \ belongs to a logical join, so a visual wrap shows none
@@ -203,7 +222,8 @@ public sealed class InputFrame(ITermSurface surface, Theme theme, string? role, 
         for (var i = 0; i < flatCursorEntry; i++) targetRow += screenRows[i];
 
         return new FrameLayout(rendered, visibleRows, screenRows, total, targetRow, col, editorRowTags,
-            framed ? layout : null, EditorWindowTop: windowTop, CursorRegionRow: cursorRegionRow, MarkRows: markRows);
+            framed ? layout : null, EditorWindowTop: windowTop, CursorRegionRow: cursorRegionRow, MarkRows: markRows,
+            StatusCells: statusRow?.Cells, StatusHints: statusRow?.Hints, StatusHintShown: statusRow?.Shown ?? -1);
     }
 
     public static string BuildTopRule(string? role, int width, Theme theme, bool wild = false, string? hint = null,
@@ -216,7 +236,11 @@ public sealed class InputFrame(ITermSurface surface, Theme theme, string? role, 
         TopRuleCore(role, wild, width, theme, hint, glyphs, name).visible;
 
     public static string BuildStatusLine(StatusInfo s, int width, Theme theme, GlyphSet? glyphs) =>
-        StatusCore(s, width, theme, glyphs).rendered;
+        StatusCore(s, width, theme, glyphs).Rendered;
+
+    //the status line's pieces by column at one width, so a test asks where a cell is rather than counting
+    internal static IReadOnlyList<StatusCellSpan> StatusCellsOf(StatusInfo s, int width, Theme theme, GlyphSet? glyphs) =>
+        StatusCore(s, width, theme, glyphs).Cells;
 
     //internals
 
@@ -255,8 +279,12 @@ public sealed class InputFrame(ITermSurface surface, Theme theme, string? role, 
         return (rendered, visible);
     }
 
-    //one footer section: the visible text for the fit and erase math, paired with its themed rendering
-    private readonly record struct Part(string Visible, string Rendered);
+    //one footer section: the visible text for the fit and erase math, paired with its themed rendering and what a press on it lands on
+    private readonly record struct Part(string Visible, string Rendered, StatusCell Kind);
+
+    //the composed status row, its pieces by column and the hint list a triangle steps through
+    private readonly record struct StatusRow(string Rendered, string Visible, IReadOnlyList<StatusCellSpan> Cells,
+        IReadOnlyList<HintKind> Hints, int Shown);
 
     //the minimum gap in cells between the left cluster and the flush-right focus hint
     private const int HintGap = 2;
@@ -271,72 +299,168 @@ public sealed class InputFrame(ITermSurface surface, Theme theme, string? role, 
     //quota also warns at this many requests left whatever the total, since a turn with tool calls spends several
     private const int QuotaWarnRemaining = 10;
 
-    //one physical row at any width: the hint goes first, then one rung at a time until the row fits
-    private static (string rendered, string visible) StatusCore(StatusInfo s, int width, Theme theme,
-        GlyphSet? glyphs)
+    //the sections a rung can shorten or drop, each with its forms longest first, so the ladder and the fill speak one vocabulary
+    private enum Piece { Folder, Branch, Model, Tokens, Ctx }
+
+    private const int PieceCount = 5;
+
+    //the floor's forms, past the ladder: no folder, and the model as its mark and effort with no name
+    private const int FolderGone = 3, ModelBare = 3;
+
+    //the hints the fill composes, in the ruled order. the frame and the Repl's refresh read this one list
+    internal static IReadOnlyList<StatusHint> ComposedHints(StatusInfo s) => s.Hints ?? [];
+
+    //one physical row at any width: the ladder finds the base, the fill gives back what fits, then the hint
+    private static StatusRow StatusCore(StatusInfo s, int width, Theme theme, GlyphSet? glyphs)
     {
         var g = glyphs ?? GlyphSet.Unicode;
-        var full = Assemble(s, theme, 0, g);
+        var hints = ComposedHints(s);
+        var kinds = hints.Select(h => h.Kind).ToList();
 
-        //the hint is only tried against the whole core, once the core needs a rung the hint is already gone
-        if (s.FocusHint is not null && width > 0)
+        //a non-positive width skips the ladder and the fill, the test and plain cases
+        if (width <= 0) return Finish(Assemble(s, theme, MapOf(0), g), null);
+
+        int[]? map = null;
+        for (var rung = 0; rung <= ModelShort && map is null; rung++)
+            if (Fits(MapOf(rung))) map = MapOf(rung);
+
+        //past the last rung the head goes before the tail: no folder, then the model without its name, then the cut
+        if (map is null)
         {
-            var (coreR, coreV) = Render(full, theme, g);
-            var pad = width - UnicodeWidth.Of(coreV) - UnicodeWidth.Of(s.FocusHint) - HintGap;
-            if (pad >= 0)
+            var floor = MapOf(ModelShort);
+            floor[(int)Piece.Folder] = FolderGone;
+            if (!Fits(floor)) floor[(int)Piece.Model] = ModelBare;
+            var cut = Finish(Assemble(s, theme, floor, g), null);
+            if (UnicodeWidth.Of(cut.Visible) <= width) return cut;
+            var cells = cut.Cells.Where(c => c.Start < width).Select(c => c with { End = Math.Min(c.End, width) }).ToList();
+            return cut with
             {
-                var spaces = new string(' ', HintGap + pad);   //pads the row so the hint ends at the right edge
-                return (coreR + spaces + theme.Paint(s.FocusHint, Theme.Dim), coreV + spaces + s.FocusHint);
-            }
+                Visible = TermText.TruncateCells(cut.Visible, width, glyphs: g),
+                Rendered = TermText.TruncateCells(cut.Rendered, width, glyphs: g),
+                Cells = cells,
+            };
         }
 
-        if (width <= 0) return Render(full, theme, g);   //a non-positive width skips the ladder
+        //presence, last dropped first: a section's being there is the fact, so it comes back before any section grows
+        TryForm(Piece.Tokens, 0, onlyFrom: 1);
+        TryForm(Piece.Branch, 1, onlyFrom: 2);
+        TryForm(Piece.Ctx, 0, onlyFrom: 1);
 
-        for (var rung = 0; rung <= ModelShort; rung++)
+        //length, last shortened first, each piece to the longest of its forms that fits. ctx is never here, its count is a presence
+        foreach (var piece in new[] { Piece.Model, Piece.Folder, Piece.Branch })
         {
-            var parts = rung == 0 ? full : Assemble(s, theme, rung, g);
-            if (VisWidth(parts, g) <= width) return Render(parts, theme, g);
+            var at = map[(int)piece];
+            if (piece == Piece.Branch && at == 2) continue;
+            for (var f = 0; f < at; f++)
+                if (TryForm(piece, f, onlyFrom: at)) break;
         }
 
-        //past the last rung the row is cut rather than wrapped, the same as ChromeTrunc
-        var (r, v) = Render(Assemble(s, theme, ModelShort, g), theme, g);
-        v = TermText.TruncateCells(v, width, glyphs: g);
-        r = TermText.TruncateCells(r, width, glyphs: g);
-        return (r, v);
+        var parts = Assemble(s, theme, map, g);
+        if (hints.Count == 0) return Finish(parts, null);
+
+        //the hint last, the chosen one in its longest form that fits, its triangle counted when a second hint is live
+        var chosen = Math.Clamp(s.HintIndex, 0, hints.Count - 1);
+        var arrow = hints.Count > 1 ? UnicodeWidth.Of(g.Triangle) + 1 : 0;
+        var core = VisWidth(parts, g);
+        foreach (var form in hints[chosen].Forms)
+            if (core + HintGap + arrow + UnicodeWidth.Of(form) <= width)
+                return Finish(parts, (form, arrow > 0, chosen));
+        return Finish(parts, null);
+
+        bool Fits(int[] m) => VisWidth(Assemble(s, theme, m, g), g) <= width;
+
+        //moves one piece to a form and keeps it when the row still fits, from the form named only
+        bool TryForm(Piece piece, int form, int onlyFrom)
+        {
+            if (map![(int)piece] != onlyFrom) return false;
+            var trial = (int[])map.Clone();
+            trial[(int)piece] = form;
+            if (!Fits(trial)) return false;
+            map = trial;
+            return true;
+        }
+
+        //paints the core, then pads so the hint and its triangle end at the right edge, and maps every piece to its columns
+        StatusRow Finish(List<Part> ps, (string Form, bool Arrow, int Index)? hint)
+        {
+            var (rendered, visible, cells) = Render(ps, theme, g);
+            if (hint is not { } h) return new StatusRow(rendered, visible, cells, kinds, -1);
+            var slot = UnicodeWidth.Of(h.Form) + (h.Arrow ? UnicodeWidth.Of(g.Triangle) + 1 : 0);
+            var pad = width - UnicodeWidth.Of(visible) - slot;
+            var spaces = new string(' ', pad);
+            var start = UnicodeWidth.Of(visible) + pad;
+            var r = new StringBuilder(rendered + spaces);
+            var v = new StringBuilder(visible + spaces);
+            r.Append(theme.Paint(h.Form, Theme.Dim));
+            v.Append(h.Form);
+            cells.Add(new StatusCellSpan(StatusCell.Hint, start, start + UnicodeWidth.Of(h.Form)));
+            start += UnicodeWidth.Of(h.Form);
+            if (h.Arrow)
+            {
+                var right = " " + g.Triangle;
+                r.Append(theme.Paint(right, Theme.Dim));
+                v.Append(right);
+                cells.Add(new StatusCellSpan(StatusCell.HintNext, start, start + UnicodeWidth.Of(right)));
+            }
+            return new StatusRow(r.ToString(), v.ToString(), cells, kinds, h.Index);
+        }
     }
 
-    //the footer's sections at one rung of the ladder. the mark, the effort, ctx and the quota or cost are never shed by a rung
-    private static List<Part> Assemble(StatusInfo s, Theme theme, int rung, GlyphSet g)
+    //the form each piece takes at one rung of the ladder, read against Assemble's rung arms
+    private static int[] MapOf(int rung)
+    {
+        var map = new int[PieceCount];
+        map[(int)Piece.Folder] = rung >= FolderCapped ? 2 : rung >= FolderLast ? 1 : 0;
+        map[(int)Piece.Branch] = rung >= DropBranch ? 2 : rung >= ShortBranch ? 1 : 0;
+        map[(int)Piece.Model] = rung >= ModelShort ? 2 : rung >= ModelMid ? 1 : 0;
+        map[(int)Piece.Tokens] = rung >= DropTokens ? 1 : 0;
+        map[(int)Piece.Ctx] = rung >= DropCtxCount ? 1 : 0;
+        return map;
+    }
+
+    //every form of a piece, longest first, an empty form is the piece absent. the mark and the effort ride inside every model form
+    private static string[] Forms(Piece piece, StatusInfo s, GlyphSet g)
+    {
+        switch (piece)
+        {
+            case Piece.Folder:
+                var seg = g.Ellipsis + Path.DirectorySeparatorChar + LastSegment(s.Cwd);
+                return [AbbreviateHome(s.Cwd, s.UserProfile), seg, HeadTruncate(seg, 12, g), ""];
+            case Piece.Branch:
+                return s.Branch is null ? ["", "", ""] : [s.Branch, ShortBranchText(s.Branch, g), ""];
+            case Piece.Model:
+                var effort = EffortWord(s.Thinking, s.ThinkingToggle) is { } e ? "(" + e + ")" : null;
+                var mark = s.Cloud ? g.Cloud : null;
+                var name = Gatto.Core.Models.ServedModelName.Display(s.Model);
+                string Dress(string n) => string.Join(" ", new[] { mark, n, effort }.Where(x => x is not null));
+                return [Dress(name), Dress(MiddleName(name, g)), Dress(HeadTruncate(name, 6, g)),
+                    string.Join(" ", new[] { mark, effort }.Where(x => x is not null))];
+            case Piece.Tokens:
+                return s.TokensUp != 0 || s.TokensDown != 0
+                    ? [$"{g.Up} {KFormat(s.TokensUp)} {g.Down} {KFormat(s.TokensDown)}", ""]
+                    : ["", ""];
+            default:
+                //keep the count in parentheses, the · separator would make it read as a second section
+                if (s.Ctx?.Percent is not int p) return ["", ""];
+                return [s.Ctx.Tokens is int t ? $"ctx {p}% ({KFormat(t)})" : $"ctx {p}%", $"ctx {p}%"];
+        }
+    }
+
+    //the footer's sections at one map of forms. the mark, the effort, ctx and the quota or cost are never shed, the floor keeps the mark and the effort too
+    private static List<Part> Assemble(StatusInfo s, Theme theme, int[] map, GlyphSet g)
     {
         var parts = new List<Part>();
-
-        var folder = FolderText(s, rung, g);
-        parts.Add(new Part(folder, theme.Paint(folder, Theme.Dim)));
-
-        if (s.Branch is not null && rung < DropBranch)
+        void Add(Piece piece, StatusCell kind, RgbColor ink)
         {
-            var branch = rung >= ShortBranch ? ShortBranchText(s.Branch, g) : s.Branch;
-            parts.Add(new Part(branch, theme.Paint(branch, Theme.Dim)));
+            var text = Forms(piece, s, g)[map[(int)piece]];
+            if (text.Length > 0) parts.Add(new Part(text, theme.Paint(text, ink), kind));
         }
 
-        var effort = EffortWord(s.Thinking, s.ThinkingToggle);
-        var model = (s.Cloud ? g.Cloud + " " : "") + ModelText(Gatto.Core.Models.ServedModelName.Display(s.Model), rung, g)
-            + (effort is null ? "" : $" ({effort})");
-        parts.Add(new Part(model, theme.Paint(model, Theme.Dim)));
-
-        if (rung < DropTokens && (s.TokensUp != 0 || s.TokensDown != 0))
-        {
-            var tokens = $"{g.Up} {KFormat(s.TokensUp)} {g.Down} {KFormat(s.TokensDown)}";
-            parts.Add(new Part(tokens, theme.Paint(tokens, Theme.Dim)));
-        }
-
-        //keep the count in parentheses, the · separator would make it read as a second section
-        if (s.Ctx?.Percent is int p)
-        {
-            var count = rung < DropCtxCount ? s.Ctx.Tokens : null;
-            var ctx = count is int t ? $"ctx {p}% ({KFormat(t)})" : $"ctx {p}%";
-            parts.Add(new Part(ctx, theme.Paint(ctx, p >= 80 ? Theme.Warn : Theme.Dim)));
-        }
+        Add(Piece.Folder, StatusCell.Folder, Theme.Dim);
+        Add(Piece.Branch, StatusCell.Branch, Theme.Dim);
+        Add(Piece.Model, StatusCell.Model, Theme.Dim);
+        Add(Piece.Tokens, StatusCell.Tokens, Theme.Dim);
+        if (s.Ctx?.Percent is int p) Add(Piece.Ctx, StatusCell.Ctx, p >= 80 ? Theme.Warn : Theme.Dim);
 
         //the provider supplies the numbers and core writes the words, a quota turns warn with few requests left, or when low against a reported total
         if (s.Quota is { } q)
@@ -344,12 +468,12 @@ public sealed class InputFrame(ITermSurface surface, Theme theme, string? role, 
             var quota = $"{q.Label} {q.Remaining.ToString(CultureInfo.InvariantCulture)} left";
             var low = q.Remaining <= QuotaWarnRemaining
                 || (q.Total is long total and > 0 && q.Remaining * 100 <= total * QuotaWarnPercent);
-            parts.Add(new Part(quota, theme.Paint(quota, low ? Theme.Warn : Theme.Dim)));
+            parts.Add(new Part(quota, theme.Paint(quota, low ? Theme.Warn : Theme.Dim), StatusCell.Quota));
         }
         if (s.Cost is decimal cost)
         {
             var money = "$" + cost.ToString("0.00", CultureInfo.InvariantCulture);
-            parts.Add(new Part(money, theme.Paint(money, Theme.Dim)));
+            parts.Add(new Part(money, theme.Paint(money, Theme.Dim), StatusCell.Cost));
         }
 
         return parts;
@@ -363,44 +487,34 @@ public sealed class InputFrame(ITermSurface surface, Theme theme, string? role, 
         return w;
     }
 
-    private static (string rendered, string visible) Render(List<Part> parts, Theme theme, GlyphSet g)
+    private static (string rendered, string visible, List<StatusCellSpan> cells) Render(List<Part> parts, Theme theme, GlyphSet g)
     {
         var rendered = new StringBuilder("  ");
         var visible = new StringBuilder("  ");
+        var cells = new List<StatusCellSpan>();
         var sep = SepOf(g);
+        var col = 2;
         for (var i = 0; i < parts.Count; i++)
         {
-            if (i > 0) { rendered.Append(theme.Paint(sep, Theme.Dim)); visible.Append(sep); }
+            if (i > 0) { rendered.Append(theme.Paint(sep, Theme.Dim)); visible.Append(sep); col += UnicodeWidth.Of(sep); }
             rendered.Append(parts[i].Rendered);
             visible.Append(parts[i].Visible);
+            var w = UnicodeWidth.Of(parts[i].Visible);
+            cells.Add(new StatusCellSpan(parts[i].Kind, col, col + w));
+            col += w;
         }
-        return (rendered.ToString(), visible.ToString());
+        return (rendered.ToString(), visible.ToString(), cells);
     }
 
-    //rung-specific section text
-
-    //the home-abbreviated path, then the ellipsis glyph, a separator and the last segment, then that head-truncated to 12 cells
-    private static string FolderText(StatusInfo s, int rung, GlyphSet g)
-    {
-        if (rung < FolderLast) return AbbreviateHome(s.Cwd, s.UserProfile);
-        var seg = g.Ellipsis + Path.DirectorySeparatorChar + LastSegment(s.Cwd);
-        return rung < FolderCapped ? seg : HeadTruncate(seg, 12, g);
-    }
+    //section text
 
     //verbatim until 6 cells, then an ellipsis plus the last 5 chars
     private static string ShortBranchText(string branch, GlyphSet g) =>
         UnicodeWidth.Of(branch) <= 6 ? branch : g.Ellipsis + TailCells(branch, 5);
 
-    //verbatim, then 15 cells with a middle ellipsis, then 6 cells with a terminal one. the mark and the effort are not part of the name
-    private static string ModelText(string model, int rung, GlyphSet g)
-    {
-        if (rung < ModelMid) return model;
-        if (rung < ModelShort)
-            return UnicodeWidth.Of(model) <= 15
-                ? model
-                : HeadCells(model, 7) + g.Ellipsis + TailCells(model, 7);
-        return HeadTruncate(model, 6, g);
-    }
+    //the model's middle form: verbatim up to 15 cells, else 7 cells, a middle ellipsis and the last 7
+    private static string MiddleName(string model, GlyphSet g) =>
+        UnicodeWidth.Of(model) <= 15 ? model : HeadCells(model, 7) + g.Ellipsis + TailCells(model, 7);
 
     //the word in parentheses after the model: a toggle reads reasoning or non-reasoning, a level its name, and a model with no switch gets none
     internal static string? EffortWord(string? thinking, bool toggle)

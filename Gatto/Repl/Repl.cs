@@ -581,13 +581,48 @@ public sealed partial class Repl(
         return _pasteHint;
     }
 
-    //the focus key hint when an item is focused, otherwise a one-shot teaser the first time a reasoning block collapsed, taught latches it
-    internal static string? ComputeFocusHint(bool focused, bool anyReasoningCollapsed, ref bool taught,
+    //the paste hint's two forms, the key and the deed in each
+    internal const string PasteHintLong = "Alt+V to paste the image on your clipboard";
+    internal const string PasteHintShort = "Alt+V pastes the image";
+
+    //the focus key hint when an item is focused, otherwise the teaser while a reasoning block is collapsed and the teaser has not latched
+    internal static StatusHint? ComputeFocusHint(bool focused, bool anyReasoningCollapsed, bool taught,
         Gatto.Terminal.GlyphSet? glyphs)
     {
-        if (focused) return FocusKeys.HintOf(glyphs);
-        if (!taught && anyReasoningCollapsed) { taught = true; return FocusKeys.HintOf(glyphs); }
-        return null;
+        IReadOnlyList<string> forms = [FocusKeys.HintOf(glyphs), FocusKeys.ShortHintOf(glyphs)];
+        if (focused) return new StatusHint(HintKind.Focus, forms);
+        return !taught && anyReasoningCollapsed ? new StatusHint(HintKind.Teaser, forms) : null;
+    }
+
+    //the hint list and the chosen place in the composed list, this list then what the frame appends. the chosen kind survives a refresh that lists it, and the teaser latches once it leaves that place
+    internal static (IReadOnlyList<StatusHint> Hints, int Index, bool Taught) PickHints(bool pasteImage, bool focused,
+        bool anyReasoningCollapsed, bool taught, IReadOnlyList<HintKind> lastKinds, int lastShown, int wanted,
+        IReadOnlyList<HintKind> appended, Gatto.Terminal.GlyphSet? glyphs)
+    {
+        HintKind? chosen = wanted >= 0 && wanted < lastKinds.Count ? lastKinds[wanted] : null;
+        HintKind? shown = lastShown >= 0 && lastShown < lastKinds.Count ? lastKinds[lastShown] : null;
+
+        List<StatusHint> Build(bool latched)
+        {
+            var list = new List<StatusHint>();
+            if (pasteImage) list.Add(new StatusHint(HintKind.Paste, [PasteHintLong, PasteHintShort]));
+            if (ComputeFocusHint(focused, anyReasoningCollapsed, latched, glyphs) is { } focus) list.Add(focus);
+            return list;
+        }
+        List<HintKind> Kinds(List<StatusHint> list) => [.. list.Select(h => h.Kind), .. appended];
+        int IndexIn(List<HintKind> kinds) => chosen is { } c && kinds.IndexOf(c) is >= 0 and var i ? i : 0;
+
+        var hints = Build(taught);
+        var kinds = Kinds(hints);
+        var index = IndexIn(kinds);
+        HintKind? now = kinds.Count > 0 ? kinds[index] : null;
+        if (shown == HintKind.Teaser && now != HintKind.Teaser)
+        {
+            taught = true;
+            hints = Build(true);
+            index = IndexIn(Kinds(hints));
+        }
+        return (hints, index, taught);
     }
 
     //with a display model write the full transcript so system and echo lines survive --continue, without one write the chat records, which still resume

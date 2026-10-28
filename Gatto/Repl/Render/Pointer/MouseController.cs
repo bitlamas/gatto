@@ -9,8 +9,12 @@ public sealed class MouseController(
     ViewportCompositor compositor, ScrollController scroll, FocusController focus, TranscriptModel model,
     int wheelLines, SelectionController selection, Theme theme, Func<long>? now = null,
     Action<int, int, ComposerGesture>? onComposerSelect = null, Func<ComposerLayout?>? composerLayout = null,
-    GlyphSet? glyphs = null, Func<int, bool>? onComposerScroll = null)
+    GlyphSet? glyphs = null, Func<int, bool>? onComposerScroll = null,
+    Func<int, StatusCell?>? statusCellAt = null, Action<int>? onStatusHint = null, Func<bool>? panelHoldsKeys = null)
 {
+    //the status line's row among the rule rows: the top rule, the bottom rule, then the status line
+    private const int StatusRuleRow = 2;
+
     //the glyph set chosen once at launch, handed down beside the theme
     private readonly GlyphSet _glyphs = glyphs ?? GlyphSet.Unicode;
 
@@ -102,6 +106,13 @@ public sealed class MouseController(
                     focus.Focus(i, width, height, reveal: false);
                 break;   //a header row always toggles, a body row goes to StartDrag below
             case ChromeTarget ct:
+                //a triangle press steps the hint, and under a prompt that holds the keys it is the drag it always was
+                if (ct is { Region: ChromeRegion.Rule, RegionRow: StatusRuleRow } && panelHoldsKeys?.Invoke() != true
+                    && onStatusHint is not null && statusCellAt?.Invoke(e.X) is StatusCell.HintNext)
+                {
+                    onStatusHint(1);
+                    return;
+                }
                 //a chrome press starts a chrome drag, BeginChromeDrag clears any live transcript selection
                 if (ct.Region == ChromeRegion.Composer) focus.Clear();   //a composer click ends the keyboard focus and removes its accent bar
                 StartChromeDrag(e, width);

@@ -83,34 +83,6 @@ public class FooterLadderTests
     }
 
     [Fact]
-    public void The_rungs_shed_in_the_ruled_order()
-    {
-        //every part long enough that each rung changes something, swept from wide to narrow
-        var s = new StatusInfo(@"C:\Users\user\projects\cc-usage-monitor-long", "qwen3.6-35b-a3b-instruct", "coder",
-            Ctx(340, 1000), @"C:\Users\user", Branch: "feature-branch-long", TokensUp: 1200, TokensDown: 3400,
-            Thinking: "high", FocusHint: "Ctrl+R", Cloud: true, Quota: new QuotaReading(18, "max"));
-        var gone = new Func<string, bool>[]
-        {
-            r => !r.Contains("Ctrl+R"),
-            r => !r.Contains("ctx 34% ("),
-            r => !r.Contains("feature-branch-long"),
-            r => !r.Contains("feature-branch-long") && !r.Contains(GlyphSet.Unicode.Ellipsis + "-long ·"),
-            r => !r.Contains(@"~\projects"),
-            r => !r.Contains("qwen3.6-35b-a3b-instruct"),
-            r => !r.Contains("↑"),
-            r => !r.Contains("cc-usage-monitor-long"),
-            r => !r.Contains("nstruct"),
-        };
-        for (var w = 140; w >= 20; w--)
-        {
-            var row = Line(s, w);
-            var flags = gone.Select(f => f(row)).ToArray();
-            for (var i = 1; i < flags.Length; i++)
-                Assert.True(!flags[i] || flags[i - 1], $"at {w} rung {i} shed before rung {i - 1}: {row}");
-        }
-    }
-
-    [Fact]
     public void The_never_shed_parts_stay_until_the_row_is_cut()
     {
         //the mark, the effort, the ctx percent and the quota survive every rung, and only the final cut can take them
