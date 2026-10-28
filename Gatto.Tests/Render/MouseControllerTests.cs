@@ -1001,4 +1001,33 @@ public sealed class MouseControllerTests
         Assert.Empty(heldSteps);
         Assert.NotNull(held.Selection.ChromeCurrent);
     }
+
+    private static LetterItem Letter() => LetterItem.From(new Gatto.Core.Client.ChatMessage("user",
+        "C:\\box\\mailbox\\m\\a.md\n\n<!-- letter:a -->\nfrom: f\nre: r\nkind: letter\n\none\ntwo\nthree\nfour\n<!-- /letter -->\n",
+        Watch: "C:\\box\\mailbox\\m\\a.md")) with { LeadingBlank = true };
+
+    [Fact]
+    public void A_CLICK_ON_A_FOLDED_LETTERS_HEAD_OPENS_IT_AND_A_SECOND_CLOSES_IT()
+    {
+        var h = Build(60, 20, 3, Prose("hi"), Letter());
+        h.Paint();
+        h.ClickRow(h.RowWhere(t => t is ItemTarget { ItemIndex: 1, HeaderRow: true }));
+        Assert.False(h.Model.Items[1].Collapsed);
+        Assert.Equal(1, h.Focus.Focused);
+        h.Paint();
+        h.ClickRow(h.RowWhere(t => t is ItemTarget { ItemIndex: 1, HeaderRow: true }));
+        Assert.True(h.Model.Items[1].Collapsed);
+    }
+
+    [Fact]
+    public void A_CLICK_ON_A_FOLDED_LETTERS_LINK_ROW_OPENS_IT_AND_ONE_ON_ITS_BODY_DOES_NOT()
+    {
+        var h = Build(60, 20, 3, Prose("hi"), Letter());
+        h.Paint();
+        h.ClickRow(h.RowOfCell(1, 3));   //the body row, under the blank, the head and the fields
+        h.ReleaseAt(4, h.RowOfCell(1, 3));
+        Assert.True(h.Model.Items[1].Collapsed);
+        h.ClickRow(h.RowWhere(t => t is ItemTarget { ItemIndex: 1, LastRow: true }));
+        Assert.False(h.Model.Items[1].Collapsed);
+    }
 }

@@ -71,6 +71,10 @@ public static class TranscriptStore
             last = m;
             switch (m.Role)
             {
+                case "user" when m.Watch is not null:
+                    //a letter draws as it did live, folded on its own band, keyed on the field the watch wrote
+                    model.Append(LetterItem.From(m));
+                    break;
                 case "user" when m.Background is not null:
                     //a background end draws as it did live, its block from the record and never as the user's words
                     model.Append(BackgroundEndItem.From(m, theme, glyphs, role));

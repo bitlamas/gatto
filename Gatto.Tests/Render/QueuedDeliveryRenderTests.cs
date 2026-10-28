@@ -70,7 +70,7 @@ public sealed class QueuedDeliveryRenderTests
         w.R.BeginTurn();
         await loop.RunTurnAsync(w.Convo, "run the tests", w.R, default, takeQueued: () =>
         {
-            var t = queued ?? [];
+            IReadOnlyList<QueuedInput> t = [.. (queued ?? []).Select(x => new QueuedInput(x))];
             queued = null;
             return t;
         });

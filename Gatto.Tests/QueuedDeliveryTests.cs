@@ -51,10 +51,10 @@ public class QueuedDeliveryTests
     {
         private string[]? _left = texts;
         public int Calls;
-        public IReadOnlyList<string> Take()
+        public IReadOnlyList<QueuedInput> Take()
         {
             Calls++;
-            var t = _left ?? [];
+            var t = (_left ?? []).Select(x => new QueuedInput(x)).ToList();
             _left = null;
             return t;
         }
@@ -75,6 +75,19 @@ public class QueuedDeliveryTests
         Assert.Equal("also this", sent[1][^1].Content);
         Assert.Equal("user", sent[1][^1].Role);
         Assert.Same(convo.Messages[4], Assert.Single(obs.Delivered));
+    }
+
+    [Fact]
+    public async Task A_DELIVERED_LETTER_CARRIES_ITS_PATH_IN_THE_WATCH_FIELD_AND_A_TYPED_MESSAGE_NONE()
+    {
+        var (loop, client, convo, obs, _) = Setup();
+        TwoRounds(client);
+        IReadOnlyList<QueuedInput>? left = [new("C:\\box\\a.md\n\nletter a", "C:\\box\\a.md"), new("typed")];
+
+        await loop.RunTurnAsync(convo, "go", obs, default, takeQueued: () => { var t = left ?? []; left = null; return t; });
+
+        Assert.Equal(["C:\\box\\a.md", null], obs.Delivered.Select(r => r.Watch));
+        Assert.Null(convo.Messages[1].Watch);
     }
 
     [Fact]

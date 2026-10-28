@@ -231,8 +231,12 @@ public sealed class StreamRenderer : ITurnObserver
         },
         () => { });
 
-    //a message the loop delivered at a round boundary, the same ❯ block a resume draws from its record, between the round's results and the next reply
-    public void OnQueuedDelivered(ChatMessage record) => CommitUser((record.Content ?? "").Split('\n'));
+    //a message the loop delivered at a round boundary, the same block a resume draws from its record, between the round's results and the next reply
+    public void OnQueuedDelivered(ChatMessage record)
+    {
+        if (record.Watch is not null) CommitLetter(record);
+        else CommitUser((record.Content ?? "").Split('\n'));
+    }
 
     //stream events
 
@@ -577,6 +581,22 @@ public sealed class StreamRenderer : ITurnObserver
             _blankPending = true;   //the block has closed, so the next commit leads with a blank row
         },
         () => _surface.Write("\n! " + TermText.Sanitize(Gatto.Core.Tools.BackgroundTasks.HeadOf(record.Content)) + "\n"));
+
+    //a watched letter as its folded block on its own band, live and on restore alike, appended before the paint
+    public void CommitLetter(ChatMessage record) => Guarded(
+        () =>
+        {
+            if (_inReasoning) CloseReasoningBlock();
+            else FlushOpenLine();
+            if (_last != LastWrite.None) _blankPending = true;
+            var item = LetterItem.From(record);
+            _model?.Append(item);
+            CommitRows([.. item.Render(_surface.Width, _theme, _glyphs).Skip(item.LeadingBlank ? 1 : 0)]);
+            _last = LastWrite.Tool;
+            _blockOpen = false;
+            _blankPending = true;   //the block has closed, so the next commit leads with a blank row
+        },
+        () => _surface.Write("\n" + _glyphs.Sharp + " " + TermText.Sanitize(LetterText.Head(record.Watch ?? "")) + "\n"));
 
     //the turn's dim completion line, one blank row under the output and truncated to one row. the bracket calls it after EndTurn so the timer is still live
     public void CommitCompletion(string line) => Guarded(

@@ -981,7 +981,7 @@ public class CompactorTests
         var queued = new Queue<string[]>([["first"], ["second"]]);
 
         await loop.RunTurnAsync(convo, "look at it", new NullObserver(), default, images: [shot],
-            takeQueued: () => queued.Count > 0 ? queued.Dequeue() : []);
+            takeQueued: () => queued.Count > 0 ? [.. queued.Dequeue().Select(x => new QueuedInput(x))] : []);
 
         Assert.Equal([["first"], ["first", "second"]], handler.Told.Select(t => t.Delivered.ToArray()));
         Assert.All(handler.Told, t => Assert.Equal("look at it", t.Prompt));

@@ -400,6 +400,77 @@ public sealed record BackgroundEndItem : ToolBlockItem
     }
 }
 
+//a watched letter on its own band, never the user's. folded it is four rows at most, its head, from, re and kind, one body row and the link
+public sealed record LetterItem(LetterText Letter) : TranscriptItem
+{
+    //the fields a folded letter's header shows, the rest wait for the open block
+    private static readonly string[] FoldedKeys = ["from", "re", "kind"];
+
+    //the block from a record the watch wrote, folded
+    public static LetterItem From(ChatMessage record) =>
+        new(LetterText.Parse(record.Watch ?? "", record.Content ?? "")) { Collapsed = true };
+
+    //a body that fits its one folded row has nothing to open, the fields the fold leaves out stay in the file and the record
+    public bool Opens(int width) => Hidden(width) > 0;
+
+    private int Hidden(int width) => Math.Max(0, BodyRows(width).Count - 1);
+
+    //each body line wrapped under the hang, a blank line kept as a blank row
+    private List<RenderedRow> BodyRows(int width)
+    {
+        var budget = width > 2 ? width - 2 : 0;
+        var rows = new List<RenderedRow>();
+        foreach (var line in Letter.Body)
+        {
+            var segs = SoftWrap.Wrap(TermText.Sanitize(line), budget, budget);
+            for (var i = 0; i < segs.Count; i++)
+                rows.Add(new RenderedRow(segs[i].Text, i > 0, i > 0 ? GutterWrap.Hang.Length : 0));
+        }
+        return rows;
+    }
+
+    private List<RenderedRow> Rows(int width, Theme theme, GlyphSet? glyphs)
+    {
+        var g = glyphs ?? GlyphSet.Unicode;
+        var budget = width > 2 ? width - 2 : 0;
+        string Cut(string s, int max) => max > 0 ? TermText.TruncateCells(s, max, glyphs: g) : s;
+        string Band(string painted) => theme.Ground(painted, Theme.LetterBg);
+        var rows = new List<RenderedRow>
+        {
+            new(Band(theme.Paint(Cut(g.Sharp + " " + TermText.Sanitize(LetterText.Head(Letter.Path)), width), Theme.Warn)), false),
+        };
+        var open = !Collapsed;
+        var fields = Letter.Fields.Where(f => open || FoldedKeys.Contains(f.Key)).Select(f => TermText.Sanitize($"{f.Key} {f.Value}")).ToList();
+        if (fields.Count > 0)
+        {
+            var meta = string.Join($" {g.Dot} ", fields);
+            //the folded header keeps one row, the open one wraps so every field shows
+            var segs = open ? SoftWrap.Wrap(meta, budget, budget) : [new WrapSeg(Cut(meta, budget), meta.Length)];
+            for (var i = 0; i < segs.Count; i++)
+                rows.Add(new(Band(GutterWrap.Hang + theme.Paint(segs[i].Text, Theme.Dim)), i > 0, i > 0 ? GutterWrap.Hang.Length : 0));
+        }
+        //the body takes the dim ink, so the operator's white and the link's words never read as the letter's prose
+        var body = BodyRows(width);
+        if (open)
+            foreach (var r in body) rows.Add(r with { Text = Band(GutterWrap.Hang + theme.Paint(r.Text, Theme.Dim)) });
+        else if (Letter.Body.Count > 0)
+            rows.Add(new(Band(GutterWrap.Hang + theme.Paint(Cut(TermText.Sanitize(Letter.Body[0]), budget), Theme.Dim)), false));
+        if (Opens(width))
+        {
+            var lead = $"{g.Elbow} " + (open ? "" : $"{g.Ellipsis} {Hidden(width)} more {g.Dot} ");
+            var link = open ? ShellBlockRender.CollapseWords : ShellBlockRender.ExpandWords;
+            rows.Add(new(Band(GutterWrap.Hang + theme.Paint(lead, Theme.Dim) + theme.Paint(link, Theme.Thought)), false));
+        }
+        return rows;
+    }
+
+    protected override IReadOnlyList<string> RenderBody(int width, Theme theme, GlyphSet? glyphs) =>
+        Rows(width, theme, glyphs).Select(r => r.Text).ToList();
+
+    protected override IReadOnlyList<RowWrap> RowWrapsBody(int width, Theme theme, GlyphSet? glyphs) =>
+        Rows(width, theme, glyphs).Select(r => new RowWrap(r.Continuation, r.PrefixCells)).ToList();
+}
+
 public sealed record UserEchoItem(IReadOnlyList<string> RawLines) : TranscriptItem
 {
     protected override IReadOnlyList<string> RenderBody(int width, Theme theme, GlyphSet? glyphs) =>

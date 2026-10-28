@@ -223,7 +223,7 @@ public class DispatchQueueTests
         var taken = q.TakeQueuedForTurn(watchBudget: 2);
 
         Assert.Equal(["C:\\inbox\\1.md\n\nletter 1", "C:\\inbox\\2.md\n\nletter 2"], taken.Select(e => e.Text));
-        Assert.Equal(Enumerable.Range(3, 6).Select(i => ($"C:\\inbox\\{i}.md", true)), q.Texts().Select(v => (v.Text, v.Task)));
+        Assert.Equal(Enumerable.Range(3, 6).Select(i => ($"New mail: inbox\\{i}.md", true)), q.Texts().Select(v => (v.Text, v.Task)));
         using var cts = Deadline();
         for (var i = 3; i <= 8; i++) Assert.Equal(EntryKind.Watch, (await q.TakeAsync(cts.Token))?.Kind);
         await Blocks(q);
@@ -238,7 +238,7 @@ public class DispatchQueueTests
         Assert.True(q.TryEnqueue("b", EntryKind.Command));
         Assert.False(q.TryEnqueue("c", EntryKind.Attachment));
         Assert.Equal(7, q.Count);
-        Assert.Equal(("C:\\inbox\\0.md", true), q.Texts().Select(v => (v.Text, v.Task)).First());
+        Assert.Equal(("New mail: inbox\\0.md", true), q.Texts().Select(v => (v.Text, v.Task)).First());
     }
 
     [Fact]

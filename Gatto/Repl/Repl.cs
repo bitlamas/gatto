@@ -207,7 +207,7 @@ public sealed partial class Repl(
     private Action<string>? _restoreComposer;
 
     //the loop's take at a round boundary, armed by the rich loop alone, so every other face and every child turn delivers nothing mid-turn
-    private Func<IReadOnlyList<string>>? _takeQueued;
+    private Func<IReadOnlyList<QueuedInput>>? _takeQueued;
 
     //the armed watch, read and set under s.Gate, null when nothing is watched
     private Watch? _watch;
@@ -461,14 +461,14 @@ public sealed partial class Repl(
     public static Task<bool> RunTurnGuardedAsync(
         AgentLoop loop, Conversation convo, string input, ITurnObserver renderer,
         SessionStore? sessions, CancellationToken ct, TranscriptModel? model = null,
-        IReadOnlyList<ImageRef>? images = null, Func<string?>? serverGone = null, Func<IReadOnlyList<string>>? takeQueued = null) =>
+        IReadOnlyList<ImageRef>? images = null, Func<string?>? serverGone = null, Func<IReadOnlyList<QueuedInput>>? takeQueued = null) =>
         GuardedAsync(loop, convo, () => loop.RunTurnAsync(convo, input, renderer, ct, images, takeQueued: takeQueued), renderer, sessions, model, serverGone);
 
     //the same guard for a turn whose user record is built already, a background task's end
     public static Task<bool> RunTurnGuardedAsync(
         AgentLoop loop, Conversation convo, ChatMessage record, ITurnObserver renderer,
         SessionStore? sessions, CancellationToken ct, TranscriptModel? model = null, Func<string?>? serverGone = null,
-        Func<IReadOnlyList<string>>? takeQueued = null) =>
+        Func<IReadOnlyList<QueuedInput>>? takeQueued = null) =>
         GuardedAsync(loop, convo, () => loop.RunTurnAsync(convo, record, renderer, ct, takeQueued: takeQueued), renderer, sessions, model, serverGone);
 
     private static async Task<bool> GuardedAsync(AgentLoop loop, Conversation convo, Func<Task<TurnResult>> turn,
@@ -641,7 +641,8 @@ public sealed partial class Repl(
 
     //repaint a restored transcript through the renderer channels, sending each tool call and its result as a pair, and change nothing
     public static void ReplayTranscript(
-        IReadOnlyList<ChatMessage> messages, ITurnObserver observer, Action<string> echoUser, Action<ChatMessage> echoBackground)
+        IReadOnlyList<ChatMessage> messages, ITurnObserver observer, Action<string> echoUser, Action<ChatMessage> echoBackground,
+        Action<ChatMessage>? echoLetter = null)   //null echoes a letter as its text, the plain face has no block for it
     {
         var pending = new Dictionary<string, ToolCall>(StringComparer.Ordinal);
         foreach (var m in messages)
@@ -651,6 +652,9 @@ public sealed partial class Repl(
                 //a background end is gatto's record, so each face draws it its own way and never echoes it as typed
                 case "user" when m.Background is not null:
                     echoBackground(m);
+                    break;
+                case "user" when m.Watch is not null && echoLetter is not null:
+                    echoLetter(m);
                     break;
                 case "user" when m.Content is { Length: > 0 }:
                     echoUser(m.Content);

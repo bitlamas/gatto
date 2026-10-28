@@ -50,10 +50,10 @@ public sealed class Conversation
     //images are references to files named in the message, and null on nearly every turn so the serialised form stays unchanged
     public void AddUser(string text, IReadOnlyList<ImageRef>? images = null) => Append(UserRecord(text, images));
 
-    //a typed message as its record, which takes the pending resume note with it, so the record must be appended at once
-    public ChatMessage UserRecord(string text, IReadOnlyList<ImageRef>? images = null)
+    //a typed message or a watched letter as its record, which takes the pending resume note with it, so the record must be appended at once
+    public ChatMessage UserRecord(string text, IReadOnlyList<ImageRef>? images = null, string? watch = null)
     {
-        var m = new ChatMessage("user", text, Ts: _now(), Images: images, Update: PendingUpdate);
+        var m = new ChatMessage("user", text, Ts: _now(), Images: images, Update: PendingUpdate, Watch: watch);
         if (PendingUpdate is not null) { _updateCarrier = m; PendingUpdate = null; }
         return m;
     }

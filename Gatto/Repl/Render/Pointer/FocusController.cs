@@ -17,9 +17,9 @@ public sealed class FocusController
 
     public int? Focused => _focused;
 
-    //a focus stop has something to open at this width: a thought, or a tool block whose body holds more than its row. an open block that no longer does is skipped
+    //a focus stop has something to open at this width: a thought, a letter past its fold, or a tool block whose body holds more than its row. an open block that no longer does is skipped
     private bool IsStop(TranscriptItem it, int width) =>
-        it is ReasoningItem || it is ToolBlockItem tb && tb.Opens(width, _index.Theme, _index.Glyphs);
+        it is ReasoningItem || it is LetterItem li && li.Opens(width) || it is ToolBlockItem tb && tb.Opens(width, _index.Theme, _index.Glyphs);
 
     //the one collapsible test the mouse uses, so a click never repeats the rule. an open tool block can always close, and an out-of-range index is false
     public bool IsCollapsible(int itemIndex, int width) =>

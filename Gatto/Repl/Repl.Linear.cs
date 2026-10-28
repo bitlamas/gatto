@@ -132,7 +132,7 @@ public sealed partial class Repl
             if (taken.Count == 0) return [];
             watch?.Taken(taken.Select(e => e.Kind));
             lock (s.Gate) { if (!stopped) { PublishQueueLocked(); RedrawLocked(lastView); } }
-            return [.. taken.Select(e => e.Text)];
+            return [.. taken.Select(e => new QueuedInput(e.Text, e.WatchPath))];
         };
 
         //the letter lands in the row the moment it is read, mid-turn included, and a letter of a watch that was moved, turned off or ended by /new is dropped
@@ -564,11 +564,11 @@ public sealed partial class Repl
             queue.Texts(), [], Cats.Face(_glyphs), KnownCommands(),
             async () =>
             {
-                if (!entry.Drawn) s.Renderer.CommitUser(entry.Text.Split('\n'));   //a parked letter's block stayed on screen from its first take
+                var record = convo.UserRecord(entry.Text, watch: entry.WatchPath);
+                if (!entry.Drawn) s.Renderer.CommitLetter(record);   //a parked letter's block stayed on screen from its first take
                 Watch? watch;
                 lock (s.Gate) watch = _watch;
                 if (!entry.Counted) watch?.Taken([EntryKind.Watch]);   //after its block, so a pause row follows the letter that reached K
-                var record = convo.UserRecord(entry.Text);
                 var kept = await RunModelTurnAsync(s, [],
                     ct => RunTurnGuardedAsync(loop, convo, record, s.Renderer, sessions, ct, s.Painter.Model, serverGone, _takeQueued), appCt);
                 //a turn that rolled back before its first reply leaves the letter owed, so it waits at the head of the queue for the next entry
@@ -731,7 +731,7 @@ public sealed partial class Repl
             _endedAtNew = 0;
             if (SeedFirstMessage(convo, firstMessage))
             {
-                ReplayTranscript(convo.Messages, s.Renderer, u => s.Renderer.CommitUser(u.Split('\n')), s.Renderer.CommitBackground);
+                ReplayTranscript(convo.Messages, s.Renderer, u => s.Renderer.CommitUser(u.Split('\n')), s.Renderer.CommitBackground, s.Renderer.CommitLetter);
                 s.Renderer.EndTurn();
             }
             s.Painter.Repaint();
@@ -860,7 +860,7 @@ public sealed partial class Repl
                 //the switch seeded the new role's opening, painted through the rebuilt renderer in the new tint
                 if (result.Opened)
                 {
-                    ReplayTranscript(convo.Messages, s.Renderer, u => s.Renderer.CommitUser(u.Split('\n')), s.Renderer.CommitBackground);
+                    ReplayTranscript(convo.Messages, s.Renderer, u => s.Renderer.CommitUser(u.Split('\n')), s.Renderer.CommitBackground, s.Renderer.CommitLetter);
                     s.Renderer.EndTurn();
                 }
             }

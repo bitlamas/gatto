@@ -14,6 +14,9 @@ public enum TruncationKind { Length, Stream }
 //the full shape of a finished turn, where finish_reason tells a token-limit stop from a clean one
 public sealed record TurnResult(TurnOutcome Outcome, string? FinishReason, TruncationKind? Truncation, int Rounds, string? LastError);
 
+//one queued text the loop delivers at a round boundary, and the file a watched letter came from, null for typed words
+public sealed record QueuedInput(string Text, string? Watch = null);
+
 //the loop's malformed-arguments text as one constant, since the audition grader reads the same string
 public static class LoopErrors
 {
@@ -136,20 +139,20 @@ public sealed class AgentLoop(
     public Task<TurnResult> RunTurnAsync(
         Conversation convo, string userMessage, ITurnObserver observer, CancellationToken ct,
         IReadOnlyList<ImageRef>? images = null, long traceParent = 0, string? agent = null,
-        Func<IReadOnlyList<string>>? takeQueued = null) =>
+        Func<IReadOnlyList<QueuedInput>>? takeQueued = null) =>
         RunTurnAsync(convo, convo.UserRecord(userMessage, images), observer, ct, traceParent, agent, takeQueued);
 
     //a turn whose user message is a record built already, a background task's end among them, appended as given
     public Task<TurnResult> RunTurnAsync(
         Conversation convo, ChatMessage userRecord, ITurnObserver observer, CancellationToken ct,
-        long traceParent = 0, string? agent = null, Func<IReadOnlyList<string>>? takeQueued = null) =>
+        long traceParent = 0, string? agent = null, Func<IReadOnlyList<QueuedInput>>? takeQueued = null) =>
         _trace.Enabled
             ? TracedTurnAsync(convo, userRecord, observer, ct, traceParent, agent, takeQueued)
             : RunTurnCoreAsync(convo, userRecord, observer, ct, 0, agent, takeQueued);
 
     private async Task<TurnResult> TracedTurnAsync(
         Conversation convo, ChatMessage userRecord, ITurnObserver observer, CancellationToken ct,
-        long traceParent, string? agent, Func<IReadOnlyList<string>>? takeQueued)
+        long traceParent, string? agent, Func<IReadOnlyList<QueuedInput>>? takeQueued)
     {
         var span = _trace.Open(Trace.Turn, traceParent);
         observer.OnTurnSpan(span.Id);
@@ -171,7 +174,7 @@ public sealed class AgentLoop(
 
     private async Task<TurnResult> RunTurnCoreAsync(
         Conversation convo, ChatMessage userRecord, ITurnObserver observer, CancellationToken ct,
-        long turnSpan, string? agent, Func<IReadOnlyList<string>>? takeQueued)
+        long turnSpan, string? agent, Func<IReadOnlyList<QueuedInput>>? takeQueued)
     {
         //what a compaction continues from, and a background end's head line stands for its output there
         var userMessage = PromptOf(userRecord);
@@ -466,11 +469,11 @@ public sealed class AgentLoop(
                 var records = new List<ChatMessage>(queued.Count);
                 foreach (var typed in queued)
                 {
-                    var record = convo.UserRecord(typed);
+                    var record = convo.UserRecord(typed.Text, watch: typed.Watch);
                     convo.Append(record);
                     records.Add(record);
                 }
-                delivered.AddRange(queued);
+                delivered.AddRange(queued.Select(q => q.Text));
                 Persist(convo, observer);
                 foreach (var record in records) observer.OnQueuedDelivered(record);
             }

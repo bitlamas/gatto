@@ -90,6 +90,19 @@ public sealed class HeldLineRenderTests
     }
 
     [Fact]
+    public void A_DELIVERED_RECORD_WITH_THE_WATCH_FIELD_COMMITS_A_LETTER_AND_ONE_WITHOUT_IT_THE_USERS_BLOCK()
+    {
+        var (r, model) = Wire();
+        r.CommitUser(["go"]);
+        r.BeginTurn();
+        r.OnQueuedDelivered(new Gatto.Core.Client.ChatMessage("user", "C:\\inbox\\a.md\n\nletter a", Watch: "C:\\inbox\\a.md"));
+        r.OnQueuedDelivered(new Gatto.Core.Client.ChatMessage("user", "C:\\inbox\\b.md\n\nletter b"));
+        r.EndTurn();
+        Assert.Equal([nameof(UserEchoItem), nameof(LetterItem), nameof(UserEchoItem)], Kinds(model)[..3]);
+        Assert.Contains("♯ New mail: inbox\\a.md", Rows(model));
+    }
+
+    [Fact]
     public void AT_REST_THE_PAUSE_ROW_COMMITS_AT_ONCE()
     {
         var (r, model) = Wire();

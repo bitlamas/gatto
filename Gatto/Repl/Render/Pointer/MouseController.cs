@@ -94,8 +94,8 @@ public sealed class MouseController(
                 //a gutter click toggles an open block or a collapsed thinking block. it selects on the rows under a collapsed tool header, and on the rail of an open window (copy from column zero)
                 var railClick = e.X < GutterCols && (!model.Items[i].Collapsed || model.Items[i] is ReasoningItem)
                     && model.Items[i] is not ToolBlockItem;
-                //the affordance click is narrowed to a streaming collapsed thinking block, a collapsed tool block's last row is real content
-                var affordanceClick = lastRow && model.Items[i] is ReasoningItem { Streaming: true, Collapsed: true };
+                //the affordance click is narrowed to a streaming collapsed thinking block and a letter's link row, a collapsed tool block's last row is real content
+                var affordanceClick = lastRow && model.Items[i] is ReasoningItem { Streaming: true, Collapsed: true } or LetterItem;
                 if (headerRow || railClick || affordanceClick)
                 {
                     focus.Focus(i, width, height, reveal: false);   //reveal: false so the toggle below does the scrolling, matching Ctrl+R

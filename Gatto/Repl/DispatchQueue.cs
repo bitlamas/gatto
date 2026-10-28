@@ -12,6 +12,8 @@ internal readonly record struct QueueEntry(string Text, BackgroundEnd? End, bool
     public bool IsTask => End is not null;
     //what the user typed, which the cap counts and the pull-back returns. a letter and an end are neither
     public bool IsTyped => End is null && Kind != EntryKind.Watch;
+    //the file a letter came from, its text's first line by the watch's own writing, null for every other entry
+    public string? WatchPath => Kind == EntryKind.Watch && End is null ? Text.Split('\n')[0].TrimEnd('\r') : null;
 }
 
 //the semaphore count equals takeable entries minus unredeemed permits. the take returns null from an empty queue, so no message is handed out twice
@@ -122,7 +124,7 @@ internal sealed class DispatchQueue(int cap)
         for (var i = 0; i < count; i++) _signal.Wait(0);
     }
 
-    //the queued entries, oldest first, as the chrome draws them. an end shows its head line and a letter its path, both off the user's marker
+    //the queued entries, oldest first, as the chrome draws them. an end shows its head line and a letter its path from the mailbox, both off the user's marker
     public IReadOnlyList<QueueEntryView> Texts()
     {
         lock (_lock) return [.. _q.Select(View)];
@@ -130,7 +132,7 @@ internal sealed class DispatchQueue(int cap)
 
     private static QueueEntryView View(QueueEntry e) =>
         e.IsTask ? new(BackgroundTasks.HeadOf(e.Text), true)
-        : e.Kind == EntryKind.Watch ? new(e.Text.Split('\n')[0].TrimEnd('\r'), true)
+        : e.WatchPath is { } path ? new(Render.LetterText.Head(path), true)
         : new(e.Text, false);
 
     //wait for a permit and take the oldest entry. null means that permit's message was pulled back into the composer, so the caller skips the round
