@@ -17,7 +17,7 @@ public sealed partial class Repl
     //plain loop
     private async Task<int> RunPlainAsync(CancellationToken appCt)
     {
-        Console.WriteLine(Cats.For(roleCat, glyphs: _glyphs));
+        Console.WriteLine(Cats.For(roleAvatar, glyphs: _glyphs));
         //the plain banner joins with Dot, the same separator as every other row
         var sep = $" {_glyphs.Dot} ";
         Console.WriteLine($"gatto{sep}{roleName}{sep}{Gatto.Core.Models.ServedModelName.Display(modelName)}{sep}v{Gatto.Core.GattoVersion.String}");
@@ -185,7 +185,7 @@ public sealed partial class Repl
                     roleName = result.RoleName;
                     modelName = result.ModelName!;
                     thinkingName = result.ThinkingName;   //null when the new role has no map, which hides the chip
-                    roleCat = result.RoleCat;
+                    roleAvatar = result.RoleAvatar;
                     firstMessage = result.FirstMessage;
                 }
                 Console.WriteLine(result.Success ? CommandText.RoleLine(roleName) : result.Message);

@@ -5,8 +5,8 @@ namespace Gatto.Tests;
 
 public class CatsTests
 {
-    private static readonly IReadOnlyList<string> Coder = ShippedRoleFiles.Load("coder").Cat!;
-    private static readonly IReadOnlyList<string> Oracle = ShippedRoleFiles.Load("oracle").Cat!;
+    private static readonly IReadOnlyList<string> Coder = ShippedRoleFiles.Load("coder").Avatar!;
+    private static readonly IReadOnlyList<string> Oracle = ShippedRoleFiles.Load("oracle").Avatar!;
 
     [Fact]
     public void THE_DEFAULT_CAT_HAS_CARET_EYES()

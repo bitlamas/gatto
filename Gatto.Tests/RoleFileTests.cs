@@ -206,12 +206,12 @@ public class RoleFileTests : IDisposable
     {
         WriteJson("dressed", new Dictionary<string, object>
         {
-            ["cat"] = new[] { "  /l、", "（＾､＾７" }, ["tint"] = "#4BBECD", ["tint_light"] = "#0E7C86",
+            ["avatar"] = new[] { "  /l、", "（＾､＾７" }, ["tint"] = "#4BBECD", ["tint_light"] = "#0E7C86",
         });
 
         var role = RoleFile.Load(_rolesDir, "dressed");
 
-        Assert.Equal(new[] { "  /l、", "（＾､＾７" }, role.Cat);
+        Assert.Equal(new[] { "  /l、", "（＾､＾７" }, role.Avatar);
         Assert.Equal("#4BBECD", role.Tint);
         Assert.Equal("#0E7C86", role.TintLight);
         Assert.Equal((Theme.ParseTint("#4BBECD"), Theme.ParseTint("#0E7C86")), role.ParsedTint());
@@ -232,54 +232,63 @@ public class RoleFileTests : IDisposable
 
         var role = RoleFile.Load(_rolesDir, "bare");
 
-        Assert.Null(role.Cat);
+        Assert.Null(role.Avatar);
         Assert.Null(role.Tint);
         Assert.Null(role.TintLight);
         Assert.Null(role.ParsedTint());
     }
 
     [Fact]
-    public void A_CAT_OF_SEVEN_ROWS_IS_REFUSED()
+    public void AN_AVATAR_OF_FORTY_ONE_ROWS_IS_REFUSED()
     {
-        WriteJson("bad", new { cat = Enumerable.Repeat("x", 7).ToArray() });
+        WriteJson("bad", new { avatar = Enumerable.Repeat("x", 41).ToArray() });
 
         var ex = Refused("bad");
 
-        Assert.Equal("role 'bad' has a \"cat\" of 7 rows; must be 1 to 6", ex.Message);
+        Assert.Equal("role 'bad' has an \"avatar\" of 41 rows; must be 1 to 40", ex.Message);
     }
 
     [Fact]
-    public void AN_EMPTY_CAT_IS_REFUSED()
+    public void AN_EMPTY_AVATAR_IS_REFUSED()
     {
-        Write("bad", """{ "cat": [] }""");
+        Write("bad", """{ "avatar": [] }""");
 
-        Assert.Equal("role 'bad' has a \"cat\" of 0 rows; must be 1 to 6", Refused("bad").Message);
+        Assert.Equal("role 'bad' has an \"avatar\" of 0 rows; must be 1 to 40", Refused("bad").Message);
     }
 
     [Fact]
-    public void A_CAT_ROW_OF_SEVENTEEN_CELLS_IS_REFUSED()
+    public void AN_AVATAR_ROW_OF_EIGHTY_ONE_CELLS_IS_REFUSED()
     {
-        //sixteen cells by display width, so eight fullwidth runes fit and nine do not
-        Write("wide", "{ \"cat\": [\"" + new string('＾', 9) + "\"] }");
-        WriteJson("eight", new { cat = new[] { new string('＾', 8) } });
-        WriteJson("ascii", new { cat = new[] { new string('x', 16), "ok" } });
-        WriteJson("long", new { cat = new[] { "ok", new string('x', 17) } });
+        //eighty cells by display width, so forty fullwidth runes fit and forty-one do not
+        Write("wide", "{ \"avatar\": [\"" + new string('＾', 41) + "\"] }");
+        WriteJson("forty", new { avatar = new[] { new string('＾', 40) } });
+        WriteJson("ascii", new { avatar = new[] { new string('x', 80), "ok" } });
+        WriteJson("long", new { avatar = new[] { "ok", new string('x', 81) } });
 
-        Assert.Equal("role 'wide' has a \"cat\" row 0 of \"" + new string('＾', 9) + "\"; must be 1 to 16 cells with no control character",
+        Assert.Equal("role 'wide' has an \"avatar\" row 0 of \"" + new string('＾', 41) + "\"; must be 1 to 80 cells with no control character",
             Refused("wide").Message);
-        Assert.Contains("\"cat\" row 1", Refused("long").Message);
-        Assert.Single(RoleFile.Load(_rolesDir, "eight").Cat!);
-        Assert.Equal(2, RoleFile.Load(_rolesDir, "ascii").Cat!.Count);
+        Assert.Contains("\"avatar\" row 1", Refused("long").Message);
+        Assert.Single(RoleFile.Load(_rolesDir, "forty").Avatar!);
+        Assert.Equal(2, RoleFile.Load(_rolesDir, "ascii").Avatar!.Count);
     }
 
     [Fact]
-    public void AN_EMPTY_CAT_ROW_IS_REFUSED()
+    public void A_BRAILLE_AVATAR_ROW_COUNTS_ONE_CELL_PER_RUNE()
     {
-        Write("bad", """{ "cat": ["ok", ""] }""");
+        //braille is a narrow block, so a 50-rune row is 50 cells and the face limits hold
+        WriteJson("braille", new { avatar = new[] { new string('\u28FF', 50) } });
+
+        Assert.Equal(50, UnicodeWidth.Of(RoleFile.Load(_rolesDir, "braille").Avatar![0]));
+    }
+
+    [Fact]
+    public void AN_EMPTY_AVATAR_ROW_IS_REFUSED()
+    {
+        Write("bad", """{ "avatar": ["ok", ""] }""");
 
         var ex = Refused("bad");
 
-        Assert.Equal("role 'bad' has a \"cat\" row 1 of \"\"; must be 1 to 16 cells with no control character", ex.Message);
+        Assert.Equal("role 'bad' has an \"avatar\" row 1 of \"\"; must be 1 to 80 cells with no control character", ex.Message);
     }
 
     [Theory]
@@ -289,21 +298,21 @@ public class RoleFileTests : IDisposable
     [InlineData(31)]
     [InlineData(127)]
     [InlineData(0x85)]
-    public void A_CAT_ROW_WITH_A_CONTROL_CHARACTER_IS_REFUSED(int code)
+    public void AN_AVATAR_ROW_WITH_A_CONTROL_CHARACTER_IS_REFUSED(int code)
     {
-        WriteJson("bad", new { cat = new[] { "a" + (char)code + "b" } });
+        WriteJson("bad", new { avatar = new[] { "a" + (char)code + "b" } });
 
         var ex = Refused("bad");
 
         Assert.Contains("'bad'", ex.Message);
-        Assert.Contains("\"cat\" row 0", ex.Message);
+        Assert.Contains("\"avatar\" row 0", ex.Message);
         Assert.Contains("no control character", ex.Message);
     }
 
     [Theory]
-    [InlineData("""{ "cat": "x" }""", "role 'bad' has a \"cat\" of \"x\"; must be an array of 1 to 6 rows")]
-    [InlineData("""{ "cat": ["a", 1] }""", "role 'bad' has a \"cat\" row 1 of 1; must be 1 to 16 cells with no control character")]
-    public void A_CAT_THAT_IS_NOT_AN_ARRAY_OF_STRINGS_IS_REFUSED(string json, string message)
+    [InlineData("""{ "avatar": "x" }""", "role 'bad' has an \"avatar\" of \"x\"; must be an array of 1 to 40 rows")]
+    [InlineData("""{ "avatar": ["a", 1] }""", "role 'bad' has an \"avatar\" row 1 of 1; must be 1 to 80 cells with no control character")]
+    public void AN_AVATAR_THAT_IS_NOT_AN_ARRAY_OF_STRINGS_IS_REFUSED(string json, string message)
     {
         Write("bad", json);
 
@@ -311,13 +320,22 @@ public class RoleFileTests : IDisposable
     }
 
     [Fact]
-    public void A_CAT_OF_ONE_ROW_AND_A_CAT_OF_SIX_LOAD()
+    public void AN_AVATAR_OF_ONE_ROW_AND_AN_AVATAR_OF_FORTY_LOAD()
     {
-        WriteJson("one", new { cat = new[] { "a" } });
-        WriteJson("six", new { cat = new[] { "1", "2", "3", "4", "5", "6" } });
+        WriteJson("one", new { avatar = new[] { "a" } });
+        WriteJson("forty", new { avatar = Enumerable.Range(1, 40).Select(i => i.ToString()).ToArray() });
 
-        Assert.Equal(new[] { "a" }, RoleFile.Load(_rolesDir, "one").Cat);
-        Assert.Equal(new[] { "1", "2", "3", "4", "5", "6" }, RoleFile.Load(_rolesDir, "six").Cat);
+        Assert.Equal(new[] { "a" }, RoleFile.Load(_rolesDir, "one").Avatar);
+        Assert.Equal(40, RoleFile.Load(_rolesDir, "forty").Avatar!.Count);
+    }
+
+    [Fact]
+    public void A_CAT_KEY_IS_UNKNOWN()
+    {
+        //the key was cat before avatar, and no legacy read keeps it
+        WriteJson("old", new { cat = new[] { "a" } });
+
+        Assert.Equal("unknown key in role 'old': cat", Refused("old").Message);
     }
 
     //the value is the JSON text as a user writes it, so an escape stays an escape and the message shows it as written

@@ -80,7 +80,7 @@ public class RoleHeaderTests
 
     //the switch hands down the coder file's teal and visor cat, as GattoApp does from the role file
     private static RoleSwitchResult Coder(string name) =>
-        new(true, "coder", "test-model", "the coder marker", null, RoleTint: (Theme.ParseTint("#4BBECD"), null), RoleCat: Visor);
+        new(true, "coder", "test-model", "the coder marker", null, RoleTint: (Theme.ParseTint("#4BBECD"), null), RoleAvatar: Visor);
 
     [Fact]
     public async Task A_ROLE_SWITCH_PAINTS_THE_RULE_AND_THE_BANNER_IN_THE_FILES_TINT()
@@ -113,7 +113,7 @@ public class RoleHeaderTests
         Assert.DoesNotContain("（▀､▀ ７", plain.Written(), StringComparison.Ordinal);
 
         var h = new RichReplHarness(Path.GetTempPath(), defaultRole: "generalist", roleName: "coder",
-            roleTint: (Theme.ParseTint("#4BBECD"), null), roleCat: Visor);
+            roleTint: (Theme.ParseTint("#4BBECD"), null), roleAvatar: Visor);
         h.Keys.Line("/quit");
         await h.RunAsync();
         Assert.Contains(tealCoder, h.RawWritten(), StringComparison.Ordinal);

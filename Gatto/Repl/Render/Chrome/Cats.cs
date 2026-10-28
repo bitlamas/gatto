@@ -3,11 +3,11 @@ namespace Gatto.Repl.Render.Chrome;
 
 public static class Cats
 {
-    //the launch banner cat: the role file's rows when it carries a cat, else the default body, and the glyph set's own cat outside Unicode
-    public static string For(IReadOnlyList<string>? cat, GlyphSet? glyphs) =>
+    //the launch banner face: the role file's avatar rows when it carries one, else the default cat, and the glyph set's own cat outside Unicode
+    public static string For(IReadOnlyList<string>? avatar, GlyphSet? glyphs) =>
         (glyphs ?? GlyphSet.Unicode) is { } g && !ReferenceEquals(g, GlyphSet.Unicode)
             ? string.Join('\n', g.Cat)
-            : cat is not null ? string.Join('\n', cat) : Default;
+            : avatar is not null ? string.Join('\n', avatar) : Default;
 
     //the caret face has no space before the ７ where a visor face does, deliberate, don't tidy it into symmetry
     private const string Default = """

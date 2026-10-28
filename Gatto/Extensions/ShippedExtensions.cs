@@ -100,6 +100,10 @@ public static class ShippedExtensions
         "ce9dff2a6ebe3e50b299dc43d0de4275cb996e0e2027d6fbcb04b8f279fb0d87",
         //oracle.json rev O4, the last one without a cat and a tint
         "64e52929395e5c7636eb08525680200b9f6127e8b16415e6d4c5a3c0ca5818b1",
+        //coder.json rev E, the last one whose face key was cat
+        "2d6ced6fbea38159984c627faa6d2aed0bfa4ec10a3f30c157da6ed471646694",
+        //oracle.json rev O5, the last one whose face key was cat
+        "0668a903f1072318ca5532da6089bcc537e2f64ffc8e27113f54e86318ced431",
         //shipped .csx revisions from before the public-comment pass start here, ask_user.csx first
         "d9674d68295a1b9296b196e5d169267064318f0e10615b76de41342df2d8e39b",
         //web_search.csx, the revision before the public-comment pass

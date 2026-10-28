@@ -22,7 +22,7 @@ public sealed record RoleFile(
     IReadOnlyList<string>? Tools,
     int Turns,
     bool ContextFiles,
-    IReadOnlyList<string>? Cat,
+    IReadOnlyList<string>? Avatar,
     string? Tint,
     string? TintLight,
     //the opening line committed before the first request, refused when it holds a control token since a resume strips assistant records
@@ -36,7 +36,7 @@ public sealed record RoleFile(
 
     //one key for the model, and the endpoint kind decides what it means. sampling belongs to the model now, so a role's sampling key is accepted and never read
     private static readonly string[] Keys =
-        { "model", "endpoint", "gates", "raw", "append", "thinking", "sampling", "description", "tools", "turns", "context_files", "cat", "tint", "tint_light", "first_message" };
+        { "model", "endpoint", "gates", "raw", "append", "thinking", "sampling", "description", "tools", "turns", "context_files", "avatar", "tint", "tint_light", "first_message" };
 
     //copied once, since Builtins allocates its factories on every call and builds no tool
     private static readonly HashSet<string> CallableTools = new(SubagentWiring.Builtins().Keys, StringComparer.Ordinal);
@@ -146,21 +146,21 @@ public sealed record RoleFile(
             contextFiles = cf.GetBoolean();
         }
 
-        List<string>? cat = null;
-        if (root.TryGetProperty("cat", out var ct))
+        List<string>? avatar = null;
+        if (root.TryGetProperty("avatar", out var ct))
         {
             if (ct.ValueKind != JsonValueKind.Array)
-                throw new GattoConfigException($"role '{name}' has a \"cat\" of {ct.GetRawText()}; must be an array of 1 to 6 rows");
+                throw new GattoConfigException($"role '{name}' has an \"avatar\" of {ct.GetRawText()}; must be an array of 1 to 40 rows");
             var rows = ct.EnumerateArray().ToList();
-            if (rows.Count is < 1 or > 6)
-                throw new GattoConfigException($"role '{name}' has a \"cat\" of {rows.Count} rows; must be 1 to 6");
-            cat = new List<string>();
+            if (rows.Count is < 1 or > 40)
+                throw new GattoConfigException($"role '{name}' has an \"avatar\" of {rows.Count} rows; must be 1 to 40");
+            avatar = new List<string>();
             for (var i = 0; i < rows.Count; i++)
             {
                 var row = rows[i].ValueKind == JsonValueKind.String ? rows[i].GetString()! : null;
-                if (row is null || UnicodeWidth.Of(row) is < 1 or > 16 || row.Any(char.IsControl))
-                    throw new GattoConfigException($"role '{name}' has a \"cat\" row {i} of {rows[i].GetRawText()}; must be 1 to 16 cells with no control character");
-                cat.Add(row);
+                if (row is null || UnicodeWidth.Of(row) is < 1 or > 80 || row.Any(char.IsControl))
+                    throw new GattoConfigException($"role '{name}' has an \"avatar\" row {i} of {rows[i].GetRawText()}; must be 1 to 80 cells with no control character");
+                avatar.Add(row);
             }
         }
 
@@ -173,7 +173,7 @@ public sealed record RoleFile(
         if (firstMessage is not null && ControlTokens.Strip(firstMessage).Count > 0)
             throw new GattoConfigException($"role '{name}' has a \"first_message\" holding a control token");
 
-        return new RoleFile(name, model, endpoint, gates, raw, append, thinking, description, tools, turns, contextFiles, cat, tint, tintLight, firstMessage);
+        return new RoleFile(name, model, endpoint, gates, raw, append, thinking, description, tools, turns, contextFiles, avatar, tint, tintLight, firstMessage);
     }
 
     //the override wins, then the role's own model, then gatto.json's default_model, shared so the launch and doctor agree

@@ -169,7 +169,7 @@ public sealed class RichReplHarness
         //the home's default role and the /role seam, absent as a session that names its role and has no roles to switch to
         string? defaultRole = null, Func<string, RoleSwitchResult>? switchRole = null,
         //the launched role and its file's colours and rows, the generalist with none as a bare launch from a fresh home
-        string roleName = "generalist", (RgbColor Dark, RgbColor? Light)? roleTint = null, IReadOnlyList<string>? roleCat = null,
+        string roleName = "generalist", (RgbColor Dark, RgbColor? Light)? roleTint = null, IReadOnlyList<string>? roleAvatar = null,
         string? firstMessage = null,
         //the process's sandbox, absent as off Windows
         Gatto.Core.Sandbox.SandboxState? sandbox = null,
@@ -227,7 +227,7 @@ public sealed class RichReplHarness
             commands: commands,
             launchWarnings: launchWarnings, servedNotice: servedNotice, sandboxNotice: sandboxNotice, wildNotice: wildNotice,
             clipboardImageSource: clipboardImages,
-            roleTint: roleTint, roleCat: roleCat, firstMessage: firstMessage,
+            roleTint: roleTint, roleAvatar: roleAvatar, firstMessage: firstMessage,
             armTasks: tasks => _context.Tasks = tasks);
     }
 

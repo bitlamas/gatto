@@ -702,7 +702,7 @@ public sealed partial class Repl
                     s.Ctx?.RecordUsedTokens(null);         //the same for the context figure
                     s.Refresh();                           //a fresh conversation, so the ctx estimate resets too
                 },
-                s.Painter.Model, s.Renderer, BannerItem(s.Theme, roleName, roleCat, modelName, versionLine, s.Glyphs),
+                s.Painter.Model, s.Renderer, BannerItem(s.Theme, roleName, roleAvatar, modelName, versionLine, s.Glyphs),
                 NewConversationLine, carry);
             //said after the rotation, which would erase it, and never saved, since the tasks were this process's
             if (_endedAtNew > 0) s.Renderer.CommitSystem($"ended {Gatto.Core.Plural.Of(_endedAtNew, "background task")}", transient: true);
@@ -821,7 +821,7 @@ public sealed partial class Repl
                 roleName = result.RoleName;
                 modelName = result.ModelName!;
                 thinkingName = result.ThinkingName;   //null when the new role has no map, the chip hides
-                roleCat = result.RoleCat;
+                roleAvatar = result.RoleAvatar;
                 firstMessage = result.FirstMessage;
                 //a role without a tint takes the accent, so a switch away from a tinted role drops its colour
                 var tint = result.RoleTint ?? (Theme.Accent, null);

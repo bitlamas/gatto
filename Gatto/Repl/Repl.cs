@@ -17,7 +17,7 @@ namespace Gatto.Repl;
 public sealed record RoleSwitchResult(bool Success, string RoleName, string? ModelName, string? SystemText, string? Message,
     string? ThinkingName = null, SessionBaseline? Baseline = null,
     //the new role's file colours and banner rows, null where the file carries none
-    (RgbColor Dark, RgbColor? Light)? RoleTint = null, IReadOnlyList<string>? RoleCat = null,
+    (RgbColor Dark, RgbColor? Light)? RoleTint = null, IReadOnlyList<string>? RoleAvatar = null,
     string? FirstMessage = null,
     //set by ApplyRoleSwitch alone, true when the switch opened the conversation with the new role's first message
     bool Opened = false);
@@ -150,7 +150,7 @@ public sealed partial class Repl(
     string? defaultRole = null,
     //the running role's colours and banner rows, handed down so the Repl never reads a role file
     (RgbColor Dark, RgbColor? Light)? roleTint = null,
-    IReadOnlyList<string>? roleCat = null,
+    IReadOnlyList<string>? roleAvatar = null,
     //the running role's opening line, committed as history whenever a conversation opens empty
     string? firstMessage = null,
     //hands the shell tool the session's background tasks, called by the rich face alone, so every other face runs the flag in the foreground
@@ -512,13 +512,13 @@ public sealed partial class Repl(
     }
 
     //transient and never serialized (it would stack on every resume), rebuilt on launch and /new, built here so the wording can't drift. internal for the test seam, a guard on the banner must render the banner rather than the cat on its own
-    internal static CommandEchoItem BannerItem(Theme theme, string roleName, IReadOnlyList<string>? roleCat, string modelName, string? versionLine,
+    internal static CommandEchoItem BannerItem(Theme theme, string roleName, IReadOnlyList<string>? roleAvatar, string modelName, string? versionLine,
         Gatto.Terminal.GlyphSet? glyphs)
     {
         var g = glyphs ?? Gatto.Terminal.GlyphSet.Unicode;
         var rows = new List<string>();
         //the cat comes from the glyph set too, so it is a call rather than a literal. a legacy console can't draw it, and a census can't see the call
-        foreach (var catLine in Cats.For(roleCat, g).Split('\n')) rows.Add(theme.Paint(catLine, Theme.Accent));
+        foreach (var catLine in Cats.For(roleAvatar, g).Split('\n')) rows.Add(theme.Paint(catLine, Theme.Accent));
         rows.Add("");   //blank row between the cat art and the info lines
         //the caller builds the version tail, Repl cannot see Gatto.Cli where the dev-build definition lives, so GattoApp resolves it once and passes the string down
         var ver = versionLine ?? ("v" + Gatto.Core.GattoVersion.String

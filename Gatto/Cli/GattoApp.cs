@@ -1116,7 +1116,7 @@ public static class GattoApp
                 deafWatch: deafWatch,
                 wildFromHome: config.Wild, wildPersisted: () => permissions.Wild, sandbox: sandbox,
                 defaultRole: config.DefaultRole ?? "generalist",
-                roleTint: state.Role.ParsedTint(), roleCat: state.Role.Cat, firstMessage: state.Role.FirstMessage,
+                roleTint: state.Role.ParsedTint(), roleAvatar: state.Role.Avatar, firstMessage: state.Role.FirstMessage,
                 armTasks: tasks => ((AppToolContext)toolCtx).Tasks = tasks,
                 //read when /context asks, so a /role or /model since is followed. the shape is the loop's last request, its tools split by origin
                 contextInputs: usage =>

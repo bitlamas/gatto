@@ -373,7 +373,7 @@ internal sealed class LaunchState(
         var switchedTint = Role.ParsedTint();
         _launchTheme?.SetRoleTint(Role.Name, switchedTint?.Dark ?? Theme.Accent, switchedTint?.Light);
         return new RoleSwitchResult(true, Role.Name, ModelString, Comp.SystemText, null,
-            ThinkingFooterName(), NextBaseline(Comp.Sources), switchedTint, Role.Cat, Role.FirstMessage);
+            ThinkingFooterName(), NextBaseline(Comp.Sources), switchedTint, Role.Avatar, Role.FirstMessage);
     }
 
     //arms a model and leaves the role's gates alone, the decision is in ModelSwitch.Decide and the side effects here only on success

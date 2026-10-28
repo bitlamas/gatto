@@ -252,7 +252,7 @@ public sealed partial class Repl
         if (sessionName is { } resumedName) altScreen.Name(TerminalTitle.Named(resumedName));   //a resumed session opens with its own name on the tab
 
         //the banner is the transcript's first item
-        model.Append(BannerItem(theme, roleName, roleCat, modelName, versionLine, _glyphs));
+        model.Append(BannerItem(theme, roleName, roleAvatar, modelName, versionLine, _glyphs));
 
         //the memory-truncation notice, a system row right after the banner and above any resumed transcript
         if (memoryWarning is not null) renderer.CommitSystem(memoryWarning);

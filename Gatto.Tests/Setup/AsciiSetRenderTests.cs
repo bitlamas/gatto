@@ -85,7 +85,7 @@ public class AsciiSetRenderTests
     {
         foreach (var line in Gatto.Repl.Render.Chrome.Cats.For(null, GlyphSet.Ascii).Split('\n'))
             AssertPureAscii("Cats.For(null)", line);
-        foreach (var line in Gatto.Repl.Render.Chrome.Cats.For(ShippedRoleFiles.Load("coder").Cat, GlyphSet.Ascii).Split('\n'))
+        foreach (var line in Gatto.Repl.Render.Chrome.Cats.For(ShippedRoleFiles.Load("coder").Avatar, GlyphSet.Ascii).Split('\n'))
             AssertPureAscii("Cats.For(coder's cat)", line);
 
         //the face takes no role, so one string serves every role (a role must not reach a different face under the ASCII set)
@@ -102,8 +102,8 @@ public class AsciiSetRenderTests
     [Fact]
     public void AND_THE_UNICODE_SET_STILL_DRAWS_THE_ROLE_CATS()
     {
-        var coder = Gatto.Repl.Render.Chrome.Cats.For(ShippedRoleFiles.Load("coder").Cat, GlyphSet.Unicode);
-        var oracle = Gatto.Repl.Render.Chrome.Cats.For(ShippedRoleFiles.Load("oracle").Cat, GlyphSet.Unicode);
+        var coder = Gatto.Repl.Render.Chrome.Cats.For(ShippedRoleFiles.Load("coder").Avatar, GlyphSet.Unicode);
+        var oracle = Gatto.Repl.Render.Chrome.Cats.For(ShippedRoleFiles.Load("oracle").Avatar, GlyphSet.Unicode);
 
         Assert.NotEqual(coder, oracle);
         Assert.Contains('\u2580', coder);                       //the coder cat keeps its visor character.

@@ -3478,28 +3478,28 @@ public class GattoAppTests : IDisposable
         Assert.Equal("xhigh", EffortOf(bodies[2]));   //the child
     }
 
-    //the plain loop prints the banner cat as its first rows and a one-shot prints none, glyphs pinned since a host without WT_SESSION draws the ascii cat
+    //the plain loop prints the role avatar as its first rows and a one-shot prints none, glyphs pinned since a host without WT_SESSION draws the ascii cat
     [Fact]
-    public async Task THE_LAUNCH_HANDS_THE_ROLES_CAT_TO_THE_PLAIN_BANNER()
+    public async Task THE_LAUNCH_HANDS_THE_ROLES_AVATAR_TO_THE_PLAIN_BANNER()
     {
         await using var server = new FakeOpenAiServer();
         UseHome();
         WriteConfig($$$"""{"endpoints":{"local":{"base_url":"{{{server.BaseUrl}}}"}},"default_endpoint":"local","glyphs":"unicode"}""");
         WriteModel("test-model", port: 1235);
-        WriteRole("generalist", "{\"model\":\"test-model\",\"cat\":[\"  cat row one\",\"  cat row two\"]}");
+        WriteRole("generalist", "{\"model\":\"test-model\",\"avatar\":[\"  avatar row one\",\"  avatar row two\"]}");
         server.Enqueue(Completion("ok"));
 
         var oneShot = new StringWriter();
         Console.SetOut(oneShot);
         Assert.Equal(0, await GattoApp.RunAsync(new[] { "-p", "hi" }));
-        Assert.DoesNotContain("cat row one", oneShot.ToString(), StringComparison.Ordinal);
+        Assert.DoesNotContain("avatar row one", oneShot.ToString(), StringComparison.Ordinal);
 
         var plain = new StringWriter();
         Console.SetOut(plain);
         Console.SetIn(new StringReader("/quit\n"));
         Assert.Equal(0, await GattoApp.RunAsync(Array.Empty<string>()));
         var rows = plain.ToString().Split('\n').Select(r => r.TrimEnd('\r')).ToArray();
-        Assert.Equal(["  cat row one", "  cat row two"], rows[..2]);
+        Assert.Equal(["  avatar row one", "  avatar row two"], rows[..2]);
     }
 
     [Fact]
