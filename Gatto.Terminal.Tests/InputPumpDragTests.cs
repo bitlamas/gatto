@@ -21,19 +21,22 @@ public class InputPumpDragTests
     private static readonly ConsoleKeyInfo Esc = new('\x1b', ConsoleKey.Escape, false, false, false);
 
     [Fact]
-    public void Move_and_Release_reach_the_sink_only_while_dragging()
+    public void Every_move_reaches_the_sink_and_a_release_only_while_dragging()
     {
         var src = new ScriptSource(); var pump = new InputPump(src);
         var seen = new BlockingCollection<MouseEvent>();
         pump.SetMouseSink(seen.Add); pump.Start();
-        src.Push(Move(1, 1));
+        src.Push(Move(1, 1));                 //a bare move goes on, the sink answers a hover.
         src.Push(Press(2, 2));                //pressing arms the drag latch.
         src.Push(Move(3, 3));
         src.Push(Release(3, 3));              //release is forwarded and disarms the latch.
         src.Push(Move(4, 4));
+        src.Push(Release(5, 5));              //a release with no drag stays out.
+        Assert.Equal(MouseKind.Move, seen.Take().Kind);
         Assert.Equal(MouseKind.Press, seen.Take().Kind);
         Assert.Equal(MouseKind.Move, seen.Take().Kind);
         Assert.Equal(MouseKind.Release, seen.Take().Kind);
+        Assert.Equal(MouseKind.Move, seen.Take().Kind);
         Assert.False(seen.TryTake(out _, 100));
     }
 
@@ -45,7 +48,7 @@ public class InputPumpDragTests
         pump.SetMouseSink(seen.Add); pump.Start();
         src.Push(new MouseEvent(0, 0, MouseKind.Press, MouseButton.Left, 0, ConsoleModifiers.Shift));
         Assert.Equal(MouseKind.Press, seen.Take().Kind);   //the press is forwarded but must not arm.
-        src.Push(Move(3, 3));
+        src.Push(Release(3, 3));                            //no drag, so its release stays out.
         src.Push(Press(1, 1));                              //a later plain press shows the pump stayed live.
         Assert.Equal(MouseKind.Press, seen.Take().Kind);
         Assert.False(seen.TryTake(out _, 100));

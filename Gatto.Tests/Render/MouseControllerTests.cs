@@ -896,7 +896,7 @@ public sealed class MouseControllerTests
     }
 
     //the frame's three rule rows, the status line last with a triangle at each end of its hint slot
-    private static (Harness H, List<int> Steps, Func<bool> Held) StatusHarness(bool promptHolds = false)
+    private static (Harness H, List<int> Steps, Func<bool> Held) StatusHarness(bool promptHolds = false, List<bool>? hovers = null)
     {
         var rows = new List<ChromeRow>
         {
@@ -926,7 +926,7 @@ public sealed class MouseControllerTests
         };
         h.Mc = new MouseController(comp, scroll, focus, model, wheelLines: 3, selection, T, () => h.Clock,
             statusCellAt: x => cells.FirstOrDefault(c => x >= c.Start && x < c.End) is { End: > 0 } c ? c.Kind : null,
-            onStatusHint: steps.Add, panelHoldsKeys: () => promptHolds, onStatusCell: () => steps.Add(0));
+            onStatusHint: steps.Add, panelHoldsKeys: () => promptHolds, onStatusCell: () => steps.Add(0), onStatusHover: hovers is null ? null : hovers.Add);
         return (h, steps, () => promptHolds);
     }
 
@@ -1029,5 +1029,38 @@ public sealed class MouseControllerTests
         Assert.True(h.Model.Items[1].Collapsed);
         h.ClickRow(h.RowWhere(t => t is ItemTarget { ItemIndex: 1, LastRow: true }));
         Assert.False(h.Model.Items[1].Collapsed);
+    }
+
+    private static bool BareMove(Harness h, int x, int y) =>
+        h.Mc.Handle(new MouseEvent(x, y, MouseKind.Move, MouseButton.None, 0, 0), h.W, h.VpRows);
+
+    //a bare move tells the painter only when the pointer enters or leaves the background cell, and asks a repaint only then
+    [Fact]
+    public void A_bare_move_reports_the_cells_enter_and_leave_and_nothing_else()
+    {
+        var hovers = new List<bool>();
+        var (h, steps, _) = StatusHarness(hovers: hovers);
+        h.Paint();
+        var y = StatusRowY(h);
+
+        Assert.False(BareMove(h, 2, y));   //the folder, inert
+        Assert.True(BareMove(h, 8, y));    //onto the cell
+        Assert.False(BareMove(h, 9, y));   //along it
+        Assert.True(BareMove(h, 11, y));   //off it, onto the hint
+        Assert.False(BareMove(h, 4, 0));   //away from the status line
+        Assert.Equal([true, false], hovers);
+        Assert.Empty(steps);
+        Assert.Null(h.Selection.ChromeCurrent);
+    }
+
+    //under a prompt that holds the keys the cell takes no band, as its press opens nothing
+    [Fact]
+    public void Under_a_prompt_the_cell_takes_no_hover()
+    {
+        var hovers = new List<bool>();
+        var (h, _, _) = StatusHarness(promptHolds: true, hovers: hovers);
+        h.Paint();
+        Assert.False(BareMove(h, 8, StatusRowY(h)));
+        Assert.Empty(hovers);
     }
 }

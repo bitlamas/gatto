@@ -123,6 +123,8 @@ public static class ContextReport
         else
             cache.Add(f.BeforeFirstRequest ? "  no request yet" : "  not reported by this endpoint", theme, Theme.Dim);
         rows.Add(cache.Indent(2));
+        if (f.Folder is { } folder)
+            rows.Add(new Line().Add("folder", theme, Theme.Bright, bold: true).Add(" " + TermText.Sanitize(folder), theme, null).Indent(2));   //one space, so the path starts where the cache row's words do
 
         //a narrow window cuts a row rather than wrapping it, so the panel's row count stays the rows it was given
         return [.. rows.Select(r => UnicodeWidth.Of(r.Visible) <= width ? r

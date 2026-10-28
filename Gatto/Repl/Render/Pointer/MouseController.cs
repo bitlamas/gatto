@@ -11,8 +11,11 @@ public sealed class MouseController(
     Action<int, int, ComposerGesture>? onComposerSelect = null, Func<ComposerLayout?>? composerLayout = null,
     GlyphSet? glyphs = null, Func<int, bool>? onComposerScroll = null,
     Func<int, StatusCell?>? statusCellAt = null, Action<int>? onStatusHint = null, Func<bool>? panelHoldsKeys = null,
-    Action? onStatusCell = null)
+    Action? onStatusCell = null, Action<bool>? onStatusHover = null)
 {
+    //the pointer was over the background cell at the last bare move, so only an enter or a leave reaches the painter
+    private bool _hover;
+
     //the status line's row among the rule rows: the top rule, the bottom rule, then the status line
     private const int StatusRuleRow = 2;
 
@@ -38,7 +41,8 @@ public sealed class MouseController(
     //true only between a composer press and its release, selection knows nothing about that domain
     private bool _composerDragLive;
 
-    public void Handle(MouseEvent e, int width, int height)
+    //false only for a bare move that entered or left nothing, the one event that must not repaint
+    public bool Handle(MouseEvent e, int width, int height)
     {
         switch (e.Kind)
         {
@@ -62,6 +66,9 @@ public sealed class MouseController(
                 HandlePress(e, width, height);
                 break;
 
+            case MouseKind.Move when !_dragLive:
+                return Hover(e);
+
             case MouseKind.Move:
                 HandleDragMove(e, width, height);
                 break;
@@ -75,6 +82,18 @@ public sealed class MouseController(
                     selection.Clear();
                 break;
         }
+        return true;
+    }
+
+    //the background cell takes the band while the pointer rests on it, and a prompt holding the keys leaves it inert as its press is
+    private bool Hover(MouseEvent e)
+    {
+        var over = compositor.HitTest(e.Y) is ChromeTarget { Region: ChromeRegion.Rule, RegionRow: StatusRuleRow }
+            && panelHoldsKeys?.Invoke() != true && statusCellAt?.Invoke(e.X) == StatusCell.Background;
+        if (over == _hover) return false;
+        _hover = over;
+        onStatusHover?.Invoke(over);
+        return true;
     }
 
     private void HandlePress(MouseEvent e, int width, int height)

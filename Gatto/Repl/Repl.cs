@@ -594,34 +594,19 @@ public sealed partial class Repl(
         return !taught && anyReasoningCollapsed ? new StatusHint(HintKind.Teaser, forms) : null;
     }
 
-    //the hint list and the chosen place in the composed list, this list then what the frame appends. the chosen kind survives a refresh that lists it, and the teaser latches once it leaves that place
+    //the hint list and the chosen place in the composed list, this list then what the frame appends. the chosen kind survives a refresh that lists it, and the teaser latches on the first focus of a block
     internal static (IReadOnlyList<StatusHint> Hints, int Index, bool Taught) PickHints(bool pasteImage, bool focused,
-        bool anyReasoningCollapsed, bool taught, IReadOnlyList<HintKind> lastKinds, int lastShown, int wanted,
+        bool anyReasoningCollapsed, bool taught, IReadOnlyList<HintKind> lastKinds, int wanted,
         IReadOnlyList<HintKind> appended, Gatto.Terminal.GlyphSet? glyphs)
     {
         HintKind? chosen = wanted >= 0 && wanted < lastKinds.Count ? lastKinds[wanted] : null;
-        HintKind? shown = lastShown >= 0 && lastShown < lastKinds.Count ? lastKinds[lastShown] : null;
-
-        List<StatusHint> Build(bool latched)
-        {
-            var list = new List<StatusHint>();
-            if (pasteImage) list.Add(new StatusHint(HintKind.Paste, [PasteHintLong, PasteHintShort]));
-            if (ComputeFocusHint(focused, anyReasoningCollapsed, latched, glyphs) is { } focus) list.Add(focus);
-            return list;
-        }
-        List<HintKind> Kinds(List<StatusHint> list) => [.. list.Select(h => h.Kind), .. appended];
-        int IndexIn(List<HintKind> kinds) => chosen is { } c && kinds.IndexOf(c) is >= 0 and var i ? i : 0;
-
-        var hints = Build(taught);
-        var kinds = Kinds(hints);
-        var index = IndexIn(kinds);
-        HintKind? now = kinds.Count > 0 ? kinds[index] : null;
-        if (shown == HintKind.Teaser && now != HintKind.Teaser)
-        {
-            taught = true;
-            hints = Build(true);
-            index = IndexIn(Kinds(hints));
-        }
+        //a focus shows the key the teaser taught, so the teaser has done its work and the triangle never takes it away
+        taught |= focused;
+        var hints = new List<StatusHint>();
+        if (pasteImage) hints.Add(new StatusHint(HintKind.Paste, [PasteHintLong, PasteHintShort]));
+        if (ComputeFocusHint(focused, anyReasoningCollapsed, taught, glyphs) is { } focus) hints.Add(focus);
+        List<HintKind> kinds = [.. hints.Select(h => h.Kind), .. appended];
+        var index = chosen is { } c && kinds.IndexOf(c) is >= 0 and var i ? i : 0;
         return (hints, index, taught);
     }
 

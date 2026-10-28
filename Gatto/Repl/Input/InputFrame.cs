@@ -29,7 +29,7 @@ public sealed record StatusHint(HintKind Kind, IReadOnlyList<string> Forms);
 public enum StatusCell { Folder, Branch, Model, Tokens, Ctx, Background, Quota, Cost, Hint, HintNext }
 
 //what runs between turns as the painter reads it under the gate at each paint, never stored on the status record
-public readonly record struct BackgroundFacts(int Running, bool WatchArmed, bool WatchPaused, bool CellSelected)
+public readonly record struct BackgroundFacts(int Running, bool WatchArmed, bool WatchPaused, bool CellSelected, bool CellHovered = false)
 {
     //the cell is on while a shell runs or a watch is armed
     public bool CellOn => Running > 0 || WatchArmed;
@@ -295,8 +295,8 @@ public sealed class InputFrame(ITermSurface surface, Theme theme, string? role, 
     private readonly record struct StatusRow(string Rendered, string Visible, IReadOnlyList<StatusCellSpan> Cells,
         IReadOnlyList<HintKind> Hints, int Shown);
 
-    //the minimum gap in cells between the left cluster and the flush-right focus hint
-    private const int HintGap = 2;
+    //the minimum gap in cells between the left cluster and the flush-right hint, wide enough that the two never read as one run of words
+    internal const int HintGap = 4;
 
     //the rungs of the shed ladder after the hint, each gives up one more thing than the one before
     private const int DropCtxCount = 1, ShortBranch = 2, DropBranch = 3, FolderLast = 4, ModelMid = 5,
@@ -317,19 +317,18 @@ public sealed class InputFrame(ITermSurface surface, Theme theme, string? role, 
     private const int FolderGone = 3, ModelBare = 3;
 
     //the hints the fill composes, in the ruled order. the frame and the Repl's refresh read this one list
-    internal static IReadOnlyList<StatusHint> ComposedHints(StatusInfo s, BackgroundFacts facts) =>
-        facts.CellOn ? [.. s.Hints ?? [], BackgroundHint(facts.CellSelected)] : s.Hints ?? [];
+    internal static IReadOnlyList<StatusHint> ComposedHints(StatusInfo s, BackgroundFacts facts, GlyphSet g) =>
+        facts.CellOn ? [.. s.Hints ?? [], BackgroundHint(facts.CellSelected, g)] : s.Hints ?? [];
 
-    //the background hint's two states, the caret in the composer or the cell selected, each in its two forms
-    internal static StatusHint BackgroundHint(bool selected) => new(HintKind.Background, selected
-        ? ["Enter opens what runs in the background", "Enter opens the background"]
-        : ["Down selects what runs in the background", "Down selects the background"]);
+    //the background hint's two states, the caret in the composer or the cell selected, one short form each
+    internal static StatusHint BackgroundHint(bool selected, GlyphSet g) =>
+        new(HintKind.Background, [selected ? "Enter opens" : g.Down + " selects footer"]);
 
     //one physical row at any width: the ladder finds the base, the fill gives back what fits, then the hint
     private static StatusRow StatusCore(StatusInfo s, BackgroundFacts facts, int width, Theme theme, GlyphSet? glyphs)
     {
         var g = glyphs ?? GlyphSet.Unicode;
-        var hints = ComposedHints(s, facts);
+        var hints = ComposedHints(s, facts, g);
         var kinds = hints.Select(h => h.Kind).ToList();
 
         //a non-positive width skips the ladder and the fill, the test and plain cases
@@ -440,7 +439,7 @@ public sealed class InputFrame(ITermSurface surface, Theme theme, string? role, 
         {
             case Piece.Folder:
                 var seg = g.Ellipsis + Path.DirectorySeparatorChar + LastSegment(s.Cwd);
-                return [AbbreviateHome(s.Cwd, s.UserProfile), seg, HeadTruncate(seg, 12, g), ""];
+                return [FolderTail(AbbreviateHome(s.Cwd, s.UserProfile), g), seg, HeadTruncate(seg, 12, g), ""];
             case Piece.Branch:
                 return s.Branch is null ? ["", "", ""] : [s.Branch, ShortBranchText(s.Branch, g), ""];
             case Piece.Model:
@@ -477,9 +476,9 @@ public sealed class InputFrame(ITermSurface surface, Theme theme, string? role, 
         Add(Piece.Tokens, StatusCell.Tokens, Theme.Dim);
         if (s.Ctx?.Percent is int p) Add(Piece.Ctx, StatusCell.Ctx, p >= 80 ? Theme.Warn : Theme.Dim);
 
-        //what runs between turns, never shed, and when Down has selected it the band a footer word takes under the pointer, in the accent
+        //what runs between turns, never shed, in the inks that say a click acts, each word on its own band under the pointer or a Down selection
         if (BackgroundCell(facts, g) is { } cell)
-            parts.Add(new Part(cell, facts.CellSelected ? SelectedCell(cell, theme) : theme.Paint(cell, Theme.Dim), StatusCell.Background));
+            parts.Add(new Part(cell, InkedCell(facts, theme, s.Role, g, banded: facts.CellSelected || facts.CellHovered), StatusCell.Background));
 
         //the provider supplies the numbers and core writes the words, a quota turns warn with few requests left, or when low against a reported total
         if (s.Quota is { } q)
@@ -525,9 +524,22 @@ public sealed class InputFrame(ITermSurface surface, Theme theme, string? role, 
         return (rendered.ToString(), visible.ToString(), cells);
     }
 
-    //the selected cell's paint, the band then the accent, one reset at the end so the band ends with the word
-    internal static string SelectedCell(string cell, Theme theme) =>
-        Ansi.Bg(theme.Map(Theme.UserInputBg), theme.TrueColor) + theme.Paint(cell, Theme.Accent);
+    //a word in its ink on the band its ink makes, the band opened again after the paint's reset and closed with the word
+    internal static string Banded(string word, RgbColor ink, Theme theme)
+    {
+        var on = Ansi.Bg(theme.BandOf(ink), theme.TrueColor);
+        return on + theme.Paint(word, ink).Replace(Ansi.Reset, Ansi.Reset + on, StringComparison.Ordinal) + Ansi.Reset;
+    }
+
+    //the cell's words in their inks, dim kept for the separator and for what a click does not reach: the shells in PowerShell's yellow, the watch in the role tint
+    internal static string InkedCell(BackgroundFacts facts, Theme theme, string role, GlyphSet g, bool banded = false)
+    {
+        var words = new List<string>();
+        void Word(string text, RgbColor ink) => words.Add(banded ? Banded(text, ink, theme) : theme.Paint(text, ink));
+        if (facts.Running > 0) Word(facts.Running == 1 ? "1 shell" : $"{facts.Running} shells", Theme.CampbellBrightYellow);
+        if (facts.WatchArmed) Word(facts.WatchPaused ? "watch paused" : "watch", theme.RoleTint(role));
+        return string.Join(theme.Paint(SepOf(g), Theme.Dim), words);
+    }
 
     //the cell's words: the shells that run, then the watch, absent when both are
     internal static string? BackgroundCell(BackgroundFacts facts, GlyphSet g)
@@ -554,6 +566,15 @@ public sealed class InputFrame(ITermSurface surface, Theme theme, string? role, 
         if (thinking is null) return null;
         if (toggle) return thinking.EndsWith(" on", StringComparison.Ordinal) ? "reasoning" : "non-reasoning";
         return thinking == "none" ? "non-reasoning" : thinking;
+    }
+
+    //the last two segments, the ellipsis standing for what is above them. a lone ~ above is kept, it says as much in the same cell
+    internal static string FolderTail(string path, GlyphSet g)
+    {
+        var sep = Path.DirectorySeparatorChar.ToString();
+        var parts = path.TrimEnd('/', '\\').Split('/', '\\');
+        if (parts.Length <= 2 || parts.Length == 3 && parts[0] == "~") return path;
+        return g.Ellipsis + sep + parts[^2] + sep + parts[^1];
     }
 
     //the last path component after the final separator, with a path that has none returned whole

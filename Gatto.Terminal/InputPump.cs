@@ -204,10 +204,10 @@ public sealed class InputPump
         else if (m.Kind == MouseKind.Release)
             _dragging = false;
 
+        //a bare move goes on too, the sink answers a hover's enter and leave and drops the rest
         var forward = m.Kind switch
         {
-            MouseKind.Press or MouseKind.Wheel => true,
-            MouseKind.Move => wasDragging,
+            MouseKind.Press or MouseKind.Wheel or MouseKind.Move => true,
             MouseKind.Release => wasDragging,
             _ => false,
         };

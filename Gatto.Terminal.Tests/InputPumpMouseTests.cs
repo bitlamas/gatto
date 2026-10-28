@@ -25,7 +25,7 @@ public class InputPumpMouseTests
     }
 
     [Fact]
-    public void Press_and_Wheel_reach_the_mouse_sink_but_Move_does_not()
+    public void Press_Wheel_and_a_bare_Move_reach_the_mouse_sink()
     {
         var src = new ScriptSource();
         var pump = new InputPump(src);
@@ -33,10 +33,11 @@ public class InputPumpMouseTests
         pump.SetMouseSink(seen.Add);
         pump.Start();
 
-        src.Push(Move(3, 3));        //the pump drops move events with no button held.
+        src.Push(Move(3, 3));        //a move with no button held goes on, for a hover.
         src.Push(Wheel(120));
         src.Push(Press(5, 7));
 
+        Assert.Equal(MouseKind.Move, Take(seen).Kind);
         Assert.Equal(MouseKind.Wheel, Take(seen).Kind);
         Assert.Equal(MouseKind.Press, Take(seen).Kind);
         Assert.False(seen.TryTake(out _, 100));

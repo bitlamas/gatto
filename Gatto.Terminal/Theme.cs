@@ -257,6 +257,23 @@ public sealed class Theme(TermCaps caps, ThemeMode mode = ThemeMode.Dark)
     public string Chip(string s) =>
         Ansi.Fg(Map(CodeInlineFg), caps.TrueColor) + s + Ansi.Reset;
 
+    //the share of a word's own ink in the band under it, the rest is the ground, one number for every band and both modes
+    public const double BandInkShare = 0.25;
+
+    //the ground a band is mixed toward: the dark terminal's background and the light one's white
+    public static readonly RgbColor DarkGround = new(0x0C, 0x0C, 0x0C, 232);
+    public static readonly RgbColor LightGround = new(0xFF, 0xFF, 0xFF, 231);
+
+    //the band under a word a click acts on, its own ink mixed toward the ground, so a yellow word sits on a dark yellow
+    public RgbColor BandOf(RgbColor ink)
+    {
+        var c = Map(ink);
+        var ground = mode == ThemeMode.Light ? LightGround : DarkGround;
+        int Mix(byte a, byte b) => (int)Math.Round(a * BandInkShare + b * (1 - BandInkShare), MidpointRounding.AwayFromZero);
+        var (r, g, b) = (Mix(c.R, ground.R), Mix(c.G, ground.G), Mix(c.B, ground.B));
+        return new RgbColor((byte)r, (byte)g, (byte)b, Nearest256(r, g, b));
+    }
+
     //muted chip colour derived from a role accent: saturation down to 60%, lightness to 90%, clamped 10% to 90%
     public RgbColor ChipColor(RgbColor accent)
     {

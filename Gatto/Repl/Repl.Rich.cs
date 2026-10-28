@@ -107,7 +107,7 @@ public sealed partial class Repl
             Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), Wild: wild?.On == true,
             Thinking: thinkingName, ThinkingToggle: thinkingToggle, Cloud: cloud, SessionName: sessionName);
         var frame = new InputFrame(surface, theme, DisplayRole(), status, _glyphs, KnownCommands);
-        var focusTaught = false;   //the teaser for the first collapsed reasoning block, latched once it has left the chosen hint
+        var focusTaught = false;   //the teaser for the first collapsed reasoning block, latched on the first focus of a block
 
         //feeds the ctx estimate and rebuilds the status frame, and the painter is retargeted here so it never composes against a stale one
         void RefreshStatus()
@@ -119,12 +119,11 @@ public sealed partial class Repl
             //the Alt+V hint is listed while the clipboard holds an image, ahead of the focus hint, and the check is safe on every refresh
             var pasteImage = _clipboardImages?.Available() is not null and not Gatto.Terminal.ClipboardImageKind.None;
             IReadOnlyList<HintKind> lastKinds;
-            int lastShown;
             bool cellOn;
-            lock (gate) { lastKinds = painter.LastHintKinds; lastShown = painter.LastHintShown; cellOn = BackgroundFactsNow(editor).CellOn; }
+            lock (gate) { lastKinds = painter.LastHintKinds; cellOn = BackgroundFactsNow(editor).CellOn; }
             var picked = PickHints(pasteImage, painter.Focus.Focused is not null,
                 painter.Model.Items.OfType<ReasoningItem>().Any(r => r.Collapsed), focusTaught,
-                lastKinds, lastShown, status.HintIndex, cellOn ? [HintKind.Background] : [], _glyphs);
+                lastKinds, status.HintIndex, cellOn ? [HintKind.Background] : [], _glyphs);
             focusTaught = picked.Taught;
             var usage = readUsage?.Invoke() ?? (null, null);
             status = status with
@@ -224,15 +223,15 @@ public sealed partial class Repl
             }
         }
 
-        //mouse events are global and work under a modal, only a Press refreshes since each refresh reads the git branch, and every event repaints
+        //mouse events are global and work under a modal. only a Press refreshes, since each refresh reads the git branch, and a bare move that changed nothing never repaints
         if (mouseEnabled)
             keys.SetMouseSink(me =>
             {
                 lock (gate)
                 {
-                    painter.Mouse.Handle(me, surface.Width, painter.ViewportRows());
+                    var changed = painter.Mouse.Handle(me, surface.Width, painter.ViewportRows());
                     if (me.Kind == MouseKind.Press) s.Refresh();
-                    painter.Repaint();
+                    if (changed) painter.Repaint();
                 }
                 //the HasSelection flag is the one predicate that covers both the transcript and the chrome domains, don't test them separately
                 if (copyOnSelect && me.Kind == MouseKind.Release && painter.Selection.HasSelection) Copy();

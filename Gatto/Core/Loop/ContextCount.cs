@@ -18,7 +18,8 @@ public sealed record ContextCache(int FromCache, int Fresh);
 //everything /context draws: fell back means an exact count was tried and a server call failed, before first request that nothing was sent yet
 public sealed record ContextFigures(
     int? Window, int Total, bool Exact, bool FellBack, bool BeforeFirstRequest, double? AutoCompactAt,
-    IReadOnlyList<ContextPart> Parts, ContextCache? Cache);
+    IReadOnlyList<ContextPart> Parts, ContextCache? Cache,
+    string? Folder = null);   //the session's working folder, whole, which the status line shows only by its tail
 
 //what the figures are built from: the composed prefix, the tools by source, the request last sent and the usage the loop measured
 public sealed record ContextInputs(

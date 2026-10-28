@@ -21,7 +21,7 @@ public sealed partial class Repl
 
     //the figures alone, width-free, for a screen that is drawn again at each width
     private async Task<ContextFigures?> ContextFiguresAsync(CancellationToken ct) =>
-        contextInputs is null ? null : await ContextCount.BuildAsync(contextInputs(_usageState), tokenCounter, ct);
+        contextInputs is null ? null : await ContextCount.BuildAsync(contextInputs(_usageState), tokenCounter, ct) with { Folder = cwd };
 
     internal const string ContextUnavailable = "context figures are unavailable in this session";
 
@@ -61,7 +61,7 @@ public sealed partial class Repl
     private async Task<Func<int, IReadOnlyList<string>>> ContextAnswerAsync(RichState s)
     {
         if (contextInputs is null) return _ => ["  " + ContextUnavailable];
-        var figures = await ContextCount.BuildAsync(contextInputs(_usageState), tokenCounter, CancellationToken.None);
+        var figures = await ContextCount.BuildAsync(contextInputs(_usageState), tokenCounter, CancellationToken.None) with { Folder = cwd };
         return w => [.. ContextReport.Rows(figures, w, s.Theme, _glyphs).Select(r => r.Rendered)];
     }
 

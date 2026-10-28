@@ -56,12 +56,27 @@ public class InputFrameTests
     }
 
     [Fact]
-    public void Status_folder_keeps_a_sibling_of_the_profile_whole()
+    public void Status_folder_never_reads_a_sibling_of_the_profile_as_home()
     {
         //a folder whose name only starts with the profile's name is not under the profile, so it must not read as ~
         var sibling = new StatusInfo(@"C:\Users\user2\projects", "qwen3.6-35b", "coder", new CtxState(), @"C:\Users\user");
         var visible = StripSgr(InputFrame.BuildStatusLine(sibling, 200, T, glyphs: GlyphSet.Unicode));
-        Assert.StartsWith(@"  C:\Users\user2\projects · qwen3.6-35b", visible, StringComparison.Ordinal);
+        Assert.StartsWith(@"  …\user2\projects · qwen3.6-35b", visible, StringComparison.Ordinal);
+    }
+
+    //the folder shows its last two segments, ~ when they reach home, and the ellipsis for what is above them
+    [Theory]
+    [InlineData(@"C:\Users\user\sandbox", "~\\sandbox")]
+    [InlineData(@"C:\Users\user\sandbox\haha", "~\\sandbox\\haha")]
+    [InlineData(@"C:\Users\user\sandbox\haha\popo\50", "…\\popo\\50")]
+    [InlineData(@"C:\Users\user", "~")]
+    [InlineData(@"D:\work", "D:\\work")]
+    [InlineData(@"D:\work\a\b", "…\\a\\b")]
+    public void Status_folder_is_its_last_two_segments(string cwd, string shown)
+    {
+        var s = new StatusInfo(cwd, "qwen3.6-35b", "coder", new CtxState(), @"C:\Users\user");
+        Assert.StartsWith("  " + shown + " · qwen3.6-35b", StripSgr(InputFrame.BuildStatusLine(s, 200, T, glyphs: GlyphSet.Unicode)), StringComparison.Ordinal);
+        Assert.StartsWith("  " + shown.Replace("…", "...") + " ", StripSgr(InputFrame.BuildStatusLine(s, 200, T, glyphs: GlyphSet.Ascii)), StringComparison.Ordinal);
     }
 
     [Fact]
@@ -322,13 +337,13 @@ public class InputFrameTests
         //the cwd holds two wide glyphs (4 cells), so the fit measures cells rather than characters
         var s = Status(window: 1000, used: 260) with
         {
-            Cwd = @"C:\Users\user\terra 月球\projects\cc-usage-monitor",
+            Cwd = @"C:\Users\user\projects\terra 月球\cc-usage-monitor",
             Branch = "main", Thinking = "medium", TokensUp = 2300, TokensDown = 222,
         };
 
-        //at full width the footer shows the full path, the effort, tokens and ctx with its count
+        //at full width the footer shows the folder's last two segments, the effort, tokens and ctx with its count
         var full = StripSgr(InputFrame.BuildStatusLine(s, width: 120, T, glyphs: GlyphSet.Unicode));
-        Assert.Contains(@"terra 月球\projects\cc-usage-monitor", full);
+        Assert.Contains(@"…\terra 月球\cc-usage-monitor", full);
         Assert.Contains("qwen3.6-35b (medium)", full);
         Assert.Contains("↑ 2.3k ↓ 222", full);
         Assert.Contains("ctx 26% (260)", full);

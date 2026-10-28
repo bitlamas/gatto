@@ -283,6 +283,7 @@ public static class TranscriptStore
             w.WriteNumber("fresh", cache.Fresh);
             w.WriteEndObject();
         }
+        if (f.Folder is { } folder) w.WriteString("folder", folder);
         w.WriteEndObject();
     }
 
@@ -319,7 +320,8 @@ public static class TranscriptStore
             ContextCache? cache = el.TryGetProperty("cache", out var c)
                 ? new ContextCache(c.GetProperty("from_cache").GetInt32(), c.GetProperty("fresh").GetInt32()) : null;
             return new ContextFigures(window, el.GetProperty("total").GetInt32(), el.GetProperty("exact").GetBoolean(),
-                el.GetProperty("fell_back").GetBoolean(), el.GetProperty("before_first_request").GetBoolean(), at, parts, cache);
+                el.GetProperty("fell_back").GetBoolean(), el.GetProperty("before_first_request").GetBoolean(), at, parts, cache,
+                el.TryGetProperty("folder", out var fo) && fo.ValueKind == JsonValueKind.String ? fo.GetString() : null);
         }
         catch (Exception ex) when (ex is InvalidOperationException or KeyNotFoundException or FormatException or NullReferenceException) { return null; }
     }

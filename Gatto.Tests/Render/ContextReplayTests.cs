@@ -45,6 +45,23 @@ public class ContextReplayTests
         Assert.Equal(Figures.AutoCompactAt, f.AutoCompactAt);
         Assert.Equal(Figures.Parts, f.Parts);
         Assert.Equal(Figures.Cache, f.Cache);
+        Assert.Null(f.Folder);
+    }
+
+    //the working folder rides in the figures when the report had one, written only then, and draws as its row below cache
+    [Fact]
+    public void The_folder_survives_the_session_file_and_draws_below_cache()
+    {
+        var withFolder = Figures with { Folder = @"C:\Users\user\sandbox\haha\popo\50" };
+        var item = new CommandEchoItem([.. Gatto.Repl.Render.ContextReport.Rows(withFolder, 120, T, U).Select(r => r.Rendered)], null) { Context = withFolder };
+        var (lines, rebuilt) = RoundTrip(item);
+        Assert.Contains(lines, l => l.Contains("\"folder\":\"C:\\\\Users\\\\user\\\\sandbox\\\\haha\\\\popo\\\\50\""));
+        Assert.Equal(withFolder.Folder, rebuilt!.Context!.Folder);
+        var rows = Gatto.Repl.Render.ContextReport.Rows(withFolder, 120, T, U).Select(r => r.Visible).ToList();
+        Assert.StartsWith("  cache", rows[^2]);
+        Assert.Equal(@"  folder C:\Users\user\sandbox\haha\popo\50", rows[^1]);
+        Assert.Equal(rows[^2].IndexOf("last", StringComparison.Ordinal), rows[^1].IndexOf("C:", StringComparison.Ordinal));
+        Assert.DoesNotContain(RoundTrip(Committed(120)).Lines, l => l.Contains("\"folder\""));
     }
 
     //committed at 120 and replayed at 90, the bar is drawn for 90 and nothing is cut

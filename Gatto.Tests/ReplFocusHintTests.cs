@@ -9,8 +9,8 @@ public class ReplFocusHintTests
     private static readonly GlyphSet U = GlyphSet.Unicode;
 
     private static (IReadOnlyList<StatusHint> Hints, int Index, bool Taught) Pick(bool paste = false, bool focused = false,
-        bool collapsed = false, bool taught = false, HintKind[]? last = null, int shown = -1, int wanted = 0) =>
-        Gatto.Repl.Repl.PickHints(paste, focused, collapsed, taught, last ?? [], shown, wanted, [], U);
+        bool collapsed = false, bool taught = false, HintKind[]? last = null, int wanted = 0) =>
+        Gatto.Repl.Repl.PickHints(paste, focused, collapsed, taught, last ?? [], wanted, [], U);
 
     //focus gives the focus hint, a collapsed block with the latch unset gives the teaser, both from the one keymap
     [Fact]
@@ -48,44 +48,38 @@ public class ReplFocusHintTests
     public void The_index_is_kept_by_kind_and_reset_when_the_hint_goes()
     {
         //the focus hint was chosen at index 1 beside paste, and the paste hint has gone, so it is now at 0
-        var kept = Pick(focused: true, last: [HintKind.Paste, HintKind.Focus], shown: 1, wanted: 1);
+        var kept = Pick(focused: true, last: [HintKind.Paste, HintKind.Focus], wanted: 1);
         Assert.Equal(0, kept.Index);
         Assert.Equal(HintKind.Focus, kept.Hints[kept.Index].Kind);
 
         //paste was chosen and stays listed, so it stays chosen
-        var stays = Pick(paste: true, focused: true, last: [HintKind.Paste, HintKind.Focus], shown: 1, wanted: 0);
+        var stays = Pick(paste: true, focused: true, last: [HintKind.Paste, HintKind.Focus], wanted: 0);
         Assert.Equal(0, stays.Index);
 
         //the chosen focus hint has gone, the index resets to the first hint
-        var gone = Pick(paste: true, last: [HintKind.Paste, HintKind.Focus], shown: 1, wanted: 1);
+        var gone = Pick(paste: true, last: [HintKind.Paste, HintKind.Focus], wanted: 1);
         Assert.Equal(0, gone.Index);
     }
 
-    //the teaser stays while it is the chosen hint and latches only once it leaves that place
+    //the teaser stays listed through every triangle press and latches on the first focus of a block
     [Fact]
-    public void The_teaser_latches_only_when_it_leaves_the_chosen_place()
+    public void The_teaser_latches_on_the_first_focus_and_never_on_a_triangle_press()
     {
         var first = Pick(collapsed: true);
         Assert.Equal(HintKind.Teaser, first.Hints[first.Index].Kind);
         Assert.False(first.Taught);
 
-        //a refresh with nothing changed keeps it
-        var again = Pick(collapsed: true, last: [HintKind.Teaser], shown: 0, wanted: 0);
-        Assert.Equal(HintKind.Teaser, again.Hints[again.Index].Kind);
-        Assert.False(again.Taught);
+        //the triangle steps from the teaser to the paste hint and back, and both stay listed each way
+        var away = Pick(paste: true, collapsed: true, last: [HintKind.Paste, HintKind.Teaser], wanted: 0);
+        Assert.False(away.Taught);
+        Assert.Equal([HintKind.Paste, HintKind.Teaser], away.Hints.Select(h => h.Kind));
+        var back = Pick(paste: true, collapsed: true, last: [HintKind.Paste, HintKind.Teaser], wanted: 1);
+        Assert.False(back.Taught);
+        Assert.Equal(HintKind.Teaser, back.Hints[back.Index].Kind);
 
-        //a triangle press away from it to the paste hint latches it, and it leaves the list
-        var away = Pick(paste: true, collapsed: true, last: [HintKind.Paste, HintKind.Teaser], shown: 1, wanted: 0);
-        Assert.True(away.Taught);
-        Assert.Equal([HintKind.Paste], away.Hints.Select(h => h.Kind));
-
-        //the teaser listed but never chosen does not latch
-        var unseen = Pick(paste: true, collapsed: true, last: [HintKind.Paste, HintKind.Teaser], shown: 0, wanted: 0);
-        Assert.False(unseen.Taught);
-
-        //a focus takes its place and latches it, and a later unfocused refresh brings no teaser back
-        var focused = Pick(focused: true, collapsed: true, last: [HintKind.Teaser], shown: 0, wanted: 0);
+        //a focus latches it whatever was chosen, and a later unfocused refresh brings no teaser back
+        var focused = Pick(paste: true, focused: true, collapsed: true, last: [HintKind.Paste, HintKind.Teaser], wanted: 0);
         Assert.True(focused.Taught);
-        Assert.Empty(Pick(collapsed: true, taught: true).Hints);
+        Assert.Equal([HintKind.Paste], Pick(paste: true, collapsed: true, taught: true).Hints.Select(h => h.Kind));
     }
 }

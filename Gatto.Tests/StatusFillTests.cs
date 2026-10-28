@@ -60,11 +60,11 @@ public class StatusFillTests
         Quota: new QuotaReading(18, "max"), Cost: 0.42m);
 
     [Fact]
-    public void Input_A_at_90_gets_its_ctx_count_back_before_any_section_grows()
+    public void Input_A_at_90_keeps_its_two_folder_segments_from_the_rung_that_shed_the_ctx_count()
     {
         var row = Line(InputA(), 90);
-        Assert.Equal($"  {E}\\auth · {E}ce-fl · qwen3.8-flash-next (medium) · ↑ 12.4k ↓ 3.1k · ctx 50% (132.2k)", row);
-        Assert.Equal(83, UnicodeWidth.Of(row));
+        Assert.Equal($"  {E}\\controllers\\auth · {E}ce-fl · qwen3.8-flash-next (medium) · ↑ 12.4k ↓ 3.1k · ctx 50%", row);
+        Assert.Equal(86, UnicodeWidth.Of(row));
     }
 
     [Fact]

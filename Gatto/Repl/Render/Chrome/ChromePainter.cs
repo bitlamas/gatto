@@ -91,6 +91,9 @@ public sealed class ChromePainter
 
     //what runs between turns, asked at each compose under the gate, null in a session that arms no background tasks
     public Func<BackgroundFacts>? BackgroundFactsReader { get; set; }
+
+    //the pointer rests on the background cell, set by the mouse on the move that enters or leaves it
+    public bool StatusCellHovered { get; private set; }
     private int _composerTop;   //the composer window's first region row, kept across paints and moved only by the caret
     //the prompt panel's own scroll window, driven by MouseController through the onComposerScroll callback wired in the constructor. public for tests
     private readonly ComposerScroll _composerScroll = new();
@@ -141,6 +144,7 @@ public sealed class ChromePainter
             //the Repl's mouse sink already holds the gate and repaints after every Handle call, so this callback must not repaint or lock again
             onComposerScroll: n => { if (!State.PanelUp) return false; _composerScroll.ScrollBy(n); return true; },
             statusCellAt: StatusCellAt, onStatusHint: d => StatusHintSink?.Invoke(d), onStatusCell: () => StatusCellSink?.Invoke(),
+            onStatusHover: over => StatusCellHovered = over,
             panelHoldsKeys: () => State.PanelUp && !State.PanelInfo);
     }
 
@@ -631,7 +635,7 @@ public sealed class ChromePainter
         var panel = State.PanelUp ? State.PanelRows : null;
         var panelCaret = panel is null ? null : State.PanelCaret;
         //what runs between turns, read once per compose under the gate so the cell and its hint come from one read
-        var facts = BackgroundFactsReader?.Invoke() ?? default;
+        var facts = (BackgroundFactsReader?.Invoke() ?? default) with { CellHovered = StatusCellHovered };
         var frame = Frame.Compose(State.Composer, panelRows: panel, panelCaret: panelCaret, facts: facts);
         //asks PanelRowsAvailable rather than comparing TotalRows, so the offered and enforced numbers stay one expression, and each call makes a probe frame
         var panelAllowed = PanelRowsAvailable(width, height);

@@ -60,24 +60,78 @@ public class BackgroundCellTests
     {
         var s = Info() with { Cost = null, Quota = null };
         Assert.DoesNotContain("background", Line(s, 200, default), StringComparison.Ordinal);
-        Assert.EndsWith("Down selects what runs in the background", Line(s, 200, new BackgroundFacts(1, false, false, false)), StringComparison.Ordinal);
-        Assert.EndsWith("Enter opens what runs in the background", Line(s, 200, new BackgroundFacts(1, false, false, true)), StringComparison.Ordinal);
+        Assert.EndsWith("↓ selects footer", Line(s, 200, new BackgroundFacts(1, false, false, false)), StringComparison.Ordinal);
+        Assert.EndsWith("Enter opens", Line(s, 200, new BackgroundFacts(1, false, false, true)), StringComparison.Ordinal);
+        Assert.EndsWith("v selects footer", Line(s, 200, new BackgroundFacts(1, false, false, false), GlyphSet.Ascii), StringComparison.Ordinal);
 
         //beside the paste hint it is the second, reached by the triangle, and an index past the list clamps to it
         var both = s with { Hints = [new StatusHint(HintKind.Paste, ["Alt+V to paste the image on your clipboard"])], HintIndex = 1 };
-        Assert.EndsWith($"Down selects what runs in the background {U.Triangle}", Line(both, 200, new BackgroundFacts(1, false, false, false)), StringComparison.Ordinal);
+        Assert.EndsWith($"↓ selects footer {U.Triangle}", Line(both, 200, new BackgroundFacts(1, false, false, false)), StringComparison.Ordinal);
         Assert.Contains("Alt+V", Line(both with { HintIndex = 0 }, 200, new BackgroundFacts(1, false, false, false)), StringComparison.Ordinal);
     }
 
-    //a selected cell sits on the band a hovered footer word takes, in the accent, and an unselected one stays dim
+    //a cell a click acts on wears a colour at rest, the shells in PowerShell's yellow and the watch in the role tint, dim only between them
     [Fact]
-    public void The_selected_cell_paints_on_the_band_in_the_accent()
+    public void The_cell_wears_its_inks_at_rest_and_never_the_dim()
     {
-        var on = InputFrame.BuildStatusLine(Info(), 200, T, U, new BackgroundFacts(1, false, false, true));
-        var off = InputFrame.BuildStatusLine(Info(), 200, T, U, new BackgroundFacts(1, false, false, false));
-        Assert.Contains(InputFrame.SelectedCell("1 shell", T), on, StringComparison.Ordinal);
-        Assert.StartsWith(Ansi.Bg(T.Map(Theme.UserInputBg), T.TrueColor), InputFrame.SelectedCell("1 shell", T), StringComparison.Ordinal);
-        Assert.Contains(T.Paint("1 shell", Theme.Dim), off, StringComparison.Ordinal);
+        var row = InputFrame.BuildStatusLine(Info(), 200, T, U, new BackgroundFacts(2, true, false, false));
+        Assert.Contains(T.Paint("2 shells", Theme.CampbellBrightYellow) + T.Paint(" · ", Theme.Dim) + T.Paint("watch", T.RoleTint("coder")), row, StringComparison.Ordinal);
+        Assert.DoesNotContain(T.Paint("2 shells", Theme.Dim), row, StringComparison.Ordinal);
+        Assert.DoesNotContain(Ansi.Bg(T.Map(Theme.UserInputBg), T.TrueColor), row, StringComparison.Ordinal);
+        Assert.DoesNotContain(Ansi.Bg(T.BandOf(Theme.CampbellBrightYellow), T.TrueColor), row, StringComparison.Ordinal);
+    }
+
+    //when Down selects the cell or the pointer rests on it each word sits on the band its own ink makes, never the user's band, and the words stay
+    [Theory]
+    [InlineData(true, false)]
+    [InlineData(false, true)]
+    public void The_selected_or_hovered_cell_puts_each_word_on_its_own_band(bool selected, bool hovered)
+    {
+        var row = InputFrame.BuildStatusLine(Info(), 200, T, U, new BackgroundFacts(2, true, false, selected, hovered));
+        string On(string word, RgbColor ink)
+        {
+            var band = Ansi.Bg(T.BandOf(ink), T.TrueColor);
+            return band + T.Paint(word, ink).Replace(Ansi.Reset, Ansi.Reset + band) + Ansi.Reset;
+        }
+        Assert.Contains(On("2 shells", Theme.CampbellBrightYellow) + T.Paint(" · ", Theme.Dim) + On("watch", T.RoleTint("coder")), row, StringComparison.Ordinal);
+        Assert.DoesNotContain(Ansi.Bg(T.Map(Theme.UserInputBg), T.TrueColor), row, StringComparison.Ordinal);
+        Assert.Equal(StripSgr(InputFrame.BuildStatusLine(Info(), 200, T, U, new BackgroundFacts(2, true, false, selected))), StripSgr(row));
+    }
+
+    //the band is the ink a quarter and the ground three quarters, one constant for both cells, and the light theme mixes its own ink toward white
+    [Fact]
+    public void The_band_is_the_ink_mixed_toward_the_ground_by_one_share()
+    {
+        Assert.Equal(0.25, Theme.BandInkShare);
+        var y = Theme.CampbellBrightYellow;
+        var dark = T.BandOf(y);
+        Assert.Equal(((byte)71, (byte)69, (byte)50), (dark.R, dark.G, dark.B));   //0xF9F1A5 a quarter, 0x0C0C0C the rest
+        var light = new Theme(new TermCaps(true, true), ThemeMode.Light);
+        var ly = light.Map(y);
+        Assert.Equal(((byte)Math.Round(ly.R * 0.25 + 255 * 0.75, MidpointRounding.AwayFromZero), (byte)Math.Round(ly.G * 0.25 + 255 * 0.75, MidpointRounding.AwayFromZero),
+            (byte)Math.Round(ly.B * 0.25 + 255 * 0.75, MidpointRounding.AwayFromZero)), (light.BandOf(y).R, light.BandOf(y).G, light.BandOf(y).B));
+        var row = InputFrame.BuildStatusLine(Info(), 200, light, U, new BackgroundFacts(1, false, false, true));
+        Assert.Contains(Ansi.Bg(light.BandOf(y), true) + light.Paint("1 shell", y), row, StringComparison.Ordinal);
+    }
+
+    //the hint keeps four cells from the core at every width, taking its shorter form and then none before the gap closes under four
+    [Fact]
+    public void The_hint_keeps_four_cells_from_the_core()
+    {
+        var s = Info() with { Hints = [new StatusHint(HintKind.Paste, ["Alt+V to paste the image on your clipboard", "Alt+V pastes the image"])] };
+        var facts = new BackgroundFacts(0, true, false, false);
+        var forms = new HashSet<string>();
+        foreach (var w in Enumerable.Range(60, 141))
+        {
+            var row = Line(s, w, facts);
+            var cells = InputFrame.StatusCellsOf(s, w, T, U, facts);
+            if (cells.FirstOrDefault(c => c.Kind == StatusCell.Hint) is not { End: > 0 } hint) continue;
+            var before = cells.Where(c => c.Kind is not (StatusCell.Hint or StatusCell.HintNext)).Max(c => c.End);
+            Assert.True(hint.Start - before >= InputFrame.HintGap, $"gap {hint.Start - before} at {w}: {row}");
+            forms.Add(row[(row.Length - UnicodeWidth.Of(row) + hint.Start)..].Replace(U.Triangle, "").Trim());
+        }
+        Assert.Contains("Alt+V pastes the image", forms);
+        Assert.Contains("Alt+V to paste the image on your clipboard", forms);
     }
 
     //the map names the cell's columns, so a press on it resolves without counting
