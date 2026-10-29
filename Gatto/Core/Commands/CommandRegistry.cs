@@ -25,17 +25,23 @@ public static class CommandNames
 //one registered slash command: the name as typed, the args text and summary for the help table, the handler, and the file that registered it
 public sealed record CommandRow(
     string Name, string Args, string Summary,
-    Func<string, CancellationToken, Task<string>> Handler, string SourceFile);
+    Func<string, CancellationToken, Task<string>> Handler, string SourceFile, string? Origin = null);   //origin is the source name the off flag reads
 
 //the rows extensions registered, filled at commit in file order and read by the dispatch. no static state, so parallel tests never share one
-public sealed class CommandRegistry
+public sealed class CommandRegistry(Gatto.Core.Tools.ArmedSources? armed = null)
 {
     private readonly List<CommandRow> _rows = new();
     private readonly Dictionary<string, CommandRow> _byName = new(StringComparer.Ordinal);
 
-    public IReadOnlyList<CommandRow> Rows => _rows;
+    //the rows of the sources that are on, which the dispatch and the help list read
+    public IReadOnlyList<CommandRow> Rows => [.. _rows.Where(On)];
 
-    public bool TryGet(string name, out CommandRow row) => _byName.TryGetValue(name, out row!);
+    //every row, an off source's included, for a view that names what a source holds
+    public IReadOnlyList<CommandRow> RowsAll => _rows;
+
+    public bool TryGet(string name, out CommandRow row) => _byName.TryGetValue(name, out row!) && On(row);
+
+    private bool On(CommandRow row) => armed is null || armed.IsOn(row.Origin);
 
     //the collision check is the committer's, this throws only when it was skipped
     public void Add(CommandRow row)

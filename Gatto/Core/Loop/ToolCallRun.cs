@@ -10,6 +10,8 @@ internal sealed class ToolCallRun(ToolRegistry tools, HookBus hooks, IToolContex
     //a cancel of the turn propagates, so the loop answers this call and every remaining one as cancelled
     public async Task<ToolResult> RunAsync(ToolCall call, CancellationToken ct, long toolSpan = 0)
     {
+        //a name the registry does not hold answers before the gate, so nobody is asked about a tool that cannot run
+        if (tools.Get(call.Name) is null) return Unknown(call);
         try
         {
             //an argument name the tool does not declare fails here, before the gate can ask about a call that would run wrong
@@ -21,6 +23,8 @@ internal sealed class ToolCallRun(ToolRegistry tools, HookBus hooks, IToolContex
         catch (CannotApplyException ex) { return new ToolResult(ex.Message, IsError: true); }  //the refusal and the gate's own words, no blocked prefix
         catch (Exception ex) { return new ToolResult($"blocked: {ex.Message}", IsError: true); }
     }
+
+    private static ToolResult Unknown(ToolCall call) => new($"unknown tool: {call.Name}", IsError: true);
 
     //a throwing handler blocks the call (fails closed), and the gate span records which way it went
     private async Task GateAsync(ToolCall call, long toolSpan)
@@ -54,7 +58,7 @@ internal sealed class ToolCallRun(ToolRegistry tools, HookBus hooks, IToolContex
     private async Task<ToolResult> ExecuteAsync(ToolCall call, CancellationToken ct, long toolSpan)
     {
         var tool = tools.Get(call.Name);
-        if (tool is null) return new ToolResult($"unknown tool: {call.Name}", IsError: true);
+        if (tool is null) return Unknown(call);
         JsonElement args;
         try
         {

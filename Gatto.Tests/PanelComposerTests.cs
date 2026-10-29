@@ -412,4 +412,57 @@ public class PanelComposerTests
         Assert.Equal("  web_fetch     web_search.csx", rows[3].TrimEnd());
         Assert.DoesNotContain(rows, r => r.Contains("Fetch", StringComparison.Ordinal));
     }
+
+    private static readonly FooterKey[] EscOnly = [new("Esc", "close")];
+
+    private static PanelFields Help() => new("help", [new("Enter", "compose"), .. EscOnly], Tabs:
+    [
+        new PanelTab("commands", [new("/help", Description: "this screen")]),
+        new PanelTab("shortcuts", [], Keys: EscOnly),
+        new PanelTab("extensions", [], Keys: EscOnly),
+    ]);
+
+    private static PanelView Text(int tab, IReadOnlyList<DetailRow> rows) =>
+        new(tab, [], -1, "", false, 0, null, null, null, EscOnly, "tab:x", null, rows, 0, Cursorless: true);
+
+    [Fact]
+    public void A_cursorless_tab_draws_its_rows_as_text_under_the_tabbed_title_with_its_keys_and_no_move()
+    {
+        var rows = Plain(Compose(Help(), [], Text(1, [new DetailRow("Enter      send"), new DetailRow("Esc        stop")]), numbered: false));
+
+        Assert.Equal("  help    commands    shortcuts    extensions", rows[0].TrimEnd());
+        Assert.Equal("", rows[1]);
+        Assert.Equal("  Enter      send", rows[2]);
+        Assert.Equal("  Esc        stop", rows[3]);
+        Assert.Equal("  ←→ tabs   Esc close", rows[^1].TrimEnd());
+        Assert.DoesNotContain(rows, r => r.Contains("move", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public void The_empty_extensions_tab_draws_its_one_dim_row()
+    {
+        var f = Compose(Help(), [], Text(2, [new DetailRow("no extensions in the home", Dim: true)]), numbered: false);
+
+        Assert.Equal("  no extensions in the home", Plain(f)[2]);
+        Assert.Contains(T.Paint("no extensions in the home", Theme.Dim), f.Rows[2]);
+    }
+
+    //the state word rides before the description in its own ink, and the gap alone separates them
+    [Fact]
+    public void A_marked_row_draws_the_word_in_its_ink_then_the_gap_then_the_description()
+    {
+        var options = new List<SelectOption>
+        {
+            new("ask_user", Description: "tool ask_user", Key: "ask_user"),
+            new("web_search", Description: "tools web_search, web_fetch", Key: "web_search", Mark: new SelectRun("off", Theme.Dim)),
+            new("broken", Key: "broken", Mark: new SelectRun("failed", Theme.Warn)),
+        };
+        var f = Compose(new PanelFields("help", EscOnly), options, View(3), numbered: false);
+        var rows = Plain(f);
+
+        Assert.Equal("  web_search  off  tools web_search, web_fetch", rows[3].TrimEnd());
+        Assert.Equal("  broken      failed", rows[4].TrimEnd());
+        Assert.Contains(T.Paint("off", Theme.Dim), f.Rows[3]);
+        Assert.Contains(T.Paint("failed", Theme.Warn), f.Rows[4]);
+    }
 }

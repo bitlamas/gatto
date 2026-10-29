@@ -48,7 +48,7 @@ public class PasteSurvivesCommandTests : IDisposable
     private static ChatMessage LastUser(RichReplHarness h) => h.Convo.Messages.Last(m => m.Role == "user");
 
     [Theory]
-    [InlineData("", " /help")]
+    [InlineData("", " /permissions")]
     [InlineData("", " /undo")]
     [InlineData("/undo ", "")]
     [InlineData("", " /Undo")]
@@ -90,7 +90,7 @@ public class PasteSurvivesCommandTests : IDisposable
     public async Task A_placeholder_deleted_before_a_command_attaches_nothing_to_the_next_message()
     {
         var h = Harness(1);
-        h.Keys.Key(AltV).Key(Backspace).Line("/help").Line("describe it").Line("/quit");
+        h.Keys.Key(AltV).Key(Backspace).Line("/permissions").Line("describe it").Line("/quit");
         await h.RunAsync();
 
         Assert.Equal("describe it", LastUser(h).Content);
@@ -124,7 +124,7 @@ public class PasteSurvivesCommandTests : IDisposable
     public async Task A_message_sent_with_the_image_leaves_nothing_for_a_later_command()
     {
         var h = Harness(2);
-        h.Keys.Key(AltV).Line(" first").Line("/help").Line("second").Line("/quit");
+        h.Keys.Key(AltV).Line(" first").Line("/permissions").Line("second").Line("/quit");
         await h.RunAsync();
 
         var users = h.Convo.Messages.Where(m => m.Role == "user").ToList();
@@ -139,10 +139,10 @@ public class PasteSurvivesCommandTests : IDisposable
     {
         var h = Harness(2);
         var handled = false;
-        //the turn is held from its request until the editor handled every key after it, so /help is typed during the turn
+        //the turn is held from its request until the editor handled every key after it, so /permissions is typed during the turn
         h.Client.HoldNextTurn = async ct =>
         {
-            h.Keys.Key(AltV).Line(" /help").Line("describe it").Line("/quit");
+            h.Keys.Key(AltV).Line(" /permissions").Line("describe it").Line("/quit");
             handled = await h.UntilAsync(() => h.Keys.Handled, Waits.Bound);
         };
         h.Keys.Line("hello");

@@ -146,15 +146,9 @@ public sealed partial class Repl
     internal static string MailboxName(string modelId) =>
         string.Concat(modelId.Select(c => Path.GetInvalidFileNameChars().Contains(c) ? '-' : c));
 
-    //the answers that are text already, /help and the list view of /permissions. /tasks and /tools open their panels before the bypass is asked
+    //the one answer that is text already, the list view of /permissions. /help, /tasks and /tools open their panels before the bypass is asked
     private Func<int, IReadOnlyList<string>> ReadOnlyAnswer(string trimmed, RichState s)
     {
-        if (trimmed == "/help")
-        {
-            var known = KnownCommands();
-            var help = (SlashCommands.RenderRich(s.Theme, known) + "\n\n" + Shortcuts.RenderRich(s.Theme, glyphs: _glyphs, known)).Split('\n');
-            return _ => [.. help.Select(r => "  " + r)];
-        }
         SlashGate.TryMatchCommand(trimmed, "/permissions", out var arg);
         var grants = HandlePermissions(arg).Split('\n');
         return _ => [.. grants.Select(r => "  " + TermText.Sanitize(r))];

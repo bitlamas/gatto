@@ -43,6 +43,7 @@ internal sealed class PanelState
     private int _layoutTab;
     private bool _banded;   //a key word wears the hover band, read by the pump thread under the lock
     private int _tab;
+    private bool _arrived;   //the tab was just switched to, so a count its rows changed while it was away rebuilds it instead of ending the show
     private bool _inBox;
     private int? _moved;   //the setting's level index moved on the cursor row, reset when the cursor leaves it
     private string? _hoverKey;
@@ -50,6 +51,7 @@ internal sealed class PanelState
     private int _detailIndex = -1;
     private int _detailOffset = End;
     private IReadOnlyList<DetailRow> _detailRows = [];
+    private IReadOnlyList<FooterKey>? _shownKeys;   //the key row the last view drew, null before the first
 
     //each tab keeps its own cursor, filter and window, so a switch and back finds the tab as it was left
     private sealed class TabState
@@ -57,6 +59,7 @@ internal sealed class PanelState
         public string Draft = "";
         public int Cursor;   //a position in Shown
         public int Offset;
+        public int TextOffset;   //the window over a cursorless tab's rows, apart from the list's so its clamp never meets End
         public int[] Shown = [];
     }
 
@@ -89,6 +92,26 @@ internal sealed class PanelState
 
     private TabState Here => _tabs[_tab];
 
+    private PanelTab? TabHere => _panel.Tabs is { Count: > 0 } tabs ? tabs[_tab] : null;
+
+    //each of a tab's fields falls back to the panel's own, so a tabless screen reads as it always did
+    private IReadOnlyList<FooterKey> KeysHere => TabHere?.Keys ?? _panel.Keys;
+    private Func<int, IReadOnlyList<FooterKey>>? KeysForHere => TabHere?.KeysFor ?? _panel.KeysFor;
+    private PanelUnder? UnderHere => TabHere?.Under ?? _panel.Under;
+
+    //a tab with no option row is read as text, a detail with no cursor
+    private bool Cursorless => _panel.Tabs is { Count: > 0 } && _lists[_tab].Count == 0;
+
+    //the key of the text the window shows: the open detail's row, or the cursorless tab's own, null on a list
+    private string? TextKey => _detail ?? (Cursorless ? "tab:" + TabHere!.Name : null);
+
+    //the one offset of the text window, the open detail's or the cursorless tab's
+    private int TextOffset
+    {
+        get => _detail is not null ? _detailOffset : Here.TextOffset;
+        set { if (_detail is not null) _detailOffset = value; else Here.TextOffset = value; }
+    }
+
     //the option's original index under the cursor, -1 when the filter shows nothing
     public int CursorIndex => Here.Cursor >= 0 && Here.Cursor < Here.Shown.Length ? Here.Shown[Here.Cursor] : -1;
 
@@ -96,32 +119,62 @@ internal sealed class PanelState
     public string? Detail => _detail;
     public int DetailOffset => _detailOffset;
 
-    public string? SettingValue => _panel.Under is PanelUnder.Setting s && CursorIndex >= 0 ? ValueOf(s, CursorIndex) : null;
+    public string? SettingValue => UnderHere is PanelUnder.Setting s && CursorIndex >= 0 ? ValueOf(s, CursorIndex) : null;
 
     //true only when the shown value differs from the row's own, moving away and back is no move
-    public bool SettingMoved => _panel.Under is PanelUnder.Setting s && CursorIndex >= 0
+    public bool SettingMoved => UnderHere is PanelUnder.Setting s && CursorIndex >= 0
         && _moved is not null && SettingValue != s.Value(CursorIndex);
 
     //the copy a frame is composed from, every caller function asked here on the loop thread so the paint thread runs none
     public PanelView View()
     {
-        if (_panel.OptionsNow is { } now && _lists.Length == 1)
-        {
-            var fresh = now();
-            if (fresh.Count == _lists[0].Count) _lists[0] = fresh;
-            else Stale = true;
-        }
+        Refresh();
         IReadOnlyList<FooterKey>? keys = null;
         if (_detail is not null)
         {
             _detailRows = [.. _panel.DetailOf?.Invoke(_detailIndex) ?? []];
             keys = _panel.DetailKeysFor?.Invoke(_detailIndex);
         }
-        else if (!_inBox && CursorIndex >= 0) keys = _panel.KeysFor?.Invoke(CursorIndex);
+        else if (!_inBox) keys = RowKeys();
+        if (_detail is null && Cursorless) _detailRows = TabHere!.Rows ?? [];
+        _shownKeys = keys ?? (_inBox ? null : _detail is not null ? DetailBack : _panel.Keys);
+        var text = TextKey;
         return new(_tab, [.. Here.Shown], Here.Shown.Length == 0 ? -1 : Here.Cursor, Here.Draft, _inBox,
             Here.Offset, SettingValue,
-            _panel.Under is PanelUnder.Sentence sen && CursorIndex >= 0 ? sen.Text(CursorIndex) : null, _hoverKey,
-            keys, _detail, _detail is null ? null : _lists[0][_detailIndex].Label, _detail is null ? null : _detailRows, _detailOffset);
+            UnderHere is PanelUnder.Sentence sen && CursorIndex >= 0 ? sen.Text(CursorIndex) : null, _hoverKey,
+            keys, text, _detail is null ? null : _lists[0][_detailIndex].Label, text is null ? null : _detailRows,
+            text is null ? _detailOffset : TextOffset, Cursorless: _detail is null && Cursorless);
+    }
+
+    //the rows read live are asked again, the active tab's alone. a count changed while the tab was away rebuilds it on arrival, any other change is a re-entry's
+    private void Refresh()
+    {
+        var arrived = _arrived;
+        _arrived = false;
+        var now = _panel.Tabs is { Count: > 0 } tabs ? tabs[_tab].OptionsNow : _lists.Length == 1 ? _panel.OptionsNow : null;
+        if (now is null) return;
+        var fresh = now();
+        if (fresh.Count == _lists[_tab].Count) _lists[_tab] = fresh;
+        else if (arrived) Rebuild(fresh);
+        else Stale = true;
+    }
+
+    //the tab takes its new rows with its filter applied again and the cursor kept on the same row by its key
+    private void Rebuild(IReadOnlyList<SelectOption> fresh)
+    {
+        var old = CursorIndex >= 0 ? _lists[_tab][CursorIndex].Identity : null;
+        _lists[_tab] = fresh;
+        Here.Shown = [.. Enumerable.Range(0, fresh.Count).Where(i => Matches(fresh[i], Here.Draft))];
+        var at = old is null ? -1 : Array.FindIndex(Here.Shown, i => fresh[i].Identity == old);
+        Here.Cursor = Here.Shown.Length == 0 ? -1 : Math.Max(0, at);
+        _moved = null;
+    }
+
+    //the key row of this state: the cursor row's, or off a row only what acts without one
+    private IReadOnlyList<FooterKey> RowKeys()
+    {
+        if (CursorIndex >= 0) return KeysForHere?.Invoke(CursorIndex) ?? KeysHere;
+        return [.. KeysHere.Where(k => k.Key == "Esc")];
     }
 
     //the factory's half, under the painter's gate: the frame it just composed, for the tab it composed
@@ -132,7 +185,11 @@ internal sealed class PanelState
     //the layout the loop may act on: composed for this tab and this mode, so the first key after Enter or Esc never reads the other frame
     private PanelLayout? Mine
     {
-        get { lock (_lock) return _layout is { } l && _layoutTab == _tab && l.Detail == _detail ? l : null; }
+        get
+        {
+            var text = TextKey;
+            lock (_lock) return _layout is { } l && _layoutTab == _tab && l.Detail == text ? l : null;
+        }
     }
 
     //the pump thread's half: an event at another width than the frame the user saw is dropped, the rest become one queued gesture and one wake
@@ -189,11 +246,11 @@ internal sealed class PanelState
             lock (_lock) g = _gestures.Count > 0 ? _gestures.Dequeue() : null;
             return g is null ? PanelStep.None : Apply(g);
         }
-        //the window the user saw is where the next move starts, so it only slides when the cursor reaches its edge. a detail following its tail keeps the sentinel
+        //the window the user saw is where the next move starts, so it only slides when the cursor reaches its edge. a text following its tail keeps the sentinel
         if (Mine is { } l)
         {
-            if (_detail is null) Here.Offset = l.Offset;
-            else if (_detailOffset != End) _detailOffset = l.Offset;
+            if (TextKey is null) Here.Offset = l.Offset;
+            else if (TextOffset != End) TextOffset = l.Offset;
         }
         return _detail is not null ? DetailKey(k) : _inBox ? BoxKey(k) : ListKey(k);
     }
@@ -232,6 +289,7 @@ internal sealed class PanelState
 
     private PanelStep ListKey(ConsoleKeyInfo k)
     {
+        if (Cursorless) return TextKeyOnTab(k);
         var shown = Here.Shown.Length;
         switch (k.Key)
         {
@@ -244,7 +302,10 @@ internal sealed class PanelState
             case ConsoleKey.LeftArrow: return Side(-1);
             case ConsoleKey.RightArrow: return Side(+1);
             case ConsoleKey.Enter:
-                return CursorIndex < 0 ? PanelStep.None : Choose(CursorIndex);
+                if (CursorIndex < 0) return PanelStep.None;
+                //on a tabbed screen Enter acts only where the tab's key row names it, so a row that names Space never closes on Enter
+                if (_panel.Tabs is { Count: > 0 } && !RowKeys().Any(f => f.Key == "Enter")) return PanelStep.None;
+                return Choose(CursorIndex);
             case ConsoleKey.Escape:
                 return new PanelStep(false, new SelectOutcome.Cancelled());
             case ConsoleKey.Tab when Searchable:
@@ -262,10 +323,30 @@ internal sealed class PanelState
             MoveTo(c - '1');
             return new PanelStep(true, new SelectOutcome.Chosen(CursorIndex));
         }
-        if (CursorIndex >= 0 && Takes(c, _panel.KeysFor?.Invoke(CursorIndex) ?? _panel.Keys))
+        //a control key needs two yeses: the row the user last saw named it, and the row as it stands now names it
+        if (CursorIndex >= 0 && Takes(c, KeysForHere?.Invoke(CursorIndex) ?? KeysHere) && (_shownKeys is null || Takes(c, _shownKeys)))
+        {
+            //an act inside the widget leaves every tab's state where it was, true asks the rows again
+            if (_panel.Act is { } act) return act(c, CursorIndex) ? PanelStep.Changed : PanelStep.None;
             return new PanelStep(false, new SelectOutcome.Control(c, CursorIndex));
+        }
         return PanelStep.None;
     }
+
+    //a tab with no cursor is text: the moves scroll its window, the arrows switch the tab, Esc closes, every other key is spent
+    private PanelStep TextKeyOnTab(ConsoleKeyInfo k) => k.Key switch
+    {
+        ConsoleKey.UpArrow => MoveDetail(-1),
+        ConsoleKey.DownArrow => MoveDetail(+1),
+        ConsoleKey.PageUp => MoveDetail(-Page()),
+        ConsoleKey.PageDown => MoveDetail(Page()),
+        ConsoleKey.Home => ParkDetail(0),
+        ConsoleKey.End => FollowEnd(),
+        ConsoleKey.LeftArrow => Side(-1),
+        ConsoleKey.RightArrow => Side(+1),
+        ConsoleKey.Escape => new PanelStep(false, new SelectOutcome.Cancelled()),
+        _ => PanelStep.None,
+    };
 
     //in a detail the arms move its window and never the cursor, and a control key names the open row
     private PanelStep DetailKey(ConsoleKeyInfo k)
@@ -277,10 +358,7 @@ internal sealed class PanelState
             case ConsoleKey.PageUp: return MoveDetail(-Page());
             case ConsoleKey.PageDown: return MoveDetail(Page());
             case ConsoleKey.Home: return ParkDetail(0);
-            case ConsoleKey.End:
-                if (_detailOffset == End) return PanelStep.None;
-                _detailOffset = End;
-                return PanelStep.Changed;
+            case ConsoleKey.End: return FollowEnd();
             case ConsoleKey.Escape:
                 _detail = null;
                 _detailIndex = -1;
@@ -294,10 +372,10 @@ internal sealed class PanelState
         return PanelStep.None;
     }
 
-    //a declared control key the row's key row names, so a key the screen does not show is not taken either
+    //a declared control key the row names, so a key the screen does not show is not taken. the word space names its key
     private bool Takes(char c, IReadOnlyList<FooterKey> named) =>
         _controls is { Count: > 0 } controls && controls.Contains(c)
-        && named.Any(f => f.Key.Length == 1 && f.Key[0] == c);
+        && named.Any(f => f.Key.Length == 1 ? f.Key[0] == c : f.Key == "Space" && c == ' ');
 
     //the act of Enter on a row: its detail when it has one, the answer otherwise
     private PanelStep Choose(int index)
@@ -313,7 +391,7 @@ internal sealed class PanelState
     //a row's identity across re-entries, the caller's key or its place when it set none
     private string KeyOf(int index) => _lists[0][index].Key ?? index.ToString(CultureInfo.InvariantCulture);
 
-    //the last offset a detail window can start at, measured on the frame of this detail when one was composed
+    //the last offset a text window can start at, measured on the frame of this text when one was composed
     private int DetailMax()
     {
         var rows = Mine?.BodyRows ?? Layout?.BodyRows ?? 1;
@@ -324,7 +402,7 @@ internal sealed class PanelState
     private PanelStep MoveDetail(int delta)
     {
         var max = DetailMax();
-        var from = _detailOffset == End ? max : Math.Min(_detailOffset, max);
+        var from = TextOffset == End ? max : Math.Min(TextOffset, max);
         return ParkDetail(from + delta);
     }
 
@@ -332,8 +410,15 @@ internal sealed class PanelState
     {
         var max = DetailMax();
         to = Math.Clamp(to, 0, max);
-        if (_detailOffset == End ? to == max : to == _detailOffset) return PanelStep.None;   //a move to where the window already is keeps the tail followed
-        _detailOffset = to;
+        if (TextOffset == End ? to == max : to == TextOffset) return PanelStep.None;   //a move to where the window already is keeps the tail followed
+        TextOffset = to;
+        return PanelStep.Changed;
+    }
+
+    private PanelStep FollowEnd()
+    {
+        if (TextOffset == End) return PanelStep.None;
+        TextOffset = End;
         return PanelStep.Changed;
     }
 
@@ -354,17 +439,25 @@ internal sealed class PanelState
         {
             var to = Math.Clamp(_tab + step, 0, _tabs.Length - 1);
             if (to == _tab) return PanelStep.None;
-            _tab = to;
-            _moved = null;
+            SwitchTo(to);
             return PanelStep.Changed;
         }
-        if (_panel.Under is not PanelUnder.Setting s || CursorIndex < 0) return PanelStep.None;
+        if (UnderHere is not PanelUnder.Setting s || CursorIndex < 0) return PanelStep.None;
         if (s.Levels(CursorIndex) is not { Count: > 0 } levels || s.Value(CursorIndex) is null) return PanelStep.None;
         var at = _moved ?? Math.Max(0, IndexOf(levels, s.Value(CursorIndex)!));
         var next = Math.Clamp(at + step, 0, levels.Count - 1);
         if (_moved == next) return PanelStep.None;
         _moved = next;
         return PanelStep.Changed;
+    }
+
+    //a switch leaves the box with the filter kept, the focus the arrows leave, since they cannot switch from the box
+    private void SwitchTo(int tab)
+    {
+        _tab = tab;
+        _arrived = true;
+        _inBox = false;
+        _moved = null;
     }
 
     private string? ValueOf(PanelUnder.Setting s, int index)
@@ -441,21 +534,20 @@ internal sealed class PanelState
                 if (at < 0 || _detail is not null) return PanelStep.None;
                 _inBox = false;
                 //a press on the cursor row is Enter, on another row it moves the cursor
-                return at == Here.Cursor ? Choose(i) : MoveTo(at);
+                return at == Here.Cursor ? ListKey(new ConsoleKeyInfo('\r', ConsoleKey.Enter, false, false, false)) : MoveTo(at);
             }
             case PanelGesture.Press(PanelHit.Key { Word: var word }):
                 return FooterKeys.KeyOf(word) is { } k ? Key(k) : PanelStep.None;
             case PanelGesture.Press(PanelHit.Tab { Index: var t }):
                 if (t == _tab || t < 0 || t >= _tabs.Length) return PanelStep.None;
-                _tab = t;
-                _moved = null;
+                SwitchTo(t);
                 return PanelStep.Changed;
             case PanelGesture.Press(PanelHit.Box):
                 if (_inBox || !Searchable) return PanelStep.None;
                 _inBox = true;
                 return PanelStep.Changed;
             case PanelGesture.Wheel(var rows):
-                return _detail is not null ? MoveDetail(rows) : Scroll(rows);
+                return TextKey is not null ? MoveDetail(rows) : Scroll(rows);
         }
         return PanelStep.None;
     }

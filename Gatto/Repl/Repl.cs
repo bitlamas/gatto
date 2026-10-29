@@ -156,7 +156,11 @@ public sealed partial class Repl(
     //the running role's opening line, committed as history whenever a conversation opens empty
     string? firstMessage = null,
     //hands the shell tool the session's background tasks, called by the rich face alone, so every other face runs the flag in the foreground
-    Action<Gatto.Core.Tools.BackgroundTasks?>? armTasks = null)
+    Action<Gatto.Core.Tools.BackgroundTasks?>? armTasks = null,
+    //every source in the home as the launch and the off flag left it, read at each view of the help panel. null shows the extensions tab empty
+    Func<IReadOnlyList<Prompts.ExtensionView>>? listExtensions = null,
+    //turns a source on or off for this session and writes the off list, returning the line of a failed write. null names no Space
+    Func<string, bool, string?>? setExtension = null)
 {
     //the name the top rule shows, null when the running role is the default, compared as the launch resolves a name against the files
     private string? DisplayRole() => string.Equals(roleName, defaultRole, StringComparison.OrdinalIgnoreCase) ? null : roleName;

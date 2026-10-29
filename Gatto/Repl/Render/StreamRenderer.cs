@@ -591,9 +591,6 @@ public sealed class StreamRenderer : ITurnObserver
         },
         () => _surface.Write(line + "\n"));
 
-    //gatto's own painted rows committed as they are, hang-indented, with no ♯ marker and no sanitize that would strip the paint. never send model or tool text here
-    public void CommitPlain(string text) => CommitHung(text.TrimEnd('\n').Split('\n'), null, () => _surface.Write(text.TrimEnd('\n') + "\n"));
-
     //a /context report drawn now at this width, its figures kept on the item so a repaint or a resumed session draws it at its own width
     public void CommitContext(ContextFigures figures) =>
         CommitHung(Gatto.Repl.Render.ContextReport.Unhung(figures, _surface.Width, _theme, _glyphs), figures,

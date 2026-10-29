@@ -53,7 +53,10 @@ internal sealed class LaunchState(
     //one sequence per composition this process makes, so every system message the session stores reads a higher number than the one before
     internal int BaselineSeq;
     internal IReadOnlyList<RoleFile> RoleFiles = [];
-    internal readonly ToolRegistry Tools = new();
+    //the one off flag of the session, seeded from gatto.json and read by the tools, the hooks and the commands
+    internal readonly ArmedSources Armed = new(config.ExtensionsOff);
+    internal ToolRegistry Tools => _tools ??= new ToolRegistry(Armed);
+    private ToolRegistry? _tools;
     internal readonly MemoryNagLatch MemoryNag = new();
 
     //the services the switches call, null until UseServices
@@ -117,6 +120,10 @@ internal sealed class LaunchState(
         return ResolveLoaded(RoleFile.Load(rolesDir, roleArg));
     }
 
+    //an off script never ran, so gatto cannot know which endpoint it would have named, and the clause names where the user looks
+    private string OffClause() => config.ExtensionsOff is { Count: > 0 } off
+        ? $"; extensions off: {string.Join(", ", off.Order(StringComparer.Ordinal))}" : "";
+
     //the resolution of a role already in hand, so run_agent can check a merged role that was never a file
     internal RoleResolution ResolveLoaded(RoleFile role)
     {
@@ -127,7 +134,7 @@ internal sealed class LaunchState(
         var endpointName = launchEndpoint ?? role.Endpoint ?? config.DefaultEndpoint;
         if (!endpoints.TryGetValue(endpointName, out var ep))
             throw new GattoConfigException(args.Endpoint is not null
-                ? $"-e names endpoint '{endpointName}', which is not defined in gatto.json. Endpoints: {string.Join(", ", endpoints.Keys.OrderBy(k => k, StringComparer.Ordinal))}"
+                ? $"-e names endpoint '{endpointName}', which is not defined in gatto.json. Endpoints: {string.Join(", ", endpoints.Keys.OrderBy(k => k, StringComparer.Ordinal))}{OffClause()}"
                 : role.Endpoint is not null
                     ? $"role '{role.Name}' targets endpoint '{endpointName}', which is not defined in gatto.json"
                     : LaunchModel.MissingDefaultEndpoint(endpointName));

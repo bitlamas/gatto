@@ -172,18 +172,6 @@ public sealed class CommandEchoTests
     }
 
     [Fact]
-    public void CommitPlain_lands_a_command_echo_item_that_rerenders_at_a_new_width()
-    {
-        var (r, m) = Rich();
-        r.CommitPlain("/help\nrow two of the table");
-
-        var echo = Assert.Single(m.Items.OfType<CommandEchoItem>());
-        //the echo item re-renders verbatim at any width the compositor asks for, so it survives a resize
-        Assert.Contains(echo.Render(80, T, glyphs: GlyphSet.Unicode), row => row.Contains("/help"));
-        Assert.Contains(echo.Render(40, T, glyphs: GlyphSet.Unicode), row => row.Contains("/help"));
-    }
-
-    [Fact]
     public void A_role_confirmation_commits_as_a_system_line()
     {
         var (r, m) = Rich();

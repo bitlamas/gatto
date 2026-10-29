@@ -114,6 +114,14 @@ public static class GattoConfigWriter
         Mutate(homePath, root => root[key] = value, $"cannot record consent for '{key}'");
     }
 
+    //the off list as the session holds it, the key removed when nothing is off so a home that never turned one off keeps no key
+    public static void SetExtensionsOff(string homePath, IReadOnlyList<string> names) =>
+        Mutate(homePath, root =>
+        {
+            if (names.Count == 0) root.Remove("extensions_off");
+            else root["extensions_off"] = new JsonArray([.. names.Select(n => (JsonNode?)JsonValue.Create(n))]);
+        }, "cannot record the extensions turned off");
+
     //read, edit and write the config back atomically, preserving the target's ACL. one key is set, so keys this writer doesn't own survive untouched
     private static void Mutate(string homePath, Action<JsonObject> edit, string cannotDoWhat)
     {
@@ -130,6 +138,11 @@ public static class GattoConfigWriter
         catch (JsonException ex)
         {
             throw new GattoConfigException($"gatto.json is not valid JSON: {ex.Message}");
+        }
+        //a file another program holds fails the read, and reports as a failed write does
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            throw new GattoConfigException($"could not write {path}: {ex.Message}");
         }
 
         FoldLegacyDefaultModel(root);

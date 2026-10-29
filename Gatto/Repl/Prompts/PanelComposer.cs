@@ -18,7 +18,8 @@ internal sealed record PanelView(
     string? Detail = null,   //the open detail's row key, null for the list
     string? DetailLabel = null,
     IReadOnlyList<DetailRow>? DetailRows = null,
-    int DetailOffset = int.MaxValue);   //the detail window's first row, the maximum meaning the end first
+    int DetailOffset = int.MaxValue,   //the detail window's first row, the maximum meaning the end first
+    bool Cursorless = false);   //the text is a tab's own rows, not an open row's detail
 
 //the rows a frame shows and the layout it was composed at
 internal sealed record PanelFrame(List<string> Rows, PanelLayout Layout);
@@ -321,16 +322,24 @@ internal static class PanelComposer
         var cols = o.Columns ?? [];
         var trail = o.Trail ?? [];
         var trailCells = trail.Sum(t => UnicodeWidth.Of(t.Text));
-        //the description takes the inside width the label and the trail leave, and under one cell and the ellipsis it goes with its gap
+        //the state word keeps its own ink on the cursor row too, it is a fact of the row and not the cursor's
+        var mark = o.Mark is { } m && cols.Count == 0 ? m with { Text = TermText.Sanitize(m.Text) } : null;
+        var markCells = mark is null ? 0 : UnicodeWidth.Of(mark.Text) + ColumnGap;
+        //the description takes the inside width the label, the mark and the trail leave, and under one cell and the ellipsis it goes with its gap
         string? desc = null;
         if (cols.Count == 0 && o.Description is { } said)
         {
-            var budget = inside - table.LabelStart - table.LabelWidth - ColumnGap - (trailCells > 0 ? trailCells + ColumnGap : 0);
+            var budget = inside - table.LabelStart - table.LabelWidth - ColumnGap - markCells - (trailCells > 0 ? trailCells + ColumnGap : 0);
             var text = TermText.Sanitize(said);
             if (budget >= 2) desc = UnicodeWidth.Of(text) > budget ? TermText.TruncateCells(text, budget, glyphs) : text;
         }
-        if (cols.Count > 0 || desc is not null || trail.Count > 0)
+        if (cols.Count > 0 || mark is not null || desc is not null || trail.Count > 0)
             row.Add(new(new string(' ', Math.Max(0, table.LabelWidth - labelCells) + ColumnGap), Hit: hit));
+        if (mark is not null)
+        {
+            row.Add(new(mark.Text, mark.Ink == Theme.Accent ? tint : mark.Ink, Hit: hit));
+            if (desc is not null) row.Add(new(new string(' ', ColumnGap), Hit: hit));
+        }
         for (var c = 0; c < cols.Count && c < table.Columns.Length; c++)
         {
             var cell = TermText.Sanitize(cols[c]);
@@ -341,13 +350,13 @@ internal static class PanelComposer
         if (desc is not null) row.Add(new(desc, Theme.Dim, Hit: hit));
         if (trail.Count > 0)
         {
-            if (cols.Count > 0 || desc is not null) row.Add(new(new string(' ', ColumnGap), Hit: hit));
+            if (cols.Count > 0 || mark is not null || desc is not null) row.Add(new(new string(' ', ColumnGap), Hit: hit));
             foreach (var t in trail) row.Add(new(t.Text, t.Ink == Theme.Accent ? tint : t.Ink, Hit: hit));
         }
         return row;
     }
 
-    private static List<Piece>? UnderPieces(PanelFields panel, PanelView view, Theme theme, GlyphSet glyphs) => panel.Under switch
+    private static List<Piece>? UnderPieces(PanelFields panel, PanelView view, Theme theme, GlyphSet glyphs) => panel.UnderAt(view.Tab) switch
     {
         PanelUnder.Sentence when view.Sentence is { Length: > 0 } s => [new(Indent), new(TermText.Sanitize(s), Theme.Dim)],
         PanelUnder.Setting set when view.SettingValue is { } v =>
@@ -359,13 +368,15 @@ internal static class PanelComposer
     //the shelf's key row: the keys of the region that holds them, the moves named when a row on screen has no digit, Esc last
     private static List<Piece> KeyPieces(PanelFields panel, PanelView view, bool digitless, int w, Theme theme, GlyphSet glyphs, RgbColor tint)
     {
-        var keys = new List<FooterKey>(view.Detail is not null ? view.Keys ?? [new("Esc", "back")]
+        //a row's detail is open only when the text is not a tab's own, which keeps the tab's keys and the arrows between tabs
+        var rowDetail = view.Detail is not null && !view.Cursorless;
+        var keys = new List<FooterKey>(rowDetail ? view.Keys ?? [new("Esc", "back")]
             : view.InBox ? panel.BoxKeys ?? [new("Enter", "list"), new("Esc", "back")]
             : view.Keys ?? panel.Keys);
-        if (!view.InBox && view.Detail is null)
+        if (!view.InBox && !rowDetail)
         {
             if (panel.Tabs is { Count: > 1 }) keys.Insert(Math.Max(0, keys.Count - 1), new FooterKey(glyphs.LeftRightKey, "tabs", Shed: 1));
-            if (digitless) keys.Insert(0, new FooterKey(glyphs.ArrowsKey, "move", Shed: 1));
+            if (digitless && !view.Cursorless && view.Shown.Count > 0) keys.Insert(0, new FooterKey(glyphs.ArrowsKey, "move", Shed: 1));
         }
         var legend = !view.InBox && view.Detail is null && panel.Legend is { } words ? new Legend(glyphs.Loaded + " " + words) : (Legend?)null;
 

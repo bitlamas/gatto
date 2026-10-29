@@ -269,6 +269,14 @@ public sealed partial class Repl
                         rejected = carry;
                         continue;
                     }
+                    //help opens here too, and Enter on a command hands its text back to the composer to finish, never to run
+                    if (text.Trim() == "/help")
+                    {
+                        var seed = OpenHelpOrSay(s);
+                        lock (s.Gate) { if (!stopped) RedrawLocked(idleView); }
+                        rejected = seed ?? carry;
+                        continue;
+                    }
                     //a command that only reads answers at once while a turn runs, drawn where the composer was, and never waits in the queue
                     if (BypassNow(text, s) is { } answer)
                     {
@@ -703,12 +711,6 @@ public sealed partial class Repl
         var trimmed = literal ? "" : input.Trim();
 
         if (trimmed == "/quit") return true;
-        if (trimmed == "/help")
-        {
-            //the help block lists the commands you type and then the keys you press, gutter rows with no ♯ marker
-            s.Renderer.CommitPlain(SlashCommands.RenderRich(s.Theme, KnownCommands()) + "\n\n" + Shortcuts.RenderRich(s.Theme, glyphs: _glyphs, KnownCommands()));
-            return false;
-        }
         if (trimmed == "/new")
         {
             //hold the warning sink first, the recompose below and any extension hook can both raise a diagnostic

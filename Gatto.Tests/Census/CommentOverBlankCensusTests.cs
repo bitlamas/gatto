@@ -8,7 +8,7 @@ public class CommentOverBlankCensusTests
     {
         ["Gatto"] = 25,
         ["Gatto.Terminal"] = 3,
-        ["Gatto.Tests"] = 272,
+        ["Gatto.Tests"] = 271,
         ["Gatto.Terminal.Tests"] = 7,
     };
 

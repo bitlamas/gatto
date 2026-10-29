@@ -124,17 +124,13 @@ public class SlashCommandsTests
     }
 
     [Fact]
-    public void A_REGISTERED_ROW_RENDERS_AFTER_THE_BUILT_INS_WITH_ITS_FILE_DIM_AT_THE_END()
+    public void A_REGISTERED_ROW_RENDERS_AFTER_THE_BUILT_INS_WITH_ITS_FILE_AT_THE_END()
     {
         var rows = new List<SlashCommands.Cmd>(SlashCommands.All)
             { new("/undo", "[n|path]", "list snapshots for this folder, or restore one", Source: "undo.csx") };
         var plain = SlashCommands.RenderPlain(rows).Split('\n');
         Assert.EndsWith("list snapshots for this folder, or restore one  undo.csx", plain[^1]);
         Assert.StartsWith("/undo [n|path]", plain[^1]);
-        var theme = new Theme(new TermCaps(Rich: true, TrueColor: true), ThemeMode.Dark);
-        var rich = SlashCommands.RenderRich(theme, rows).Split('\n')[^1];
-        Assert.Contains(theme.Paint("undo.csx", Theme.Dim), rich, StringComparison.Ordinal);
-        Assert.Equal(TermText.StripAnsiForWidth(rich), plain[^1]);
     }
 
     [Fact]
@@ -162,32 +158,5 @@ public class SlashCommandsTests
         }).ToList();
 
         Assert.Single(prefixLengths.Distinct());   //every row's summary starts at the same column
-    }
-
-    //the rich loop: RunRichAsync can't be driven in a test process, so these tests call the render body its /help branch calls
-
-    [Fact]
-    public void RenderRich_PrintsEveryRow_WithAccentColoredNameAndArgs()
-    {
-        var theme = new Theme(new TermCaps(Rich: true, TrueColor: true));
-
-        var rendered = SlashCommands.RenderRich(theme, Gatto.Repl.Commands.SlashCommands.All);
-
-        foreach (var c in SlashCommands.All)
-        {
-            var left = (c.Name + " " + c.Args).TrimEnd();
-            Assert.Contains(theme.Paint(left, Theme.Accent), rendered);
-            Assert.Contains(c.Summary, rendered);
-        }
-    }
-
-    [Fact]
-    public void RenderRich_StrippedOfAnsi_MatchesRenderPlain_SameCellAlignment()
-    {
-        var theme = new Theme(new TermCaps(Rich: true, TrueColor: true));
-
-        var stripped = Regex.Replace(SlashCommands.RenderRich(theme, Gatto.Repl.Commands.SlashCommands.All), "\x1b\\[[0-9;]*m", "");
-
-        Assert.Equal(SlashCommands.RenderPlain(Gatto.Repl.Commands.SlashCommands.All), stripped);
     }
 }

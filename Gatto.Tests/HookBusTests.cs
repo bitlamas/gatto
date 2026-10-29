@@ -118,4 +118,44 @@ public class HookBusTests
 
         Assert.True(bus.HasSessionSummaryListeners);
     }
+
+    [Fact]
+    public async Task An_off_owner_s_handlers_do_not_run_and_the_others_do()
+    {
+        var armed = new ArmedSources(["undo"]);
+        var bus = new HookBus(armed);
+        var ran = new List<string>();
+        Task Mark(string what) { ran.Add(what); return Task.CompletedTask; }
+        //a tool_call hook of an off owner that would block, so a run shows as a throw
+        bus.On(HookEvent.ToolCall, _ => throw new InvalidOperationException("off hook ran"), "undo");
+        bus.On(HookEvent.ToolResult, _ => Mark("undo result"), "undo");
+        bus.On(HookEvent.MessageEnd, _ => Mark("undo end"), "undo");
+        bus.On(HookEvent.ToolCall, _ => Mark("cards call"), "cards");
+        bus.On(HookEvent.ToolCall, _ => Mark("gate"));
+        bus.OnToolResult(_ => { ran.Add("citations"); return Task.FromResult<ToolResult?>(null); });
+        bus.On(HookEvent.MessageEnd, _ => Mark("cards end"), "cards");
+
+        await bus.EmitToolCallAsync(new HookPayload(Call: new ToolCall("1", "write_file", "{}")));
+        await bus.EmitToolResultAsync(new HookPayload(Result: new ToolResult("ok")));
+        await bus.EmitMessageEndAsync(new HookPayload(AssistantText: "hi"));
+
+        Assert.Equal(["cards call", "gate", "citations", "cards end"], ran);
+        Assert.Equal(2, bus.HandlerCount(HookEvent.ToolCall));
+
+        armed.Set("undo", on: true);
+        Assert.Equal(3, bus.HandlerCount(HookEvent.ToolCall));
+    }
+
+    //gatto's own handlers carry no owner, so a source that happens to be named gatto turns none of them off
+    [Fact]
+    public async Task Gatto_s_own_handlers_run_whatever_the_flag_holds()
+    {
+        var bus = new HookBus(new ArmedSources(["gatto"]));
+        var ran = 0;
+        bus.On(HookEvent.ToolCall, _ => { ran++; return Task.CompletedTask; });
+
+        await bus.EmitToolCallAsync(new HookPayload(Call: new ToolCall("1", "shell", "{}")));
+
+        Assert.Equal(1, ran);
+    }
 }

@@ -254,6 +254,12 @@
         "type": "object"
       },
       "description": "settings for installed extensions, one object per extension name. gatto checks only that each value is an object; the extension reads its own keys."
+    },
+    "extensions_off": {
+      "type": "array",
+      "items": { "type": "string" },
+      "default": [],
+      "description": "extensions turned off, by source name. an off extension is not compiled or run at launch. /help turns one on or off."
     }
   }
 }

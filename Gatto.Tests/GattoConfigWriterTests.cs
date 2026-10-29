@@ -333,4 +333,33 @@ public class GattoConfigWriterTests : IDisposable
         Assert.Empty(Directory.GetFiles(_home, "*.tmp"));
         Assert.Equal(original, File.ReadAllText(p));
     }
+
+    //a file held with no sharing fails the read, which reports in the writer's own wording, never as a raw IOException
+    [Fact]
+    public void A_file_held_against_the_read_reports_as_a_failed_write()
+    {
+        var p = Write("""{"endpoints":{},"default_endpoint":"local"}""");
+
+        using (new FileStream(p, FileMode.Open, FileAccess.ReadWrite, FileShare.None))
+        {
+            var ex = Assert.Throws<GattoConfigException>(() => GattoConfigWriter.SetExtensionsOff(_home, ["cards"]));
+            Assert.StartsWith("could not write ", ex.Message);
+        }
+    }
+
+    [Fact]
+    public void SetExtensionsOff_writes_the_list_and_removes_the_key_when_it_empties()
+    {
+        Write("""{"endpoints":{},"default_endpoint":"local","extensions":{"web_search":{"providers":["ddg"]}}}""");
+
+        GattoConfigWriter.SetExtensionsOff(_home, ["cards", "web_search"]);
+        var root = JsonDocument.Parse(File.ReadAllText(Path.Combine(_home, "gatto.json"))).RootElement;
+        Assert.Equal(["cards", "web_search"], root.GetProperty("extensions_off").EnumerateArray().Select(e => e.GetString()));
+        Assert.True(root.GetProperty("extensions").TryGetProperty("web_search", out _));
+
+        GattoConfigWriter.SetExtensionsOff(_home, []);
+        root = JsonDocument.Parse(File.ReadAllText(Path.Combine(_home, "gatto.json"))).RootElement;
+        Assert.False(root.TryGetProperty("extensions_off", out _));
+        Assert.Equal("local", root.GetProperty("default_endpoint").GetString());
+    }
 }

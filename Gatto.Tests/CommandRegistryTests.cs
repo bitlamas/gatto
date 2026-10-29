@@ -29,6 +29,23 @@ public class CommandRegistryTests
         Assert.Equal(ok, CommandNames.IsRegistrable(name));
 
     [Fact]
+    public void AN_OFF_SOURCE_S_ROW_LEAVES_TRY_GET_AND_ROWS_AND_STAYS_IN_ROWS_ALL()
+    {
+        var armed = new Gatto.Core.Tools.ArmedSources();
+        var reg = new CommandRegistry(armed);
+        reg.Add(Row("/undo") with { Origin = "undo" });
+        reg.Add(Row("/card", "cards.csx") with { Origin = "cards" });
+
+        armed.Set("undo", on: false);
+
+        Assert.False(reg.TryGet("/undo", out _));
+        Assert.Equal(["/card"], reg.Rows.Select(r => r.Name));
+        Assert.Equal(["/undo", "/card"], reg.RowsAll.Select(r => r.Name));
+        armed.Set("undo", on: true);
+        Assert.True(reg.TryGet("/undo", out _));
+    }
+
+    [Fact]
     public void ADD_THEN_TRY_GET_RETURNS_THE_ROW_AND_KEEPS_ORDER()
     {
         var reg = new CommandRegistry();

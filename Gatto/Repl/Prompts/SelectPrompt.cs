@@ -24,7 +24,9 @@ public sealed record SelectOption(
     //a panel's cells after the label, laid as a table with a header over them. a prompt draws none
     IReadOnlyList<string>? Columns = null,
     //a panel's marks after the last cell, the default word, which no header names
-    IReadOnlyList<SelectRun>? Trail = null)
+    IReadOnlyList<SelectRun>? Trail = null,
+    //a panel's state word before the description in its own ink, since the description paints in one
+    SelectRun? Mark = null)
 {
     //what a caller matching this option compares against, the key when there is one and the label otherwise. one definition, so both prompters agree
     public string Identity => Key ?? Label;

@@ -1343,6 +1343,26 @@ public class GattoAppTests : IDisposable
 
         Assert.Equal(2, exit);
         Assert.Contains("-e names endpoint 'nope', which is not defined in gatto.json. Endpoints: cloudy, local, other", stderr.ToString());
+        Assert.DoesNotContain("extensions off", stderr.ToString());
+        Assert.Null(server.LastRequestBody);
+    }
+
+    //an off script never ran, so the endpoint it would have named is unknown and the refusal names the sources that are off
+    [Fact]
+    public async Task THE_UNKNOWN_ENDPOINT_REFUSAL_NAMES_THE_EXTENSIONS_OFF()
+    {
+        await using var server = new FakeOpenAiServer();
+        UseHome();
+        WriteConfig($$$"""{"endpoints":{"local":{"base_url":"http://127.0.0.1:1"},"cloudy":{"base_url":"{{{server.BaseUrl}}}"}},"default_endpoint":"local","extensions_off":["web_search","cards"]}""");
+        WriteRole("generalist", "{}");
+
+        var stderr = new StringWriter();
+        Console.SetError(stderr);
+        Console.SetOut(new StringWriter());
+        var exit = await GattoApp.RunAsync(new[] { "-e", "lumo", "-m", "model-x", "-p", "hi" });
+
+        Assert.Equal(2, exit);
+        Assert.Contains("which is not defined in gatto.json. Endpoints: cloudy, local; extensions off: cards, web_search", stderr.ToString());
         Assert.Null(server.LastRequestBody);
     }
 

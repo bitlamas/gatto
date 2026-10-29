@@ -22,10 +22,20 @@ public sealed record PanelFields(
     Func<IReadOnlyList<SelectOption>>? OptionsNow = null,   //the rows asked again at each view, for a screen whose rows read live
     bool LabelWhole = false,   //the label column at its widest label, so the columns take the cut
     RgbColor? LabelInk = null,   //the ink of a label off the cursor row, null is bright
-    bool DetailEndFirst = true);   //a detail opens at its end, a tail read from its newest line, and false opens it at its top
+    bool DetailEndFirst = true,   //a detail opens at its end, a tail read from its newest line, and false opens it at its top
+    Func<char, int, bool>? Act = null)   //a taken control key acted on inside the show with the row's original index, true asks the rows again
+{
+    //the tab's own row under the list, or the panel's when the tab sets none
+    internal PanelUnder? UnderAt(int tab) => Tabs is { Count: > 0 } tabs && tab < tabs.Count ? tabs[tab].Under ?? Under : Under;
+}
 
-//one tab of a panel, its name on the title row and its own list
-public sealed record PanelTab(string Name, IReadOnlyList<SelectOption> Options);
+//one tab of a panel, its name on the title row and its own list. each field it leaves null falls back to the panel's own, and a tab with no option row draws its rows as text
+public sealed record PanelTab(string Name, IReadOnlyList<SelectOption> Options,
+    IReadOnlyList<FooterKey>? Keys = null,
+    Func<int, IReadOnlyList<FooterKey>>? KeysFor = null,
+    PanelUnder? Under = null,
+    Func<IReadOnlyList<SelectOption>>? OptionsNow = null,
+    IReadOnlyList<DetailRow>? Rows = null);
 
 //the one row under the list, a sentence or a setting, each a function of the option's original index
 public abstract record PanelUnder

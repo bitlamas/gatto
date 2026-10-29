@@ -287,6 +287,38 @@ public sealed class RunAgentToolTests : IDisposable
         Assert.NotNull(captured.Get("read_file"));        //read_file must come through here, or the null asserts would pass on a filter that drops everything
     }
 
+    //nothing of an extension reaches a child, on or off, so the day a child forwards the parent's hooks this turns red and the flag must be decided there
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public async Task A_CHILD_CARRIES_NO_EXTENSION_HOOK_OR_TOOL_WHATEVER_THE_FLAG(bool on)
+    {
+        var armed = new ArmedSources();
+        armed.Set("x", on);
+        var parentHooks = new HookBus(armed);
+        var seen = new List<string>();
+        parentHooks.On(HookEvent.ToolCall, p => { seen.Add(p.Call!.Name); return Task.CompletedTask; }, "x");
+        var parentTools = new ToolRegistry(armed);
+        parentTools.Register(new MutatingTool(), extension: true, origin: "x");
+        await using var server = new FakeOpenAiServer();
+        server.Enqueue(new FakeResponse(Frames: ToolCallRound("write_file")));
+        server.Enqueue(new FakeResponse(Frames: ToolCallRound("mutate")));
+        server.Enqueue(new FakeResponse(Frames: TextRound("done")));
+        var client = new OpenAiCompatClient(new HttpClient(), "local", new EndpointConfig(server.BaseUrl));
+        var gate = FreshGate(new RecordingPermPrompter());
+        gate.AllowReadClass("mutate");   //a grant left over from the parent lets nothing run in a child
+        ToolRegistry? captured = null;
+        var tool = Build(client, gate, roles: [Role(tools: ["read_file", "write_file", "mutate"])], capture: r => captured = r);
+
+        await tool.ExecuteAsync(Args("helper", "go"), new TestToolContext(_dir), default);
+
+        Assert.Empty(seen);
+        Assert.DoesNotContain("mutate", captured!.Specs().Select(s => s.Name));
+        var answered = server.RequestBodies[2].GetProperty("messages").EnumerateArray()
+            .Last(m => m.GetProperty("role").GetString() == "tool").GetProperty("content").GetString();
+        Assert.Equal("unknown tool: mutate", answered);
+    }
+
     //a child answers with its final text, so an end arriving later would reach no model that knew the task. its shell runs the flag in the foreground
     [Fact]
     [System.Runtime.Versioning.SupportedOSPlatform("windows")]

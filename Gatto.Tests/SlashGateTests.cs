@@ -175,7 +175,7 @@ public class PlainGateWalkTests : System.IDisposable
     {
         var (text, client) = await Feed("/help");
 
-        Assert.Contains("show this table", text, System.StringComparison.Ordinal);
+        Assert.Contains("this screen", text, System.StringComparison.Ordinal);
         Assert.Empty(client.Requests);
     }
 
@@ -233,7 +233,7 @@ public class PlainGateWalkTests : System.IDisposable
 
         var user = h.Convo.Messages.Last(m => m.Role == "user");
         Assert.Equal("/help", user.Content);              //one slash off and sent as text
-        Assert.False(h.Saw("show this table"));           //the help table never ran
+        Assert.False(h.Saw("this screen"));               //the help panel never opened
         Assert.True(h.Saw("purred for"),
             "the turn ran with no purr: the bracket classified the stripped text");
     }
@@ -254,7 +254,7 @@ public class PlainGateWalkTests : System.IDisposable
     {
         var (text, client) = await Feed("//help");
 
-        Assert.DoesNotContain("show this table", text, System.StringComparison.Ordinal);
+        Assert.DoesNotContain("this screen", text, System.StringComparison.Ordinal);
         var sent = Assert.Single(client.Requests);
         Assert.Contains(sent.Messages, m => m.Role == "user" && m.Content == "/help");
     }

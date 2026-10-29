@@ -443,20 +443,6 @@ public class ReplLinearLoopTests
     }
 
     [Fact]
-    public void HelpBlock_CommitsAsPlainGutterRows_NotASharpLine()
-    {
-        var (surface, _, _, renderer, _) = Wire();
-
-        renderer.CommitPlain(SlashCommands.RenderRich(T, Gatto.Repl.Commands.SlashCommands.All));
-
-        var visible = Visible(surface.Text);
-        Assert.Contains("/quit", visible, StringComparison.Ordinal);
-        Assert.DoesNotContain("♯", visible, StringComparison.Ordinal);   //the help block is content, so it gets no sharp row marker
-        foreach (var row in visible.Split('\n').Where(r => r.Contains("/quit", StringComparison.Ordinal)))
-            Assert.StartsWith("  ", row, StringComparison.Ordinal);      //content rows hang two spaces into the gutter
-    }
-
-    [Fact]
     public void CommitUser_StripsControlBytesFromTheSubmittedLine()
     {
         var (surface, _, _, renderer, _) = Wire();

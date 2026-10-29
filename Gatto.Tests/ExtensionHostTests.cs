@@ -327,6 +327,75 @@ public sealed class ExtensionHostTests : IClassFixture<RoslynWarmupFixture>, IDi
         Assert.Contains(diags, d => d.Contains("die mid-script") && d.Contains(failurePath));
     }
 
+    //an off source is neither compiled nor run, so nothing it would register arms itself
+    [Fact]
+    public void AN_OFF_SOURCE_IS_NOT_COMPILED_OR_LOADED_AND_THE_LEDGER_SAYS_OFF()
+    {
+        WriteFile("cards.csx", """Gatto.Command("/card", "", "a card", (arg, ct) => Task.FromResult("c"));""");
+        WriteFile("fine.csx", """Gatto.Register("fine_tool", "f", "{\"type\":\"object\"}", (a,c,t) => System.Threading.Tasks.Task.FromResult(new Gatto.Core.Tools.ToolResult("ok")));""");
+        var ledger = new ExtensionLedger();
+        var start = ExtensionHost.CompileCount;
+
+        var loaded = ExtensionHost.LoadAll(_dir, NewApi(), _ => { }, new HashSet<string> { "cards" }, ledger);
+
+        Assert.Equal(["fine"], loaded.Select(l => l.Name));
+        Assert.Equal(start + 1, ExtensionHost.CompileCount);
+        Assert.Equal(["cards", "fine"], ledger.Names);
+        Assert.True(ledger.IsOff("cards"));
+        Assert.Null(ledger.ErrorOf("cards"));
+    }
+
+    [Fact]
+    public void A_COMPILE_ERROR_AND_A_THROW_LAND_IN_THE_LEDGER_AS_THEIR_FIRST_LINE()
+    {
+        WriteFile("broken.csx", "this does not compile");
+        WriteFile("throws.csx", """throw new System.Exception("no key\nsecond line");""");
+        var ledger = new ExtensionLedger();
+
+        ExtensionHost.LoadAll(_dir, NewApi(), _ => { }, null, ledger);
+
+        Assert.StartsWith("line 1: ", ledger.ErrorOf("broken"));
+        Assert.Equal("no key", ledger.ErrorOf("throws"));
+        Assert.False(ledger.IsOff("broken"));
+    }
+
+    [Fact]
+    public void A_CLASH_AT_SURVIVORS_AND_AT_COMMIT_LANDS_IN_THE_LEDGER()
+    {
+        WriteFile("clash.csx", """Gatto.Register("shell", "clash", "{\"type\":\"object\"}", (a,c,t) => System.Threading.Tasks.Task.FromResult(new Gatto.Core.Tools.ToolResult("ok")));""");
+        WriteFile("late.csx", """Gatto.Register("late_tool", "l", "{\"type\":\"object\"}", (a,c,t) => System.Threading.Tasks.Task.FromResult(new Gatto.Core.Tools.ToolResult("ok")));""");
+        var ledger = new ExtensionLedger();
+        var loaded = ExtensionHost.LoadAll(_dir, NewApi(), _ => { }, null, ledger);
+
+        var kept = ExtensionHost.Survivors(loaded, ["shell"], [], _ => { }, ledger);
+        var tools = new ToolRegistry();
+        tools.Register(new StubTool("late_tool"));   //a name taken after the early pass, so only the commit sees it
+        ExtensionHost.Commit(kept, tools, new HookBus(), new CommandRegistry(), [], _ => { }, ledger);
+
+        Assert.Equal("tool 'shell' collides with an already-registered tool", ledger.ErrorOf("clash"));
+        Assert.Equal("tool 'late_tool' collides with an already-registered tool", ledger.ErrorOf("late"));
+    }
+
+    //each tool and command carries its source, the one fact the off flag reads
+    [Fact]
+    public void COMMIT_TAGS_EACH_TOOL_AND_COMMAND_WITH_ITS_SOURCE()
+    {
+        WriteFile("cards.csx", """
+            Gatto.Register("card_tool", "c", "{\"type\":\"object\"}", (a,c,t) => System.Threading.Tasks.Task.FromResult(new Gatto.Core.Tools.ToolResult("ok")));
+            Gatto.Command("/card", "", "a card", (arg, ct) => Task.FromResult("c"));
+            """);
+        var armed = new ArmedSources();
+        var tools = new ToolRegistry(armed);
+        var commands = new CommandRegistry(armed);
+        ExtensionHost.Commit(ExtensionHost.LoadAll(_dir, NewApi(), _ => { }), tools, new HookBus(armed), commands, [], _ => { });
+
+        armed.Set("cards", on: false);
+
+        Assert.Null(tools.Get("card_tool"));
+        Assert.False(commands.TryGet("/card", out _));
+        Assert.Equal("cards", Assert.Single(commands.RowsAll).Origin);
+    }
+
     [Fact]
     public void NameCollisionWithBuiltin_SkipsThatExtension_OthersCommit()
     {

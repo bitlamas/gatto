@@ -59,4 +59,28 @@ public sealed class ToolCallRunTests : IDisposable
         Assert.Same(tasks, probe.Seen!.Tasks);
         Assert.Equal(context.SessionFiles, probe.Seen.SessionFiles);
     }
+
+    //a call to a tool of a source turned off answers before the gate, so nobody is asked to allow a tool that cannot run
+    [Fact]
+    public async Task A_CALL_TO_AN_OFF_TOOL_ANSWERS_UNKNOWN_AND_THE_GATE_IS_NEVER_ASKED()
+    {
+        var armed = new ArmedSources(["web_search"]);
+        var reg = new ToolRegistry(armed);
+        reg.Register(new StubTool("web_search"), extension: true, origin: "web_search");
+        var asked = new List<string>();
+        var hooks = new HookBus(armed);
+        hooks.On(HookEvent.ToolCall, p => { asked.Add(p.Call!.Name); return Task.CompletedTask; });
+        var client = new FakeChatClient();
+        client.EnqueueTurn(new StreamEvent.ToolCallReady(new ToolCall("c1", "web_search", "{}")), new StreamEvent.Finished("tool_calls", null));
+        client.EnqueueTurn(new StreamEvent.Finished("stop", null));
+        var observer = new RecordingObserver();
+        var loop = new AgentLoop(client, reg, hooks, new TestToolContext(_dir), "m");
+
+        await loop.RunTurnAsync(new Conversation(null), "go", observer, default);
+
+        Assert.Empty(asked);
+        var (_, result) = Assert.Single(observer.Results);
+        Assert.True(result.IsError);
+        Assert.Equal("unknown tool: web_search", result.Text);
+    }
 }

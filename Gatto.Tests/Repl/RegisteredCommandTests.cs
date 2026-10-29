@@ -47,15 +47,26 @@ public class RegisteredCommandTests
         Assert.Contains("safe[31mred", h.Written(), StringComparison.Ordinal);
     }
 
+    //the panel reads keys without sampling, so the test samples before each key and once the last has left
     [Fact]
     public async Task HELP_LISTS_THE_REGISTERED_ROW_AFTER_THE_BUILT_INS()
     {
         var h = new RichReplHarness(Path.GetTempPath(), commands: Undo(_ => ""));
-        h.Keys.Line("/help").Line("/quit");
-        await h.RunAsync();
-        var text = h.Written();
-        Assert.Contains("/undo [n|path]", text, StringComparison.Ordinal);
-        Assert.True(text.IndexOf("/quit", StringComparison.Ordinal) < text.IndexOf("/undo [n|path]", StringComparison.Ordinal));
+        var run = h.RunAsync(60_000);
+        h.Keys.Line("/help");
+        Assert.True(await h.UntilAsync(() => h.ScreenText().Contains("Enter compose"), Waits.Bound), h.ScreenText());
+        _ = h.Keys.KeyAvailable;
+        h.Keys.Key(new ConsoleKeyInfo('\0', ConsoleKey.End, false, false, false));
+        Assert.True(await h.UntilAsync(() => h.ScreenText().Contains("❯ /undo [n|path]") && h.ScreenText().Contains("undo.csx"), Waits.Bound),
+            $"the last row was not the registered one:\n{h.ScreenText()}");
+        Assert.Contains("/quit", h.ScreenText(), StringComparison.Ordinal);
+        _ = h.Keys.KeyAvailable;
+        h.Keys.Key(new ConsoleKeyInfo('\u001b', ConsoleKey.Escape, false, false, false));
+        await h.UntilAsync(() => h.Keys.Pending == 0, Waits.Bound);
+        await Task.Delay(100);
+        _ = h.Keys.KeyAvailable;
+        h.Keys.Line("/quit");
+        await run;
     }
 
     [Fact]

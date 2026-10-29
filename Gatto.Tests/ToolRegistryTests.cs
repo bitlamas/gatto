@@ -125,4 +125,38 @@ public class ToolRegistryTests
         Assert.Contains("read_file", names);
         Assert.DoesNotContain("task_restate", names);
     }
+
+    [Fact]
+    public void An_off_source_s_tool_leaves_Specs_and_Get_and_comes_back_on()
+    {
+        var armed = new ArmedSources();
+        var reg = new ToolRegistry(armed);
+        reg.Register(new StubTool("read_file"));
+        reg.Register(new StubTool("web_search"), extension: true, origin: "web_search");
+
+        armed.Set("web_search", on: false);
+        Assert.DoesNotContain("web_search", reg.Specs().Select(s => s.Name));
+        Assert.Null(reg.Get("web_search"));
+        Assert.NotNull(reg.Get("read_file"));
+
+        armed.Set("web_search", on: true);
+        Assert.Contains("web_search", reg.Specs().Select(s => s.Name));
+        Assert.NotNull(reg.Get("web_search"));
+    }
+
+    //a role resolve replaces the hidden set whole, which must not bring back what the flag holds off
+    [Fact]
+    public void A_role_s_hide_leaves_an_off_tool_off()
+    {
+        var armed = new ArmedSources(["web_search"]);
+        var reg = new ToolRegistry(armed);
+        reg.Register(new StubTool("shell"));
+        reg.Register(new StubTool("web_search"), extension: true, origin: "web_search");
+
+        reg.Hide(["shell"]);
+        reg.Hide([]);
+
+        Assert.Null(reg.Get("web_search"));
+        Assert.Equal(["shell"], reg.Specs().Select(s => s.Name));
+    }
 }

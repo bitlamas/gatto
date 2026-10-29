@@ -69,6 +69,7 @@ public class ConfigSchemaBreadcrumbTests
     [InlineData("UpsertEndpoint")]
     [InlineData("SetConsentKey")]
     [InlineData("SetWeightsRoot")]
+    [InlineData("SetExtensionsOff")]
     public void EVERY_WRITER_LEAVES_THE_BREADCRUMB_FIRST(string writer)
     {
         var home = NewHome();
@@ -82,6 +83,7 @@ public class ConfigSchemaBreadcrumbTests
             case "SetConsentKey": GattoConfigWriter.SetConsentKey(home, "update_check", true); break;
             //the census test pins this row, a new mutator forces a new row here
             case "SetWeightsRoot": GattoConfigWriter.SetWeightsRoot(home, @"D:\weights"); break;
+            case "SetExtensionsOff": GattoConfigWriter.SetExtensionsOff(home, ["cards"]); break;
             default: throw new InvalidOperationException($"no writer named '{writer}'");
         }
 
@@ -104,7 +106,7 @@ public class ConfigSchemaBreadcrumbTests
             new[]
             {
                 "SetConsentKey", "SetDefaultEndpoint", "SetEndpointDefaultModel", "SetEndpointEffort",
-                "SetLlamaServer", "SetWeightsRoot", "UpsertEndpoint",
+                "SetExtensionsOff", "SetLlamaServer", "SetWeightsRoot", "UpsertEndpoint",
             },
             mutators);
     }

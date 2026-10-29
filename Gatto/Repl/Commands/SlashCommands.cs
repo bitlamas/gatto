@@ -39,7 +39,7 @@ public static class SlashCommands
 
     public static readonly IReadOnlyList<Cmd> All =
     [
-        new("/help", "", "show this table", BypassesQueue: true),
+        new("/help", "", "this screen", BypassesQueue: true),
         new("/new", "", "reset the conversation"),
         new("/role", "[name]", "show or switch role"),
         new("/name", "[text]", "name this session, on the composer and the tab"),
@@ -68,7 +68,7 @@ public static class SlashCommands
         new("/quit", "", "exit"),
     ];
 
-    private static string Left(Cmd c) => (c.Name + " " + c.Args).TrimEnd();
+    internal static string Left(Cmd c) => (c.Name + " " + c.Args).TrimEnd();
 
     //the widest name-and-args column plus two spaces, shared with the shortcuts table so /help prints as one grid
     internal static int ColumnWidth(IReadOnlyList<Cmd> rows) => rows.Max(c => UnicodeWidth.Of(Left(c))) + 2;
@@ -83,21 +83,6 @@ public static class SlashCommands
             var left = Left(rows[i]);
             sb.Append(left).Append(' ', col - UnicodeWidth.Of(left)).Append(rows[i].Summary);
             if (rows[i].Source is { } src) sb.Append("  ").Append(src);
-            if (i < rows.Count - 1) sb.Append('\n');
-        }
-        return sb.ToString();
-    }
-
-    //the name and args take the accent, the file goes dim, and the padding is measured against the unpainted text so the columns match the plain table
-    public static string RenderRich(Theme theme, IReadOnlyList<Cmd> rows)
-    {
-        var col = ColumnWidth(rows);
-        var sb = new StringBuilder();
-        for (var i = 0; i < rows.Count; i++)
-        {
-            var left = Left(rows[i]);
-            sb.Append(theme.Paint(left, Theme.Accent)).Append(' ', col - UnicodeWidth.Of(left)).Append(rows[i].Summary);
-            if (rows[i].Source is { } src) sb.Append("  ").Append(theme.Paint(src, Theme.Dim));
             if (i < rows.Count - 1) sb.Append('\n');
         }
         return sb.ToString();

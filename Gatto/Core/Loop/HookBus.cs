@@ -9,50 +9,56 @@ public sealed record SummaryInfo(string Text, DateTimeOffset At, string Model, s
 
 public enum HookEvent { ToolCall, ToolResult, MessageEnd, SessionSummary }
 
-public sealed class HookBus
+//null arms every owner, so a bus built without the flag runs every handler as it always did
+public sealed class HookBus(ArmedSources? armed = null)
 {
-    private readonly List<Func<HookPayload, Task>> _toolCall = new();
-    //the fail-open events keep each handler's owner, which the hook span names
-    private readonly List<(string Owner, Func<HookPayload, Task> Handler)> _messageEnd = new();
-    private readonly List<(string Owner, Func<HookPayload, Task> Handler)> _sessionSummary = new();
+    //every list keeps each handler's owner, which the hook span names and the off flag reads. null is gatto's own, which no flag turns off
+    private readonly List<(string? Owner, Func<HookPayload, Task> Handler)> _toolCall = new();
+    private readonly List<(string? Owner, Func<HookPayload, Task> Handler)> _messageEnd = new();
+    private readonly List<(string? Owner, Func<HookPayload, Task> Handler)> _sessionSummary = new();
     //a tool_result handler returns a replacement, null leaves the result as it is
-    private readonly List<Func<HookPayload, Task<ToolResult?>>> _toolResult = new();
+    private readonly List<(string? Owner, Func<HookPayload, Task<ToolResult?>> Handler)> _toolResult = new();
     public event Action<HookEvent, Exception>? OnHandlerError;
 
     //set once at launch, the hook spans of message_end and session_summary go here
     public Trace Trace { get; set; } = Trace.Off;
 
     //true when a session_summary listener exists, a caller checks this before doing any summarization work
-    public bool HasSessionSummaryListeners => _sessionSummary.Count > 0;
+    public bool HasSessionSummaryListeners => Live(_sessionSummary).Length > 0;
 
+    //the handlers that will run, so a span's count says what ran
     public int HandlerCount(HookEvent evt) => evt switch
     {
-        HookEvent.ToolCall => _toolCall.Count,
-        HookEvent.ToolResult => _toolResult.Count,
-        HookEvent.MessageEnd => _messageEnd.Count,
-        _ => _sessionSummary.Count,
+        HookEvent.ToolCall => Live(_toolCall).Length,
+        HookEvent.ToolResult => Live(_toolResult).Length,
+        HookEvent.MessageEnd => Live(_messageEnd).Length,
+        _ => Live(_sessionSummary).Length,
     };
 
     //observe only, a tool_result handler here can't change the result, and owner names the extension
-    public void On(HookEvent evt, Func<HookPayload, Task> handler, string owner = "gatto")
+    public void On(HookEvent evt, Func<HookPayload, Task> handler, string? owner = null)
     {
         switch (evt)
         {
-            case HookEvent.ToolCall: _toolCall.Add(handler); break;
+            case HookEvent.ToolCall: _toolCall.Add((owner, handler)); break;
             case HookEvent.MessageEnd: _messageEnd.Add((owner, handler)); break;
             case HookEvent.SessionSummary: _sessionSummary.Add((owner, handler)); break;
             //run the observe-only handler and hand back no replacement
-            case HookEvent.ToolResult: _toolResult.Add(async p => { await handler(p); return null; }); break;
+            case HookEvent.ToolResult: _toolResult.Add((owner, async p => { await handler(p); return null; })); break;
         }
     }
 
     //return the replacement for the result the model reads, or null to leave it, handlers chain in registration order
-    public void OnToolResult(Func<HookPayload, Task<ToolResult?>> handler) => _toolResult.Add(handler);
+    public void OnToolResult(Func<HookPayload, Task<ToolResult?>> handler, string? owner = null) => _toolResult.Add((owner, handler));
+
+    //a snapshot of the handlers whose owner is on, taken at each emit so an off source stops at the next one
+    private (string? Owner, T Handler)[] Live<T>(List<(string? Owner, T Handler)> handlers) =>
+        [.. handlers.ToArray().Where(h => armed is null || armed.IsOn(h.Owner))];
 
     //fail closed, a throw here reaches the loop and blocks the tool call
     public async Task EmitToolCallAsync(HookPayload p)
     {
-        foreach (var h in _toolCall.ToArray()) await h(p);
+        foreach (var (_, h) in Live(_toolCall)) await h(p);
     }
 
     //fail open, a throwing handler contributes nothing and OnHandlerError fires, and the rewritten result comes back
@@ -61,7 +67,7 @@ public sealed class HookBus
         //throw on a null result here, no caller should ever do that and a null-forgiving ! would only hide it
         ArgumentNullException.ThrowIfNull(p.Result);
         var result = p.Result;
-        foreach (var h in _toolResult.ToArray())
+        foreach (var (_, h) in Live(_toolResult))
         {
             try
             {
@@ -82,13 +88,13 @@ public sealed class HookBus
     //fail open, a buggy summarizer contributes nothing and the session continues
     public Task EmitSessionSummaryAsync(HookPayload p, long traceParent = 0) => EmitOpenAsync(_sessionSummary, HookEvent.SessionSummary, p, traceParent);
 
-    private async Task EmitOpenAsync(List<(string Owner, Func<HookPayload, Task> Handler)> handlers, HookEvent evt, HookPayload p, long traceParent)
+    private async Task EmitOpenAsync(List<(string? Owner, Func<HookPayload, Task> Handler)> handlers, HookEvent evt, HookPayload p, long traceParent)
     {
-        foreach (var (owner, h) in handlers.ToArray())
+        foreach (var (owner, h) in Live(handlers))
         {
             using var span = Trace.Open(Trace.Hook, traceParent);
             span.Set("event", evt == HookEvent.MessageEnd ? "message_end" : "session_summary");
-            span.Set("extension", owner);
+            span.Set("extension", owner ?? "gatto");
             try { await h(p); span.Set("threw", 0); }
             catch (Exception ex)
             {

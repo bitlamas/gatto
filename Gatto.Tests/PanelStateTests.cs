@@ -601,4 +601,289 @@ public class PanelStateTests
         Assert.Equal(0, s.DetailOffset);
         Assert.Equal("  command 0", TermText.StripAnsiForWidth(PaintTasks(s).Rows[3]));
     }
+
+    //three tabs the shape of help: a list that names Enter, a text with no cursor, and a toggling list that names Space
+    private sealed class Tabbed
+    {
+        public List<SelectOption> Commands = [.. Enumerable.Range(0, 12).Select(i => new SelectOption($"/cmd{i:00}", Description: "a gloss", Key: $"/cmd{i:00}"))];
+        public List<SelectOption> Extensions = [.. new[] { "ask_user", "cards", "undo", "web_search" }.Select(n => new SelectOption(n, Key: n))];
+        public bool SpaceNamed = true;
+        public List<(char, int)> Acts = [];
+        public PanelFields Fields;
+
+        public Tabbed(int shortcutRows = 8, Func<char, int, bool>? act = null)
+        {
+            var esc = new FooterKey("Esc", "close");
+            Fields = new PanelFields("help", [new("Enter", "compose"), esc], Tabs:
+            [
+                //each read is a copy as a live source hands one, so a change shows as a new count
+                new PanelTab("commands", [.. Commands], OptionsNow: () => [.. Commands]),
+                new PanelTab("shortcuts", [], Keys: [esc], Rows: [.. Enumerable.Range(1, shortcutRows).Select(n => new DetailRow($"row {n}"))]),
+                new PanelTab("extensions", [.. Extensions], Keys: [esc],
+                    KeysFor: _ => SpaceNamed ? [new("Space", "on or off"), esc] : [esc],
+                    Under: new PanelUnder.Sentence(i => $"sentence {i}"),
+                    OptionsNow: () => [.. Extensions], Rows: [new DetailRow("no extensions in the home", Dim: true)]),
+            ], Act: act ?? ((c, i) => { Acts.Add((c, i)); return true; }));
+        }
+
+        public PanelState State() => new(Fields, Fields.Tabs![0].Options, numbered: false, 0, [' ']);
+
+        public PanelFrame Paint(PanelState s, int w = 80, int room = 10)
+        {
+            var view = s.View();
+            var frame = PanelComposer.Compose(Fields, s.OptionsOf(view.Tab), false, view, w, room, T, GlyphSet.Unicode);
+            s.Record(frame.Layout, view.Tab);
+            return frame;
+        }
+    }
+
+    private static readonly ConsoleKeyInfo Right = new('\0', ConsoleKey.RightArrow, false, false, false);
+    private static readonly ConsoleKeyInfo Left = new('\0', ConsoleKey.LeftArrow, false, false, false);
+    private static readonly ConsoleKeyInfo SpaceKey = new(' ', ConsoleKey.Spacebar, false, false, false);
+
+    private static string KeyRow(PanelFrame f) => TermText.StripAnsiForWidth(f.Rows[^1]).Trim();
+
+    [Fact]
+    public void The_key_row_follows_the_tab()
+    {
+        var t = new Tabbed();
+        var s = t.State();
+        Assert.Equal("↑↓ move   Enter compose   ←→ tabs   Esc close", KeyRow(t.Paint(s)));
+        s.Key(Right);
+        Assert.Equal("←→ tabs   Esc close", KeyRow(t.Paint(s)));
+        s.Key(Right);
+        Assert.Equal("↑↓ move   Space on or off   ←→ tabs   Esc close", KeyRow(t.Paint(s)));
+    }
+
+    [Fact]
+    public void Space_named_on_one_tab_is_not_taken_on_another_and_acts_with_the_row_s_index_where_named()
+    {
+        var t = new Tabbed();
+        var s = t.State();
+        t.Paint(s);
+        Assert.Equal(PanelStep.None, s.Key(SpaceKey));
+        s.Key(Right);
+        t.Paint(s);
+        Assert.Equal(PanelStep.None, s.Key(SpaceKey));
+        s.Key(Right);
+        t.Paint(s);
+        s.Key(K(ConsoleKey.DownArrow));
+        t.Paint(s);
+
+        var step = s.Key(SpaceKey);
+
+        Assert.Equal(PanelStep.Changed, step);
+        Assert.Null(step.Outcome);
+        Assert.Equal([(' ', 1)], t.Acts);
+    }
+
+    [Fact]
+    public void An_act_that_says_true_asks_the_tab_s_rows_again_and_the_cursor_stays()
+    {
+        var t = new Tabbed();
+        t.Fields = t.Fields with
+        {
+            Act = (_, i) => { t.Extensions[i] = t.Extensions[i] with { Description = "off" }; return true; },
+        };
+        var s = t.State();
+        s.Key(Right);
+        s.Key(Right);
+        s.Key(K(ConsoleKey.DownArrow));
+        t.Paint(s);
+
+        s.Key(SpaceKey);
+        t.Paint(s);
+
+        Assert.Equal("off", s.OptionsOf(2)[1].Description);
+        Assert.Equal(1, s.CursorIndex);
+    }
+
+    [Fact]
+    public void A_cursorless_tab_scrolls_with_the_moves_and_the_wheel_takes_the_arrows_and_Esc_and_spends_the_rest()
+    {
+        var t = new Tabbed(shortcutRows: 20);
+        var s = t.State();
+        s.Key(Right);
+        var f = t.Paint(s);
+        Assert.Equal(0, f.Layout.Offset);
+
+        Assert.Equal(PanelStep.Changed, s.Key(K(ConsoleKey.DownArrow)));
+        Assert.Equal(1, t.Paint(s).Layout.Offset);
+        s.Mouse(new MouseEvent(4, 0, MouseKind.Wheel, MouseButton.None, -3, 0), f.Layout.BodyStart, 80, () => { });
+        s.Key(PanelState.Wake);
+        Assert.Equal(4, t.Paint(s).Layout.Offset);
+
+        Assert.Equal(PanelStep.None, s.Key(C('a')));
+        Assert.Equal(PanelStep.None, s.Key(EnterKey));
+        Assert.Equal(PanelStep.None, s.Key(SpaceKey));
+        Assert.IsType<SelectOutcome.Cancelled>(s.Key(EscKey).Outcome);
+        Assert.Equal(PanelStep.Changed, s.Key(Right));
+        Assert.Equal(2, s.View().Tab);
+    }
+
+    //the tab's rows are the chrome's text, so a press there starts the copy drag
+    [Fact]
+    public void A_press_on_a_cursorless_tab_s_text_is_declined_and_a_move_there_only_takes_the_band_off()
+    {
+        var t = new Tabbed();
+        var s = t.State();
+        s.Key(Right);
+        var f = t.Paint(s);
+        var body = f.Layout.BodyStart + 1;
+
+        Assert.False(s.Mouse(new MouseEvent(6, 0, MouseKind.Press, MouseButton.Left, 0, 0), body, 80, () => { }));
+        var (row, col) = KeyCell(f, "Esc");
+        s.Mouse(new MouseEvent(col, 0, MouseKind.Move, MouseButton.None, 0, 0), row, 80, () => { });
+        s.Key(PanelState.Wake);
+        Assert.Equal("Esc", s.View().HoverKey);
+        Assert.True(s.Mouse(new MouseEvent(6, 0, MouseKind.Move, MouseButton.None, 0, 0), body, 80, () => { }));
+        s.Key(PanelState.Wake);
+        Assert.Null(s.View().HoverKey);
+    }
+
+    [Fact]
+    public void A_tab_with_options_keeps_its_cursor_and_draws_its_rows_once_it_has_none()
+    {
+        var t = new Tabbed();
+        var s = t.State();
+        s.Key(Right);
+        s.Key(Right);
+        Assert.Contains(t.Paint(s).Rows.Select(TermText.StripAnsiForWidth), r => r.StartsWith("❯ ask_user", StringComparison.Ordinal));
+
+        s.Key(Left);
+        t.Paint(s);
+        t.Extensions.Clear();
+        s.Key(Right);
+        var rows = t.Paint(s).Rows.Select(TermText.StripAnsiForWidth).ToList();
+
+        Assert.False(s.Stale);
+        Assert.Contains("  no extensions in the home", rows);
+        Assert.Equal("←→ tabs   Esc close", rows[^1].Trim());
+    }
+
+    [Fact]
+    public void Enter_on_a_tab_whose_keys_do_not_name_it_is_spent_and_a_press_on_its_cursor_row_too()
+    {
+        var t = new Tabbed();
+        var s = t.State();
+        s.Key(Right);
+        s.Key(Right);
+        var f = t.Paint(s);
+
+        Assert.Equal(PanelStep.None, s.Key(EnterKey));
+        var hit = f.Layout.Hits.First(h => h.Hit is PanelHit.Option { Index: 0 });
+        s.Mouse(new MouseEvent(hit.From, 0, MouseKind.Press, MouseButton.Left, 0, 0), hit.Row, 80, () => { });
+        Assert.Equal(PanelStep.None, s.Key(PanelState.Wake));
+    }
+
+    [Fact]
+    public void A_switch_away_and_back_keeps_the_cursorless_tab_s_offset_and_it_opens_at_its_first_row()
+    {
+        var t = new Tabbed(shortcutRows: 20);
+        var s = t.State();
+        s.Key(Right);
+        var first = t.Paint(s, w: 120, room: 12);
+        Assert.Equal(0, first.Layout.Offset);
+        Assert.Equal("  row 1", TermText.StripAnsiForWidth(first.Rows[first.Layout.BodyStart]));
+
+        s.Key(K(ConsoleKey.DownArrow));
+        t.Paint(s, w: 120, room: 12);
+        s.Key(K(ConsoleKey.DownArrow));
+        t.Paint(s, w: 120, room: 12);
+        s.Key(Right);
+        t.Paint(s, w: 120, room: 12);
+        s.Key(Left);
+
+        Assert.Equal(2, t.Paint(s, w: 120, room: 12).Layout.Offset);
+    }
+
+    //the arrows cannot switch from the box, so a press on a tab leaves it the same way, the filter kept
+    [Fact]
+    public void A_tab_press_from_the_box_leaves_the_box_and_the_next_arrow_switches()
+    {
+        var t = new Tabbed();
+        var s = t.State();
+        var f = t.Paint(s);
+        s.Key(C('?'));
+        Type(s, "1");
+        f = t.Paint(s);
+        var tab = f.Layout.Hits.First(h => h.Hit is PanelHit.Tab { Index: 1 });
+
+        s.Mouse(new MouseEvent(tab.From, 0, MouseKind.Press, MouseButton.Left, 0, 0), tab.Row, 80, () => { });
+        s.Key(PanelState.Wake);
+        Assert.False(s.View().InBox);
+        Assert.Equal(1, s.View().Tab);
+
+        Assert.Equal(PanelStep.Changed, s.Key(Right));
+        s.Key(Left);
+        s.Key(Left);
+        Assert.Equal("1", s.View().Draft);
+    }
+
+    [Fact]
+    public void A_filter_showing_nothing_draws_the_tab_s_own_keys_with_no_row_act()
+    {
+        var t = new Tabbed();
+        t.Extensions.AddRange(Enumerable.Range(0, 10).Select(i => new SelectOption($"ext{i}", Key: $"ext{i}")));
+        var s = t.State();
+        s.Key(Right);
+        s.Key(Right);
+        t.Paint(s);
+        s.Key(C('?'));
+        Type(s, "zz");
+        s.Key(EscKey);
+        s.Key(EscKey);
+        Type(s, "?zz");
+        s.Key(EnterKey);
+
+        Assert.Equal("←→ tabs   Esc close", KeyRow(t.Paint(s)));
+    }
+
+    //the row the user saw and the row as it stands must both name the key, so a key row that lags a turn's edge never acts unnamed
+    [Fact]
+    public void Space_needs_the_published_row_and_the_live_row_to_name_it()
+    {
+        var t = new Tabbed();
+        var s = t.State();
+        s.Key(Right);
+        s.Key(Right);
+        t.Paint(s);
+
+        t.SpaceNamed = false;
+        Assert.Equal(PanelStep.None, s.Key(SpaceKey));
+        t.Paint(s);
+        t.SpaceNamed = true;
+        Assert.Equal(PanelStep.None, s.Key(SpaceKey));
+        Assert.Empty(t.Acts);
+
+        t.Paint(s);
+        Assert.Equal(PanelStep.Changed, s.Key(SpaceKey));
+        Assert.Single(t.Acts);
+    }
+
+    //a toggle on one tab changes another tab's count, which rebuilds that tab when it is next shown instead of ending the show
+    [Fact]
+    public void A_count_changed_on_an_inactive_tab_rebuilds_it_on_arrival_with_its_filter_and_cursor_kept()
+    {
+        var t = new Tabbed();
+        var s = t.State();
+        t.Paint(s);
+        s.Key(C('?'));
+        Type(s, "1");
+        s.Key(EnterKey);
+        s.Key(K(ConsoleKey.DownArrow));
+        t.Paint(s);
+        var before = s.OptionsOf(0)[s.CursorIndex].Key;
+        s.Key(Right);
+        t.Paint(s);
+        t.Commands.RemoveAt(1);   //an earlier row that matched the filter
+        s.Key(Left);
+
+        var view = s.View();
+        Assert.False(s.Stale);
+        Assert.Equal("1", view.Draft);
+        Assert.Equal(t.Commands.Count, s.OptionsOf(0).Count);
+        Assert.Equal(before, s.OptionsOf(0)[s.CursorIndex].Key);
+        Assert.All(view.Shown, i => Assert.Contains("1", s.OptionsOf(0)[i].Label));
+    }
 }

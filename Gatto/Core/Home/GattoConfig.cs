@@ -79,7 +79,9 @@ public sealed record GattoConfig(
     bool Wild = false,
     //sandbox mode for every launch from this home, and the folders beyond the project the confined shell may write
     bool Sandbox = false,
-    IReadOnlyList<string>? SandboxGrants = null)
+    IReadOnlyList<string>? SandboxGrants = null,
+    //the extension sources the user turned off, by source name, read once at launch
+    IReadOnlyList<string>? ExtensionsOff = null)
 {
     //never null: Load resolves the section or its default, and the nullable field keeps test instances terse
     public SearchConfig Search => SearchOrNull ?? SearchConfig.Default;
@@ -102,7 +104,7 @@ public sealed record GattoConfig(
 
     //the one statement of what gatto.json accepts, asserted against the schema in both directions, so a key added here needs a schema entry
     internal static readonly string[] TopKeys =
-        { "$schema", "endpoints", "default_endpoint", "default_model", "defaults", "llama_server", "context_files", "theme", "glyphs", "reasoning", "regions", "search", "weights_root", "think", "alt_screen", "dump_on_exit", "stop_server_on_exit", "mouse", "wheel_lines", "copy_on_select", "auto_compact", "deny_reason", "memory", "update_check", "extensions", "default_role", "wild", "sandbox", "sandbox_grants" };
+        { "$schema", "endpoints", "default_endpoint", "default_model", "defaults", "llama_server", "context_files", "theme", "glyphs", "reasoning", "regions", "search", "weights_root", "think", "alt_screen", "dump_on_exit", "stop_server_on_exit", "mouse", "wheel_lines", "copy_on_select", "auto_compact", "deny_reason", "memory", "update_check", "extensions", "extensions_off", "default_role", "wild", "sandbox", "sandbox_grants" };
     internal static readonly string[] ValidThemes = { "dark", "light", "auto" };
     //the same three-value shape as theme: auto asks the host, the two names answer for it
     internal static readonly string[] ValidGlyphs = { "auto", "unicode", "ascii" };
@@ -493,6 +495,20 @@ public sealed record GattoConfig(
             }
         }
 
+        //a list of source names, kept clear of the extensions object whose children each script reads as its own
+        var extensionsOff = new List<string>();
+        if (root.TryGetProperty("extensions_off", out var eo))
+        {
+            if (eo.ValueKind != JsonValueKind.Array)
+                throw new GattoConfigException("gatto.json has an \"extensions_off\" with the wrong type, it must be a list of extension names");
+            foreach (var name in eo.EnumerateArray())
+            {
+                if (name.ValueKind != JsonValueKind.String || name.GetString() is not { Length: > 0 } off)
+                    throw new GattoConfigException($"gatto.json has an \"extensions_off\" entry that is not an extension name: {name.GetRawText()}");
+                extensionsOff.Add(off);
+            }
+        }
+
         //mouse capture and the lines per wheel notch, with no cross-validation: mouse true and alt_screen false is a silent no-mouse
         var mouse = true;
         if (root.TryGetProperty("mouse", out var ms))
@@ -572,7 +588,7 @@ public sealed record GattoConfig(
             }
         }
 
-        return new GattoConfig(endpoints, defaultEp, defaults, llamaServer, contextCompat, contextHome, theme, glyphs, reasoning, search, weightsDir, think, altScreen, dumpOnExit, mouse, wheelLines, copyOnSelect, autoCompact, denyReason, memoryEnabled, memoryIndexBudget, updateCheck, stopServerOnExit, defaultRole, wildDefault, sandbox, sandboxGrants)
+        return new GattoConfig(endpoints, defaultEp, defaults, llamaServer, contextCompat, contextHome, theme, glyphs, reasoning, search, weightsDir, think, altScreen, dumpOnExit, mouse, wheelLines, copyOnSelect, autoCompact, denyReason, memoryEnabled, memoryIndexBudget, updateCheck, stopServerOnExit, defaultRole, wildDefault, sandbox, sandboxGrants, extensionsOff)
         { Raw = root };
     }
 

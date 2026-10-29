@@ -54,8 +54,9 @@ public static class ExtensionHost
         return (api, ledger, fetch);
     }
 
-    //load every extension in discovery order, report each failure and keep the ones that loaded
-    public static IReadOnlyList<LoadedExtension> LoadAll(string extensionsDir, GattoApi api, Action<string> diagnostic)
+    //load every extension in discovery order, report each failure and keep the ones that loaded. an off source is neither compiled nor run, a cached DLL included
+    public static IReadOnlyList<LoadedExtension> LoadAll(string extensionsDir, GattoApi api, Action<string> diagnostic,
+        IReadOnlySet<string>? off = null, ExtensionLedger? ledger = null)
     {
         var loaded = new List<LoadedExtension>();
         var sources = ExtensionDiscovery.Discover(extensionsDir, diagnostic);
@@ -66,9 +67,15 @@ public static class ExtensionHost
 
         foreach (var src in sources)
         {
+            ledger?.Seen(src.Name);
+            if (off?.Contains(src.Name) == true)
+            {
+                ledger?.Off(src.Name);
+                continue;
+            }
             try
             {
-                var runner = ResolveRunner(src, extRoot, cacheDir, diagnostic);
+                var runner = ResolveRunner(src, extRoot, cacheDir, diagnostic, ledger);
                 if (runner is null) continue;   //a null runner means a compile error, already reported
 
                 api.BeginExtension(src.Name);
@@ -79,6 +86,7 @@ public static class ExtensionHost
             {
                 //any failure while a script runs drops this one extension, and the next BeginExtension re-arms a clean stage
                 diagnostic($"{src.EntryPath}: extension '{src.Name}' failed to load: {Unwrap(ex).Message}");
+                ledger?.Failed(src.Name, Unwrap(ex).Message);
             }
         }
 
@@ -88,7 +96,7 @@ public static class ExtensionHost
     //decide which loaded extensions stay before any endpoint is resolved, so a launch never builds its client on an extension that is skipped later. a clash skips the whole extension
     public static IReadOnlyList<LoadedExtension> Survivors(
         IReadOnlyList<LoadedExtension> loaded, IEnumerable<string> reservedTools, IEnumerable<string> reservedEndpoints,
-        Action<string> diagnostic)
+        Action<string> diagnostic, ExtensionLedger? ledger = null)
     {
         var tools = new HashSet<string>(reservedTools, StringComparer.Ordinal);
         var endpoints = new HashSet<string>(reservedEndpoints, StringComparer.Ordinal) { "local" };
@@ -109,6 +117,7 @@ public static class ExtensionHost
             if (clash is not null)
             {
                 diagnostic($"extension '{ext.Name}': {clash}, extension skipped");
+                ledger?.Failed(ext.Name, clash);
                 continue;
             }
             foreach (var (tool, _) in staged.Tools) tools.Add(tool.Name);
@@ -147,7 +156,8 @@ public static class ExtensionHost
     public static (IReadOnlyList<(LoadedExtension Extension, string Name, bool ReadClass)> Tools,
                    IReadOnlyList<LoadedExtension> Extensions) Commit(
         IReadOnlyList<LoadedExtension> loaded, ToolRegistry tools, HookBus hooks,
-        Gatto.Core.Commands.CommandRegistry commands, IEnumerable<string> reservedCommands, Action<string> diagnostic)
+        Gatto.Core.Commands.CommandRegistry commands, IEnumerable<string> reservedCommands, Action<string> diagnostic,
+        ExtensionLedger? ledger = null)
     {
         var committed = new List<(LoadedExtension, string, bool)>();
         var committedExtensions = new List<LoadedExtension>();
@@ -174,6 +184,7 @@ public static class ExtensionHost
             if (clash is not null)
             {
                 diagnostic($"extension '{ext.Name}': {clash} — extension skipped");
+                ledger?.Failed(ext.Name, clash);
                 continue;
             }
 
@@ -182,7 +193,7 @@ public static class ExtensionHost
 
             foreach (var (tool, readClass) in staged.Tools)
             {
-                tools.Register(tool, extension: true);   //the name was checked for a duplicate already, and validated when it was staged
+                tools.Register(tool, extension: true, origin: ext.Name);   //the name was checked for a duplicate already, and validated when it was staged. the origin is what the off flag reads
                 committed.Add((ext, tool.Name, readClass));
             }
             foreach (var (evt, handler) in staged.Hooks)
@@ -194,7 +205,7 @@ public static class ExtensionHost
             {
                 if (reserved.Contains(name)) { diagnostic($"{file}: {name} is gatto's"); continue; }
                 if (commands.TryGet(name, out var taken)) { diagnostic($"{file}: {name} is taken by {taken.SourceFile}"); continue; }
-                commands.Add(new Gatto.Core.Commands.CommandRow(name, args, summary, handler, file));
+                commands.Add(new Gatto.Core.Commands.CommandRow(name, args, summary, handler, file, ext.Name));
             }
         }
         return (committed, committedExtensions);
@@ -214,7 +225,7 @@ public static class ExtensionHost
 
     //a cache hit runs the compiled DLL, a miss compiles and emits one, falling back to memory when the emit fails
     private static Func<ScriptGlobals, Task>? ResolveRunner(
-        ExtensionSource src, string extRoot, string cacheDir, Action<string> diagnostic)
+        ExtensionSource src, string extRoot, string cacheDir, Action<string> diagnostic, ExtensionLedger? ledger = null)
     {
         var hash12 = ExtensionDiscovery.ComputeHash(src, EffectiveHostApiVersion, RoslynVersion, HostBinaryVersion)[..12];
         var dllPath = Path.Combine(cacheDir, $"{src.Name}-{hash12}.dll");
@@ -230,6 +241,8 @@ public static class ExtensionHost
         if (errors.Count > 0)
         {
             foreach (var d in errors) diagnostic(FormatDiagnostic(src, d));
+            //the row's line has no path, the row already names the file
+            ledger?.Failed(src.Name, $"line {errors[0].Location.GetLineSpan().StartLinePosition.Line + 1}: {errors[0].GetMessage()}");
             return null;
         }
 

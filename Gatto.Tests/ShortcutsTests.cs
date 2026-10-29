@@ -1,4 +1,4 @@
-//the shortcuts table must keep its descriptions aligned, fit a narrow window and name only keys the keymap binds
+//the shortcuts tab must keep its glosses aligned, rank the wild toggle fourth and name only keys the keymap binds
 using System.Linq;
 using Gatto.Repl;
 using Gatto.Repl.Commands;
@@ -9,67 +9,36 @@ namespace Gatto.Tests;
 
 public class ShortcutsTests
 {
-    private static readonly Theme T = new(new TermCaps(true, true));
-
-    private static string[] Rows() =>
-        Shortcuts.RenderRich(T, glyphs: GlyphSet.Unicode, Gatto.Repl.Commands.SlashCommands.All).Split('\n').Select(TermText.StripAnsiForWidth).ToArray();
+    private static string[] Rows(GlyphSet? g = null) => [.. HelpPanel.Shortcuts(g ?? GlyphSet.Unicode).Select(r => r.Text)];
 
     //the column is counted in cells, since a char count would misalign rows with arrows
-    private static int DescriptionColumn(string row, IEnumerable<string> descriptions)
+    private static int GlossColumn(string row, IEnumerable<string> glosses)
     {
-        var d = descriptions.First(x => row.EndsWith(x, StringComparison.Ordinal));
+        var d = glosses.First(x => row.EndsWith(x, StringComparison.Ordinal));
         return UnicodeWidth.Of(row[..row.LastIndexOf(d, StringComparison.Ordinal)]);
     }
 
-    private static string[] CommandRows() =>
-        SlashCommands.RenderRich(T, Gatto.Repl.Commands.SlashCommands.All).Split('\n').Select(TermText.StripAnsiForWidth).ToArray();
+    private static IEnumerable<string> Glosses() =>
+        Shortcuts.AllOf(GlyphSet.Unicode).Select(s => s.What).Append(HelpPanel.WildGloss);
 
     [Fact]
-    public void The_descriptions_line_up_in_one_column()
+    public void The_glosses_line_up_in_one_column_in_both_glyph_sets()
     {
-        //the shared column is what makes it a table
-        var entries = Rows().Where(r => r.Trim().Length > 0 && r != "shortcuts").ToList();
-        Assert.Equal(Shortcuts.AllOf(Gatto.Terminal.GlyphSet.Unicode).Count, entries.Count);
-
-        var columns = entries.Select(r => DescriptionColumn(r, Shortcuts.AllOf(Gatto.Terminal.GlyphSet.Unicode).Select(s => s.What)))
-                             .Distinct().ToList();
-        Assert.Single(columns);
+        Assert.Single(Rows().Select(r => GlossColumn(r, Glosses())).Distinct());
+        Assert.Single(Rows(GlyphSet.Ascii).Select(r => GlossColumn(r, Shortcuts.AllOf(GlyphSet.Ascii).Select(s => s.What).Append(HelpPanel.WildGloss))).Distinct());
     }
 
+    //a toggle a user reaches for ranks above a key they discover, so the wild row sits after the focus move and before the scroll row
     [Fact]
-    public void It_shares_ONE_column_with_the_command_table_above_it()
-    {
-        //the two tables share one column, since two descriptions that do not line up read as a mistake
-        var shortcutColumn = Assert.Single(
-            Rows().Where(r => r.Trim().Length > 0 && r != "shortcuts")
-                  .Select(r => DescriptionColumn(r, Shortcuts.AllOf(Gatto.Terminal.GlyphSet.Unicode).Select(s => s.What)))
-                  .Distinct());
-        var commandColumn = Assert.Single(
-            CommandRows().Select(r => DescriptionColumn(r, SlashCommands.All.Select(c => c.Summary)))
-                         .Distinct());
-
-        Assert.Equal(commandColumn, shortcutColumn);
-    }
-
-    [Fact]
-    public void No_shortcut_row_makes_help_any_wider_than_the_commands_already_do()
-    {
-        //the shortcuts must not make /help any wider than the command table already does, measured with GutterWrap.Hang on both sides
-        var widestCommand = CommandRows().Max(r => UnicodeWidth.Of(Gatto.Repl.Render.GutterWrap.Hang + r));
-        Assert.All(Rows(), r =>
-        {
-            var onScreen = UnicodeWidth.Of(Gatto.Repl.Render.GutterWrap.Hang + r);
-            Assert.True(onScreen <= widestCommand,
-                $"{onScreen} cells on screen vs the command table's {widestCommand}: {r}");
-        });
-    }
-
-    [Fact]
-    public void It_is_labelled_shortcuts_and_the_label_is_not_indented_like_a_row()
+    public void The_tab_holds_the_four_keys_and_the_wild_toggle_fourth_keyed_on_its_constant()
     {
         var rows = Rows();
-        Assert.Contains("shortcuts", rows[0], StringComparison.Ordinal);
-        Assert.False(rows[0].StartsWith(" ", StringComparison.Ordinal));
+        Assert.Equal(5, rows.Length);
+        Assert.StartsWith(WildKeys.KeyName + " ", rows[3], StringComparison.Ordinal);
+        Assert.EndsWith(HelpPanel.WildGloss, rows[3], StringComparison.Ordinal);
+        Assert.StartsWith(FocusKeys.MoveKeyNameOf(GlyphSet.Unicode), rows[2], StringComparison.Ordinal);
+        Assert.StartsWith("PgUp", rows[4], StringComparison.Ordinal);
+        Assert.All(HelpPanel.Shortcuts(GlyphSet.Unicode), r => Assert.False(r.Wrap || r.Dim));
     }
 
     [Fact]

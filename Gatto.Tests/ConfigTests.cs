@@ -351,6 +351,23 @@ public class ConfigTests : IDisposable
     }
 
     [Fact]
+    public void EXTENSIONS_OFF_IS_READ_AS_SOURCE_NAMES_AND_ABSENT_IS_EMPTY()
+    {
+        Assert.Equal(["cards", "web_search"], LoadWith(",\"extensions_off\":[\"cards\",\"web_search\"]").ExtensionsOff);
+        Assert.Empty(LoadWith("").ExtensionsOff!);
+    }
+
+    [Theory]
+    [InlineData("\"extensions_off\":\"cards\"")]
+    [InlineData("\"extensions_off\":[7]")]
+    [InlineData("\"extensions_off\":[\"\"]")]
+    public void EXTENSIONS_OFF_OF_THE_WRONG_SHAPE_IS_REFUSED_BY_NAME(string fragment)
+    {
+        var ex = Assert.Throws<GattoConfigException>(() => LoadWith("," + fragment));
+        Assert.Contains("extensions_off", ex.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void Load_rejects_altScreen_of_the_wrong_type()
     {
         Directory.CreateDirectory(_home);

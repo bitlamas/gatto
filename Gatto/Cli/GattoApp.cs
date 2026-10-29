@@ -307,6 +307,9 @@ public static class GattoApp
         private Action<string> extDiag = null!;
         private Gatto.Core.Web.CitationLedger ledger = null!;
         private IReadOnlyList<LoadedExtension> loadedExtensions = [];
+        private IReadOnlyList<LoadedExtension> committedExtensions = [];
+        //every source discovery found, in its order, and what became of each, read by the help panel's extensions tab
+        private readonly ExtensionLedger extLedger = new();
         private Dictionary<string, EndpointConfig> endpoints = null!;
         private Dictionary<string, string> endpointOwner = null!;
         private LaunchState state = null!;
@@ -465,8 +468,9 @@ public static class GattoApp
                 new GlobTool().Name, new GrepTool().Name, new ShellTool().Name,
             };
             if (memoryOn) reservedTools.AddRange(new[] { "memory_write", "recall_memory" });
+            var off = (config.ExtensionsOff ?? []).ToHashSet(StringComparer.Ordinal);
             loadedExtensions = ExtensionHost.Survivors(
-                ExtensionHost.LoadAll(extensionsDir, extApi, extDiag), reservedTools, config.Endpoints.Keys, extDiag);
+                ExtensionHost.LoadAll(extensionsDir, extApi, extDiag, off, extLedger), reservedTools, config.Endpoints.Keys, extDiag, extLedger);
             //the table every resolution reads: the endpoints of gatto.json plus the ones the surviving extensions contributed
             endpoints = new Dictionary<string, EndpointConfig>(config.Endpoints, StringComparer.Ordinal);
             endpointOwner = new Dictionary<string, string>(StringComparer.Ordinal);
@@ -582,7 +586,7 @@ public static class GattoApp
 
         private void BuildPrompters()
         {
-            hooks = new HookBus { Trace = trace };
+            hooks = new HookBus(state.Armed) { Trace = trace };
             hooks.OnHandlerError += (evt, ex) => warn.Warn($"hook error ({evt}): {ex.Message}");
             //the theme is resolved on the interactive REPL path only, so a -p run stays byte-pure and never sends the background query
             themeMode = ThemeMode.Dark;
@@ -854,9 +858,9 @@ public static class GattoApp
 
         private int? CommitExtensions()
         {
-            commands = new Gatto.Core.Commands.CommandRegistry();
+            commands = new Gatto.Core.Commands.CommandRegistry(state.Armed);
             //every extension that committed, in discovery order, and a tool-less one is a legal load with no tool row
-            (committedExt, var committedExtensions) = ExtensionHost.Commit(loadedExtensions, tools, hooks, commands, Gatto.Repl.Commands.SlashCommands.All.Select(c => c.Name), extDiag);
+            (committedExt, committedExtensions) = ExtensionHost.Commit(loadedExtensions, tools, hooks, commands, Gatto.Repl.Commands.SlashCommands.All.Select(c => c.Name), extDiag, extLedger);
             //the early pass should have skipped it already, and a launch must not run on the endpoint of an extension that did not commit
             if (endpointOwner.TryGetValue(state.EndpointName, out var owner) && !committedExtensions.Any(e => e.Name == owner))
             {
@@ -1079,6 +1083,24 @@ public static class GattoApp
             //the same list the prompt was composed from, so /tools cannot show a policy the model was never told
             var policyRows = policyLines.ToList();
             Func<IReadOnlyList<(string Extension, string Line)>> listPolicy = () => policyRows;
+            //every source discovery found, read at each view so a toggle shows at once, with the names its committed registrations hold
+            var servingSource = endpointOwner.GetValueOrDefault(state.EndpointName);
+            Func<IReadOnlyList<Gatto.Repl.Prompts.ExtensionView>> listExtensions = () => [.. extLedger.Names.Select(name =>
+            {
+                var committed = committedExtensions.FirstOrDefault(e => e.Name == name);
+                return new Gatto.Repl.Prompts.ExtensionView(name, state.Armed.IsOn(name), committed is not null, extLedger.IsOff(name),
+                    extLedger.ErrorOf(name), servingSource == name,
+                    [.. committedExt.Where(c => c.Extension.Name == name).Select(c => c.Name)],
+                    [.. commands.RowsAll.Where(r => r.Origin == name).Select(r => r.Name)],
+                    [.. committed?.Registrations.Endpoints.Select(e => e.Name) ?? []]);
+            })];
+            //the flag moves first, so the session follows the key whatever the file does, and a failed write comes back as its line
+            Func<string, bool, string?> setExtension = (name, on) =>
+            {
+                state.Armed.Set(name, on);
+                try { GattoConfigWriter.SetExtensionsOff(home, state.Armed.Off); return null; }
+                catch (Exception ex) when (ex is not OperationCanceledException) { return TermText.Sanitize(ex.Message); }
+            };
 
             //said the first time this home runs an interactive session on a cloud endpoint, and the marker file is what makes it once
             string? cloudNotice = null;
@@ -1119,6 +1141,7 @@ public static class GattoApp
                 defaultRole: config.DefaultRole ?? "generalist",
                 roleTint: state.Role.ParsedTint(), roleAvatar: state.Role.Avatar, firstMessage: state.Role.FirstMessage,
                 armTasks: tasks => ((AppToolContext)toolCtx).Tasks = tasks,
+                listExtensions: listExtensions, setExtension: setExtension,
                 //read when /context asks, so a /role or /model since is followed. the shape is the loop's last request, its tools split by origin
                 contextInputs: usage =>
                 {
