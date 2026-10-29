@@ -20,7 +20,11 @@ public sealed record SelectOption(
     //marks that follow the label, appended outside the row paint so their inks survive the cursor row's reset. leave Marked false when you use this
     IReadOnlyList<SelectRun>? Tail = null,
     //what the parenthesised word says when Recommended is the wrong one. only that word changes, Recommended still decides whether the suffix is drawn
-    string? MarkWord = null)
+    string? MarkWord = null,
+    //a panel's cells after the label, laid as a table with a header over them. a prompt draws none
+    IReadOnlyList<string>? Columns = null,
+    //a panel's marks after the last cell, the default word, which no header names
+    IReadOnlyList<SelectRun>? Trail = null)
 {
     //what a caller matching this option compares against, the key when there is one and the label otherwise. one definition, so both prompters agree
     public string Identity => Key ?? Label;
@@ -132,7 +136,9 @@ public sealed record SelectSpec(
     //the panel takes the whole room rather than half the window, set by a prompt whose detail is the thing being approved
     bool KeepsRoom = false,
     //a token another thread signals to end the prompt as a cancel, so a prompt that must take the panel slot can close this one first
-    CancellationToken Close = default);
+    CancellationToken Close = default,
+    //non-null makes this a panel, which draws, keys and routes by its own contract. null is a prompt as it always was
+    PanelFields? Panel = null);
 
 //how a SelectPrompt resolved, the widget gives no meaning to any outcome, the callers do
 public abstract record SelectOutcome
@@ -167,7 +173,7 @@ internal readonly record struct PanelLine(PanelLineStatus Status, string Text)
 }
 
 //the one modal selector the prompts and pickers bind onto, holding focus for its whole life so no key reaches the composer
-public sealed class SelectPrompt(   //single-select, multi-select and the free-text row share one loop, and Esc clears a draft before it cancels
+public sealed partial class SelectPrompt(   //single-select, multi-select and the free-text row share one loop, and Esc clears a draft before it cancels
     ITermSurface surface, Theme theme, IKeySource keys, InputPump? pump = null,
     ChromeHandle? chrome = null, GlyphSet? glyphs = null)
 {
@@ -220,6 +226,7 @@ public sealed class SelectPrompt(   //single-select, multi-select and the free-t
     //blocks until the prompt resolves, modal focus held for the whole call. rows go inside the composer frame when a painter is armed, inline otherwise
     public SelectOutcome Show(SelectSpec spec, bool wait = true)
     {
+        if (spec.Panel is not null) return ShowPanel(spec, wait).Outcome;   //a panel keys and draws by its own contract, the prompt path below is untouched
         var options = spec.Options;
         var multi = spec.MultiSelect;
         var freeText = spec.FreeTextLabel;

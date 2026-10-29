@@ -1,7 +1,4 @@
-using Gatto.Cli.Setup.Tui;
-using Gatto.Terminal;
-
-namespace Gatto.Tests.Setup.Tui;
+namespace Gatto.Terminal.Tests;
 
 //a footer word's key string is the key a press on it acts as, and the arrows answer nothing
 public class FooterKeysTests
@@ -27,6 +24,8 @@ public class FooterKeysTests
     {
         Assert.Null(FooterKeys.KeyOf(GlyphSet.Unicode.ArrowsKey));
         Assert.Null(FooterKeys.KeyOf(GlyphSet.Ascii.ArrowsKey));
+        Assert.Null(FooterKeys.KeyOf(GlyphSet.Unicode.LeftRightKey));
+        Assert.Null(FooterKeys.KeyOf(GlyphSet.Ascii.LeftRightKey));
     }
 
     [Fact]

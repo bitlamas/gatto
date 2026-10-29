@@ -477,10 +477,10 @@ public sealed partial class Repl
     //the word that forgets a file, a const beside QuantArg so nothing spells it differently
     internal const string RemoveArg = "rm ";
 
-    //bare /model shows the list and returns the picked id, null when cancelled, with Answered set only by the add flow's question
-    private (string? Id, bool Answered) ShowModelPicker(ITurnObserver renderer)
+    //bare /model shows the panel and returns the picked id and the level the user moved its row to, null when cancelled or left alone
+    private (string? Id, string? Level, bool Answered) ShowModelPicker(ITurnObserver renderer)
     {
-        if (listModels is null || picker is null) return (null, false);
+        if (listModels is null || picker is null) return (null, null, false);
 
         //d writes the default and the rows are rebuilt from what the write left, so the word cannot outlive a failed write
         int? openAt = null;
@@ -491,33 +491,45 @@ public sealed partial class Repl
             {
                 //send the user to gatto model, which is where a model is added now
                 renderer.OnWarning("no models — run gatto model to add one");
-                return (null, false);
+                return (null, null, false);
             }
 
             //the d key is declared only when there is somewhere to write it, a picker cannot report a key it never got
-            var outcome = picker.Pick("select a model", items,
-                markLegend: setDefault is null ? modelMarkLegend : modelMarkLegend + "   d set as default",
-                controlKeys: setDefault is null ? null : DefaultKey,
-                openAt: openAt);
+            var shown = items;
+            var keys = new List<FooterKey> { new("Enter", "switch") };
+            if (setDefault is not null) keys.Add(new("d", "default"));
+            keys.Add(new("Esc", "close"));
+            var fields = new PanelFields("model", keys,
+                Header: items.Any(i => i.Columns is { Count: > 0 }) ? ["ctx", "file"] : null,
+                Role: roleName, Legend: modelMarkLegend,
+                Under: items.Any(i => i.Levels is { Count: > 0 })
+                    ? new PanelUnder.Setting("default effort", i => shown[i].Levels, i => shown[i].DefaultEffort)
+                    : null);
+            var outcome = picker.ShowPanel(new PanelSpec(items, fields, setDefault is null ? null : DefaultKey, openAt));
 
-            if (outcome is PickOutcome.Control { Key: 'd', Cursor: var at })
+            if (outcome.Pick is PickOutcome.Control { Key: 'd', Cursor: var at })
             {
-                //every row is a model, so the only guard is the cursor's range, the picker can name any row it was on
-                if (at >= 0 && at < items.Count && setDefault!(items[at].Id) is { } problem)
-                    renderer.OnWarning(problem);
+                //every row is a model, so the only guard is the cursor's range, and the level is written only after the model was
+                if (at >= 0 && at < items.Count)
+                {
+                    var problem = setDefault!(items[at].Id);
+                    if (problem is null && setDefaultEffort is not null && items[at].Levels is { Count: > 0 } && outcome.Setting is { } level)
+                        problem = setDefaultEffort(items[at].Id, level);
+                    if (problem is not null) renderer.OnWarning(problem);
+                }
                 openAt = at;
                 continue;
             }
 
-            if (outcome.PickedRow is not { } chosen)
+            if (outcome.Pick.PickedRow is not { } chosen)
             {
                 //a plain terminal could not select from the list it printed, so tell the user how to switch
                 if (!IsRichTerminal()) renderer.OnWarning("type /model <name> to switch");
-                return (null, false);
+                return (null, null, false);
             }
 
-            //a pick is always a switch, the add row is gone and gatto model is the way to add one
-            return (items[chosen].Id, false);
+            //a level left where the row had it is no request, the switch lands the role's or the flag's level as it always did
+            return (items[chosen].Id, outcome.Moved ? outcome.Setting : null, false);
         }
     }
 
@@ -537,9 +549,12 @@ public sealed partial class Repl
                 var items = listEfforts().ToList();
                 if (items.Count > 0)
                 {
-                    var outcome = picker.Pick("select an effort level", items,
-                        markLegend: "current   s session only", controlKeys: EffortSessionOnlyKey);
-                    var picked = CommandText.InterpretEffortPick(items, outcome);
+                    var fields = new PanelFields("effort",
+                        [new("Enter", "save"), new("s", "this session"), new("Esc", "close")],
+                        Role: roleName, Legend: "current", Under: new PanelUnder.Sentence(i => items[i].Sentence),
+                        SearchWhenLong: false);
+                    var outcome = picker.ShowPanel(new PanelSpec(items, fields, EffortSessionOnlyKey));
+                    var picked = CommandText.InterpretEffortPick(items, outcome.Pick);
                     return picked is { } p ? ApplyEffort(p.LevelArg, p.Persist) : null;
                 }
             }
@@ -574,9 +589,10 @@ public sealed partial class Repl
 
     //the one body behind /model, it returns true only when a switch happened and hands the caller the line to say in its place
     private bool HandleModelCommand(string trimmed, ITurnObserver picker, Action<string> say,
-        out string? switchNotice)
+        out string? switchNotice, out string? effortNotice)
     {
         switchNotice = null;
+        effortNotice = null;
         //refuse before the picker, a connect endpoint does not swap models and a picker there could arm one against a server gatto does not manage
         if (unmanagedNotice is { Length: > 0 } unmanaged)
         {
@@ -588,6 +604,7 @@ public sealed partial class Repl
 
         //set only when the wizard's done step answered, in the same branch as the id so the two cannot part
         var answered = false;
+        string? movedLevel = null;
 
         //both verbs parse and answer with a line since the shelf moved to gatto model, and nothing about the session changed so they answer false
         if (arg == AddModelArg || arg == NewModelArg)
@@ -631,9 +648,10 @@ public sealed partial class Repl
 
         if (arg.Length == 0)
         {
-            var (chosen, chosenWasAnswered) = ShowModelPicker(picker);
+            var (chosen, level, chosenWasAnswered) = ShowModelPicker(picker);
             if (chosen is null) return false;   //cancelled, or a plain terminal which printed the list
             arg = chosen;
+            movedLevel = level;
             answered = chosenWasAnswered;
         }
         if (switchModel is null)
@@ -658,6 +676,8 @@ public sealed partial class Repl
         if (result.SystemText is not null) convo.ReplaceSystem(result.SystemText, result.Baseline);
         else if (result.Baseline is not null && convo.Messages[0].Content is { } sameText) convo.ReplaceSystem(sameText, result.Baseline);   //same text, new baseline, so the record names the model now in use
         _usageState.Clear();   //the old reading describes a conversation and model pairing that is gone
+        //after the switch, so the level lands on the new model, and through the one seam that keeps the chip and the thinking mark true
+        if (movedLevel is not null) effortNotice = ApplyEffort(movedLevel, persist: false);
         return true;
     }
 }

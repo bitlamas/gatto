@@ -87,4 +87,63 @@ public class InputPumpScrollTests
         src.Feed.Add(Key(ConsoleKey.End, ctrl: true));
         Assert.Equal(ScrollKey.Bottom, TakeScroll(scrolls));
     }
+
+    //a scope that pages its own body reads the paging keys, and the transcript does not move under it
+    [Theory]
+    [InlineData(ConsoleKey.PageDown)]
+    [InlineData(ConsoleKey.PageUp)]
+    [InlineData(ConsoleKey.Home)]
+    [InlineData(ConsoleKey.End)]
+    public void A_scope_that_takes_scroll_keys_reads_them_instead_of_the_sink(ConsoleKey key)
+    {
+        var src = new FeedSource();
+        var pump = new InputPump(new KeyInputSource(src));
+        var scrolls = new BlockingCollection<ScrollKey>();
+        pump.SetScrollSink(scrolls.Add);
+        pump.Start();
+
+        using var focus = pump.PushFocus(takesScrollKeys: true);
+        src.Feed.Add(Key(key));
+
+        Assert.Equal(key, Read(focus.Keys)!.Value.Key);
+        Assert.Equal(0, scrolls.Count);
+    }
+
+    //the flag is the scope's own, a default scope pushed over it gives the transcript its keys back
+    [Fact]
+    public void A_default_scope_over_one_that_takes_them_sends_them_to_the_sink()
+    {
+        var src = new FeedSource();
+        var pump = new InputPump(new KeyInputSource(src));
+        var scrolls = new BlockingCollection<ScrollKey>();
+        pump.SetScrollSink(scrolls.Add);
+        pump.Start();
+
+        using var panel = pump.PushFocus(takesScrollKeys: true);
+        using (var prompt = pump.PushFocus())
+        {
+            src.Feed.Add(Key(ConsoleKey.PageDown));
+            Assert.Equal(ScrollKey.PageDown, TakeScroll(scrolls));
+        }
+        src.Feed.Add(Key(ConsoleKey.PageDown));
+        Assert.Equal(ConsoleKey.PageDown, Read(panel.Keys)!.Value.Key);
+    }
+
+    //an injected key is read like a typed one, and one handed to a disposed scope is dropped without a throw
+    [Fact]
+    public void Inject_reaches_a_live_scope_and_drops_on_a_disposed_one()
+    {
+        var src = new FeedSource();
+        var pump = new InputPump(new KeyInputSource(src));
+        pump.Start();
+
+        var focus = pump.PushFocus();
+        var wake = new ConsoleKeyInfo('\0', ConsoleKey.NoName, false, false, false);
+        focus.Inject(wake);
+        Assert.True(focus.Keys.KeyAvailable);
+        Assert.Equal(ConsoleKey.NoName, Read(focus.Keys)!.Value.Key);
+
+        focus.Dispose();
+        focus.Inject(wake);
+    }
 }

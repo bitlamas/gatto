@@ -33,6 +33,14 @@ public class GlyphSetTests
         Assert.Same(GlyphSet.Ascii, GlyphSet.Resolve(GlyphMode.Auto, Env("WT_SESSION", null)));
     }
 
+    //the pair that steps a setting, one glyph per set, and the ascii twin stays two cells
+    [Fact]
+    public void THE_LEFT_RIGHT_PAIR_IS_IN_BOTH_SETS()
+    {
+        Assert.Equal("←→", GlyphSet.Unicode.LeftRightKey);
+        Assert.Equal("<>", GlyphSet.Ascii.LeftRightKey);
+    }
+
     //a fallback must need no font, so every member stays ascii. the members come from the instance by reflection, since a hand-written list drifts
     [Fact]
     public void EVERY_ASCII_MEMBER_IS_ASCII()

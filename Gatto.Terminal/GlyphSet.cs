@@ -62,7 +62,7 @@ public sealed class GlyphSet
         Header = "(^\u00b7 \u00b7^)\u2cca",
         Ellipsis = "\u2026", MidEllipsis = "\u22ef",
         Down = "\u2193", Up = "\u2191", Right = "\u2192", Left = "\u2190", Continue = "\u21b3",
-        DownKey = "\u2193", UpKey = "\u2191", ArrowsKey = "\u2191\u2193",
+        DownKey = "\u2193", UpKey = "\u2191", ArrowsKey = "\u2191\u2193", LeftRightKey = "\u2190\u2192",
         Bar = "\u258f", Sharp = "\u266f", Angle = "\u203a", Approx = "\u2248", Elbow = "\u23bf",
         HeavyRule = "\u2501", Caret = "\u25be", CaretUp = "\u25b4", Triangle = "\u25b8", Bullet = "\u2022",
         AtMost = "\u2264", Sum = "\u03a3", Ring = "\u25cb", Times = "\u00d7", Range = "\u2013",
@@ -82,7 +82,7 @@ public sealed class GlyphSet
         Header = AsciiHeader,
         Ellipsis = "...", MidEllipsis = "...",
         Down = "v", Up = "^", Right = "->", Left = "<-", Continue = "->",
-        DownKey = "Down", UpKey = "Up", ArrowsKey = "arrows",
+        DownKey = "Down", UpKey = "Up", ArrowsKey = "arrows", LeftRightKey = "<>",
         Bar = "|", Sharp = "#", Angle = ">", Approx = "~", Elbow = "`-",
         HeavyRule = "=", Caret = "v", CaretUp = "^", Triangle = ">", Bullet = "*",
         AtMost = "<=", Sum = "sum", Ring = "o", Times = "x", Range = "-",
@@ -173,6 +173,9 @@ public sealed class GlyphSet
 
     //both arrows as one key hint. the ascii twin is several cells wider, so that hint sheds first on narrow consoles
     public required string ArrowsKey { get; init; }
+
+    //the left and right arrows as one key hint, the pair that steps a setting and takes no press
+    public required string LeftRightKey { get; init; }
 
     //a move to the right, or a change from one value to another
     public required string Right { get; init; }

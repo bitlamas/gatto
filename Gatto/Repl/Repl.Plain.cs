@@ -196,9 +196,10 @@ public sealed partial class Repl
             if (trimmedLine == "/model" || trimmedLine.StartsWith("/model ", StringComparison.Ordinal))
             {
                 //the same body the rich dispatch runs, this site keeps its own sink and control-flow keyword, there is no chrome to refresh here
-                if (HandleModelCommand(trimmedLine, renderer, Console.WriteLine, out var notice))
+                if (HandleModelCommand(trimmedLine, renderer, Console.WriteLine, out var notice, out var effortNotice))
                 {
                     Console.WriteLine(notice ?? CommandText.ModelLine(modelName));
+                    if (effortNotice is not null) Console.WriteLine(effortNotice);
                     //the context-fit check runs at the switch itself, so the warning appears before the next send
                     MaybeWarnContextFit(renderer);
                 }

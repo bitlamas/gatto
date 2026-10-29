@@ -130,8 +130,8 @@ public sealed partial class Repl(
     Gatto.Terminal.InputDeafnessWatchdog? deafWatch = null,
     //what the resume carried or why it sent the conversation again, shown under the resume marker and never saved
     string? resumeLine = null,
-    //the word the /model legend gives the dot, weights loaded on local rows and current on a cloud list where nothing loads
-    string modelMarkLegend = "weights loaded",
+    //the word the /model legend gives the dot, loaded on local rows and current on a cloud list where nothing loads
+    string modelMarkLegend = "loaded",
     //said by bare /model on a cloud endpoint that lists no models, where a typed name is the whole switch
     string? cloudSwitchHint = null,
     //the line naming the served llama-server that stopped running, read after a lost connection. null when gatto serves nothing for this session
@@ -148,6 +148,8 @@ public sealed partial class Repl(
     Gatto.Core.Sandbox.SandboxState? sandbox = null,   //the process's sandbox, which /sandbox reads and turns on. null off Windows
     //the role a bare launch runs from this home, and the rule names a role only when it is not this one. null names every role
     string? defaultRole = null,
+    //d on /model writes the cursor row's level beside its model, through the caller since Repl never sees Roles. null writes no level
+    Func<string, string, string?>? setDefaultEffort = null,
     //the running role's colours and banner rows, handed down so the Repl never reads a role file
     (RgbColor Dark, RgbColor? Light)? roleTint = null,
     IReadOnlyList<string>? roleAvatar = null,

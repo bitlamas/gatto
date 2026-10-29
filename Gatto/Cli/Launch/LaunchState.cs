@@ -531,7 +531,9 @@ internal sealed class LaunchState(
     {
         //an endpoint that names its models lists those, with nothing to probe
         if (!ServedHere() && Endpoint.Models is { Count: > 0 } offered)
-            return ListedModelRows.Build(offered, ModelString, CurrentDefaultFor(EndpointName));
+            return ListedModelRows.Build(offered, ModelString, CurrentDefaultFor(EndpointName),
+                id => ModelLevels.For(Endpoint.Thinking, SavedCloudEffortOrNull(id),
+                    knownToggle: id == ModelString && ThinkCap == ThinkCapability.Toggle, thinkOnByDefault: config.Think != "off"));
 
         var loaded = LaunchBaseUrl is null
             ? null
@@ -551,13 +553,19 @@ internal sealed class LaunchState(
             var ctx = p.Profile.Context >= 1024
                 ? (p.Profile.Context / 1024) + "k"
                 : p.Profile.Context.ToString();
-            var label = $"{id,-16} {ctx,6}   {Path.GetFileNameWithoutExtension(p.Profile.ActivePath)}";
+            var file = Path.GetFileNameWithoutExtension(p.Profile.ActivePath);
+            var label = $"{id,-16} {ctx,6}   {file}";
+            var isSession = string.Equals(id, Model?.Id, StringComparison.OrdinalIgnoreCase);
+            //a map-less model's toggle is the server's sniff, known for the model in use alone
+            var (levels, effort) = ModelLevels.For(p.Profile.Thinking, p.Profile.DefaultEffort,
+                knownToggle: isSession && ThinkCap == ThinkCapability.Toggle, thinkOnByDefault: config.Think != "off");
 
             rows.Add(new PickerItem(id, label,
                 Marked: Model.MatchesLoaded(p, loaded) == true,   //only a known match marks the row, unknown stays unmarked
                 Current: string.Equals(id, Model?.Id, StringComparison.OrdinalIgnoreCase),
                 //read from disk, so a session that switched models shows the two marks on different rows
-                Default: string.Equals(id, currentDefault, StringComparison.OrdinalIgnoreCase)));
+                Default: string.Equals(id, currentDefault, StringComparison.OrdinalIgnoreCase),
+                Columns: [ctx, file], Levels: levels, DefaultEffort: effort));
         }
         return rows;
     }
@@ -587,6 +595,26 @@ internal sealed class LaunchState(
             return $", saved as {ModelString}'s default";
         }
         catch (GattoConfigException ex) { return $", not saved: {ex.Message}"; }
+    }
+
+    //d on /model writes the cursor row's own level, resolved through that model's map and never the session model's. null on success
+    internal string? SetModelDefaultEffort(string id, string levelName)
+    {
+        try
+        {
+            if (!ServedHere() && Endpoint.Models is { Count: > 0 })
+            {
+                GattoConfigWriter.SetEndpointEffort(home, EndpointName, id, EffortSwitch.Name(ModelLevels.Resolve(Endpoint.Thinking, levelName)));
+                return null;
+            }
+            var target = Model.Load(modelsDir, id);
+            var level = ModelLevels.Resolve(target.Profile.Thinking, levelName);
+            ModelDefaultEffort.Set(modelsDir, id, level);
+            if (Model is { } inUse && string.Equals(inUse.Id, id, StringComparison.OrdinalIgnoreCase))
+                Model = inUse with { Profile = inUse.Profile with { DefaultEffort = level } };   //so the marks do not lag the write
+            return null;
+        }
+        catch (GattoConfigException ex) { return ex.Message; }
     }
 
     //re-resolves the thinking entry at the clamped level and mutates comp, so the footer and recompose read it, and a /role resets it
@@ -658,10 +686,10 @@ internal sealed class LaunchState(
             return new List<PickerItem>
             {
                 new("none", "none", Marked: !ThinkOn, Current: !ThinkOn,
-                    Default: SavedEffortNow() == ThinkingLevel.None),
+                    Default: SavedEffortNow() == ThinkingLevel.None, Sentence: ModelLevels.NoneSentence),
                 //any persisted level other than None means on was saved, a map-less model stores the Max sentinel
                 new("on", "on", Marked: ThinkOn, Current: ThinkOn,
-                    Default: SavedEffortNow() is { } d && d != ThinkingLevel.None),
+                    Default: SavedEffortNow() is { } d && d != ThinkingLevel.None, Sentence: ModelLevels.OnSentence),
             };
 
         //no map means no rows, and a degenerate map with a lone on-level still has rows to show
@@ -674,9 +702,10 @@ internal sealed class LaunchState(
             .Select(l =>
             {
                 var levelName = EffortSwitch.Name(l);
+                var (body, suffix) = Thinking.ResolveEntry(effortMap, l);
                 return new PickerItem(levelName, levelName,
                     Marked: l == Comp.Thinking, Current: l == Comp.Thinking,
-                    Default: savedLevel == l);
+                    Default: savedLevel == l, Sentence: ModelLevels.Sentence(body, suffix, glyphs));
             })
             .ToList();
     }

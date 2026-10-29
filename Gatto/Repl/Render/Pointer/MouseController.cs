@@ -11,10 +11,14 @@ public sealed class MouseController(
     Action<int, int, ComposerGesture>? onComposerSelect = null, Func<ComposerLayout?>? composerLayout = null,
     GlyphSet? glyphs = null, Func<int, bool>? onComposerScroll = null,
     Func<int, StatusCell?>? statusCellAt = null, Action<int>? onStatusHint = null, Func<bool>? panelHoldsKeys = null,
-    Action? onStatusCell = null, Action<bool>? onStatusHover = null)
+    Action? onStatusCell = null, Action<bool>? onStatusHover = null,
+    Func<MouseEvent, int, int, int, bool>? panelMouse = null)
 {
     //the pointer was over the background cell at the last bare move, so only an enter or a leave reaches the painter
     private bool _hover;
+
+    //the pointer was on a panel's rows at the last bare move, so the move that leaves them tells the panel once with row -1
+    private bool _panelHover;
 
     //the status line's row among the rule rows: the top rule, the bottom rule, then the status line
     private const int StatusRuleRow = 2;
@@ -52,6 +56,7 @@ public sealed class MouseController(
                 var wheelLinesResolved = _wheelAccum / WheelDelta;
                 _wheelAccum %= WheelDelta;
                 if (wheelLinesResolved == 0) break;
+                if (PanelTakes(e, width, height)) break;
                 //a notch over the prompt, rule or composer goes to onComposerScroll first, and a declined one scrolls the transcript
                 var overComposer = compositor.HitTest(e.Y) is ChromeTarget(_, ChromeRegion.Prompt or ChromeRegion.Rule or ChromeRegion.Composer, _);
                 if (overComposer && onComposerScroll is not null && onComposerScroll(wheelLinesResolved)) break;
@@ -67,7 +72,7 @@ public sealed class MouseController(
                 break;
 
             case MouseKind.Move when !_dragLive:
-                return Hover(e);
+                return Hover(e, width, height);
 
             case MouseKind.Move:
                 HandleDragMove(e, width, height);
@@ -86,8 +91,19 @@ public sealed class MouseController(
     }
 
     //the background cell takes the band while the pointer rests on it, and a prompt holding the keys leaves it inert as its press is
-    private bool Hover(MouseEvent e)
+    private bool Hover(MouseEvent e, int width, int height)
     {
+        //the panel repaints from its own loop on the wake, so its hover asks no repaint here
+        if (panelMouse is not null && compositor.HitTest(e.Y) is ChromeTarget(_, ChromeRegion.Prompt, var panelRow))
+        {
+            _panelHover = true;
+            panelMouse(e, panelRow, width, height);
+        }
+        else if (_panelHover)
+        {
+            _panelHover = false;
+            panelMouse?.Invoke(e, -1, width, height);
+        }
         var over = compositor.HitTest(e.Y) is ChromeTarget { Region: ChromeRegion.Rule, RegionRow: StatusRuleRow }
             && panelHoldsKeys?.Invoke() != true && statusCellAt?.Invoke(e.X) == StatusCell.Background;
         if (over == _hover) return false;
@@ -96,12 +112,18 @@ public sealed class MouseController(
         return true;
     }
 
+    //a gesture over a panel's rows goes to the panel first, and a consumed one ends there
+    private bool PanelTakes(MouseEvent e, int width, int height) =>
+        panelMouse is not null && compositor.HitTest(e.Y) is ChromeTarget(_, ChromeRegion.Prompt, var row)
+        && panelMouse(e, row, width, height);
+
     private void HandlePress(MouseEvent e, int width, int height)
     {
         //every press clears the drag state first, a bailed press must not leave the last gesture's anchor armed
         _dragLive = false;
         _composerDragLive = false;
         if (e.Modifiers.HasFlag(ConsoleModifiers.Shift)) return;   //a Shift+drag belongs to WT's own selection, so gatto ignores it
+        if (PanelTakes(e, width, height)) return;   //a panel row is the panel's, it starts no copy drag
         if (WindowPress(e, width, height)) return;
 
         switch (compositor.HitTest(e.Y))

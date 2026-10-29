@@ -18,6 +18,7 @@ public sealed class InputPump
     //keys and mouse gestures share this one channel, arrival order intact, the editor thread is the only selection writer
     private readonly BlockingCollection<ComposerInput> _composer = new();
     private readonly List<BlockingCollection<ConsoleKeyInfo>> _stack = new();   //the last channel is the focused one
+    private readonly HashSet<BlockingCollection<ConsoleKeyInfo>> _takesScroll = new();   //scopes that page their own body, a scroll key on top of one is theirs
     private Thread? _thread;
     private bool _dead;
     private Action<ScrollKey>? _scrollSink;   //global scroll sink, consulted before the focus stack
@@ -58,7 +59,7 @@ public sealed class InputPump
     }
 
     //keys arriving while the scope is open go only to it. dispose discards unread keys, replaying a modal answer into the composer is the bug. wait false is a scope the turn does not wait on, so it fires no wait sink
-    public FocusScope PushFocus(bool wait = true)
+    public FocusScope PushFocus(bool wait = true, bool takesScrollKeys = false)
     {
         var ch = new BlockingCollection<ConsoleKeyInfo>();
         Action? modalPushSink;
@@ -67,7 +68,11 @@ public sealed class InputPump
         {
             //pushed before Start it can receive no key, so the scope is born completed and the first read throws. a hang is the worst shape a defect takes
             if (_dead || _thread is null) ch.CompleteAdding();
-            else _stack.Add(ch);
+            else
+            {
+                _stack.Add(ch);
+                if (takesScrollKeys) _takesScroll.Add(ch);
+            }
             modalPushSink = _modalPushSink;   //read under the lock, fired outside it
             modalWaitSink = _modalWaitSink;
         }
@@ -95,13 +100,14 @@ public sealed class InputPump
         lock (_lock)
         {
             _stack.Remove(ch);
+            _takesScroll.Remove(ch);
             modalWaitSink = _modalWaitSink;
         }
         ch.CompleteAdding();
         if (wait) modalWaitSink?.Invoke(false);   //outside the lock, exactly like the push half
     }
 
-    //scroll keys go to this sink before the focus stack, so paging works during a modal. plain home and end aren't scroll keys and reach the composer
+    //scroll keys go to this sink before the focus stack, so paging works during a modal. home and end are scroll keys too, and a top scope that takes them reads all four itself
     public void SetScrollSink(Action<ScrollKey>? sink) { lock (_lock) _scrollSink = sink; }
 
     //the notice that dispatch threw fires once per session. a key that always fails would otherwise make a row per press
@@ -251,7 +257,7 @@ public sealed class InputPump
         Action? wildSink = null;
         lock (_lock)
         {
-            if (_scrollSink is { } sink && ScrollKeyOf(k) is { } sk)
+            if (_scrollSink is { } sink && ScrollKeyOf(k) is { } sk && !(_stack.Count > 0 && _takesScroll.Contains(_stack[^1])))
             {
                 scrollSink = sink; scrollKey = sk;
             }
@@ -290,6 +296,7 @@ public sealed class InputPump
             foreach (var ch in _stack)
                 try { ch.CompleteAdding(); } catch (ObjectDisposedException) { }
             _stack.Clear();
+            _takesScroll.Clear();
         }
     }
 
@@ -306,6 +313,12 @@ public sealed class InputPump
         }
 
         public IKeySource Keys { get; }
+
+        //a key the owner hands its own scope, read like a typed one. a disposed scope drops it, nothing reads there anymore
+        public void Inject(ConsoleKeyInfo k)
+        {
+            try { _ch.Add(k); } catch (InvalidOperationException) { }
+        }
 
         //born completed on a dead or unstarted pump, no key can ever arrive. assert this state, don't wait for a key that never comes
         internal bool BornCompleted => _ch.IsCompleted;

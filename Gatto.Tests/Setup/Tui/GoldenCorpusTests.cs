@@ -160,7 +160,7 @@ public class GoldenCorpusTests
         "s9-summary-stopped-100.txt",
         "s9-summary-stopped-80-80.txt",
         "s9-updates-100.txt",
-        //s10: 29 screens. the closing frames' record rows come from GutterWrap, a hand-typed ♯ row can't be evidence about wrapping
+        //s10: 28 screens. the closing frames' record rows come from GutterWrap, a hand-typed ♯ row can't be evidence about wrapping
         "s10-after-back-100.txt",
         "s10-after-failed-100.txt",
         "s10-after-failed-check-100.txt",
@@ -182,7 +182,6 @@ public class GoldenCorpusTests
         "s10-local-100.txt",
         "s10-local-have-100.txt",
         "s10-local-landing-100.txt",
-        "s10-picker-100.txt",
         "s10-shelf-100.txt",
         "s10-shelf-discrete-100.txt",
         "s10-shelf-80-80.txt",

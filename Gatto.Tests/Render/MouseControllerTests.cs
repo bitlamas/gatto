@@ -215,6 +215,114 @@ public sealed class MouseControllerTests
         Assert.False(h.Scroll.Following);   //the transcript moves.
     }
 
+    //a panel's route sees its own rows first, with the row inside the panel and the frame size, and a consumed press starts no copy drag
+    [Fact]
+    public void A_press_on_a_panel_row_reaches_the_route_and_starts_no_chrome_drag()
+    {
+        var h = HarnessWithRegionTaggedChromeAndSeededTranscript();
+        var seen = new List<(int Row, int W, int H)>();
+        h.Mc = new MouseController(h.Comp, h.Scroll, h.Focus, h.Model, wheelLines: 3, h.Selection, T,
+            panelMouse: (_, row, w, hh) => { seen.Add((row, w, hh)); return true; });
+        h.Paint();
+        var promptY = Enumerable.Range(0, 12).First(y => h.Comp.HitTest(y) is ChromeTarget { Region: ChromeRegion.Prompt });
+
+        h.PressAt(4, promptY);
+
+        Assert.Equal([(0, h.W, h.VpRows)], seen);
+        Assert.Null(h.Selection.ChromeCurrent);
+    }
+
+    //with no route the press is the copy drag it always was
+    [Fact]
+    public void A_press_on_a_prompt_row_with_no_route_starts_the_chrome_drag()
+    {
+        var h = HarnessWithRegionTaggedChromeAndSeededTranscript();
+        h.Mc = new MouseController(h.Comp, h.Scroll, h.Focus, h.Model, wheelLines: 3, h.Selection, T);
+        h.Paint();
+        var promptY = Enumerable.Range(0, 12).First(y => h.Comp.HitTest(y) is ChromeTarget { Region: ChromeRegion.Prompt });
+
+        h.PressAt(4, promptY);
+
+        Assert.NotNull(h.Selection.ChromeCurrent);
+    }
+
+    //a notch the panel takes moves neither the composer scroll nor the transcript
+    [Fact]
+    public void A_wheel_the_route_takes_reaches_neither_the_composer_scroll_nor_the_transcript()
+    {
+        var h = HarnessWithRegionTaggedChromeAndSeededTranscript();
+        var composerScrolled = false;
+        h.Mc = new MouseController(h.Comp, h.Scroll, h.Focus, h.Model, wheelLines: 3, h.Selection, T,
+            onComposerScroll: _ => { composerScrolled = true; return true; },
+            panelMouse: (_, _, _, _) => true);
+        h.Paint();
+        var promptY = Enumerable.Range(0, 12).First(y => h.Comp.HitTest(y) is ChromeTarget { Region: ChromeRegion.Prompt });
+
+        h.Mc.Handle(new MouseEvent(4, promptY, MouseKind.Wheel, MouseButton.None, 120, 0), h.W, h.VpRows);
+
+        Assert.False(composerScrolled);
+        Assert.True(h.Scroll.Following);
+    }
+
+    //a notch the route declines falls through to the composer scroll as before
+    [Fact]
+    public void A_wheel_the_route_declines_falls_through_to_the_composer_scroll()
+    {
+        var h = HarnessWithRegionTaggedChromeAndSeededTranscript();
+        var received = -1;
+        h.Mc = new MouseController(h.Comp, h.Scroll, h.Focus, h.Model, wheelLines: 3, h.Selection, T,
+            onComposerScroll: n => { received = n; return true; },
+            panelMouse: (_, _, _, _) => false);
+        h.Paint();
+        var promptY = Enumerable.Range(0, 12).First(y => h.Comp.HitTest(y) is ChromeTarget { Region: ChromeRegion.Prompt });
+
+        h.Mc.Handle(new MouseEvent(4, promptY, MouseKind.Wheel, MouseButton.None, 120, 0), h.W, h.VpRows);
+
+        Assert.Equal(3, received);
+    }
+
+    //the move that leaves the panel's rows tells the route once with row -1, so a banded key cannot stay banded
+    [Fact]
+    public void The_move_that_leaves_the_panel_tells_the_route_once()
+    {
+        var h = HarnessWithRegionTaggedChromeAndSeededTranscript();
+        var rows = new List<int>();
+        h.Mc = new MouseController(h.Comp, h.Scroll, h.Focus, h.Model, wheelLines: 3, h.Selection, T,
+            panelMouse: (_, row, _, _) => { rows.Add(row); return true; });
+        h.Paint();
+        var promptY = Enumerable.Range(0, 12).First(y => h.Comp.HitTest(y) is ChromeTarget { Region: ChromeRegion.Prompt });
+        var transcriptY = Enumerable.Range(0, 12).First(y => h.Comp.HitTest(y) is ItemTarget);
+
+        Assert.False(BareMove(h, 4, promptY));   //the panel repaints from its own loop
+        BareMove(h, 4, transcriptY);
+        BareMove(h, 5, transcriptY);
+
+        Assert.Equal([0, -1], rows);
+    }
+
+    //the route and the factory are one slot, a factory published without a route and a clear both drop it
+    [Fact]
+    public void The_route_lives_and_dies_with_the_factory()
+    {
+        var surface = new RecordingSurface { Width = 80, Height = 24 };
+        var gate = new object();
+        var status = new StatusInfo(@"C:\proj", "qwen", "coder", new CtxState(), @"C:\Users\x");
+        var painter = new ChromePainter(surface, T, gate)
+        {
+            Frame = new InputFrame(surface, T, "coder", status, glyphs: GlyphSet.Unicode),
+        };
+        Func<MouseEvent, int, int, int, bool> route = (_, _, _, _) => true;
+
+        var own = painter.SetPanelFactory((_, _) => new PanelContent(["  panel"]), route);
+        Assert.Same(route, painter.State.PanelMouse);
+        painter.SetPanelFactory((_, _) => new PanelContent(["  prompt over it"]));
+        Assert.Null(painter.State.PanelMouse);
+
+        own = painter.SetPanelFactory((_, _) => new PanelContent(["  panel"]), route);
+        painter.ClearPanel(own);
+        Assert.Null(painter.State.PanelMouse);
+    }
+
     [Fact]
     public void Wheel_OverThePromptRow_CallbackReturnsFalse_FallsThroughToTheTranscript()
     {

@@ -734,7 +734,9 @@ public class ReplModelSlashTests : IDisposable
         Conversation? convo = null,
         string? unmanagedNotice = null,
         Func<string, string?>? setDefault = null,
-        string modelMarkLegend = "weights loaded")
+        string modelMarkLegend = "loaded",
+        Func<string, bool, EffortResult>? setEffort = null,
+        Func<string, string, string?>? setDefaultEffort = null)
     {
         var client = new FakeChatClient();
         var loop = new AgentLoop(client, new ToolRegistry(), new HookBus(), new TestToolContext(Path.GetTempPath()), "m");
@@ -744,12 +746,15 @@ public class ReplModelSlashTests : IDisposable
             () => Composed.Text("sys"), _ => new RoleSwitchResult(false, "", null, null, "unused"),
             switchModel: switchModel, listModels: listModels, picker: picker,
             unmanagedNotice: unmanagedNotice, setDefault: setDefault,
-            modelMarkLegend: modelMarkLegend);
+            modelMarkLegend: modelMarkLegend, setEffort: setEffort, setDefaultEffort: setDefaultEffort);
     }
 
     //the picker fakes ignore the title, since only the shape under test matters
     private sealed class FixedIndexPicker(int? index) : IListPicker
     {
+        public PanelOutcome ShowPanel(PanelSpec spec) =>
+            new(Pick(spec.Fields.Title, spec.Items, spec.Fields.Legend, spec.ControlKeys, spec.OpenAt));
+
         public PickOutcome Pick(string title, IReadOnlyList<PickerItem> items, string? markLegend = null,
             IReadOnlyList<char>? controlKeys = null, int? openAt = null) =>
             index is { } i ? new PickOutcome.Picked(i) : new PickOutcome.Cancelled();
@@ -758,6 +763,9 @@ public class ReplModelSlashTests : IDisposable
 
     private sealed class CapturingPickerImpl(Func<IReadOnlyList<PickerItem>, int?> onPick) : IListPicker
     {
+        public PanelOutcome ShowPanel(PanelSpec spec) =>
+            new(Pick(spec.Fields.Title, spec.Items, spec.Fields.Legend, spec.ControlKeys, spec.OpenAt));
+
         public PickOutcome Pick(string title, IReadOnlyList<PickerItem> items, string? markLegend = null,
             IReadOnlyList<char>? controlKeys = null, int? openAt = null) =>
             onPick(items) is { } i ? new PickOutcome.Picked(i) : new PickOutcome.Cancelled();
@@ -766,6 +774,14 @@ public class ReplModelSlashTests : IDisposable
     //this fake records the legend, which render tests supply themselves, so a swap of it stays visible
     private sealed class LegendCapturingPicker(Action<string?, IReadOnlyList<PickerItem>> seen) : IListPicker
     {
+        public PanelSpec? Panel { get; private set; }
+
+        public PanelOutcome ShowPanel(PanelSpec spec)
+        {
+            Panel = spec;
+            return new(Pick(spec.Fields.Title, spec.Items, spec.Fields.Legend, spec.ControlKeys, spec.OpenAt));
+        }
+
         public PickOutcome Pick(string title, IReadOnlyList<PickerItem> items, string? markLegend = null,
             IReadOnlyList<char>? controlKeys = null, int? openAt = null)
         {
@@ -781,6 +797,9 @@ public class ReplModelSlashTests : IDisposable
         public List<IReadOnlyList<PickerItem>> Opens { get; } = [];
         public List<int?> OpenedAt { get; } = [];
         public List<IReadOnlyList<char>?> Controls { get; } = [];
+
+        public PanelOutcome ShowPanel(PanelSpec spec) =>
+            new(Pick(spec.Fields.Title, spec.Items, spec.Fields.Legend, spec.ControlKeys, spec.OpenAt));
 
         public PickOutcome Pick(string title, IReadOnlyList<PickerItem> items, string? markLegend = null,
             IReadOnlyList<char>? controlKeys = null, int? openAt = null)
@@ -1056,14 +1075,16 @@ public class ReplModelSlashTests : IDisposable
     {
         string? legend = null;
         IReadOnlyList<PickerItem>? shown = null;
+        var picker = new LegendCapturingPicker((l, items) => { legend = l; shown = items; });
         var repl = ReplWith(
             listModels: () => [new PickerItem("qwen3.6-35b", "qwen", Marked: true, Current: true)],
-            picker: new LegendCapturingPicker((l, items) => { legend = l; shown = items; }),
+            picker: picker,
             setDefault: _ => null);
 
         await Feed(repl, "/model");
 
-        Assert.Equal("weights loaded   d set as default", legend);
+        Assert.Equal("loaded", legend);
+        Assert.Equal(["Enter", "d", "Esc"], picker.Panel!.Fields.Keys.Select(k => k.Key));
         //the picker receives exactly what listModels produced and adds nothing of its own
         Assert.Single(shown!);
         Assert.Equal("qwen", shown![0].Label);
@@ -1144,19 +1165,161 @@ public class ReplModelSlashTests : IDisposable
 
         await Feed(repl, "/model");
 
-        Assert.Equal("current   d set as default", legend);
+        Assert.Equal("current", legend);
     }
 
     [Fact]
     public async Task SlashModel_WithNoWriter_TheLegendHasNoHint()
     {
         string? legend = null;
-        var repl = ReplWith(listModels: Two("a"),
-            picker: new LegendCapturingPicker((l, _) => legend = l), setDefault: null);
+        var picker = new LegendCapturingPicker((l, _) => legend = l);
+        var repl = ReplWith(listModels: Two("a"), picker: picker, setDefault: null);
 
         await Feed(repl, "/model");
 
-        Assert.Equal("weights loaded", legend);
+        Assert.Equal("loaded", legend);
+        Assert.DoesNotContain(picker.Panel!.Fields.Keys, k => k.Key == "d");
+    }
+
+    //answers each panel open from a queue and keeps what it was shown
+    private sealed class PanelPicker(params PanelOutcome[] answers) : IListPicker
+    {
+        private readonly Queue<PanelOutcome> _answers = new(answers);
+        public List<PanelSpec> Shown { get; } = [];
+
+        public PanelOutcome ShowPanel(PanelSpec spec)
+        {
+            Shown.Add(spec);
+            return _answers.Count > 0 ? _answers.Dequeue() : new PanelOutcome(new PickOutcome.Cancelled());
+        }
+
+        public PickOutcome Pick(string title, IReadOnlyList<PickerItem> items, string? markLegend = null,
+            IReadOnlyList<char>? controlKeys = null, int? openAt = null) => new PickOutcome.Cancelled();
+    }
+
+    private static IReadOnlyList<PickerItem> LevelledRows() =>
+    [
+        new PickerItem("a", "a", Marked: true, Current: true, Columns: ["64k", "A-Q4"], Levels: ["low", "medium", "high"], DefaultEffort: "medium"),
+        new PickerItem("b", "b", Marked: false, Current: false, Columns: ["96k", "B-Q4"], Levels: ["low", "medium", "high"], DefaultEffort: "low"),
+        new PickerItem("c", "c", Marked: false, Current: false, Columns: ["32k", "C-Q4"]),
+    ];
+
+    private static ModelSwitchResult Switched(string id) => new(true, id, null, null, $"switched to {id}", null, "medium");
+
+    //the panel names the columns over its rows, and the setting reads the cursor row's own levels and default
+    [Fact]
+    public async Task SlashModel_ThePanelCarriesTheHeaderTheColumnsAndTheRowsOwnSetting()
+    {
+        var picker = new PanelPicker();
+        var repl = ReplWith(listModels: LevelledRows, picker: picker, setDefault: _ => null);
+
+        await Feed(repl, "/model");
+
+        var fields = picker.Shown[0].Fields;
+        Assert.Equal("model", fields.Title);
+        Assert.Equal(["ctx", "file"], fields.Header!);
+        var setting = Assert.IsType<PanelUnder.Setting>(fields.Under);
+        Assert.Equal("low", setting.Value(1));
+        Assert.Null(setting.Levels(2));   //a row with no levels draws no settings row
+    }
+
+    [Fact]
+    public async Task SlashModel_NoRowWithLevelsDrawsNoSettingsRow()
+    {
+        var picker = new PanelPicker();
+        var repl = ReplWith(listModels: Two(null), picker: picker);
+
+        await Feed(repl, "/model");
+
+        Assert.Null(picker.Shown[0].Fields.Under);
+        Assert.Null(picker.Shown[0].Fields.Header);
+    }
+
+    //a moved level rides on the switch: the switch first, then the level for the session, each said on its own line
+    [Fact]
+    public async Task SlashModel_EnterWithTheLevelMovedSwitchesThenAppliesItForTheSession()
+    {
+        var calls = new List<string>();
+        var repl = ReplWith(listModels: LevelledRows,
+            picker: new PanelPicker(new PanelOutcome(new PickOutcome.Picked(1), "high", Moved: true)),
+            switchModel: (id, _) => { calls.Add("switch " + id); return Switched(id); },
+            setEffort: (level, persist) => { calls.Add($"effort {level} {persist}"); return new EffortResult(true, level, $"effort: {level}, only for this session"); });
+
+        var output = await Feed(repl, "/model");
+
+        Assert.Equal(["switch b", "effort high False"], calls);
+        var switchAt = output.IndexOf("switched to b", StringComparison.Ordinal);
+        var effortAt = output.IndexOf("effort: high, only for this session", StringComparison.Ordinal);
+        Assert.True(switchAt >= 0 && effortAt > switchAt, output);
+    }
+
+    //a level the user never moved is no request, the switch lands the role's or the flag's level and says one line
+    [Fact]
+    public async Task SlashModel_EnterWithTheLevelUnmovedSwitchesAlone()
+    {
+        var calls = new List<string>();
+        var repl = ReplWith(listModels: LevelledRows,
+            picker: new PanelPicker(new PanelOutcome(new PickOutcome.Picked(1), "low", Moved: false)),
+            switchModel: (id, _) => { calls.Add("switch " + id); return Switched(id); },
+            setEffort: (level, persist) => { calls.Add("effort"); return new EffortResult(true, level, "effort"); });
+
+        await Feed(repl, "/model");
+
+        Assert.Equal(["switch b"], calls);
+    }
+
+    [Fact]
+    public async Task SlashModel_ADeclinedSwapAppliesNoEffort()
+    {
+        var calls = new List<string>();
+        var repl = ReplWith(listModels: LevelledRows,
+            picker: new PanelPicker(new PanelOutcome(new PickOutcome.Picked(1), "high", Moved: true)),
+            switchModel: (id, _) => { calls.Add("switch " + id); return new ModelSwitchResult(false, id, null, null, "kept a", null); },
+            setEffort: (level, persist) => { calls.Add("effort"); return new EffortResult(true, level, "effort"); });
+
+        await Feed(repl, "/model");
+
+        Assert.Equal(["switch b"], calls);
+    }
+
+    //d writes the model, then its level, and a problem with the first or a row with no level writes no level
+    [Fact]
+    public async Task SlashModel_DWritesTheModelThenItsLevelAndSkipsTheLevelOnAProblemOrNoLevels()
+    {
+        var calls = new List<string>();
+        var picker = new PanelPicker(
+            new PanelOutcome(new PickOutcome.Control('d', 1), "high", Moved: true),
+            new PanelOutcome(new PickOutcome.Control('d', 2), null, Moved: false),
+            new PanelOutcome(new PickOutcome.Control('d', 0), "low", Moved: true));
+        var repl = ReplWith(listModels: LevelledRows, picker: picker,
+            setDefault: id => { calls.Add("model " + id); return id == "a" ? "disk is full" : null; },
+            setDefaultEffort: (id, level) => { calls.Add($"level {id} {level}"); return null; });
+
+        var output = await Feed(repl, "/model");
+
+        Assert.Equal(["model b", "level b high", "model c", "model a"], calls);
+        Assert.Contains("disk is full", output, StringComparison.Ordinal);
+        Assert.Equal([null, 1, 2, 0], picker.Shown.Select(s => s.OpenAt));   //each reopen starts where the user was
+    }
+
+    //the picker hands back the row's original index, so d after a filter names the filtered row's model
+    [Fact]
+    public async Task SlashModel_DAfterAFilterNamesTheFilteredRowsModel()
+    {
+        var items = LevelledRows();
+        var picker = new RichListPicker(new Gatto.Terminal.Tests.Fakes.RecordingSurface { Height = 5 }, new Gatto.Terminal.Theme(new Gatto.Terminal.TermCaps(true, true)),
+            new KeysOf(new ConsoleKeyInfo('?', 0, false, false, false), new ConsoleKeyInfo('c', ConsoleKey.C, false, false, false),
+                new ConsoleKeyInfo('\r', ConsoleKey.Enter, false, false, false), new ConsoleKeyInfo('d', ConsoleKey.D, false, false, false)));
+        var outcome = picker.ShowPanel(new PanelSpec(items, new PanelFields("model", [new("Esc", "close")]), ['d']));
+
+        Assert.Equal(new PickOutcome.Control('d', 2), outcome.Pick);
+    }
+
+    private sealed class KeysOf(params ConsoleKeyInfo[] keys) : Gatto.Terminal.IKeySource
+    {
+        private readonly Queue<ConsoleKeyInfo> _q = new(keys);
+        public ConsoleKeyInfo ReadKey() => _q.Dequeue();
+        public bool KeyAvailable => _q.Count > 0;
     }
 
     private static IReadOnlyList<PickerItem> Rows(string? isDefault) =>
@@ -1463,6 +1626,9 @@ public class ReplEffortSlashTests : IDisposable
 
     private sealed class RecordingPicker(Action onPick) : IListPicker
     {
+        public PanelOutcome ShowPanel(PanelSpec spec) =>
+            new(Pick(spec.Fields.Title, spec.Items, spec.Fields.Legend, spec.ControlKeys, spec.OpenAt));
+
         public PickOutcome Pick(string title, IReadOnlyList<PickerItem> items, string? markLegend = null,
             IReadOnlyList<char>? controlKeys = null, int? openAt = null)
         {

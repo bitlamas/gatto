@@ -873,12 +873,13 @@ public sealed partial class Repl
         if (trimmed == "/model" || trimmed.StartsWith("/model ", StringComparison.Ordinal))
         {
             //one body for both entries, what the two sites used to duplicate lives in HandleModelCommand and what stays here only this site can do
-            if (HandleModelCommand(trimmed, s.Renderer, s.Renderer.CommitSystem, out var notice))
+            if (HandleModelCommand(trimmed, s.Renderer, s.Renderer.CommitSystem, out var notice, out var effortNotice))
             {
                 s.Ctx?.RecordUsedTokens(null);   //the old figure describes a pairing that is gone
                 //no renderer swap here, a model change never touches roleName or RoleForTint and Refresh alone repaints the mismatch chip
                 s.Refresh();
                 s.Renderer.CommitSystem(notice ?? CommandText.ModelLine(modelName));
+                if (effortNotice is not null) s.Renderer.CommitSystem(effortNotice);   //the switch's line first, then the level it carries
                 //check the context fit at the switch, an over-budget history should be compactable before the user sends a message
                 MaybeWarnContextFit(s.Renderer);
             }

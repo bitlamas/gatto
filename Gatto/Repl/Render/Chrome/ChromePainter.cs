@@ -43,6 +43,8 @@ public sealed class ChromeState
     public IReadOnlyList<string>? PanelRows;
     //non-null makes PanelRows a cache, re-derived at the live width and allowance each compose, so the closure must capture a snapshot of its inputs
     public Func<int, int, PanelContent>? PanelFactory;
+    //the mouse route of the panel the factory draws: the event, its row in the panel, the width and the height. it lives and dies with the factory
+    public Func<MouseEvent, int, int, int, bool>? PanelMouse;
     //false keeps the hardware cursor hidden while this panel is up, true only for panels that take typed input
     public bool PanelCaretVisible = true;
     //where a factory panel's input caret sits, as a row within PanelRows and a column. null parks it on the last row, or hides it for an input-less panel
@@ -145,7 +147,8 @@ public sealed class ChromePainter
             onComposerScroll: n => { if (!State.PanelUp) return false; _composerScroll.ScrollBy(n); return true; },
             statusCellAt: StatusCellAt, onStatusHint: d => StatusHintSink?.Invoke(d), onStatusCell: () => StatusCellSink?.Invoke(),
             onStatusHover: over => StatusCellHovered = over,
-            panelHoldsKeys: () => State.PanelUp && !State.PanelInfo);
+            panelHoldsKeys: () => State.PanelUp && !State.PanelInfo,
+            panelMouse: (e, row, w, h) => State.PanelMouse?.Invoke(e, row, w, h) == true);
     }
 
     //the status piece under a column of the last painted status line, null between pieces
@@ -174,6 +177,7 @@ public sealed class ChromePainter
         {
             if (_tornDown) return;
             State.PanelFactory = null;   //a static publish or a clear retires the recompose factory
+            State.PanelMouse = null;   //and the route that came with it
             State.PanelInfo = false;
             //a static panel takes input, and so does the composer a clear brings back, so the caret comes back either way
             State.PanelCaretVisible = true;
@@ -198,12 +202,14 @@ public sealed class ChromePainter
         SetPanelFactory((w, _) => factory(w));
 
     //the caret-aware form, the factory reports the caret at each width and the panel's own height budget so a vertical resize re-asks it. it returns the factory the slot holds, the one its owner's clear names
-    public Func<int, int, PanelContent> SetPanelFactory(Func<int, int, PanelContent> factory)
+    public Func<int, int, PanelContent> SetPanelFactory(Func<int, int, PanelContent> factory,
+        Func<MouseEvent, int, int, int, bool>? mouse = null)
     {
         lock (_gate)
         {
             if (_tornDown) return factory;
             State.PanelFactory = factory;
+            State.PanelMouse = mouse;   //a factory published without a route drops the one the slot held
             State.PanelInfo = false;
             State.PanelKeepsRoom = false;   //a new panel is first asked at the half, its own content then says whether it keeps the room
             _composerScroll.Reset();   //a new factory is always a new panel, so reset the scroll

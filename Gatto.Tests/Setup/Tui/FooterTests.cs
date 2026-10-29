@@ -145,6 +145,19 @@ public class FooterTests
         Assert.EndsWith("| " + Marks, row, StringComparison.Ordinal);
     }
 
+    //both arrow pairs name keys a press cannot act as, so neither takes a tag, and a named key keeps its own
+    [Fact]
+    public void THE_LEFT_RIGHT_PAIR_TAKES_NO_TAG_AND_ENTER_STILL_DOES()
+    {
+        foreach (var g in new[] { GlyphSet.Unicode, GlyphSet.Ascii })
+        {
+            var runs = Footer.Runs(100, [new(g.LeftRightKey, "adjust"), new("Enter", "switch")]);
+            Assert.All(runs.Where(r => r.Text.Contains(g.LeftRightKey, StringComparison.Ordinal) || r.Text == " adjust"),
+                r => Assert.Null(r.Tag));
+            Assert.Contains(runs, r => r.Text == "Enter" && Equals(r.Tag, "Enter"));
+        }
+    }
+
     //a user who armed a destructive chord should be reading the cost
     [Fact]
     public void The_armed_row_replaces_the_keys_row()

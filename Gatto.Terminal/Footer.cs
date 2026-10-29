@@ -65,7 +65,8 @@ public static class Footer
         return runs;
     }
 
-    private static bool IsArrows(string key) => key == GlyphSet.Unicode.ArrowsKey || key == GlyphSet.Ascii.ArrowsKey;
+    private static bool IsArrows(string key) => key == GlyphSet.Unicode.ArrowsKey || key == GlyphSet.Ascii.ArrowsKey
+        || key == GlyphSet.Unicode.LeftRightKey || key == GlyphSet.Ascii.LeftRightKey;
 
     //the legend dim, pushed right. the gap comes from the same left string the plain row builds
     private static IReadOnlyList<Run> Gap(List<Run> runs, string left, string right, int width)

@@ -1,11 +1,9 @@
-using Gatto.Terminal;
-
-namespace Gatto.Cli.Setup.Tui;
+namespace Gatto.Terminal;
 
 //a footer word's key string as the key a press on it acts as, so every mouse press on the footer reuses a key path. the arrows name a pair and act as neither
-internal static class FooterKeys
+public static class FooterKeys
 {
-    internal static ConsoleKeyInfo? KeyOf(string footerKey) => footerKey switch
+    public static ConsoleKeyInfo? KeyOf(string footerKey) => footerKey switch
     {
         "Esc" => new ConsoleKeyInfo('\0', ConsoleKey.Escape, false, false, false),
         "Enter" => new ConsoleKeyInfo('\r', ConsoleKey.Enter, false, false, false),
