@@ -279,4 +279,295 @@ public class PanelStateTests
         Assert.Contains("Enter switch   d default   Esc close", text);
         Assert.DoesNotContain("the rest have no number", text);
     }
+
+    //each wait advances the clock by its budget and never sees a key, and a hook runs at each wait
+    private sealed class PollClock(Action<int>? onWait = null) : IPollClock
+    {
+        public int Waits { get; private set; }
+        public long ElapsedMs { get; private set; }
+
+        public bool WaitForKey(TimeSpan budget)
+        {
+            Waits++;
+            ElapsedMs += (long)budget.TotalMilliseconds;
+            onWait?.Invoke(Waits);
+            return false;
+        }
+    }
+
+    private static int Renders(RecordingSurface s) =>
+        TermText.StripAnsiForWidth(s.Text).Split('\n').Count(l => l.TrimStart('\r').StartsWith("  model", StringComparison.Ordinal));
+
+    [Fact]
+    public void A_panel_poll_that_arrives_answers_the_cursors_original_index_with_no_key_read()
+    {
+        var checks = 0;
+        var spec = new SelectSpec([], null, Models(), Panel: Panel(), InitialCursor: 2, Poll: new PollSpec(
+            Arrived: () => ++checks >= 2, Row: _ => "", Clock: new PollClock(), Interval: TimeSpan.FromSeconds(1), RenderRow: false));
+
+        var outcome = new SelectPrompt(new RecordingSurface { Width = 80, Height = 24 }, T, new Keys()).Show(spec);
+
+        Assert.Equal(2, Assert.IsType<SelectOutcome.Arrived>(outcome).Cursor);
+        Assert.Equal(2, checks);
+    }
+
+    [Fact]
+    public void A_panel_poll_repaints_once_per_change_of_its_row()
+    {
+        var checks = 0;
+        var clock = new PollClock();
+        var surface = new RecordingSurface { Width = 80, Height = 24 };
+        var spec = new SelectSpec([], null, Models(), Panel: Panel(), Poll: new PollSpec(
+            Arrived: () => ++checks >= 2, Row: ms => ms < 500 ? "a" : "b", Clock: clock, Interval: TimeSpan.FromSeconds(1), RenderRow: false));
+
+        new SelectPrompt(surface, T, new Keys()).Show(spec);
+
+        Assert.True(clock.Waits > 4, "the wait ended before the row changed");
+        Assert.Equal(3, Renders(surface));   //the first paint, then null to a and a to b, each once
+    }
+
+    [Fact]
+    public void A_close_signalled_during_a_panel_poll_answers_cancelled()
+    {
+        using var close = new CancellationTokenSource();
+        var spec = new SelectSpec([], null, Models(), Panel: Panel(), Close: close.Token, Poll: new PollSpec(
+            Arrived: () => false, Row: _ => "", Clock: new PollClock(n => { if (n == 3) close.Cancel(); }),
+            Interval: TimeSpan.FromSeconds(1), RenderRow: false));
+
+        var outcome = new SelectPrompt(new RecordingSurface { Width = 80, Height = 24 }, T, new Keys()).Show(spec);
+
+        Assert.IsType<SelectOutcome.Cancelled>(outcome);
+    }
+
+    [Fact]
+    public void A_panel_with_a_poll_that_renders_its_row_throws_at_entry()
+    {
+        var spec = new SelectSpec([], null, Models(), Panel: Panel(), Poll: new PollSpec(
+            Arrived: () => false, Row: _ => "", Clock: new PollClock(), Interval: TimeSpan.FromSeconds(1)));
+
+        Assert.Throws<ArgumentException>(() => new SelectPrompt(new RecordingSurface(), T, new Keys()).Show(spec));
+    }
+
+    private static readonly FooterKey[] TaskKeys = [new("Enter", "detail"), new("x", "stop"), new("Esc", "close")];
+    private static readonly FooterKey[] WatchKeys = [new("Enter", "detail"), new("Esc", "close")];
+
+    //two shells and the watch, each with a detail, the watch's naming no x
+    private static PanelFields Tasks(Func<int, int>? lines = null) => new("tasks", TaskKeys, Count: "2 shells · watch", SearchWhenLong: false,
+        LabelWhole: true, KeysFor: i => i == 2 ? WatchKeys : TaskKeys,
+        DetailOf: i => [new($"command {i}"), .. Enumerable.Range(1, lines?.Invoke(i) ?? 30).Select(n => new DetailRow($"line {n}", Dim: true))],
+        DetailKeysFor: i => i == 2 ? [new("Esc", "back")] : [new("x", "stop"), new("Esc", "back")]);
+
+    private static List<SelectOption> TaskRows(params string[] keys) =>
+        [.. (keys.Length == 0 ? ["1", "2", "watch"] : keys).Select(k => new SelectOption(k == "watch" ? "watch" : $"{k}  running 3s", Key: k))];
+
+    private static PanelState TaskState(Func<int, int>? lines = null, int cursor = 0, string? detail = null, int offset = PanelState.End) =>
+        new(Tasks(lines), TaskRows(), numbered: false, cursor, ['x'], detail, offset);
+
+    private static PanelFrame PaintTasks(PanelState s, int room = 12, Func<int, int>? lines = null)
+    {
+        var view = s.View();
+        var frame = PanelComposer.Compose(Tasks(lines), s.OptionsOf(view.Tab), false, view, 80, room, T, GlyphSet.Unicode);
+        s.Record(frame.Layout, view.Tab);
+        return frame;
+    }
+
+    [Fact]
+    public void Enter_on_a_row_with_a_detail_opens_it_end_first_and_answers_nothing()
+    {
+        var s = TaskState();
+        PaintTasks(s);
+
+        Assert.Equal(PanelStep.Changed, s.Key(EnterKey));
+        Assert.Equal("1", s.View().Detail);
+        Assert.Equal(PanelState.End, s.DetailOffset);
+        Assert.Equal("command 0", s.View().DetailRows![0].Text);
+        Assert.Equal("  line 30", TermText.StripAnsiForWidth(PaintTasks(s).Rows[^3]));
+    }
+
+    [Fact]
+    public void The_end_sentinel_survives_a_key_that_moves_nothing_and_a_re_entry()
+    {
+        var s = TaskState();
+        PaintTasks(s);
+        s.Key(EnterKey);
+        PaintTasks(s);
+
+        Assert.Equal(PanelStep.None, s.Key(K(ConsoleKey.DownArrow)));
+        PaintTasks(s);
+        s.Key(C('q'));
+        Assert.Equal(PanelState.End, s.DetailOffset);
+
+        var again = TaskState(lines: _ => 40, detail: s.Detail, offset: s.DetailOffset);
+        Assert.Equal("  line 40", TermText.StripAnsiForWidth(PaintTasks(again, lines: _ => 40).Rows[^3]));
+    }
+
+    [Fact]
+    public void PgUp_in_a_detail_moves_by_a_page_clamps_at_the_top_and_End_follows_the_tail_again()
+    {
+        var s = TaskState();
+        PaintTasks(s);
+        s.Key(EnterKey);
+        var detail = PaintTasks(s).Layout;
+
+        s.Key(K(ConsoleKey.PageUp));
+        Assert.Equal(detail.Offset - (detail.BodyRows - 2), s.DetailOffset);
+        for (var i = 0; i < 12; i++) { PaintTasks(s); s.Key(K(ConsoleKey.PageUp)); }
+        Assert.Equal(0, s.DetailOffset);
+
+        PaintTasks(s);
+        s.Key(K(ConsoleKey.End));
+        Assert.Equal(PanelState.End, s.DetailOffset);
+        Assert.Equal(0, s.CursorIndex);   //no detail move moves the cursor
+    }
+
+    [Fact]
+    public void Esc_closes_the_detail_at_the_same_cursor_and_the_detail_frame_never_moves_the_list()
+    {
+        var s = TaskState(cursor: 1);
+        PaintTasks(s);
+        s.Key(EnterKey);
+        PaintTasks(s);
+        s.Key(K(ConsoleKey.PageUp));
+        PaintTasks(s);
+
+        s.Key(EscKey);
+        Assert.Null(s.View().Detail);
+        s.Key(C('q'));   //the last frame is the detail's, so this key must not copy its offset into the list
+        Assert.Equal(0, s.View().Offset);
+        Assert.Equal(1, s.CursorIndex);
+    }
+
+    [Fact]
+    public void A_detail_whose_row_is_gone_at_construction_is_dropped_and_the_cursor_clamps()
+    {
+        var s = new PanelState(Tasks(), TaskRows("1", "watch"), numbered: false, 2, ['x'], detail: "2");
+
+        Assert.Null(s.Detail);
+        Assert.Equal(1, s.CursorIndex);
+        Assert.Equal("watch", new PanelState(Tasks(), TaskRows("1", "watch"), false, 0, ['x'], detail: "watch").Detail);
+    }
+
+    [Fact]
+    public void A_control_key_is_taken_only_where_the_rows_key_row_names_it()
+    {
+        var shell = TaskState();
+        PaintTasks(shell);
+        shell.Key(EnterKey);
+        Assert.Equal(new SelectOutcome.Control('x', 0), shell.Key(C('x')).Outcome);
+
+        var watch = TaskState(cursor: 2);
+        PaintTasks(watch);
+        Assert.Equal(PanelStep.None, watch.Key(C('x')));
+        watch.Key(EnterKey);
+        Assert.Equal("watch", watch.Detail);
+        Assert.Equal(PanelStep.None, watch.Key(C('x')));
+    }
+
+    [Fact]
+    public void The_digits_the_question_mark_and_Tab_do_nothing_in_a_detail()
+    {
+        var s = TaskState();
+        PaintTasks(s);
+        s.Key(EnterKey);
+        PaintTasks(s);
+
+        Assert.Equal(PanelStep.None, s.Key(new ConsoleKeyInfo('1', ConsoleKey.D1, false, false, false)));
+        Assert.Equal(PanelStep.None, s.Key(C('?')));
+        Assert.Equal(PanelStep.None, s.Key(new ConsoleKeyInfo('\t', ConsoleKey.Tab, false, false, false)));
+        Assert.Equal("1", s.Detail);
+    }
+
+    [Fact]
+    public void The_wheel_in_a_detail_moves_by_the_lines_the_controller_resolved()
+    {
+        var s = TaskState();
+        PaintTasks(s);
+        s.Key(EnterKey);
+        var end = PaintTasks(s).Layout.Offset;
+
+        s.Mouse(new MouseEvent(4, 0, MouseKind.Wheel, MouseButton.None, 3, 0), 5, 80, () => { });
+        s.Key(PanelState.Wake);
+
+        Assert.Equal(end - 3, s.DetailOffset);
+    }
+
+    //a detail's text belongs to the chrome's copy drag, every other row stays the panel's
+    [Fact]
+    public void A_press_on_a_detail_body_row_is_declined_and_a_move_there_only_takes_the_band_off()
+    {
+        var s = TaskState();
+        PaintTasks(s);
+        s.Key(EnterKey);
+        var f = PaintTasks(s);
+        var wakes = 0;
+        var body = f.Layout.BodyStart + 1;
+
+        Assert.False(s.Mouse(new MouseEvent(6, 0, MouseKind.Press, MouseButton.Left, 0, 0), body, 80, () => wakes++));
+        Assert.False(s.Mouse(new MouseEvent(6, 0, MouseKind.Move, MouseButton.None, 0, 0), body, 80, () => wakes++));
+        Assert.Equal(0, wakes);
+        Assert.True(s.Mouse(new MouseEvent(2, 0, MouseKind.Press, MouseButton.Left, 0, 0), 0, 80, () => wakes++));
+
+        var (row, col) = KeyCell(f, "Esc");
+        s.Mouse(new MouseEvent(col, 0, MouseKind.Move, MouseButton.None, 0, 0), row, 80, () => wakes++);
+        s.Key(PanelState.Wake);
+        Assert.Equal("Esc", s.View().HoverKey);
+        Assert.True(s.Mouse(new MouseEvent(6, 0, MouseKind.Move, MouseButton.None, 0, 0), body, 80, () => wakes++));
+        s.Key(PanelState.Wake);
+        Assert.Null(s.View().HoverKey);
+    }
+
+    [Fact]
+    public void A_detail_and_its_offset_handed_to_a_new_state_reopen_where_they_were()
+    {
+        var s = TaskState(detail: "2", offset: 7);
+        var f = PaintTasks(s);
+
+        Assert.Equal("2", s.View().Detail);
+        Assert.Equal(7, f.Layout.Offset);
+        Assert.Equal("  2  running 3s", TermText.StripAnsiForWidth(f.Rows[1]));
+    }
+
+    [Fact]
+    public void Live_rows_are_asked_at_each_view_and_a_new_count_marks_the_state_stale()
+    {
+        var ticks = 0;
+        List<SelectOption> Now() => [new($"1  running {++ticks}s", Key: "1"), new("watch", Key: "watch")];
+        var s = new PanelState(Tasks() with { OptionsNow = Now }, Now(), false, 0, ['x']);
+
+        s.View();
+        Assert.Equal("1  running 2s", s.OptionsOf(0)[0].Label);
+        s.View();
+        Assert.Equal("1  running 3s", s.OptionsOf(0)[0].Label);
+        Assert.False(s.Stale);
+
+        var shrunk = new PanelState(Tasks() with { OptionsNow = () => [new("watch", Key: "watch")] }, Now(), false, 0, ['x']);
+        shrunk.View();
+        Assert.True(shrunk.Stale);
+    }
+
+    //the window's offset is over wrapped rows, so a move from the end starts at the end the user saw
+    [Fact]
+    public void A_parked_offset_over_a_wrapped_detail_is_a_physical_row()
+    {
+        var command = string.Join(" ", Enumerable.Range(1, 40).Select(i => $"word{i:00}"));
+        var fields = Tasks() with { DetailOf = _ => [new(command, Wrap: true), .. Enumerable.Range(1, 20).Select(n => new DetailRow($"line {n}"))] };
+        var s = new PanelState(fields, TaskRows(), numbered: false, 0, ['x']);
+        PanelFrame Draw()
+        {
+            var view = s.View();
+            var frame = PanelComposer.Compose(fields, s.OptionsOf(view.Tab), false, view, 80, 12, T, GlyphSet.Unicode);
+            s.Record(frame.Layout, view.Tab);
+            return frame;
+        }
+        Draw();
+        s.Key(EnterKey);
+        var end = Draw().Layout;
+        Assert.True(end.BodyTotal > 21, $"{end.BodyTotal} physical rows");
+
+        s.Key(K(ConsoleKey.UpArrow));
+        Assert.Equal(end.Offset - 1, s.DetailOffset);
+        Assert.Equal(end.Offset - 1, Draw().Layout.Offset);
+        s.Key(K(ConsoleKey.Home));
+        Assert.Equal("  word01 word02", string.Join(" ", TermText.StripAnsiForWidth(Draw().Rows[3]).Split(' ').Take(4)));
+    }
 }

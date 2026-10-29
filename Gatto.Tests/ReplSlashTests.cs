@@ -1310,7 +1310,7 @@ public class ReplModelSlashTests : IDisposable
         var picker = new RichListPicker(new Gatto.Terminal.Tests.Fakes.RecordingSurface { Height = 5 }, new Gatto.Terminal.Theme(new Gatto.Terminal.TermCaps(true, true)),
             new KeysOf(new ConsoleKeyInfo('?', 0, false, false, false), new ConsoleKeyInfo('c', ConsoleKey.C, false, false, false),
                 new ConsoleKeyInfo('\r', ConsoleKey.Enter, false, false, false), new ConsoleKeyInfo('d', ConsoleKey.D, false, false, false)));
-        var outcome = picker.ShowPanel(new PanelSpec(items, new PanelFields("model", [new("Esc", "close")]), ['d']));
+        var outcome = picker.ShowPanel(new PanelSpec(items, new PanelFields("model", [new("d", "default"), new("Esc", "close")]), ['d']));
 
         Assert.Equal(new PickOutcome.Control('d', 2), outcome.Pick);
     }

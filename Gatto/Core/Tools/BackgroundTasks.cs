@@ -69,6 +69,9 @@ public sealed class BackgroundTasks : IDisposable
         {
             lock (_e.Gate) return (_e.Out.ToString(), _e.Err.ToString());
         }
+
+        //how many chars both streams hold, so a screen can see growth without copying the output
+        public int Written { get { lock (_e.Gate) return _e.Out.Length + _e.Err.Length; } }
     }
 
     //one handle per task the snapshot lists, running and ended alike, oldest first

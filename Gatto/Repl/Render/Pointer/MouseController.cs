@@ -56,7 +56,7 @@ public sealed class MouseController(
                 var wheelLinesResolved = _wheelAccum / WheelDelta;
                 _wheelAccum %= WheelDelta;
                 if (wheelLinesResolved == 0) break;
-                if (PanelTakes(e, width, height)) break;
+                if (PanelTakes(e with { WheelDelta = wheelLinesResolved }, width, height)) break;   //the panel gets the lines, not the raw delta
                 //a notch over the prompt, rule or composer goes to onComposerScroll first, and a declined one scrolls the transcript
                 var overComposer = compositor.HitTest(e.Y) is ChromeTarget(_, ChromeRegion.Prompt or ChromeRegion.Rule or ChromeRegion.Composer, _);
                 if (overComposer && onComposerScroll is not null && onComposerScroll(wheelLinesResolved)) break;

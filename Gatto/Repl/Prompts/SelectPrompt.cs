@@ -49,7 +49,8 @@ public enum DetailKind { None, Same, Added, Removed }
 
 //one detail row, Gutter renders dim ahead of the text, Dim dims the whole row and Warn paints it in the warn ink. the row stands for its Lines of source, more than one on a count row
 public sealed record DetailRow(string Text, string? Gutter = null, bool Dim = false, IReadOnlyList<SpanRole>? Roles = null,
-    CodeLanguage Language = CodeLanguage.None, DetailKind Kind = DetailKind.None, bool Warn = false, int Lines = 1)
+    CodeLanguage Language = CodeLanguage.None, DetailKind Kind = DetailKind.None, bool Warn = false, int Lines = 1,
+    bool Wrap = false)   //a panel's detail wraps the row at the width instead of cutting it
 {
     public static implicit operator DetailRow(string text) => new(text);
 }
@@ -223,6 +224,26 @@ public sealed partial class SelectPrompt(   //single-select, multi-select and th
     //the delete byte comes from its code point 0x7F, so no raw control byte sits in this source file, as TermText does
     private const char Del = (char)0x7F;
 
+    //what a watching screen's wait ended on
+    private enum PollStep { Key, Arrived, Closed }
+
+    //the wait before a key read on a watching screen: the clock asked at animation cadence, Arrived only on the poll's own interval, which hits the disk
+    private static PollStep WaitPoll(IPollClock clock, PollSpec poll, CancellationToken close, Action<long> frame)
+    {
+        //armed so the first tick checks, the file may already be there and a wasted interval would be the screen doing nothing
+        var lastCheckMs = -(long)poll.Interval.TotalMilliseconds;
+        while (!clock.WaitForKey(FrameInterval))
+        {
+            if (close.IsCancellationRequested) return PollStep.Closed;
+            var now = clock.ElapsedMs;
+            frame(now);
+            if (now - lastCheckMs < poll.Interval.TotalMilliseconds) continue;
+            lastCheckMs = now;
+            if (poll.Arrived()) return PollStep.Arrived;
+        }
+        return PollStep.Key;
+    }
+
     //blocks until the prompt resolves, modal focus held for the whole call. rows go inside the composer frame when a painter is armed, inline otherwise
     public SelectOutcome Show(SelectSpec spec, bool wait = true)
     {
@@ -319,30 +340,20 @@ public sealed partial class SelectPrompt(   //single-select, multi-select and th
 
             while (true)
             {
-                //the clock is asked at animation cadence and Arrived only on the poll's own interval, which hits the disk. the repaint is gated on the composed row changing
+                //the repaint is gated on the composed row changing
                 if (spec.Poll is { } poll)
                 {
-                    var arrived = false;
-                    //armed so the first tick checks, the file may already be there and a wasted interval would be the screen doing nothing
-                    var lastCheckMs = -(long)poll.Interval.TotalMilliseconds;
-
-                    while (!clock!.WaitForKey(FrameInterval))
+                    var waited = WaitPoll(clock!, poll, spec.Close, now =>
                     {
-                        if (spec.Close.IsCancellationRequested) return Done(new SelectOutcome.Cancelled());
-                        var now = clock.ElapsedMs;
                         if (poll.Row(now) is var fresh && fresh != pollRow)
                         {
                             pollRow = fresh;
                             Repaint();
                         }
                         else if (painter is null && surface.Width != paintedWidth) Repaint();
-
-                        if (now - lastCheckMs < poll.Interval.TotalMilliseconds) continue;
-                        lastCheckMs = now;
-                        if (poll.Arrived()) { arrived = true; break; }
-                    }
-
-                    if (arrived) return Done(new SelectOutcome.Arrived(cursor));
+                    });
+                    if (waited == PollStep.Closed) return Done(new SelectOutcome.Cancelled());
+                    if (waited == PollStep.Arrived) return Done(new SelectOutcome.Arrived(cursor));
                 }
 
                 if (painter is null) WaitForKeyOrResize();

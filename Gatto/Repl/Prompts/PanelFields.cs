@@ -14,7 +14,13 @@ public sealed record PanelFields(
     IReadOnlyList<FooterKey>? BoxKeys = null,   //the keys while the search box holds them, null is Enter list and Esc back
     string? Legend = null,   //the words after the dot on the key row's right edge
     PanelUnder? Under = null,
-    bool SearchWhenLong = true);
+    bool SearchWhenLong = true,
+    string? Count = null,   //the words after the title's dot as the caller composes them, winning over CountUnit
+    Func<int, IReadOnlyList<FooterKey>>? KeysFor = null,   //the cursor row's keys by its original index, winning over Keys
+    Func<int, IReadOnlyList<DetailRow>?>? DetailOf = null,   //a row's detail by its original index, null for a row Enter answers on
+    Func<int, IReadOnlyList<FooterKey>>? DetailKeysFor = null,   //an open detail's keys, null is Esc back
+    Func<IReadOnlyList<SelectOption>>? OptionsNow = null,   //the rows asked again at each view, for a screen whose rows read live
+    bool LabelWhole = false);   //the label column at its widest label, so the columns take the cut
 
 //one tab of a panel, its name on the title row and its own list
 public sealed record PanelTab(string Name, IReadOnlyList<SelectOption> Options);
@@ -45,8 +51,10 @@ public abstract record PanelHit
 //one press target on a composed row, columns from the row's left edge, end exclusive
 public readonly record struct PanelHitSpan(int Row, int From, int To, PanelHit Hit);
 
-//what the factory composed at, so the loop and the mouse act on the frame the user sees
-public sealed record PanelLayout(int Width, int Room, int BodyRows, int Offset, IReadOnlyList<PanelHitSpan> Hits)
+//what the factory composed at, so the loop and the mouse act on the frame the user sees. the detail is the open row's key, null for the list
+public sealed record PanelLayout(int Width, int Room, int BodyRows, int Offset, IReadOnlyList<PanelHitSpan> Hits,
+    string? Detail = null, int BodyStart = 0, int BodyCount = 0,   //the rows a detail's text sits on, marks excluded
+    int BodyTotal = 0)   //the physical rows a detail's window slides over, wrapped lines counted
 {
     //the target under a cell, null on a cell no press acts on
     public PanelHit? At(int row, int col)

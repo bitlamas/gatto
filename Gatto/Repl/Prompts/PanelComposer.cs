@@ -13,7 +13,12 @@ internal sealed record PanelView(
     int Offset,   //the window's requested first row, clamped at compose
     string? SettingValue,
     string? Sentence,
-    string? HoverKey);
+    string? HoverKey,
+    IReadOnlyList<FooterKey>? Keys = null,   //the key row the row or the detail names, null keeps the panel's own
+    string? Detail = null,   //the open detail's row key, null for the list
+    string? DetailLabel = null,
+    IReadOnlyList<DetailRow>? DetailRows = null,
+    int DetailOffset = int.MaxValue);   //the detail window's first row, the maximum meaning the end first
 
 //the rows a frame shows and the layout it was composed at
 internal sealed record PanelFrame(List<string> Rows, PanelLayout Layout);
@@ -35,6 +40,7 @@ internal static class PanelComposer
         var inside = Margins.Inside(w <= 0 ? 80 : w);
         var tint = panel.Role is { } role ? theme.RoleTint(role) : Theme.Accent;
         var unbounded = room <= 0 || room == int.MaxValue;
+        if (view.Detail is not null) return ComposeDetail(panel, options.Count, view, w, room, unbounded, theme, glyphs, tint);
 
         var hasSubtitle = panel.Subtitle is { Length: > 0 };
         var hasHeader = panel.Header is { Count: > 0 } && view.Shown.Count > 0 && options.Any(o => o.Columns is { Count: > 0 });   //a header over nothing names no cells
@@ -71,7 +77,7 @@ internal static class PanelComposer
         if (box) rows.Add(BoxPieces(view, options.Count, inside, theme, glyphs, tint));
         if (blankTop) rows.Add([]);
 
-        var table = Table.Of(options, numbered, inside, glyphs);
+        var table = Table.Of(options, numbered, inside, panel.LabelWhole);
         if (hasHeader) rows.Add(HeaderPieces(panel.Header!, table));
 
         var (offset, up, down, count) = Window(view.Shown.Count, view.Cursor, view.Offset, bodyRows);
@@ -94,6 +100,79 @@ internal static class PanelComposer
         if (blankKeys) rows.Add([]);
         rows.Add(KeyPieces(panel, view, digitless, w <= 0 ? 80 : w, theme, glyphs, tint));
 
+        var (painted, hits) = Render(rows, w, theme, glyphs);
+        return new PanelFrame(painted, new PanelLayout(w, room, bodyRows, offset, hits));
+    }
+
+    //the detail replaces the body: the title, the open row's label as the subtitle, the rows windowed end first, the detail's keys
+    private static PanelFrame ComposeDetail(PanelFields panel, int total, PanelView view, int w, int room, bool unbounded,
+        Theme theme, GlyphSet glyphs, RgbColor tint)
+    {
+        var detail = Physical(view.DetailRows ?? [], w);
+        var hasSubtitle = view.DetailLabel is { Length: > 0 };
+        var blankTop = true;
+        var blankKeys = true;
+        int Body() => unbounded ? int.MaxValue : room - 1 - (hasSubtitle ? 1 : 0) - (blankTop ? 1 : 0) - (blankKeys ? 1 : 0) - 1;
+        if (!unbounded)
+        {
+            //the blanks first, then the subtitle, the same order as the list's
+            while (Body() < MinBody)
+            {
+                if (blankTop) blankTop = false;
+                else if (blankKeys) blankKeys = false;
+                else if (hasSubtitle) hasSubtitle = false;
+                else break;
+            }
+        }
+        var bodyRows = unbounded ? Math.Max(1, detail.Count) : Math.Max(1, Body());
+
+        var rows = new List<List<Piece>> { TitlePieces(panel, total, view, theme, glyphs, tint) };
+        if (hasSubtitle) rows.Add([new(Indent), new(TermText.Sanitize(view.DetailLabel!), Theme.Dim)]);
+        if (blankTop) rows.Add([]);
+        var (offset, up, down, count) = Window(detail.Count, -1, view.DetailOffset, bodyRows);
+        if (up) rows.Add([new(Indent), new($"{glyphs.Up} {offset} more", Theme.Dim)]);
+        var bodyStart = rows.Count;
+        for (var at = offset; at < offset + count; at++) rows.Add(detail[at]);
+        if (down) rows.Add([new(Indent), new($"{glyphs.Down} {detail.Count - offset - count} more", Theme.Dim)]);
+        if (blankKeys) rows.Add([]);
+        rows.Add(KeyPieces(panel, view, false, w <= 0 ? 80 : w, theme, glyphs, tint));
+
+        var (painted, hits) = Render(rows, w, theme, glyphs);
+        return new PanelFrame(painted, new PanelLayout(w, room, bodyRows, offset, hits, view.Detail, bodyStart, count, detail.Count));
+    }
+
+    //the rows the window counts: a wrapping row gives one per wrapped line, any other row is one the width cuts
+    private static List<List<Piece>> Physical(IReadOnlyList<DetailRow> detail, int w)
+    {
+        var rows = new List<List<Piece>>();
+        foreach (var d in detail)
+        {
+            var gutter = d.Gutter is { Length: > 0 } g ? TermText.Sanitize(g) : "";
+            var ink = d.Warn ? Theme.Warn : d.Dim ? Theme.Dim : Theme.Bright;
+            var text = TermText.Sanitize(d.Text);
+            var room = Margins.Inside(w <= 0 ? 80 : w) - Indent.Length;
+            if (!d.Wrap || w <= 0 || room <= UnicodeWidth.Of(gutter))
+            {
+                rows.Add(Line(gutter, text, ink));
+                continue;
+            }
+            var segs = SoftWrap.Wrap(text, room - UnicodeWidth.Of(gutter), room);
+            for (var i = 0; i < segs.Count; i++) rows.Add(Line(i == 0 ? gutter : "", segs[i].Text, ink));
+        }
+        return rows;
+
+        static List<Piece> Line(string gutter, string text, RgbColor ink)
+        {
+            var row = new List<Piece> { new(Indent) };
+            if (gutter.Length > 0) row.Add(new(gutter, Theme.Dim));
+            row.Add(new(text, ink));
+            return row;
+        }
+    }
+
+    //the pieces painted and cut at the width, each press target recorded at the cells it was painted on
+    private static (List<string> Rows, List<PanelHitSpan> Hits) Render(List<List<Piece>> rows, int w, Theme theme, GlyphSet glyphs)
+    {
         var painted = new List<string>(rows.Count);
         var hits = new List<PanelHitSpan>();
         for (var r = 0; r < rows.Count; r++)
@@ -109,7 +188,7 @@ internal static class PanelComposer
             }
             painted.Add(w <= 0 ? sb.ToString() : TermText.TruncateCells(sb.ToString(), w, glyphs));
         }
-        return new PanelFrame(painted, new PanelLayout(w, room, bodyRows, offset, hits));
+        return (painted, hits);
     }
 
     //the window over the shown rows: the first row, whether each mark shows, and how many option rows fit between them. the cursor always stays inside
@@ -162,7 +241,8 @@ internal static class PanelComposer
             }
             return row;
         }
-        if (panel.CountUnit is { } unit)
+        if (panel.Count is { } said) row.Add(new($" {glyphs.Dot} {TermText.Sanitize(said)}", Theme.Dim));
+        else if (panel.CountUnit is { } unit)
         {
             var filtered = view.Draft.Length > 0;
             var count = filtered ? $"{view.Shown.Count} of {total} {unit}" : $"{total} {unit}";
@@ -270,15 +350,15 @@ internal static class PanelComposer
     //the shelf's key row: the keys of the region that holds them, the moves named when a row on screen has no digit, Esc last
     private static List<Piece> KeyPieces(PanelFields panel, PanelView view, bool digitless, int w, Theme theme, GlyphSet glyphs, RgbColor tint)
     {
-        var keys = new List<FooterKey>(view.InBox
-            ? panel.BoxKeys ?? [new("Enter", "list"), new("Esc", "back")]
-            : panel.Keys);
-        if (!view.InBox)
+        var keys = new List<FooterKey>(view.Detail is not null ? view.Keys ?? [new("Esc", "back")]
+            : view.InBox ? panel.BoxKeys ?? [new("Enter", "list"), new("Esc", "back")]
+            : view.Keys ?? panel.Keys);
+        if (!view.InBox && view.Detail is null)
         {
             if (panel.Tabs is { Count: > 1 }) keys.Insert(Math.Max(0, keys.Count - 1), new FooterKey(glyphs.LeftRightKey, "tabs", Shed: 1));
             if (digitless) keys.Insert(0, new FooterKey(glyphs.ArrowsKey, "move", Shed: 1));
         }
-        var legend = !view.InBox && panel.Legend is { } words ? new Legend(glyphs.Loaded + " " + words) : (Legend?)null;
+        var legend = !view.InBox && view.Detail is null && panel.Legend is { } words ? new Legend(glyphs.Loaded + " " + words) : (Legend?)null;
 
         var row = new List<Piece>();
         foreach (var r in Footer.Runs(w, keys, legend))
@@ -314,13 +394,13 @@ internal static class PanelComposer
     //the label column and the column widths, measured over every option so a filter never moves a column
     private sealed record Table(int LabelStart, int LabelWidth, int[] Columns)
     {
-        internal static Table Of(IReadOnlyList<SelectOption> options, bool numbered, int inside, GlyphSet glyphs)
+        internal static Table Of(IReadOnlyList<SelectOption> options, bool numbered, int inside, bool whole)
         {
             var labelStart = Indent.Length + (numbered ? 3 : 0);
             var cap = Math.Max(4, inside / 2 - labelStart);
             var widest = options.Count == 0 ? 0 : options.Max(o =>
                 UnicodeWidth.Of(TermText.Sanitize(o.Label)) + (o.Tail ?? []).Sum(t => UnicodeWidth.Of(t.Text)));
-            var labelWidth = Math.Min(widest, cap);
+            var labelWidth = whole ? widest : Math.Min(widest, cap);
 
             var n = options.Count == 0 ? 0 : options.Max(o => o.Columns?.Count ?? 0);
             var cols = new int[n];

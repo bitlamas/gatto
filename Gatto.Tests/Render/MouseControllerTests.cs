@@ -264,6 +264,38 @@ public sealed class MouseControllerTests
         Assert.True(h.Scroll.Following);
     }
 
+    //a press the route declines, a detail's text, is the copy drag any chrome row starts
+    [Fact]
+    public void A_press_the_route_declines_starts_the_chrome_drag()
+    {
+        var h = HarnessWithRegionTaggedChromeAndSeededTranscript();
+        h.Mc = new MouseController(h.Comp, h.Scroll, h.Focus, h.Model, wheelLines: 3, h.Selection, T,
+            panelMouse: (_, _, _, _) => false);
+        h.Paint();
+        var promptY = Enumerable.Range(0, 12).First(y => h.Comp.HitTest(y) is ChromeTarget { Region: ChromeRegion.Prompt });
+
+        h.PressAt(4, promptY);
+
+        Assert.NotNull(h.Selection.ChromeCurrent);
+    }
+
+    //the route gets the lines the notch resolved to, so a panel window moves as far as the transcript would
+    [Fact]
+    public void A_wheel_over_the_panel_reaches_the_route_as_resolved_lines()
+    {
+        var h = HarnessWithRegionTaggedChromeAndSeededTranscript();
+        var deltas = new List<int>();
+        h.Mc = new MouseController(h.Comp, h.Scroll, h.Focus, h.Model, wheelLines: 3, h.Selection, T,
+            panelMouse: (e, _, _, _) => { deltas.Add(e.WheelDelta); return true; });
+        h.Paint();
+        var promptY = Enumerable.Range(0, 12).First(y => h.Comp.HitTest(y) is ChromeTarget { Region: ChromeRegion.Prompt });
+
+        h.Mc.Handle(new MouseEvent(4, promptY, MouseKind.Wheel, MouseButton.None, 120, 0), h.W, h.VpRows);
+        h.Mc.Handle(new MouseEvent(4, promptY, MouseKind.Wheel, MouseButton.None, -120, 0), h.W, h.VpRows);
+
+        Assert.Equal([3, -3], deltas);
+    }
+
     //a notch the route declines falls through to the composer scroll as before
     [Fact]
     public void A_wheel_the_route_declines_falls_through_to_the_composer_scroll()

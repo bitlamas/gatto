@@ -60,39 +60,95 @@ public sealed class BackgroundPanelTests : IDisposable
     private static async Task Shows(RichReplHarness h, Func<string, bool> holds, string what) =>
         Assert.True(await h.UntilAsync(() => holds(h.ScreenText()), Waits.Bound), $"{what}:\n{h.ScreenText()}");
 
+    private static readonly ConsoleKeyInfo UpKey = new('\0', ConsoleKey.UpArrow, false, false, false);
+
+    //the end of a killed shell starts a turn at rest, so each kill a test makes queues the model's answer to it
+    private static void AnswersEnds(FakeChatClient client, int ends)
+    {
+        for (var i = 0; i < ends; i++) client.EnqueueTurn(new StreamEvent.TextDelta($"seen end {i + 1}"), new StreamEvent.Finished("stop", null));
+    }
+
     [Fact]
-    public async Task TASKS_OPENS_THE_LIST_ITS_DETAIL_AND_X_KILLS_AND_ESC_GIVES_BACK_THE_DRAFT()
+    public async Task TASKS_LISTS_UNDER_ITS_TITLE_OPENS_A_DETAIL_ESC_GOES_BACK_AND_ESC_GIVES_BACK_THE_DRAFT()
     {
         var h = Harness();
         StartsTwo(h.Client);
-        h.Client.EnqueueTurn(new StreamEvent.TextDelta("seen the end"), new StreamEvent.Finished("stop", null));   //the killed task's end starts a turn at rest
         var run = h.RunAsync(60_000);
         h.Keys.Line("go");
         await Shows(h, s => s.Contains("2 shells"), "the cell never counted the two shells");
 
         h.Keys.Line("/tasks");
-        await Shows(h, s => s.Contains("1  running ") && s.Contains("2  running "), "the panel never listed the two shells");
+        await Shows(h, s => s.Contains("tasks \u00b7 2 shells") && s.Contains("1  running ") && s.Contains("2  running "), "the panel never listed the two shells under its title");
         Assert.DoesNotContain("1. ", h.ScreenText(), StringComparison.Ordinal);   //the rows carry their task numbers, no digits beside them
+        await Shows(h, s => s.Contains("Enter detail   x stop   Esc close"), "the key row never named the shell row's acts");
 
         h.Keys.Key(EnterKey);
-        await Shows(h, s => s.Contains("no output yet"), "the silent task's detail never said it has no output");
-        h.Keys.Key(EnterKey);
+        await Shows(h, s => s.Contains("no output yet") && s.Contains("x stop   Esc back") && s.Contains("Start-Sleep -Seconds 120"),
+            "the silent task's detail never showed its command, its empty output and its keys");
+        h.Keys.Key(Esc);
+        await Shows(h, s => s.Contains("2  running ") && !s.Contains("no output yet"), "Esc in the detail never returned to the list");
         h.Keys.Key(DownKey);
         h.Keys.Key(EnterKey);
-        await Shows(h, s => s.Contains("⎿ warming up"), "the second task's detail never showed its line");
-
-        h.Keys.Key(X);
-        Assert.True(await h.UntilAsync(() => h.Tasks!.Running.Count == 1, Waits.Bound), "x did not kill the task under the cursor");
-        //the end reaches the model in a turn of its own while the panel stays, and the delivered row leaves at the next re-entry
-        Assert.True(await h.UntilAsync(() => h.Saw("seen the end"), Waits.Bound), "the end's turn never ran");
-        await Shows(h, s => s.Contains("1  running ") && !s.Contains("2  "), "the delivered row never left the panel");
-
+        await Shows(h, s => s.Contains("\u23bf warming up"), "the second task's detail never showed its line");
+        h.Keys.Key(Esc);
         h.Keys.Key(Esc);
         await Release(h);
-        await Shows(h, s => !s.Contains("1  running ") && s.Contains("1 shell"), "the panel never closed back to the composer");
+        await Shows(h, s => !s.Contains("1  running ") && s.Contains("2 shells"), "the panel never closed back to the composer");
         h.Keys.Line("/quit");
         await run;
     }
+
+    //a delivery under a detail keeps it on its own task, x in a detail kills that task, and the list emptying closes the panel and says so
+    [Fact]
+    public async Task A_DETAIL_STAYS_ON_ITS_TASK_THROUGH_A_DELIVERY_AND_THE_LAST_KILL_CLOSES_THE_PANEL_WITH_ITS_LINE()
+    {
+        var h = Harness();
+        StartsTwo(h.Client);
+        AnswersEnds(h.Client, 2);
+        var run = h.RunAsync(60_000);
+        h.Keys.Line("go");
+        await Shows(h, s => s.Contains("2 shells"), "the cell never counted the two shells");
+
+        h.Keys.Line("/tasks");
+        await Shows(h, s => s.Contains("2  running "), "the panel never listed the second shell");
+        h.Keys.Key(DownKey);
+        h.Keys.Key(EnterKey);
+        await Shows(h, s => s.Contains("\u23bf warming up"), "the second task's detail never opened");
+
+        Assert.True(h.Tasks!.Kill(1, BackgroundTasks.ByTasks));
+        Assert.True(await h.UntilAsync(() => h.Saw("seen end 1"), Waits.Bound), "the first end's turn never ran");
+        await Shows(h, s => s.Contains("tasks \u00b7 1 shell") && s.Contains("\u23bf warming up"), "the delivery moved the open detail off its task");
+
+        h.Keys.Key(X);
+        Assert.True(await h.UntilAsync(() => h.Tasks!.Running.Count == 0, Waits.Bound), "x in the detail did not kill its task");
+        Assert.True(await h.UntilAsync(() => h.Saw("seen end 2"), Waits.Bound), "the second end's turn never ran");
+        await Shows(h, s => s.Contains("no background tasks") && !s.Contains("Esc back"), "the emptied list never closed the panel with its line");
+        h.Keys.Line("/quit");
+        await run;
+    }
+
+    //a runtime moves on the open list with no re-entry, since the rows are asked at every repaint
+    [Fact]
+    public async Task A_RUNTIME_TICKS_ON_THE_OPEN_LIST()
+    {
+        var h = Harness();
+        StartsTwo(h.Client);
+        var run = h.RunAsync(60_000);
+        h.Keys.Line("go");
+        await Shows(h, s => s.Contains("2 shells"), "the cell never counted the two shells");
+
+        h.Keys.Line("/tasks");
+        string? first = null;
+        await Shows(h, s => (first = Runtime(s)) is not null, "the panel never showed the first shell's runtime");
+        await Shows(h, s => Runtime(s) is { } now && now != first, $"the runtime stayed at {first}");
+        h.Keys.Key(Esc);
+        await Release(h);
+        h.Keys.Line("/quit");
+        await run;
+    }
+
+    private static string? Runtime(string screen) =>
+        System.Text.RegularExpressions.Regex.Match(screen, @"1  running (\S+)") is { Success: true } m ? m.Groups[1].Value : null;
 
     //from the composer Down selects the cell and Enter opens it, and the effort command and the panel at rest leave the cell painted
     [Fact]
@@ -117,7 +173,7 @@ public sealed class BackgroundPanelTests : IDisposable
         await run;
     }
 
-    //a turn-thread prompt takes the slot: the open panel closes, the prompt's rows are what stays painted, and a /tasks while it holds opens nothing
+    //a turn-thread prompt takes the slot: the open panel closes from its detail, the prompt's rows are what stays painted, and a /tasks while it holds opens nothing
     [Fact]
     public async Task A_PROMPT_TAKING_THE_SLOT_CLOSES_THE_PANEL_AND_HOLDS_IT_SHUT()
     {
@@ -129,6 +185,8 @@ public sealed class BackgroundPanelTests : IDisposable
         await Shows(h, s => s.Contains("2 shells"), "the cell never counted the two shells");
         h.Keys.Line("/tasks");
         await Shows(h, s => s.Contains("1  running "), "the panel never opened");
+        h.Keys.Key(EnterKey);
+        await Shows(h, s => s.Contains("no output yet"), "the detail never opened");
 
         IDisposable? slot = null;
         var prompt = Task.Run(() =>
@@ -137,7 +195,7 @@ public sealed class BackgroundPanelTests : IDisposable
             chrome.Painter!.SetPanelFactory((_, _) => new PanelContent(["  Allow shell?"]));
         });
         await prompt.WaitAsync(Waits.Bound);
-        await Shows(h, s => s.Contains("Allow shell?") && !s.Contains("1  running "), "the prompt's rows were not the ones painted");
+        await Shows(h, s => s.Contains("Allow shell?") && !s.Contains("no output yet"), "the prompt's rows were not the ones painted");
         await Task.Delay(300);
         Assert.Contains("Allow shell?", h.ScreenText(), StringComparison.Ordinal);   //the panel's own clear did not blank the prompt
 

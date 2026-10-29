@@ -205,4 +205,132 @@ public class PanelComposerTests
         Assert.Equal(new PanelHit.Key("Esc"), frame.Layout.At(keyRow, esc));
         Assert.Null(frame.Layout.At(keyRow, plain.IndexOf("↑↓", StringComparison.Ordinal)));
     }
+
+    private static readonly FooterKey[] TaskKeys = [new("Enter", "detail"), new("x", "stop"), new("Esc", "close")];
+    private static readonly FooterKey[] ShellDetailKeys = [new("x", "stop"), new("Esc", "back")];
+
+    private static PanelFields Tasks(string count = "2 shells") => new("tasks", TaskKeys, Count: count, LabelWhole: true, SearchWhenLong: false);
+
+    private static List<SelectOption> Shells() =>
+        [new("1  running 12s", Key: "1", Columns: ["npm run build"]), new("2  ended · killed, waiting for the model", Key: "2", Columns: ["sleep 30"])];
+
+    private static List<DetailRow> Output(int lines) =>
+        [new("npm run build"), .. Enumerable.Range(1, lines).Select(i => new DetailRow($"line {i}", Gutter: i == 1 ? "⎿ " : "  ", Dim: true))];
+
+    private static PanelView Detail(IReadOnlyList<DetailRow> rows, int offset = int.MaxValue, IReadOnlyList<FooterKey>? keys = null) =>
+        new(0, [0, 1], 0, "", false, 0, null, null, null, keys ?? ShellDetailKeys, "1", "1  running 12s", rows, offset);
+
+    [Fact]
+    public void A_detail_draws_the_title_the_rows_label_its_rows_end_first_and_its_keys()
+    {
+        var frame = Compose(Tasks(), Shells(), Detail(Output(30)), room: 12, numbered: false);
+        var rows = Plain(frame);
+
+        Assert.Equal("  tasks · 2 shells", rows[0]);
+        Assert.Equal("  1  running 12s", rows[1]);
+        Assert.Equal("", rows[2]);
+        Assert.StartsWith("  ↑ ", rows[3]);
+        Assert.Equal("    line 30", rows[^3]);   //the end shows first, and no mark below it
+        Assert.Equal("", rows[^2]);
+        Assert.Equal("  x stop   Esc back", rows[^1].TrimEnd());
+        Assert.Equal(12, rows.Count);
+        Assert.Equal("1", frame.Layout.Detail);
+        Assert.Equal(4, frame.Layout.BodyStart);
+        Assert.Equal(6, frame.Layout.BodyCount);
+    }
+
+    [Fact]
+    public void A_detail_at_an_offset_shows_both_marks_and_never_exceeds_the_room()
+    {
+        foreach (var room in new[] { 5, 6, 8, 12, 30 })
+        {
+            var rows = Plain(Compose(Tasks(), Shells(), Detail(Output(40), offset: 10), room: room, numbered: false));
+            Assert.True(rows.Count <= room, $"room {room}: {rows.Count} rows");
+        }
+        var mid = Plain(Compose(Tasks(), Shells(), Detail(Output(40), offset: 10), room: 12, numbered: false));
+        Assert.Contains("  ↑ 10 more", mid);
+        Assert.Contains(mid, r => r.StartsWith("  ↓ ", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public void A_detail_at_a_three_row_body_draws_one_mark_and_two_rows()
+    {
+        var rows = Plain(Compose(Tasks(), Shells(), Detail(Output(20)), room: 5, numbered: false));
+
+        Assert.Equal(["  tasks · 2 shells", "  ↑ 19 more", "    line 19", "    line 20", "  x stop   Esc back"], rows.Select(r => r.TrimEnd()));
+    }
+
+    [Fact]
+    public void A_detail_row_longer_than_the_width_is_cut_and_its_inks_follow_the_row()
+    {
+        var rows = new List<DetailRow> { new("echo " + new string('a', 120)), new("oops", Warn: true), new("quiet", Dim: true) };
+        var frame = Compose(Tasks(), Shells(), Detail(rows), room: 12, w: 80, numbered: false);
+
+        Assert.True(UnicodeWidth.Of(TermText.StripAnsiForWidth(frame.Rows[3])) <= 80);
+        Assert.EndsWith("…", TermText.StripAnsiForWidth(frame.Rows[3]).TrimEnd());
+        Assert.Contains(T.Paint("oops", Theme.Warn), frame.Rows[4]);
+        Assert.Contains(T.Paint("quiet", Theme.Dim), frame.Rows[5]);
+    }
+
+    [Fact]
+    public void A_detail_with_no_keys_of_its_own_names_Esc_back_and_never_the_moves()
+    {
+        var rows = Plain(Compose(Tasks(), Shells(), Detail(Output(40)) with { Keys = null }, room: 10, numbered: false));
+
+        Assert.Equal("  Esc back", rows[^1].TrimEnd());
+    }
+
+    [Fact]
+    public void The_cursor_rows_keys_draw_in_place_of_the_panels()
+    {
+        var watchKeys = new FooterKey[] { new("Enter", "detail"), new("Esc", "close") };
+        var shell = Plain(Compose(Tasks(), Shells(), View(2), numbered: false));
+        var watch = Plain(Compose(Tasks(), Shells(), View(2, cursor: 1) with { Keys = watchKeys }, numbered: false));
+
+        Assert.Equal("  ↑↓ move   Enter detail   x stop   Esc close", shell[^1].TrimEnd());
+        Assert.Equal("  ↑↓ move   Enter detail   Esc close", watch[^1].TrimEnd());
+    }
+
+    [Fact]
+    public void A_count_the_caller_composed_draws_as_given()
+    {
+        Assert.Equal("  tasks · watch", Plain(Compose(Tasks("watch"), Shells(), View(2), numbered: false))[0]);
+        Assert.Equal("  tasks · 1 shell · watch", Plain(Compose(Tasks("1 shell · watch"), Shells(), View(2), numbered: false))[0]);
+    }
+
+    //a whole label column keeps the state readable at 80 and the command takes the cut
+    [Fact]
+    public void A_whole_label_column_lays_a_long_label_whole_at_80_and_the_column_takes_the_cut()
+    {
+        var shells = Shells();
+        shells[0] = shells[0] with { Columns = ["npm run build -- --configuration Release --verbosity detailed --no-restore --framework net10.0"] };
+        var rows = Plain(Compose(Tasks(), shells, View(2), w: 80, numbered: false));
+        var capped = Plain(Compose(Tasks() with { LabelWhole = false }, shells, View(2), w: 80, numbered: false));
+
+        Assert.Contains("2  ended · killed, waiting for the model", rows[3]);
+        Assert.EndsWith("…", rows[2].TrimEnd());
+        Assert.DoesNotContain("waiting for the model", capped[3]);
+    }
+
+    //a command row wraps so it reads whole, an output row beside it is cut, and the window counts the wrapped rows
+    [Fact]
+    public void A_wrapping_command_row_wraps_at_the_width_and_the_window_counts_its_lines()
+    {
+        var command = string.Join(" ", Enumerable.Range(1, 40).Select(i => $"word{i:00}"));
+        var rows = new List<DetailRow> { new(command, Wrap: true), new("out " + new string('=', 200), Gutter: "⎿ ", Dim: true) };
+        var frame = Compose(Tasks(), Shells(), Detail(rows), room: 30, w: 80, numbered: false);
+        var plain = Plain(frame);
+
+        var wrapped = plain.Skip(frame.Layout.BodyStart).Take(frame.Layout.BodyCount).ToList();
+        Assert.True(wrapped.Count >= 4, $"{wrapped.Count} rows");
+        Assert.Equal(command, string.Join(" ", wrapped.Take(wrapped.Count - 1).Select(r => r.Trim())));
+        Assert.All(wrapped.Take(wrapped.Count - 1), r => Assert.True(UnicodeWidth.Of(r) <= 78, r));
+        Assert.StartsWith("  ⎿ out ===", wrapped[^1]);
+        Assert.EndsWith("…", wrapped[^1].TrimEnd());
+        Assert.Equal(wrapped.Count, frame.Layout.BodyTotal);
+
+        var narrow = Compose(Tasks(), Shells(), Detail(rows), room: 6, w: 80, numbered: false);
+        Assert.Equal(frame.Layout.BodyTotal, narrow.Layout.BodyTotal);
+        Assert.Contains(Plain(narrow), r => r.StartsWith("  ↑ ", StringComparison.Ordinal));
+    }
 }

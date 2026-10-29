@@ -10,6 +10,11 @@ public sealed partial class Repl
     //how often the open panel asks the registry, the rate its runtimes may move at
     private static readonly TimeSpan BackgroundPoll = TimeSpan.FromSeconds(1);
 
+    //the list's keys on a shell row and on the watch row, and a shell's detail's, each naming only what that row takes
+    private static readonly FooterKey[] TaskKeys = [new("Enter", "detail"), new("x", "stop"), new("Esc", "close")];
+    private static readonly FooterKey[] WatchKeys = [new("Enter", "detail"), new("Esc", "close")];
+    private static readonly FooterKey[] ShellDetailKeys = [new("x", "stop"), new("Esc", "back")];
+
     //how long a prompt waiting for the slot sleeps before it signals the close again, in case a panel opened after the first signal
     private const int SlotRetryMs = 50;
 
@@ -70,65 +75,61 @@ public sealed partial class Repl
         try
         {
             var cursor = 0;
-            int? detail = null;
+            string? cursorKey = null;
+            string? detail = null;
+            var detailOffset = PanelState.End;
+            var g = s.Glyphs;
             while (!close.IsCancellationRequested)
             {
                 var live = _tasks?.Live ?? [];
-                Watch? watch;
-                lock (s.Gate) watch = _watch;
-                var view = watch is null ? null : new WatchView(Shown(watch.Folder), watch.Paused, watch.Count, Watch.K, watch.Seen);
-                var count = live.Count + (view is null ? 0 : 1);
-                if (count == 0) return;
-                cursor = Math.Clamp(cursor, 0, count - 1);
-                if (detail >= count) detail = null;
-                var numbers = live.Select(t => t.Number).ToList();
-                var watched = watch;
-                var grown = detail is int open && open < live.Count ? live[open].OutputSoFar() : default;
-                var g = s.Glyphs;
-                IReadOnlyList<DetailRow>? rows = null;
-                Func<int, IReadOnlyList<DetailRow>>? rowsAt = null;
-                if (detail is int d && d < live.Count)
+                Watch? watched;
+                lock (s.Gate) watched = _watch;
+                WatchView? WatchNow() => watched is null ? null
+                    : new WatchView(Shown(watched.Folder), watched.Paused, watched.Count, Watch.K, watched.Seen);
+                var options = BackgroundPanel.Rows(live, WatchNow(), g);
+                if (options.Count == 0)
                 {
-                    var t = live[d];
-                    rows = BackgroundPanel.ShellDetail(t, int.MaxValue, g);
-                    rowsAt = cap => BackgroundPanel.ShellDetail(t, cap, g);
+                    //the list emptied under the open panel, so the transcript says what an open on nothing says
+                    lock (s.Gate) s.Renderer.CommitSystemBetweenBlocks(NoBackgroundTasks, transient: true);
+                    return;
                 }
-                else if (detail is not null && view is not null)
-                    rows = BackgroundPanel.WatchDetail(view, g);
-                var labels = BackgroundPanel.Labels(live, view, s.Surface.Width, g);
-                var spec = new SelectSpec([], null, [.. labels.Select(l => new SelectOption(l))], rows,
-                    FooterHint: null, InitialCursor: cursor, Numbered: false, ControlKeys: ['x'], DetailAt: rowsAt,
-                    LabelsAt: w => BackgroundPanel.Labels(live, view, w, g),
+                //the cursor follows its row by key, and a row that left leaves it clamped where it was
+                var keyed = cursorKey is null ? -1 : options.ToList().FindIndex(o => o.Key == cursorKey);
+                cursor = keyed >= 0 ? keyed : Math.Clamp(cursor, 0, options.Count - 1);
+                var numbers = live.Select(t => t.Number).ToList();
+                var shells = live.Count;
+                var fields = new PanelFields("tasks", TaskKeys, Count: BackgroundPanel.Count(shells, watched is not null, g),
+                    Role: roleName, SearchWhenLong: false, LabelWhole: true,
+                    KeysFor: i => i < shells ? TaskKeys : WatchKeys,
+                    DetailOf: i => i < shells ? BackgroundPanel.ShellDetail(live[i], g) : WatchNow() is { } w ? BackgroundPanel.WatchDetail(w, g) : null,
+                    DetailKeysFor: i => i < shells ? ShellDetailKeys : null,
+                    OptionsNow: () => BackgroundPanel.Rows(live, WatchNow(), g));
+                var spec = new SelectSpec([], null, options, FooterHint: null, InitialCursor: cursor, Numbered: false, ControlKeys: ['x'],
                     Poll: new PollSpec(
-                        //the rows change only at a re-entry, when the set of tasks or the watch changed, or the open detail's output grew
-                        Arrived: () => !(_tasks?.Live ?? []).Select(t => t.Number).SequenceEqual(numbers)
-                            || !ReferenceEquals(_watch, watched)
-                            || (detail is int o && o < live.Count && live[o].OutputSoFar() != grown),
-                        Row: _ => BackgroundPanel.StateKey(live) + (view is null ? "" : "|" + (watched!.Paused ? "p" : "") + watched.Count),
+                        //a re-entry only when the set of tasks or the watch changed, every runtime, gloss and growth is a repaint that reads live
+                        Arrived: () => !(_tasks?.Live ?? []).Select(t => t.Number).SequenceEqual(numbers) || !ReferenceEquals(_watch, watched),
+                        Row: _ => BackgroundPanel.StateKey(live) + (watched is null ? "" : "|" + (watched.Paused ? "p" : "") + watched.Count),
                         Clock: null, Interval: BackgroundPoll, RenderRow: false,
                         ClockFor: scope => new ScopePollClock(scope, close.Token)),
-                    Close: close.Token);
-                var outcome = new SelectPrompt(s.Surface, s.Theme, new ConsoleKeySource(), s.Pump, chrome, g).Show(spec, wait: false);
-                switch (outcome)
+                    Close: close.Token, Panel: fields);
+                var result = new SelectPrompt(s.Surface, s.Theme, new ConsoleKeySource(), s.Pump, chrome, g)
+                    .ShowPanel(spec, wait: false, detail, detailOffset);
+                detail = result.Detail;
+                detailOffset = result.DetailOffset;
+                switch (result.Outcome)
                 {
                     case SelectOutcome.Arrived a:
                         cursor = a.Cursor;
-                        break;
-                    case SelectOutcome.Chosen c:
-                        detail = detail == c.Index ? null : c.Index;
-                        cursor = c.Index;
                         break;
                     case SelectOutcome.Control { Key: 'x' } x:
                         //the same act /tasks kill N does, and the row reads the kill's gloss at once off its handle
                         if (x.Cursor >= 0 && x.Cursor < live.Count) _tasks?.Kill(live[x.Cursor].Number, Gatto.Core.Tools.BackgroundTasks.ByTasks);
                         cursor = x.Cursor;
                         break;
-                    case SelectOutcome.Cancelled when detail is not null && !close.IsCancellationRequested:
-                        detail = null;
-                        break;
                     default:
-                        return;
+                        return;   //an escape from the list, or a turn-thread prompt's close with or without a detail open
                 }
+                cursorKey = cursor >= 0 && cursor < options.Count ? options[cursor].Key : null;
             }
         }
         finally
