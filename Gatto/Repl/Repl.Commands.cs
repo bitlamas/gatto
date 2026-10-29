@@ -146,7 +146,7 @@ public sealed partial class Repl
     internal static string MailboxName(string modelId) =>
         string.Concat(modelId.Select(c => Path.GetInvalidFileNameChars().Contains(c) ? '-' : c));
 
-    //the answers that are text already, /help, /tools and the list view of /permissions. /tasks opens the background panel before the bypass is asked
+    //the answers that are text already, /help and the list view of /permissions. /tasks and /tools open their panels before the bypass is asked
     private Func<int, IReadOnlyList<string>> ReadOnlyAnswer(string trimmed, RichState s)
     {
         if (trimmed == "/help")
@@ -155,10 +155,6 @@ public sealed partial class Repl
             var help = (SlashCommands.RenderRich(s.Theme, known) + "\n\n" + Shortcuts.RenderRich(s.Theme, glyphs: _glyphs, known)).Split('\n');
             return _ => [.. help.Select(r => "  " + r)];
         }
-        if (trimmed == "/tools")
-            return w => [.. (listTools is null ? ToolsUnavailable
-                : CommandText.RenderToolsListFor(listTools(), PolicyRows(), new Theme(TermCaps.Plain), Math.Max(20, w - 4), _glyphs))
-                .Split('\n').Select(r => "  " + TermText.Sanitize(r))];
         SlashGate.TryMatchCommand(trimmed, "/permissions", out var arg);
         var grants = HandlePermissions(arg).Split('\n');
         return _ => [.. grants.Select(r => "  " + TermText.Sanitize(r))];
@@ -351,7 +347,9 @@ public sealed partial class Repl
 
     internal const string ToolsUnavailable = "the tool list is unavailable in this session";
 
-    //the policy rows both /tools sites read, one method so the two renders cannot differ on what they were handed
+    internal const string NoToolsArmed = "no tools are armed this session";
+
+    //the policy rows the rich panel and the plain render read, one method so the two cannot differ on what they were handed
     private IReadOnlyList<(string Extension, string Line)> PolicyRows() =>
         listPolicy?.Invoke() ?? Array.Empty<(string, string)>();
 

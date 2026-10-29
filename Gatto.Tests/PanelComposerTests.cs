@@ -333,4 +333,83 @@ public class PanelComposerTests
         Assert.Equal(frame.Layout.BodyTotal, narrow.Layout.BodyTotal);
         Assert.Contains(Plain(narrow), r => r.StartsWith("  ↑ ", StringComparison.Ordinal));
     }
+
+    private static PanelFields ToolsFields() =>
+        new("tools", [new("Enter", "detail"), new("Esc", "close")], CountUnit: "armed", LabelInk: Theme.ToolName, DetailEndFirst: false);
+
+    private static SelectOption Ext(string name, string description, string file) =>
+        new(name, Description: description, Key: name, Trail: [new SelectRun(file, Theme.Dim)]);
+
+    private static List<SelectOption> NineBuiltIns() =>
+        [.. Gatto.Repl.Commands.ToolsPanel.Rows([.. new[] { "read_file", "write_file", "edit_file", "glob", "grep", "shell", "memory_write", "recall_memory", "run_agent" }
+            .Select(n => new ToolInfo(n, "unused", null))])];
+
+    [Fact]
+    public void A_label_ink_paints_the_rows_off_the_cursor_and_the_cursor_row_keeps_the_tint()
+    {
+        var options = new List<SelectOption> { new("glob", Description: "find files by pattern"), new("grep", Description: "search file contents") };
+        var rows = Compose(ToolsFields(), options, View(2), numbered: false).Rows;
+
+        Assert.Contains(T.Paint("grep", Theme.ToolName), rows[3], StringComparison.Ordinal);
+        Assert.Contains(T.Paint("glob", Theme.Accent), rows[2], StringComparison.Ordinal);
+        Assert.DoesNotContain(T.Paint("grep", Theme.Bright), rows[3], StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void A_description_and_a_trail_are_two_cells_apart()
+    {
+        var rows = Plain(Compose(ToolsFields(), [Ext("web_search", "Search the web.", "web_search.csx")], View(1), numbered: false));
+
+        Assert.Equal("❯ web_search  Search the web.  web_search.csx", rows[2].TrimEnd());
+    }
+
+    [Fact]
+    public void A_description_past_its_budget_ends_in_the_ellipsis_and_the_trail_stands_whole_inside_the_margin()
+    {
+        var gloss = "Ask the user 1-4 multiple-choice questions (2-4 options each; user can always type a free-text answer).";
+        var options = new List<SelectOption> { new("recall_memory", Description: "search past sessions and memory"), Ext("ask_user", gloss, "ask_user.csx") };
+        var row = Plain(Compose(ToolsFields(), options, View(2), numbered: false))[3].TrimEnd();
+
+        Assert.EndsWith("…  ask_user.csx", row);
+        Assert.True(UnicodeWidth.Of(row) <= Margins.Inside(80), $"{UnicodeWidth.Of(row)} cells: {row}");
+    }
+
+    [Fact]
+    public void The_nine_built_in_glosses_fit_whole_at_80_columns()
+    {
+        var options = NineBuiltIns();
+        var rows = Plain(Compose(ToolsFields(), options, View(options.Count), room: 30, numbered: false));
+
+        foreach (var o in options)
+            Assert.Contains(rows, r => r.Contains(o.Label, StringComparison.Ordinal) && r.TrimEnd().EndsWith(o.Description!, StringComparison.Ordinal));
+        Assert.DoesNotContain(rows, r => r.Contains('…'));
+    }
+
+    [Fact]
+    public void A_filtered_title_keeps_the_unit()
+    {
+        var options = Enumerable.Range(0, 12).Select(i => new SelectOption($"tool_{i}", Description: "gloss")).ToList();
+        var rows = Plain(Compose(ToolsFields(), options, View(12, draft: "mem", shown: [3, 5]), numbered: false));
+
+        Assert.Equal("  tools · 2 of 12 armed", rows[0]);
+    }
+
+    [Fact]
+    public void A_trail_with_no_description_keeps_the_cells_it_had()
+    {
+        var options = new List<SelectOption> { new("high"), new("low", Trail: [new SelectRun("default", Theme.Dim)]) };
+        var rows = Plain(Compose(new PanelFields("effort", [new("Esc", "close")]), options, View(2)));
+
+        Assert.Equal("  2. low   default", rows[3].TrimEnd());
+    }
+
+    [Fact]
+    public void A_negative_description_budget_draws_the_label_its_gap_and_the_trail_alone()
+    {
+        var options = new List<SelectOption> { new("recall_memory", Description: "search past sessions and memory"), Ext("web_fetch", "Fetch a URL.", "web_search.csx") };
+        var rows = Plain(Compose(ToolsFields(), options, View(2), w: 30, numbered: false));
+
+        Assert.Equal("  web_fetch     web_search.csx", rows[3].TrimEnd());
+        Assert.DoesNotContain(rows, r => r.Contains("Fetch", StringComparison.Ordinal));
+    }
 }

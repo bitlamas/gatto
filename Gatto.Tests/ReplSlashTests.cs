@@ -1421,7 +1421,7 @@ public class ReplToolsTests : IDisposable
         Assert.Contains("4 tools", output, StringComparison.Ordinal);
     }
 
-    //the rule has two sites and this harness reaches only the plain one, so the rich half is held by source-invariant tests
+    //the rule has two sites and this harness reaches only the plain one, so the rich panel's half is held by ToolsPanelReplTests
     [Fact]
     public void Tools_ShowsAnExtensionsPolicyLine_BeneathItsOwnTools()
     {

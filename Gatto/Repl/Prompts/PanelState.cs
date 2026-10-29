@@ -305,7 +305,7 @@ internal sealed class PanelState
         if (_panel.DetailOf?.Invoke(index) is null) return new PanelStep(false, new SelectOutcome.Chosen(index));
         _detail = KeyOf(index);
         _detailIndex = index;
-        _detailOffset = End;   //a detail opens end first, a reopened one too
+        _detailOffset = _panel.DetailEndFirst ? End : 0;   //each open starts where the screen reads from, a reopened one too
         _inBox = false;
         return PanelStep.Changed;
     }
@@ -390,7 +390,7 @@ internal sealed class PanelState
         return PanelStep.Changed;
     }
 
-    //a case-insensitive substring of the label, a column or the description, applied at each keystroke
+    //a case-insensitive substring of the label, a column, the description or a trail word, applied at each keystroke
     private void Filter(string draft)
     {
         var keep = CursorIndex;
@@ -407,7 +407,7 @@ internal sealed class PanelState
     {
         if (draft.Length == 0) return true;
         bool Has(string? s) => s is not null && s.Contains(draft, StringComparison.OrdinalIgnoreCase);
-        return Has(o.Label) || Has(o.Description) || (o.Columns?.Any(Has) ?? false);
+        return Has(o.Label) || Has(o.Description) || (o.Columns?.Any(Has) ?? false) || (o.Trail?.Any(t => Has(t.Text)) ?? false);
     }
 
     private PanelStep Apply(PanelGesture g)

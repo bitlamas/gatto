@@ -90,7 +90,7 @@ internal static class PanelComposer
             for (var at = offset; at < offset + count; at++)
             {
                 if (at >= SelectPrompt.NumberedRows) digitless = true;
-                rows.Add(OptionPieces(options[view.Shown[at]], view.Shown[at], at, at == view.Cursor, numbered, table, theme, glyphs, tint));
+                rows.Add(OptionPieces(options[view.Shown[at]], view.Shown[at], at, at == view.Cursor, numbered, table, inside, panel.LabelInk, theme, glyphs, tint));
             }
             if (down) rows.Add([new(Indent), new($"{glyphs.Down} {view.Shown.Count - offset - count} more", Theme.Dim)]);
         }
@@ -104,7 +104,7 @@ internal static class PanelComposer
         return new PanelFrame(painted, new PanelLayout(w, room, bodyRows, offset, hits));
     }
 
-    //the detail replaces the body: the title, the open row's label as the subtitle, the rows windowed end first, the detail's keys
+    //the detail replaces the body: the title, the open row's label as the subtitle, the rows windowed from the offset the state parked, the detail's keys
     private static PanelFrame ComposeDetail(PanelFields panel, int total, PanelView view, int w, int room, bool unbounded,
         Theme theme, GlyphSet glyphs, RgbColor tint)
     {
@@ -299,7 +299,7 @@ internal static class PanelComposer
     }
 
     private static List<Piece> OptionPieces(SelectOption o, int index, int shownAt, bool isCursor, bool numbered,
-        Table table, Theme theme, GlyphSet glyphs, RgbColor tint)
+        Table table, int inside, RgbColor? labelInk, Theme theme, GlyphSet glyphs, RgbColor tint)
     {
         var hit = new PanelHit.Option(index);
         var row = new List<Piece>
@@ -314,12 +314,22 @@ internal static class PanelComposer
         var label = TermText.Sanitize(o.Label);
         var labelRoom = Math.Max(1, table.LabelWidth - tailCells);
         if (UnicodeWidth.Of(label) > labelRoom) label = TermText.TruncateCells(label, labelRoom, glyphs);
-        row.Add(new(label, isCursor ? tint : Theme.Bright, Hit: hit));
+        row.Add(new(label, isCursor ? tint : labelInk ?? Theme.Bright, Hit: hit));
         foreach (var t in tail) row.Add(new(t.Text, t.Ink == Theme.Accent ? tint : t.Ink, Hit: hit));
         var labelCells = UnicodeWidth.Of(label) + tailCells;
 
         var cols = o.Columns ?? [];
-        if (cols.Count > 0 || o.Description is not null || o.Trail is { Count: > 0 })
+        var trail = o.Trail ?? [];
+        var trailCells = trail.Sum(t => UnicodeWidth.Of(t.Text));
+        //the description takes the inside width the label and the trail leave, and under one cell and the ellipsis it goes with its gap
+        string? desc = null;
+        if (cols.Count == 0 && o.Description is { } said)
+        {
+            var budget = inside - table.LabelStart - table.LabelWidth - ColumnGap - (trailCells > 0 ? trailCells + ColumnGap : 0);
+            var text = TermText.Sanitize(said);
+            if (budget >= 2) desc = UnicodeWidth.Of(text) > budget ? TermText.TruncateCells(text, budget, glyphs) : text;
+        }
+        if (cols.Count > 0 || desc is not null || trail.Count > 0)
             row.Add(new(new string(' ', Math.Max(0, table.LabelWidth - labelCells) + ColumnGap), Hit: hit));
         for (var c = 0; c < cols.Count && c < table.Columns.Length; c++)
         {
@@ -328,11 +338,10 @@ internal static class PanelComposer
             var last = c == cols.Count - 1 || c == table.Columns.Length - 1;
             row.Add(new(last ? cell : Pad(cell, table.Columns[c] + ColumnGap), Hit: hit));
         }
-        if (cols.Count == 0 && o.Description is { } desc)
-            row.Add(new(TermText.Sanitize(desc), Theme.Dim, Hit: hit));
-        if (o.Trail is { Count: > 0 } trail)
+        if (desc is not null) row.Add(new(desc, Theme.Dim, Hit: hit));
+        if (trail.Count > 0)
         {
-            if (cols.Count > 0) row.Add(new(new string(' ', ColumnGap), Hit: hit));
+            if (cols.Count > 0 || desc is not null) row.Add(new(new string(' ', ColumnGap), Hit: hit));
             foreach (var t in trail) row.Add(new(t.Text, t.Ink == Theme.Accent ? tint : t.Ink, Hit: hit));
         }
         return row;

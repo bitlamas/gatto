@@ -210,4 +210,34 @@ public sealed class BackgroundPanelTests : IDisposable
         h.Keys.Line("/quit");
         await run;
     }
+
+    //the hold gives the slot back once on Esc: a second open draws, and a prompt after the second Esc takes the slot at once
+    [Fact]
+    public async Task ESC_RELEASES_THE_SLOT_SO_THE_PANEL_REOPENS_AND_A_PROMPT_TAKES_IT_AT_ONCE()
+    {
+        var chrome = new ChromeHandle();
+        var h = Harness(chrome);
+        StartsTwo(h.Client);
+        var run = h.RunAsync(60_000);
+        h.Keys.Line("go");
+        await Shows(h, s => s.Contains("2 shells"), "the cell never counted the two shells");
+
+        h.Keys.Line("/tasks");
+        await Shows(h, s => s.Contains("1  running "), "the panel never opened");
+        h.Keys.Key(Esc);
+        await Release(h);
+        await Shows(h, s => !s.Contains("1  running "), "Esc never closed the panel");
+        h.Keys.Line("/tasks");
+        await Shows(h, s => s.Contains("1  running "), "the second open drew nothing, so the first never gave the slot back");
+        h.Keys.Key(Esc);
+        await Release(h);
+        await Shows(h, s => !s.Contains("1  running "), "Esc never closed the second panel");
+
+        var prompt = Task.Run(() => chrome.HoldModalSlot!.Invoke());
+        var slot = await prompt.WaitAsync(Waits.Bound);
+        Assert.NotNull(slot);
+        slot!.Dispose();
+        h.Keys.Line("/quit");
+        await run;
+    }
 }

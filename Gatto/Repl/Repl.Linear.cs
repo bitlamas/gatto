@@ -261,6 +261,14 @@ public sealed partial class Repl
                         rejected = carry;
                         continue;
                     }
+                    //the tools panel opens on this task too, read-only, so a turn running beside it changes nothing it shows
+                    if (text.Trim() == "/tools")
+                    {
+                        OpenToolsOrSay(s);
+                        lock (s.Gate) { if (!stopped) RedrawLocked(idleView); }
+                        rejected = carry;
+                        continue;
+                    }
                     //a command that only reads answers at once while a turn runs, drawn where the composer was, and never waits in the queue
                     if (BypassNow(text, s) is { } answer)
                     {
@@ -776,18 +784,6 @@ public sealed partial class Repl
             if (figures is null) { s.Renderer.CommitSystem(ContextUnavailable); return false; }
             //the transcript hangs gatto's rows under its gutter, which stands in for the screen's own two-cell margin
             s.Renderer.CommitContext(figures);
-            return false;
-        }
-        if (trimmed == "/tools")
-        {
-            if (listTools is null) { s.Renderer.CommitSystem(ToolsUnavailable); return false; }
-            var tools = listTools();
-            var policy = PolicyRows();
-            //read both lists, a pure-policy extension is armed and calling it no tools would deny it
-            if (tools.Count == 0 && policy.Count == 0)
-            { s.Renderer.CommitSystem("no tools are armed this session"); return false; }
-            s.Renderer.CommitSystem(CommandText.ToolsHeadline(tools.Count));
-            s.Renderer.CommitListing(CommandText.ToolsSpec(tools, policy, s.Glyphs));
             return false;
         }
         if (trimmed == "/compact")

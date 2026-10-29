@@ -25,17 +25,20 @@ internal static class CommandText
         ? $"wild mode on — permission prompts are OFF for this session  {(glyphs ?? Gatto.Terminal.GlyphSet.Unicode).Wild}"
         : "wild mode off — permission prompts are back on";
 
+    //the one order both tool renders read: built-ins by name, then each extension's tools by origin, then name, all ordinal
+    internal static List<ToolInfo> Ordered(IReadOnlyList<ToolInfo> tools) => tools
+        .OrderBy(t => t.Origin is null ? 0 : 1)
+        .ThenBy(t => t.Origin ?? "", StringComparer.Ordinal)
+        .ThenBy(t => t.Name, StringComparer.Ordinal)
+        .ToList();
+
     //every tool gatto advertises this turn with the extension that armed it, taken from the harness registration. rows group by origin, built-ins first then extensions ordinal, with a policy line after that extension's last tool
     internal static TableSpec ToolsSpec(
         IReadOnlyList<ToolInfo> tools, IReadOnlyList<(string Extension, string Line)> policy,
         Gatto.Terminal.GlyphSet? glyphs)
     {
         var prefix = PolicyPrefixOf(glyphs ?? Gatto.Terminal.GlyphSet.Unicode);
-        var ordered = tools
-            .OrderBy(t => t.Origin is null ? 0 : 1)
-            .ThenBy(t => t.Origin ?? "", StringComparer.Ordinal)
-            .ThenBy(t => t.Name, StringComparer.Ordinal)
-            .ToList();
+        var ordered = Ordered(tools);
 
         var rows = new List<IReadOnlyList<string>>();
         for (var i = 0; i < ordered.Count; i++)

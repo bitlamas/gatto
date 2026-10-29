@@ -22,6 +22,10 @@ public sealed class FakeChatClient : IChatClient
     private Func<CancellationToken, Task>? _hold;
     public Func<CancellationToken, Task>? HoldNextTurn { get => _hold; set => _hold = value; }
 
+    //awaited once, after the next turn's first event, so a test holds a prose block open mid-reply
+    private Func<CancellationToken, Task>? _holdAfterFirst;
+    public Func<CancellationToken, Task>? HoldAfterFirstEvent { get => _holdAfterFirst; set => _holdAfterFirst = value; }
+
     public async IAsyncEnumerable<StreamEvent> StreamAsync(ChatRequest request,
         [System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken ct = default)
     {
@@ -31,7 +35,14 @@ public sealed class FakeChatClient : IChatClient
         if (turn is Exception ex) throw ex;
         if (Interlocked.Exchange(ref _hold, null) is { } hold) await hold(ct);
         if (FirstEventDelayMs > 0) await Task.Delay(FirstEventDelayMs, ct);
-        foreach (var e in (StreamEvent[])turn) { ct.ThrowIfCancellationRequested(); yield return e; }
+        var first = true;
+        foreach (var e in (StreamEvent[])turn)
+        {
+            ct.ThrowIfCancellationRequested();
+            yield return e;
+            if (first && Interlocked.Exchange(ref _holdAfterFirst, null) is { } after) await after(ct);
+            first = false;
+        }
         await Task.CompletedTask;
     }
 }

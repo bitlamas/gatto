@@ -20,7 +20,9 @@ public sealed record PanelFields(
     Func<int, IReadOnlyList<DetailRow>?>? DetailOf = null,   //a row's detail by its original index, null for a row Enter answers on
     Func<int, IReadOnlyList<FooterKey>>? DetailKeysFor = null,   //an open detail's keys, null is Esc back
     Func<IReadOnlyList<SelectOption>>? OptionsNow = null,   //the rows asked again at each view, for a screen whose rows read live
-    bool LabelWhole = false);   //the label column at its widest label, so the columns take the cut
+    bool LabelWhole = false,   //the label column at its widest label, so the columns take the cut
+    RgbColor? LabelInk = null,   //the ink of a label off the cursor row, null is bright
+    bool DetailEndFirst = true);   //a detail opens at its end, a tail read from its newest line, and false opens it at its top
 
 //one tab of a panel, its name on the title row and its own list
 public sealed record PanelTab(string Name, IReadOnlyList<SelectOption> Options);

@@ -182,7 +182,9 @@ public sealed class RichReplHarness
         //the wild line the launch says, absent as a launch with wild off and nothing forbidding it
         string? wildNotice = null,
         //the sandbox line the launch says, absent as a launch with the mode off
-        string? sandboxNotice = null)
+        string? sandboxNotice = null,
+        //the tools /tools lists and their extensions' policy, absent unless a test hands them in, as a session with no registry has none
+        Func<IReadOnlyList<ToolInfo>>? listTools = null, Func<IReadOnlyList<(string Extension, string Line)>>? listPolicy = null)
     {
         Surface = new VtScreenSurface(width, height);
         _tap = new TappedSurface(Surface, _changes);
@@ -227,6 +229,7 @@ public sealed class RichReplHarness
             commands: commands,
             launchWarnings: launchWarnings, servedNotice: servedNotice, sandboxNotice: sandboxNotice, wildNotice: wildNotice,
             clipboardImageSource: clipboardImages,
+            listTools: listTools, listPolicy: listPolicy,
             roleTint: roleTint, roleAvatar: roleAvatar, firstMessage: firstMessage,
             armTasks: tasks => _context.Tasks = tasks);
     }

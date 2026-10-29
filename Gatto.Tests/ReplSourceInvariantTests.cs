@@ -87,14 +87,14 @@ public class ReplSourceInvariantTests
         Assert.DoesNotContain(".Hold()", src[start..end], StringComparison.Ordinal);
     }
 
-    //the /tools renders have no in-process driver, so the source text is what gets checked. both renderers must take their policy rows from PolicyRows()
+    //both /tools renders must take their policy rows from PolicyRows(), and the census sees a site no harness drives
     [Fact]
     public void BothToolsRendersReadThePolicyRowsFromOneHelper()
     {
         var src = ReplSource();
 
-        //four: the declaration and three calls, the transcript, the plain line and the mid-turn panel. the needle matches the signature too, a narrower one can be wrong
-        Assert.Equal(4, Occurrences(src, "PolicyRows()"));
+        //three: the declaration and two calls, the rich panel and the plain line. the needle matches the signature too, a narrower one can be wrong
+        Assert.Equal(3, Occurrences(src, "PolicyRows()"));
         //neither site may pass its own empty list instead of the session's rows.
         Assert.DoesNotContain("ToolsSpec(tools, Array.Empty", src, StringComparison.Ordinal);
     }
@@ -104,7 +104,7 @@ public class ReplSourceInvariantTests
     {
         var planted = ReplSource() + "\nclass PlantedThirdToolsRender { void M() { var x = PolicyRows(); } }\n";
 
-        Assert.Equal(5, Occurrences(planted, "PolicyRows()"));
+        Assert.Equal(4, Occurrences(planted, "PolicyRows()"));
     }
 
     //the command text functions the Repl calls, read beside the class

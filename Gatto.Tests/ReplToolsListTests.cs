@@ -198,6 +198,23 @@ public class ReplToolsListTests
         Assert.True(lastAskUser < firstWeb, "ask_user's group comes first and is contiguous");
     }
 
+    //the order the panel shares: built-ins by name, then each origin in turn, then name, all ordinal
+    [Fact]
+    public void Ordered_gives_the_plain_render_its_order()
+    {
+        var tools = new[]
+        {
+            new ToolInfo("web_fetch", "fetch", "web_search"),
+            new ToolInfo("shell", "run", null),
+            new ToolInfo("ask_user", "ask", "ask_user"),
+            new ToolInfo("edit_file", "edit", null),
+        };
+
+        Assert.Equal(["edit_file", "shell", "ask_user", "web_fetch"], Gatto.Repl.Commands.CommandText.Ordered(tools).Select(t => t.Name));
+        var rows = Gatto.Repl.Commands.CommandText.RenderToolsListFor(tools, NoPolicy, Plain, 100, glyphs: GlyphSet.Unicode).Split('\n');
+        Assert.Equal(["edit_file", "shell", "ask_user", "web_fetch"], rows.Skip(2).Select(r => r.Trim().Split(' ')[0]));   //the headline, then the table's header
+    }
+
     //sweep every width, the overflow shows only at the last column. the oracle counts characters, so it can't see a wide character's second cell
     public static IEnumerable<object[]> EveryWidth() =>
         Enumerable.Range(30, 91).Select(w => new object[] { w });

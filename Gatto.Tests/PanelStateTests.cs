@@ -570,4 +570,35 @@ public class PanelStateTests
         s.Key(K(ConsoleKey.Home));
         Assert.Equal("  word01 word02", string.Join(" ", TermText.StripAnsiForWidth(Draw().Rows[3]).Split(' ').Take(4)));
     }
+
+    //an extension's file is a painted word, so a draft that names it alone keeps the row
+    [Fact]
+    public void A_draft_matching_a_trail_word_alone_keeps_the_row()
+    {
+        var fields = new PanelFields("tools", [new("Esc", "close")], CountUnit: "armed");
+        List<SelectOption> options =
+        [
+            .. Enumerable.Range(0, 20).Select(i => new SelectOption($"tool_{i}", Description: "a gloss")),
+            new("web_fetch", Description: "Fetch a URL.", Trail: [new SelectRun("web_search.csx", Theme.Dim)]),
+        ];
+        var s = new PanelState(fields, options, numbered: false, 0, null);
+        var view = s.View();
+        s.Record(PanelComposer.Compose(fields, options, false, view, 80, 10, T, GlyphSet.Unicode).Layout, 0);
+        s.Key(C('?'));
+        Type(s, "search.csx");
+
+        Assert.Equal([20], s.View().Shown);
+    }
+
+    [Fact]
+    public void A_detail_that_does_not_open_end_first_opens_at_its_top()
+    {
+        var fields = Tasks() with { DetailEndFirst = false };
+        var s = new PanelState(fields, TaskRows(), numbered: false, 0, ['x']);
+        PaintTasks(s);
+
+        Assert.Equal(PanelStep.Changed, s.Key(EnterKey));
+        Assert.Equal(0, s.DetailOffset);
+        Assert.Equal("  command 0", TermText.StripAnsiForWidth(PaintTasks(s).Rows[3]));
+    }
 }

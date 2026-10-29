@@ -474,29 +474,6 @@ public sealed class StreamRenderer : ITurnObserver
     //warnings go through the ♯ system line, and their text can come from the endpoint so it is sanitized first
     public void OnWarning(string message) => CommitSystem(message);
 
-    //commits a listing as the spec, so it re-measures at any width. it appends before the paint, degrades to plain writes, and is never boxed
-    public void CommitListing(TableSpec spec)
-    {
-        Guarded(
-            () =>
-            {
-                if (_inReasoning) CloseReasoningBlock();
-                else FlushOpenLine();
-                if (_last != LastWrite.None) _blankPending = true;
-                _model?.Append(new ListingItem(spec, After()));
-                var rows = TableLayout.AlignedRows(spec, _theme, _surface.Width);
-                CommitRows(rows.Select(r => r.Text).ToList());
-                _last = LastWrite.Text;
-                _blockOpen = false;
-                _blankPending = true;
-            },
-            () =>
-            {
-                foreach (var r in TableLayout.AlignedRows(spec, _theme, 80))
-                    _surface.Write(TermText.Sanitize(r.Text) + "\n");
-            });
-    }
-
     //the ♯ system line: a blank-separated, Warn-painted gutter block. while a saved call is unanswered the line is buffered and flushed after the block
     public void CommitSystem(string message) => CommitSystem(message, transient: false);
 
