@@ -94,6 +94,9 @@ public sealed class AgentLoop(
     //re-arm the strip notice for a new session, which both /new handlers call. compact does not call it, since the session continues
     public void ResetStripWarning() => _stripWarned = false;
 
+    //the tokens stripped from the last round's reply text, for a caller whose observer only ever sees the stripped text
+    public int LastReplyStripped { get; private set; }
+
     //persist after each tool result, so a killed run still leaves a transcript. null unless a caller sets it, keeping a subagent out of the parent's file
     public Action<Conversation>? OnRoundPersisted { get; set; }
 
@@ -259,6 +262,13 @@ public sealed class AgentLoop(
 
             var text = new StringBuilder();
             var reasoning = new StringBuilder();   //the reasoning_content accumulated for this turn
+            //the observer gets each channel stripped as it streams, so no control token reaches the screen
+            var textFilter = new ControlTokens.StreamFilter();
+            var reasoningFilter = new ControlTokens.StreamFilter();
+            void ShowText(string s) { if (s.Length > 0) observer.OnTextDelta(s); }
+            void ShowReasoning(string s) { if (s.Length > 0) observer.OnReasoningDelta(s); }
+            //a held tail goes out before anything the stream says after it, so the screen keeps the stream's order
+            void Release() { ShowReasoning(reasoningFilter.Flush()); ShowText(textFilter.Flush()); }
             var calls = new List<ToolCall>();
             var truncated = false;
             var begun = new HashSet<int>();   //the calls the stream began, by index, which a stopped turn counts when it says what it discarded
@@ -301,15 +311,17 @@ public sealed class AgentLoop(
                 {
                     switch (ev)
                     {
-                        case StreamEvent.TextDelta t: text.Append(t.Text); observer.OnTextDelta(t.Text); break;
-                        case StreamEvent.ReasoningDelta r: reasoning.Append(r.Text); observer.OnReasoningDelta(r.Text); break;
+                        case StreamEvent.TextDelta t: text.Append(t.Text); ShowText(textFilter.Push(t.Text)); break;
+                        case StreamEvent.ReasoningDelta r: reasoning.Append(r.Text); ShowReasoning(reasoningFilter.Push(r.Text)); break;
                         case StreamEvent.ToolCallDelta d:
+                            Release();
                             if (d.Name is not null || d.PartialArguments is not null) begun.Add(d.Index);
                             observer.OnToolCallDelta(d.Name, d.PartialArguments, d.Index);
                             break;
                         case StreamEvent.PromptProgress pg: observer.OnPromptProgress(pg.Total, pg.Processed); break;
                         case StreamEvent.ToolCallReady c: calls.Add(c.Call); break;
                         case StreamEvent.Finished f:
+                            Release();
                             turnUsage = f.Usage;
                             turnTimings = f.Timings;
                             if (f.Timings is not null) Volatile.Write(ref _lastTimings, f.Timings);
@@ -357,16 +369,20 @@ public sealed class AgentLoop(
                 continue;                                              //re-enter the round on the rebuilt conversation
             }
 
+            Release();                        //a dropped or stopped stream still owes the screen its held tail
             madeProgressSinceRescue = true;   //this round streamed without overflowing, so a later overflow may rescue again
 
             //strip the accumulated strings, since a delimiter can split across chunks. it goes before the empty-turn check so a stripped-to-empty turn is not recorded
             var (cleanText, strippedText) = ControlTokens.Strip(text.ToString());
             var (cleanReasoning, strippedReasoning) = ControlTokens.Strip(reasoning.ToString());
             var strippedCount = strippedText + strippedReasoning;
+            LastReplyStripped = strippedText;
             if (strippedCount > 0 && !_stripWarned)
             {
+                var channel = strippedReasoning == 0 ? "reply" : strippedText == 0 ? "reasoning" : "reply and reasoning";
+                var removed = ControlTokens.Removed(text.ToString()).Concat(ControlTokens.Removed(reasoning.ToString())).ToList();
                 //call OnWarning directly, since Warn would also set LastError and a stripped turn's real error is the truncation
-                observer.OnWarning($"control tokens stripped from model output ({strippedCount}) — see the session file's stripped counts");
+                observer.OnWarning(ControlTokens.Notice(model, channel, removed));
                 _stripWarned = true;
             }
 

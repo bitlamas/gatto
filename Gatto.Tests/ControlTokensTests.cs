@@ -67,4 +67,80 @@ public sealed class ControlTokensTests
         Assert.Equal("", empty);
         Assert.Equal(0, n);
     }
+
+    private static string Streamed(params string[] chunks)
+    {
+        var filter = new ControlTokens.StreamFilter();
+        var shown = string.Concat(chunks.Select(filter.Push));
+        return shown + filter.Flush();
+    }
+
+    [Theory]
+    [InlineData("a<think>b</think>c")]
+    [InlineData("<|tool_calls_section_begin|><|tool_call_begin|>x<|tool_call_end|><|tool_calls_section_end|>")]
+    [InlineData("I'm running it.\n</think>\n\nWhat next?")]
+    [InlineData("<thinking> a < b <|im_start|> </thi")]          //the row has near misses and a partial token at the end.
+    [InlineData("<thi</think>nk>")]                                //the row has a token inside a partial one, which a single pass leaves as a whole token.
+    [InlineData("plain")]
+    public void Streamed_output_equals_the_whole_strip_at_every_split(string whole)
+    {
+        var expected = ControlTokens.Strip(whole).Text;
+        for (var i = 0; i <= whole.Length; i++)
+            for (var j = i; j <= whole.Length; j++)
+                Assert.Equal(expected, Streamed(whole[..i], whole[i..j], whole[j..]));
+        Assert.Equal(expected, Streamed(whole.Select(c => c.ToString()).ToArray()));
+    }
+
+    [Fact]
+    public void A_partial_token_at_the_end_of_the_stream_is_flushed_as_text()
+    {
+        var filter = new ControlTokens.StreamFilter();
+        Assert.Equal("answer ", filter.Push("answer <thi"));
+        Assert.Equal("<thi", filter.Flush());
+    }
+
+    [Fact]
+    public void A_token_completed_by_the_last_chunk_is_dropped()
+    {
+        var filter = new ControlTokens.StreamFilter();
+        Assert.Equal("answer ", filter.Push("answer </thi"));
+        Assert.Equal("", filter.Push("nk>"));
+        Assert.Equal("", filter.Flush());
+    }
+
+    [Fact]
+    public void A_lone_angle_bracket_is_released_once_it_cannot_be_a_token()
+    {
+        var filter = new ControlTokens.StreamFilter();
+        Assert.Equal("a ", filter.Push("a <"));
+        Assert.Equal("< b", filter.Push(" b"));
+    }
+
+    [Fact]
+    public void A_chunk_with_no_angle_bracket_passes_as_the_same_instance()
+    {
+        var chunk = "plain prose";
+        Assert.Same(chunk, new ControlTokens.StreamFilter().Push(chunk));
+    }
+
+    [Fact]
+    public void Removed_lists_each_token_the_strip_takes_in_order()
+    {
+        Assert.Equal(["</think>", "<think>", "</think>"], ControlTokens.Removed("x</think>y<think>z</think>"));
+        Assert.Empty(ControlTokens.Removed("a < b <thinking>"));
+    }
+
+    [Fact]
+    public void The_notice_names_the_one_token_the_model_and_the_channel()
+    {
+        Assert.Equal("removed a stray </think> from qwen3.5-9b's reply",
+            ControlTokens.Notice("qwen3.5-9b", "reply", ["</think>"]));
+    }
+
+    [Fact]
+    public void The_notice_counts_several_tokens_and_names_each_distinct_one_once()
+    {
+        Assert.Equal("removed 3 stray template tags from qwen3.5-9b's reply and reasoning: </think>, <|tool_call_end|>",
+            ControlTokens.Notice("qwen3.5-9b", "reply and reasoning", ["</think>", "<|tool_call_end|>", "</think>"]));
+    }
 }

@@ -21,7 +21,8 @@ public sealed class RecordingObserver : ITurnObserver
     public List<ToolCall>? Recorded;
     public Action? OnRecorded;
     public void OnTextDelta(string t) => Text += t;
-    public void OnReasoningDelta(string t) { }
+    public string Reasoning = "";
+    public void OnReasoningDelta(string t) => Reasoning += t;
     //must match ITurnObserver.OnToolCallDelta exactly, otherwise the interface's default body runs and nothing is recorded
     public void OnToolCallDelta(string? name = null, string? partialArguments = null, int index = 0)
     {
@@ -1427,7 +1428,74 @@ public class AgentLoopTests
         var last = convo.Messages[^1];
         Assert.Equal("real answer", last.Content);
         Assert.Equal(1, last.Stripped);
-        Assert.Contains(obs.Warnings, w => w.Contains("control tokens stripped"));
+        Assert.Equal("real answer", obs.Text);                //the screen gets the stripped stream, not the raw one
+        Assert.Contains("removed a stray <|tool_call_begin|> from m's reply", obs.Warnings);
+    }
+
+    [Fact]
+    public async Task A_partial_token_ending_the_stream_reaches_the_observer_as_text()
+    {
+        var (loop, client, _, convo, obs) = Setup();
+        client.EnqueueTurn(new StreamEvent.TextDelta("answer <thi"), new StreamEvent.Finished("stop", null));
+
+        await loop.RunTurnAsync(convo, "hi", obs, default);
+
+        Assert.Equal("answer <thi", obs.Text);
+        Assert.Equal("answer <thi", convo.Messages[^1].Content);
+    }
+
+    [Fact]
+    public async Task A_token_completed_by_the_last_delta_never_reaches_the_observer()
+    {
+        var (loop, client, _, convo, obs) = Setup();
+        client.EnqueueTurn(
+            new StreamEvent.TextDelta("answer </thi"),
+            new StreamEvent.TextDelta("nk>"),
+            new StreamEvent.Finished("stop", null));
+
+        await loop.RunTurnAsync(convo, "hi", obs, default);
+
+        Assert.Equal("answer ", obs.Text);
+    }
+
+    [Fact]
+    public async Task A_dropped_stream_flushes_the_held_tail_before_the_turn_ends()
+    {
+        var (loop, client, _, convo, obs) = Setup();
+        client.EnqueueTurn(new StreamEvent.TextDelta("answer <|tool"), new StreamEvent.Truncated());
+
+        await loop.RunTurnAsync(convo, "hi", obs, default);
+
+        Assert.Equal("answer <|tool", obs.Text);
+    }
+
+    [Fact]
+    public async Task Reasoning_reaches_the_observer_stripped_and_the_notice_names_that_channel()
+    {
+        var (loop, client, _, convo, obs) = Setup();
+        client.EnqueueTurn(
+            new StreamEvent.ReasoningDelta("<think>plan"),
+            new StreamEvent.TextDelta("answer"),
+            new StreamEvent.Finished("stop", null));
+
+        await loop.RunTurnAsync(convo, "hi", obs, default);
+
+        Assert.Equal("plan", obs.Reasoning);
+        Assert.Contains("removed a stray <think> from m's reasoning", obs.Warnings);
+    }
+
+    [Fact]
+    public async Task Tokens_in_both_channels_are_counted_together_and_each_named_once()
+    {
+        var (loop, client, _, convo, obs) = Setup();
+        client.EnqueueTurn(
+            new StreamEvent.ReasoningDelta("<think>plan</think>"),
+            new StreamEvent.TextDelta("answer</think>"),
+            new StreamEvent.Finished("stop", null));
+
+        await loop.RunTurnAsync(convo, "hi", obs, default);
+
+        Assert.Contains("removed 3 stray template tags from m's reply and reasoning: </think>, <think>", obs.Warnings);
     }
 
     [Fact]
@@ -1569,7 +1637,7 @@ public class AgentLoopTests
         client.EnqueueTurn(new StreamEvent.TextDelta("<|tool_call_end|>b"), new StreamEvent.Finished("stop", null));
         await loop.RunTurnAsync(convo, "two", obs, default);
 
-        Assert.Single(obs.Warnings, w => w.Contains("control tokens stripped"));
+        Assert.Single(obs.Warnings, w => w.Contains("removed a stray"));
         Assert.Equal(1, convo.Messages[^1].Stripped);         //the second record must still hold its strip count.
     }
 
@@ -1586,7 +1654,7 @@ public class AgentLoopTests
         client.EnqueueTurn(new StreamEvent.TextDelta("<|tool_call_end|>b"), new StreamEvent.Finished("stop", null));
         await loop.RunTurnAsync(freshConvo, "two", obs, default);
 
-        Assert.Equal(2, obs.Warnings.Count(w => w.Contains("control tokens stripped")));
+        Assert.Equal(2, obs.Warnings.Count(w => w.Contains("removed a stray")));
     }
 
     [Fact]
@@ -1601,6 +1669,6 @@ public class AgentLoopTests
         var result = await loop.RunTurnAsync(convo, "hi", obs, default);
 
         Assert.Contains("finish_reason=length", result.LastError);
-        Assert.Contains(obs.Warnings, w => w.Contains("control tokens stripped"));
+        Assert.Contains(obs.Warnings, w => w.Contains("removed a stray"));
     }
 }

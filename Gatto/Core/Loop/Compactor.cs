@@ -176,11 +176,15 @@ public sealed class Compactor(IChatClient client, string model, RequestShape? sh
         return JsonDocument.Parse(ms.ToArray()).RootElement.Clone();
     }
 
+    //the summary streams on the reasoning channel so the REPL dims it, and an empty chunk is not sent
+    private static void Show(ITurnObserver observer, string s) { if (s.Length > 0) observer.OnReasoningDelta(s); }
+
     //an overflow, a cut summary or a reply that is no summary is reported so the caller can retry on another request, every other failure returns null with no retry
     private async Task<(string? Summary, bool Overflowed, bool Truncated, bool Rejected)> TryStreamAsync(
         List<ChatMessage> messages, ITurnObserver observer, CancellationToken ct, bool withTools)
     {
         var text = new StringBuilder();
+        var shown = new ControlTokens.StreamFilter();      //the summary reaches the screen stripped, as the prefix gets it
         var truncated = false;
         try
         {
@@ -193,7 +197,7 @@ public sealed class Compactor(IChatClient client, string model, RequestShape? sh
                 switch (ev)
                 {
                     //only the content is kept as the summary, thinking goes to the reasoning channel so the REPL dims it
-                    case StreamEvent.TextDelta t: text.Append(t.Text); observer.OnReasoningDelta(t.Text); break;
+                    case StreamEvent.TextDelta t: text.Append(t.Text); Show(observer, shown.Push(t.Text)); break;
                     case StreamEvent.ReasoningDelta r: observer.OnReasoningDelta(r.Text); break;
                     case StreamEvent.Truncated: truncated = true; break;
                     case StreamEvent.Finished f: if (f.FinishReason == "length") truncated = true; break;
@@ -208,12 +212,13 @@ public sealed class Compactor(IChatClient client, string model, RequestShape? sh
             LastFailure = $"the server dropped the request: {ex.Message}";
             return (null, false, false, false);
         }
+        Show(observer, shown.Flush());
 
         if (truncated) { LastFailure = "the summary was cut at the output limit"; return (null, false, true, false); }
         //strip control tokens here, this text becomes the system prefix, replayed in full on every later request
         var (cleaned, stripped) = ControlTokens.Strip(text.ToString());
         if (stripped > 0)
-            observer.OnWarning($"control tokens stripped from the compaction summary ({stripped})");
+            observer.OnWarning(ControlTokens.Notice(model, "compaction summary", ControlTokens.Removed(text.ToString())));
         var summary = cleaned.Trim();
         //a summary stripped to empty is not a summary, so it takes the same null abort as any other failure
         if (summary.Length == 0) { LastFailure = "the summary came back empty"; return (null, false, false, false); }

@@ -129,8 +129,9 @@ public sealed class RunAgentTool : ITool
         var result = await subLoop.RunTurnAsync(convo, task, observer, ct, traceParent: ctx.TraceParent, agent: role.Name);
         sw.Stop();
 
-        //the observer holds raw deltas, this text is model output so it is stripped here before it becomes a tool result
-        var (text, stripped) = ControlTokens.Strip(observer.FinalText);
+        //the loop strips the deltas before the observer sees them, so the count comes from the loop, and a second strip could join a token the first one split
+        var text = observer.FinalText;
+        var stripped = subLoop.LastReplyStripped;
         if (result.Outcome == TurnOutcome.Truncated)
             //a spent turn budget returns the partial work, and the round count tells the cap apart from a dropped stream
             text = rounds >= role.Turns

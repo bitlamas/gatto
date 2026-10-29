@@ -1080,7 +1080,8 @@ public class CompactorTests
         var summary = await new Compactor(client, "m").SummarizeAsync(SmallConvo(), observer, default);
 
         Assert.Equal("## Summary\nfacts\nImmediate next step: go.", summary);
-        Assert.Contains(observer.Warnings, w => w.Contains("compaction summary"));
+        Assert.DoesNotContain("<|", observer.Reasoning);                     //the summary streams to the screen stripped
+        Assert.Contains("removed a stray <|tool_calls_section_begin|> from m's compaction summary", observer.Warnings);
     }
 
     [Fact]
