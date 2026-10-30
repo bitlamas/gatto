@@ -337,6 +337,25 @@ public sealed class ShippedExtensionsTests : IDisposable
         Assert.Equal(current, File.ReadAllText(Full($"roles/{role}.json")));
     }
 
+    //an untouched undo.csx from an earlier release still logs what it did not snapshot, so it must upgrade in place
+    [Theory]
+    [InlineData("undo-first.csx")]
+    [InlineData("undo-pre-quiet.csx")]
+    public void An_untouched_earlier_undo_is_upgraded_in_place_by_the_real_bytes(string fixture)
+    {
+        var previous = File.ReadAllText(Path.Combine(Census.SourceTree.RepoRoot(), "Gatto.Tests", "Fixtures", fixture));
+        var current = ShippedExtensions.Files["extensions/undo.csx"];
+        Assert.NotEqual(previous, current);
+
+        Directory.CreateDirectory(Full("extensions"));
+        File.WriteAllText(Full("extensions/undo.csx"), previous);
+
+        ShippedExtensions.EnsureWritten(
+            _home, One("extensions/undo.csx", current), ShippedExtensions.HistoricalHashes.ToHashSet());
+
+        Assert.Equal(current, File.ReadAllText(Full("extensions/undo.csx")));
+    }
+
     //an edited copy is the user's, so it keeps its edit and gains no cat
     [Fact]
     public void AN_EDITED_SITTER_FROM_BEFORE_THE_DRESS_KEEPS_ITS_EDIT()
