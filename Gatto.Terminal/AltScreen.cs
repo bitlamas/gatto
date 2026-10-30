@@ -8,6 +8,9 @@ public sealed class AltScreen(ITermSurface surface, ITerminalTitle? title = null
     private bool _final;   //once the folder title is applied, every later Retitle (a /role swap) is ignored
     private bool _named;   //a named session's tab is the name, and no role or folder title overwrites it
     private string? _unnamed;   //the title the unnamed sequence holds, put back when the name goes
+    private string? _shown;   //the title on the tab with the cat in it, whatever frame stands in for the cat
+    private string? _busy;   //the frame standing in for the cat while a turn runs, null shows the cat
+    private readonly object _tab = new();   //the ticker swaps frames on its own thread while the loop retitles on another
 
     //null when this session has no tab worth titling (a redirected stream, or a console that refuses). the alt screen defaults the title, it knows every leave path
     private readonly ITerminalTitle? _title = title ?? TerminalTitle.Deed(Console.IsOutputRedirected);
@@ -26,7 +29,7 @@ public sealed class AltScreen(ITermSurface surface, ITerminalTitle? title = null
         surface.Write(Ansi.AltScreenEnter + (QuietWheel ? Ansi.AlternateScrollOff : "") + (hideCursor ? Ansi.HideCursor : ""));
         if (windowTitle is null) return;
         _unnamed = windowTitle;
-        if (!_named) _title?.Apply(windowTitle);
+        if (!_named) Show(windowTitle);
     }
 
     //change the tab mid-session, called when the role changes. a no-op outside the alt screen, so a plain-mode session never touches a title it never set
@@ -34,7 +37,7 @@ public sealed class AltScreen(ITermSurface surface, ITerminalTitle? title = null
     {
         if (!Active || _final) return;
         _unnamed = windowTitle;
-        if (!_named) _title?.Apply(windowTitle);
+        if (!_named) Show(windowTitle);
     }
 
     //applies the title once and latches the tab, so every later Retitle is ignored. a no-op outside the alt screen, like Retitle
@@ -43,7 +46,7 @@ public sealed class AltScreen(ITermSurface surface, ITerminalTitle? title = null
         if (!Active || _final) return;
         _final = true;
         _unnamed = windowTitle;
-        if (!_named) _title?.Apply(windowTitle);
+        if (!_named) Show(windowTitle);
     }
 
     //a name takes the tab past both latches and holds it, and null gives the tab back to the title the unnamed sequence reached
@@ -53,14 +56,38 @@ public sealed class AltScreen(ITermSurface surface, ITerminalTitle? title = null
         if (windowTitle is not null)
         {
             _named = true;
-            _title?.Apply(windowTitle);
+            Show(windowTitle);
         }
         else if (_named)
         {
             _named = false;
-            if (_unnamed is { } back) _title?.Apply(back);
+            if (_unnamed is { } back) Show(back);
         }
     }
+
+    //a running turn swaps the cat for a frame and null brings the cat back. a no-op outside the alt screen or before a title, since that tab is not gatto's
+    public void Busy(string? frame)
+    {
+        lock (_tab)
+        {
+            if (!Active || frame == _busy) return;
+            _busy = frame;
+            if (_shown is { } shown) _title?.Apply(WithFrame(shown));
+        }
+    }
+
+    //every title goes through here, so a title set mid-turn keeps the turn's frame
+    private void Show(string windowTitle)
+    {
+        lock (_tab)
+        {
+            _shown = windowTitle;
+            _title?.Apply(WithFrame(windowTitle));
+        }
+    }
+
+    private string WithFrame(string windowTitle) =>
+        _busy is { } frame ? TerminalTitle.Boxed(windowTitle, frame) : windowTitle;
 
     //dismiss the alt buffer and restore the main screen, showing the cursor in case a compositor left it hidden. idempotent, and a no-op if Enter never ran
     public void Restore()

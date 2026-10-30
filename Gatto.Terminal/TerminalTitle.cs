@@ -18,6 +18,20 @@ public sealed class TerminalTitle : ITerminalTitle
             ? "gatto " + Glyph
             : "gatto " + Glyph + " " + role.Trim();
 
+    //the cat in its box while a turn runs, two frames a second apart
+    public static readonly IReadOnlyList<string> BusyFrames = ["⬕", "⬔"];
+
+    public static string BusyFrame(long elapsedMs) => BusyFrames[(int)(elapsedMs / 1000 % BusyFrames.Count)];
+
+    //the box always leads the tab, wherever the cat sat, so the first turn reads like every later one
+    public static string Boxed(string title, string frame)
+    {
+        var at = title.IndexOf(Glyph, StringComparison.Ordinal);
+        if (at < 0) return title;
+        var rest = (title[..at].TrimEnd() + " " + title[(at + Glyph.Length)..].TrimStart()).Trim();
+        return rest.Length > 0 ? frame + " " + rest : frame;
+    }
+
     //a named session's tab is the glyph and the name, nothing else
     public static string Named(string name) => Glyph + " " + name.Trim();
 

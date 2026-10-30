@@ -21,7 +21,7 @@ public sealed class TerminalTitleTests : IDisposable
     {
         public readonly List<string> Applied = [];
         public int Restores;
-        public void Apply(string title) => Applied.Add(title);
+        public void Apply(string title) { lock (Applied) Applied.Add(title); }   //the ticker applies a frame from its own thread
         public void Restore() => Restores++;
     }
 
@@ -142,6 +142,77 @@ public sealed class TerminalTitleTests : IDisposable
         Assert.Equal([TerminalTitle.For("generalist"), TerminalTitle.Project(@"C:\dev\myproj")], deed.Applied);
     }
 
+    //a running turn puts the cat in a box that flips, and the end of the turn lets it out on the same title
+    [Fact]
+    public void A_RUNNING_TURN_SWAPS_THE_CAT_FOR_A_BOX_AND_GIVES_IT_BACK()
+    {
+        var deed = new Deed();
+        var alt = new AltScreen(new RecordingSurface(), deed);
+        var folder = TerminalTitle.Project(@"C:\dev\myproj");
+
+        alt.Enter(folder);
+        alt.Busy("⬕");
+        alt.Busy("⬕");   //the same frame twice is one apply, so a tick that changes nothing costs the console nothing
+        alt.Busy("⬔");
+        alt.Busy(null);
+
+        Assert.Equal([folder, "⬕ myproj", "⬔ myproj", folder], deed.Applied);
+    }
+
+    //a title set mid-turn keeps the box, and the cat comes back on the new title
+    [Fact]
+    public void A_TITLE_SET_DURING_A_TURN_KEEPS_THE_BOX()
+    {
+        var deed = new Deed();
+        var alt = new AltScreen(new RecordingSurface(), deed);
+
+        alt.Enter(TerminalTitle.For("coder"));
+        alt.Busy("⬔");
+        alt.Name(TerminalTitle.Named("essay"));
+        alt.Busy(null);
+
+        Assert.Equal([TerminalTitle.For("coder"), "⬔ gatto coder", "⬔ essay", TerminalTitle.Named("essay")], deed.Applied);
+    }
+
+    //the box leads the tab wherever the cat sat, and a title with no cat is left alone
+    [Fact]
+    public void THE_BOX_SITS_AT_THE_LEFT()
+    {
+        Assert.Equal("⬕ gatto coder", TerminalTitle.Boxed(TerminalTitle.For("coder"), "⬕"));
+        Assert.Equal("⬕ gatto", TerminalTitle.Boxed(TerminalTitle.For(null), "⬕"));
+        Assert.Equal("⬕ essay", TerminalTitle.Boxed(TerminalTitle.Named("essay"), "⬕"));
+        Assert.Equal("⬕ myproj", TerminalTitle.Boxed(TerminalTitle.Project(@"C:\work\myproj"), "⬕"));
+        Assert.Equal("plain", TerminalTitle.Boxed("plain", "⬕"));
+    }
+
+    //plain mode and a closed session never animate a tab, and a turn before any title has no cat to box
+    [Fact]
+    public void A_BOX_NEEDS_THE_ALT_SCREEN_AND_A_TITLE()
+    {
+        var deed = new Deed();
+        new AltScreen(new RecordingSurface(), deed).Busy("⬕");
+
+        var untitled = new AltScreen(new RecordingSurface(), deed);
+        untitled.Enter();
+        untitled.Busy("⬕");
+
+        var closed = new AltScreen(new RecordingSurface(), deed);
+        closed.Enter(TerminalTitle.For("coder"));
+        closed.Restore();
+        closed.Busy("⬕");
+
+        Assert.Equal([TerminalTitle.For("coder")], deed.Applied);
+    }
+
+    //the frames are pinned by code point and flip once a second
+    [Fact]
+    public void THE_BOX_FLIPS_BETWEEN_TWO_FRAMES_EACH_SECOND()
+    {
+        Assert.Equal(new[] { 0x2B15, 0x2B14 }, TerminalTitle.BusyFrames.Select(f => char.ConvertToUtf32(f, 0)));
+        Assert.Equal(["⬕", "⬕", "⬔", "⬔", "⬕"],
+            new long[] { 0, 999, 1000, 1999, 2000 }.Select(TerminalTitle.BusyFrame));
+    }
+
     //a -p run builds no Repl and never enters the alt screen, so SetFinalTitle does nothing there
     [Fact]
     public void A_SESSION_THAT_NEVER_ENTERED_GETS_NO_FINAL_TITLE()
@@ -164,7 +235,7 @@ public sealed class TerminalTitleTests : IDisposable
         public JsonElement ParametersSchema => JsonDocument.Parse("""{"type":"object"}""").RootElement;
         public Task<ToolResult> ExecuteAsync(JsonElement args, IToolContext ctx, CancellationToken ct)
         {
-            MidTurnTitles.AddRange(deed.Applied);
+            lock (deed.Applied) MidTurnTitles.AddRange(deed.Applied);
             Ran = true;
             if (abort is not null) abort.RequestAbort();
             return Task.FromResult(new ToolResult("probed"));
@@ -191,8 +262,8 @@ public sealed class TerminalTitleTests : IDisposable
         Assert.True(probe.Ran, "the scripted turn never reached the tool - the harness script did not dispatch");
         var launch = TerminalTitle.For("generalist");
         //mid-turn the only title on is the launch one, so a retitle at launch fails this row
-        Assert.Equal([launch], probe.MidTurnTitles);
-        Assert.Equal([launch, TerminalTitle.Project(_cwd)], deed.Applied);   //one retitle, and a second turn does not repeat it
+        Assert.Equal([launch], SettledTitles.Of(probe.MidTurnTitles));
+        Assert.Equal([launch, TerminalTitle.Project(_cwd)], SettledTitles.Of(deed.Applied));   //one retitle, and a second turn does not repeat it
     }
 
     [Fact]
@@ -213,7 +284,7 @@ public sealed class TerminalTitleTests : IDisposable
         await h.RunAsync();
 
         Assert.Contains("turn cancelled", h.ScreenText(), StringComparison.Ordinal);
-        Assert.Equal([TerminalTitle.For("generalist")], deed.Applied);   //a cancelled turn sets no folder title
+        Assert.Equal([TerminalTitle.For("generalist")], SettledTitles.Of(deed.Applied));   //a cancelled turn sets no folder title
     }
 
     //when there is no tab to title

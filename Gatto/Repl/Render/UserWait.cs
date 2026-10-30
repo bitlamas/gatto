@@ -30,6 +30,9 @@ internal struct UserWait
         _openedAt = 0;
     }
 
+    //true while a prompt holds the user, so the tab can show gatto waiting rather than working
+    public readonly bool Open => _depth > 0;
+
     //every wait so far, the open one included
     public long TotalAt(long nowMs) => _closed + OpenAt(nowMs);
 

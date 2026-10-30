@@ -111,6 +111,43 @@ public class ChromeTickerTests
         ticker.StopTurn();
     }
 
+    //records the tab from the ticker's thread, the last title is what the tab shows
+    private sealed class TabDeed : ITerminalTitle
+    {
+        private readonly List<string> _applied = [];
+        public string? Last { get { lock (_applied) return _applied.Count > 0 ? _applied[^1] : null; } }
+        public void Apply(string title) { lock (_applied) _applied.Add(title); }
+        public void Restore() { }
+    }
+
+    //the tab boxes the cat while the turn works, lets it out while a prompt waits on the user, and lets it out for good at the stop
+    [Fact]
+    public void THE_TAB_BOXES_THE_CAT_WHILE_THE_TURN_WORKS()
+    {
+        var gate = new object();
+        var surface = new RecordingSurface { Width = 80, Height = 20 };
+        var deed = new TabDeed();
+        var status = new StatusInfo(@"C:\dev\myproj", "qwen3.6-35b", "coder", new CtxState(), @"C:\Users\user");
+        var painter = new ChromePainter(surface, T, gate, terminalTitle: deed)
+        {
+            Frame = new InputFrame(surface, T, "coder", status, glyphs: GlyphSet.Unicode),
+        };
+        var folder = TerminalTitle.Project(@"C:\dev\myproj");
+        painter.AltScreen.Enter(folder);
+        var ticker = new ChromeTicker(painter, gate);
+        bool Boxed() => deed.Last is { } t && TerminalTitle.BusyFrames.Any(f => t == f + " myproj");
+
+        ticker.StartTurn("cat");
+        Waits.Until(Boxed, () => $"the working turn left the tab at {deed.Last}");
+        ticker.BeginUserWait();
+        Waits.Until(() => deed.Last == folder, () => $"the prompt left the tab at {deed.Last}");
+        ticker.EndUserWait();
+        Waits.Until(Boxed, () => $"the resumed turn left the tab at {deed.Last}");
+        ticker.StopTurn(repaint: false);
+
+        Assert.Equal(folder, deed.Last);
+    }
+
     //the stack is chrome of the turn, so a stop clears it with the live row
     [Fact]
     public void A_STOP_CLEARS_THE_WAITING_CALLS_WITH_THE_LIVE_ROW()

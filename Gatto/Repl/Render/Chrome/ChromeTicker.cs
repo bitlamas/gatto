@@ -211,6 +211,7 @@ public sealed class ChromeTicker(ChromePainter painter, object gate, ISlotsReade
             painter.State.ToolProgress = null;
             painter.State.Waiting = [];
             painter.State.WaitingAbove = 0;
+            painter.AltScreen.Busy(null);   //the turn is over, so the cat comes out of the box
             if (!repaint) return;   //the caller's commit paints this change right after
             try { painter.Repaint(); }
             catch (Exception ex) { _faulted = true; Report(ex); }
@@ -231,6 +232,7 @@ public sealed class ChromeTicker(ChromePainter painter, object gate, ISlotsReade
                     if (ct.IsCancellationRequested || _faulted) return;
                     var ms = _clock!.ElapsedMilliseconds;
                     if (ms < GraceMs) continue;
+                    painter.AltScreen.Busy(_wait.Open ? null : TerminalTitle.BusyFrame(ms));   //the box flips while the turn works, the cat is out while it waits on the user
                     //floor the estimate at the highest count shown, so a failed poll cannot dip the ↓ back below what the row just showed
                     var tokens = Math.Max(Interlocked.Read(ref _tokenChars) / 4, _maxDown);
                     var toolTokens = Interlocked.Read(ref _toolChars) / 4;   //the turn's tool-result tokens (Σ)

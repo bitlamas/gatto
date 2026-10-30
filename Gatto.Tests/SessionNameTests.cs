@@ -40,7 +40,7 @@ public sealed class SessionNameTests : IDisposable
     private sealed class Deed : ITerminalTitle
     {
         public readonly List<string> Applied = [];
-        public void Apply(string title) => Applied.Add(title);
+        public void Apply(string title) { lock (Applied) Applied.Add(title); }   //the ticker applies a frame from its own thread
         public void Restore() { }
     }
 
@@ -249,7 +249,7 @@ public sealed class SessionNameTests : IDisposable
 
         await h.RunAsync();
 
-        Assert.Equal([TerminalTitle.For("generalist"), TerminalTitle.Named(Name), TerminalTitle.Project(_cwd)], deed.Applied);
+        Assert.Equal([TerminalTitle.For("generalist"), TerminalTitle.Named(Name), TerminalTitle.Project(_cwd)], SettledTitles.Of(deed.Applied));
         Assert.DoesNotContain(Name, h.ScreenText(), StringComparison.Ordinal);
     }
 
