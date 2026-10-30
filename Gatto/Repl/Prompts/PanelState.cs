@@ -303,8 +303,8 @@ internal sealed class PanelState
             case ConsoleKey.RightArrow: return Side(+1);
             case ConsoleKey.Enter:
                 if (CursorIndex < 0) return PanelStep.None;
-                //on a tabbed screen Enter acts only where the tab's key row names it, so a row that names Space never closes on Enter
-                if (_panel.Tabs is { Count: > 0 } && !RowKeys().Any(f => f.Key == "Enter")) return PanelStep.None;
+                //a row acts on Enter only where its key row names it, so a row naming Space or r alone never closes on it
+                if (!RowKeys().Any(f => f.Key == "Enter")) return PanelStep.None;
                 return Choose(CursorIndex);
             case ConsoleKey.Escape:
                 return new PanelStep(false, new SelectOutcome.Cancelled());
@@ -320,6 +320,8 @@ internal sealed class PanelState
         //the digit column numbers the shown rows, so a digit over a filtered list picks the row it is drawn beside
         if (_numbered && c >= '1' && c <= '9' && c - '1' < shown && c - '1' < SelectPrompt.NumberedRows)
         {
+            //on a list whose Enter is not a pick to undo, a digit only moves the cursor there
+            if (_panel.DigitsMove) return MoveTo(c - '1');
             MoveTo(c - '1');
             return new PanelStep(true, new SelectOutcome.Chosen(CursorIndex));
         }

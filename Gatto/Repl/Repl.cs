@@ -165,15 +165,12 @@ public sealed partial class Repl(
     //the name the top rule shows, null when the running role is the default, compared as the launch resolves a name against the files
     private string? DisplayRole() => string.Equals(roleName, defaultRole, StringComparison.OrdinalIgnoreCase) ? null : roleName;
 
-    //a bypassing command's answer while a turn is in flight, null at rest or for any other text, which then goes to the queue
+    //the one bypass still answered on the info panel, /context while a turn is in flight. null at rest or for any other text, which then goes to the queue
     private Task<Func<int, IReadOnlyList<string>>>? BypassNow(string text, RichState s)
     {
         bool inFlight;
         lock (_ctsLock) inFlight = s.TurnCts is not null;
-        if (!inFlight || !SlashCommands.BypassesQueue(text)) return null;
-        var trimmed = text.Trim();
-        if (trimmed == "/context") return ContextAnswerAsync(s);
-        return Task.FromResult(ReadOnlyAnswer(trimmed, s));
+        return inFlight && text.Trim() == "/context" ? ContextAnswerAsync(s) : null;
     }
 
     //the prompters' bridge to the chrome, armed when the painter and renderer come up, cleared at teardown, so a prompt renders inline until then

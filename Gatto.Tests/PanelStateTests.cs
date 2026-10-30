@@ -886,4 +886,58 @@ public class PanelStateTests
         Assert.Equal(before, s.OptionsOf(0)[s.CursorIndex].Key);
         Assert.All(view.Shown, i => Assert.Contains("1", s.OptionsOf(0)[i].Label));
     }
+
+    private static readonly FooterKey[] GrantKeys = [new("r", "revoke"), new("Esc", "close")];
+
+    private static PanelFields Grants() => new("permissions", GrantKeys, DigitsMove: true);
+
+    private static PanelState GrantState() => new(Grants(), Models(), numbered: true, 0, ['r']);
+
+    private static PanelFrame PaintGrants(PanelState s, int room = 10)
+    {
+        var view = s.View();
+        var frame = PanelComposer.Compose(Grants(), s.OptionsOf(view.Tab), true, view, 80, room, T, GlyphSet.Unicode);
+        s.Record(frame.Layout, view.Tab);
+        return frame;
+    }
+
+    [Fact]
+    public void Enter_on_a_tabless_panel_whose_keys_do_not_name_it_is_spent_and_a_press_on_its_cursor_row_too()
+    {
+        var s = GrantState();
+        var f = PaintGrants(s);
+
+        Assert.Equal(PanelStep.None, s.Key(EnterKey));
+        var hit = f.Layout.Hits.First(h => h.Hit is PanelHit.Option { Index: 0 });
+        s.Mouse(new MouseEvent(hit.From, 0, MouseKind.Press, MouseButton.Left, 0, 0), hit.Row, 80, () => { });
+        Assert.Equal(PanelStep.None, s.Key(PanelState.Wake));
+        Assert.Equal(0, s.CursorIndex);
+    }
+
+    [Fact]
+    public void A_digit_that_moves_puts_the_cursor_on_its_row_answers_nothing_and_one_past_the_rows_does_nothing()
+    {
+        var s = new PanelState(Grants(), [.. Models().Take(3)], numbered: true, 0, ['r']);
+        PaintGrants(s);
+
+        var step = s.Key(new ConsoleKeyInfo('3', ConsoleKey.D3, false, false, false));
+        Assert.Null(step.Outcome);
+        Assert.True(step.Repaint);
+        Assert.Equal(2, s.CursorIndex);
+        Assert.Equal(PanelStep.None, s.Key(new ConsoleKeyInfo('5', ConsoleKey.D5, false, false, false)));
+        Assert.Equal(2, s.CursorIndex);
+    }
+
+    [Fact]
+    public void A_digit_that_moves_over_a_filtered_list_lands_on_the_row_drawn_beside_it()
+    {
+        var s = GrantState();
+        PaintGrants(s);
+        s.Key(C('?'));
+        Type(s, "qwen");
+        s.Key(EnterKey);
+
+        Assert.Null(s.Key(new ConsoleKeyInfo('2', ConsoleKey.D2, false, false, false)).Outcome);
+        Assert.Equal(2, s.CursorIndex);
+    }
 }

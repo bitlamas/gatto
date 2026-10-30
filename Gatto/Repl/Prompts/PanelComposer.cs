@@ -44,7 +44,8 @@ internal static class PanelComposer
         if (view.Detail is not null) return ComposeDetail(panel, options.Count, view, w, room, unbounded, theme, glyphs, tint);
 
         var hasSubtitle = panel.Subtitle is { Length: > 0 };
-        var hasHeader = panel.Header is { Count: > 0 } && view.Shown.Count > 0 && options.Any(o => o.Columns is { Count: > 0 });   //a header over nothing names no cells
+        var hasHeader = view.Shown.Count > 0   //a header over nothing names no cells
+            && (panel.LabelHeader is { Length: > 0 } || (panel.Header is { Count: > 0 } && options.Any(o => o.Columns is { Count: > 0 })));
         var under = UnderPieces(panel, view, theme, glyphs);
         var hasUnder = under is not null;
 
@@ -79,7 +80,7 @@ internal static class PanelComposer
         if (blankTop) rows.Add([]);
 
         var table = Table.Of(options, numbered, inside, panel.LabelWhole);
-        if (hasHeader) rows.Add(HeaderPieces(panel.Header!, table));
+        if (hasHeader) rows.Add(HeaderPieces(panel.LabelHeader, panel.Header ?? [], table, glyphs));
 
         var (offset, up, down, count) = Window(view.Shown.Count, view.Cursor, view.Offset, bodyRows);
         var digitless = !numbered;
@@ -286,10 +287,14 @@ internal static class PanelComposer
         return left;
     }
 
-    private static List<Piece> HeaderPieces(IReadOnlyList<string> header, Table table)
+    private static List<Piece> HeaderPieces(string? labelHeader, IReadOnlyList<string> header, Table table, GlyphSet glyphs)
     {
-        var row = new List<Piece> { new(new string(' ', table.LabelStart + table.LabelWidth + ColumnGap)) };
-        var sb = new StringBuilder();
+        //the label cell's word is cut to the cell as a column cell is, so the column words after it stay over their own cells
+        var word = labelHeader is null ? "" : TermText.Sanitize(labelHeader);
+        if (UnicodeWidth.Of(word) > table.LabelWidth) word = TermText.TruncateCells(word, table.LabelWidth, glyphs);
+        var lead = table.LabelStart + (word.Length == 0 ? table.LabelWidth + ColumnGap : 0);
+        var row = new List<Piece> { new(new string(' ', lead)) };
+        var sb = new StringBuilder(word.Length == 0 ? "" : Pad(word, table.LabelWidth + ColumnGap));
         for (var c = 0; c < header.Count && c < table.Columns.Length; c++)
         {
             var cell = TermText.Sanitize(header[c]);

@@ -146,14 +146,6 @@ public sealed partial class Repl
     internal static string MailboxName(string modelId) =>
         string.Concat(modelId.Select(c => Path.GetInvalidFileNameChars().Contains(c) ? '-' : c));
 
-    //the one answer that is text already, the list view of /permissions. /help, /tasks and /tools open their panels before the bypass is asked
-    private Func<int, IReadOnlyList<string>> ReadOnlyAnswer(string trimmed, RichState s)
-    {
-        SlashGate.TryMatchCommand(trimmed, "/permissions", out var arg);
-        var grants = HandlePermissions(arg).Split('\n');
-        return _ => [.. grants.Select(r => "  " + TermText.Sanitize(r))];
-    }
-
     //built-ins first, then the registered rows in commit order. every site that reads the command table reads this, so none can disagree
     internal IReadOnlyList<SlashCommands.Cmd> KnownCommands() =>
         [.. SlashCommands.All, .. _commands.Rows.Select(r => new SlashCommands.Cmd(r.Name, r.Args, r.Summary, Source: r.SourceFile))];
@@ -384,7 +376,7 @@ public sealed partial class Repl
         if (removed is null)
             return $"no grant numbered {n} — /permissions lists the current grants";
 
-        return "revoked: " + CommandText.FormatKindAndText(removed.Kind, removed.Text);
+        return PermissionsPanel.Revoked(removed);
     }
 
     //an optionally signed run of ASCII digits, which is a different question from whether the value fits in an int

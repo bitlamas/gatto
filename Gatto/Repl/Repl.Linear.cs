@@ -277,7 +277,15 @@ public sealed partial class Repl
                         rejected = seed ?? carry;
                         continue;
                     }
-                    //a command that only reads answers at once while a turn runs, drawn where the composer was, and never waits in the queue
+                    //the grants open here as well, read-only while a turn runs, and revoke with a number still waits in the queue
+                    if (SlashCommands.IsPermissionsList(text))
+                    {
+                        OpenPermissionsOrSay(s);
+                        lock (s.Gate) { if (!stopped) RedrawLocked(idleView); }
+                        rejected = carry;
+                        continue;
+                    }
+                    //the context grid answers at once while a turn runs, drawn where the composer was, and never waits in the queue
                     if (BypassNow(text, s) is { } answer)
                     {
                         lock (s.Gate) { if (!stopped) RedrawLocked(idleView); }
@@ -768,7 +776,7 @@ public sealed partial class Repl
         }
         if (SlashGate.TryMatchCommand(trimmed, "/permissions", out var permArg))
         {
-            //one ♯ row per line again, the listing has a row per grant plus the wild row
+            //revoke with a number and the usage line, since the list forms open the panel before the queue. one ♯ row per line
             foreach (var line in HandlePermissions(permArg).Split('\n'))
                 s.Renderer.CommitSystem(line);
             return false;

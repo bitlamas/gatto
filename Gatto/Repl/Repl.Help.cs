@@ -56,9 +56,16 @@ public sealed partial class Repl
         var fields = new PanelFields("help", HelpCommandKeys, Tabs: tabs, Role: roleName,
             Act: (c, i) =>
             {
-                if (c != ' ' || setExtension is null || InFlight() || views[i].ServesEndpoint) return false;
+                if (c != ' ' || setExtension is null || views[i].ServesEndpoint) return false;
                 var view = views[i];
-                if (setExtension(view.Name, !view.On) is { } line) failedWrites[view.Name] = line;
+                string? line;
+                //the flip and the turn check share the lock every turn sets its token under, so a turn that a letter starts never sees a source go off mid-turn
+                lock (_ctsLock)
+                {
+                    if (s.TurnCts is not null) return false;
+                    line = setExtension(view.Name, !view.On);
+                }
+                if (line is not null) failedWrites[view.Name] = line;
                 else failedWrites.Remove(view.Name);
                 return true;
             });

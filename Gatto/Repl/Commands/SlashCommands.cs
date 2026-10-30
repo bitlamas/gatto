@@ -27,12 +27,16 @@ public static class SlashCommands
             if (SlashGate.TryMatchCommand(trimmed, cmd.Name, out var arg))
                 return cmd.Name switch
                 {
-                    "/permissions" => arg.Trim() is "" or "all",
+                    "/permissions" => IsPermissionsList(trimmed),
                     "/tasks" => arg.Trim() == "",
                     _ => cmd.BypassesQueue,
                 };
         return false;
     }
+
+    //the list forms of /permissions, read as the typed form reads its argument, so the panel's intercept and the queue's bypass cannot disagree
+    public static bool IsPermissionsList(string input) =>
+        SlashGate.TryMatchCommand(input.Trim(), "/permissions", out var arg) && arg is "" or "all";
 
     //dispatch branches with no /help row. the set is empty, and it exists so the next exemption is written down and the guard can see it
     public static readonly IReadOnlySet<string> ExemptCommands = new HashSet<string>(StringComparer.Ordinal);

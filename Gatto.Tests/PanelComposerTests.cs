@@ -465,4 +465,41 @@ public class PanelComposerTests
         Assert.Contains(T.Paint("off", Theme.Dim), f.Rows[3]);
         Assert.Contains(T.Paint("failed", Theme.Warn), f.Rows[4]);
     }
+
+    private static readonly FooterKey[] GrantKeys = [new("r", "revoke"), new("Esc", "close")];
+
+    [Fact]
+    public void A_label_header_stands_over_the_label_cell_and_the_header_words_over_the_columns()
+    {
+        var panel = new PanelFields("permissions", GrantKeys, LabelHeader: "kind", Header: ["target"]);
+        List<SelectOption> grants = [new("shell", Columns: ["git status"]), new("write", Columns: [@"C:\work"]), new("tool", Columns: ["web_search"])];
+        var rows = Plain(Compose(panel, grants, View(3)));
+
+        Assert.Equal("     kind   target", rows[2]);
+        Assert.Equal(rows[3].IndexOf("shell", StringComparison.Ordinal), rows[2].IndexOf("kind", StringComparison.Ordinal));
+        Assert.Equal(rows[3].IndexOf("git status", StringComparison.Ordinal), rows[2].IndexOf("target", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public void A_label_header_wider_than_the_label_cell_is_cut_to_it_and_the_column_words_stay_over_their_cells()
+    {
+        var panel = new PanelFields("permissions", GrantKeys, LabelHeader: "permission kind", Header: ["target"]);
+        List<SelectOption> grants = [new("tool", Columns: ["web_search"]), new("tool", Columns: ["ask_user"])];
+        var rows = Plain(Compose(panel, grants, View(2)));
+
+        Assert.Equal("     per…  target", rows[2]);
+        Assert.Equal(rows[3].IndexOf("web_search", StringComparison.Ordinal), rows[2].IndexOf("target", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public void A_header_with_more_words_than_the_columns_prints_over_the_columns_and_never_over_the_label()
+    {
+        var panel = new PanelFields("model", ModelKeys, Header: ["ctx", "file", "size"]);
+        var rows = Plain(Compose(panel, Models(3), View(3)));
+
+        Assert.Equal(rows[3].IndexOf("96k", StringComparison.Ordinal), rows[2].IndexOf("ctx", StringComparison.Ordinal));
+        Assert.Equal(rows[3].IndexOf("File-0", StringComparison.Ordinal), rows[2].IndexOf("file", StringComparison.Ordinal));
+        Assert.DoesNotContain("size", rows[2]);
+        Assert.Equal("", rows[2][..rows[2].IndexOf("ctx", StringComparison.Ordinal)].Trim());
+    }
 }

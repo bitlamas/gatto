@@ -23,7 +23,9 @@ public sealed record PanelFields(
     bool LabelWhole = false,   //the label column at its widest label, so the columns take the cut
     RgbColor? LabelInk = null,   //the ink of a label off the cursor row, null is bright
     bool DetailEndFirst = true,   //a detail opens at its end, a tail read from its newest line, and false opens it at its top
-    Func<char, int, bool>? Act = null)   //a taken control key acted on inside the show with the row's original index, true asks the rows again
+    Func<char, int, bool>? Act = null,   //a taken control key acted on inside the show with the row's original index, true asks the rows again
+    bool DigitsMove = false,   //a digit moves the cursor to its row and picks nothing, for a list with no Enter act or one that cannot be undone
+    string? LabelHeader = null)   //the word over the label cell, beside the Header words over the columns, null leaves the cell blank
 {
     //the tab's own row under the list, or the panel's when the tab sets none
     internal PanelUnder? UnderAt(int tab) => Tabs is { Count: > 0 } tabs && tab < tabs.Count ? tabs[tab].Under ?? Under : Under;
