@@ -64,7 +64,7 @@ public class LoadModeDialectTests
     public void A_BUILD_BEFORE_THE_RETIREMENT_KEEPS_THE_OLD_FLAG()
     {
         string[] args = ["-np", "1", "--no-mmap", "--jinja"];
-        Assert.Equal(args, D.Rewrite(args, Pin - 1));
+        Assert.Equal(args, D.Rewrite(args, 11070));   //the build before 11071, the release that retired the old load-mode flags
     }
 
     //a profile already in the pin's dialect comes back unchanged, so running the update twice rewrites nothing the second time

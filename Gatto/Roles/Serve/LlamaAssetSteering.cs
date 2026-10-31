@@ -10,7 +10,7 @@ internal sealed record LlamaAsset(
 internal static class LlamaAssetSteering
 {
     //the release gatto is tested against, rather than latest, and it moves together with the architecture data
-    public const string PinnedRelease = "b11071";
+    public const string PinnedRelease = "b12015";
 
     //where a found engine sits against the pin, and only an older one is a reason to fetch the pinned release
     public enum FoundState { Exact, Newer, Older, Fork }

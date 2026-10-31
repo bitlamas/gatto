@@ -6,8 +6,8 @@
     "Hand-reviewed at the pin, like families.json and streamed-tensors.json: a test holds reviewed_release equal to the engine pin, so an engine bump fails the build until someone re-reads the new build's help.",
     "spelling is how the pinned build names the load mode and the lazy mode, which the scaffold writes into every new profile."
   ],
-  "reviewed_release": "b11071",
-  "reviewed": "2026-09-21",
+  "reviewed_release": "b12015",
+  "reviewed": "2026-10-30",
   "spelling": {
     "load_mode": "-lm",
     "lazy_mode": "--lazy-mode"

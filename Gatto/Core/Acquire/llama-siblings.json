@@ -1,13 +1,14 @@
 {
-  "release": "b11071",
-  "generated": "2026-09-21",
-  "note": "read from the extracted b11071 windows-vulkan-x64 release folder, every .exe except llama-server.exe itself",
+  "release": "b12015",
+  "generated": "2026-10-30",
+  "note": "read from the extracted b12015 windows-vulkan-x64 release folder, every .exe except llama-server.exe itself",
   "executables": [
     "ggml-rpc-server.exe",
     "llama-batched-bench.exe",
     "llama-bench.exe",
     "llama-cli.exe",
     "llama-completion.exe",
+    "llama-connect.exe",
     "llama-fit-params.exe",
     "llama-gemma3-cli.exe",
     "llama-gguf-split.exe",

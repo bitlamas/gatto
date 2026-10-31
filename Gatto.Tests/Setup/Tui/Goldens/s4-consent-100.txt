@@ -8,10 +8,10 @@
 
   According to your hardware, an AMD discrete card, you need the Vulkan build.
 
-  fetch        llama-b11071-bin-win-vulkan-x64.zip · 214 MB
-               b11071, the release gatto is tested with
+  fetch        llama-b12015-bin-win-vulkan-x64.zip · 214 MB
+               b12015, the release gatto is tested with
   from         github.com/ggml-org/llama.cpp · checked against GitHub's own digest
-  into         C:\Users\you\.gatto\llama\b11071\
+  into         C:\Users\you\.gatto\llama\b12015\
 
 ❯ 1. Fetch it now
   2. Use a server you start yourself, LM Studio, Ollama, or another

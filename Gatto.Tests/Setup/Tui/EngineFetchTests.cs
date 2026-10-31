@@ -14,8 +14,8 @@ public class EngineFetchTests
     private static readonly string Pin = Gatto.Roles.Serve.LlamaAssetSteering.PinnedRelease;
 
     //the generator's own fixture to the byte: an AMD card steered to Vulkan, the pinned release, and the folder gatto fetches into
-    private const string Zip = "llama-b11071-bin-win-vulkan-x64.zip";
-    private const string Into = @"C:\Users\you\.gatto\llama\b11071\";
+    private const string Zip = "llama-b12015-bin-win-vulkan-x64.zip";
+    private const string Into = @"C:\Users\you\.gatto\llama\b12015\";
 
     //exactly 214 MiB, so the row reads 214 MB the way the golden does (the arithmetic rather than 224395264, a number nobody can check)
     private const long Bytes = 214L * 1024 * 1024;
@@ -58,7 +58,7 @@ public class EngineFetchTests
     private static readonly FetchTick Tick = new(Zip, 1, 1, 93L * 1024 * 1024, Bytes, 11_000);
 
     //the CUDA arm's fixture: 268 and 380 MB are illustrative, but the shape of two files with the second named below is real
-    private const string CudaZip = "llama-b11071-bin-win-cuda-12.4-x64.zip";
+    private const string CudaZip = "llama-b12015-bin-win-cuda-12.4-x64.zip";
     private const string CudartZip = "cudart-llama-bin-win-cuda-12.4-x64.zip";
     private static readonly FetchTick PairTick =
         new(CudaZip, 1, 2, 93L * 1024 * 1024, 268L * 1024 * 1024, 11_000);

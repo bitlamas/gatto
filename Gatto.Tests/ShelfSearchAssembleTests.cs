@@ -101,7 +101,7 @@ public class ShelfSearchAssembleTests
         var o = await Run(hub, lit, ShelfMachines.Apu8060S);
         Assert.Equal(["Devstral-Small-2-24B-Instruct-2512", "Magistral-Small-2509", "Ministral-3-14B-Instruct-2512"],
             o.Rows.Select(r => r.Model).Order());
-        Assert.Equal(14, Terms(hub).Count);
+        Assert.Equal(16, Terms(hub).Count);   //two searches for each of the eight lines of the newest group
 
         var lifted = await Run(Hub(), lit, ShelfMachines.Apu8060S, lifted: true);
         Assert.Contains(lifted.Rows, r => r.Model == "Mistral-Small-3.2-24B-Instruct-2506");

@@ -8,9 +8,9 @@
 
   According to your hardware, an AMD discrete card, you need the Vulkan build.
 
-  download     llama-b11071-bin-win-vulkan-x64.zip
-  from         github.com/ggml-org/llama.cpp/releases/tag/b11071
-  extract to   C:\Users\you\.gatto\llama\b11071\
+  download     llama-b12015-bin-win-vulkan-x64.zip
+  from         github.com/ggml-org/llama.cpp/releases/tag/b12015
+  extract to   C:\Users\you\.gatto\llama\b12015\
 
 ❯ 1. Done, check that folder
 

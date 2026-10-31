@@ -5,8 +5,8 @@
 
 ✓ llama-server.exe is already on this machine.
 
-  found     C:\llama\llama-b11071-bin-win-vulkan-x64\llama-server.exe
-  build     b11071 · the release gatto is tested with
+  found     C:\llama\llama-b12015-bin-win-vulkan-x64\llama-server.exe
+  build     b12015 · the release gatto is tested with
   checked   it ran, and it answered as the server gatto drives
 
 ❯ 1. Use it

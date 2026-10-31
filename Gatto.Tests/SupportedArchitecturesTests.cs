@@ -13,11 +13,11 @@ public class SupportedArchitecturesTests
     {
         var set = SupportedArchitectures.Load();
 
-        Assert.Equal("b11071", set.Release);
-        Assert.Equal("2026-09-21", set.Generated);
+        Assert.Equal("b12015", set.Release);
+        Assert.Equal("2026-10-30", set.Generated);
 
         //the count is evidence the generator read a real registry, so an empty file would show up here
-        Assert.Equal(152, set.Architectures.Count);
+        Assert.Equal(167, set.Architectures.Count);
 
         //spot checks on the registry the generator read: three architectures gatto's own models run
         Assert.Contains("llama", set.Architectures);

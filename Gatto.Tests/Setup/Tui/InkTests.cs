@@ -465,7 +465,7 @@ public class InkTests
     [Fact]
     public void THE_FOUND_SCREENS_ROWS_CARRY_THE_INK_THE_MOCK_PROMISES()
     {
-        const string exe = @"C:\llama\llama-b11071-bin-win-vulkan-x64\llama-server.exe";
+        const string exe = @"C:\llama\llama-b12015-bin-win-vulkan-x64\llama-server.exe";
         var flow = new SetupFlow(new FakeSetupProbes
         {
             Llama = exe,
@@ -513,7 +513,7 @@ public class InkTests
                 Theme.Dim),
             "the older arm's explanation is not dim");
         //the default option must be bright, or the aside above it stops reading as secondary
-        Assert.True(Wears(screen, "1. Fetch b11071, the tested release", Theme.Bright),
+        Assert.True(Wears(screen, "1. Fetch b12015, the tested release", Theme.Bright),
             "the older arm's default option is not bright");
     }
 
@@ -561,12 +561,12 @@ public class InkTests
     [Fact]
     public void THE_FETCH_ROWS_FILE_NAME_STEPS_OUT_OF_THE_ASIDE()
     {
-        const string Zip = "llama-b11071-bin-win-vulkan-x64.zip";
+        const string Zip = "llama-b12015-bin-win-vulkan-x64.zip";
         var flow = new SetupFlow(new FakeSetupProbes
         {
             Llama = null,
             Asset = new(Zip, null, "an AMD discrete card", "Vulkan"),
-            Offer = new EngineFetchOffer(@"C:\Users\you\.gatto\llama\b11071\",
+            Offer = new EngineFetchOffer(@"C:\Users\you\.gatto\llama\b12015\",
                 new EnginePair(
                     new EngineAsset(Zip, "https://example.invalid/z", new string('a', 64),
                         214L * 1024 * 1024),

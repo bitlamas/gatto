@@ -33,7 +33,7 @@ public class DoneRenderTests
             Prove = prove ?? new FakeSetupProbes().Prove,
             Snapshot = snapshot ?? new FakeSetupProbes().Snapshot,
             //an engine on the machine sends the run down the found path, so the fetch path must have none
-            Llama = fetchEngine ? null : @"C:\llama\llama-b11071-bin-win-vulkan-x64\llama-server.exe",
+            Llama = fetchEngine ? null : @"C:\llama\llama-b12015-bin-win-vulkan-x64\llama-server.exe",
             Asset = fetchEngine
                 ? new Gatto.Roles.Serve.LlamaAsset(EngineZip, null, "an AMD discrete card", "Vulkan")
                 : new FakeSetupProbes().Asset,
@@ -241,7 +241,7 @@ public class DoneRenderTests
         {
             //an endpoint the config already points at this address, so the fence writes a second one rather than reuse it
             ExistingEndpoint = already,
-            Llama = @"C:\llama\llama-b11071-bin-win-vulkan-x64\llama-server.exe",
+            Llama = @"C:\llama\llama-b12015-bin-win-vulkan-x64\llama-server.exe",
             Server = new Gatto.Core.Acquire.ConnectProbe(
                 "http://127.0.0.1:1234", ["qwen/qwen3-30b-a3b-2507"], reported),
             Prove = new Gatto.Core.Acquire.ProveOutcome(true, "OK", TimeSpan.FromSeconds(6)),
@@ -395,7 +395,7 @@ public class DoneRenderTests
     {
         var probes = new FakeSetupProbes
         {
-            Llama = @"C:\llama\llama-b11071-bin-win-vulkan-x64\llama-server.exe",
+            Llama = @"C:\llama\llama-b12015-bin-win-vulkan-x64\llama-server.exe",
             ActiveFile = Gguf,
             Install = Gatto.Cli.Install.InstallState.Installed,
             UpdateAnswered = true,
@@ -460,7 +460,7 @@ public class DoneRenderTests
     {
         var flow = new SetupFlow(new FakeSetupProbes
         {
-            Llama = @"C:\llama\llama-b11071-bin-win-vulkan-x64\llama-server.exe",
+            Llama = @"C:\llama\llama-b12015-bin-win-vulkan-x64\llama-server.exe",
             ActiveFile = "gemma-4-26B-A4B-it-UD-Q4_K_M.gguf",
             Install = Gatto.Cli.Install.InstallState.NotInstalled,
             UpdateAnswered = null,

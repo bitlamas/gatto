@@ -180,10 +180,9 @@ public class FamiliesTests
                 .Where(F.ArchTiers.ContainsKey).Select(a => F.ArchTiers[a]).Distinct().Count());
 
         Assert.Equal(2, generations["gemma"]);       //the two generations are gemma4 against gemma3 and gemma3n
-        Assert.Equal(3, generations["deepseek"]);    //the three tiers are 4, 3.2 and 2.
-        Assert.Equal(2, generations["mistral"]);     //the two tiers come from mistral4 and mistral3
-        //one tier is a fact about the engine. no glm3 arch exists, so the glm shelf has one generation and its filter shows no choice
-        Assert.Equal(1, generations["glm"]);
+        Assert.Equal(4, generations["deepseek"]);    //the four tiers are 4.1, 4, 3.2 and 2.
+        Assert.Equal(2, generations["mistral"]);     //the two tiers come from mistral4 and mistral-large4 against mistral3
+        Assert.Equal(2, generations["glm"]);         //the two tiers are glm-dsa and glm5-next at 5 against glm4 and glm4moe at 4
     }
 
     //a name-parsed family's pin moves with uploads and an arch-keyed one comes from its arches, so a second number for that fact would drift
@@ -192,8 +191,9 @@ public class FamiliesTests
     {
         Assert.Equal("3.8", F.PinFor("qwen").Label);      //the qwen family is name-parsed, so its pin is a dated value in current_tier rather than the top of an arch table
         Assert.Equal("4", F.PinFor("gemma").Label);       //the expected label is the highest tier in gemma's arch table.
-        Assert.Equal("4", F.PinFor("deepseek").Label);
+        Assert.Equal("4.1", F.PinFor("deepseek").Label);
         Assert.Equal("4", F.PinFor("mistral").Label);
+        Assert.Equal("5", F.PinFor("glm").Label);       //every GLM-5 arch sits at 5, so the shelf opens on all of them and not on glm5-next alone
 
         //an untiered family opens on no version, so the shelf never shows a guessed generation.
         Assert.False(F.PinFor("all").IsVersioned);
@@ -286,7 +286,7 @@ public class FamiliesTests
         var mistral = F.Entries["mistral"];
         Assert.Equal("mistralai", mistral.Releaser);
         Assert.Equal(["Mistral-Small-4-", "Ministral-3-", "Devstral-2-", "Devstral-Small-2-", "Magistral-Small-",
-            "Mistral-Medium-3.5-", "Mistral-Large-3-"], mistral.Generations[0]);
+            "Mistral-Medium-3.5-", "Mistral-Large-4-", "Mistral-Large-3-"], mistral.Generations[0]);
         Assert.Equal(["Mistral-Small-3.2-", "Mistral-Small-3.1-", "Mistral-Nemo-", "Mistral-7B-", "Mixtral-", "Pixtral-"],
             mistral.Generations[1]);
         Assert.Equal(2, mistral.Generations.Count);

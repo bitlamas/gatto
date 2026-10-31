@@ -5,8 +5,8 @@
 
 ✓ That's the one, fetched, verified, and it answers as the server gatto drives.
 
-  fetched      llama-b11071-bin-win-vulkan-x64.zip · digest matched
-  into         C:\Users\you\.gatto\llama\b11071\
+  fetched      llama-b12015-bin-win-vulkan-x64.zip · digest matched
+  into         C:\Users\you\.gatto\llama\b12015\
   checked      llama-server.exe ran, the path gatto writes to its config is the .exe that ran
 
 ────────────────────────────────────────────────────────────────────────────────────────────────────

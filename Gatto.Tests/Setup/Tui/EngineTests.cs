@@ -9,7 +9,7 @@ namespace Gatto.Tests.Setup.Tui;
 public class EngineTests
 {
     //the exe the generator's found screen names, to the byte
-    private const string Exe = @"C:\llama\llama-b11071-bin-win-vulkan-x64\llama-server.exe";
+    private const string Exe = @"C:\llama\llama-b12015-bin-win-vulkan-x64\llama-server.exe";
 
     //the release is read through the constant rather than copied, so a moved pin moves this fixture and the golden is what disagrees
     private static readonly string Pin = Gatto.Roles.Serve.LlamaAssetSteering.PinnedRelease;
@@ -38,7 +38,7 @@ public class EngineTests
     [Fact]
     public void A_BANNER_REPORTING_A_BARE_NUMBER_STILL_READS_AS_GATTOS_OWN_SPELLING() =>
         Golden.AssertEquals("s4", "found", 100,
-            WalkRender.Choice(Found(Flow(build: "11071")), 100, script: [SetupRig.Enter]).Rows);
+            WalkRender.Choice(Found(Flow(build: "12015")), 100, script: [SetupRig.Enter]).Rows);
 
     //the longest row here is a path, and one width can't see an overflow that only happens at another
     [Fact]
@@ -115,7 +115,7 @@ public class EngineTests
 
     //every build the probe can read reaches the screen, and a null build must not, since the rows say gatto read its version
     [Theory]
-    [InlineData("b11137", true)]           //newer than the pin
+    [InlineData("b12081", true)]           //newer than the pin
     [InlineData("b9848", true)]            //older than the pin
     [InlineData("laguna-2bd55d0", true)]   //a build gatto can't place
     [InlineData(null, false)]              //the probe read no version
@@ -136,7 +136,7 @@ public class EngineTests
     [Fact]
     public void THE_NEWER_ARM_MATCHES_ITS_GOLDEN() =>
         Golden.AssertEquals("s4", "found-newer", 100, WalkRender.Choice(
-            Found(Flow("b11137", Exe.Replace(Pin, "b11137", StringComparison.Ordinal))),
+            Found(Flow("b12081", Exe.Replace(Pin, "b12081", StringComparison.Ordinal))),
             100, script: [SetupRig.Enter]).Rows);
 
     //this arm dims one line, which is why the default flips: nobody knows the engine feeds the shelf's answers
@@ -157,7 +157,7 @@ public class EngineTests
     [Fact]
     public void EVERY_FOUND_STATE_RENDERS_AND_EVERY_OPTION_ON_IT_ANSWERS()
     {
-        var builds = new[] { Pin, "b11137", "b9848", "laguna-2bd55d0" };
+        var builds = new[] { Pin, "b12081", "b9848", "laguna-2bd55d0" };
         var states = builds.Select(b => Gatto.Roles.Serve.LlamaAssetSteering.Classify(b, null).ToString()).ToList();
 
         Assert.Equal(Enum.GetValues<Gatto.Roles.Serve.LlamaAssetSteering.FoundState>().Length, states.Distinct().Count());
@@ -186,7 +186,7 @@ public class EngineTests
             Verify = p =>
             {
                 asked.Add(p);
-                return new ProbeResult(ProbeShape.NotClassic, "d", Build: "b11071");
+                return new ProbeResult(ProbeShape.NotClassic, "d", Build: "b12015");
             },
         });
         Found(flow);
@@ -259,7 +259,7 @@ public class EngineTests
     public void THE_RUNTIME_FAILURE_ARM_MATCHES_ITS_GOLDEN() =>
         Golden.AssertEquals("s4", "fail-crt", 100, WalkRender.Choice(
             Assert.IsType<SetupScreen.Choice>(Refused(
-                ProbeShape.DllNotFound, @"C:\Users\you\.gatto\llama\b11071\llama-server.exe", vcAbsent: true)),
+                ProbeShape.DllNotFound, @"C:\Users\you\.gatto\llama\b12015\llama-server.exe", vcAbsent: true)),
             100, script: [SetupRig.Enter]).Rows);
 
     //the file is wrong, so there is no retry and the cursor starts in the door. the Esc word comes from the flow's back flag
@@ -277,10 +277,10 @@ public class EngineTests
         var flow = new SetupFlow(new FakeSetupProbes
         {
             Llama = null,
-            Verify = p => { asked.Add(p); return new ProbeResult(shape, "d", Build: "b11071", VcRuntimeAbsent: true); },
+            Verify = p => { asked.Add(p); return new ProbeResult(shape, "d", Build: "b12015", VcRuntimeAbsent: true); },
         });
         flow.StartPastOpening();
-        const string typed = @"C:\Users\you\.gatto\llama\b11071\llama-server.exe";
+        const string typed = @"C:\Users\you\.gatto\llama\b12015\llama-server.exe";
         flow.Answer(ShelfControls.TypedAnswer(typed));
 
         //the runtime is installed between the two presses, so the second look succeeds
@@ -342,7 +342,7 @@ public class EngineTests
         });
         flow.StartPastOpening();
 
-        var screen = flow.Answer(ShelfControls.TypedAnswer(@"C:\llama\b11071\llama-cli.exe"));
+        var screen = flow.Answer(ShelfControls.TypedAnswer(@"C:\llama\b12015\llama-cli.exe"));
 
         Assert.IsType<SetupScreen.Ask>(screen);   //the typed arm, where the fix is another path
         var sentence = FailureScreen.Sentence(screen);
@@ -357,7 +357,7 @@ public class EngineTests
         var flow = new SetupFlow(new FakeSetupProbes
         {
             Llama = Exe,
-            Verify = _ => new ProbeResult(ProbeShape.NotClassic, "d", Build: "b11071"),
+            Verify = _ => new ProbeResult(ProbeShape.NotClassic, "d", Build: "b12015"),
         });
         Assert.NotEqual(SetupFlow.FoundKey, ScreenKey.Of(flow.StartPastOpening()));
     }

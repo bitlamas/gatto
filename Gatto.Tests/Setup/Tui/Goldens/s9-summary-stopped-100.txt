@@ -5,7 +5,7 @@
 
   model     gemma-4-26B-A4B-it-UD-Q4_K_M.gguf · 16.9 GB · verified
             C:\Users\you\.gatto\weights\gemma-4-26B-A4B-it\
-  engine    llama.cpp b11071 · Vulkan · C:\Users\you\.gatto\llama\b11071\
+  engine    llama.cpp b12015 · Vulkan · C:\Users\you\.gatto\llama\b12015\
   check     ⚠ not run, gatto audition gemma-4-26B-A4B-it runs the check whenever you want it
   gatto     ✓ installed, any terminal finds it
   config    C:\Users\you\.gatto\gatto.json

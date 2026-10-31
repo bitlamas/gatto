@@ -6,7 +6,7 @@
 ✗ That build needs the Microsoft Visual C++ runtime, and this Windows doesn't have it. Install the
   'Visual C++ Redistributable (x64)' from Microsoft.
 
-  tested       C:\Users\you\.gatto\llama\b11071\llama-server.exe
+  tested       C:\Users\you\.gatto\llama\b12015\llama-server.exe
 
 ❯ 1. Check it again
 

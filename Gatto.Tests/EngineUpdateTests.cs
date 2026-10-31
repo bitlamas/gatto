@@ -20,6 +20,7 @@ public sealed class EngineUpdateTests : IDisposable
     public void Dispose() { try { Directory.Delete(_home, true); } catch (Exception) { } }
 
     private static readonly string Pin = LlamaAssetSteering.PinnedRelease;
+    private static readonly int PinBuild = int.Parse(Pin[1..]);   //the fakes' builds sit against the pin, so a bump moves them with it
     private static readonly string[] OldArgs = ["-np", "1", "-fa", "on", "--no-mmap", "--jinja", "--no-context-shift", "--cache-reuse", "0"];
     private static readonly string[] NewArgs = ["-np", "1", "-fa", "on", "-lm", "none", "--jinja", "--no-context-shift", "--cache-reuse", "0"];
 
@@ -74,7 +75,7 @@ public sealed class EngineUpdateTests : IDisposable
     private sealed class Fakes(EngineUpdateTests t)
     {
         public Dictionary<string, string?> Builds = new(StringComparer.OrdinalIgnoreCase);
-        public string? LandedBuild = "11071";
+        public string? LandedBuild = PinBuild.ToString();
         public string? FetchError;
         public bool OfferNothing;
         public int Offers, Fetches, Probes;
@@ -174,7 +175,7 @@ public sealed class EngineUpdateTests : IDisposable
     public void A_LANDED_ENGINE_THAT_IS_NOT_THE_PIN_WRITES_NOTHING()
     {
         var before = Snapshot();
-        var f = new Fakes(this) { LandedBuild = "11070" };
+        var f = new Fakes(this) { LandedBuild = (PinBuild - 1).ToString() };
 
         Assert.Equal(1, Run(f));
 
@@ -261,18 +262,19 @@ public sealed class EngineUpdateTests : IDisposable
     [Fact]
     public void A_NEWER_ENGINE_IS_NAMED_AND_NOTHING_IS_OFFERED()
     {
-        var newer = Path.Combine(_home, "llama", "b11200", "llama-server.exe");
+        var build = PinBuild + 129;
+        var newer = Path.Combine(_home, "llama", $"b{build}", "llama-server.exe");
         WriteServer(newer);
         Config(newer);
         var before = Snapshot();
         var f = new Fakes(this);
-        f.Builds[newer] = "11200";
+        f.Builds[newer] = build.ToString();
 
         Assert.Equal(0, Run(f));
 
         Assert.Equal(before, Snapshot());
         Assert.Equal(0, _asks);
-        Assert.Contains("b11200", Output);
+        Assert.Contains($"b{build}", Output);
     }
 
     [Fact]

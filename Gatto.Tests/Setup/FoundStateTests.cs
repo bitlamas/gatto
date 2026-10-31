@@ -8,8 +8,8 @@ public class FoundStateTests
 {
     //the enum's name stands in as a string (a public test method can't take an internal type, and a wrong string would pass silently)
     [Theory]
-    [InlineData("b11071", "Exact")]          //the pin itself, the build the s4-found golden draws
-    [InlineData("b11137", "Newer")]          //a newer build, the one the s4-found-newer golden draws
+    [InlineData("b12015", "Exact")]          //the pin itself, the build the s4-found golden draws
+    [InlineData("b12081", "Newer")]          //a newer build, the one the s4-found-newer golden draws
     [InlineData("b9848", "Older")]           //the build the s4-found-older golden draws
     [InlineData("b10061-laguna", "Fork")]    //the fork case behind the s4-found-fork golden
     [InlineData(null, "Fork")]
@@ -20,14 +20,14 @@ public class FoundStateTests
     [Theory]
     [InlineData("b10061-laguna")]     //the fork number sits below the pin.
     [InlineData("b99999-laguna")]     //the fork number sits above the pin.
-    [InlineData("b11071-laguna")]     //the fork names the pin's own number.
+    [InlineData("b12015-laguna")]     //the fork names the pin's own number.
     public void A_FORK_IS_NEVER_SORTED_BY_THE_NUMBER_INSIDE_IT(string build) =>
         Assert.Equal("Fork", LlamaAssetSteering.Classify(build).ToString());
 
     //the server reports a bare number, while screens and folders write it with a b prefix. neither spelling may decide whether the pinned build is recognised
     [Theory]
-    [InlineData("11071")]
-    [InlineData("B11071")]
+    [InlineData("12015")]
+    [InlineData("B12015")]
     public void THE_PIN_IS_RECOGNISED_IN_EITHER_SPELLING(string build) =>
         Assert.Equal("Exact", LlamaAssetSteering.Classify(build).ToString());
 
@@ -50,8 +50,8 @@ public class FoundStateTests
 
     //a folder gatto named is gatto's own fetch, and the pairing matches it to the build by the banner's number
     [Theory]
-    [InlineData("11071", "b11071", "Exact")]
-    [InlineData("11137", "b11137", "Newer")]
+    [InlineData("12015", "b12015", "Exact")]
+    [InlineData("12081", "b12081", "Newer")]
     [InlineData("9848", "b9848", "Older")]
     public void A_FOLDER_GATTO_NAMED_IS_PLACED_BY_ITS_NUMBER(string build, string folder, string want) =>
         Assert.Equal(want, LlamaAssetSteering.Classify(build, folder).ToString());
@@ -59,21 +59,21 @@ public class FoundStateTests
     //a folder named after the pin must not make its build the pin, or any binary in that folder would be called the tested release
     [Fact]
     public void A_PINNED_FOLDER_NAME_DOES_NOT_MAKE_A_BUILD_THE_PIN() =>
-        Assert.Equal("Fork", LlamaAssetSteering.Classify("1", gattoFolder: "b11071").ToString());
+        Assert.Equal("Fork", LlamaAssetSteering.Classify("1", gattoFolder: "b12015").ToString());
 
     //the pairing compares numbers, so the pin's own build is gatto's fetch however the banner spells it
     [Theory]
-    [InlineData("11071")]
-    [InlineData("b11071")]
+    [InlineData("12015")]
+    [InlineData("b12015")]
     public void THE_PAIRING_COMPARES_NUMBERS_NOT_SPELLINGS(string build) =>
-        Assert.Equal("Exact", LlamaAssetSteering.Classify(build, "b11071").ToString());
+        Assert.Equal("Exact", LlamaAssetSteering.Classify(build, "b12015").ToString());
 
     //one place spells a build, so no screen prints a spelling the folder disagrees with. a fork keeps its own name, since a b prefix would invent a release
     [Theory]
-    [InlineData("11071", "b11071")]
+    [InlineData("12015", "b12015")]
     [InlineData("9848", "b9848")]
-    [InlineData("b11071", "b11071")]
-    [InlineData("B11071", "B11071")]
+    [InlineData("b12015", "b12015")]
+    [InlineData("B12015", "B12015")]
     [InlineData("laguna-2bd55d0", "laguna-2bd55d0")]
     [InlineData("b10061-laguna", "b10061-laguna")]
     [InlineData("", "")]

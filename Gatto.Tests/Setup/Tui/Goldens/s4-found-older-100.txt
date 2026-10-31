@@ -6,13 +6,13 @@
 ✓ llama-server.exe is already on this machine.
 
   found        C:\llama\llama-b9848-bin-win-vulkan-x64\llama-server.exe
-  build        b9848 · b11071, the release gatto is tested with
+  build        b9848 · b12015, the release gatto is tested with
   checked      it ran, and it answered as the server gatto drives
 
   Newer models sometimes need a newer engine, the shelf's "runs on this machine" answers assume
   the tested release.
 
-❯ 1. Fetch b11071, the tested release
+❯ 1. Fetch b12015, the tested release
   2. Keep the one that's here
   3. Use a server you start yourself, LM Studio, Ollama, or another
 

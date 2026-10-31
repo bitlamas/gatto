@@ -18,8 +18,8 @@
     "predicate a caller could render as a tick -- the same asymmetry SupportedArchitectures keeps",
     "by shipping WillNotLoad and deliberately having no Supports."
   ],
-  "reviewed": "2026-10-12",
-  "architectures_release": "b11071",
+  "reviewed": "2026-10-30",
+  "architectures_release": "b12015",
 
   "_ladder_comment": [
     "Render order, and it is a decision: gemma first is what the least expert user sees, and",
@@ -82,7 +82,7 @@
         "The chat line is DeepSeek-V<n>. R1 is left out: its own model is V3-sized and its distills",
         "are Qwen and Llama models, which a typed search reaches."
       ],
-      "standalone": ["deepseek2", "deepseek32", "deepseek4"],
+      "standalone": ["deepseek2", "deepseek32", "deepseek4", "deepseek41"],
       "variant": [],
       "releaser": "deepseek-ai",
       "generations": [["DeepSeek-V4.1-"], ["DeepSeek-V4-"], ["DeepSeek-V3.2-"], ["DeepSeek-V3.1-"], ["DeepSeek-V3-"],
@@ -95,7 +95,7 @@
         "The chat line is GLM-<n>; each vision line (4.6V, 4.5V, 4.1V) is a generation of its own,",
         "after the text line of the same number."
       ],
-      "standalone": ["glm4", "glm4moe", "glm-dsa"],
+      "standalone": ["glm4", "glm4moe", "glm-dsa", "glm5-next"],
       "variant": [],
       "releaser": "zai-org",
       "generations": [["GLM-5.3-"], ["GLM-5.2-"], ["GLM-5.1-"], ["GLM-5-"], ["GLM-4.7-"], ["GLM-4.6V-"], ["GLM-4.6-"],
@@ -109,12 +109,12 @@
         "generation is a dated group of line prefixes rather than one version (ruled 2026-10-07). The",
         "older group shows only under a. Voxtral and Leanstral are in neither group."
       ],
-      "standalone": ["mistral3", "mistral4"],
+      "standalone": ["mistral3", "mistral4", "mistral-large4"],
       "variant": [],
       "releaser": "mistralai",
       "generations": [
         ["Mistral-Small-4-", "Ministral-3-", "Devstral-2-", "Devstral-Small-2-", "Magistral-Small-",
-         "Mistral-Medium-3.5-", "Mistral-Large-3-"],
+         "Mistral-Medium-3.5-", "Mistral-Large-4-", "Mistral-Large-3-"],
         ["Mistral-Small-3.2-", "Mistral-Small-3.1-", "Mistral-Nemo-", "Mistral-7B-", "Mixtral-", "Pixtral-"]
       ],
       "tuned": {"base_mark": "-Base"},
@@ -133,10 +133,10 @@
     "Qwen's arches are deliberately ABSENT: that family is name-parsed and an entry here would",
     "give one repo two answers.",
     "",
-    "glm-dsa is the one JUDGEMENT in this table and it is flagged for review. It carries no",
-    "generation in its name; it is GLM-4's sparse-attention arch, so it sits with glm4. The",
-    "alternative is leaving it untiered, which makes it 'unversioned' -- the bucket D7 demoted --",
-    "and would hide a live GLM arch from the default shelf. Overturn this row, not the scheme."
+    "glm-dsa carries no generation in its name. zai-org's own configs name it for GLM-5, 5.1,",
+    "5.2 and 5.3 (GlmMoeDsaForCausalLM, read 2026-10-30), while GLM-4.6 and 4.7 are glm4moe, so it",
+    "sits at 5 beside glm5-next, the arch of GLM-5.3-Flash. A 4 here would hide every GLM-5 model",
+    "of this arch from the default shelf the moment glm5-next opened it at 5."
   ],
   "arch_tiers": {
     "gemma4": "4",
@@ -144,14 +144,17 @@
     "gemma3": "3",
     "gemma3n": "3",
 
+    "deepseek41": "4.1",
     "deepseek4": "4",
     "deepseek32": "3.2",
     "deepseek2": "2",
 
+    "glm5-next": "5",
+    "glm-dsa": "5",
     "glm4": "4",
     "glm4moe": "4",
-    "glm-dsa": "4",
 
+    "mistral-large4": "4",
     "mistral4": "4",
     "mistral3": "3"
   },
@@ -175,6 +178,7 @@
     "gemma": "superseded",
     "gemma2": "superseded",
     "gemma-embedding": "embedding",
+    "gemma-embedding2": "embedding",
     "deepseek": "superseded",
     "deepseek2-ocr": "ocr",
     "chatglm": "superseded"
@@ -195,7 +199,7 @@
     "tier the Hub publishes and restamps. A release that adds models without an engine bump is",
     "RELEASE.md's step, not this test's."
   ],
-  "current_tier_release": "b11071",
+  "current_tier_release": "b12015",
   "current_tier": {
     "qwen": "3.8"
   }

@@ -6,9 +6,9 @@
   Nothing to do here, gatto fetches the build, checks it against GitHub's own digest, and moves on
   by itself.
 
-  fetching     llama-b11071-bin-win-vulkan-x64.zip
+  fetching     llama-b12015-bin-win-vulkan-x64.zip
                ━━━━━━━━━━━━━─────────────────  93 of 214 MB · 8.5 MB/s · ~14 s left
-  into         C:\Users\you\.gatto\llama\b11071\
+  into         C:\Users\you\.gatto\llama\b12015\
 
 ────────────────────────────────────────────────────────────────────────────────────────────────────
   Esc again: stops the fetch and deletes the 93 MB already here
