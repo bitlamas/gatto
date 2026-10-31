@@ -83,7 +83,7 @@ public static class TranscriptStore
                     if (m.Content is { Length: > 0 } u) model.Append(new UserEchoItem(u.Split('\n')));
                     break;
                 case "assistant":
-                    if (m.Content is { Length: > 0 } a) model.Append(new AssistantBlockItem(a.Split('\n'), m.GattoRole ?? role));
+                    if (Shown(m) is { Length: > 0 } a) model.Append(new AssistantBlockItem(a.Split('\n'), m.GattoRole ?? role));
                     if (m.ToolCalls is { } calls)
                         //the raw arguments are kept so the tool block can derive its write preview, the record holds them already
                         foreach (var c in calls)
@@ -121,6 +121,12 @@ public static class TranscriptStore
         }
         return (convo, model);
     }
+
+    //the prose a reply drew live: a cut stream's record, with no calls and no usage, drops the mark the live screen never drew
+    private static string? Shown(ChatMessage m) =>
+        m is { Content: { } c, ToolCalls: null, Usage: null } && c.EndsWith(TurnLines.TruncatedMark, StringComparison.Ordinal)
+            ? c[..^TurnLines.TruncatedMark.Length]
+            : m.Content;
 
     //the chat records of a session file in order, read through Classify so the count matches the rebuild loop and the torn positions line up
     private static IEnumerable<ChatMessage> ChatRecords(IEnumerable<string> lines)

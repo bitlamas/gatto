@@ -83,6 +83,10 @@ public sealed class Doctor(
             CheckRoles(rolesDir, config, g),
             CheckExtensions(home, extensionsDir, g, shippedHistorical),
             CheckLlamaServer(config, modelIds, g),
+        });
+        results.AddRange(CheckProfileEngines(loadedModels, g));
+        results.AddRange(new List<CheckResult>
+        {
             CheckPermissions(home, cwd, g),
             CheckContextFiles(home, cwd, config, g),
             CheckProjectFiles(cwd, g),
@@ -469,36 +473,50 @@ public sealed class Doctor(
         if (string.IsNullOrWhiteSpace(config.LlamaServer))
             return new CheckResult(false, "llama_server: not set " + g.Dot + " run: set \"llama_server\" in gatto.json to your llama-server.exe path");
 
-        if (!File.Exists(config.LlamaServer))
+        return CheckEngine("llama_server", config.LlamaServer, "gatto.json", g);
+    }
+
+    //5b. each model whose profile names its own llama_server, checked as the global one is and named in its row, since serve starts that one instead
+    private IEnumerable<CheckResult> CheckProfileEngines(Dictionary<string, (Model? Model, string? Error)> loadedModels, Gatto.Terminal.GlyphSet g)
+    {
+        foreach (var (id, (model, _)) in loadedModels.OrderBy(m => m.Key, StringComparer.OrdinalIgnoreCase))
+            if (model?.Profile.LlamaServer is { } path && !string.IsNullOrWhiteSpace(path))
+                yield return CheckEngine($"llama_server ({id})", path, Path.Combine("models", id, "profile.json"), g);
+    }
+
+    //one engine path: present, then its --version probe read for shape, each failure naming the file to fix
+    private CheckResult CheckEngine(string label, string path, string source, Gatto.Terminal.GlyphSet g)
+    {
+        if (!File.Exists(path))
             return new CheckResult(false,
-                $"llama_server: {config.LlamaServer} does not exist {g.Dot} run: fix \"llama_server\" in gatto.json to point at your llama-server.exe");
+                $"{label}: {path} does not exist {g.Dot} run: fix \"llama_server\" in {source} to point at your llama-server.exe");
 
         //probe --version under a 5 second deadline, existence is not shape, and probeBinary is the test seam while production runs the real probe
-        var probe = (probeBinary ?? (path => LlamaServerProbe.Run(path, TimeSpan.FromSeconds(5))))(config.LlamaServer);
+        var probe = (probeBinary ?? (p => LlamaServerProbe.Run(p, TimeSpan.FromSeconds(5))))(path);
         return probe.Shape switch
         {
-            ProbeShape.ClassicServer => new CheckResult(true, $"llama_server: {config.LlamaServer} ({probe.Detail})"),
+            ProbeShape.ClassicServer => new CheckResult(true, $"{label}: {path} ({probe.Detail})"),
             ProbeShape.TimedOut => new CheckResult(false,
-                $"llama_server: {config.LlamaServer} {g.Dot} {probe.Detail} {g.Dot} run: check this is llama-server.exe and not a hung binary, then: gatto doctor"),
+                $"{label}: {path} {g.Dot} {probe.Detail} {g.Dot} run: check this is llama-server.exe and not a hung binary, then: gatto doctor"),
             ProbeShape.NotClassic => new CheckResult(false,
-                $"llama_server: {config.LlamaServer} {g.Dot} {probe.Detail}"),
+                $"{label}: {path} {g.Dot} {probe.Detail}"),
             //the config names one of the release's other programs, so name the server file that belongs there
             ProbeShape.KnownSibling when probe.SiblingName is { Length: > 0 } sibling =>
                 new CheckResult(false,
-                    $"llama_server: {config.LlamaServer} {g.Dot} that is {sibling}, not the server {g.Dot} run: "
+                    $"{label}: {path} {g.Dot} that is {sibling}, not the server {g.Dot} run: "
                     + $"point it at {Gatto.Core.Acquire.LlamaSiblings.ServerName} in the same folder, "
                     + "then: gatto doctor"),
             //the missing C++ runtime is the one cause named here, it rests on an exclusion rather than a guess
             ProbeShape.DllNotFound when probe.VcRuntimeAbsent => new CheckResult(false,
-                $"llama_server: {config.LlamaServer} {g.Dot} {probe.Detail} {g.Dot} run: install the Microsoft "
+                $"{label}: {path} {g.Dot} {probe.Detail} {g.Dot} run: install the Microsoft "
                 + "\"Visual C++ Redistributable (x64)\", then: gatto doctor"),
             //no discriminator means no cause, so hint at the folder rather than assert CUDA
             ProbeShape.DllNotFound => new CheckResult(false,
-                $"llama_server: {config.LlamaServer} {g.Dot} {probe.Detail} {g.Dot} run: check everything from "
+                $"{label}: {path} {g.Dot} {probe.Detail} {g.Dot} run: check everything from "
                 + "the download was extracted into the same folder (a CUDA build also needs its "
                 + "cudart zip extracted beside it), then: gatto doctor"),
             _ => new CheckResult(false,
-                $"llama_server: {config.LlamaServer} {g.Dot} {probe.Detail} {g.Dot} run: check the binary is the classic llama-server.exe, then: gatto doctor"),
+                $"{label}: {path} {g.Dot} {probe.Detail} {g.Dot} run: check the binary is the classic llama-server.exe, then: gatto doctor"),
         };
     }
 

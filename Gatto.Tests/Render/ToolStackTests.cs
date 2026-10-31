@@ -237,13 +237,14 @@ public sealed class ToolStackTests
     private static bool BlockOrLine(TranscriptItem i) => i is ToolBlockItem or SystemLineItem;
 
     //two calls written and the third begun, then the stream stops: by a drop when cancel is false, by the user when it is true
-    private static async Task<Wired> StoppedMidCall(bool cancel, bool endTurn = true)
+    private static async Task<Wired> StoppedMidCall(bool cancel, bool endTurn = true, string? text = null)
     {
         var w = Wire(120, 30);
         using var cts = new CancellationTokenSource();
         var client = new FakeChatClient();
         var calls = Calls(Four);
-        var events = new List<StreamEvent>([.. Written(calls[..2]), new StreamEvent.ToolCallDelta("shell", FirstFragment(calls[2]), 2)]);
+        var events = new List<StreamEvent>(text is null ? [] : [new StreamEvent.TextDelta(text)]);
+        events.AddRange([.. Written(calls[..2]), new StreamEvent.ToolCallDelta("shell", FirstFragment(calls[2]), 2)]);
         if (cancel) events.Add(new StreamEvent.ToolCallDelta("shell", calls[2].ArgumentsJson, 2));
         else events.Add(new StreamEvent.Truncated());
         client.EnqueueTurn([.. events]);
@@ -266,14 +267,33 @@ public sealed class ToolStackTests
         Assert.Empty(ToolRows(w.P, 120, 30));
     }
 
-    //the record holds the text with its truncated mark, which a resume draws as prose and the live screen never did, so the blocks and the lines are compared
-    [Fact]
-    public async Task A_STREAM_CUT_MID_CALL_RESUMES_TO_THE_SAME_BLOCKS_AND_LINES()
+    //the record keeps its truncated mark for the model, and a resume draws the rows the live screen drew, the prose before the cut and no mark
+    [Theory]
+    [InlineData(null)]
+    [InlineData("checking the two folders first")]
+    public async Task A_STREAM_CUT_MID_CALL_RESUMES_TO_THE_SAME_ROWS(string? text)
     {
-        var w = await StoppedMidCall(cancel: false);
+        var w = await StoppedMidCall(cancel: false, text: text);
         var (_, resumed) = TranscriptStore.Rebuild(TranscriptStore.BuildLines(w.Model, w.Convo), T, "coder", U);
 
-        Assert.Equal(ModelRows(w.Model, 120, BlockOrLine), ModelRows(resumed, 120, BlockOrLine));
+        Assert.EndsWith(" [truncated]", w.Convo.Messages[^1].Content, StringComparison.Ordinal);
+        Assert.Equal(ModelRows(w.Model, 120), ModelRows(resumed, 120));
+        Assert.DoesNotContain(ModelRows(resumed, 120), r => r.Contains("[truncated]", StringComparison.Ordinal));
+        if (text is not null) Assert.Contains(ModelRows(resumed, 120), r => r.Contains(text, StringComparison.Ordinal));
+    }
+
+    //a reply that ends in the same words but finished, with its usage recorded, keeps them on a resume
+    [Fact]
+    public void A_finished_reply_that_ends_in_the_mark_keeps_it_on_a_resume()
+    {
+        var convo = new Conversation("system");
+        convo.AddUser("go");
+        convo.AddAssistant("the log said [truncated]", usage: new Usage(10, 5));
+        var model = new TranscriptModel("coder");
+        model.Append(new UserEchoItem(["go"]));
+        var (_, resumed) = TranscriptStore.Rebuild(TranscriptStore.BuildLines(model, convo), T, "coder", U);
+
+        Assert.Contains(ModelRows(resumed, 120), r => r.Contains("the log said [truncated]", StringComparison.Ordinal));
     }
 
     [Fact]
@@ -285,7 +305,7 @@ public sealed class ToolStackTests
         Assert.Empty(w.Model.Items.OfType<ToolBlockItem>());
         Assert.Equal(["♯ turn cancelled · 3 tool calls discarded, not run"], ModelRows(w.Model, 120, BlockOrLine).Where(r => r.Length > 0));
         Assert.Empty(ToolRows(w.P, 120, 30));
-        Assert.Equal(ModelRows(w.Model, 120, BlockOrLine), ModelRows(resumed, 120, BlockOrLine));
+        Assert.Equal(ModelRows(w.Model, 120), ModelRows(resumed, 120));
     }
 
     //the session is saved when the turn returns and before it ends, so the line must be in the model by then and a resume draws it last

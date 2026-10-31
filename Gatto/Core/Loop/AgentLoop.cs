@@ -389,7 +389,7 @@ public sealed class AgentLoop(
             if (truncated)
             {
                 //mark the partial output and drop the in-flight calls, a Ctrl+C says cancelled rather than truncated
-                convo.AddAssistant(cleanText + " [truncated]", reasoningContent: cleanReasoning, stripped: strippedCount);
+                convo.AddAssistant(cleanText + TurnLines.TruncatedMark, reasoningContent: cleanReasoning, stripped: strippedCount);
                 var what = cancelled ? "turn cancelled" : "turn truncated";
                 Warn(TurnLines.Discarded(what, begun.Count));
                 return new TurnResult(

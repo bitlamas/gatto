@@ -821,6 +821,73 @@ public class DoctorTests : IDisposable
             StringComparison.Ordinal);
     }
 
+    //a profile naming its own engine, the one serve starts, so its row names the profile and its file
+    private void WriteProfileEngine(string enginePath)
+    {
+        File.WriteAllText(Path.Combine(_home, "models", "test-model", "profile.json"),
+            $$"""{"files":[{"path":"{{_modelPath.Replace("\\", "\\\\")}}","active":true}],"port":{{Port}},"context":8192,"llama_server":"{{enginePath.Replace("\\", "\\\\")}}"}""");
+    }
+
+    [Fact]
+    public async Task Check5b_A_profile_engine_that_is_missing_fails_its_own_row_and_names_the_profile()
+    {
+        WriteGreenHome();
+        var missing = Path.Combine(_home, "engines", "b11906", "llama-server.exe");
+        WriteProfileEngine(missing);
+        var output = new StringWriter();
+
+        var exit = await NewDoctor(HealthyClient()).RunAsync(_home, _cwd, output, CancellationToken.None);
+
+        Assert.Equal(1, exit);
+        Assert.StartsWith("✓", Line(output, "llama_server:"));
+        var line = Line(output, "llama_server (test-model):");
+        Assert.StartsWith("✗", line);
+        Assert.Contains(missing + " does not exist", line, StringComparison.Ordinal);
+        Assert.Contains("run: fix \"llama_server\" in " + Path.Combine("models", "test-model", "profile.json"), line, StringComparison.Ordinal);
+    }
+
+    //the probe runs on the profile's own path, so a stub exe beside missing DLLs fails there while the global engine passes
+    [Fact]
+    public async Task Check5b_A_profile_engine_is_probed_on_its_own_path()
+    {
+        WriteGreenHome();
+        var stub = Path.Combine(_home, "engines", "stub", "llama-server.exe");
+        Directory.CreateDirectory(Path.GetDirectoryName(stub)!);
+        File.WriteAllText(stub, "");
+        WriteProfileEngine(stub);
+        var probed = new List<string>();
+        var doctor = new Doctor(HealthyClient(), probeBinary: p =>
+        {
+            probed.Add(p);
+            return p == stub
+                ? new ProbeResult(ProbeShape.DllNotFound, "exited with STATUS_DLL_NOT_FOUND")
+                : new ProbeResult(ProbeShape.ClassicServer, "version: 10076 (fake)");
+        });
+        var output = new StringWriter();
+
+        var exit = await doctor.RunAsync(_home, _cwd, output, CancellationToken.None);
+
+        Assert.Equal(1, exit);
+        Assert.Equal([_llamaServerPath, stub], probed);
+        Assert.StartsWith("✓", Line(output, "llama_server:"));
+        var line = Line(output, "llama_server (test-model):");
+        Assert.StartsWith("✗", line);
+        Assert.Contains("STATUS_DLL_NOT_FOUND", line, StringComparison.Ordinal);
+    }
+
+    //a profile with no engine of its own adds no row, the global row speaks for it
+    [Fact]
+    public async Task Check5b_A_profile_without_its_own_engine_adds_no_row()
+    {
+        WriteGreenHome();
+        var output = new StringWriter();
+
+        var exit = await NewDoctor(HealthyClient()).RunAsync(_home, _cwd, output, CancellationToken.None);
+
+        Assert.Equal(0, exit);
+        Assert.DoesNotContain("llama_server (", output.ToString(), StringComparison.Ordinal);
+    }
+
     [Fact]
     public async Task Check6_CorruptPermissionsFile_FailsAlone_OtherChecksStayGreen()
     {
