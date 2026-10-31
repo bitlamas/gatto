@@ -62,13 +62,13 @@ public sealed class LineEditor(IComposerSource input, History history, Func<int>
     //true while a composer selection is live, and the cancel sink must not read it (Esc already reaches the editor's own deselect)
     public bool HasComposerSelection => _selAnchor is not null;
 
-    //whether the background cell is on, asked when Down would select it and at each key while it is selected
-    private Func<bool>? _canSelectCell;
-    private Action? _openBackground;
+    //the background cells that are on, left to right, asked when Down would select one and at each key while one is selected
+    private Func<IReadOnlyList<StatusCell>>? _cells;
+    private Action<StatusCell>? _openCell;
 
-    //true while Down has moved the selection to the background cell, the draft kept and the caret gone. written and read on the editor's thread
-    private bool _cellSelected;
-    public bool CellSelected => _cellSelected;
+    //the cell Down or an arrow moved the selection to, the draft kept and the caret gone, null in the composer. written and read on the editor's thread
+    private StatusCell? _selectedCell;
+    public StatusCell? SelectedCell => _selectedCell;
 
     //a paste's trailing newline is an Enter with a bursty predecessor and nothing behind it, so it's stripped and a paste never auto-submits
     private bool _thisBursty, _prevBursty;
@@ -78,12 +78,12 @@ public sealed class LineEditor(IComposerSource input, History history, Func<int>
         Func<IReadOnlyList<string>>? pullQueue = null, ArmedChord? chords = null, Action? onQuit = null,
         Action? onHintChanged = null,
         Action<string>? onCopyText = null, Action? onComposerSelectionSet = null,
-        Func<bool>? canSelectCell = null, Action? openBackground = null)
+        Func<IReadOnlyList<StatusCell>>? cells = null, Action<StatusCell>? openCell = null)
     {
         _pullQueue = pullQueue;
-        _canSelectCell = canSelectCell;
-        _openBackground = openBackground;
-        _cellSelected = false;
+        _cells = cells;
+        _openCell = openCell;
+        _selectedCell = null;
         _chords = chords;
         _onQuit = onQuit;
         _onHintChanged = onHintChanged;
@@ -122,11 +122,11 @@ public sealed class LineEditor(IComposerSource input, History history, Func<int>
                 }
                 catch (Exception) { } //exotic key state, ignore the key
             }
-            else if (ev is ComposerInput.OpenBackground)
+            else if (ev is ComposerInput.OpenBackground open)
             {
-                //a press on the cell opens at once, with no selection step, and the open says its own failure
-                _cellSelected = false;
-                _openBackground?.Invoke();
+                //a press on a cell opens it at once, with no selection step, and the open says its own failure
+                _selectedCell = null;
+                _openCell?.Invoke(open.Watch ? StatusCell.Watch : StatusCell.Shells);
             }
             else if (ev is ComposerInput.Select sel)
             {
@@ -149,14 +149,18 @@ public sealed class LineEditor(IComposerSource input, History history, Func<int>
 
     private string? Handle(ConsoleKeyInfo k)
     {
-        //with the cell selected, Enter or Space opens what runs, Up or Esc gives the caret back, and any other key gives it back and goes on to the composer
-        if (_cellSelected)
+        //on a selected cell Enter or Space opens it, the arrows step between cells, Up or Esc gives the caret back, any other key goes on to the composer
+        if (_selectedCell is { } selected)
         {
-            _cellSelected = false;
-            if (_canSelectCell?.Invoke() == true && k.Modifiers == 0)
+            _selectedCell = null;
+            var cells = _cells?.Invoke() ?? [];
+            var at = IndexOf(cells, selected);
+            if (at >= 0 && k.Modifiers == 0)
             {
-                if (k.Key is ConsoleKey.Enter or ConsoleKey.Spacebar) { _openBackground?.Invoke(); return null; }
+                if (k.Key is ConsoleKey.Enter or ConsoleKey.Spacebar) { _openCell?.Invoke(selected); return null; }
                 if (k.Key is ConsoleKey.UpArrow or ConsoleKey.Escape) return null;
+                if (k.Key == ConsoleKey.LeftArrow) { _selectedCell = cells[Math.Max(0, at - 1)]; return null; }
+                if (k.Key == ConsoleKey.RightArrow) { _selectedCell = cells[Math.Min(cells.Count - 1, at + 1)]; return null; }
             }
         }
 
@@ -547,10 +551,18 @@ public sealed class LineEditor(IComposerSource input, History history, Func<int>
         return col;
     }
 
-    //the bottom row recalls first, and selects the background cell only when nothing was recalled and the cell is on, it never opens the panel
+    //the bottom row recalls first, and selects the leftmost background cell only when nothing was recalled and a cell is on, it never opens the panel
     private void SelectCellOrRecall()
     {
-        if (!PullHistory(older: false) && _canSelectCell?.Invoke() == true) _cellSelected = true;
+        if (!PullHistory(older: false) && _cells?.Invoke() is { Count: > 0 } cells) _selectedCell = cells[0];
+    }
+
+    //a cell's place among the cells on, -1 when it left since the selection
+    private static int IndexOf(IReadOnlyList<StatusCell> cells, StatusCell cell)
+    {
+        for (var i = 0; i < cells.Count; i++)
+            if (cells[i] == cell) return i;
+        return -1;
     }
 
     private bool PullHistory(bool older)
@@ -610,7 +622,7 @@ public sealed class LineEditor(IComposerSource input, History history, Func<int>
     private EditorView View()
     {
         var r = SelRange();
-        return new(_lines.ToList(), _line, _col, r?.Start, r?.End, CaretVisible: !_cellSelected);
+        return new(_lines.ToList(), _line, _col, r?.Start, r?.End, CaretVisible: _selectedCell is null);
     }
 
     //the composer's contents for a caller that has to repaint, since a refusal arrives while the editor sits in Read with no key coming

@@ -30,19 +30,19 @@ public class FooterLadderTests
     [Fact]
     public void A_cloud_row_fits_whole_at_81()
     {
-        //a cloud row with a quota, which measures 78 cells with the mark as one
+        //a cloud row with a quota, which measures 74 cells with the mark as one
         var row = Line(Acme(), 81);
-        Assert.Equal($"  ~\\sandbox · {M} acme-max (high) · ↑ 12.4k ↓ 972 · ctx 9% (11.8k) · max 18 left", row);
-        Assert.Equal(78, UnicodeWidth.Of(row));
+        Assert.Equal($"  ~\\sandbox · {M} acme-max (high) · ↑ 12k ↓ 972 · ctx 9% (12k) · max 18 left", row);
+        Assert.Equal(74, UnicodeWidth.Of(row));
     }
 
     [Fact]
     public void A_cloud_row_one_cell_short_gives_up_the_ctx_count_first()
     {
         //one cell short of the whole row, the count is the first thing the core gives up
-        var row = Line(Acme(), 77);
-        Assert.Equal($"  ~\\sandbox · {M} acme-max (high) · ↑ 12.4k ↓ 972 · ctx 9% · max 18 left", row);
-        Assert.Equal(70, UnicodeWidth.Of(row));
+        var row = Line(Acme(), 73);
+        Assert.Equal($"  ~\\sandbox · {M} acme-max (high) · ↑ 12k ↓ 972 · ctx 9% · max 18 left", row);
+        Assert.Equal(68, UnicodeWidth.Of(row));
     }
 
     [Fact]
@@ -53,7 +53,7 @@ public class FooterLadderTests
         {
             Model = "nex-agi/nex-n2.5-pro", TokensUp = 839_500, TokensDown = 197_200, Quota = null, Cost = 0.4231m,
         };
-        Assert.Equal($"  ~\\sandbox · {M} nex-agi/nex-n2.5-pro (high) · ↑ 839.5k ↓ 197.2k · ctx 9% · $0.42", Line(s, 81));
+        Assert.Equal($"  ~\\sandbox · {M} nex-agi/nex-n2.5-pro (high) · ↑ 840k ↓ 197k · ctx 9% · $0.42", Line(s, 81));
     }
 
     [Fact]

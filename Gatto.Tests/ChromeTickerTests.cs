@@ -261,9 +261,9 @@ public class ChromeTickerTests
     [Fact]
     public void The_completion_line_shows_the_time_of_day_after_the_elapsed()
     {
-        Assert.Equal("(^· ·^)⟆ purred for 1h 2m 46s (1:32 AM) · ↓ 46.1k · Σ 85.6k",
+        Assert.Equal("(^· ·^)⟆ purred for 1h 2m 46s (1:32 AM) · ↓ 46k · Σ 86k",
             ChromeTicker.CompletionText("(^· ·^)⟆", 3_766_000, 46_100, 39_500, glyphs: GlyphSet.Unicode, timeOfDay: "1:32 AM"));
-        Assert.Equal("(^· ·^)⟆ purred for 1h 2m 46s (14:21) · ↓ 46.1k · Σ 85.6k",
+        Assert.Equal("(^· ·^)⟆ purred for 1h 2m 46s (14:21) · ↓ 46k · Σ 86k",
             ChromeTicker.CompletionText("(^· ·^)⟆", 3_766_000, 46_100, 39_500, glyphs: GlyphSet.Unicode, timeOfDay: "14:21"));
     }
 
@@ -600,7 +600,7 @@ public class ChromeTickerTests
             prefilling: true, promptEstimate: 85_000);
 
         //the server numbers are appended after the timer, so a poll landing cannot move the elapsed
-        Assert.EndsWith("· 20.5k/~85.0k", row, StringComparison.Ordinal);
+        Assert.EndsWith("· 20k/~85k", row, StringComparison.Ordinal);
         Assert.Contains("2m 10s", row, StringComparison.Ordinal);
         Assert.DoesNotContain("202", row);   //the slot's n_decoded still holds another task's count, it must not surface here
     }
@@ -611,7 +611,7 @@ public class ChromeTickerTests
         var row = ChromeTicker.PurrRow("x", elapsedMs: 1000, tokens: 0, toolTokens: 0,
             slots: new SlotProgress(20480, 20480, 202, true), prefilling: true);
 
-        Assert.EndsWith("· 20.5k", row, StringComparison.Ordinal);
+        Assert.EndsWith("· 20k", row, StringComparison.Ordinal);
         Assert.DoesNotContain("~", row);
     }
 
@@ -659,7 +659,7 @@ public class ChromeTickerTests
         //when tool results contributed, a trailing Σ total shows the whole turn's throughput, decode plus tool tokens, and the live ↓ count stays.
         var row = ChromeTicker.PurrRow("x", elapsedMs: 130_000, tokens: 88, toolTokens: 28800, slots: null);
         Assert.Contains("· ↓ 88", row, StringComparison.Ordinal);
-        Assert.EndsWith("· Σ 28.9k", row, StringComparison.Ordinal);
+        Assert.EndsWith("· Σ 29k", row, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -677,7 +677,7 @@ public class ChromeTickerTests
         var row = ChromeTicker.PurrRow("x", elapsedMs: 130_000, tokens: 0, toolTokens: 12500, prefilling: true);
 
         Assert.Contains("reading context", row, StringComparison.Ordinal);
-        Assert.EndsWith("· Σ 12.5k", row, StringComparison.Ordinal);
+        Assert.EndsWith("· Σ 13k", row, StringComparison.Ordinal);
         Assert.DoesNotContain("↓", row);
     }
 
@@ -695,7 +695,7 @@ public class ChromeTickerTests
             () => $"the row read {seen}");
         ticker.StopTurn();
         Assert.NotNull(seen);
-        Assert.Contains("Σ 12.6k", seen!, StringComparison.Ordinal);   //the total adds the decode estimate and the tool tokens.
+        Assert.Contains("Σ 13k", seen!, StringComparison.Ordinal);   //the total adds the decode estimate and the tool tokens.
     }
 
     [Fact]
@@ -716,12 +716,12 @@ public class ChromeTickerTests
         ticker.StartTurn("x", promptTokensEstimate: 85_000);   //no deltas have streamed, so the turn is in prefill.
 
         string? seen = null;
-        await Painted(painter, () => (seen = painter.State.PurrText)?.Contains("20.5k", StringComparison.Ordinal) == true,
+        await Painted(painter, () => (seen = painter.State.PurrText)?.Contains("20k", StringComparison.Ordinal) == true,
             () => $"the row read {seen}");
         ticker.StopTurn();
 
         Assert.NotNull(seen);
-        Assert.EndsWith("· 20.5k/~85.0k", seen!, StringComparison.Ordinal);
+        Assert.EndsWith("· 20k/~85k", seen!, StringComparison.Ordinal);
         Assert.True(reader.Calls >= 1, "the poller must have hit the reader while the turn was silent");
     }
 
@@ -763,7 +763,7 @@ public class ChromeTickerTests
 
         Assert.NotNull(seen);
         Assert.Contains("reading context", seen!, StringComparison.Ordinal);
-        Assert.EndsWith("· 4.1k/15.1k", seen!, StringComparison.Ordinal);
+        Assert.EndsWith("· 4.1k/15k", seen!, StringComparison.Ordinal);
         Assert.DoesNotContain("~", seen!, StringComparison.Ordinal);
     }
 
@@ -798,7 +798,7 @@ public class ChromeTickerTests
         var ticker = new ChromeTicker(painter, gate, reader);
         ticker.StartTurn("x", promptTokensEstimate: 85_000);
 
-        await Painted(painter, () => painter.State.PurrText?.Contains("20.5k", StringComparison.Ordinal) == true,
+        await Painted(painter, () => painter.State.PurrText?.Contains("20k", StringComparison.Ordinal) == true,
             () => $"the row read {painter.State.PurrText}");
 
         reader.Result = null;
@@ -807,7 +807,7 @@ public class ChromeTickerTests
         var after = painter.State.PurrText;
         ticker.StopTurn();
 
-        Assert.Contains("20.5k", after ?? "");
+        Assert.Contains("20k", after ?? "");
     }
 
     [Fact]
@@ -839,7 +839,7 @@ public class ChromeTickerTests
 
         ticker.StartTurn("x");
         //every prefill row reads reading context, so the stale thing is the old turn's processed count
-        await Painted(painter, () => painter.State.PurrText?.Contains("34.4k", StringComparison.Ordinal) == true,
+        await Painted(painter, () => painter.State.PurrText?.Contains("34k", StringComparison.Ordinal) == true,
             () => $"the row read {painter.State.PurrText}");
         ticker.StopTurn();
 
@@ -850,7 +850,7 @@ public class ChromeTickerTests
         ticker.StopTurn();
 
         Assert.NotNull(second);
-        Assert.DoesNotContain("34.4k", second!);
+        Assert.DoesNotContain("34k", second!);
     }
 
     [Fact]
@@ -960,7 +960,7 @@ public class ChromeTickerTests
         var row = ChromeTicker.PurrRow("x", elapsedMs: 60_000, tokens: 0, toolTokens: 0,
             slots: new SlotProgress(20480, 20480, 0, true), prefilling: true, promptEstimate: 16_000);
 
-        Assert.Contains("20.5k", row, StringComparison.Ordinal);
+        Assert.Contains("20k", row, StringComparison.Ordinal);
         Assert.DoesNotContain("/~", row);
     }
 
@@ -970,7 +970,7 @@ public class ChromeTickerTests
         var row = ChromeTicker.PurrRow("x", elapsedMs: 60_000, tokens: 0, toolTokens: 0,
             slots: new SlotProgress(20480, 20480, 0, true), prefilling: true, promptEstimate: 85_000);
 
-        Assert.EndsWith("· 20.5k/~85.0k", row, StringComparison.Ordinal);
+        Assert.EndsWith("· 20k/~85k", row, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -980,7 +980,7 @@ public class ChromeTickerTests
         var row = ChromeTicker.PurrRow("x", elapsedMs: 60_000, tokens: 0, toolTokens: 0,
             slots: new SlotProgress(20000, 20000, 0, true), prefilling: true, promptEstimate: 20_000);
 
-        Assert.EndsWith("· 20.0k/~20.0k", row, StringComparison.Ordinal);
+        Assert.EndsWith("· 20k/~20k", row, StringComparison.Ordinal);
     }
 
     [Theory]

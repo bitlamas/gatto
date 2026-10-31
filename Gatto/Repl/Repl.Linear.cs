@@ -223,8 +223,8 @@ public sealed partial class Repl
                             onCopyText: text => clip.TrySet(text),
                             //every composer-selection set-site clears any live transcript or chrome span, so one selection domain is live at most
                             onComposerSelectionSet: BuildComposerSelectionSetHook(s.Painter, s.Gate, () => stopped),
-                            canSelectCell: () => { lock (s.Gate) return BackgroundFactsNow(null).CellOn; },
-                            openBackground: () => OpenBackgroundOrSay(s));
+                            cells: () => { lock (s.Gate) return BackgroundFactsNow(null).Cells; },
+                            openCell: cell => OpenBackgroundOrSay(s, watchScreen: cell == StatusCell.Watch));
                     }
                     catch (ComposerPaintException) { throw; }   //a paint bug, rethrown so it is not mistaken for pump death
                     catch (Exception)

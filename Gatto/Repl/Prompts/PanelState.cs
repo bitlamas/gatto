@@ -361,6 +361,8 @@ internal sealed class PanelState
             case ConsoleKey.PageDown: return MoveDetail(Page());
             case ConsoleKey.Home: return ParkDetail(0);
             case ConsoleKey.End: return FollowEnd();
+            case ConsoleKey.Escape when _panel.DetailIsScreen:
+                return new PanelStep(false, new SelectOutcome.Cancelled());
             case ConsoleKey.Escape:
                 _detail = null;
                 _detailIndex = -1;

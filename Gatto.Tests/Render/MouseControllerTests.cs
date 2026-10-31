@@ -1036,7 +1036,7 @@ public sealed class MouseControllerTests
     }
 
     //the frame's three rule rows, the status line last with a triangle at each end of its hint slot
-    private static (Harness H, List<int> Steps, Func<bool> Held) StatusHarness(bool promptHolds = false, List<bool>? hovers = null)
+    private static (Harness H, List<int> Steps, Func<bool> Held) StatusHarness(bool promptHolds = false, List<StatusCell?>? hovers = null)
     {
         var rows = new List<ChromeRow>
         {
@@ -1047,7 +1047,7 @@ public sealed class MouseControllerTests
         };
         var cells = new List<StatusCellSpan>
         {
-            new(StatusCell.Folder, 2, 3), new(StatusCell.Model, 6, 7), new(StatusCell.Background, 8, 10),
+            new(StatusCell.Folder, 2, 3), new(StatusCell.Model, 6, 7), new(StatusCell.Shells, 8, 9), new(StatusCell.Watch, 9, 10),
             new(StatusCell.Hint, 10, 14), new(StatusCell.HintNext, 14, 16),
         };
         var s = new VtScreenSurface(40, 10);
@@ -1066,7 +1066,7 @@ public sealed class MouseControllerTests
         };
         h.Mc = new MouseController(comp, scroll, focus, model, wheelLines: 3, selection, T, () => h.Clock,
             statusCellAt: x => cells.FirstOrDefault(c => x >= c.Start && x < c.End) is { End: > 0 } c ? c.Kind : null,
-            onStatusHint: steps.Add, panelHoldsKeys: () => promptHolds, onStatusCell: () => steps.Add(0), onStatusHover: hovers is null ? null : hovers.Add);
+            onStatusHint: steps.Add, panelHoldsKeys: () => promptHolds, onStatusCell: c => steps.Add(c == StatusCell.Watch ? 20 : 10), onStatusHover: hovers is null ? null : hovers.Add);
         return (h, steps, () => promptHolds);
     }
 
@@ -1122,16 +1122,18 @@ public sealed class MouseControllerTests
         Assert.NotNull(h.Selection.ChromeCurrent);
     }
 
-    //a press on the background cell calls the cell callback and starts no drag, and under a prompt it is the drag
+    //a press on a background cell calls the cell callback with that cell and starts no drag, and under a prompt it is the drag
     [Fact]
-    public void A_press_on_the_background_cell_opens_it_unless_a_prompt_holds_the_keys()
+    public void A_press_on_a_background_cell_opens_it_unless_a_prompt_holds_the_keys()
     {
         var (h, steps, _) = StatusHarness();
         h.Paint();
         var y = StatusRowY(h);
+        h.PressAt(8, y);
+        h.MoveAt(4, y);
         h.PressAt(9, y);
         h.MoveAt(4, y);
-        Assert.Equal([0], steps);
+        Assert.Equal([10, 20], steps);
         Assert.Null(h.Selection.ChromeCurrent);
 
         var (held, heldSteps, _) = StatusHarness(promptHolds: true);
@@ -1174,21 +1176,22 @@ public sealed class MouseControllerTests
     private static bool BareMove(Harness h, int x, int y) =>
         h.Mc.Handle(new MouseEvent(x, y, MouseKind.Move, MouseButton.None, 0, 0), h.W, h.VpRows);
 
-    //a bare move tells the painter only when the pointer enters or leaves the background cell, and asks a repaint only then
+    //a bare move tells the painter only when the pointer enters, leaves or crosses between the background cells, and asks a repaint only then
     [Fact]
-    public void A_bare_move_reports_the_cells_enter_and_leave_and_nothing_else()
+    public void A_bare_move_reports_each_cells_enter_and_leave_and_nothing_else()
     {
-        var hovers = new List<bool>();
+        var hovers = new List<StatusCell?>();
         var (h, steps, _) = StatusHarness(hovers: hovers);
         h.Paint();
         var y = StatusRowY(h);
 
         Assert.False(BareMove(h, 2, y));   //the folder, inert
-        Assert.True(BareMove(h, 8, y));    //onto the cell
-        Assert.False(BareMove(h, 9, y));   //along it
+        Assert.True(BareMove(h, 8, y));    //onto the shells
+        Assert.False(BareMove(h, 8, y));   //along them
+        Assert.True(BareMove(h, 9, y));    //across onto the watch
         Assert.True(BareMove(h, 11, y));   //off it, onto the hint
         Assert.False(BareMove(h, 4, 0));   //away from the status line
-        Assert.Equal([true, false], hovers);
+        Assert.Equal([StatusCell.Shells, StatusCell.Watch, null], hovers);
         Assert.Empty(steps);
         Assert.Null(h.Selection.ChromeCurrent);
     }
@@ -1197,7 +1200,7 @@ public sealed class MouseControllerTests
     [Fact]
     public void Under_a_prompt_the_cell_takes_no_hover()
     {
-        var hovers = new List<bool>();
+        var hovers = new List<StatusCell?>();
         var (h, _, _) = StatusHarness(promptHolds: true, hovers: hovers);
         h.Paint();
         Assert.False(BareMove(h, 8, StatusRowY(h)));

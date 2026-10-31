@@ -358,9 +358,17 @@ public class InputFrameTests
     [InlineData(999, "999")]
     [InlineData(1000, "1.0k")]
     [InlineData(1200, "1.2k")]
-    [InlineData(34600, "34.6k")]
+    [InlineData(9600, "9.6k")]
+    [InlineData(9949, "9.9k")]
+    [InlineData(9950, "10k")]
+    [InlineData(34600, "35k")]
+    [InlineData(534_000, "534k")]
+    [InlineData(999_499, "999k")]
+    [InlineData(999_500, "1.0M")]
     [InlineData(1_000_000, "1.0M")]
     [InlineData(1_234_567, "1.2M")]
+    [InlineData(1_400_000, "1.4M")]
+    [InlineData(75_000_000, "75M")]
     public void KFormat_Pins(long n, string expected) => Assert.Equal(expected, InputFrame.KFormat(n));
 
     [Fact]

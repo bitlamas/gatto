@@ -437,6 +437,20 @@ public class PanelStateTests
         Assert.Equal(1, s.CursorIndex);
     }
 
+    //the watch opened from its cell is the screen, so Esc closes the panel, and the same detail opened from the list goes back to the list
+    [Fact]
+    public void Esc_on_a_detail_that_is_the_screen_closes_and_from_the_list_goes_back()
+    {
+        var screen = new PanelState(Tasks() with { DetailIsScreen = true }, TaskRows("1", "watch"), false, 0, ['x'], detail: "watch");
+        Assert.Equal("watch", screen.View().Detail);
+        Assert.IsType<SelectOutcome.Cancelled>(screen.Key(EscKey).Outcome);
+
+        var listed = new PanelState(Tasks(), TaskRows("1", "watch"), false, 0, ['x'], detail: "watch");
+        listed.View();
+        Assert.Null(listed.Key(EscKey).Outcome);
+        Assert.Null(listed.View().Detail);
+    }
+
     [Fact]
     public void A_detail_whose_row_is_gone_at_construction_is_dropped_and_the_cursor_clamps()
     {

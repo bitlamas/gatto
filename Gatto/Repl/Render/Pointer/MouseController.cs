@@ -11,11 +11,11 @@ public sealed class MouseController(
     Action<int, int, ComposerGesture>? onComposerSelect = null, Func<ComposerLayout?>? composerLayout = null,
     GlyphSet? glyphs = null, Func<int, bool>? onComposerScroll = null,
     Func<int, StatusCell?>? statusCellAt = null, Action<int>? onStatusHint = null, Func<bool>? panelHoldsKeys = null,
-    Action? onStatusCell = null, Action<bool>? onStatusHover = null,
+    Action<StatusCell>? onStatusCell = null, Action<StatusCell?>? onStatusHover = null,
     Func<MouseEvent, int, int, int, bool>? panelMouse = null)
 {
-    //the pointer was over the background cell at the last bare move, so only an enter or a leave reaches the painter
-    private bool _hover;
+    //the background cell the pointer was over at the last bare move, so only an enter, a leave or a step between the two reaches the painter
+    private StatusCell? _hover;
 
     //the pointer was on a panel's rows at the last bare move, so the move that leaves them tells the panel once with row -1
     private bool _panelHover;
@@ -104,8 +104,9 @@ public sealed class MouseController(
             _panelHover = false;
             panelMouse?.Invoke(e, -1, width, height);
         }
-        var over = compositor.HitTest(e.Y) is ChromeTarget { Region: ChromeRegion.Rule, RegionRow: StatusRuleRow }
-            && panelHoldsKeys?.Invoke() != true && statusCellAt?.Invoke(e.X) == StatusCell.Background;
+        var at = compositor.HitTest(e.Y) is ChromeTarget { Region: ChromeRegion.Rule, RegionRow: StatusRuleRow }
+            && panelHoldsKeys?.Invoke() != true ? statusCellAt?.Invoke(e.X) : null;
+        StatusCell? over = at is StatusCell.Shells or StatusCell.Watch ? at : null;
         if (over == _hover) return false;
         _hover = over;
         onStatusHover?.Invoke(over);
@@ -157,9 +158,9 @@ public sealed class MouseController(
                         onStatusHint(1);
                         return;
                     }
-                    if (cell == StatusCell.Background && onStatusCell is not null)
+                    if (cell is StatusCell.Shells or StatusCell.Watch && onStatusCell is not null)
                     {
-                        onStatusCell();
+                        onStatusCell(cell);
                         return;
                     }
                 }

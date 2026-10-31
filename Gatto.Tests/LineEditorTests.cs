@@ -146,6 +146,32 @@ public class LineEditorTests : IDisposable
 
     private static ComposerInput In(ConsoleKeyInfo k) => new ComposerInput.Key(k);
 
+    private static readonly IReadOnlyList<StatusCell> Shells = [StatusCell.Shells];
+    private static readonly IReadOnlyList<StatusCell> Both = [StatusCell.Shells, StatusCell.Watch];
+
+    //a Down selects the leftmost cell, the arrows step between the two and stop at either end, and Enter opens the one selected
+    [Fact]
+    public void The_arrows_step_between_the_cells_and_Enter_opens_the_selected_one()
+    {
+        var opened = new List<StatusCell>();
+        var views = new List<StatusCell?>();
+        var editor = new LineEditor(new ScriptedKeys([Key(ConsoleKey.DownArrow), Key(ConsoleKey.RightArrow), Key(ConsoleKey.RightArrow), Enter(),
+            Key(ConsoleKey.DownArrow), Key(ConsoleKey.RightArrow), Key(ConsoleKey.LeftArrow), Key(ConsoleKey.LeftArrow), Enter(), Enter()]), H());
+        Assert.Equal("", editor.Read(_ => views.Add(editor.SelectedCell), cells: () => Both, openCell: opened.Add));
+        Assert.Equal([StatusCell.Watch, StatusCell.Shells], opened);
+        Assert.Equal([null, StatusCell.Shells, StatusCell.Watch, StatusCell.Watch, null, StatusCell.Shells, StatusCell.Watch, StatusCell.Shells, StatusCell.Shells, null], views);
+    }
+
+    //the gesture names its cell, the watch's opening the watch and the default the shells
+    [Fact]
+    public void The_cell_gesture_names_the_cell_it_opens()
+    {
+        var opened = new List<StatusCell>();
+        var editor = new LineEditor(new MixedInput([new ComposerInput.OpenBackground(Watch: true), new ComposerInput.OpenBackground(), In(Enter())]), H());
+        editor.Read(_ => { }, cells: () => Both, openCell: opened.Add);
+        Assert.Equal([StatusCell.Watch, StatusCell.Shells], opened);
+    }
+
     //the bottom row with nothing to recall selects the cell on Down while it is on, the draft kept and the caret gone, and Enter then opens
     [Fact]
     public void Down_selects_the_cell_and_Enter_opens_it_with_the_draft_kept()
@@ -153,7 +179,7 @@ public class LineEditorTests : IDisposable
         var opened = 0;
         var views = new List<EditorView>();
         var editor = new LineEditor(new ScriptedKeys([Key(ConsoleKey.DownArrow), Enter(), Enter()]), H());
-        var sent = editor.Read(views.Add, initial: "a draft", canSelectCell: () => true, openBackground: () => opened++);
+        var sent = editor.Read(views.Add, initial: "a draft", cells: () => Shells, openCell: _ => opened++);
         Assert.Equal("a draft", sent);
         Assert.Equal(1, opened);
         Assert.Contains(views, v => !v.CaretVisible && v.Lines[0] == "a draft");
@@ -166,13 +192,13 @@ public class LineEditorTests : IDisposable
     {
         var opened = 0;
         var off = new LineEditor(new ScriptedKeys([Key(ConsoleKey.DownArrow), Enter()]), H());
-        Assert.Equal("x", off.Read(_ => { }, initial: "x", canSelectCell: () => false, openBackground: () => opened++));
-        Assert.False(off.CellSelected);
+        Assert.Equal("x", off.Read(_ => { }, initial: "x", cells: () => [], openCell: _ => opened++));
+        Assert.Null(off.SelectedCell);
 
         var h = H();
         h.Record("older");
         var walk = new LineEditor(new ScriptedKeys([Key(ConsoleKey.UpArrow), Key(ConsoleKey.DownArrow), Enter()]), h);
-        Assert.Equal("", walk.Read(_ => { }, canSelectCell: () => true, openBackground: () => opened++));
+        Assert.Equal("", walk.Read(_ => { }, cells: () => Shells, openCell: _ => opened++));
         Assert.Equal(0, opened);
     }
 
@@ -185,7 +211,7 @@ public class LineEditorTests : IDisposable
             Key(ConsoleKey.DownArrow), new ConsoleKeyInfo(' ', ConsoleKey.Spacebar, false, false, false),
             Key(ConsoleKey.DownArrow), K('z'), Enter()]);
         var editor = new LineEditor(keys, H());
-        Assert.Equal("az", editor.Read(_ => { }, initial: "a", canSelectCell: () => true, openBackground: () => opened++));
+        Assert.Equal("az", editor.Read(_ => { }, initial: "a", cells: () => Shells, openCell: _ => opened++));
         Assert.Equal(1, opened);
     }
 
@@ -195,9 +221,9 @@ public class LineEditorTests : IDisposable
     {
         var opened = 0;
         var editor = new LineEditor(new MixedInput([new ComposerInput.OpenBackground(), In(K('q')), In(Enter())]), H());
-        Assert.Equal("q", editor.Read(_ => { }, canSelectCell: () => true, openBackground: () => opened++));
+        Assert.Equal("q", editor.Read(_ => { }, cells: () => Shells, openCell: _ => opened++));
         Assert.Equal(1, opened);
-        Assert.False(editor.CellSelected);
+        Assert.Null(editor.SelectedCell);
     }
 
     //the cell going off while selected gives the next key back to the composer whole
@@ -207,7 +233,7 @@ public class LineEditorTests : IDisposable
         var on = true;
         var opened = 0;
         var editor = new LineEditor(new ProbeKeys([Key(ConsoleKey.DownArrow), Enter(), Enter()], i => { if (i == 1) on = false; }), H());
-        Assert.Equal("d", editor.Read(_ => { }, initial: "d", canSelectCell: () => on, openBackground: () => opened++));
+        Assert.Equal("d", editor.Read(_ => { }, initial: "d", cells: () => on ? Shells : [], openCell: _ => opened++));
         Assert.Equal(0, opened);
     }
 

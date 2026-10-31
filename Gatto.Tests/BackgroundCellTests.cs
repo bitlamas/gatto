@@ -34,17 +34,16 @@ public class BackgroundCellTests
     [InlineData(1, true, true, "1 shell · watch paused")]
     public void The_cell_names_what_runs(int shells, bool watch, bool paused, string? words)
     {
-        Assert.Equal(words, InputFrame.BackgroundCell(new BackgroundFacts(shells, watch, paused, false), U));
-        var row = Line(Info(), 200, new BackgroundFacts(shells, watch, paused, false));
+        var row = Line(Info(), 200, new BackgroundFacts(shells, watch, paused));
         if (words is null) Assert.DoesNotContain("shell", row, StringComparison.Ordinal);
-        else Assert.Contains("ctx 50% (50.0k) · " + words + " · max 18 left · $0.42", row, StringComparison.Ordinal);
+        else Assert.Contains("ctx 50% (50k) · " + words + " · max 18 left · $0.42", row, StringComparison.Ordinal);
     }
 
     //never shed: every rung keeps it, and the floor drops the head before it touches the tail
     [Fact]
     public void The_cell_survives_every_rung_and_the_floor()
     {
-        var facts = new BackgroundFacts(2, true, false, false);
+        var facts = new BackgroundFacts(2, true, false);
         foreach (var w in Enumerable.Range(60, 141))
         {
             var row = Line(Info(), w, facts);
@@ -60,32 +59,34 @@ public class BackgroundCellTests
     {
         var s = Info() with { Cost = null, Quota = null };
         Assert.DoesNotContain("background", Line(s, 200, default), StringComparison.Ordinal);
-        Assert.EndsWith("↓ selects footer", Line(s, 200, new BackgroundFacts(1, false, false, false)), StringComparison.Ordinal);
-        Assert.EndsWith("Enter opens", Line(s, 200, new BackgroundFacts(1, false, false, true)), StringComparison.Ordinal);
-        Assert.EndsWith("v selects footer", Line(s, 200, new BackgroundFacts(1, false, false, false), GlyphSet.Ascii), StringComparison.Ordinal);
+        Assert.EndsWith("↓ selects footer", Line(s, 200, new BackgroundFacts(1, false, false)), StringComparison.Ordinal);
+        Assert.EndsWith("Enter opens", Line(s, 200, new BackgroundFacts(1, false, false, StatusCell.Shells)), StringComparison.Ordinal);
+        Assert.EndsWith("v selects footer", Line(s, 200, new BackgroundFacts(1, false, false), GlyphSet.Ascii), StringComparison.Ordinal);
 
         //beside the paste hint it is the second, reached by the triangle, and an index past the list clamps to it
         var both = s with { Hints = [new StatusHint(HintKind.Paste, ["Alt+V to paste the image on your clipboard"])], HintIndex = 1 };
-        Assert.EndsWith($"↓ selects footer {U.Triangle}", Line(both, 200, new BackgroundFacts(1, false, false, false)), StringComparison.Ordinal);
-        Assert.Contains("Alt+V", Line(both with { HintIndex = 0 }, 200, new BackgroundFacts(1, false, false, false)), StringComparison.Ordinal);
+        Assert.EndsWith($"↓ selects footer {U.Triangle}", Line(both, 200, new BackgroundFacts(1, false, false)), StringComparison.Ordinal);
+        Assert.Contains("Alt+V", Line(both with { HintIndex = 0 }, 200, new BackgroundFacts(1, false, false)), StringComparison.Ordinal);
     }
 
     //a cell a click acts on wears a colour at rest, the shells in PowerShell's yellow and the watch in the role tint, dim only between them
     [Fact]
     public void The_cell_wears_its_inks_at_rest_and_never_the_dim()
     {
-        var row = InputFrame.BuildStatusLine(Info(), 200, T, U, new BackgroundFacts(2, true, false, false));
+        var row = InputFrame.BuildStatusLine(Info(), 200, T, U, new BackgroundFacts(2, true, false));
         Assert.Contains(T.Paint("2 shells", Theme.CampbellBrightYellow) + T.Paint(" · ", Theme.Dim) + T.Paint("watch", T.RoleTint("coder")), row, StringComparison.Ordinal);
         Assert.DoesNotContain(T.Paint("2 shells", Theme.Dim), row, StringComparison.Ordinal);
         Assert.DoesNotContain(Ansi.Bg(T.Map(Theme.UserInputBg), T.TrueColor), row, StringComparison.Ordinal);
         Assert.DoesNotContain(Ansi.Bg(T.BandOf(Theme.CampbellBrightYellow), T.TrueColor), row, StringComparison.Ordinal);
     }
 
-    //when Down selects the cell or the pointer rests on it each word sits on the band its own ink makes, never the user's band, and the words stay
+    //the selected or hovered cell alone sits on the band its own ink makes, never the user's band, and the words stay
     [Theory]
-    [InlineData(true, false)]
-    [InlineData(false, true)]
-    public void The_selected_or_hovered_cell_puts_each_word_on_its_own_band(bool selected, bool hovered)
+    [InlineData(StatusCell.Shells, null)]
+    [InlineData(null, StatusCell.Shells)]
+    [InlineData(StatusCell.Watch, null)]
+    [InlineData(null, StatusCell.Watch)]
+    public void The_selected_or_hovered_cell_alone_wears_its_band(StatusCell? selected, StatusCell? hovered)
     {
         var row = InputFrame.BuildStatusLine(Info(), 200, T, U, new BackgroundFacts(2, true, false, selected, hovered));
         string On(string word, RgbColor ink)
@@ -93,7 +94,10 @@ public class BackgroundCellTests
             var band = Ansi.Bg(T.BandOf(ink), T.TrueColor);
             return band + T.Paint(word, ink).Replace(Ansi.Reset, Ansi.Reset + band) + Ansi.Reset;
         }
-        Assert.Contains(On("2 shells", Theme.CampbellBrightYellow) + T.Paint(" · ", Theme.Dim) + On("watch", T.RoleTint("coder")), row, StringComparison.Ordinal);
+        var shells = (selected ?? hovered) == StatusCell.Shells;
+        var expected = (shells ? On("2 shells", Theme.CampbellBrightYellow) : T.Paint("2 shells", Theme.CampbellBrightYellow))
+            + T.Paint(" · ", Theme.Dim) + (shells ? T.Paint("watch", T.RoleTint("coder")) : On("watch", T.RoleTint("coder")));
+        Assert.Contains(expected, row, StringComparison.Ordinal);
         Assert.DoesNotContain(Ansi.Bg(T.Map(Theme.UserInputBg), T.TrueColor), row, StringComparison.Ordinal);
         Assert.Equal(StripSgr(InputFrame.BuildStatusLine(Info(), 200, T, U, new BackgroundFacts(2, true, false, selected))), StripSgr(row));
     }
@@ -110,7 +114,7 @@ public class BackgroundCellTests
         var ly = light.Map(y);
         Assert.Equal(((byte)Math.Round(ly.R * 0.25 + 255 * 0.75, MidpointRounding.AwayFromZero), (byte)Math.Round(ly.G * 0.25 + 255 * 0.75, MidpointRounding.AwayFromZero),
             (byte)Math.Round(ly.B * 0.25 + 255 * 0.75, MidpointRounding.AwayFromZero)), (light.BandOf(y).R, light.BandOf(y).G, light.BandOf(y).B));
-        var row = InputFrame.BuildStatusLine(Info(), 200, light, U, new BackgroundFacts(1, false, false, true));
+        var row = InputFrame.BuildStatusLine(Info(), 200, light, U, new BackgroundFacts(1, false, false, StatusCell.Shells));
         Assert.Contains(Ansi.Bg(light.BandOf(y), true) + light.Paint("1 shell", y), row, StringComparison.Ordinal);
     }
 
@@ -119,7 +123,7 @@ public class BackgroundCellTests
     public void The_hint_keeps_four_cells_from_the_core()
     {
         var s = Info() with { Hints = [new StatusHint(HintKind.Paste, ["Alt+V to paste the image on your clipboard", "Alt+V pastes the image"])] };
-        var facts = new BackgroundFacts(0, true, false, false);
+        var facts = new BackgroundFacts(0, true, false);
         var forms = new HashSet<string>();
         foreach (var w in Enumerable.Range(60, 141))
         {
@@ -134,22 +138,29 @@ public class BackgroundCellTests
         Assert.Contains("Alt+V to paste the image on your clipboard", forms);
     }
 
-    //the map names the cell's columns, so a press on it resolves without counting
+    //the map names each cell's columns, the separator between them a part of neither, so a press resolves to one without counting
     [Fact]
-    public void The_cell_map_names_the_cell()
+    public void The_cell_map_names_each_cell()
     {
-        var facts = new BackgroundFacts(2, false, false, false);
+        var facts = new BackgroundFacts(2, true, false);
         var row = Line(Info(), 200, facts);
-        var cell = InputFrame.StatusCellsOf(Info(), 200, T, U, facts).Single(c => c.Kind == StatusCell.Background);
-        Assert.Equal(cell.End - cell.Start, UnicodeWidth.Of("2 shells"));
-        Assert.True(cell.Start > row.IndexOf("ctx", StringComparison.Ordinal));
+        var cells = InputFrame.StatusCellsOf(Info(), 200, T, U, facts);
+        var shells = cells.Single(c => c.Kind == StatusCell.Shells);
+        var watch = cells.Single(c => c.Kind == StatusCell.Watch);
+        Assert.Equal(UnicodeWidth.Of("2 shells"), shells.End - shells.Start);
+        Assert.Equal(UnicodeWidth.Of("watch"), watch.End - watch.Start);
+        Assert.Equal(UnicodeWidth.Of(" · "), watch.Start - shells.End);
+        Assert.True(shells.Start > row.IndexOf("ctx", StringComparison.Ordinal));
+        Assert.Equal([StatusCell.Shells, StatusCell.Watch], facts.Cells);
+        Assert.Equal([StatusCell.Watch], new BackgroundFacts(0, true, false).Cells);
+        Assert.Empty(new BackgroundFacts(0, false, false).Cells);
     }
 
     //two composes of one record and one frozen set of facts give one row
     [Fact]
     public void Two_composes_of_one_tuple_give_one_row()
     {
-        var facts = new BackgroundFacts(1, true, true, true);
+        var facts = new BackgroundFacts(1, true, true, StatusCell.Watch);
         foreach (var w in new[] { 70, 90, 120, 188 })
             Assert.Equal(InputFrame.BuildStatusLine(Info(), w, T, U, facts), InputFrame.BuildStatusLine(Info(), w, T, U, facts));
     }

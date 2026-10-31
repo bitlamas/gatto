@@ -63,16 +63,16 @@ public class StatusFillTests
     public void Input_A_at_90_keeps_its_two_folder_segments_from_the_rung_that_shed_the_ctx_count()
     {
         var row = Line(InputA(), 90);
-        Assert.Equal($"  {E}\\controllers\\auth · {E}ce-fl · qwen3.8-flash-next (medium) · ↑ 12.4k ↓ 3.1k · ctx 50%", row);
-        Assert.Equal(86, UnicodeWidth.Of(row));
+        Assert.Equal($"  {E}\\controllers\\auth · {E}ce-fl · qwen3.8-flash-next (medium) · ↑ 12k ↓ 3.1k · ctx 50%", row);
+        Assert.Equal(84, UnicodeWidth.Of(row));
     }
 
     [Fact]
-    public void Input_B_at_90_gets_its_branch_and_ctx_count_and_leaves_the_model_short()
+    public void Input_B_at_90_keeps_its_tokens_and_leaves_the_branch_out_and_the_model_short()
     {
         var row = Line(InputB(), 90);
-        Assert.Equal($"  ~\\gatto-walk-footer-default-20261027 · main · qwen3.8{E}sh-next (high) · ctx 38% (100.0k)", row);
-        Assert.Equal(89, UnicodeWidth.Of(row));
+        Assert.Equal($"  ~\\gatto-walk-footer-default-20261027 · qwen3.8{E}sh-next (high) · ↑ 120k ↓ 45k · ctx 38%", row);
+        Assert.Equal(88, UnicodeWidth.Of(row));
     }
 
     [Fact]
@@ -86,7 +86,7 @@ public class StatusFillTests
         var row = Line(s, width);
         Assert.EndsWith("Alt+V pastes the image", row, StringComparison.Ordinal);
         Assert.Equal(width, UnicodeWidth.Of(row));
-        Assert.Contains("ctx 50% (50.0k)", row, StringComparison.Ordinal);
+        Assert.Contains("ctx 50% (50k)", row, StringComparison.Ordinal);
     }
 
     [Fact]

@@ -14,17 +14,17 @@ public sealed partial class Repl
     private static readonly FooterKey[] TaskKeys = [new("Enter", "detail"), new("x", "stop"), new("Esc", "close")];
     private static readonly FooterKey[] WatchKeys = [new("Enter", "detail"), new("Esc", "close")];
     private static readonly FooterKey[] ShellDetailKeys = [new("x", "stop"), new("Esc", "back")];
+    private static readonly FooterKey[] WatchScreenKeys = [new("Esc", "close")];
 
     //how long a prompt waiting for the slot sleeps before it signals the close again, in case a panel opened after the first signal
     private const int SlotRetryMs = 50;
 
-    //the cell's inputs, read under the gate at each paint. the selection counts only while the cell is on
+    //the cells' inputs, read under the gate at each paint. a selection counts only while its own cell is on
     private BackgroundFacts BackgroundFactsNow(LineEditor? editor)
     {
-        var running = _tasks?.Running.Count ?? 0;
         var watch = _watch;
-        var on = running > 0 || watch is not null;
-        return new BackgroundFacts(running, watch is not null, watch?.Paused == true, on && editor?.CellSelected == true);
+        var facts = new BackgroundFacts(_tasks?.Running.Count ?? 0, watch is not null, watch?.Paused == true);
+        return editor?.SelectedCell is { } cell && facts.Cells.Contains(cell) ? facts with { Selected = cell } : facts;
     }
 
     //a turn-thread prompt's hold on the panel slot: the open panel is told to close, and the wait signals again until the slot is free. call with no gate held
@@ -47,9 +47,9 @@ public sealed partial class Repl
     }
 
     //a throw out of the panel is said on a system line and the composer comes back, the editor's key catch would drop it silently
-    private void OpenBackgroundOrSay(RichState s)
+    private void OpenBackgroundOrSay(RichState s, bool watchScreen = false)
     {
-        try { OpenBackground(s); }
+        try { OpenBackground(s, watchScreen); }
         catch (Exception ex)
         {
             //the composer-thread commit, so a line said between two streamed blocks never cuts the reply
@@ -81,8 +81,8 @@ public sealed partial class Repl
         }
     }
 
-    //the background panel, run on the composer task. a prompt holding the slot is the answer on screen, so the open does nothing then
-    private void OpenBackground(RichState s)
+    //the background panel on the composer task, or with watchScreen the watch's detail as the screen, its Esc closing. a prompt holding the slot makes the open do nothing
+    private void OpenBackground(RichState s, bool watchScreen = false)
     {
         Watch? armed;
         lock (s.Gate) armed = _watch;
@@ -91,6 +91,7 @@ public sealed partial class Repl
             lock (s.Gate) s.Painter.SetInfoPanel((_, _) => ["  " + NoBackgroundTasks]);
             return;
         }
+        if (watchScreen && armed is null) return;
         //the session's own painter when no prompter shares a handle, so the panel always draws as chrome
         var chrome = _chrome ?? new Gatto.Repl.Render.Chrome.ChromeHandle { Painter = s.Painter, Renderer = s.Renderer };
         if (chrome.Painter is not { Alive: true } || s.Pump is null) return;
@@ -98,7 +99,7 @@ public sealed partial class Repl
         if (hold is null) return;
         var cursor = 0;
         string? cursorKey = null;
-        string? detail = null;
+        string? detail = watchScreen ? BackgroundPanel.WatchKey : null;
         var detailOffset = PanelState.End;
         var g = s.Glyphs;
         while (!close.IsCancellationRequested)
@@ -106,6 +107,7 @@ public sealed partial class Repl
             var live = _tasks?.Live ?? [];
             Watch? watched;
             lock (s.Gate) watched = _watch;
+            if (watchScreen && watched is null) return;   //the watch the screen showed was turned off, and no list stands behind it
             WatchView? WatchNow() => watched is null ? null
                 : new WatchView(Shown(watched.Folder), watched.Paused, watched.Count, Watch.K, watched.Seen);
             var options = BackgroundPanel.Rows(live, WatchNow(), g);
@@ -120,12 +122,12 @@ public sealed partial class Repl
             cursor = keyed >= 0 ? keyed : Math.Clamp(cursor, 0, options.Count - 1);
             var numbers = live.Select(t => t.Number).ToList();
             var shells = live.Count;
-            var fields = new PanelFields("tasks", TaskKeys, Count: BackgroundPanel.Count(shells, watched is not null, g),
+            var fields = new PanelFields("tasks", TaskKeys, Count: watchScreen ? BackgroundPanel.WatchKey : BackgroundPanel.Count(shells, watched is not null, g),
                 Role: roleName, SearchWhenLong: false, LabelWhole: true,
                 KeysFor: i => i < shells ? TaskKeys : WatchKeys,
                 DetailOf: i => i < shells ? BackgroundPanel.ShellDetail(live[i], g) : WatchNow() is { } w ? BackgroundPanel.WatchDetail(w, g) : null,
-                DetailKeysFor: i => i < shells ? ShellDetailKeys : null,
-                OptionsNow: () => BackgroundPanel.Rows(live, WatchNow(), g));
+                DetailKeysFor: i => i < shells ? ShellDetailKeys : watchScreen ? WatchScreenKeys : null,
+                OptionsNow: () => BackgroundPanel.Rows(live, WatchNow(), g), DetailIsScreen: watchScreen);
             var spec = new SelectSpec([], null, options, FooterHint: null, InitialCursor: cursor, Numbered: false, ControlKeys: ['x'],
                 Poll: new PollSpec(
                     //a re-entry only when the set of tasks or the watch changed, every runtime, gloss and growth is a repaint that reads live

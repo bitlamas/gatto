@@ -26,13 +26,22 @@ public enum HintKind { Paste, Focus, Teaser, Background }
 public sealed record StatusHint(HintKind Kind, IReadOnlyList<string> Forms);
 
 //what a press on the status line can land on
-public enum StatusCell { Folder, Branch, Model, Tokens, Ctx, Background, Quota, Cost, Hint, HintNext }
+public enum StatusCell { Folder, Branch, Model, Tokens, Ctx, Shells, Watch, Quota, Cost, Hint, HintNext }
 
 //what runs between turns as the painter reads it under the gate at each paint, never stored on the status record
-public readonly record struct BackgroundFacts(int Running, bool WatchArmed, bool WatchPaused, bool CellSelected, bool CellHovered = false)
+public readonly record struct BackgroundFacts(int Running, bool WatchArmed, bool WatchPaused, StatusCell? Selected = null, StatusCell? Hovered = null)
 {
     //the cell is on while a shell runs or a watch is armed
     public bool CellOn => Running > 0 || WatchArmed;
+
+    //the cells a selection moves between, left to right, empty when the cell is off
+    public IReadOnlyList<StatusCell> Cells =>
+        Running > 0 && WatchArmed ? [StatusCell.Shells, StatusCell.Watch]
+        : Running > 0 ? [StatusCell.Shells]
+        : WatchArmed ? [StatusCell.Watch] : [];
+
+    //a cell wears its band while Down selected it or the pointer rests on it
+    public bool Banded(StatusCell cell) => Selected == cell || Hovered == cell;
 }
 
 //one painted piece of the status line and its columns, the start inclusive and the end exclusive
@@ -318,7 +327,7 @@ public sealed class InputFrame(ITermSurface surface, Theme theme, string? role, 
 
     //the hints the fill composes, in the ruled order. the frame and the Repl's refresh read this one list
     internal static IReadOnlyList<StatusHint> ComposedHints(StatusInfo s, BackgroundFacts facts, GlyphSet g) =>
-        facts.CellOn ? [.. s.Hints ?? [], BackgroundHint(facts.CellSelected, g)] : s.Hints ?? [];
+        facts.CellOn ? [.. s.Hints ?? [], BackgroundHint(facts.Selected is not null, g)] : s.Hints ?? [];
 
     //the background hint's two states, the caret in the composer or the cell selected, one short form each
     internal static StatusHint BackgroundHint(bool selected, GlyphSet g) =>
@@ -476,9 +485,13 @@ public sealed class InputFrame(ITermSurface surface, Theme theme, string? role, 
         Add(Piece.Tokens, StatusCell.Tokens, Theme.Dim);
         if (s.Ctx?.Percent is int p) Add(Piece.Ctx, StatusCell.Ctx, p >= 80 ? Theme.Warn : Theme.Dim);
 
-        //what runs between turns, never shed, in the inks that say a click acts, each word on its own band under the pointer or a Down selection
-        if (BackgroundCell(facts, g) is { } cell)
-            parts.Add(new Part(cell, InkedCell(facts, theme, s.Role, g, banded: facts.CellSelected || facts.CellHovered), StatusCell.Background));
+        //what runs between turns, never shed, two cells in the inks that say a click acts, each on its own band under the pointer or a Down selection
+        if (facts.Running > 0)
+            AddCell(Gatto.Core.Plural.Of(facts.Running, "shell"), Theme.CampbellBrightYellow, StatusCell.Shells);
+        if (facts.WatchArmed)
+            AddCell(facts.WatchPaused ? "watch paused" : "watch", theme.RoleTint(s.Role), StatusCell.Watch);
+        void AddCell(string word, RgbColor ink, StatusCell kind) =>
+            parts.Add(new Part(word, facts.Banded(kind) ? Banded(word, ink, theme) : theme.Paint(word, ink), kind));
 
         //the provider supplies the numbers and core writes the words, a quota turns warn with few requests left, or when low against a reported total
         if (s.Quota is { } q)
@@ -531,25 +544,6 @@ public sealed class InputFrame(ITermSurface surface, Theme theme, string? role, 
         return on + theme.Paint(word, ink).Replace(Ansi.Reset, Ansi.Reset + on, StringComparison.Ordinal) + Ansi.Reset;
     }
 
-    //the cell's words in their inks, dim kept for the separator and for what a click does not reach: the shells in PowerShell's yellow, the watch in the role tint
-    internal static string InkedCell(BackgroundFacts facts, Theme theme, string role, GlyphSet g, bool banded = false)
-    {
-        var words = new List<string>();
-        void Word(string text, RgbColor ink) => words.Add(banded ? Banded(text, ink, theme) : theme.Paint(text, ink));
-        if (facts.Running > 0) Word(facts.Running == 1 ? "1 shell" : $"{facts.Running} shells", Theme.CampbellBrightYellow);
-        if (facts.WatchArmed) Word(facts.WatchPaused ? "watch paused" : "watch", theme.RoleTint(role));
-        return string.Join(theme.Paint(SepOf(g), Theme.Dim), words);
-    }
-
-    //the cell's words: the shells that run, then the watch, absent when both are
-    internal static string? BackgroundCell(BackgroundFacts facts, GlyphSet g)
-    {
-        var words = new List<string>();
-        if (facts.Running > 0) words.Add(facts.Running == 1 ? "1 shell" : $"{facts.Running} shells");
-        if (facts.WatchArmed) words.Add(facts.WatchPaused ? "watch paused" : "watch");
-        return words.Count == 0 ? null : string.Join(SepOf(g), words);
-    }
-
     //section text
 
     //verbatim until 6 cells, then an ellipsis plus the last 5 chars
@@ -593,13 +587,17 @@ public sealed class InputFrame(ITermSurface surface, Theme theme, string? role, 
         return max == 1 ? g.Ellipsis : HeadCells(s, max - 1) + g.Ellipsis;
     }
 
-    //under 1000 as it is, above that one decimal with k, and with M past a million. invariant culture, so the decimal point can't become a comma
+    //under 1000 as it is, above that k, and M from where k would round to 1000k. invariant culture, so the decimal point can't become a comma
     public static string KFormat(long n) =>
         n < 1000
             ? n.ToString(CultureInfo.InvariantCulture)
-            : n < 1_000_000
-                ? (n / 1000.0).ToString("0.0", CultureInfo.InvariantCulture) + "k"
-                : (n / 1_000_000.0).ToString("0.0", CultureInfo.InvariantCulture) + "M";
+            : n < 999_500
+                ? InUnit(n / 1000.0) + "k"
+                : InUnit(n / 1_000_000.0) + "M";
+
+    //one decimal below 10 in the unit and none from there, 9.95 already rounding to 10
+    private static string InUnit(double v) =>
+        v.ToString(v < 9.95 ? "0.0" : "0", CultureInfo.InvariantCulture);
 
     private static string AbbreviateHome(string cwd, string profile) => HomePath.AbbreviateProfile(cwd, profile);
 

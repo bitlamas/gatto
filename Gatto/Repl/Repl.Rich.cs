@@ -156,8 +156,8 @@ public sealed partial class Repl
 
         //the cell reads the registry, the watch and the editor's selection at each paint, under the gate the painter already holds
         painter.BackgroundFactsReader = () => BackgroundFactsNow(editor);
-        //a press on the cell goes to the composer task as a gesture, where the panel opens, never on the pump thread that reads the console
-        painter.StatusCellSink = () => keys.EnqueueComposerGesture(new ComposerInput.OpenBackground());
+        //a press on a cell goes to the composer task as a gesture, where its screen opens, never on the pump thread that reads the console
+        painter.StatusCellSink = cell => keys.EnqueueComposerGesture(new ComposerInput.OpenBackground(cell == StatusCell.Watch));
         s.Pump = keys;
         if (_chrome is not null) _chrome.HoldModalSlot = () => HoldModalSlot(s);
 

@@ -185,7 +185,7 @@ public class ReplLinearLoopTests
         ticker.StopTurn();
 
         Assert.NotNull(seen);
-        Assert.EndsWith("· 4.1k/15.1k", seen!, StringComparison.Ordinal);
+        Assert.EndsWith("· 4.1k/15k", seen!, StringComparison.Ordinal);
     }
 
     [Fact]

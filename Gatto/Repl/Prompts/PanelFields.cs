@@ -25,7 +25,8 @@ public sealed record PanelFields(
     bool DetailEndFirst = true,   //a detail opens at its end, a tail read from its newest line, and false opens it at its top
     Func<char, int, bool>? Act = null,   //a taken control key acted on inside the show with the row's original index, true asks the rows again
     bool DigitsMove = false,   //a digit moves the cursor to its row and picks nothing, for a list with no Enter act or one that cannot be undone
-    string? LabelHeader = null)   //the word over the label cell, beside the Header words over the columns, null leaves the cell blank
+    string? LabelHeader = null,   //the word over the label cell, beside the Header words over the columns, null leaves the cell blank
+    bool DetailIsScreen = false)   //the detail it opens on is the whole screen, so Esc closes it instead of going back to a list
 {
     //the tab's own row under the list, or the panel's when the tab sets none
     internal PanelUnder? UnderAt(int tab) => Tabs is { Count: > 0 } tabs && tab < tabs.Count ? tabs[tab].Under ?? Under : Under;
