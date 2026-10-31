@@ -25,7 +25,17 @@ public static class CommandNames
 //one registered slash command: the name as typed, the args text and summary for the help table, the handler, and the file that registered it
 public sealed record CommandRow(
     string Name, string Args, string Summary,
-    Func<string, CancellationToken, Task<string>> Handler, string SourceFile, string? Origin = null);   //origin is the source name the off flag reads
+    Func<string, CancellationToken, Task<CommandAnswer>> Handler, string SourceFile, string? Origin = null)   //origin is the source name the off flag reads
+{
+    //a row whose handler answers text alone
+    public static CommandRow OfText(string name, string args, string summary,
+        Func<string, CancellationToken, Task<string>> handler, string sourceFile, string? origin = null) =>
+        new(name, args, summary, TextHandler(handler), sourceFile, origin);
+
+    //a text handler as an answer handler, its null text read as empty so the dispatch never meets a null
+    public static Func<string, CancellationToken, Task<CommandAnswer>> TextHandler(Func<string, CancellationToken, Task<string>> handler) =>
+        async (arg, ct) => await handler(arg, ct) ?? "";
+}
 
 //the rows extensions registered, filled at commit in file order and read by the dispatch. no static state, so parallel tests never share one
 public sealed class CommandRegistry(Gatto.Core.Tools.ArmedSources? armed = null)

@@ -150,13 +150,49 @@ public sealed partial class Repl
     internal IReadOnlyList<SlashCommands.Cmd> KnownCommands() =>
         [.. SlashCommands.All, .. _commands.Rows.Select(r => new SlashCommands.Cmd(r.Name, r.Args, r.Summary, Source: r.SourceFile))];
 
-    //a registered handler's text, one row per line and each line sanitised, since it is an extension's code. a throw becomes its message alone
-    private async Task<IReadOnlyList<string>> RunRegisteredAsync(Gatto.Core.Commands.CommandRow row, string arg, CancellationToken appCt)
+    //a registered handler's answer said through the face's sink. a listing is a panel on the rich face and a table on the plain one, and a throw is its message alone
+    private async Task AnswerRegisteredAsync(Gatto.Core.Commands.CommandRow row, string arg, Action<string> say, RichState? s, CancellationToken appCt)
     {
+        Gatto.Core.Commands.CommandAnswer answer;
+        try { answer = await row.Handler(arg, appCt) ?? ""; }
+        catch (Exception ex) { answer = ex.Message; }
+        if (answer is not Gatto.Core.Commands.CommandAnswer.List { Value: { } listing })
+        {
+            SayLines((answer as Gatto.Core.Commands.CommandAnswer.Text)?.Value ?? "", say);   //a null listing reads as empty text, never a throw outside the handler's catch
+            return;
+        }
+        var (drawn, chosen) = s is null ? (false, null) : ShowListing(s, row.Name, listing, appCt);
+        if (!drawn)
+        {
+            foreach (var line in ListingPanel.Plain(row.Name, listing, _glyphs)) say(line);
+            return;
+        }
+        if (chosen is not { } picked) return;
         string text;
-        try { text = await row.Handler(arg, appCt) ?? ""; }
+        try { text = await listing.Pick(picked) ?? ""; }   //the extension's callback, so its throw is its message as the handler's is
         catch (Exception ex) { text = ex.Message; }
-        return [.. text.Split('\n').Select(TermText.Sanitize)];
+        SayLines(text, say);
+    }
+
+    //one row per line and each line sanitised, since it is an extension's text
+    private static void SayLines(string text, Action<string> say)
+    {
+        foreach (var line in text.Split('\n')) say(TermText.Sanitize(line));
+    }
+
+    //the listing's one show on the rest path, drawn as /tools draws its panel. not drawn when the face has no live painter or pump, the pick null on Esc
+    private (bool Drawn, int? Picked) ShowListing(RichState s, string name, Gatto.Core.Commands.Listing listing, CancellationToken appCt)
+    {
+        var chrome = _chrome ?? new ChromeHandle { Painter = s.Painter, Renderer = s.Renderer };
+        if (chrome.Painter is not { Alive: true } || s.Pump is null) return (false, null);
+        var spec = new SelectSpec([], null, ListingPanel.Options(listing), FooterHint: null,
+            Cancel: appCt, Panel: ListingPanel.Fields(name, listing, roleName));   //the app's token, so a session that ends never waits on a key here
+        try
+        {
+            var result = new SelectPrompt(s.Surface, s.Theme, new ConsoleKeySource(), s.Pump, chrome, s.Glyphs).ShowPanel(spec);
+            return (true, result.Outcome is SelectOutcome.Chosen chosen ? chosen.Index : null);
+        }
+        catch (OperationCanceledException) when (appCt.IsCancellationRequested) { return (true, null); }   //the session ending closes it as Esc does
     }
 
     //the registered row a trimmed line names, with its argument text, or null when the first token is not a registered name

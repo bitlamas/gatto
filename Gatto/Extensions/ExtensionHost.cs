@@ -36,7 +36,7 @@ public static class ExtensionHost
     {
         "System", "System.Collections.Generic", "System.Linq", "System.Text.Json",
         "System.Threading", "System.Threading.Tasks",
-        "Gatto.Core.Tools", "Gatto.Core.Loop", "Gatto.Core.Web", "Gatto.Core.Client",
+        "Gatto.Core.Tools", "Gatto.Core.Loop", "Gatto.Core.Web", "Gatto.Core.Client", "Gatto.Core.Commands",
     };
 
     //public API

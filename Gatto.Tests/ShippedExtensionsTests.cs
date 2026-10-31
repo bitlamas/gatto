@@ -341,6 +341,7 @@ public sealed class ShippedExtensionsTests : IDisposable
     [Theory]
     [InlineData("undo-first.csx")]
     [InlineData("undo-pre-quiet.csx")]
+    [InlineData("undo-pre-listing.csx")]
     public void An_untouched_earlier_undo_is_upgraded_in_place_by_the_real_bytes(string fixture)
     {
         var previous = File.ReadAllText(Path.Combine(Census.SourceTree.RepoRoot(), "Gatto.Tests", "Fixtures", fixture));

@@ -55,7 +55,7 @@ public sealed class HelpPanelReplTests : IDisposable
             Tools.Register(new StubTool("web_search"), extension: true, origin: "web_search");
             Tools.Register(new StubTool("web_fetch"), extension: true, origin: "web_search");
             Commands = new CommandRegistry(Armed);
-            Commands.Add(new CommandRow("/card", "", "draw a card", (_, _) => Task.FromResult("a card"), "cards.csx", "cards"));
+            Commands.Add(CommandRow.OfText("/card", "", "draw a card", (_, _) => Task.FromResult("a card"), "cards.csx", "cards"));
         }
 
         public IReadOnlyList<ExtensionView> Views() =>

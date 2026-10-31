@@ -1,6 +1,7 @@
 using System.Text.Json;
 using System.Text.RegularExpressions;
 using Gatto.Core.Client;
+using Gatto.Core.Commands;
 using Gatto.Core.Loop;
 using Gatto.Core.Tools;
 using Gatto.Core.Web;
@@ -20,20 +21,20 @@ public sealed class StagedRegistrations
     public IReadOnlyList<(string Name, EndpointConfig Config)> Endpoints { get; }
 
     //the slash commands the extension registers, committed in this order and refused one at a time on a collision
-    public IReadOnlyList<(string Name, string Args, string Summary, Func<string, CancellationToken, Task<string>> Handler)> Commands { get; }
+    public IReadOnlyList<(string Name, string Args, string Summary, Func<string, CancellationToken, Task<CommandAnswer>> Handler)> Commands { get; }
 
     public StagedRegistrations(
         IReadOnlyList<(ITool Tool, bool ReadClass)> tools,
         IReadOnlyList<(string Evt, Func<HookPayload, Task> Handler)> hooks,
         string? policy,
         IReadOnlyList<(string Name, EndpointConfig Config)>? endpoints = null,
-        IReadOnlyList<(string Name, string Args, string Summary, Func<string, CancellationToken, Task<string>> Handler)>? commands = null)
+        IReadOnlyList<(string Name, string Args, string Summary, Func<string, CancellationToken, Task<CommandAnswer>> Handler)>? commands = null)
     {
         Tools = tools;
         Hooks = hooks;
         Policy = policy;
         Endpoints = endpoints ?? Array.Empty<(string, EndpointConfig)>();
-        Commands = commands ?? Array.Empty<(string, string, string, Func<string, CancellationToken, Task<string>>)>();
+        Commands = commands ?? Array.Empty<(string, string, string, Func<string, CancellationToken, Task<CommandAnswer>>)>();
     }
 }
 
@@ -41,7 +42,7 @@ public sealed class StagedRegistrations
 public sealed class GattoApi
 {
     //bump on any additive change to this surface, the extension cache hash includes the version so a host upgrade recompiles every .csx
-    public const string HostApiVersion = "6";
+    public const string HostApiVersion = "7";
 
     private static readonly Regex NameRx = new(@"\A[a-z0-9_]+\z", RegexOptions.Compiled);   //a dollar anchor also matches before a final newline
     private static readonly string[] ValidEvents = { "tool_call", "tool_result", "message_end", "session_summary" };
@@ -54,7 +55,7 @@ public sealed class GattoApi
     private List<(string Evt, Func<HookPayload, Task> Handler)> _hooks = new();
     private string? _policy;
     private List<(string Name, EndpointConfig Config)> _endpoints = new();
-    private List<(string Name, string Args, string Summary, Func<string, CancellationToken, Task<string>> Handler)> _commands = new();
+    private List<(string Name, string Args, string Summary, Func<string, CancellationToken, Task<CommandAnswer>> Handler)> _commands = new();
 
     public string Home { get; }
     public string Cwd { get; }
@@ -171,7 +172,11 @@ public sealed class GattoApi
     }
 
     //stage a slash command. the name rule is checked now so a bad name fails at load, the collision check waits for commit where the other files are known
-    public void Command(string name, string args, string summary, Func<string, CancellationToken, Task<string>> handler)
+    public void Command(string name, string args, string summary, Func<string, CancellationToken, Task<string>> handler) =>
+        Command(name, args, summary, handler is null ? null! : CommandRow.TextHandler(handler));
+
+    //stage a slash command whose handler may answer a listing, which the host draws as a panel
+    public void Command(string name, string args, string summary, Func<string, CancellationToken, Task<CommandAnswer>> handler)
     {
         if (name is null || !Gatto.Core.Commands.CommandNames.IsRegistrable(name))
             throw new InvalidOperationException($"command name '{name}' must be a slash and lowercase ASCII letters");

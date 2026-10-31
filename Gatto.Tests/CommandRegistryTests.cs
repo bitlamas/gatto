@@ -5,7 +5,7 @@ namespace Gatto.Tests;
 public class CommandRegistryTests
 {
     private static CommandRow Row(string name, string file = "undo.csx") =>
-        new(name, "", "x", (_, _) => Task.FromResult(""), file);
+        CommandRow.OfText(name, "", "x", (_, _) => Task.FromResult(""), file);
 
     [Theory]
     [InlineData("/undo", true)]

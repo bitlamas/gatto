@@ -154,8 +154,7 @@ public sealed partial class Repl
             }
             if (MatchRegistered(trimmedLine) is { } reg)
             {
-                foreach (var row in await RunRegisteredAsync(reg.Row, reg.Arg, appCt))
-                    Console.WriteLine(row);
+                await AnswerRegisteredAsync(reg.Row, reg.Arg, Console.WriteLine, null, appCt);
                 continue;
             }
             if (trimmedLine == "/compact")

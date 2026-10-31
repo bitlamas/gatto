@@ -94,7 +94,24 @@ public sealed class ExtensionHostTests : IClassFixture<RoslynWarmupFixture>, IDi
         Assert.Equal("[n|path]", row.Args);
         Assert.Equal("list snapshots", row.Summary);
         Assert.Equal("undo.csx", row.SourceFile);
-        Assert.Equal("got 2", await row.Handler("2", CancellationToken.None));
+        Assert.Equal("got 2", Assert.IsType<CommandAnswer.Text>(await row.Handler("2", CancellationToken.None)).Value);
+    }
+
+    [Fact]
+    public async Task A_HANDLER_ANSWERS_A_LISTING_WITH_NO_USING_OF_ITS_OWN_AND_ITS_PICK_RUNS()
+    {
+        WriteFile("undo.csx", """
+            Gatto.Command("/undo", "", "list snapshots", (arg, ct) => Task.FromResult<CommandAnswer>(arg == "" ? "none"
+                : new Listing("snapshot", "restore", new[] { new ListingRow("write", new[] { "12 B" }) }, i => Task.FromResult("picked " + i), new[] { "tool", "size" })));
+            """);
+        var loaded = ExtensionHost.LoadAll(_dir, NewApi(), _ => { });
+        Register(loaded, out _, out _, out var commands, out var diags);
+        Assert.Empty(diags);
+        Assert.True(commands.TryGet("/undo", out var row));
+        Assert.Equal("none", Assert.IsType<CommandAnswer.Text>(await row.Handler("", CancellationToken.None)).Value);
+        var listing = Assert.IsType<CommandAnswer.List>(await row.Handler("x", CancellationToken.None)).Value;
+        Assert.Equal(["write"], listing.Rows.Select(r => r.Label));
+        Assert.Equal("picked 0", await listing.Pick(0));
     }
 
     [Fact]
@@ -138,7 +155,7 @@ public sealed class ExtensionHostTests : IClassFixture<RoslynWarmupFixture>, IDi
 
     [Theory]
     [InlineData("""Gatto.Command("/x", "", "  ", (arg, ct) => Task.FromResult(""));""", "summary")]
-    [InlineData("""Gatto.Command("/x", "", "s", null);""", "handler")]
+    [InlineData("""Gatto.Command("/x", "", "s", (Func<string, CancellationToken, Task<string>>)null);""", "handler")]
     public void AN_EMPTY_SUMMARY_OR_A_NULL_HANDLER_FAILS_THE_LOAD_NAMING_THE_COMMAND(string body, string what)
     {
         WriteFile("bad.csx", body);

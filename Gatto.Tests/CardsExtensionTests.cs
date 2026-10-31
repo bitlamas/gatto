@@ -53,7 +53,7 @@ public sealed class CardsExtensionTests(CardsScriptFolder script) : IClassFixtur
     private async Task<string> Run(string arg)
     {
         Assert.True(Load().Commands.TryGet("/card", out var row));
-        return await row.Handler(arg, CancellationToken.None);
+        return Assert.IsType<CommandAnswer.Text>(await row.Handler(arg, CancellationToken.None)).Value;
     }
 
     private static void BigEndian(Stream s, int v)

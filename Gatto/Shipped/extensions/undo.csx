@@ -520,24 +520,34 @@ Func<List<(string Folder, Dictionary<string, JsonElement> Row, bool Unknown, boo
 
 Func<string, string> relative = f => Path.GetRelativePath(cwd, f);
 
-Func<(string Folder, Dictionary<string, JsonElement> Row, bool Unknown, bool Mine), int, string> listLine = (r, i) =>
+//a time alone today and with its date on another day, one body for the list, the sentence and the line a restore says
+Func<DateTimeOffset, string> stamp = ts => ts.Date == DateTimeOffset.Now.Date
+    ? ts.ToString("HH:mm:ss", CultureInfo.InvariantCulture) : ts.ToString("yyyy-MM-dd HH:mm:ss", CultureInfo.InvariantCulture);
+
+//the other process's start, read from its folder name, null on this process's row and on a name too short to hold one
+Func<(string Folder, Dictionary<string, JsonElement> Row, bool Unknown, bool Mine), string?> began = r =>
+    !r.Mine && Path.GetFileName(r.Folder) is { Length: >= 15 } name && DateTime.TryParseExact(name[..15], "yyyyMMdd-HHmmss", CultureInfo.InvariantCulture, DateTimeStyles.AssumeLocal, out var start)
+        ? stamp(new DateTimeOffset(start)) : null;
+
+//one panel row: the tool, then size, time and path, with the start before the path when the list holds another process's row
+Func<(string Folder, Dictionary<string, JsonElement> Row, bool Unknown, bool Mine), bool, ListingRow> listRow = (r, withBegan) =>
 {
-    var ts = DateTimeOffset.Parse(r.Row["ts"].GetString()!, CultureInfo.InvariantCulture);
-    var when = ts.Date == DateTimeOffset.Now.Date ? ts.ToString("HH:mm:ss", CultureInfo.InvariantCulture) : ts.ToString("yyyy-MM-dd HH:mm:ss", CultureInfo.InvariantCulture);
+    var when = stamp(DateTimeOffset.Parse(r.Row["ts"].GetString()!, CultureInfo.InvariantCulture));
     var tool = r.Row["tool"].GetString() + (r.Unknown ? "?" : "");
-    var what = r.Row.TryGetValue("bytes", out var b) ? size(b.GetInt64()) : "absent";
-    //the other process's start, read from its folder name and shown as a time. a handler returns text, so it cannot be dim
-    var start = "";
-    if (!r.Mine && DateTime.TryParseExact(Path.GetFileName(r.Folder)[..15], "yyyyMMdd-HHmmss", CultureInfo.InvariantCulture, DateTimeStyles.AssumeLocal, out var began))
-        start = "  " + (began.Date == DateTime.Now.Date ? began.ToString("HH:mm:ss", CultureInfo.InvariantCulture) : began.ToString("yyyy-MM-dd HH:mm:ss", CultureInfo.InvariantCulture));
-    return $"{i} {when} {tool} {relative(r.Row["full"].GetString()!)} {what}{start}";
+    var path = relative(r.Row["full"].GetString()!);
+    var held = r.Row.TryGetValue("bytes", out var b);
+    var what = held ? size(b.GetInt64()) : "absent";
+    var cells = new List<string> { what, when };
+    if (withBegan) cells.Add(began(r) ?? "");
+    cells.Add(path);
+    return new ListingRow(tool, cells, held ? $"restore puts back {what} from {when}" : $"restore deletes {path}, which did not exist at {when}");
 };
 
 //the file's current bytes go into this process's folder first, so a restore is itself undoable, then the snapshot's bytes come back
 Func<(string Folder, Dictionary<string, JsonElement> Row, bool Unknown, bool Mine), string> restore = r =>
 {
     var target = r.Row["full"].GetString()!;
-    var ts = DateTimeOffset.Parse(r.Row["ts"].GetString()!, CultureInfo.InvariantCulture).ToString("HH:mm:ss", CultureInfo.InvariantCulture);
+    var ts = stamp(DateTimeOffset.Parse(r.Row["ts"].GetString()!, CultureInfo.InvariantCulture));
     var callId = $"undo-{Guid.NewGuid():N}";
     snapshot(callId, "undo", target);
     lock (sync)
@@ -561,15 +571,26 @@ Gatto.Command("/undo", "[n|path]", "list snapshots for this folder, or restore o
         var rows = listing();
         var a = arg.Trim();
         if (a.Length == 0)
-            return Task.FromResult(rows.Count == 0 ? "no snapshots for this folder" : string.Join("\n", rows.Select((r, i) => listLine(r, i + 1))));
+        {
+            if (rows.Count == 0) return Task.FromResult<CommandAnswer>("no snapshots for this folder");
+            var withBegan = rows.Any(r => began(r) is not null);
+            var listed = rows.Select(r => listRow(r, withBegan)).ToList();
+            var header = withBegan ? new[] { "tool", "size", "when", "began", "file" } : new[] { "tool", "size", "when", "file" };
+            //the row the panel showed is restored, read from the rows listed at the open, so a later snapshot never moves the number under the cursor
+            return Task.FromResult<CommandAnswer>(new Listing("snapshot", "restore", listed, i =>
+            {
+                try { return Task.FromResult(restore(rows[i])); }
+                catch (Exception ex) { return Task.FromResult($"undo: {ex.Message}"); }
+            }, header));
+        }
         if (int.TryParse(a, NumberStyles.AllowLeadingSign, CultureInfo.InvariantCulture, out var pick))
-            return Task.FromResult(pick >= 1 && pick <= rows.Count ? restore(rows[pick - 1]) : $"no snapshot {a} in the list");
+            return Task.FromResult<CommandAnswer>(pick >= 1 && pick <= rows.Count ? restore(rows[pick - 1]) : $"no snapshot {a} in the list");
         //a path with a space is typed quoted, as the shell asks, so one pair of quotes comes off
         var unquoted = a.Length >= 2 && (a[0] == '"' || a[0] == '\'') && a[^1] == a[0] ? a[1..^1] : a;
         string wanted;
-        try { wanted = full(unquoted); } catch { return Task.FromResult($"no snapshot of {a}"); }
+        try { wanted = full(unquoted); } catch { return Task.FromResult<CommandAnswer>($"no snapshot of {a}"); }
         var byPath = rows.FirstOrDefault(r => r.Row["full"].GetString()!.Equals(wanted, StringComparison.OrdinalIgnoreCase));
-        return Task.FromResult(byPath.Row is null ? $"no snapshot of {a}" : restore(byPath));
+        return Task.FromResult<CommandAnswer>(byPath.Row is null ? $"no snapshot of {a}" : restore(byPath));
     }
-    catch (Exception ex) { return Task.FromResult($"undo: {ex.Message}"); }
+    catch (Exception ex) { return Task.FromResult<CommandAnswer>($"undo: {ex.Message}"); }
 });

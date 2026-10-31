@@ -93,7 +93,7 @@ public class SlashCommandsTests
         var loop = new AgentLoop(client, new ToolRegistry(), new HookBus(), new TestToolContext(Path.GetTempPath()), "m");
         var convo = new Conversation("sys");
         var commands = new CommandRegistry();
-        commands.Add(new CommandRow("/undo", "[n|path]", "list snapshots for this folder, or restore one",
+        commands.Add(CommandRow.OfText("/undo", "[n|path]", "list snapshots for this folder, or restore one",
             (arg, _) => Task.FromResult($"one {arg}\ntwo"), "undo.csx"));
         var repl = new Gatto.Repl.Repl(
             loop, convo, "generalist", "m", null, client, null, null, Path.GetTempPath(),
@@ -121,6 +121,47 @@ public class SlashCommandsTests
         Assert.Contains("two", lines);
         Assert.Contains(lines, l => l.StartsWith("/undo [n|path]", StringComparison.Ordinal) && l.EndsWith("undo.csx", StringComparison.Ordinal));
         Assert.Empty(client.Requests);
+    }
+
+    [Fact]
+    public async Task PLAIN_LOOP_PRINTS_A_LISTING_AS_A_NUMBERED_TABLE_AND_NAMES_THE_TYPED_FORM()
+    {
+        var client = new FakeChatClient();
+        var loop = new AgentLoop(client, new ToolRegistry(), new HookBus(), new TestToolContext(Path.GetTempPath()), "m");
+        var convo = new Conversation("sys");
+        var commands = new CommandRegistry();
+        var listing = new Listing("snapshot", "restore", [new("write", ["12 B", "a.txt"]), new("edit", ["absent", "b.txt"])],
+            _ => Task.FromResult("never"), ["tool", "size", "file"]);
+        commands.Add(new CommandRow("/undo", "[n|path]", "list snapshots for this folder, or restore one",
+            (arg, _) => Task.FromResult<CommandAnswer>(arg == "" ? listing : $"restored {arg}"), "undo.csx"));
+        var repl = new Gatto.Repl.Repl(
+            loop, convo, "generalist", "m", null, client, null, null, Path.GetTempPath(),
+            () => Composed.Text("sys"), _ => new RoleSwitchResult(false, "", null, null, "unused"),
+            commands: commands);
+
+        var origIn = Console.In;
+        var origOut = Console.Out;
+        var sw = new StringWriter();
+        try
+        {
+            Console.SetOut(sw);
+            Console.SetIn(new StringReader("/undo\n/undo 1\n/quit\n"));
+            await repl.RunAsync(CancellationToken.None);
+        }
+        finally
+        {
+            Console.SetOut(origOut);
+            Console.SetIn(origIn);
+        }
+
+        var lines = sw.ToString().Split('\n').Select(l => l.TrimEnd('\r')).Select(l => l.StartsWith("> ", StringComparison.Ordinal) ? l[2..] : l).ToList();
+        Assert.Contains("undo · 2 snapshots", lines);
+        Assert.Contains("    tool   size    file", lines);
+        Assert.Contains("1.  write  12 B    a.txt", lines);
+        Assert.Contains("2.  edit   absent  b.txt", lines);
+        Assert.Contains("type /undo <n> to restore", lines);
+        Assert.Contains("restored 1", lines);
+        Assert.DoesNotContain("never", sw.ToString(), StringComparison.Ordinal);
     }
 
     [Fact]

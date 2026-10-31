@@ -21,8 +21,8 @@ public class ShippedTreeTests
                 ("1d56f684cd3868094f6668ac49a39d96abeb41d0eafe99dff452147b4b40f469",
                  8795, "a36da9665ec57b7b39923e0f19d5f5f5dd8fc13f942f9c286f653fa9f982f8fb"),
             ["extensions/undo.csx"] =
-                ("c0272134a0b119bf5d1043678f37cba7157f77f387c6bf3e7db8573e09a232f6",
-                 28702, "91624fe701dd4debe6cf13eaf7f1c9076dcb7d9ec99d36ed8a5de0b256e95ecf"),
+                ("fb109ce1147a4bbcaa4409f1023d009de7127a92234dddf5453a668a69458100",
+                 29931, "0f57ad240e70a67a97c586f0aa1faafd9e48d9368da650aa507798ed7e029e99"),
             ["roles/code-review.json"] =
                 ("42c2308c6198e0be8cc37a41be06c23619921d0a260900d211453933db6b1f0c",
                  1869, "d15ce43a36d45e526ac0a2d3154a1e22b9f7f06aaa5aabbc374138cc025347e4"),

@@ -40,7 +40,7 @@ public class GattoApiTests
 
     //the host api version is asserted in one test only, a second assertion could drift from it
     [Fact]
-    public void HostApiVersion_IsSix() => Assert.Equal("6", GattoApi.HostApiVersion);
+    public void HostApiVersion_IsSeven() => Assert.Equal("7", GattoApi.HostApiVersion);
 
     [Fact]
     public void Config_section_reaches_scripts_and_defaults_to_null()

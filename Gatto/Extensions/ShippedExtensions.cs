@@ -118,6 +118,8 @@ public static class ShippedExtensions
         "091278e7e57e17bf2bf307db403f934d1c16a3e41ff29fb0f28e95eeb5d7052d",
         //undo.csx while it logged a path outside the folder once a session
         "d799ef861f06a6114e3e2e66cfdbe48c41f34a013cce0e76604910e1613715e1",
+        //undo.csx while /undo answered text alone
+        "c0272134a0b119bf5d1043678f37cba7157f77f387c6bf3e7db8573e09a232f6",
     };
 
     //hashes of superseded shipped revisions, an unmodified copy that matches one is safely overwritten by the current text

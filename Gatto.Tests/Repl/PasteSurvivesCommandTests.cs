@@ -32,7 +32,7 @@ public class PasteSurvivesCommandTests : IDisposable
     private static RichReplHarness Harness(int turns)
     {
         var reg = new CommandRegistry();
-        reg.Add(new CommandRow("/undo", "[n|path]", "list snapshots for this folder, or restore one",
+        reg.Add(CommandRow.OfText("/undo", "[n|path]", "list snapshots for this folder, or restore one",
             (arg, _) => Task.FromResult($"undo ran with [{arg}]"), "undo.csx"));
         var h = new RichReplHarness(Path.GetTempPath(), commands: reg, clipboardImages: new OnePng());
         for (var i = 0; i < turns; i++)

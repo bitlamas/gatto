@@ -87,7 +87,7 @@ public class LaunchWarningsTests : IDisposable
     public async Task Rich_a_launch_warning_is_a_system_row_after_the_banner_and_before_the_first_command()
     {
         var reg = new CommandRegistry();
-        reg.Add(new CommandRow("/undo", "[n|path]", "list snapshots for this folder, or restore one",
+        reg.Add(CommandRow.OfText("/undo", "[n|path]", "list snapshots for this folder, or restore one",
             (_, _) => Task.FromResult("undo answered"), "undo.csx"));
         var h = new RichReplHarness(Path.GetTempPath(), commands: reg, launchWarnings: [Collision]);
         h.Keys.Line("/undo").Line("/quit");

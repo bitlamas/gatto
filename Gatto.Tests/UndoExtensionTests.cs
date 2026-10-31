@@ -369,8 +369,19 @@ public sealed class UndoExtensionTests(UndoScriptFolder script) : IClassFixture<
     private static async Task<string> Run(CommandRegistry commands, string arg)
     {
         Assert.True(commands.TryGet("/undo", out var row));
-        return await row.Handler(arg, CancellationToken.None);
+        return Assert.IsType<CommandAnswer.Text>(await row.Handler(arg, CancellationToken.None)).Value;
     }
+
+    //bare /undo on a folder with snapshots answers a listing
+    private static async Task<Listing> Listed(CommandRegistry commands)
+    {
+        Assert.True(commands.TryGet("/undo", out var row));
+        return Assert.IsType<CommandAnswer.List>(await row.Handler("", CancellationToken.None)).Value;
+    }
+
+    //each listed row as its label and cells two spaces apart, so a row reads as one line
+    private static async Task<string[]> Rows(CommandRegistry commands) =>
+        [.. (await Listed(commands)).Rows.Select(r => string.Join("  ", (string[])[r.Label, .. r.Columns ?? []]))];
 
     [Fact]
     public async Task AN_EMPTY_LIST_SAYS_SO()
@@ -390,13 +401,13 @@ public sealed class UndoExtensionTests(UndoScriptFolder script) : IClassFixture<
             var result = state switch { "failed" => new ToolResult("no", IsError: true), "blocked" => new ToolResult("blocked: no", IsError: true), _ => new ToolResult("ok") };
             await hooks.EmitToolResultAsync(new HookPayload(Call: Call(id, "write_file", "{}"), Result: result));
         }
-        var lines = (await Run(commands, "")).Split('\n');
-        Assert.Equal(2, lines.Length);
-        Assert.StartsWith("1 ", lines[0]);
-        Assert.Contains("write_file", lines[0], StringComparison.Ordinal);
-        Assert.Contains("a.txt", lines[0], StringComparison.Ordinal);
-        Assert.Contains("1 B", lines[0], StringComparison.Ordinal);
-        Assert.StartsWith("2 ", lines[1]);
+        var listing = await Listed(commands);
+        Assert.Equal(2, listing.Rows.Count);
+        Assert.Equal("write_file", listing.Rows[0].Label);
+        Assert.Equal("1 B", listing.Rows[0].Columns![0]);
+        Assert.Equal("a.txt", listing.Rows[0].Columns![^1]);
+        Assert.Equal(["tool", "size", "when", "file"], listing.Header);   //this process's rows alone keep four columns
+        Assert.Equal(("snapshot", "restore"), (listing.Unit, listing.Verb));
     }
 
     [Fact]
@@ -405,7 +416,7 @@ public sealed class UndoExtensionTests(UndoScriptFolder script) : IClassFixture<
         var (hooks, commands) = Load();
         File.WriteAllText(Path.Combine(_cwd, "a.txt"), "a");
         await hooks.EmitToolCallAsync(new HookPayload(Call: Call("c1", "shell", Args(("command", "Set-Content a.txt x")))));
-        var line = Assert.Single((await Run(commands, "")).Split('\n'));
+        var line = Assert.Single(await Rows(commands));
         Assert.Contains("shell?", line, StringComparison.Ordinal);
     }
 
@@ -426,11 +437,77 @@ public sealed class UndoExtensionTests(UndoScriptFolder script) : IClassFixture<
         File.WriteAllText(Path.Combine(sibling, "index.jsonl"),
             $"{{\"n\":1,\"ts\":\"2020-01-01T00:00:02+00:00\",\"tool\":\"write_file\",\"path\":\"s.txt\",\"full\":\"{target}\",\"absent\":true}}\n");
         var (_, commands) = Load();
-        var line = Assert.Single((await Run(commands, "")).Split('\n'));
-        Assert.Contains("write_file?", line, StringComparison.Ordinal);
-        Assert.Contains("d.txt", line, StringComparison.Ordinal);
-        Assert.Contains("2020-01-01 00:00:01", line, StringComparison.Ordinal);   //the row's time with its day, since it is not today
-        Assert.EndsWith("  2020-01-01 00:00:00", line);   //the other process's start, from its folder name, as a time
+        var listing = await Listed(commands);
+        var row = Assert.Single(listing.Rows);
+        Assert.Equal("write_file?", row.Label);
+        //the row's time with its day since it is not today, then the other process's start from its folder name, then the path
+        Assert.Equal(["3 B", "2020-01-01 00:00:01", "2020-01-01 00:00:00", "d.txt"], row.Columns);
+        Assert.Equal(["tool", "size", "when", "began", "file"], listing.Header);
+        Assert.Equal("restore puts back 3 B from 2020-01-01 00:00:01", row.Sentence);
+        Assert.Equal("restored d.txt to 2020-01-01 00:00:01 (3 B)", await listing.Pick(0));   //one stamp, so the said line carries the day too
+        Assert.Equal("old", File.ReadAllText(Path.Combine(_cwd, "d.txt")));
+    }
+
+    [Fact]
+    public async Task A_FOLDER_NAME_TOO_SHORT_FOR_A_START_LISTS_ITS_ROW_WITH_NO_START()
+    {
+        var target = Path.Combine(_cwd, "d.txt").Replace("\\", "\\\\");
+        var odd = Path.Combine(_home, "undo", "x");
+        Directory.CreateDirectory(odd);
+        File.WriteAllText(Path.Combine(odd, "index.jsonl"),
+            $"{{\"n\":1,\"ts\":\"2020-01-01T00:00:01+00:00\",\"tool\":\"write_file\",\"path\":\"d.txt\",\"full\":\"{target}\",\"absent\":true}}\n");
+        var (_, commands) = Load();
+        var listing = await Listed(commands);
+        var row = Assert.Single(listing.Rows);
+        Assert.Equal(["absent", "2020-01-01 00:00:01", "d.txt"], row.Columns);
+        Assert.Equal(["tool", "size", "when", "file"], listing.Header);
+    }
+
+    [Fact]
+    public async Task PICK_RESTORES_THE_ROW_THE_PANEL_SHOWED_AND_THE_RESTORE_IS_LISTED_NEXT()
+    {
+        var (hooks, commands) = Load();
+        var target = Path.Combine(_cwd, "a.txt");
+        File.WriteAllText(target, "old");
+        await hooks.EmitToolCallAsync(new HookPayload(Call: Call("c1", "write_file", Args(("path", "a.txt"), ("content", "new")))));
+        await hooks.EmitToolResultAsync(new HookPayload(Call: Call("c1", "write_file", "{}"), Result: new ToolResult("ok")));
+        File.WriteAllText(target, "new");
+        var listing = await Listed(commands);
+        Assert.Equal($"restore puts back 3 B from {listing.Rows[0].Columns![1]}", listing.Rows[0].Sentence);
+        var said = await listing.Pick(0);
+        Assert.StartsWith("restored a.txt to ", said);
+        Assert.EndsWith("(3 B)", said);
+        Assert.Equal("old", File.ReadAllText(target));
+        var next = await Listed(commands);
+        Assert.Equal(["undo", "write_file"], next.Rows.Select(r => r.Label));
+    }
+
+    [Fact]
+    public async Task PICK_ON_AN_ABSENT_ROW_DELETES_THE_FILE_AND_ITS_SENTENCE_SAYS_SO()
+    {
+        var (hooks, commands) = Load();
+        await hooks.EmitToolCallAsync(new HookPayload(Call: Call("c1", "write_file", Args(("path", "n.txt"), ("content", "x")))));
+        await hooks.EmitToolResultAsync(new HookPayload(Call: Call("c1", "write_file", "{}"), Result: new ToolResult("ok")));
+        File.WriteAllText(Path.Combine(_cwd, "n.txt"), "x");
+        var listing = await Listed(commands);
+        var row = Assert.Single(listing.Rows);
+        Assert.Equal("absent", row.Columns![0]);
+        Assert.Equal($"restore deletes n.txt, which did not exist at {row.Columns[1]}", row.Sentence);
+        Assert.StartsWith("deleted n.txt, it did not exist before ", await listing.Pick(0));
+        Assert.False(File.Exists(Path.Combine(_cwd, "n.txt")));
+    }
+
+    [Fact]
+    public async Task A_PICK_WHOSE_COPY_WENT_SAYS_THE_UNDO_LINE_AND_THROWS_NOTHING()
+    {
+        var (hooks, commands) = Load();
+        File.WriteAllText(Path.Combine(_cwd, "a.txt"), "old");
+        await hooks.EmitToolCallAsync(new HookPayload(Call: Call("c1", "write_file", Args(("path", "a.txt"), ("content", "new")))));
+        await hooks.EmitToolResultAsync(new HookPayload(Call: Call("c1", "write_file", "{}"), Result: new ToolResult("ok")));
+        var listing = await Listed(commands);
+        var copy = Index().First(e => e.TryGetProperty("file", out _)).GetProperty("file").GetString()!;
+        File.Delete(Path.Combine(Folder(), copy));
+        Assert.StartsWith("undo: ", await listing.Pick(0));
     }
 
     [Fact]
@@ -443,7 +520,7 @@ public sealed class UndoExtensionTests(UndoScriptFolder script) : IClassFixture<
         File.WriteAllText(Path.Combine(dead, "index.jsonl"),
             $"{{\"n\":1,\"ts\":\"2020-01-01T00:00:01+00:00\",\"tool\":\"write_file\",\"path\":\"d.txt\",\"full\":\"{target}\",\"absent\":true}}\n{{\"n\":2,\"ts\":\"2020-01");
         var (_, commands) = Load();
-        Assert.Single((await Run(commands, "")).Split('\n'));
+        Assert.Single(await Rows(commands));
     }
 
     [Fact]
@@ -463,7 +540,7 @@ public sealed class UndoExtensionTests(UndoScriptFolder script) : IClassFixture<
         Assert.Equal(2, rows.Count);
         Assert.Equal("undo", rows[1].GetProperty("tool").GetString());
         Assert.Equal("new", File.ReadAllText(Path.Combine(Folder(), rows[1].GetProperty("file").GetString()!)));
-        var list = (await Run(commands, "")).Split('\n');
+        var list = await Rows(commands);
         Assert.Equal(2, list.Length);   //the restore's own snapshot is listed, so the restore is undoable
     }
 
@@ -525,7 +602,7 @@ public sealed class UndoExtensionTests(UndoScriptFolder script) : IClassFixture<
         await hooks.EmitToolResultAsync(new HookPayload(Call: Call("", "write_file", "{}"), Result: new ToolResult("ok")));
         await hooks.EmitToolCallAsync(new HookPayload(Call: Call("", "write_file", Args(("path", "b.txt"), ("content", "x")))));
         await hooks.EmitToolResultAsync(new HookPayload(Call: Call("", "write_file", "{}"), Result: new ToolResult("cannot write", IsError: true)));
-        var line = Assert.Single((await Run(commands, "")).Split('\n'));
+        var line = Assert.Single(await Rows(commands));
         Assert.Contains("a.txt", line, StringComparison.Ordinal);
     }
 
@@ -559,7 +636,7 @@ public sealed class UndoExtensionTests(UndoScriptFolder script) : IClassFixture<
         File.WriteAllText(Path.Combine(dead, "index.jsonl"),
             $"{{\"n\":1,\"ts\":\"2020-01-01T00:00:01+00:00\",\"tool\":\"write_file\",\"path\":\"d.txt\",\"full\":\"{target}\",\"absent\":true}}\n{badMark}\n");
         var (_, commands) = Load();
-        var line = Assert.Single((await Run(commands, "")).Split('\n'));
+        var line = Assert.Single(await Rows(commands));
         Assert.Contains("d.txt", line, StringComparison.Ordinal);
     }
 
@@ -600,7 +677,7 @@ public sealed class UndoExtensionTests(UndoScriptFolder script) : IClassFixture<
         File.WriteAllText(Path.Combine(dead, "index.jsonl"),
             $"{{\"n\":1,\"ts\":\"2020-01-01T00:00:01+00:00\",\"tool\":\"write_file\",\"path\":\"d.txt\",\"full\":\"{target}\",\"absent\":true}}\n{badRow.Replace("\"E\"", "\"" + Path.Combine(_cwd, "e.txt").Replace("\\", "\\\\") + "\"").Replace("\"F\"", "\"" + Path.Combine(_cwd, "..", "e.txt").Replace("\\", "\\\\") + "\"")}\n");
         var (_, commands) = Load();
-        var line = Assert.Single((await Run(commands, "")).Split('\n'));
+        var line = Assert.Single(await Rows(commands));
         Assert.Contains("d.txt", line, StringComparison.Ordinal);
     }
 

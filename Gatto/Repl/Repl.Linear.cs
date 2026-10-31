@@ -784,8 +784,7 @@ public sealed partial class Repl
         if (MatchRegistered(trimmed) is { } reg)
         {
             //one ♯ row per line, as /wild commits its lines
-            foreach (var row in await RunRegisteredAsync(reg.Row, reg.Arg, appCt))
-                s.Renderer.CommitSystem(row);
+            await AnswerRegisteredAsync(reg.Row, reg.Arg, s.Renderer.CommitSystem, s, appCt);
             return false;
         }
         if (trimmed == "/context")
