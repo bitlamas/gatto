@@ -46,6 +46,7 @@ public static class SlashCommands
         new("/help", "", "this screen", BypassesQueue: true),
         new("/new", "", "reset the conversation"),
         new("/role", "[name]", "show or switch role"),
+        //acts at once on the composer like /watch, at rest and during a turn, and answers in a line, so no bypass flag
         new("/name", "[text]", "name this session, on the composer and the tab"),
         //quant is named here so a verb the dispatch accepts is findable in /help. add stays out, since its only outcome is a sentence pointing at gatto model
         new("/model", "[name|quant]", "show or switch the model, or manage its files"),

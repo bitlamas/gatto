@@ -266,6 +266,59 @@ public sealed class SessionNameTests : IDisposable
         Assert.Contains($"{TerminalTitle.Glyph} {Name}", screen, StringComparison.Ordinal);
     }
 
+    //types /name while the turn runs and reads the composer and the file before the turn may end
+    private sealed class NameMidTurnTool(RichReplHarness h, SessionStore store, List<string> seen) : ITool
+    {
+        public string Name => "hold";
+        public string Description => "holds the turn open";
+        public JsonElement ParametersSchema => JsonDocument.Parse("""{"type":"object"}""").RootElement;
+        public async Task<ToolResult> ExecuteAsync(JsonElement args, IToolContext ctx, CancellationToken ct)
+        {
+            h.Keys.Line("/name " + SessionNameTests.Name);
+            var shown = await h.UntilAsync(() => h.ScreenText().Contains($"{TerminalTitle.Glyph} {SessionNameTests.Name}", StringComparison.Ordinal), Waits.Bound);
+            lock (seen)
+            {
+                seen.Add(shown ? "composer named" : "composer unnamed");
+                seen.Add(store.CurrentPath is { } path && SessionStore.IdentityOf(path)?.Name is { } onDisk ? "file " + onDisk : "file unnamed");
+            }
+            return new ToolResult("held");
+        }
+    }
+
+    //the name shows while the turn runs, the composer writes no file then, and the turn's own save carries it
+    [Fact]
+    public async Task NAME_MID_TURN_SHOWS_AT_ONCE_AND_THE_TURNS_SAVE_WRITES_IT()
+    {
+        var store = new SessionStore(_home, _cwd);
+        var deed = new Deed();
+        var reg = new ToolRegistry();
+        var h = new RichReplHarness(_cwd, tools: reg, title: deed, sessions: store);
+        var seen = new List<string>();
+        reg.Register(new NameMidTurnTool(h, store, seen));
+        h.Client.EnqueueTurn(new StreamEvent.ToolCallReady(new ToolCall("c1", "hold", "{}")), new StreamEvent.Finished("tool_calls", null));
+        h.Client.EnqueueTurn(new StreamEvent.TextDelta("second round"), new StreamEvent.Finished("stop", null));
+        h.Keys.Line("go").Line("/quit");
+
+        await h.RunAsync();
+
+        Assert.Equal(["composer named", "file unnamed"], seen);
+        Assert.Contains(TerminalTitle.Named(Name), SettledTitles.Of(deed.Applied));
+        Assert.Equal(Name, SessionStore.IdentityOf(store.CurrentPath!)!.Name);
+    }
+
+    //at rest the composer writes the file itself, since no turn will save before a quit
+    [Fact]
+    public async Task NAME_AT_REST_IN_THE_RICH_LOOP_IS_ON_DISK_AT_ONCE()
+    {
+        var store = new SessionStore(_home, _cwd);
+        var h = new RichReplHarness(_cwd, sessions: store);
+        h.Keys.Line("/name " + Name).Line("/quit");
+
+        await h.RunAsync();
+
+        Assert.Equal(Name, SessionStore.IdentityOf(store.CurrentPath!)!.Name);
+    }
+
     //a resumed session opens with its name on the tab and the composer
     [Fact]
     public async Task A_RESUMED_NAMED_SESSION_OPENS_WITH_ITS_NAME()

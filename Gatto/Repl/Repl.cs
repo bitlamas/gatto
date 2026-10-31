@@ -188,6 +188,8 @@ public sealed partial class Repl(
     private readonly Gatto.Terminal.ITerminalTitle? _terminalTitle = terminalTitle;
 
     private readonly object _ctsLock = new();
+    private bool _dispatching;   //the rich loop's dispatcher holds an entry, so it is the one writer of the session file (under _ctsLock)
+    private bool _nameUnsaved;   //a /name arrived during a dispatch, so the save at its end writes the name (under _ctsLock)
     private bool _offered;   //the 85% offer fires once per session, a /new or /compact lets it fire again
     private string? _lastCompactSummary;   //the newest /compact summary, which the rich loop prints as the session lead
 
@@ -287,14 +289,14 @@ public sealed partial class Repl(
     }
 
     //the row /name answers with: the name held when bare, or the usage. a name it sets is shown by the composer and the tab, so it commits no row, and it never reaches the model, so no prefix moves
-    private string? NameCommand(string arg, TranscriptModel? model = null)
+    private string? NameCommand(string arg, TranscriptModel? model = null, bool save = true)
     {
         if (arg.Trim().Length == 0) return sessionName is { } held ? "name: " + held : "no name";
         var (name, refusal) = ParseName(arg);
         if (name is null) return refusal!;
         sessionName = name;
         sessions?.Name(name);
-        SaveSession(sessions, model, convo);   //written now, a session named before its first turn is otherwise never on disk and --continue cannot find it
+        if (save) SaveSession(sessions, model, convo);   //written now, a session named before its first turn is otherwise never on disk and --continue cannot find it
         return null;
     }
 

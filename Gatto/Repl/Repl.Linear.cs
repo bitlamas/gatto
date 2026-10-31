@@ -253,6 +253,13 @@ public sealed partial class Repl
                         rejected = carry;
                         continue;
                     }
+                    //the name is set at once too, at rest and during a turn alike, and never waits in the queue
+                    if (NameNow(text, s))
+                    {
+                        lock (s.Gate) { if (!stopped) RedrawLocked(idleView); }
+                        rejected = carry;
+                        continue;
+                    }
                     //what runs opens on this task, at rest and during a turn alike, the same panel Down and Enter and a press on the cell open
                     if (text.Trim() == "/tasks")
                     {
@@ -338,7 +345,11 @@ public sealed partial class Repl
                 //null means Esc dropped this message after its permit, so the counts agree again and the loop just repaints
                 if (taken is not { } input) { lock (s.Gate) { PublishQueueLocked(); RedrawLocked(lastView); } continue; }
 
-                if (await DispatchLinearAsync(input, s, queue, appCt)) break;
+                lock (_ctsLock) _dispatching = true;
+                bool quit;
+                try { quit = await DispatchLinearAsync(input, s, queue, appCt); }
+                finally { EndDispatch(s); }
+                if (quit) break;
                 lock (s.Gate) { PublishQueueLocked(); RedrawLocked(lastView); }   //fresh status and ctx after the turn
             }
         }
@@ -816,14 +827,6 @@ public sealed partial class Repl
                 SaveSession(sessions, s.Painter.Model, convo);
                 s.Painter.Repaint();
             }
-            return false;
-        }
-        if (SlashGate.TryMatchCommand(trimmed, "/name", out var nameArg))
-        {
-            if (NameCommand(nameArg, s.Painter.Model) is { } answer) s.Renderer.CommitSystem(answer);
-            //the tab and the composer read the name now, past the folder latch
-            if (sessionName is { } named) s.Painter.AltScreen.Name(TerminalTitle.Named(named));
-            s.Refresh();
             return false;
         }
         if (trimmed == "/role" || trimmed.StartsWith("/role ", StringComparison.Ordinal))

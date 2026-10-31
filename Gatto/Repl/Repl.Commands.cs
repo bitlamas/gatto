@@ -121,6 +121,35 @@ public sealed partial class Repl
         return true;
     }
 
+    //the name acts at once on the composer thread, at rest and during a turn, and reaches no model. the file is written here only while nothing dispatches, so it never races a turn's own saves
+    private bool NameNow(string text, RichState s)
+    {
+        if (!SlashGate.TryMatchCommand(text.Trim(), "/name", out var arg)) return false;
+        string? answer;
+        lock (_ctsLock)
+        {
+            answer = NameCommand(arg, s.Painter.Model, save: !_dispatching);
+            if (answer is null && _dispatching) _nameUnsaved = true;
+        }
+        if (answer is not null) s.Renderer.CommitSystemBetweenBlocks(answer);
+        //the tab and the composer read the name now, past the folder latch
+        if (sessionName is { } named) s.Painter.AltScreen.Name(TerminalTitle.Named(named));
+        s.Refresh();
+        return true;
+    }
+
+    //a dispatch ended, so a name given during it is written now. a turn's saves already carried it, and a command that saves nothing would otherwise lose it
+    private void EndDispatch(RichState s)
+    {
+        lock (_ctsLock)
+        {
+            _dispatching = false;
+            if (!_nameUnsaved) return;
+            _nameUnsaved = false;
+            if (sessionName is not null) SaveSession(sessions, s.Painter.Model, convo);   //a /new in the same dispatch dropped the name and wrote no file
+        }
+    }
+
     //the folder as the screen shows it, the profile read as ~, while the watch and every letter keep the absolute path
     private static string Shown(string folder)
     {
