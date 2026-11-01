@@ -185,6 +185,8 @@ public sealed class Compactor(IChatClient client, string model, RequestShape? sh
     {
         var text = new StringBuilder();
         var shown = new ControlTokens.StreamFilter();      //the summary reaches the screen stripped, as the prefix gets it
+        var reasoning = new StringBuilder();               //kept only to name what the screen's strip removed, never recorded
+        var thought = new ControlTokens.StreamFilter();
         var truncated = false;
         try
         {
@@ -198,7 +200,7 @@ public sealed class Compactor(IChatClient client, string model, RequestShape? sh
                 {
                     //only the content is kept as the summary, thinking goes to the reasoning channel so the REPL dims it
                     case StreamEvent.TextDelta t: text.Append(t.Text); Show(observer, shown.Push(t.Text)); break;
-                    case StreamEvent.ReasoningDelta r: observer.OnReasoningDelta(r.Text); break;
+                    case StreamEvent.ReasoningDelta r: reasoning.Append(r.Text); Show(observer, thought.Push(r.Text)); break;
                     case StreamEvent.Truncated: truncated = true; break;
                     case StreamEvent.Finished f: if (f.FinishReason == "length") truncated = true; break;
                 }
@@ -212,13 +214,18 @@ public sealed class Compactor(IChatClient client, string model, RequestShape? sh
             LastFailure = $"the server dropped the request: {ex.Message}";
             return (null, false, false, false);
         }
+        Show(observer, thought.Flush());
         Show(observer, shown.Flush());
 
         if (truncated) { LastFailure = "the summary was cut at the output limit"; return (null, false, true, false); }
         //strip control tokens here, this text becomes the system prefix, replayed in full on every later request
         var (cleaned, stripped) = ControlTokens.Strip(text.ToString());
-        if (stripped > 0)
-            observer.OnWarning(ControlTokens.Notice(model, "compaction summary", ControlTokens.Removed(text.ToString())));
+        var removedReasoning = ControlTokens.Removed(reasoning.ToString());
+        if (stripped > 0 || removedReasoning.Count > 0)
+        {
+            var channel = removedReasoning.Count == 0 ? "compaction summary" : stripped == 0 ? "compaction reasoning" : "compaction summary and reasoning";
+            observer.OnWarning(ControlTokens.Notice(model, channel, ControlTokens.Removed(text.ToString()).Concat(removedReasoning).ToList()));
+        }
         var summary = cleaned.Trim();
         //a summary stripped to empty is not a summary, so it takes the same null abort as any other failure
         if (summary.Length == 0) { LastFailure = "the summary came back empty"; return (null, false, false, false); }

@@ -266,6 +266,48 @@ public sealed class PermissionsPanelReplTests : IDisposable
     }
 
     [Fact]
+    public async Task KEYS_BETWEEN_TWO_SHOWS_MID_TURN_ARE_DROPPED_AND_NEVER_REACH_THE_COMPOSER_OR_THE_TURN()
+    {
+        var store = Store();
+        var h = Harness(store);
+        var held = new TaskCompletionSource();
+        h.Client.HoldNextTurn = ct => held.Task.WaitAsync(ct);
+        h.Client.EnqueueTurn(new StreamEvent.TextDelta("the answer"), new StreamEvent.Finished("stop", null));
+        var gaps = 0;
+        var reachedComposer = -1;
+        //a letter and an Esc land while no panel is up, and the gap waits until the pump has read and routed both
+        h.OnPanelGap = () =>
+        {
+            if (Interlocked.Increment(ref gaps) != 1) return;
+            foreach (var key in new[] { new ConsoleKeyInfo('q', ConsoleKey.Q, false, false, false), Esc })
+            {
+                h.Keys.Key(key);
+                _ = h.Keys.KeyAvailable;
+                SpinWait.SpinUntil(() => h.Keys.Pending == 0, Waits.Bound);
+            }
+            Thread.Sleep(100);
+            Volatile.Write(ref reachedComposer, h.Pump.ComposerPending);
+        };
+        var run = h.RunAsync(60_000);
+
+        h.Keys.Line("go");
+        Assert.True(await h.UntilAsync(() => h.Client.Requests.Count == 1, Waits.Bound), "the turn never started");
+        h.Keys.Line("/permissions");
+        await Shows(h, s => s.Contains("permissions · 3 grants") && s.Contains("Esc close"), "the mid-turn panel never opened");
+        await Press(h, ShiftTab);
+        Assert.True(await h.UntilAsync(() => Volatile.Read(ref reachedComposer) >= 0, Waits.Bound), "the wild toggle never re-entered the panel");
+        Assert.Equal(0, Volatile.Read(ref reachedComposer));
+        await Shows(h, s => s.Contains("prompts off this session") && s.Contains("Esc close"), "the panel never drew again after the gap");
+
+        held.SetResult();
+        await Press(h, Esc);
+        await Release(h);
+        await Shows(h, s => !s.Contains("Esc close"), "Esc never closed the panel");
+        await Shows(h, s => s.Contains("the answer"), "the Esc in the gap cancelled the turn");
+        await Quit(h, run);
+    }
+
+    [Fact]
     public async Task A_COMMAND_WITH_AN_ARGUMENT_TYPED_MID_TURN_OPENS_NO_GRANTS()
     {
         var h = Harness(Store());
@@ -284,6 +326,8 @@ public sealed class PermissionsPanelReplTests : IDisposable
         Assert.DoesNotContain("web_search", h.ScreenText(), StringComparison.Ordinal);
         held.SetResult();
         await Shows(h, s => s.Contains("the answer"), "the turn never ended");
+        await Shows(h, s => s.Contains("/tools takes no argument"), "the queued command with an argument never answered its line");
+        Assert.Single(h.Client.Requests);
         await Quit(h, run);
     }
 

@@ -953,36 +953,42 @@ public class ServeManagerTests : IDisposable
         Assert.Throws<System.ComponentModel.Win32Exception>(() => mgr.DefaultSpawn(psi));
     }
 
-    //release the log handle on the stop itself, a running child would never fire Exited
+    //a detached server writes serve.log itself and outlives the gatto that started it, so the child gets the path and gatto keeps no handle
     [Fact]
-    public async Task Stopping_releases_the_log_handle_without_waiting_for_the_child_to_exit()
+    public void A_detached_spawn_hands_the_server_its_log_file_fresh_and_holds_no_handle()
     {
+        File.WriteAllText(ServeLog, "the last server's lines");
         var mgr = new ServeManager(_home, FakeLlama());
         var cmd = Environment.GetEnvironmentVariable("ComSpec") ?? @"C:\Windows\System32\cmd.exe";
-        //keep the child alive for the check, so a passing test cannot mean the exit released the handle.
-        var psi = new ProcessStartInfo
-        {
-            FileName = cmd,
-            Arguments = "/c ping -n 60 127.0.0.1",
-            RedirectStandardOutput = true,
-            RedirectStandardError = true,
-            UseShellExecute = false,
-        };
+        //the rem swallows the appended flag, so the child stays alive while the handle is checked
+        var psi = new ProcessStartInfo { FileName = cmd, RedirectStandardOutput = true, RedirectStandardError = true, UseShellExecute = false };
+        foreach (var a in new[] { "/c", "ping", "-n", "60", "127.0.0.1", "&", "rem" }) psi.ArgumentList.Add(a);
 
         var proc = mgr.DefaultSpawn(psi);
         try
         {
-            Assert.False(proc.HasExited);   //assert the premise that the handle is held before the stop, so the check cannot pass vacuously.
-
-            await mgr.StopAsync(NullServeListener.Instance, CancellationToken.None);
-
-            //the exclusive reopen succeeds only when no handle holds the file, so it proves the release happened.
+            Assert.False(proc.HasExited);
+            Assert.Equal(["--log-file", ServeLog], psi.ArgumentList.TakeLast(2));
+            Assert.Equal(0, new FileInfo(ServeLog).Length);
+            //the exclusive open succeeds only when no handle holds the file
             using var check = new FileStream(ServeLog, FileMode.Open, FileAccess.ReadWrite, FileShare.None);
         }
         finally
         {
             try { proc.Kill(); } catch { }
         }
+    }
+
+    //a log gatto cannot create leaves the flag off, so the server never fights a file it cannot have
+    [Fact]
+    public void A_log_that_cannot_be_created_gives_the_server_no_log_flag()
+    {
+        using var lockStream = new FileStream(ServeLog, FileMode.OpenOrCreate, FileAccess.ReadWrite, FileShare.None);
+        var mgr = new ServeManager(_home, FakeLlama());
+        var psi = new ProcessStartInfo { FileName = Path.Combine(_home, "definitely-not-an-exe.exe"), RedirectStandardOutput = true };
+
+        Assert.Throws<System.ComponentModel.Win32Exception>(() => mgr.DefaultSpawn(psi));
+        Assert.DoesNotContain("--log-file", psi.ArgumentList);
     }
 
     [Fact]
@@ -1007,69 +1013,6 @@ public class ServeManagerTests : IDisposable
         return port;
     }
 
-    //a write can throw IOException on a pool thread where nothing catches it, so the pump must fail open
-
-    //this writer stands in for a full disk, every write throws IOException
-    private sealed class ThrowingWriter : StringWriter
-    {
-        public override void WriteLine(string? value) => throw new IOException("Insufficient quota");
-    }
-
-    [Fact]
-    public void A_failing_serve_log_write_does_not_escape_the_pump()
-    {
-        var warnings = new List<ServeLogFault>();
-        var pump = ServeManager.CreateLogPump(new ThrowingWriter(), warnings.Add);
-
-        //the OutputDataReceived delegate runs on a pool thread, an escaping throw kills the process
-        var ex = Record.Exception(() => pump("llama-server: loading model"));
-
-        Assert.Null(ex);                       //the log is only diagnostic and must never be load-bearing, so the pump must not throw.
-        Assert.Single(warnings);               //failing open must still report one warning, so a broken log stays visible to the user.
-        Assert.Equal(ServeLogFault.NotWritten, warnings[0]);   //the fault is the fact here, the wording belongs to the layer that paints it
-    }
-
-    [Fact]
-    public void The_serve_log_failure_warning_is_latched_to_one_shot()
-    {
-        var warnings = new List<ServeLogFault>();
-        var pump = ServeManager.CreateLogPump(new ThrowingWriter(), warnings.Add);
-
-        for (var i = 0; i < 50; i++) pump($"line {i}");
-
-        Assert.Single(warnings);   //a full disk must not produce fifty identical rows, so the pump latches the warning only once.
-    }
-
-    [Fact]
-    public void A_disposed_serve_log_is_a_no_op_not_a_throw()
-    {
-        var warnings = new List<ServeLogFault>();
-        var writer = new StringWriter();
-        var pump = ServeManager.CreateLogPump(writer, warnings.Add, out var dispose);
-
-        pump("before");
-        dispose();                 //dispose the way the Exited handler does, while the pump may still be draining
-        var ex = Record.Exception(() => pump("after"));
-
-        Assert.Null(ex);
-        Assert.Empty(warnings);    //a disposed log is an ordinary end of life, so the pump must report no failure.
-        Assert.Contains("before", writer.ToString(), StringComparison.Ordinal);
-        Assert.DoesNotContain("after", writer.ToString(), StringComparison.Ordinal);
-    }
-
-    [Fact]
-    public void A_null_line_is_ignored_and_never_warns()
-    {
-        var warnings = new List<ServeLogFault>();
-        var writer = new StringWriter();
-        var pump = ServeManager.CreateLogPump(writer, warnings.Add);
-
-        pump(null);   //the Process class raises OutputDataReceived with null Data at end of stream, which the pump skips
-
-        Assert.Empty(warnings);
-        Assert.Equal("", writer.ToString());
-    }
-
     //a TextWriter on a human path would put sentences in Gatto.Roles, where no theme exists
     [Fact]
     public void NO_HUMAN_PATH_IN_SERVEMANAGER_TAKES_A_TEXTWRITER()
@@ -1084,11 +1027,7 @@ public class ServeManagerTests : IDisposable
             .OrderBy(n => n, StringComparer.Ordinal)
             .ToList();
 
-        //both names below are known matches, so a reflection read that found nothing fails here first
-        Assert.Contains("StatusJsonAsync", taking);
-        Assert.Contains("CreateLogPump", taking);
-
-        //the StatusJsonAsync writer feeds a parser and the CreateLogPump writer a log file, neither reaches a screen
-        Assert.Equal(["CreateLogPump", "StatusJsonAsync"], taking);
+        //the StatusJsonAsync writer feeds a parser and never reaches a screen
+        Assert.Equal(["StatusJsonAsync"], taking);
     }
 }

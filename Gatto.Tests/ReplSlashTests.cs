@@ -683,6 +683,29 @@ public class ReplRememberTests : IDisposable
         Assert.Empty(client.Requests);
     }
 
+    //a declared command typed with an argument it does not take answers its own line, and nothing reaches the model
+    [Fact]
+    public void A_declared_command_with_an_untaken_argument_answers_and_dispatches_no_turn()
+    {
+        var (output, client) = RunRemember("/tools foo\n/tasks foo\n/init now\n/quit\n");
+
+        Assert.Contains("/tools takes no argument", output);
+        Assert.Contains("usage: /tasks [kill <n>]", output);
+        Assert.Contains("/init takes no argument", output);
+        Assert.Empty(client.Requests);
+    }
+
+    [Fact]
+    public void Untaken_argument_line_skips_bare_commands_remember_and_undeclared_words()
+    {
+        var known = Gatto.Repl.Commands.SlashCommands.All;
+        Assert.Null(Gatto.Repl.Commands.SlashGate.UntakenArgumentLine("/tools", known));
+        Assert.Null(Gatto.Repl.Commands.SlashGate.UntakenArgumentLine("/remember the slots poll", known));
+        Assert.Null(Gatto.Repl.Commands.SlashGate.UntakenArgumentLine("/nope x", known));
+        Assert.Null(Gatto.Repl.Commands.SlashGate.UntakenArgumentLine("hello /tools x", known));
+        Assert.Equal("usage: /watch [folder|off]", Gatto.Repl.Commands.SlashGate.UntakenArgumentLine("/watch a b", known));
+    }
+
     [Fact]
     public void RememberWithOnlyWhitespaceArgument_TreatedAsBare_PrintsUsage_DispatchesNoTurn()
     {

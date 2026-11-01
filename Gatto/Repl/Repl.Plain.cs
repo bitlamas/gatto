@@ -210,6 +210,12 @@ public sealed partial class Repl
                 if (HandleEffortCommand(arg) is { } effortLine) Console.WriteLine(effortLine);
                 continue;
             }
+            //a declared command with an argument no branch above took is answered here, never sent as text
+            if (SlashGate.UntakenArgumentLine(trimmedLine, KnownCommands()) is { } untaken)
+            {
+                Console.WriteLine(untaken);
+                continue;
+            }
             if (SlashGate.TryMatchCommand(trimmedLine, "/remember", out var rememberArg))
             {
                 if (rememberArg.Length == 0)

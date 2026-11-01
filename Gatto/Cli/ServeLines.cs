@@ -162,9 +162,7 @@ internal sealed class ServeLines(CliSurface cli, GlyphSet glyphs, StartWatch? wa
 
     //the log fault leaves the server running, so the row says the server is fine or the reader goes looking for a fault
     public void PumpFault(ServeLogFault fault) =>
-        Row(Happened(fault is ServeLogFault.NotOpened
-            ? "serve.log could not be opened. the server is fine, and its start-up log is missing."
-            : "serve.log could not be written. the server is fine, and its start-up log is incomplete."));
+        Row(Happened("serve.log could not be opened. the server is fine, and its start-up log is missing."));
 
     //the same events at exit, where nobody typed a stop, so the line has to say what happened to their server
     internal static class AtExit

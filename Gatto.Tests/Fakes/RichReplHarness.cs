@@ -261,6 +261,9 @@ public sealed class RichReplHarness
         set => _repl.ConfirmAttachForTest = value is null ? null : spec => { var outcome = value(spec); _changes.Mark(); return outcome; };
     }
 
+    //runs on the panel's thread between two shows of a re-entering panel, while no panel holds the keys
+    public Action? OnPanelGap { set => _repl.PanelGapForTest = value; }
+
     //throws when the script does not drive the loop to its own exit. the rich loop returns 0 on cancellation, so a returned 0 says nothing about the run.
     public async Task<int> RunAsync(int timeoutMs = 15000)
     {

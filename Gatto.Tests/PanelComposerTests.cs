@@ -403,6 +403,23 @@ public class PanelComposerTests
         Assert.Equal("  2. low   default", rows[3].TrimEnd());
     }
 
+    //the columns are cut to leave the trail its cells, so the default word never passes the margin at a narrow width
+    [Fact]
+    public void A_trail_after_columns_stays_inside_the_margin_at_every_width()
+    {
+        var options = new List<SelectOption>
+        {
+            new("qwen3.8-flash-next", Columns: ["256k", "Qwen3.8-Flash-Next-UD-Q4_K_XL.gguf"], Trail: [new SelectRun("default", Theme.Dim)]),
+            new("gemma-4-e4b-qat", Columns: ["128k", "gemma-4-e4b-it-qat-Q4_0.gguf"]),
+        };
+        for (var w = 40; w <= 100; w++)
+        {
+            var rows = Plain(Compose(Model(), options, View(2), w: w));
+            var row = rows.First(r => r.Contains("default", StringComparison.Ordinal));
+            Assert.True(UnicodeWidth.Of(row.TrimEnd()) <= Margins.Inside(w), $"width {w}, {UnicodeWidth.Of(row.TrimEnd())} cells: {row}");
+        }
+    }
+
     [Fact]
     public void A_negative_description_budget_draws_the_label_its_gap_and_the_trail_alone()
     {

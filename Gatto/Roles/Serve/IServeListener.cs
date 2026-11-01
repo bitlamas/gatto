@@ -55,7 +55,7 @@ public interface IServeListener
     //status found the server this home owns, with the answer to the health probe
     void Status(string model, int port, int pid, bool healthy);
 
-    //the rolling log could not be kept, and which of the two happened is all the words need (the server is unaffected either way)
+    //the rolling log could not be created, and the server is unaffected
     void PumpFault(ServeLogFault fault);
 }
 
@@ -63,7 +63,6 @@ public interface IServeListener
 public enum ServeLogFault
 {
     NotOpened,
-    NotWritten,
 }
 
 //a listener for a caller that reads an outcome and prints nothing, kept in this layer because callers on both sides need it

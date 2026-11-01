@@ -1084,6 +1084,30 @@ public class CompactorTests
         Assert.Contains("removed a stray <|tool_calls_section_begin|> from m's compaction summary", observer.Warnings);
     }
 
+    //the compactor's own thinking reaches the screen stripped too, a token split across two chunks included, and the notice names that channel
+    [Fact]
+    public async Task Compaction_reasoning_is_stripped_on_the_stream_and_named_in_the_notice()
+    {
+        await using var server = new FakeOpenAiServer();
+        server.Enqueue(new FakeResponse(Frames: new[]
+        {
+            Chunk("{\"reasoning_content\":\"weighing the facts <|tool_calls\"}"),
+            Chunk("{\"reasoning_content\":\"_section_begin|> done\"}"),
+            Chunk("{\"content\":\"## Summary\\nfacts\\nImmediate next step: go.\"}"),
+            Chunk("{}", "stop"), "data: [DONE]\n\n",
+        }));
+        var client = new OpenAiCompatClient(new HttpClient(), "local", new EndpointConfig(server.BaseUrl));
+        var observer = new RecordingObserver();
+
+        var summary = await new Compactor(client, "m").SummarizeAsync(SmallConvo(), observer, default);
+
+        Assert.Equal("## Summary\nfacts\nImmediate next step: go.", summary);
+        Assert.DoesNotContain("<|", observer.Reasoning);
+        Assert.Contains("weighing the facts ", observer.Reasoning);
+        Assert.Contains(" done", observer.Reasoning);
+        Assert.Contains("removed a stray <|tool_calls_section_begin|> from m's compaction reasoning", observer.Warnings);
+    }
+
     [Fact]
     public async Task All_pollution_summary_aborts_via_the_existing_null_path()
     {

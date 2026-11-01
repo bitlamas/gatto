@@ -903,6 +903,12 @@ public sealed partial class Repl
             }
             return false;
         }
+        //a declared command with an argument no branch above took is answered here, never sent as text
+        if (SlashGate.UntakenArgumentLine(trimmed, KnownCommands()) is { } untaken)
+        {
+            s.Renderer.CommitSystem(untaken);
+            return false;
+        }
         if (SlashGate.TryMatchCommand(trimmed, "/remember", out var rememberArg))
         {
             if (rememberArg.Length == 0)

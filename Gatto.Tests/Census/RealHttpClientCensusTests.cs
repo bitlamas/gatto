@@ -21,7 +21,7 @@ public class RealHttpClientCensusTests
     {
         ["Gatto.Tests/AgentLoopTests.cs"] = new(4, "each client targets the `BaseUrl` of a fake server on a port the test bound"),
         ["Gatto.Tests/Audition/AuditionServerReadinessTests.cs"] = new(1, "every home the class writes names the closed port 1"),
-        ["Gatto.Tests/CompactorTests.cs"] = new(9,"each client targets the `BaseUrl` of a fake server on a port the test bound"),
+        ["Gatto.Tests/CompactorTests.cs"] = new(10,"each client targets the `BaseUrl` of a fake server on a port the test bound"),
         ["Gatto.Tests/ContextCountClientTests.cs"] = new(1, "the client targets the `BaseUrl` of a fake server on a port the test bound"),
         ["Gatto.Tests/FakeServerTests.cs"] = new(5, "each client posts to the `BaseUrl` of the fake server under test"),
         ["Gatto.Tests/LaunchLoadingWaitTests.cs"] = new(1, "the recorded ports are a fake server's port or that port plus one"),

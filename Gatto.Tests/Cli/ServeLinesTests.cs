@@ -59,29 +59,13 @@ public class ServeLinesTests
         Assert.StartsWith("left it loading big-model (pid 4242)", sink.ToString(), StringComparison.Ordinal);
     }
 
-    //the two log faults must read differently, only a write that failed is a symptom of a stopped drain
-    [Fact]
-    public void THE_TWO_LOG_FAULTS_DO_NOT_READ_THE_SAME()
-    {
-        var (opened, openedSink) = Plain();
-        var (written, writtenSink) = Plain();
-        opened.PumpFault(ServeLogFault.NotOpened);
-        written.PumpFault(ServeLogFault.NotWritten);
-
-        Assert.NotEqual(openedSink.ToString(), writtenSink.ToString());
-        Assert.Contains("could not be opened", openedSink.ToString(), StringComparison.Ordinal);
-        Assert.Contains("could not be written", writtenSink.ToString(), StringComparison.Ordinal);
-    }
-
     //say the server is unaffected, a row that only named the fault would send a reader after a server that is fine
     [Fact]
     public void A_LOG_FAULT_SAYS_THE_SERVER_IS_UNAFFECTED()
     {
-        foreach (var fault in new[] { ServeLogFault.NotOpened, ServeLogFault.NotWritten })
-        {
-            var (lines, sink) = Plain();
-            lines.PumpFault(fault);
-            Assert.Contains("the server is fine", sink.ToString(), StringComparison.Ordinal);
-        }
+        var (lines, sink) = Plain();
+        lines.PumpFault(ServeLogFault.NotOpened);
+        Assert.Contains("could not be opened", sink.ToString(), StringComparison.Ordinal);
+        Assert.Contains("the server is fine", sink.ToString(), StringComparison.Ordinal);
     }
 }

@@ -264,9 +264,6 @@ public sealed class ServeManager
 
     internal StopOutcome Stop(IServeListener listener)
     {
-        //release the log handle before anything else. the swap starts the next server in the very next statement, a handle freed later is a race
-        ReleaseLog();
-
         var state = ReadState();
         if (state is null)
         {
@@ -518,17 +515,6 @@ public sealed class ServeManager
     private const int NoLogFault = -1;
     private int _logPumpFault = NoLogFault;
 
-    //hold the pump's disposer so the end of a server's life frees it right there. waiting on Exited races the next server opening the same log
-    private Action? _disposeLog;
-
-    //run the retained disposer now, if there is one, it's idempotent
-    private void ReleaseLog()
-    {
-        var dispose = _disposeLog;
-        _disposeLog = null;
-        dispose?.Invoke();
-    }
-
     //drains the pump's one-shot fault, if it fired. called at every start-path exit, so a server that came up fine but could not write its log still says so.
     private void ReportLogPumpFault(IServeListener listener)
     {
@@ -536,46 +522,7 @@ public sealed class ServeManager
         if (fault != NoLogFault) listener.PumpFault((ServeLogFault)fault);
     }
 
-    //runs on thread-pool threads where an escaping exception kills the process, so it fails open. the first write failure warns once, then latches
-    internal static Action<string?> CreateLogPump(TextWriter log, Action<ServeLogFault> warn, out Action dispose)
-    {
-        var gate = new object();
-        var disposed = false;
-        var warned = false;
-
-        dispose = () =>
-        {
-            lock (gate)
-            {
-                if (disposed) return;
-                disposed = true;
-                try { log.Dispose(); } catch { } //best effort, the process is going away anyway
-            }
-        };
-
-        return data =>
-        {
-            if (data is null) return;   //a null line marks end of stream, nothing to write
-            var report = false;
-            lock (gate)
-            {
-                if (disposed) return;
-                try { log.WriteLine(data); }
-                catch (Exception)
-                {
-                    if (!warned) { warned = true; report = true; }
-                }
-            }
-            //call warn outside the lock, a caller delegate under the pump's gate is a deadlock waiting to happen
-            if (report)
-                warn(ServeLogFault.NotWritten);
-        };
-    }
-
-    internal static Action<string?> CreateLogPump(TextWriter log, Action<ServeLogFault> warn) =>
-        CreateLogPump(log, warn, out _);
-
-    //open the log stream first, then spawn. never open it after spawning (a failed open would leave an untracked server on the port)
+    //create serve.log first, then spawn. never open it after spawning (a failed open would leave an untracked server on the port)
     internal IServeProcess DefaultSpawn(ProcessStartInfo psi)
     {
         //foreground pipes aren't redirected, nothing to drain and no serve.log, just spawn
@@ -586,40 +533,23 @@ public sealed class ServeManager
             return new RealServeProcess(fg);
         }
 
-        //truncate serve.log fresh and release the previous pump's handle before opening, a handle of ours still open races this open
-        ReleaseLog();
-
-        //if the log won't open, fail open to TextWriter.Null, losing serve.log must never cost the server. keep draining the pipes, a full unread pipe blocks the child
-        TextWriter log;
+        //the server writes serve.log itself, since a detached server outlives the gatto that started it and a pump here would die with that gatto
         try
         {
-            log = new StreamWriter(
-                new FileStream(ServeLogPath, FileMode.Create, FileAccess.Write, FileShare.Read)) { AutoFlush = true };
+            new FileStream(ServeLogPath, FileMode.Create, FileAccess.Write, FileShare.ReadWrite).Dispose();
+            psi.ArgumentList.Add("--log-file");
+            psi.ArgumentList.Add(ServeLogPath);
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
         {
-            System.Threading.Volatile.Write(ref _logPumpFault, (int)ServeLogFault.NotOpened);
-            log = TextWriter.Null;
+            System.Threading.Volatile.Write(ref _logPumpFault, (int)ServeLogFault.NotOpened);   //losing serve.log must never cost the server
         }
 
-        Process proc;
-        try
-        {
-            proc = Process.Start(psi) ?? throw new InvalidOperationException("failed to start llama-server");
-        }
-        catch
-        {
-            log.Dispose();
-            throw;
-        }
-
-        var append = CreateLogPump(log, m => System.Threading.Volatile.Write(ref _logPumpFault, (int)m), out var disposeLog);
-        _disposeLog = disposeLog;
-
-        proc.OutputDataReceived += (_, e) => append(e.Data);
-        proc.ErrorDataReceived += (_, e) => append(e.Data);
+        var proc = Process.Start(psi) ?? throw new InvalidOperationException("failed to start llama-server");
+        //drained while this gatto lives, a full unread pipe blocks the child, and the lines are already in serve.log
+        proc.OutputDataReceived += (_, _) => { };
+        proc.ErrorDataReceived += (_, _) => { };
         proc.EnableRaisingEvents = true;
-        proc.Exited += (_, _) => disposeLog();
         proc.BeginOutputReadLine();
         proc.BeginErrorReadLine();
 

@@ -227,6 +227,9 @@ public sealed partial class Repl(
     //test seam that lets the confirm flow be driven without a terminal. production leaves it null and builds a real SelectPrompt
     internal Func<SelectSpec, SelectOutcome>? ConfirmAttachForTest;
 
+    //test seam between two shows of a re-entering panel, where no panel holds the keys
+    internal Action? PanelGapForTest;
+
     //reads and writes the project's standing answer on the count question, separate from _confirmAttach so the byte backstop is checked first
     private Func<bool>? _attachManyGranted;
     private Action? _grantAttachMany;

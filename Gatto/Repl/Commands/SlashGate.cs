@@ -52,6 +52,17 @@ internal readonly record struct SlashGate(string Text, bool Literal, string? Ref
     internal static string UnknownCommandLine(string token) =>
         $"{token} is not a command: /help lists them, or start the line with // to send it as text";
 
+    //the line for a declared command whose argument no handler took, null otherwise. remember is the one command whose argument goes on to the model
+    internal static string? UntakenArgumentLine(string trimmed, IReadOnlyList<SlashCommands.Cmd> known)
+    {
+        var token = FirstToken(trimmed);
+        if (token.Length == trimmed.Length || token == "/remember") return null;
+        foreach (var cmd in known)
+            if (string.Equals(cmd.Name, token, StringComparison.Ordinal))
+                return cmd.Args.Length == 0 ? $"{cmd.Name} takes no argument" : $"usage: {cmd.Name} {cmd.Args}";
+        return null;
+    }
+
     internal static string FirstToken(string trimmed)
     {
         for (var i = 0; i < trimmed.Length; i++)

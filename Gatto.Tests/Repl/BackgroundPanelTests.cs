@@ -127,6 +127,46 @@ public sealed class BackgroundPanelTests : IDisposable
         await run;
     }
 
+    //x re-enters the panel, and a letter and an Esc typed before the list draws again are dropped, never the composer's
+    [Fact]
+    public async Task KEYS_BETWEEN_TWO_SHOWS_OF_THE_LIST_NEVER_REACH_THE_COMPOSER()
+    {
+        var h = Harness();
+        StartsTwo(h.Client);
+        AnswersEnds(h.Client, 1);
+        var gaps = 0;
+        var reachedComposer = -1;
+        h.OnPanelGap = () =>
+        {
+            if (Interlocked.Increment(ref gaps) != 1) return;
+            foreach (var key in new[] { new ConsoleKeyInfo('q', ConsoleKey.Q, false, false, false), Esc })
+            {
+                h.Keys.Key(key);
+                _ = h.Keys.KeyAvailable;
+                SpinWait.SpinUntil(() => h.Keys.Pending == 0, Waits.Bound);
+            }
+            Thread.Sleep(100);
+            Volatile.Write(ref reachedComposer, h.Pump.ComposerPending);
+        };
+        var run = h.RunAsync(60_000);
+        h.Keys.Line("go");
+        await Shows(h, s => s.Contains("2 shells") && s.Contains("started"), "the cell never counted the two shells");
+
+        h.Keys.Line("/tasks");
+        await Shows(h, s => s.Contains("tasks · 2 shells"), "the panel never opened");
+        _ = h.Keys.KeyAvailable;
+        h.Keys.Key(X);
+        Assert.True(await h.UntilAsync(() => Volatile.Read(ref reachedComposer) >= 0, Waits.Bound), "x never re-entered the panel");
+        Assert.Equal(0, Volatile.Read(ref reachedComposer));
+        await Shows(h, s => s.Contains("tasks · 1 shell"), "the list never drew again after the kill");
+        _ = h.Keys.KeyAvailable;
+        h.Keys.Key(Esc);
+        await Release(h);
+        await Shows(h, s => !s.Contains("tasks · 1 shell"), "Esc never closed the panel");
+        h.Keys.Line("/quit");
+        await run;
+    }
+
     //a runtime moves on the open list with no re-entry, since the rows are asked at every repaint
     [Fact]
     public async Task A_RUNTIME_TICKS_ON_THE_OPEN_LIST()

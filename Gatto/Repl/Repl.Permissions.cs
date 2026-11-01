@@ -49,6 +49,7 @@ public sealed partial class Repl
         if (chrome.Painter is not { Alive: true } || s.Pump is null) return;
         using var hold = TakePanelSlot(s, out var close);
         if (hold is null) return;
+        using var gap = s.Pump.PushFocus(wait: false);   //held for the loop's life, so a key between two shows is dropped, never the draft's or the turn's cancel
 
         bool InFlight() { lock (_ctsLock) return s.TurnCts is not null; }
         var cursor = 0;
@@ -96,6 +97,7 @@ public sealed partial class Repl
                     return;   //an escape, or a turn-thread prompt's close
             }
             cursorKey = cursor >= 0 && cursor < options.Count ? options[cursor].Key : null;
+            PanelGapForTest?.Invoke();
         }
     }
 }

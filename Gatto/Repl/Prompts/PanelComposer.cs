@@ -433,8 +433,10 @@ internal static class PanelComposer
                 for (var c = 0; c < (o.Columns?.Count ?? 0); c++)
                     cols[c] = Math.Max(cols[c], UnicodeWidth.Of(TermText.Sanitize(o.Columns![c])));
 
+            //the widest trail keeps its cells and its gap, so a word after the columns never passes the margin
+            var trail = options.Count == 0 ? 0 : options.Max(o => o.Trail is { Count: > 0 } t ? t.Sum(r => UnicodeWidth.Of(r.Text)) + ColumnGap : 0);
             //the last column is cut first, then the one before it, each to the room the others leave
-            var room = inside - labelStart - labelWidth - ColumnGap;
+            var room = inside - labelStart - labelWidth - ColumnGap - (n > 0 ? trail : 0);
             for (var c = n - 1; c >= 0; c--)
             {
                 var used = cols.Sum() + ColumnGap * Math.Max(0, n - 1);
