@@ -148,10 +148,42 @@ public class LocalReadStoreTests : IDisposable
         Assert.Equal("unsloth", Assert.Single(Scan(disk)).Header!.QuantizedBy);
     }
 
-    //an entry kept before the quantizer was read has no such field, so the store reads from a folder of its own and never mistakes absent for none
+    //the window, shared and per-layer terms are read from the header and kept, so a warm run prices the cache as the cold one did
     [Fact]
-    public void THE_STORE_KEEPS_ITS_ENTRIES_IN_A_FOLDER_THAT_KNOWS_THE_QUANTIZER()
+    public void THE_KV_TERMS_ARE_READ_COLD_AND_KEPT_WARM()
     {
-        Assert.Equal("local-reads-2", LocalReadStore.Folder);
+        var path = Path.Combine(Models, "g-Q4_K_M.gguf");
+        Directory.CreateDirectory(Models);
+        File.WriteAllBytes(path, GgufTestBytes.SyntheticHeader(kv =>
+        {
+            kv.Str("general.architecture", "gemma4");
+            kv.U32("gemma4.context_length", 4096);
+            kv.U32("gemma4.attention.sliding_window", 512);
+            kv.U32("gemma4.attention.shared_kv_layers", 2);
+            kv.U32("gemma4.attention.key_length_swa", 256);
+            kv.U32("gemma4.nextn_predict_layers", 1);
+            kv.U32Array("gemma4.attention.head_count_kv", [2, 2, 1]);
+            kv.BoolArray("gemma4.attention.sliding_window_pattern", [true, false, true]);
+        }));
+        var disk = new LocalReadStore(Home);
+
+        var cold = Assert.Single(Scan(disk)).Header!;
+        Garble(path);
+        var warm = Assert.Single(Scan(disk)).Header!;
+
+        Assert.Equal(512, warm.SlidingWindow);
+        Assert.Equal(2, warm.SharedKvLayers);
+        Assert.Equal(256, warm.KeyLengthSwa);
+        Assert.Equal(1, warm.NextnPredictLayers);
+        Assert.Equal(new long[] { 2, 2, 1 }, cold.HeadCountKvPerLayer!);
+        Assert.Equal(cold.HeadCountKvPerLayer!, warm.HeadCountKvPerLayer!);
+        Assert.Equal(new long[] { 1, 0, 1 }, warm.SlidingWindowPattern!);
+    }
+
+    //an entry kept before the KV terms were read has no such fields, so the store reads from a folder of its own and never mistakes absent for none
+    [Fact]
+    public void THE_STORE_KEEPS_ITS_ENTRIES_IN_A_FOLDER_THAT_KNOWS_THE_KV_TERMS()
+    {
+        Assert.Equal("local-reads-3", LocalReadStore.Folder);
     }
 }

@@ -59,8 +59,8 @@ public class ShardFitTests : IDisposable
     //builds a 1.5 GB set, past every budget the injected machine has.
     private string UnrunnableSet() => ShardSet("big", 745_000_000);
 
-    //builds a 0.7 GB set, inside the RAM budget, which leaves the context ladder rungs to compare
-    private string RunnableSet() => ShardSet("mid", 345_000_000);
+    //builds a 0.74 GB set, inside the RAM budget with its q8_0 cache at 16384 tokens and over it at 32768, which leaves the context ladder rungs to compare
+    private string RunnableSet() => ShardSet("mid", 365_000_000);
 
     //the test drives the PairFit site of a size rule with two sites. the injected machine needs no download to make a set larger than the card
     [Fact]

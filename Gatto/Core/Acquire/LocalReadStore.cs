@@ -10,7 +10,7 @@ internal sealed record LocalScanFacts(GgufHeader Header, long? StreamedBytes);
 internal sealed class LocalReadStore(string homePath)
 {
     //the schema version is in the folder name, so a change to what an entry means starts a new folder and the old one is never read
-    internal const string Folder = "local-reads-2";
+    internal const string Folder = "local-reads-3";
 
     private readonly DiskEntries _entries = new(homePath, Folder);
 
@@ -58,6 +58,15 @@ internal sealed class LocalReadStore(string homePath)
             long? Number(string name) =>
                 !root.TryGetProperty(name, out var v) ? null
                 : DiskEntries.Long(v) is { } n ? n : Bad<long?>();
+            IReadOnlyList<long>? Numbers(string name)
+            {
+                if (!root.TryGetProperty(name, out var v)) return null;
+                if (v.ValueKind != JsonValueKind.Array) return Bad<IReadOnlyList<long>>();
+                var list = new List<long>(v.GetArrayLength());
+                foreach (var e in v.EnumerateArray())
+                    if (DiskEntries.Long(e) is { } n) list.Add(n); else return Bad<IReadOnlyList<long>>();
+                return list;
+            }
             T? Bad<T>() { ok = false; return default; }
 
             if (!Enum.TryParse<GgufOutcome>(Text("outcome"), out var outcome) || !Enum.IsDefined(outcome)) return false;
@@ -70,7 +79,17 @@ internal sealed class LocalReadStore(string homePath)
                 ExpertUsedCount: Number("expert_used_count"), Tensors: null,
                 EmbeddingLengthPerLayerInput: Number("embedding_length_per_layer_input"),
                 FullAttentionInterval: Number("full_attention_interval"),
-                QuantizedBy: Text("quantized_by"));
+                QuantizedBy: Text("quantized_by"),
+                HeadCountKvPerLayer: Numbers("head_count_kv_per_layer"),
+                SlidingWindow: Number("sliding_window"), SlidingWindowPeriod: Number("sliding_window_period"),
+                SlidingWindowPattern: Numbers("sliding_window_pattern"),
+                SharedKvLayers: Number("shared_kv_layers"),
+                KeyLengthSwa: Number("key_length_swa"), ValueLengthSwa: Number("value_length_swa"),
+                KeyLengthMla: Number("key_length_mla"), ValueLengthMla: Number("value_length_mla"),
+                IndexerKeyLength: Number("indexer_key_length"),
+                CompressRatios: Numbers("compress_ratios"),
+                IndexerTypes: Numbers("indexer_types"),
+                NextnPredictLayers: Number("nextn_predict_layers"));
             var streamed = Number("streamed");
             if (!ok) return false;
             facts = new LocalScanFacts(header, streamed);
@@ -85,6 +104,13 @@ internal sealed class LocalReadStore(string homePath)
             w.WriteString("outcome", h.Outcome.ToString());
             void Text(string name, string? v) { if (v is not null) w.WriteString(name, v); }
             void Number(string name, long? v) { if (v is { } n) w.WriteNumber(name, n); }
+            void Numbers(string name, IReadOnlyList<long>? list)
+            {
+                if (list is null) return;
+                w.WriteStartArray(name);
+                foreach (var n in list) w.WriteNumberValue(n);
+                w.WriteEndArray();
+            }
             Text("malformation", h.Malformation);
             Text("architecture", h.Architecture);
             Text("name", h.Name);
@@ -103,6 +129,19 @@ internal sealed class LocalReadStore(string homePath)
             Number("embedding_length_per_layer_input", h.EmbeddingLengthPerLayerInput);
             Number("full_attention_interval", h.FullAttentionInterval);
             Text("quantized_by", h.QuantizedBy);
+            Numbers("head_count_kv_per_layer", h.HeadCountKvPerLayer);
+            Number("sliding_window", h.SlidingWindow);
+            Number("sliding_window_period", h.SlidingWindowPeriod);
+            Numbers("sliding_window_pattern", h.SlidingWindowPattern);
+            Number("shared_kv_layers", h.SharedKvLayers);
+            Number("key_length_swa", h.KeyLengthSwa);
+            Number("value_length_swa", h.ValueLengthSwa);
+            Number("key_length_mla", h.KeyLengthMla);
+            Number("value_length_mla", h.ValueLengthMla);
+            Number("indexer_key_length", h.IndexerKeyLength);
+            Numbers("compress_ratios", h.CompressRatios);
+            Numbers("indexer_types", h.IndexerTypes);
+            Number("nextn_predict_layers", h.NextnPredictLayers);
             Number("streamed", facts.StreamedBytes);
         });
 }

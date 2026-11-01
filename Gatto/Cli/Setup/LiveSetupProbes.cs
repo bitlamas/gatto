@@ -1130,9 +1130,9 @@ internal sealed class LiveSetupProbes(string homePath, Gatto.Terminal.GlyphSet g
 
             var alone = Gatto.Core.Models.FitArithmetic.Judge(
                 Gatto.Core.Models.FitArithmetic.Estimate(
-                    header, bytes, ctx, Gatto.Core.Models.KvCacheKind.F16, streamed), hw);
+                    header, bytes, ctx, Gatto.Core.Models.FitArithmetic.ProfileKind, streamed), hw);
             var paired = ProjectorPair.Regime(
-                header, bytes, projectorBytes, ctx, Gatto.Core.Models.KvCacheKind.F16, hw, streamed);
+                header, bytes, projectorBytes, ctx, Gatto.Core.Models.FitArithmetic.ProfileKind, hw, streamed);
             return (alone, paired);
         }
         catch (Exception) { return null; }
@@ -1151,7 +1151,7 @@ internal sealed class LiveSetupProbes(string homePath, Gatto.Terminal.GlyphSet g
             //a projector loads beside the model in one process, priced as the pair warning prices it
             var projector = ModelDiscovery.SetBytesOrNull(projectorPath) ?? 0;
             var estimate = Gatto.Core.Models.FitArithmetic.Estimate(
-                header, bytes + projector, context, Gatto.Core.Models.KvCacheKind.F16, ModelDiscovery.StreamedBytesOrNull(ggufPath, header));
+                header, bytes + projector, context, Gatto.Core.Models.FitArithmetic.ProfileKind, ModelDiscovery.StreamedBytesOrNull(ggufPath, header));
             return Gatto.Core.Models.FitArithmetic.Judge(estimate, hw) == Gatto.Core.Models.FitRegime.FitsSplit
                 ? Gatto.Core.Models.FitArithmetic.SplitLayers(estimate, hw)
                 : null;
@@ -1183,7 +1183,7 @@ internal sealed class LiveSetupProbes(string homePath, Gatto.Terminal.GlyphSet g
             //a file the shelf marks as a split takes the rung that keeps its layers on the card, the projector counted beside it
             var projector = ModelDiscovery.SetBytesOrNull(projectorPath) ?? 0;
             Gatto.Core.Models.FitEstimate PairAt(int context) => Gatto.Core.Models.FitArithmetic.Estimate(
-                header, bytes + projector, context, Gatto.Core.Models.KvCacheKind.F16, streamed);
+                header, bytes + projector, context, Gatto.Core.Models.FitArithmetic.ProfileKind, streamed);
             if (Gatto.Core.Models.FitArithmetic.Judge(PairAt(Shelves.Pane.KvContext), hw) == Gatto.Core.Models.FitRegime.FitsSplit
                 && SplitRung(rungs, PairAt, hw) is { } rung)
                 return rung;
@@ -1192,7 +1192,7 @@ internal sealed class LiveSetupProbes(string homePath, Gatto.Terminal.GlyphSet g
             foreach (var candidate in rungs)
             {
                 var estimate = Gatto.Core.Models.FitArithmetic.Estimate(
-                    header, bytes, candidate, Gatto.Core.Models.KvCacheKind.F16, streamed);
+                    header, bytes, candidate, Gatto.Core.Models.FitArithmetic.ProfileKind, streamed);
                 if (Gatto.Core.Models.FitArithmetic.Judge(estimate, hw) is
                     Gatto.Core.Models.FitRegime.FitsGpu or Gatto.Core.Models.FitRegime.FitsSplit or Gatto.Core.Models.FitRegime.FitsRamOnly)
                     return candidate;

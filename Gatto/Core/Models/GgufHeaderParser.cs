@@ -20,7 +20,17 @@ internal sealed record GgufHeader(
     string? SizeLabel = null, long? ExpertCount = null, long? ExpertUsedCount = null,   //the size label is uploader text and reaches a screen only through ModelStructure's anchored shapes, the kind cell and the params cell. a dense model has no expert count at all
     GgufTensors? Tensors = null, long? EmbeddingLengthPerLayerInput = null,
     long? FullAttentionInterval = null,   //a hybrid architecture puts full attention on one block in this many, and only those keep a cache
-    string? QuantizedBy = null)   //who made the quants, uploader text that is sanitized before any screen shows it
+    string? QuantizedBy = null,   //who made the quants, uploader text that is sanitized before any screen shows it
+    IReadOnlyList<long>? HeadCountKvPerLayer = null,   //the kv heads of each layer when the file writes them as an array, zero on a layer with no cache
+    long? SlidingWindow = null, long? SlidingWindowPeriod = null,   //the window in tokens, and the pattern when it is written as one period
+    IReadOnlyList<long>? SlidingWindowPattern = null,   //one flag per layer, nonzero on a window layer
+    long? SharedKvLayers = null,   //the last layers that read an earlier layer's cache and keep none
+    long? KeyLengthSwa = null, long? ValueLengthSwa = null,
+    long? KeyLengthMla = null, long? ValueLengthMla = null,   //both present means latent attention, whose cache holds K alone
+    long? IndexerKeyLength = null,
+    IReadOnlyList<long>? CompressRatios = null,
+    IReadOnlyList<long>? IndexerTypes = null,   //one element applies to every layer, as the engine reads a scalar
+    long? NextnPredictLayers = null)   //the trailing blocks that only draft, which the main context gives no cache
 {
     //an architecture that declares a per-layer input streams a table the GPU never holds, so a fit priced without its tensor table prices too much
     public bool DeclaresPerLayerInput => EmbeddingLengthPerLayerInput is > 0;
@@ -33,7 +43,7 @@ internal sealed record GgufHeader(
     //the remote read stops once this is true, every fit term is then derivable
     public bool HasAllFitTerms =>
         Architecture is not null && ContextLength is not null && BlockCount is not null
-        && (HeadCountKv is not null || HeadCount is not null)
+        && (HeadCountKv is not null || HeadCountKvPerLayer is not null || HeadCount is not null)
         && ((KeyLength is not null && ValueLength is not null)
             || (EmbeddingLength is not null && HeadCount is not null));
 }
@@ -80,6 +90,7 @@ internal static class GgufHeaderParser
     {
         private readonly byte[] _scratch = new byte[8];
         private readonly Dictionary<string, long> _ints = new(StringComparer.Ordinal);
+        private readonly Dictionary<string, long[]> _layers = new(StringComparer.Ordinal);
         private string? _arch, _name, _chatTemplate, _sizeLabel, _quantizedBy, _malformation;
         private long? _tensorCount;
         private GgufTensors? _tensors;
@@ -144,10 +155,10 @@ internal static class GgufHeaderParser
                     continue;
                 }
 
-                //sum this suffix alone when it arrives as an array, the other terms are per-model facts where a sum means nothing
-                if (type == 9 && key.EndsWith(PerLayerKvHeads, StringComparison.Ordinal))
+                //these suffixes alone mean one value per layer when they arrive as an array, the other terms are per-model facts
+                if (type == 9 && IsPerLayerSuffix(key))
                 {
-                    step = SumArray(key);
+                    step = ReadLayers(key);
                     if (step != Step.Ok) return Result(Outcome(step));
                     continue;
                 }
@@ -212,6 +223,10 @@ internal static class GgufHeaderParser
             ".attention.head_count", PerLayerKvHeads,
             ".attention.key_length", ".attention.value_length",
             ".expert_count", ".expert_used_count", PerLayerInput, ".full_attention_interval",
+            SlidingPattern, ".attention.sliding_window", ".attention.shared_kv_layers",
+            ".attention.key_length_swa", ".attention.value_length_swa",
+            ".attention.key_length_mla", ".attention.value_length_mla",
+            ".attention.indexer.key_length", IndexerTypes, ".nextn_predict_layers",
         ];
 
         private const string PerLayerInput = ".embedding_length_per_layer_input";
@@ -225,18 +240,33 @@ internal static class GgufHeaderParser
 
         private static bool IsIntType(uint t) => t is 0 or 1 or 2 or 3 or 4 or 5 or 10 or 11;
 
-        //the one suffix whose array form means something, and CapturedSuffixes uses this constant so both paths stay on one key
+        //the scalar and array forms of these keys share one constant each, so CapturedSuffixes and the per-layer list stay on one key
         private const string PerLayerKvHeads = ".attention.head_count_kv";
+        private const string SlidingPattern = ".attention.sliding_window_pattern";
+        private const string CompressRatios = ".attention.compress_ratios";
+        private const string IndexerTypes = ".attention.indexer.types";
 
-        //summed into the term the arithmetic wants, and a non-integer element or a total past long.MaxValue leaves it absent rather than wrapped
-        private Step SumArray(string key)
+        private static readonly string[] PerLayerSuffixes = [PerLayerKvHeads, SlidingPattern, CompressRatios, IndexerTypes];
+
+        private static bool IsPerLayerSuffix(string key)
+        {
+            foreach (var suffix in PerLayerSuffixes)
+                if (key.EndsWith(suffix, StringComparison.Ordinal)) return true;
+            return false;
+        }
+
+        //no model has more layers than this, so a longer array is consumed and left absent rather than held
+        private const ulong MaxLayers = 4096;
+
+        //kept element by element, and a non-integer element, a negative one or one past long.MaxValue leaves the term absent rather than guessed
+        private Step ReadLayers(string key)
         {
             if (!TryReadU32(out var elemType)) return Step.Truncated;
             if (!TryReadU64(out var count)) return Step.Truncated;
             if (count > MaxArrayCount) return Fail($"implausibly large array count in GGUF: {count}");
 
-            long total = 0;
-            var usable = IsIntType(elemType);
+            var usable = (IsIntType(elemType) || elemType == 7) && count <= MaxLayers;
+            var values = usable ? new long[count] : Array.Empty<long>();
 
             for (ulong i = 0; i < count; i++)
             {
@@ -247,18 +277,14 @@ internal static class GgufHeaderParser
                     continue;
                 }
 
-                var step = ReadInt(elemType, out var v);
+                var step = ReadInt(elemType == 7 ? 0u : elemType, out var v);   //a bool is one byte, read as an unsigned one
                 if (step != Step.Ok) return step;
-                if (v is not { } element) { usable = false; continue; }   //an element that will not fit a long leaves the term absent
-
-                //long.MaxValue - total stops discriminating once total is negative, so the negative check must come first
-                if (element < 0) { usable = false; continue; }
-                if (element > long.MaxValue - total) { usable = false; continue; }
-                total += element;
+                if (v is not { } element || element < 0) { usable = false; continue; }
+                values[i] = element;
             }
 
-            //an empty array writes no term, zero KV heads would price the cache at nothing
-            if (usable && count > 0) _ints[key] = total;
+            //an empty array writes no term, zero layers would price the cache at nothing
+            if (usable && count > 0) _layers[key] = values;
             return Step.Ok;
         }
 
@@ -347,10 +373,22 @@ internal static class GgufHeaderParser
             Get(".embedding_length"), Get(".attention.key_length"), Get(".attention.value_length"),
             _chatTemplate, _tensorCount,
             _sizeLabel, Get(".expert_count"), Get(".expert_used_count"), _tensors, Get(PerLayerInput), Get(".full_attention_interval"),
-            _quantizedBy);
+            _quantizedBy,
+            Layers(PerLayerKvHeads),
+            Get(".attention.sliding_window"), Get(SlidingPattern), Layers(SlidingPattern),
+            Get(".attention.shared_kv_layers"),
+            Get(".attention.key_length_swa"), Get(".attention.value_length_swa"),
+            Get(".attention.key_length_mla"), Get(".attention.value_length_mla"),
+            Get(".attention.indexer.key_length"),
+            Layers(CompressRatios),
+            Layers(IndexerTypes) ?? (Get(IndexerTypes) is { } all ? new[] { all } : null),
+            Get(".nextn_predict_layers"));
 
         private long? Get(string suffix) =>
             _arch is not null && _ints.TryGetValue(_arch + suffix, out var v) ? v : null;
+
+        private IReadOnlyList<long>? Layers(string suffix) =>
+            _arch is not null && _layers.TryGetValue(_arch + suffix, out var v) ? v : null;
 
         //guarded primitives: Remaining is checked before any read or allocation
 

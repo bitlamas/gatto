@@ -31,6 +31,16 @@ internal static class GgufTestBytes
 
         //emit one raw key-value pair, for shapes the typed helpers do not cover, such as arrays.
         public void Raw(Action<BinaryWriter> emitOneKv) => _items.Add(emitOneKv);
+
+        public void U32Array(string key, uint[] values) =>
+            Array(key, 4u, values.Length, w => { foreach (var v in values) w.Write(v); });
+
+        //a bool element is one byte, the shape of a per-layer sliding window flag
+        public void BoolArray(string key, bool[] values) =>
+            Array(key, 7u, values.Length, w => { foreach (var v in values) w.Write(v); });
+
+        private void Array(string key, uint elemType, int count, Action<BinaryWriter> elements) =>
+            _items.Add(w => { GgufTestBytes.Str(w, key); w.Write(9u); w.Write(elemType); w.Write((ulong)count); elements(w); });
     }
 
     //build an honest header whose declared count comes from the items written. a tensorCount of zero makes a weightless sidecar rather than a model

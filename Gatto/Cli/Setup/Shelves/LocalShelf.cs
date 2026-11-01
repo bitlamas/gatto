@@ -172,12 +172,12 @@ internal static class LocalShelf
     //the one pricer of a local file, for its row and its pane line alike: its own header and streamed bytes
     internal static FitRegime FitOf(FoundModel m, HardwareClass? hw, int ctxForFit) =>
         m.Header is { } h && hw is { } machine
-            ? FitArithmetic.Judge(FitArithmetic.Estimate(h, m.FileBytes, ctxForFit, KvCacheKind.F16, m.StreamedBytes), machine)
+            ? FitArithmetic.Judge(FitArithmetic.Estimate(h, m.FileBytes, ctxForFit, FitArithmetic.ProfileKind, m.StreamedBytes), machine)
             : FitRegime.Unknown;
 
     //the layers a split file puts on the card, from the same estimate its regime came from, null when it is no split
     internal static int? SplitOf(FoundModel m, HardwareClass hw, int ctxForFit) =>
-        m.Header is { } h ? FitArithmetic.SplitLayers(FitArithmetic.Estimate(h, m.FileBytes, ctxForFit, KvCacheKind.F16, m.StreamedBytes), hw) : null;
+        m.Header is { } h ? FitArithmetic.SplitLayers(FitArithmetic.Estimate(h, m.FileBytes, ctxForFit, FitArithmetic.ProfileKind, m.StreamedBytes), hw) : null;
 
     //strip the shard suffix and the extension, so every file of a set ends up with one name
     internal static string StemOf(string fileName)

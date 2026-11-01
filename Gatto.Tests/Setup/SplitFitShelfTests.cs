@@ -86,10 +86,10 @@ public class SplitFitShelfTests
     [Fact]
     public void THE_SPLIT_WITH_MORE_LAYERS_ON_THE_CARD_IS_PICKED()
     {
-        //8 GiB puts 14 quarter-GiB layers on the card, 4.5 GiB puts 24 layers of 0.14 GiB
+        //with the q8_0 cache beside them, 8 GiB puts 14 quarter-GiB layers on the card and 4.5 GiB puts 26 layers of 0.14 GiB
         Assert.Equal(FitRegime.FitsSplit, LocalShelf.FitOf(File("Q8_0", 8 * GiB), Card(), 4096));
         Assert.Equal(14, LocalShelf.SplitOf(File("Q8_0", 8 * GiB), Card(), 4096));
-        Assert.Equal(24, LocalShelf.SplitOf(File("Q4_K_M", 9 * GiB / 2), Card(), 4096));
+        Assert.Equal(26, LocalShelf.SplitOf(File("Q4_K_M", 9 * GiB / 2), Card(), 4096));
 
         Assert.Equal("x-Q4_K_M.gguf", Pick(File("Q8_0", 8 * GiB), File("Q4_K_M", 9 * GiB / 2)));
     }

@@ -101,8 +101,8 @@ public sealed class StreamedShardFitTests : IDisposable
     public void THE_CONTEXT_LADDER_SUBTRACTS_THE_TABLE_OF_A_MARKED_SET()
     {
         using var probes = Probes();
-        var markedSet = Set("marked", marked: true, 1_400_000_000);
-        var plainSet = Set("plain", marked: false, 1_400_000_000);
+        var markedSet = Set("marked", marked: true, 1_450_000_000);
+        var plainSet = Set("plain", marked: false, 1_450_000_000);
         var marked = probes.ContextFor(markedSet);
         var plain = probes.ContextFor(plainSet);
 
