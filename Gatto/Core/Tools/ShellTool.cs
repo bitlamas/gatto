@@ -114,8 +114,8 @@ public sealed class ShellTool : ITool
         using var launchScope = sandboxed;
         using var processScope = proc;
         //chunked drains rather than ReadToEndAsync, a grandchild keeps the pipe open so EOF can never come. no await here may be bounded only by the session token
-        var outBuf = new StringBuilder();
-        var errBuf = new StringBuilder();
+        var outBuf = new HeadBuffer();
+        var errBuf = new HeadBuffer();
         var gate = new object();
         var stdoutTask = DrainAsync(stdout, outBuf, gate, ct);
         var stderrTask = DrainAsync(stderr, errBuf, gate, ct);
@@ -170,18 +170,43 @@ public sealed class ShellTool : ITool
             sb.AppendLine().Append(refusal);
         if (pipeHeld) sb.AppendLine().Append(PipeHeldNote);
         if (exitCode != 0) sb.AppendLine().Append($"(exit code {exitCode})");
-        return ToolArgs.HeadCap(sb.ToString(), 50_000);
+        return ToolArgs.HeadCap(sb.ToString(), OutputCap);
     }
 
-    //read the stream in chunks into the shared builder. the caller snapshots the builder under the same gate, so a late drain is harmless
-    internal static async Task DrainAsync(StreamReader reader, StringBuilder into, object gate, CancellationToken ct)
+    //the most a result shows, so no stream needs to keep more than this while it drains
+    internal const int OutputCap = 50_000;
+
+    //read the stream in chunks into the shared buffer. the caller snapshots the buffer under the same gate, so a late drain is harmless
+    internal static async Task DrainAsync(StreamReader reader, HeadBuffer into, object gate, CancellationToken ct)
     {
         var buf = new char[4096];
         while (true)
         {
             var n = await reader.ReadAsync(buf.AsMemory(), ct);
             if (n == 0) return;
-            lock (gate) into.Append(buf, 0, n);
+            lock (gate) into.Append(buf.AsSpan(0, n));
         }
     }
+}
+
+//one stream's output kept to the head a result can show, so a flood cannot grow memory with it. the first char past the head that is not whitespace is kept too, so the composed text cuts where the whole output would
+internal sealed class HeadBuffer
+{
+    private readonly StringBuilder _head = new();
+    private char? _beyond;
+
+    //every char the stream gave, kept or not, so a screen still sees the output grow
+    public long Received { get; private set; }
+
+    public void Append(ReadOnlySpan<char> chunk)
+    {
+        Received += chunk.Length;
+        var take = Math.Min(Math.Max(ShellTool.OutputCap - _head.Length, 0), chunk.Length);
+        _head.Append(chunk[..take]);
+        if (_beyond is not null) return;
+        foreach (var c in chunk[take..])
+            if (!char.IsWhiteSpace(c)) { _beyond = c; return; }
+    }
+
+    public override string ToString() => _beyond is { } c ? _head.ToString() + c : _head.ToString();
 }

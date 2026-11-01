@@ -71,7 +71,7 @@ public sealed class BackgroundTasks : IDisposable
         }
 
         //how many chars both streams hold, so a screen can see growth without copying the output
-        public int Written { get { lock (_e.Gate) return _e.Out.Length + _e.Err.Length; } }
+        public int Written { get { lock (_e.Gate) return (int)Math.Min(int.MaxValue, _e.Out.Received + _e.Err.Received); } }
     }
 
     //one handle per task the snapshot lists, running and ended alike, oldest first
@@ -96,8 +96,8 @@ public sealed class BackgroundTasks : IDisposable
         public readonly ShellTool.Started Started = started;
         public readonly Stopwatch Clock = Stopwatch.StartNew();
         public readonly EndClaim Claim = new();
-        public readonly StringBuilder Out = new();
-        public readonly StringBuilder Err = new();
+        public readonly HeadBuffer Out = new();
+        public readonly HeadBuffer Err = new();
         public readonly object Gate = new();
     }
 

@@ -102,6 +102,11 @@ public static class GattoApp
           options:  -m <model>  -p <prompt>  -e <endpoint>  --effort <level>  --continue[ <id>]  --yes  --sandbox  --version  -h
         """;
 
+    //the bare word help asks for the help, unless the home holds a role by that name, which the user made and must still reach
+    internal static bool IsHelpWord(ParsedArgs args, string home) =>
+        args.Command == "launch" && string.Equals(args.Role, "help", StringComparison.OrdinalIgnoreCase)
+        && !RoleFile.ListNames(Path.Combine(home, "roles")).Any(n => string.Equals(n, args.Role, StringComparison.OrdinalIgnoreCase));
+
     //the roles line is read from the home at print time, so the help never names a default the config overrode or a role that is not on disk
     internal static string HelpFor(string home)
     {
@@ -231,7 +236,7 @@ public static class GattoApp
             return 2;
         }
 
-        if (args.Command == "help") { Console.WriteLine(HelpFor(ctx?.Home ?? GattoHome.Resolve())); return 0; }
+        if (args.Command == "help" || IsHelpWord(args, ctx?.Home ?? GattoHome.Resolve())) { Console.WriteLine(HelpFor(ctx?.Home ?? GattoHome.Resolve())); return 0; }
         //the version line takes the context's stamp, so a golden can pin it without going red on every commit
         if (args.Command == "version")
         {
