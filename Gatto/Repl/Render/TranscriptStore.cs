@@ -32,6 +32,11 @@ public static class TranscriptStore
             }
         }
 
+        //a mid-turn compaction replaced the message its own lines anchor to, so they lead the file that compaction opened
+        if (model.CompactionTail is { } tail && byAnchor.TryGetValue(tail, out var carried)
+            && !convo.Messages.Any(m => ReferenceEquals(m, tail)))
+            leading.AddRange(carried);
+
         var lines = new List<string>();
         foreach (var ev in leading) lines.Add(EventJson(ev));
         foreach (var m in convo.Messages)
@@ -39,7 +44,7 @@ public static class TranscriptStore
             lines.Add(SessionStore.ChatJson(m, cwd, convo.Baseline, identity));
             if (byAnchor.TryGetValue(m, out var evs)) foreach (var ev in evs) lines.Add(EventJson(ev));
         }
-        return lines;   //an event whose After is no longer in the convo is dropped
+        return lines;   //any other event whose After is no longer in the convo is dropped
     }
 
     //the glyph set travels with the theme, so a resumed session draws its glosses in the same vocabulary as the rows after it

@@ -298,6 +298,7 @@ public sealed class Compactor(IChatClient client, string model, RequestShape? sh
                 carriedCount > 0 ? $"{carriedCount} carried forward" : null,
             }.Where(x => x is not null)));
         var messages = new[] { new ChatMessage("user", BuildContinuationPrompt(turn.Prompt, turn.Delivered), Images: carried) };
+        if (convo.Messages.Count > 0) observer.OnCompactionAdopted(convo.Messages[^1]);
         //no session_summary hook fires for a mid-turn compaction, the user did not choose this boundary
         return (new CompactionResult(systemText, messages, composed.Baseline), summary);
     }

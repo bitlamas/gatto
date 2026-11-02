@@ -5,7 +5,7 @@ using Gatto.Terminal;
 
 namespace Gatto.Tests.Setup;
 
-//the context a profile gets: a file the shelf marks as a split keeps a rung where the card holds layers, every other file keeps the ladder it had
+//the context a profile gets: the largest rung the card holds whole, a split rung only when none does, and the largest memory holds when nothing splits
 public sealed class SplitLadderTests : IDisposable
 {
     private const long GiB = 1L << 30;
@@ -26,14 +26,14 @@ public sealed class SplitLadderTests : IDisposable
         new(Path.Combine(_dir, "home"), GlyphSet.Unicode, TextWriter.Null, readHardware: Laptop);
 
     //32 blocks of 8 kv heads with 256 key and value dims. the f16 cache is half a GiB at 4096 tokens and 8 GiB at the 65536 ceiling, where a 4 GiB card holds no layer
-    private string Model(string name, long bytes, bool blocks = true)
+    private string Model(string name, long bytes, bool blocks = true, uint? ceiling = 65536)
     {
         var path = Path.Combine(_dir, name);
         using var fs = File.Create(path);
         fs.Write(GgufTestBytes.SyntheticHeader(kv =>
         {
             kv.Str("general.architecture", "llama");
-            kv.U32("llama.context_length", 65536);
+            if (ceiling is { } window) kv.U32("llama.context_length", window);
             if (blocks) kv.U32("llama.block_count", 32);
             kv.U32("llama.embedding_length", 4096);
             kv.U32("llama.attention.head_count", 32);
@@ -122,14 +122,61 @@ public sealed class SplitLadderTests : IDisposable
     }
 
     [Fact]
-    public void A_FILE_THE_CARD_HOLDS_WHOLE_ON_THE_SHELF_KEEPS_TODAYS_LADDER()
+    public void A_FILE_THE_CARD_HOLDS_WHOLE_TAKES_THE_LARGEST_WHOLE_RUNG_OVER_A_SPLIT_AT_THE_CEILING()
     {
         var path = Model("whole.gguf", GiB);
-        Assert.Equal(FitRegime.FitsGpu, At(path, Gatto.Cli.Setup.Shelves.Pane.KvContext));
+        using var probes = Probes();
+
+        var context = probes.ContextFor(path);
+
+        Assert.Equal(16384, context);
+        Assert.Null(probes.SplitLayersFor(path, context));
+        Assert.NotNull(probes.SplitLayersFor(path, 32768));
+    }
+
+    //a header naming no window steps down from the offered context as it always did
+    [Fact]
+    public void A_HEADER_WITH_NO_WINDOW_STEPS_DOWN_FROM_THE_OFFERED_CONTEXT()
+    {
+        var path = Model("nowindow.gguf", GiB, ceiling: null);
+        using var probes = Probes();
+
+        Assert.Equal(16384, probes.ContextFor(path));
+    }
+
+    [Fact]
+    public void AN_IMPOSSIBLE_WINDOW_AND_A_FILE_NOTHING_HOLDS_TAKE_THE_OFFERED_CONTEXT()
+    {
+        using var probes = Probes();
+
+        Assert.Equal(SetupFlow.OfferedContext, probes.ContextFor(Model("wild.gguf", GiB, ceiling: 50_000_000)));
+        using var tiny = new LiveSetupProbes(Path.Combine(_dir, "tiny"), GlyphSet.Unicode, TextWriter.Null,
+            readHardware: () => new ProbeOutcome(new HardwareSnapshot(2UL << 30, 2UL << 30, GpuKind.Discrete, 2UL << 30), "ok"));
+        Assert.Equal(SetupFlow.OfferedContext, tiny.ContextFor(Model("huge.gguf", 4 * GiB)));
+    }
+
+    //the pair steps down a rung and stays whole, so the screen has nothing to warn about and setup writes that rung
+    [Fact]
+    public void A_PROJECTOR_THAT_ONLY_COSTS_A_RUNG_COSTS_NO_REGIME()
+    {
+        var path = Model("whole.gguf", GiB);
+        var projector = Path.Combine(_dir, "mmproj.gguf");
+        using (var fs = File.Create(projector)) fs.SetLength(GiB / 2);
+        using var probes = Probes();
+
+        Assert.Equal((FitRegime.FitsGpu, FitRegime.FitsGpu), probes.PairFit(path, GiB / 2));
+        Assert.Equal(8192, probes.ContextFor(path, projector));
+    }
+
+    //no rung holds the pair whole, so the warning is true
+    [Fact]
+    public void A_PROJECTOR_NO_RUNG_HOLDS_WHOLE_COSTS_THE_REGIME()
+    {
+        var path = Model("whole.gguf", GiB);
 
         using var probes = Probes();
 
-        Assert.Equal(65536, probes.ContextFor(path));
+        Assert.Equal((FitRegime.FitsGpu, FitRegime.FitsSplit), probes.PairFit(path, 7 * GiB / 5));
     }
 
     [Fact]

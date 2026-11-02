@@ -197,4 +197,84 @@ public class FitArithmeticTests
         Assert.Null(FitArithmetic.SplitLayers(Splittable(), Gpu(4UL * (ulong)GiB, 16UL * (ulong)GiB)));
         Assert.Equal(FitRegime.FitsRamOnly, FitArithmetic.Judge(Splittable(), Gpu(4UL * (ulong)GiB, 16UL * (ulong)GiB)));
     }
+
+    private const long MiB = 1L << 20;
+
+    //qwen3.5-9b's shape: 32 blocks, so q8_0 costs 1,088 MiB at 65536
+    private static GgufHeader NineB(long? ceiling = 262144) => new(
+        GgufOutcome.Complete, null, "qwen3", "t", ceiling, null,
+        BlockCount: 32, HeadCount: 32, HeadCountKv: 2,
+        EmbeddingLength: 4096, KeyLength: 128, ValueLength: 128, ChatTemplate: null);
+
+    private static readonly HardwareClass EightGib = HardwareClassifier.Classify(
+        new HardwareSnapshot(32UL << 30, 32UL << 30, GpuKind.Discrete, 8UL << 30));
+
+    private static readonly HardwareClass SixteenGib = HardwareClassifier.Classify(
+        new HardwareSnapshot(32UL << 30, 32UL << 30, GpuKind.Discrete, 16UL << 30));
+
+    //a unified pool large enough to hold the ceiling
+    private static readonly HardwareClass Pool = new(
+        MemoryTopology.Unified, ShareKind.None, 76UL << 30, 64UL << 30,
+        new HardwareSnapshot(128UL << 30, 127UL << 30, GpuKind.Integrated, 88UL << 30), 0, BudgetBound.None);
+
+    private static readonly HardwareClass CpuOnly = new(
+        MemoryTopology.CpuOnly, ShareKind.None, 0UL, 24UL << 30,
+        new HardwareSnapshot(32UL << 30, 32UL << 30, GpuKind.None, 0UL), 0, BudgetBound.None);
+
+    [Fact]
+    public void The_pick_on_8_gib_is_the_largest_rung_held_whole_not_a_split_at_the_ceiling()
+    {
+        Assert.Equal(1088 * MiB, FitArithmetic.Estimate(NineB(), 0, 65536, KvCacheKind.Q8_0).KvCacheBytes);
+
+        Assert.Equal(new ContextPick(65536, FitRegime.FitsGpu), FitArithmetic.PickContext(NineB(), 4929 * MiB, null, EightGib));
+    }
+
+    [Fact]
+    public void The_pick_on_a_pool_that_holds_the_ceiling_is_the_ceiling()
+    {
+        Assert.Equal(new ContextPick(262144, FitRegime.FitsGpu), FitArithmetic.PickContext(NineB(), 4929 * MiB, null, Pool));
+    }
+
+    [Fact]
+    public void A_file_no_rung_holds_whole_takes_the_split_rung()
+    {
+        var file = 8 * GiB;
+        var rungs = new[] { 262144, 131072, 65536, 32768, 16384, 8192, 4096 };
+        var split = FitArithmetic.SplitRung(rungs, r => FitArithmetic.Estimate(NineB(), file, r, FitArithmetic.ProfileKind), EightGib);
+
+        Assert.NotNull(split);
+        Assert.Equal(new ContextPick(split.Value, FitRegime.FitsSplit), FitArithmetic.PickContext(NineB(), file, null, EightGib));
+    }
+
+    [Fact]
+    public void A_cpu_only_machine_takes_the_first_rung_memory_holds()
+    {
+        var pick = FitArithmetic.PickContext(NineB(), 21 * GiB, null, CpuOnly);
+
+        Assert.Equal(new ContextPick(131072, FitRegime.FitsRamOnly), pick);
+    }
+
+    [Fact]
+    public void No_usable_ceiling_and_nothing_fitting_pick_nothing()
+    {
+        Assert.Null(FitArithmetic.PickContext(NineB(ceiling: null), GiB, null, EightGib));
+        Assert.Null(FitArithmetic.PickContext(NineB(ceiling: 0), GiB, null, EightGib));
+        Assert.Null(FitArithmetic.PickContext(NineB(ceiling: FitArithmetic.MaxContext + 1L), GiB, null, EightGib));
+        Assert.Null(FitArithmetic.PickContext(NineB(), 400 * GiB, null, EightGib));
+    }
+
+    //the cache never falls as the window grows, so a file's regime at its pick is its regime at 4096
+    [Theory]
+    [InlineData(262144L)]
+    [InlineData(32768L)]
+    [InlineData(4096L)]
+    public void The_regime_at_the_pick_is_the_regime_at_4096(long ceiling)
+    {
+        foreach (var hw in new[] { EightGib, SixteenGib, Pool, CpuOnly })
+            for (var file = GiB / 4; file <= 40 * GiB; file += GiB / 4)
+            {
+                var at4096 = FitArithmetic.Judge(FitArithmetic.Estimate(NineB(ceiling), file, 4096, FitArithmetic.ProfileKind), hw);
+                Assert.Equal(at4096, FitArithmetic.PickContext(NineB(ceiling), file, null, hw)?.Regime ?? FitRegime.DoesNotFit);
+            }
+    }
 }

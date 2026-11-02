@@ -22,7 +22,8 @@ internal sealed record ModelRow(
     string? Structure = null, (long Total, long Active)? Experts = null,
     Badge? Badge = null,   //set only by the local shelf, a Hub row carries none
     string? ParamsLabel = null,   //the size label in its anchored shape, drawn and sorted by where Params is unknown, set only by the local shelf
-    string? LocalKey = null)   //the sha256 the file's profile entry holds while its size and write time still match, set only by the local shelf
+    string? LocalKey = null,   //the sha256 the file's profile entry holds while its size and write time still match, set only by the local shelf
+    int? PickedCtx = null)   //the context setup would write for the row's file, set only by the local shelf, null where nothing is picked
 {
     //the shipped mark of the file the row shows, computed so a repick in the pane moves it. a hub row matches by the oid its listing carries
     public ShippedMark? Tested => ShippedMarks.Lookup(LocalKey ?? RowQuant?.Members[0].Sha256);

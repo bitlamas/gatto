@@ -1,8 +1,12 @@
 using Gatto.Core.Client;
+using Gatto.Core.Loop;
 using Gatto.Core.Session;
 using Gatto.Core.Tools;
+using Gatto.Repl.Input;
 using Gatto.Repl.Render;
+using Gatto.Repl.Render.Chrome;
 using Gatto.Terminal;
+using Gatto.Terminal.Tests.Fakes;
 using Xunit;
 
 namespace Gatto.Tests.Render;
@@ -665,5 +669,125 @@ public sealed class TranscriptStoreTests
         Assert.Equal(new[] { "system", "user", "assistant" }, rebuiltConvo.Messages.Select(m => m.Role).ToArray());
         Assert.Equal("run it", rebuiltConvo.Messages[1].Content);
         Assert.Equal("done", rebuiltConvo.Messages[2].Content);
+    }
+
+    private static (Conversation Convo, ChatMessage Earlier, ChatMessage Tail) Replaced()
+    {
+        var convo = new Conversation("sys");
+        convo.AddUser("first");
+        convo.AddAssistant("reply");
+        var earlier = convo.Messages[^1];
+        convo.AddUser("second");
+        var tail = convo.Messages[^1];
+        convo.ReplaceAll("sys with summary", [new ChatMessage("user", "continue")], null);
+        return (convo, earlier, tail);
+    }
+
+    //a mid-turn compaction keeps the model, so only the lines it raised lead its file, never the whole session's events
+    [Fact]
+    public void Only_the_compactions_own_lines_lead_the_file_it_opened()
+    {
+        var (convo, earlier, tail) = Replaced();
+        var model = new TranscriptModel("generalist");
+        model.Append(new CommandEchoItem(new[] { "banner" }, null));
+        model.Append(new CompletionItem("an earlier turn", earlier));
+        model.Append(new SystemLineItem("an earlier warning", earlier));
+        model.Append(new SystemLineItem("auto-compacting", tail));
+        model.Append(new SystemLineItem("summarizing a shortened copy", tail));
+        model.CompactionTail = tail;
+
+        var lines = TranscriptStore.BuildLines(model, convo);
+        var joined = string.Join("\n", lines);
+
+        Assert.DoesNotContain("an earlier turn", joined, System.StringComparison.Ordinal);
+        Assert.DoesNotContain("an earlier warning", joined, System.StringComparison.Ordinal);
+        Assert.Contains("banner", lines[0], System.StringComparison.Ordinal);
+        Assert.Contains("auto-compacting", lines[1], System.StringComparison.Ordinal);
+        Assert.Contains("summarizing a shortened copy", lines[2], System.StringComparison.Ordinal);
+        Assert.Contains("\"role\":\"system\"", lines[3], System.StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void With_no_compaction_recorded_every_orphan_is_dropped()
+    {
+        var (convo, earlier, tail) = Replaced();
+        var model = new TranscriptModel("generalist");
+        model.Append(new SystemLineItem("an earlier warning", earlier));
+        model.Append(new SystemLineItem("a line of a dropped turn", tail));
+
+        var joined = string.Join("\n", TranscriptStore.BuildLines(model, convo));
+
+        Assert.DoesNotContain("an earlier warning", joined, System.StringComparison.Ordinal);
+        Assert.DoesNotContain("a line of a dropped turn", joined, System.StringComparison.Ordinal);
+    }
+
+    //the tail still in the conversation is a compaction that was never adopted, so its lines stay where they are
+    [Fact]
+    public void A_tail_still_in_the_conversation_keeps_its_lines_after_it()
+    {
+        var convo = new Conversation("sys");
+        convo.AddUser("first");
+        var tail = convo.Messages[^1];
+        var model = new TranscriptModel("generalist");
+        model.Append(new SystemLineItem("a line", tail));
+        model.CompactionTail = tail;
+
+        var lines = TranscriptStore.BuildLines(model, convo);
+
+        Assert.Equal(3, lines.Count);
+        Assert.Contains("a line", lines[2], System.StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void The_compactions_lines_survive_a_round_trip()
+    {
+        var (convo, _, tail) = Replaced();
+        var model = new TranscriptModel("generalist");
+        model.Append(new SystemLineItem("summarizing a shortened copy", tail));
+        model.CompactionTail = tail;
+
+        var (_, rebuilt) = TranscriptStore.Rebuild(TranscriptStore.BuildLines(model, convo), T, "generalist", glyphs: GlyphSet.Unicode);
+
+        Assert.Equal("summarizing a shortened copy", Assert.Single(rebuilt.Items.OfType<SystemLineItem>()).Text);
+    }
+
+    [Fact]
+    public void Reset_forgets_the_compaction()
+    {
+        var model = new TranscriptModel("generalist") { CompactionTail = new ChatMessage("user", "x") };
+
+        model.Reset();
+
+        Assert.Null(model.CompactionTail);
+    }
+
+    //the real seam, renderer and swap: the renderer anchors to the tail, the rebuild tells it, and the swap orphans it
+    [Fact]
+    public void The_lines_a_real_rebuild_raises_lead_the_file_after_the_swap()
+    {
+        var surface = new RecordingSurface { Width = 100, Height = 200 };
+        var gate = new object();
+        var painter = new ChromePainter(surface, T, gate)
+        {
+            Frame = new InputFrame(surface, T, "coder", new StatusInfo(@"C:\proj", "qwen", "coder", new CtxState(), @"C:\Users\x"), glyphs: GlyphSet.Unicode),
+            RoleForTint = "coder",
+        };
+        var convo = new Conversation("sys");
+        convo.AddUser("look at this", [new ImageRef(@"C:\shot.png", 10, "abc", "image/png")]);
+        var renderer = new StreamRenderer(painter, surface, T, "coder", new ChromeTicker(painter, gate), gate,
+            model: painter.Model, convoTail: () => convo.Messages[^1]);
+
+        renderer.OnWarning("auto-compacting");
+        var (result, _) = Compactor.RebuildMidTurn("summary", convo, Compactor.PromptOnly("look at this", convo), renderer,
+            null, () => new ComposedSystem("sys", null), "\u00b7");
+        convo.ReplaceAll(result.SystemText!, result.Messages, result.Baseline);
+        renderer.OnWarning("auto-compacted, continuing");
+
+        var lines = TranscriptStore.BuildLines(painter.Model, convo);
+
+        Assert.Contains("auto-compacting", lines[0], System.StringComparison.Ordinal);
+        Assert.Contains("1 carried forward", lines[1], System.StringComparison.Ordinal);
+        Assert.Contains("\"role\":\"system\"", lines[2], System.StringComparison.Ordinal);
+        Assert.Contains("auto-compacted, continuing", lines[^1], System.StringComparison.Ordinal);
     }
 }

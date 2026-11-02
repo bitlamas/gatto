@@ -46,6 +46,8 @@ public interface ITurnObserver
     void OnToolResult(ToolCall call, ToolResult result);
     void OnWarning(string message);
     void OnUsage(Usage usage);
+    //a compaction was adopted and tail is the last message it replaces, told before the swap, so a renderer can keep the lines the compaction raised against it
+    void OnCompactionAdopted(ChatMessage tail) { }
 }
 
 public sealed class AgentLoop(

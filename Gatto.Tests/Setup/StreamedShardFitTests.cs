@@ -106,11 +106,11 @@ public sealed class StreamedShardFitTests : IDisposable
         var marked = probes.ContextFor(markedSet);
         var plain = probes.ContextFor(plainSet);
 
-        //a split is a fit, so both sets reach the top rung. the table shows in where each runs there: the marked set whole on the card, the plain one split
+        //both run whole, so the table shows in the rung: the marked set holds the top one and the plain one steps down
         Assert.Equal(32768, marked);
-        Assert.Equal(32768, plain);
+        Assert.Equal(16384, plain);
         Assert.Null(probes.SplitLayersFor(markedSet, marked));
-        Assert.NotNull(probes.SplitLayersFor(plainSet, plain));
+        Assert.Null(probes.SplitLayersFor(plainSet, plain));
     }
 
     //the test drives ModelDiscovery.Scan, which hands the table to LocalShelf.Row

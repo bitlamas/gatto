@@ -18,6 +18,9 @@ public sealed class TranscriptModel(string role)
     //the item still being streamed, null when nothing is open
     internal TranscriptItem? OpenItem => _openItem;
 
+    //the last message the latest mid-turn compaction replaced, the anchor of the lines that compaction raised, null until one is adopted
+    internal Gatto.Core.Client.ChatMessage? CompactionTail { get; set; }
+
     //the starting Collapsed value for a new reasoning item, true under reasoning:collapsed and false under expanded or a passthrough summary
     public bool ReasoningCollapseDefault { get; set; } = true;
 
@@ -35,6 +38,7 @@ public sealed class TranscriptModel(string role)
     {
         CloseOpen();
         _items.Clear();
+        CompactionTail = null;
         _reasoningCount = 0;   //a fresh session or a compaction starts both counts again, so the words come back
         _linkCount = 0;
         OnReset?.Invoke();

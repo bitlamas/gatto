@@ -147,9 +147,7 @@ internal static class Pane
         rows.Add(PaintedRow.Of(""));
 
         if (r.NativeCtx is > 0 and { } ctx)
-            rows.Add(new PaintedRow([
-                new Run("context up to ", RunInk.Plain),
-                new Run(ctx.ToString("N0", System.Globalization.CultureInfo.InvariantCulture), RunInk.Accent)]));
+            rows.Add(new PaintedRow(ContextRuns(r, ctx, "context up to ", RunInk.Plain)));
 
         //vision is said only when a projector was found for the file, since its absence on disk says nothing about the model
         if (r.Vision) rows.Add(new PaintedRow([new Run($"{g.Vision} vision {g.Dot} ", RunInk.Dim), new Run("can see images")]));
@@ -198,6 +196,12 @@ internal static class Pane
         return [.. rows.Select(row => Pad(row, width))];
     }
 
+    //the pick then the model's own window on a local row picked below it, else the window alone under the line's own words
+    private static IReadOnlyList<Run> ContextRuns(ModelRow r, long ctx, string bare, RunInk word) =>
+        r.PickedCtx is { } picked && picked != ctx
+            ? [new Run("context ", word), new Run(SearchRow.Ctx(picked), RunInk.Accent), new Run(" of ", word), new Run(SearchRow.Ctx(ctx), RunInk.Accent)]
+            : [new Run(bare, word), new Run(SearchRow.Ctx(ctx), RunInk.Accent)];
+
     //vision, what one token reads and the context, each part only when the row knows it. a narrow pane breaks the line between parts
     private static IReadOnlyList<PaintedRow> FactsLines(ModelRow r, ModelFacts f, int width, GlyphSet g)
     {
@@ -206,8 +210,7 @@ internal static class Pane
         if (ReadsPerToken(r, f) is { } reads)
             parts.Add([new Run("reads ", RunInk.Dim), new Run(reads, RunInk.Accent), new Run("/token", RunInk.Dim)]);
         if (r.NativeCtx is > 0 and { } ctx)
-            parts.Add([new Run("context ", RunInk.Dim),
-                       new Run(ctx.ToString("N0", System.Globalization.CultureInfo.InvariantCulture), RunInk.Accent)]);
+            parts.Add(ContextRuns(r, ctx, "context ", RunInk.Dim));
 
         var lines = new List<PaintedRow>();
         var runs = new List<Run>();
@@ -500,8 +503,7 @@ internal static class Pane
         var lead = true;
         if (r.NativeCtx is > 0 and { } ctx)
         {
-            facts2.Add(new Run("context up to "));
-            facts2.Add(new Run(SearchRow.Ctx(ctx), RunInk.Accent));
+            facts2.AddRange(ContextRuns(r, ctx, "context up to ", RunInk.Plain));
             lead = false;
         }
         //a local row says vision only when a projector was found, and never text only, its files carry no reading of that

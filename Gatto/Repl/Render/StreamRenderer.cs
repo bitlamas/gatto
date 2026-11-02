@@ -474,6 +474,8 @@ public sealed class StreamRenderer : ITurnObserver
     //warnings go through the ♯ system line, and their text can come from the endpoint so it is sanitized first
     public void OnWarning(string message) => CommitSystem(message);
 
+    public void OnCompactionAdopted(ChatMessage tail) { if (_model is { } m) m.CompactionTail = tail; }
+
     //the ♯ system line: a blank-separated, Warn-painted gutter block. while a saved call is unanswered the line is buffered and flushed after the block
     public void CommitSystem(string message) => CommitSystem(message, transient: false);
 

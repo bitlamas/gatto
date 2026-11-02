@@ -14,6 +14,9 @@ internal sealed record FitEstimate(
 //a split puts some layers on the card and the rest in system memory, the card's share priced with the whole KV cache beside it
 internal enum FitRegime { FitsGpu, FitsSplit, FitsRamOnly, DoesNotFit, Unknown }
 
+//the context setup writes for a file and the regime it was judged at
+internal sealed record ContextPick(int Context, FitRegime Regime);
+
 //computed from the file's own terms, never tabulated, so it cannot go stale. the estimate alone can run under a real load, and the reserve in Judge's budget is what keeps the answer conservative
 internal static class FitArithmetic
 {
@@ -248,6 +251,37 @@ internal static class FitArithmetic
             if (needed + table <= (long)hw.RamBudgetBytes) return FitRegime.FitsRamOnly;
             return FitRegime.DoesNotFit;
         }
+    }
+
+    //the largest rung the card holds whole, else the split rung, else the largest memory holds, so setup and the shelf price one context. null with no usable ceiling or when nothing fits
+    public static ContextPick? PickContext(GgufHeader h, long fileBytes, long? streamedBytes, HardwareClass hw)
+    {
+        if (h.ContextLength is not long c || c <= 0 || c > MaxContext) return null;
+        var ceiling = (int)c;
+        var rungs = new[] { ceiling, 131072, 65536, 32768, 16384, 8192, 4096 }.Where(r => r <= ceiling).Distinct().ToList();
+        FitEstimate At(int context) => Estimate(h, fileBytes, context, ProfileKind, streamedBytes);
+        foreach (var rung in rungs)
+            if (Judge(At(rung), hw) == FitRegime.FitsGpu) return new ContextPick(rung, FitRegime.FitsGpu);
+        if (SplitRung(rungs, At, hw) is { } split) return new ContextPick(split, FitRegime.FitsSplit);
+        foreach (var rung in rungs)
+            if (Judge(At(rung), hw) == FitRegime.FitsRamOnly) return new ContextPick(rung, FitRegime.FitsRamOnly);
+        return null;
+    }
+
+    //a rung the card holds whole first, then the largest holding at least half the layers, then the one holding the most. null when no rung splits
+    internal static int? SplitRung(IReadOnlyList<int> rungs, Func<int, FitEstimate> at, HardwareClass hw)
+    {
+        var whole = rungs.Where(r => Judge(at(r), hw) == FitRegime.FitsGpu).ToList();
+        if (whole.Count > 0) return whole[0];
+        var splits = rungs
+            .Select(r => (Rung: r, Estimate: at(r)))
+            .Where(x => Judge(x.Estimate, hw) == FitRegime.FitsSplit)
+            .Select(x => (x.Rung, Layers: SplitLayers(x.Estimate, hw) ?? 0, Blocks: x.Estimate.Blocks ?? 0))
+            .ToList();
+        if (splits.Count == 0) return null;
+        foreach (var s in splits)
+            if (2L * s.Layers >= s.Blocks) return s.Rung;
+        return splits.OrderByDescending(s => s.Layers).ThenByDescending(s => s.Rung).First().Rung;
     }
 
     //the layers the card holds beside the whole KV cache, at least one, with the rest of the weights in system memory. a discrete card only, and never on a term the header left unknown

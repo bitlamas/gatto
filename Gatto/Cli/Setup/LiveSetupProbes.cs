@@ -1111,7 +1111,7 @@ internal sealed class LiveSetupProbes(string homePath, Gatto.Terminal.GlyphSet g
         catch (Exception) { return null; }
     }
 
-    //the regime for the model alone and with the projector, null when the machine or the header can't be read
+    //the regime for the model alone and with the projector, each at the context setup would pick for it, null when the machine or the header can't be read
     public (Gatto.Core.Models.FitRegime Alone, Gatto.Core.Models.FitRegime WithProjector)? PairFit(
         string ggufPath, long projectorBytes)
     {
@@ -1125,15 +1125,13 @@ internal sealed class LiveSetupProbes(string homePath, Gatto.Terminal.GlyphSet g
             var header = Gatto.Core.Models.GgufHeaderParser.Parse(fs);
             //price the whole shard set, and return null when none of it can be read, 0 would be a wrong regime
             if (ModelDiscovery.SetBytesOrNull(ggufPath) is not { } bytes) return null;
-            var ctx = ContextFor(ggufPath);
             var streamed = ModelDiscovery.StreamedBytesOrNull(ggufPath, header);
-
-            var alone = Gatto.Core.Models.FitArithmetic.Judge(
-                Gatto.Core.Models.FitArithmetic.Estimate(
-                    header, bytes, ctx, Gatto.Core.Models.FitArithmetic.ProfileKind, streamed), hw);
-            var paired = ProjectorPair.Regime(
-                header, bytes, projectorBytes, ctx, Gatto.Core.Models.FitArithmetic.ProfileKind, hw, streamed);
-            return (alone, paired);
+            var priced = WithWindow(header);
+            Gatto.Core.Models.FitRegime AtPick(long weights) =>
+                Gatto.Core.Models.FitArithmetic.PickContext(priced, weights, streamed, hw)?.Regime
+                ?? Gatto.Core.Models.FitArithmetic.Judge(Gatto.Core.Models.FitArithmetic.Estimate(
+                    header, weights, SetupFlow.OfferedContext, Gatto.Core.Models.FitArithmetic.ProfileKind, streamed), hw);
+            return (AtPick(bytes), AtPick(bytes + projectorBytes));
         }
         catch (Exception) { return null; }
     }
@@ -1173,50 +1171,19 @@ internal sealed class LiveSetupProbes(string homePath, Gatto.Terminal.GlyphSet g
             using var fs = File.OpenRead(ggufPath);
             var header = Gatto.Core.Models.GgufHeaderParser.Parse(fs);
 
-            var ceiling = header.ContextLength is long c and > 0 ? (int)Math.Min(c, int.MaxValue) : SetupFlow.OfferedContext;
             //price the whole set before the ladder steps down, a one-shard price stops at the ceiling and cannot load
             if (ModelDiscovery.SetBytesOrNull(ggufPath) is not { } bytes) return SetupFlow.OfferedContext;
             var streamed = ModelDiscovery.StreamedBytesOrNull(ggufPath, header);
-
-            var rungs = new[] { ceiling, 131072, 65536, 32768, 16384, 8192, 4096 }.Where(r => r <= ceiling).Distinct().ToList();
-
-            //a file the shelf marks as a split takes the rung that keeps its layers on the card, the projector counted beside it
+            //a projector loads beside the model in one process, so the pair is what each rung must hold
             var projector = ModelDiscovery.SetBytesOrNull(projectorPath) ?? 0;
-            Gatto.Core.Models.FitEstimate PairAt(int context) => Gatto.Core.Models.FitArithmetic.Estimate(
-                header, bytes + projector, context, Gatto.Core.Models.FitArithmetic.ProfileKind, streamed);
-            if (Gatto.Core.Models.FitArithmetic.Judge(PairAt(Shelves.Pane.KvContext), hw) == Gatto.Core.Models.FitRegime.FitsSplit
-                && SplitRung(rungs, PairAt, hw) is { } rung)
-                return rung;
-
-            //the largest budget that actually fits, tried from the model's own ceiling down
-            foreach (var candidate in rungs)
-            {
-                var estimate = Gatto.Core.Models.FitArithmetic.Estimate(
-                    header, bytes, candidate, Gatto.Core.Models.FitArithmetic.ProfileKind, streamed);
-                if (Gatto.Core.Models.FitArithmetic.Judge(estimate, hw) is
-                    Gatto.Core.Models.FitRegime.FitsGpu or Gatto.Core.Models.FitRegime.FitsSplit or Gatto.Core.Models.FitRegime.FitsRamOnly)
-                    return candidate;
-            }
-            return SetupFlow.OfferedContext;
+            return Gatto.Core.Models.FitArithmetic.PickContext(WithWindow(header), bytes + projector, streamed, hw)?.Context ?? SetupFlow.OfferedContext;
         }
         catch (Exception) { return SetupFlow.OfferedContext; }
     }
 
-    //a rung the card holds whole first, then the largest holding at least half the layers, then the one holding the most. null when no rung splits
-    internal static int? SplitRung(IReadOnlyList<int> rungs, Func<int, Gatto.Core.Models.FitEstimate> at, Gatto.Core.Hardware.HardwareClass hw)
-    {
-        var whole = rungs.Where(r => Gatto.Core.Models.FitArithmetic.Judge(at(r), hw) == Gatto.Core.Models.FitRegime.FitsGpu).ToList();
-        if (whole.Count > 0) return whole[0];
-        var splits = rungs
-            .Select(r => (Rung: r, Estimate: at(r)))
-            .Where(x => Gatto.Core.Models.FitArithmetic.Judge(x.Estimate, hw) == Gatto.Core.Models.FitRegime.FitsSplit)
-            .Select(x => (x.Rung, Layers: Gatto.Core.Models.FitArithmetic.SplitLayers(x.Estimate, hw) ?? 0, Blocks: x.Estimate.Blocks ?? 0))
-            .ToList();
-        if (splits.Count == 0) return null;
-        foreach (var s in splits)
-            if (2L * s.Layers >= s.Blocks) return s.Rung;
-        return splits.OrderByDescending(s => s.Layers).ThenByDescending(s => s.Rung).First().Rung;
-    }
+    //a header naming no window steps down from the offered context, one naming an impossible window takes it
+    private static Gatto.Core.Models.GgufHeader WithWindow(Gatto.Core.Models.GgufHeader h) =>
+        h.ContextLength is > 0 ? h : h with { ContextLength = SetupFlow.OfferedContext };
 
     //the file the user opens afterwards, composed like every other home path here so it can't name a file the writer didn't write
     public string ConfigPath() => System.IO.Path.Combine(homePath, "gatto.json");

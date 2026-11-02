@@ -116,9 +116,10 @@ internal static class ShelfTable
 
     private const string CtxHeader = "context";
 
-    //an absent window shows an empty cell rather than a guess, with the digits from SearchRow.Ctx
+    //the context setup would write where the row has one, else the model's own, and an absent window shows an empty cell rather than a guess
     private static string Ctx(ModelRow r) =>
-        r.NativeCtx is { } ctx and > 0 ? SearchRow.Ctx(ctx) : "";
+        r.PickedCtx is { } picked ? SearchRow.Ctx(picked)
+        : r.NativeCtx is { } ctx and > 0 ? SearchRow.Ctx(ctx) : "";
 
     private static IReadOnlyList<string> Cells(
         ModelRow r, ShelfStage stage, bool ctx, GlyphSet g) =>
