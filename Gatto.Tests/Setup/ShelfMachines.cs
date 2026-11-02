@@ -9,11 +9,11 @@ internal static class ShelfMachines
     private const ulong GiB = 1UL << 30;
 
     //an 8 GiB discrete card with 32 GiB of system memory
-    public static readonly HardwareClass Vega = HardwareClassifier.Classify(
+    public static readonly HardwareClass Card = HardwareClassifier.Classify(
         new HardwareSnapshot(32 * GiB, 32 * GiB, GpuKind.Discrete, 8 * GiB, "0x1002"));
 
     //a 128 GiB APU sharing its memory with the integrated GPU, from the captured probe report
-    public static readonly HardwareClass Apu8060S = HardwareClassifier.Classify(
+    public static readonly HardwareClass Apu1234X = HardwareClassifier.Classify(
         HwFixture.Fixture("unified-128gb-dynamic-83gb-heap.txt"));
 
     //a unified machine whose share gatto cannot use, so its card prices nothing

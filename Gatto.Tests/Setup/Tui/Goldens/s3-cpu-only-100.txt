@@ -6,7 +6,7 @@
   This machine: 32 GB of memory and no graphics driver gatto can use, so models run in system
   memory, about 8 GB of it.
 
-  cpu           AMD Ryzen 5 PRO 2500U
+  cpu           AMD Chips 5 PRO 1111U
   graphics      no graphics driver gatto can use was found
   memory        32 GB installed
   models        run from system memory: 8 GB, half kept free for Windows, browser and other apps

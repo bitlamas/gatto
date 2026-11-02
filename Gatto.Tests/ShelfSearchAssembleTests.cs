@@ -37,7 +37,7 @@ public class ShelfSearchAssembleTests
            .Conversion("google/" + name, "unsloth/" + name + "-GGUF", total, 1000, "gemma4",
                files: (name + "-Q4_K_M.gguf", gb));
 
-    //the qwen generations as the reach-back meets them: 3.8 runs only in memory on the Vega, 3.6 fits nowhere, 3.5 has two fast models
+    //the qwen generations as the reach-back meets them: 3.8 runs only in memory on the Card, 3.6 fits nowhere, 3.5 has two fast models
     private static FakeShelfHub QwenLadder()
     {
         var hub = new FakeShelfHub();
@@ -51,21 +51,21 @@ public class ShelfSearchAssembleTests
     }
 
     [Fact]
-    public async Task THE_LANDING_ON_THE_8060S()
+    public async Task THE_LANDING_ON_THE_1234X()
     {
         var hub = QwenLadder();
         GemmaModel(hub, "gemma-4-31B-it", 31 * B, 18);
-        var o = await Run(hub, Both, ShelfMachines.Apu8060S);
+        var o = await Run(hub, Both, ShelfMachines.Apu1234X);
         Assert.Equal(["gemma-4-31B-it", "Qwen3.8-27B"], o.Rows.Select(r => r.Model).Order());
         Assert.All(o.Rows, r => Assert.Equal(FitRegime.FitsGpu, r.Fit));
         Assert.DoesNotContain("Qwen3.6", Terms(hub));
     }
 
     [Fact]
-    public async Task THE_REACH_BACK_ON_THE_VEGA()
+    public async Task THE_REACH_BACK_ON_THE_CARD()
     {
         var hub = QwenLadder();
-        var o = await Run(hub, Qwen, ShelfMachines.Vega);
+        var o = await Run(hub, Qwen, ShelfMachines.Card);
         Assert.Equal(["Qwen3.5-9B", "Qwen3.8-27B"], o.Rows.Select(r => r.Model).Order());
         Assert.Equal(FitRegime.FitsRamOnly, o.Rows.Single(r => r.Model == "Qwen3.8-27B").Fit);
         Assert.Equal(["Qwen3.8", "Qwen3.8", "Qwen3.6", "Qwen3.6", "Qwen3.5", "Qwen3.5"], Terms(hub));
@@ -98,12 +98,12 @@ public class ShelfSearchAssembleTests
         HashSet<string> lit = ["mistral"];
 
         var hub = Hub();
-        var o = await Run(hub, lit, ShelfMachines.Apu8060S);
+        var o = await Run(hub, lit, ShelfMachines.Apu1234X);
         Assert.Equal(["Devstral-Small-2-24B-Instruct-2512", "Magistral-Small-2509", "Ministral-3-14B-Instruct-2512"],
             o.Rows.Select(r => r.Model).Order());
         Assert.Equal(16, Terms(hub).Count);   //two searches for each of the eight lines of the newest group
 
-        var lifted = await Run(Hub(), lit, ShelfMachines.Apu8060S, lifted: true);
+        var lifted = await Run(Hub(), lit, ShelfMachines.Apu1234X, lifted: true);
         Assert.Contains(lifted.Rows, r => r.Model == "Mistral-Small-3.2-24B-Instruct-2506");
     }
 
@@ -139,7 +139,7 @@ public class ShelfSearchAssembleTests
         hub.ReleaserGguf("google/gemma-4-31B-it-qat-q4_0-gguf", 31 * B, 50, "gemma4", ("gemma-4-31B_q4_0-it.gguf", 17));
         hub.Conversion("google/gemma-4-31B-it", "google/gemma-4-31B-it-qat-q4_0-gguf", 31 * B, 50, "gemma4",
             files: ("gemma-4-31B_q4_0-it.gguf", 17));
-        var o = await Run(hub, new HashSet<string> { "gemma" }, ShelfMachines.Apu8060S);
+        var o = await Run(hub, new HashSet<string> { "gemma" }, ShelfMachines.Apu1234X);
         var row = o.Rows.Single(r => r.Model == "gemma-4-31B-it");
         Assert.Equal("google", row.Publishers[0].Org);
         Assert.Single(row.Publishers[0].Repos);
@@ -154,7 +154,7 @@ public class ShelfSearchAssembleTests
             files: ("g-Q4_K_M.gguf", 18));
         hub.Conversion("google/gemma-4-31B-it", "mradermacher/gemma-4-31B-it-GGUF", 31 * B, 9000, "gemma4",
             files: ("g-Q4_K_M.gguf", 18));
-        var o = await Run(hub, new HashSet<string> { "gemma" }, ShelfMachines.Apu8060S);
+        var o = await Run(hub, new HashSet<string> { "gemma" }, ShelfMachines.Apu1234X);
         Assert.Equal(["unsloth"], o.Rows.Single().Publishers.Select(p => p.Org));
     }
 
@@ -165,7 +165,7 @@ public class ShelfSearchAssembleTests
         var hub = QwenLadder();
         using var cts = new CancellationTokenSource();
         hub.OnRequest = (kind, n) => { if (kind == "conversions") cts.Cancel(); };
-        var o = await Run(hub, Qwen, ShelfMachines.Apu8060S, ct: cts.Token);
+        var o = await Run(hub, Qwen, ShelfMachines.Apu1234X, ct: cts.Token);
         Assert.Empty(o.Rows);
         Assert.Equal(0, hub.Count("tree"));
     }
@@ -199,7 +199,7 @@ public class ShelfSearchAssembleTests
         QwenModel(hub, "Qwen3.8-Flash-Next", 30 * B, 11);
         hub.Header("unsloth/Qwen3.8-Flash-Next-GGUF", "Qwen3.8-Flash-Next-Q4_K_M.gguf",
             GgufTestBytes.WithStructure(expertCount: 128, expertUsed: 8, arch: "qwen35"));
-        var o = await Run(hub, Both, ShelfMachines.Vega);
+        var o = await Run(hub, Both, ShelfMachines.Card);
         Assert.Equal(["gemma-4-E4B-it", "gemma-4-E2B-it", "Qwen3.8-4B",
                       "Qwen3.8-35B-A3B", "gemma-4-26B-A4B-it", "Qwen3.8-27B", "Qwen3.8-Flash-Next"],
             o.Rows.Select(r => r.Model));
@@ -211,7 +211,7 @@ public class ShelfSearchAssembleTests
     {
         var hub = QwenLadder();
         hub.Source("Qwen/Qwen3.5-2B");
-        var o = await Run(hub, Qwen, ShelfMachines.Vega, lifted: true);
+        var o = await Run(hub, Qwen, ShelfMachines.Card, lifted: true);
         //one total, two models: the newer generation first
         Assert.Equal(["Qwen3.5-9B", "Qwen3-8B", "Qwen3.5-4B", "Qwen3.8-27B", "Qwen3.6-35B-A3B", "Qwen3.5-35B-A3B"],
             o.Rows.Select(r => r.Model));
@@ -225,7 +225,7 @@ public class ShelfSearchAssembleTests
     {
         var hub = QwenLadder();
         GemmaModel(hub, "gemma-4-31B-it", 31 * B, 18);
-        await Run(hub, Both, ShelfMachines.Vega, lifted: true);
+        await Run(hub, Both, ShelfMachines.Card, lifted: true);
         Assert.Equal(["gemma-4", "gemma-4", "Qwen3.8", "Qwen3.8", "gemma-3n", "gemma-3n", "Qwen3.6", "Qwen3.6",
                       "gemma-3", "gemma-3", "Qwen3.5", "Qwen3.5", "Qwen3", "Qwen3"], Terms(hub));
     }
@@ -236,11 +236,11 @@ public class ShelfSearchAssembleTests
     {
         var hub = QwenLadder();
         var memo = new HubTreeMemo();
-        var landing = await Run(hub, Qwen, ShelfMachines.Vega, memo: memo);
+        var landing = await Run(hub, Qwen, ShelfMachines.Card, memo: memo);
         var asked = Terms(hub).Count;
         var conversions = hub.Count("conversions");
 
-        await Run(hub, Qwen, ShelfMachines.Vega, lifted: true, memo: memo, landing: landing.Rows);
+        await Run(hub, Qwen, ShelfMachines.Card, lifted: true, memo: memo, landing: landing.Rows);
         var lifted = Terms(hub).Skip(asked).ToList();
         Assert.DoesNotContain("Qwen3.8", lifted);
         Assert.DoesNotContain("Qwen3.6", lifted);
@@ -249,7 +249,7 @@ public class ShelfSearchAssembleTests
         Assert.Equal(conversions + 1, hub.Count("conversions"));
 
         var fresh = QwenLadder();
-        await Run(fresh, Qwen, ShelfMachines.Vega, memo: new HubTreeMemo());
+        await Run(fresh, Qwen, ShelfMachines.Card, memo: new HubTreeMemo());
         Assert.Contains("Qwen3.8", Terms(fresh));
     }
 
@@ -261,11 +261,11 @@ public class ShelfSearchAssembleTests
         GemmaModel(hub, "gemma-4-31B-it", 31 * B, 18);
         GemmaModel(hub, "gemma-3n-E4B-it", 8 * B, 5);
         var memo = new HubTreeMemo();
-        var landing = await Run(hub, Both, ShelfMachines.Vega, memo: memo);
+        var landing = await Run(hub, Both, ShelfMachines.Card, memo: memo);
         Assert.Equal(["gemma-3n-E4B-it", "Qwen3.5-9B", "Qwen3.8-27B"], landing.Rows.Select(r => r.Model).Order());
 
         hub.RateRemaining = ShelfSearch.Reserve + 2;
-        var lifted = await Run(hub, Both, ShelfMachines.Vega, lifted: true, memo: memo, landing: landing.Rows);
+        var lifted = await Run(hub, Both, ShelfMachines.Card, lifted: true, memo: memo, landing: landing.Rows);
         Assert.True(lifted.Cut);
         Assert.All(landing.Rows, l => Assert.Contains(lifted.Rows, r => r.Model == l.Model));
     }
@@ -277,7 +277,7 @@ public class ShelfSearchAssembleTests
         var hub = QwenLadder();
         using var cts = new CancellationTokenSource();
         hub.OnRequest = (kind, n) => { if (kind == "tree" && n == 2) cts.Cancel(); };
-        var o = await Run(hub, Qwen, ShelfMachines.Vega, lifted: true, ct: cts.Token, concurrency: 1);
+        var o = await Run(hub, Qwen, ShelfMachines.Card, lifted: true, ct: cts.Token, concurrency: 1);
         Assert.True(o.Cut);
         Assert.Equal("dense", o.Rows.Single(r => r.Model == "Qwen3.8-27B").Structure);
     }
@@ -285,7 +285,7 @@ public class ShelfSearchAssembleTests
     [Fact]
     public async Task MORE_BEHIND_A()
     {
-        var older = await Run(QwenLadder(), Qwen, ShelfMachines.Apu8060S);
+        var older = await Run(QwenLadder(), Qwen, ShelfMachines.Apu1234X);
         Assert.True(older.MoreBehindA);
 
         var one = F with { Entries = new Dictionary<string, FamilyEntry>(F.Entries, StringComparer.OrdinalIgnoreCase)
@@ -294,13 +294,13 @@ public class ShelfSearchAssembleTests
         } };
         var hub = new FakeShelfHub();
         QwenModel(hub, "Qwen3.8-27B", 27 * B, 12);
-        Assert.False((await Run(hub, Qwen, ShelfMachines.Apu8060S, families: one)).MoreBehindA);
+        Assert.False((await Run(hub, Qwen, ShelfMachines.Apu1234X, families: one)).MoreBehindA);
 
         //a model of the newest generation where nothing fits is not shown, and a would show it as too big
         var tooBig = new FakeShelfHub();
         QwenModel(tooBig, "Qwen3.8-4B", 4 * B, 2.5);
         QwenModel(tooBig, "Qwen3.8-27B", 27 * B, 20);
-        var small = await Run(tooBig, Qwen, ShelfMachines.Vega, families: one);
+        var small = await Run(tooBig, Qwen, ShelfMachines.Card, families: one);
         Assert.Equal(["Qwen3.8-4B"], small.Rows.Select(r => r.Model));
         Assert.True(small.MoreBehindA);
 
@@ -308,7 +308,7 @@ public class ShelfSearchAssembleTests
         var under = new FakeShelfHub();
         under.Source("Qwen/Qwen3.8-27B").Conversion("Qwen/Qwen3.8-27B", "unsloth/Qwen3.8-27B-GGUF", 27 * B, 1, "qwen35",
             files: [("q-Q4_K_M.gguf", 12), ("q-IQ2_XXS.gguf", 7)]);
-        Assert.False((await Run(under, Qwen, ShelfMachines.Apu8060S, families: one)).MoreBehindA);
+        Assert.False((await Run(under, Qwen, ShelfMachines.Apu1234X, families: one)).MoreBehindA);
     }
 
     //under a the row's file keeps the floor: a model whose only fitting file is under it shows its smallest file above it as too big
@@ -325,11 +325,11 @@ public class ShelfSearchAssembleTests
         hub.Source("Qwen/Qwen3.8-1T").Conversion("Qwen/Qwen3.8-1T", "unsloth/Qwen3.8-1T-GGUF",
             1000 * B, 1, "qwen35", files: ("t-IQ2_XXS.gguf", 12));
 
-        var plain = await Run(hub, Qwen, ShelfMachines.Vega, families: one);
+        var plain = await Run(hub, Qwen, ShelfMachines.Card, families: one);
         Assert.Empty(plain.Rows);
         Assert.True(plain.MoreBehindA);
 
-        var o = await Run(hub, Qwen, ShelfMachines.Vega, lifted: true, families: one);
+        var o = await Run(hub, Qwen, ShelfMachines.Card, lifted: true, families: one);
         var row = Assert.Single(o.Rows);
         Assert.Equal("v-Q3_K_M.gguf", row.RowFile!.Path);
         Assert.Equal(FitRegime.DoesNotFit, row.Fit);
@@ -349,7 +349,7 @@ public class ShelfSearchAssembleTests
             GgufTestBytes.WithStructure(expertCount: 128, expertUsed: 8, sizeLabel: "30B-A3B", arch: "qwen35"));
         hub.Header("unsloth/Qwen3.8-Flash-Next-GGUF", "Qwen3.8-Flash-Next-Q4_K_M.gguf",
             GgufTestBytes.WithStructure(expertCount: 128, expertUsed: 8, arch: "qwen35"));
-        var o = await Run(hub, Qwen, ShelfMachines.Vega);
+        var o = await Run(hub, Qwen, ShelfMachines.Card);
         Assert.Equal(27 * B, o.Rows.Single(r => r.Model == "Qwen3.8-27B").Active);
         Assert.Equal(3 * B, o.Rows.Single(r => r.Model == "Qwen3.8-Coder").Active);
         Assert.Null(o.Rows.Single(r => r.Model == "Qwen3.8-Flash-Next").Active);
@@ -370,10 +370,10 @@ public class ShelfSearchAssembleTests
             QwenModel(hub, "Qwen3.8-4B", 4 * B, 2.5);
             return hub;
         }
-        var whole = await Run(Hub(), Qwen, ShelfMachines.Apu8060S);
+        var whole = await Run(Hub(), Qwen, ShelfMachines.Apu1234X);
         var hub = Hub();
         hub.Fail = u => Uri.UnescapeDataString(u).Contains("quantized:Qwen/Qwen3.8-4B");
-        var o = await Run(hub, Qwen, ShelfMachines.Apu8060S);
+        var o = await Run(hub, Qwen, ShelfMachines.Apu1234X);
         Assert.DoesNotContain(o.Rows, r => r.Model == "Qwen3.8-4B");
         Assert.Equal(whole.Rows.Where(r => r.Model != "Qwen3.8-4B").Select(Shape), o.Rows.Select(Shape));
         Assert.Null(o.Cause);
@@ -384,7 +384,7 @@ public class ShelfSearchAssembleTests
     {
         var hub = QwenLadder();
         hub.Fail = _ => true;
-        var o = await Run(hub, Qwen, ShelfMachines.Apu8060S);
+        var o = await Run(hub, Qwen, ShelfMachines.Apu1234X);
         Assert.Empty(o.Rows);
         Assert.Equal(HubSearchCause.HubFailed, o.Cause);
     }
@@ -399,7 +399,7 @@ public class ShelfSearchAssembleTests
         GemmaModel(hub, "gemma-4-E2B-it", 5 * B, 3);
         using var cts = new CancellationTokenSource();
         hub.OnRequest = (kind, n) => { if (kind == "tree" && n == 2) cts.Cancel(); };
-        var o = await Run(hub, new HashSet<string> { "gemma" }, ShelfMachines.Apu8060S, ct: cts.Token, concurrency: 1);
+        var o = await Run(hub, new HashSet<string> { "gemma" }, ShelfMachines.Apu1234X, ct: cts.Token, concurrency: 1);
         Assert.Single(o.Rows);
         Assert.True(o.Cut);
         //the deadline knows no reset, so the count row says the search stopped and never that Hugging Face asked gatto to wait
@@ -414,7 +414,7 @@ public class ShelfSearchAssembleTests
     {
         var hub = QwenLadder();
         hub.RateRemaining = 25;
-        var o = await Run(hub, Qwen, ShelfMachines.Vega, concurrency: 1);
+        var o = await Run(hub, Qwen, ShelfMachines.Card, concurrency: 1);
         Assert.True(hub.MinRemaining >= ShelfSearch.Reserve);
         Assert.Contains(o.Rows, r => r.Model == "Qwen3.8-27B");
         Assert.True(o.Cut);
@@ -429,7 +429,7 @@ public class ShelfSearchAssembleTests
         var hub = new FakeShelfHub();
         for (var i = 1; i <= 12; i++) GemmaModel(hub, $"gemma-4-{i}B-it", i * B, i * 0.6);
         hub.TooMany = ("tree", 10);
-        var o = await Run(hub, new HashSet<string> { "gemma" }, ShelfMachines.Apu8060S, concurrency: 1);
+        var o = await Run(hub, new HashSet<string> { "gemma" }, ShelfMachines.Apu1234X, concurrency: 1);
         Assert.Equal(9, o.Rows.Count);
         Assert.Equal(230, o.RateLimitedFor);
         Assert.True(o.Cut);
@@ -444,7 +444,7 @@ public class ShelfSearchAssembleTests
         for (var i = 1; i <= 3; i++) GemmaModel(hub, $"gemma-4-{i}B-it", i * B, i * 0.6);
         hub.TooMany = ("tree", 2);
         hub.TooManyBare = true;
-        var o = await Run(hub, new HashSet<string> { "gemma" }, ShelfMachines.Apu8060S, concurrency: 1);
+        var o = await Run(hub, new HashSet<string> { "gemma" }, ShelfMachines.Apu1234X, concurrency: 1);
         Assert.True(o.RateLimited);
         Assert.Null(o.RateLimitedFor);
         Assert.True(o.Cut);
@@ -465,19 +465,19 @@ public class ShelfSearchAssembleTests
         {
             var clock = new Clock(new DateTimeOffset(2026, 10, 7, 9, 0, 0, TimeSpan.Zero));
             var first = QwenLadder();
-            await Run(first, Qwen, ShelfMachines.Vega, lifted: true, memo: new HubTreeMemo(new HubReadStore(home)), clock: clock);
+            await Run(first, Qwen, ShelfMachines.Card, lifted: true, memo: new HubTreeMemo(new HubReadStore(home)), clock: clock);
             Assert.Equal(6, first.Count("conversions"));
 
             clock.Now = clock.Now.AddHours(1);
             var second = QwenLadder();
-            var o = await Run(second, Qwen, ShelfMachines.Vega, lifted: true, memo: new HubTreeMemo(new HubReadStore(home)), clock: clock);
+            var o = await Run(second, Qwen, ShelfMachines.Card, lifted: true, memo: new HubTreeMemo(new HubReadStore(home)), clock: clock);
             Assert.Equal(1, second.Count("conversions"));
             Assert.Contains(second.Urls, u => Uri.UnescapeDataString(u).Contains("quantized:Qwen/Qwen3.8-27B"));
             Assert.Equal(6, o.Rows.Count);
 
             clock.Now = clock.Now.AddDays(1);
             var third = QwenLadder();
-            await Run(third, Qwen, ShelfMachines.Vega, lifted: true, memo: new HubTreeMemo(new HubReadStore(home)), clock: clock);
+            await Run(third, Qwen, ShelfMachines.Card, lifted: true, memo: new HubTreeMemo(new HubReadStore(home)), clock: clock);
             Assert.Equal(6, third.Count("conversions"));
         }
         finally { Directory.Delete(home, recursive: true); }
@@ -492,13 +492,13 @@ public class ShelfSearchAssembleTests
         var hub = new FakeShelfHub().Untagged("bartowski/odd-27B-GGUF", 27 * B, 5, "qwen35",
             ("odd-IQ2_XXS.gguf", 8), ("odd-IQ2_M.gguf", 9));
         var (row, noWeights) = await HubSearch.LookupModelAsync(Client(hub), "bartowski/odd-27B-GGUF",
-            ShelfMachines.Apu8060S, 8192, CancellationToken.None);
+            ShelfMachines.Apu1234X, 8192, CancellationToken.None);
         Assert.False(noWeights);
         Assert.Null(row!.Publishers[0].Pick);
         Assert.Equal(2, row.Publishers[0].Repos[0].Quants.Count);
 
         //the lifted re-price takes only a file whose name holds its token, so the consent screen's file name names the quant
-        var lifted = ShelfSearch.Lifted(row, ShelfMachines.Apu8060S, 8192);
+        var lifted = ShelfSearch.Lifted(row, ShelfMachines.Apu1234X, 8192);
         Assert.NotNull(lifted.RowQuant);
         Assert.NotNull(QuantToken.Of(lifted.RowQuant!.FileName));
     }
@@ -510,14 +510,14 @@ public class ShelfSearchAssembleTests
         var tagged = new FakeShelfHub().Source("Qwen/Qwen3.5-9B")
             .Conversion("Qwen/Qwen3.5-9B", "unsloth/Qwen3.5-9B-GGUF", 9 * B, 5, "qwen35", files: ("q-Q4_K_M.gguf", 5.5));
         var (row, _) = await HubSearch.LookupModelAsync(Client(tagged), "unsloth/Qwen3.5-9B-GGUF",
-            ShelfMachines.Apu8060S, 8192, CancellationToken.None);
+            ShelfMachines.Apu1234X, 8192, CancellationToken.None);
         Assert.Equal("Qwen3.5-9B", row!.Model);
         Assert.Equal("dense", row.Structure);
 
         var untagged = new FakeShelfHub().Untagged("bartowski/ddh0_gemma-3-40b-GGUF", 40 * B, 5, "gemma3",
             ("g-Q6_K.gguf", 30.4));
         var (named, _) = await HubSearch.LookupModelAsync(Client(untagged), "bartowski/ddh0_gemma-3-40b-GGUF",
-            ShelfMachines.Apu8060S, 8192, CancellationToken.None);
+            ShelfMachines.Apu1234X, 8192, CancellationToken.None);
         Assert.Equal("ddh0_gemma-3-40b", named!.Model);
     }
 
@@ -529,13 +529,13 @@ public class ShelfSearchAssembleTests
             .Conversion("Qwen/Qwen3.6-27B", "prism-ml/Bonsai-27B-gguf", 27 * B, 5, "qwen35",
                 files: ("Bonsai-27B-Q1_0.gguf", 3.8));
         var (row, _) = await HubSearch.LookupModelAsync(Client(hub), "prism-ml/Bonsai-27B-gguf",
-            ShelfMachines.Apu8060S, 8192, CancellationToken.None);
+            ShelfMachines.Apu1234X, 8192, CancellationToken.None);
         Assert.Equal("Bonsai-27B", row!.Model);
 
         var browse = QwenLadder();
         browse.Conversion("Qwen/Qwen3.8-27B", "bartowski/someone_Bonsai-27B-GGUF", 27 * B, 500, "qwen35",
             files: ("Bonsai-27B-Q4_K_M.gguf", 12));
-        var o = await Run(browse, Qwen, ShelfMachines.Apu8060S);
+        var o = await Run(browse, Qwen, ShelfMachines.Apu1234X);
         Assert.DoesNotContain(o.Rows, r => r.Model.Contains("Bonsai", StringComparison.Ordinal));
         Assert.DoesNotContain(o.Rows.Single(r => r.Model == "Qwen3.8-27B").Publishers, p => p.Org == "bartowski");
     }
@@ -546,7 +546,7 @@ public class ShelfSearchAssembleTests
     {
         var hub = new FakeShelfHub().Untagged("bartowski/ddh0_gemma-3-40b-GGUF", 40 * B, 5, "gemma3", ("g-Q6_K.gguf", 30.4));
         var o = await HubSearch.TypedSearchAsync(Client(hub), UploaderAllowlist.Load(), F, "gemma-3",
-            ShelfMachines.Apu8060S, 8192, CancellationToken.None);
+            ShelfMachines.Apu1234X, 8192, CancellationToken.None);
         Assert.Equal(["ddh0_gemma-3-40b"], o.Rows.Select(r => r.Model));
     }
 
@@ -560,11 +560,11 @@ public class ShelfSearchAssembleTests
             .Untagged("unsloth/gemma-4-31B-it-GGUF", 31 * B, 30, "gemma4", ("c-Q4_K_M.gguf", 18));
 
         var one = await HubSearch.TypedSearchAsync(Client(Hub()), UploaderAllowlist.Load(), F, "gemma-4",
-            ShelfMachines.Apu8060S, 8192, CancellationToken.None);
+            ShelfMachines.Apu1234X, 8192, CancellationToken.None);
         Assert.Equal(["Gemma4-31b-Gembrain-Equinox", "gemma-4-31B-it"], one.Rows.Select(r => r.Model).Order(StringComparer.Ordinal));
 
         var two = await HubSearch.TypedSearchAsync(Client(Hub()), UploaderAllowlist.Load(), F, "gemma-4 it",
-            ShelfMachines.Apu8060S, 8192, CancellationToken.None);
+            ShelfMachines.Apu1234X, 8192, CancellationToken.None);
         Assert.Equal(["gemma-4-31B-it"], two.Rows.Select(r => r.Model));
     }
 
@@ -582,7 +582,7 @@ public class ShelfSearchAssembleTests
     {
         var hub = new FakeShelfHub().Untagged("unsloth/Qwen3.5-9B-GGUF", 9 * B, 5, "qwen35", ("q-Q4_K_M.gguf", 5.5));
         var (row, _) = await HubSearch.LookupModelAsync(Client(hub), "unsloth/Qwen3.5-9B-GGUF",
-            ShelfMachines.Apu8060S, 8192, CancellationToken.None);
+            ShelfMachines.Apu1234X, 8192, CancellationToken.None);
         var publisher = Assert.Single(row!.Publishers);
         Assert.Single(publisher.Repos);
         Assert.Equal("q-Q4_K_M.gguf", row.RowFile!.Path);
@@ -597,12 +597,12 @@ public class ShelfSearchAssembleTests
             .Untagged("unsloth/huge-heretic-GGUF", 270 * B, 45, "qwen35", ("h-IQ1_S.gguf", 8), ("h-Q3_K_M.gguf", 120))
             .Untagged("unsloth/fine-heretic-GGUF", 9 * B, 40, "qwen35", ("f-Q4_K_M.gguf", 5.5));
         var plain = await HubSearch.TypedSearchAsync(Client(Hub()), UploaderAllowlist.Load(), F, "heretic",
-            ShelfMachines.Apu8060S, 8192, CancellationToken.None);
+            ShelfMachines.Apu1234X, 8192, CancellationToken.None);
         Assert.Equal(["fine-heretic"], plain.Rows.Select(r => r.Model));
         Assert.True(plain.MoreBehindA);
 
         var lifted = await HubSearch.TypedSearchAsync(Client(Hub()), UploaderAllowlist.Load(), F, "heretic",
-            ShelfMachines.Apu8060S, 8192, CancellationToken.None, lifted: true);
+            ShelfMachines.Apu1234X, 8192, CancellationToken.None, lifted: true);
         Assert.Equal(["tiny-heretic", "fine-heretic", "huge-heretic"], lifted.Rows.Select(r => r.Model));
         Assert.Equal("t-IQ2_XXS.gguf", lifted.Rows[0].RowFile!.Path);
         Assert.Equal("h-Q3_K_M.gguf", lifted.Rows[2].RowFile!.Path);
@@ -617,7 +617,7 @@ public class ShelfSearchAssembleTests
             .Untagged("unsloth/tiny-heretic-GGUF", 27 * B, 50, "qwen35", ("t-IQ2_XXS.gguf", 8))
             .Untagged("unsloth/fine-heretic-GGUF", 9 * B, 40, "qwen35", ("f-Q4_K_M.gguf", 5.5));
         var plain = await HubSearch.TypedSearchAsync(Client(Hub()), UploaderAllowlist.Load(), F, "heretic",
-            ShelfMachines.Apu8060S, 8192, CancellationToken.None);
+            ShelfMachines.Apu1234X, 8192, CancellationToken.None);
         Assert.Equal(["fine-heretic"], plain.Rows.Select(r => r.Model));
         Assert.True(plain.MoreBehindA);
     }
@@ -633,7 +633,7 @@ public class ShelfSearchAssembleTests
                 files: ("b-Q4_K_M.gguf", 18))
             .Untagged("lmstudio-community/Nemo-Light-30B-A3B-GGUF", 30 * B, 200, "qwen35moe", ("l-Q4_K_M.gguf", 18));
         var o = await HubSearch.TypedSearchAsync(Client(hub), UploaderAllowlist.Load(), F, "nemo-light",
-            ShelfMachines.Apu8060S, 8192, CancellationToken.None);
+            ShelfMachines.Apu1234X, 8192, CancellationToken.None);
         var row = Assert.Single(o.Rows);
         Assert.Equal("Nemo-Light-30B-A3B", row.Model);
         Assert.Equal(["bartowski", "lmstudio-community", "unsloth"], row.Publishers.Select(p => p.Org).Order(StringComparer.Ordinal));
@@ -648,7 +648,7 @@ public class ShelfSearchAssembleTests
         GemmaModel(hub, "gemma-4-E4B-it", 8 * B, 5);
         using var cts = new CancellationTokenSource();
         hub.OnRequest = (kind, n) => { if (kind == "file" && n == 1) cts.Cancel(); };
-        var o = await Run(hub, new HashSet<string> { "gemma" }, ShelfMachines.Apu8060S, ct: cts.Token, concurrency: 1);
+        var o = await Run(hub, new HashSet<string> { "gemma" }, ShelfMachines.Apu1234X, ct: cts.Token, concurrency: 1);
 
         Assert.True(o.Cut);
         Assert.Equal(2, o.Rows.Count);
@@ -665,7 +665,7 @@ public class ShelfSearchAssembleTests
         using var caller = new CancellationTokenSource();
         hub.OnRequest = (kind, n) => { if (kind == "file" && n == 1) caller.Cancel(); };
         var o = await ShelfSearch.AssembleAsync(Client(hub), UploaderAllowlist.Load(), F,
-            new HashSet<string> { "gemma" }, ShelfMachines.Apu8060S, 8192, false, caller.Token, concurrency: 1,
+            new HashSet<string> { "gemma" }, ShelfMachines.Apu1234X, 8192, false, caller.Token, concurrency: 1,
             caller: caller.Token);
 
         Assert.True(o.Cut);
@@ -678,7 +678,7 @@ public class ShelfSearchAssembleTests
         using var typedCaller = new CancellationTokenSource();
         typedHub.OnRequest = (kind, n) => { if (kind == "file" && n == 1) typedCaller.Cancel(); };
         var typed = await HubSearch.TypedSearchAsync(Client(typedHub), UploaderAllowlist.Load(), F, "heretic",
-            ShelfMachines.Apu8060S, 8192, typedCaller.Token, caller: typedCaller.Token);
+            ShelfMachines.Apu1234X, 8192, typedCaller.Token, caller: typedCaller.Token);
         Assert.Contains(typed.Rows, r => r.Structure is null);
     }
 
@@ -691,7 +691,7 @@ public class ShelfSearchAssembleTests
         using var cts = new CancellationTokenSource();
         hub.OnRequest = (kind, n) => { if (kind == "file" && n == 1) cts.Cancel(); };
         var o = await HubSearch.TypedSearchAsync(Client(hub), UploaderAllowlist.Load(), F, "heretic",
-            ShelfMachines.Apu8060S, 8192, cts.Token);
+            ShelfMachines.Apu1234X, 8192, cts.Token);
 
         Assert.True(o.Cut);
         Assert.All(o.Rows, r => Assert.Equal("dense", r.Structure));
@@ -703,7 +703,7 @@ public class ShelfSearchAssembleTests
     {
         var hub = new FakeShelfHub().Untagged("unsloth/fine-heretic-GGUF", 9 * B, 40, "qwen35", ("f-Q4_K_M.gguf", 5.5));
         var o = await HubSearch.TypedSearchAsync(Client(hub), UploaderAllowlist.Load(), F, "heretic",
-            ShelfMachines.Apu8060S, 8192, CancellationToken.None);
+            ShelfMachines.Apu1234X, 8192, CancellationToken.None);
         Assert.Equal("dense", o.Rows.Single().Structure);
         Assert.Equal(1, hub.Count("file"));
     }
@@ -720,7 +720,7 @@ public class ShelfSearchAssembleTests
             .Untagged("bartowski/gemma-heretic-GGUF", 4 * B, 100, "gemma4", ("g-Q4_K_M.gguf", 2.5))
             .Pad("bartowski", "heretic", 998);
         var o = await HubSearch.TypedSearchAsync(Client(hub), UploaderAllowlist.Load(), F, "heretic",
-            ShelfMachines.Apu8060S, 8192, CancellationToken.None);
+            ShelfMachines.Apu1234X, 8192, CancellationToken.None);
         var heretic = o.Rows.Single(r => r.Model == "Qwen3.5-9B-heretic");
         Assert.Equal(["unsloth", "bartowski"], heretic.Publishers.Select(p => p.Org));
         Assert.Contains(o.Rows, r => r.Model == "gemma-heretic");

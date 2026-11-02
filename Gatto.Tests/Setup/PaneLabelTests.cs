@@ -14,7 +14,7 @@ public class PaneLabelTests
             [new PublisherOffer("mradermacher", repos, null, null, null, 10)], 0, null, FitRegime.DoesNotFit);
 
     private static IReadOnlyList<string> Labels(ModelRow row) =>
-        [.. SetupFlow.PublishersOf(row, ShelfMachines.Vega)![0].Files.OrderBy(f => f.Bytes).Select(f => f.Label)];
+        [.. SetupFlow.PublishersOf(row, ShelfMachines.Card)![0].Files.OrderBy(f => f.Bytes).Select(f => f.Label)];
 
     [Fact]
     public void A_LABEL_TWO_REPOS_SHARE_CARRIES_WHAT_THE_OTHER_REPO_LACKS()

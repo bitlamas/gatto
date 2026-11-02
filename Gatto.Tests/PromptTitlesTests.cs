@@ -246,13 +246,13 @@ public class PromptTitlesTests
     public void WebSearch_ProviderAndQuery()
     {
         var (title, question, detail) = For(
-            new PermissionRequest("web_search", """{"query":"strix halo vulkan crash","count":8}""",
+            new PermissionRequest("web_search", """{"query":"test chips vulkan crash","count":8}""",
                 "web_search"),
             provider: "ddg");
 
         Assert.Equal("Web search using ddg", title);
         Assert.Equal("Do you want to proceed?", question);
-        Assert.Equal(new[] { "\"strix halo vulkan crash\" · 8 results" }, detail);
+        Assert.Equal(new[] { "\"test chips vulkan crash\" · 8 results" }, detail);
     }
 
     [Fact]

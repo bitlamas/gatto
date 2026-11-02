@@ -10,8 +10,8 @@ public class HardwareReadingTests
 {
     private static ProbeOutcome Reading() => new(
         new HardwareSnapshot(137438953472, 33982058496, GpuKind.Integrated, 103079215104, "1002"), "ok",
-        CpuName: "AMD RYZEN AI MAX+ 395 w/ Radeon 8060S          ",
-        GpuName: "AMD Radeon(TM) 8060S Graphics");
+        CpuName: "AMD CHIPS TEST APU 99 w/ Tester 1234X          ",
+        GpuName: "AMD Tester(TM) 1234X Graphics");
 
     [Fact]
     public void THE_MACHINE_IS_ASKED_EXACTLY_ONCE_HOWEVER_OFTEN_THE_FLOW_ASKS()
@@ -56,8 +56,8 @@ public class HardwareReadingTests
 
         var names = probes.HardwareNames();
 
-        Assert.Equal("AMD RYZEN AI MAX+ 395", names.Cpu);          //cleaning trims the padding and cuts the companion clause.
-        Assert.Equal("AMD Radeon 8060S Graphics", names.Gpu);      //cleaning removes the trademark mark and nothing else.
+        Assert.Equal("AMD CHIPS TEST APU 99", names.Cpu);          //cleaning trims the padding and cuts the companion clause.
+        Assert.Equal("AMD Tester 1234X Graphics", names.Gpu);      //cleaning removes the trademark mark and nothing else.
         Assert.Equal(103079215104UL, probes.Hardware()!.GraphicsMemoryBytes);
     }
 }

@@ -16,7 +16,7 @@ public class MachineTests
     private static HardwareSnapshot Unified96 => Gatto.Tests.Setup.RenderedWalkTests.Unified96;
 
     //a real machine's own words, don't tidy them, that would need a table of hardware words the naming rules refuse
-    private static readonly HardwareNames Names = new("AMD RYZEN AI MAX+ 395", "AMD Radeon 8060S Graphics");
+    private static readonly HardwareNames Names = new("AMD CHIPS TEST APU 99", "AMD Tester 1234X Graphics");
 
     private static SetupFlow Flow(HardwareSnapshot? hw, HardwareNames names) =>
         new(new FakeSetupProbes { Llama = null, Snapshot = hw, Names = names });
@@ -62,19 +62,19 @@ public class MachineTests
     [Fact]
     public void THE_DISCRETE_CARD_MATCHES_ITS_GOLDEN() =>
         Golden.AssertEquals("s3", "discrete-8-done", 100,
-            WalkRender.Choice(Machine(Discrete8, new HardwareNames("AMD Ryzen 7 6800H", "AMD Radeon RX 7600M")), 100).Rows);
+            WalkRender.Choice(Machine(Discrete8, new HardwareNames("AMD Chips 7 1111H", "AMD Tester TX 1111M")), 100).Rows);
 
     [Fact]
     public void THE_CARVEOUT_MACHINE_MATCHES_ITS_GOLDEN() =>
         Golden.AssertEquals("s3", "carveout-1-done", 100,
-            WalkRender.Choice(Machine(Carveout1, new HardwareNames("AMD Ryzen 5 PRO 2500U", "AMD Radeon Vega 8")), 100).Rows);
+            WalkRender.Choice(Machine(Carveout1, new HardwareNames("AMD Chips 5 PRO 1111U", "AMD Tester Card 8")), 100).Rows);
 
     //no usable graphics device, so the screen says so and prices the model against system memory
     [Fact]
     public void THE_CPU_ONLY_MACHINE_MATCHES_ITS_GOLDEN() =>
         Golden.AssertEquals("s3", "cpu-only", 100,
             WalkRender.Choice(Machine(new HardwareSnapshot(32 * Gib, 16 * Gib, GpuKind.None, null),
-                new HardwareNames("AMD Ryzen 5 PRO 2500U", null)), 100).Rows);
+                new HardwareNames("AMD Chips 5 PRO 1111U", null)), 100).Rows);
 
     //a real capture of a 128 GB machine with a dynamic share
     [Fact]

@@ -9,12 +9,11 @@ public class HardwareProbeTests
     private const string DynamicShare = """
         installed=137438953472
         visible=136524402688
-        cpu=AMD RYZEN AI MAX+ 395 w/ Radeon 8060S          
+        cpu=AMD CHIPS TEST APU 99 w/ Tester 1234X          
         vulkan=ok physical_devices=1
-        device_0_name=AMD Radeon(TM) 8060S Graphics
+        device_0_name=AMD Tester(TM) 1234X Graphics
         device_0_type=INTEGRATED_GPU (1)
-        device_0_vendor=0x1002 device_id=0x1586
-        device_0_api=1.4.349 driver_raw=8389003
+        device_0_vendor=0x1002 device_id=0x1234
         device_0_heap_count=2 type_count=16
         device_0_heap_0=44321800192 flags=0x00 -
         device_0_heap_1=88643731456 flags=0x03 DEVICE_LOCAL|MULTI_INSTANCE
@@ -29,7 +28,7 @@ public class HardwareProbeTests
         Assert.Equal(GpuKind.Integrated, r.Snapshot!.GraphicsKind);
         Assert.Equal(88_643_731_456UL, r.Snapshot.GraphicsMemoryBytes);   //heap 1 wins because bit 0 of its flags is set, which an equality test on 0x01 would miss
         Assert.Equal("1002", r.Snapshot.GraphicsVendorId);
-        Assert.Equal("AMD Radeon(TM) 8060S Graphics", r.GpuName);
+        Assert.Equal("AMD Tester(TM) 1234X Graphics", r.GpuName);
         Assert.Equal(137_438_953_472UL, r.Snapshot.InstalledBytes);
     }
 
@@ -71,14 +70,14 @@ public class HardwareProbeTests
         const string laptop = """
             visible=34359738368
             vulkan=ok physical_devices=2
-            device_0_name=Intel(R) Iris(R) Xe Graphics
+            device_0_name=Intel(R) Tsts(R) Xe Graphics
             device_0_type=INTEGRATED_GPU (1)
             device_0_vendor=0x8086 device_id=0x9A49
             device_0_heap_count=1 type_count=1
             device_0_heap_0=16106127360 flags=0x01 DEVICE_LOCAL
-            device_1_name=NVIDIA GeForce RTX 4060 Laptop GPU
+            device_1_name=NVIDIA TestGPU TST 1111 Laptop GPU
             device_1_type=DISCRETE_GPU (2)
-            device_1_vendor=0x10DE device_id=0x28E0
+            device_1_vendor=0x10DE device_id=0x2223
             device_1_heap_count=3 type_count=5
             device_1_heap_0=8589934592 flags=0x01 DEVICE_LOCAL
             device_1_heap_1=17179869184 flags=0x00 -
@@ -90,7 +89,7 @@ public class HardwareProbeTests
         //assert the sum as well, a one-heap fixture can't tell the largest heap from the sum
         Assert.Equal(8_858_370_048UL, r.Snapshot.GraphicsLocalTotalBytes);
         Assert.Equal("10DE", r.Snapshot.GraphicsVendorId);
-        Assert.Equal("NVIDIA GeForce RTX 4060 Laptop GPU", r.GpuName);
+        Assert.Equal("NVIDIA TestGPU TST 1111 Laptop GPU", r.GpuName);
         Assert.Null(r.ServeOnlyGpu);   //the integrated budget is larger but under the floor, so llama.cpp's own pick stands and nothing is pinned
     }
 
@@ -99,15 +98,15 @@ public class HardwareProbeTests
         installed=34359738368
         visible=34226159616
         vulkan=ok physical_devices=2
-        device_0_name=NVIDIA GeForce GTX 1650
+        device_0_name=NVIDIA TestGPU TGX 1113
         device_0_type=DISCRETE_GPU (2)
-        device_0_vendor=0x10DE device_id=0x1F91
+        device_0_vendor=0x10DE device_id=0x2222
         device_0_heap_count=2 type_count=4
         device_0_heap_0=4294967296 flags=0x01 DEVICE_LOCAL
         device_0_heap_1=17113079808 flags=0x00 -
-        device_1_name=Intel(R) UHD Graphics 630
+        device_1_name=Intel(R) TST Graphics 112
         device_1_type=INTEGRATED_GPU (1)
-        device_1_vendor=0x8086 device_id=0x3E9B
+        device_1_vendor=0x8086 device_id=0x2224
         device_1_heap_count=1 type_count=2
         device_1_heap_0=140718414050495 flags=0x01 DEVICE_LOCAL
         """;
@@ -119,7 +118,7 @@ public class HardwareProbeTests
 
         Assert.Equal(GpuKind.Discrete, r.Snapshot!.GraphicsKind);
         Assert.Equal(4_294_967_296UL, r.Snapshot.GraphicsMemoryBytes);
-        Assert.Equal("NVIDIA GeForce GTX 1650", r.GpuName);
+        Assert.Equal("NVIDIA TestGPU TGX 1113", r.GpuName);
         Assert.Null(r.ServeOnlyGpu);
         //the chip alone, with its only heap discarded, has no usable heap and drops out
         Assert.Equal(GpuKind.None, HardwareProbe.ParseReport(ChipOnly(HeapAboveInstalled)).Snapshot!.GraphicsKind);
@@ -133,7 +132,7 @@ public class HardwareProbeTests
         var r = HardwareProbe.ParseReport(report);
 
         Assert.Equal(GpuKind.Discrete, r.Snapshot!.GraphicsKind);
-        Assert.Equal("NVIDIA GeForce GTX 1650", r.GpuName);
+        Assert.Equal("NVIDIA TestGPU TGX 1113", r.GpuName);
         Assert.Null(r.ServeOnlyGpu);   //the chip's 16 GiB stays under the floor, so the card is picked as it always was
         Assert.Equal(17_179_869_184UL, HardwareProbe.ParseReport(ChipOnly(report)).Snapshot!.GraphicsMemoryBytes);
     }
@@ -148,7 +147,7 @@ public class HardwareProbeTests
         var r = HardwareProbe.ParseReport(report);
 
         Assert.Equal(GpuKind.Discrete, r.Snapshot!.GraphicsKind);
-        Assert.Equal("NVIDIA GeForce GTX 1650", r.GpuName);
+        Assert.Equal("NVIDIA TestGPU TGX 1113", r.GpuName);
         Assert.Null(r.ServeOnlyGpu);
         Assert.Equal(140_718_414_050_495UL, HardwareProbe.ParseReport(ChipOnly(report)).Snapshot!.GraphicsMemoryBytes);
     }
@@ -163,13 +162,13 @@ public class HardwareProbeTests
     {
         var r = HardwareProbe.ParseReport(
             File.ReadAllText(Path.Combine(AppContext.BaseDirectory, "Fixtures", "hwprobe",
-                "unified-128gb-dynamic-plus-vega-egpu.txt")));
+                "unified-128gb-dynamic-plus-card-egpu.txt")));
 
         Assert.Equal(GpuKind.Integrated, r.Snapshot!.GraphicsKind);
         Assert.Equal(88_643_731_456UL, r.Snapshot.GraphicsMemoryBytes);
         Assert.Null(r.Snapshot.MoreDiscreteHeaps);
-        Assert.Equal("AMD Radeon(TM) 8060S Graphics", r.GpuName);
-        Assert.Equal("AMD Radeon(TM) 8060S Graphics", r.ServeOnlyGpu);
+        Assert.Equal("AMD Tester(TM) 1234X Graphics", r.GpuName);
+        Assert.Equal("AMD Tester(TM) 1234X Graphics", r.ServeOnlyGpu);
 
         var c = HardwareClassifier.Classify(r.Snapshot);
         Assert.Equal(MachineShape.UnifiedWithShare, c.Shape);
@@ -208,7 +207,7 @@ public class HardwareProbeTests
         Assert.Equal(805_306_368UL, r.Snapshot.GraphicsMemoryBytes);        //the larger heap of the split carve-out.
         Assert.Equal(1_073_741_824UL, r.Snapshot.GraphicsLocalTotalBytes);  //the sum of both device-local heaps.
         Assert.Equal("1002", r.Snapshot.GraphicsVendorId);
-        Assert.Equal("AMD Radeon(TM) Vega 8 Graphics", r.GpuName);
+        Assert.Equal("AMD Tester(TM) Card 8 Graphics", r.GpuName);
     }
 
     //one device-local heap of exactly half the visible memory, so an integrated driver takes its heap from memory the operating system can see
@@ -234,9 +233,9 @@ public class HardwareProbeTests
     {
         var partial = "visible=34359738368\n"
             + "vulkan=ok physical_devices=2\n"
-            + "device_0_name=NVIDIA GeForce RTX 4060 Laptop GPU\n"
+            + "device_0_name=NVIDIA TestGPU TST 1111 Laptop GPU\n"
             + "device_0_type=DISCRETE_GPU (2)\n"
-            + "device_0_vendor=0x10DE device_id=0x28E0\n"
+            + "device_0_vendor=0x10DE device_id=0x2223\n"
             + "device_0_heap_count=1 type_count=1\n"
             + "device_0_heap_0=8589934592 flags=0x01 DEVICE_LOCAL\n"
             + failureLine + "\n";
@@ -261,7 +260,7 @@ public class HardwareProbeTests
             + "vulkan=ok physical_devices=1\n"
             + "device_0_name=a card\n"
             + "device_0_type=DISCRETE_GPU (2)\n"
-            + "device_0_vendor=" + printed + " device_id=0x28E0\n"
+            + "device_0_vendor=" + printed + " device_id=0x2223\n"
             + "device_0_heap_count=1 type_count=1\n"
             + "device_0_heap_0=8589934592 flags=0x01 DEVICE_LOCAL\n";
 
@@ -346,8 +345,8 @@ public class HardwareProbeTests
     public void THE_CPU_NAME_COMES_OFF_ITS_OWN_LINE_AND_IS_ABSENT_WHEN_UNREAD()
     {
         //the parser keeps the cpu name's own spacing, since trimming is a display choice with its own tests
-        var read = HardwareProbe.ParseReport("visible=1\ncpu=AMD RYZEN AI MAX+ 395 w/ Radeon 8060S\n");
-        Assert.Equal("AMD RYZEN AI MAX+ 395 w/ Radeon 8060S", read.CpuName);
+        var read = HardwareProbe.ParseReport("visible=1\ncpu=AMD CHIPS TEST APU 99 w/ Tester 1234X\n");
+        Assert.Equal("AMD CHIPS TEST APU 99 w/ Tester 1234X", read.CpuName);
 
         Assert.Null(HardwareProbe.ParseReport("visible=1\nerror_cpu=RPC server unavailable\n").CpuName);
     }
@@ -357,9 +356,9 @@ public class HardwareProbeTests
     public void NO_NAME_REACHES_THE_SNAPSHOT()
     {
         var r = HardwareProbe.ParseReport(
-            "visible=1\ncpu=AMD RYZEN AI MAX+ 395\nvulkan=ok physical_devices=1\n"
-            + "device_0_name=AMD Radeon(TM) 8060S Graphics\ndevice_0_type=INTEGRATED_GPU (1)\n"
-            + "device_0_vendor=0x1002 device_id=0x1586\ndevice_0_heap_count=1 type_count=1\n"
+            "visible=1\ncpu=AMD CHIPS TEST APU 99\nvulkan=ok physical_devices=1\n"
+            + "device_0_name=AMD Tester(TM) 1234X Graphics\ndevice_0_type=INTEGRATED_GPU (1)\n"
+            + "device_0_vendor=0x1002 device_id=0x1234\ndevice_0_heap_count=1 type_count=1\n"
             + "device_0_heap_0=1073741824 flags=0x01 DEVICE_LOCAL\n");
 
         Assert.NotNull(r.CpuName);                             //the names must be read, so the check below is not vacuous.

@@ -84,7 +84,7 @@ public class AcceptanceTests
 
     //the GPU the fit counted rides the model intent to the writer, which pins the profile to it
     [Theory]
-    [InlineData("AMD Radeon(TM) 8060S Graphics")]
+    [InlineData("AMD Tester(TM) 1234X Graphics")]
     [InlineData(null)]
     public void THE_MODEL_INTENT_CARRIES_THE_GPU_THE_FIT_COUNTED(string? gpu)
     {

@@ -33,7 +33,7 @@ public sealed class StreamedTensorFitTests : IDisposable
         BlockCount: 48, HeadCount: 32, HeadCountKv: 2, EmbeddingLength: 4096, KeyLength: 256, ValueLength: 256,
         ChatTemplate: null, EmbeddingLengthPerLayerInput: perLayerInput);
 
-    //the 8060S's visible memory, so the pool a streamed table shares with the card is the measured machine's
+    //the 1234X's visible memory, so the pool a streamed table shares with the card is the measured machine's
     private static HardwareClass Unified(ulong gpuBudget) => new(
         MemoryTopology.Unified, ShareKind.Dynamic, gpuBudget, gpuBudget,
         new HardwareSnapshot(null, 136_524_402_688UL, GpuKind.Integrated, null), 0, BudgetBound.Heap);

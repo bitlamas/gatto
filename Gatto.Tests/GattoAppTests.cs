@@ -525,20 +525,20 @@ public class GattoAppTests : IDisposable
     {
         await using var server = new FakeOpenAiServer();
         UseHome();
-        WriteConfig($$$"""{"endpoints":{"local":{"base_url":"http://127.0.0.1:1"},"vega":{"base_url":"{{{server.BaseUrl}}}"}},"default_endpoint":"local"}""");
+        WriteConfig($$$"""{"endpoints":{"local":{"base_url":"http://127.0.0.1:1"},"card":{"base_url":"{{{server.BaseUrl}}}"}},"default_endpoint":"local"}""");
         WriteModel("test-model", port: 1, profileExtra: "\"auto_serve\":true,\"sampling\":{\"temperature\":0.6}");
-        File.WriteAllText(Path.Combine(_home, "models", "test-model", "system-append.md"), "VEGA-APPEND");
+        File.WriteAllText(Path.Combine(_home, "models", "test-model", "system-append.md"), "CARD-APPEND");
         WriteRole("generalist", "{}");
         server.Enqueue(Completion("ok"));
 
         Console.SetOut(new StringWriter());
-        var exit = await GattoApp.RunAsync(new[] { "-e", "vega", "-m", "test-model", "-p", "hi" });
+        var exit = await GattoApp.RunAsync(new[] { "-e", "card", "-m", "test-model", "-p", "hi" });
 
         Assert.Equal(0, exit);
         var body = server.LastRequestBody!.Value;
         Assert.Equal("test-model", body.GetProperty("model").GetString());
         Assert.Equal(0.6, body.GetProperty("temperature").GetDouble(), 3);
-        Assert.Contains("VEGA-APPEND", body.GetProperty("messages")[0].GetProperty("content").GetString());
+        Assert.Contains("CARD-APPEND", body.GetProperty("messages")[0].GetProperty("content").GetString());
     }
 
     //a cloud id is no folder name, so it finds no folder even when one could be read at that path, and goes out verbatim
@@ -547,7 +547,7 @@ public class GattoAppTests : IDisposable
     {
         await using var server = new FakeOpenAiServer();
         UseHome();
-        WriteConfig($$$"""{"endpoints":{"vega":{"base_url":"{{{server.BaseUrl}}}"}},"default_endpoint":"vega"}""");
+        WriteConfig($$$"""{"endpoints":{"card":{"base_url":"{{{server.BaseUrl}}}"}},"default_endpoint":"card"}""");
         WriteModel(Path.Combine("openai", "gpt-4.1"), port: 1, profileExtra: "\"sampling\":{\"temperature\":0.6}");
         WriteRole("generalist", "{}");
         server.Enqueue(Completion("ok"));

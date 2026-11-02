@@ -56,7 +56,7 @@ public sealed class HubTreeStoreTests : IDisposable
 
     private Task<ShelfOutcome> Land(FakeShelfHub hub) =>
         ShelfSearch.AssembleAsync(new HubClient(new HttpClient(hub) { Timeout = Timeout.InfiniteTimeSpan }),
-            UploaderAllowlist.Load(), Families.Load(), new HashSet<string> { "qwen" }, ShelfMachines.Apu8060S, 8192,
+            UploaderAllowlist.Load(), Families.Load(), new HashSet<string> { "qwen" }, ShelfMachines.Apu1234X, 8192,
             lifted: false, CancellationToken.None, memo: new HubTreeMemo(new HubReadStore(_home)));
 
     [Fact]
@@ -79,7 +79,7 @@ public sealed class HubTreeStoreTests : IDisposable
 
     private Task<ShelfOutcome> Typed(FakeShelfHub hub) =>
         HubSearch.TypedSearchAsync(new HubClient(new HttpClient(hub) { Timeout = Timeout.InfiniteTimeSpan }),
-            UploaderAllowlist.Load(), Families.Load(), "Qwen3.8", ShelfMachines.Apu8060S, 8192, CancellationToken.None,
+            UploaderAllowlist.Load(), Families.Load(), "Qwen3.8", ShelfMachines.Apu1234X, 8192, CancellationToken.None,
             memo: new HubTreeMemo(new HubReadStore(_home)));
 
     [Fact]

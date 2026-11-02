@@ -5,8 +5,8 @@
 
   This machine: 8 GB of memory shared with the graphics chip, a model can use about 4 GB of it.
 
-  cpu           AMD RYZEN AI MAX+ 395
-  graphics      AMD Radeon 8060S Graphics, integrated, it reads the same memory the processor does
+  cpu           AMD CHIPS TEST APU 99
+  graphics      AMD Tester 1234X Graphics, integrated, it reads the same memory the processor does
   memory        8 GB installed, the graphics chip draws from it as needed
   models        up to about 4 GB, limited by what Windows needs from 8 GB
   windows       sees 8 GB; at least 4 GB stays free for Windows, browser and other apps

@@ -10,7 +10,7 @@ public class HubTraceTests
 
     private static Task<ShelfOutcome> Run(FakeShelfHub hub, HubTreeMemo memo) =>
         ShelfSearch.AssembleAsync(new HubClient(new HttpClient(hub) { Timeout = Timeout.InfiniteTimeSpan }),
-            UploaderAllowlist.Load(), Families.Load(), new HashSet<string> { "qwen" }, ShelfMachines.Apu8060S, 8192,
+            UploaderAllowlist.Load(), Families.Load(), new HashSet<string> { "qwen" }, ShelfMachines.Apu1234X, 8192,
             lifted: false, CancellationToken.None, memo: memo);
 
     [Fact]

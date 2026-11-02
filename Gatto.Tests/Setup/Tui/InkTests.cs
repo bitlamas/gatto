@@ -446,7 +446,7 @@ public class InkTests
             Llama = null,
             Snapshot = new Gatto.Core.Hardware.HardwareSnapshot(128UL << 30, 32UL << 30,
                 Gatto.Core.Hardware.GpuKind.Integrated, 96UL << 30),
-            Names = new HardwareNames("AMD Ryzen AI Max+ 395", "AMD Radeon 8060S"),
+            Names = new HardwareNames("AMD Chips Test APU 99", "AMD Tester 1234X"),
         });
         var (s, f) = Face();
         flow.Start();

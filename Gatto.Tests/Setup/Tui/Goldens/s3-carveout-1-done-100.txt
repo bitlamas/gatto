@@ -6,8 +6,8 @@
   This machine: 32 GB of memory. Its graphics chip has almost none of its own, so models run in
   system memory, about 15 GB of it.
 
-  cpu           AMD Ryzen 5 PRO 2500U
-  graphics      AMD Radeon Vega 8, integrated, almost no memory of its own
+  cpu           AMD Chips 5 PRO 1111U
+  graphics      AMD Tester Card 8, integrated, almost no memory of its own
   memory        32 GB installed, 1 GB carved out for the graphics chip
   models        run from system memory: 15 GB, half kept free for Windows, browser and other apps
 

@@ -5,18 +5,18 @@ using Gatto.Tests.Setup;
 
 namespace Gatto.Tests;
 
-//a streamed table is memory too: the measured points on the 8060S, and what the rule does beside a discrete card and with no card
+//a streamed table is memory too: the measured points on the 1234X, and what the rule does beside a discrete card and with no card
 public class StreamedPoolFitTests
 {
     private const long B = 1_000_000_000L;
-    private static readonly HardwareClass Apu = ShelfMachines.Apu8060S;
+    private static readonly HardwareClass Apu = ShelfMachines.Apu1234X;
 
     //the Hub path prices a row from its bare header, as the shelf does
     private static FitRegime Hub(long bytes, long streamed, HardwareClass hw) =>
         HubSearch.FitOf(bytes, 262144, hw, 4096, "qwen4exp", streamed);
 
     [Fact]
-    public void THE_8060S_BUDGETS_ARE_THE_MEASURED_ONES()
+    public void THE_1234X_BUDGETS_ARE_THE_MEASURED_ONES()
     {
         Assert.Equal(81_552_232_940UL, Apu.GpuBudgetBytes);
         Assert.Equal(68_262_201_344UL, Apu.RamBudgetBytes);
@@ -46,11 +46,11 @@ public class StreamedPoolFitTests
 
     //beside a discrete card the table sits in system memory, so a table larger than the RAM budget costs the card
     [Fact]
-    public void ON_THE_VEGA_A_TABLE_PAYS_THE_RAM_BUDGET()
+    public void ON_THE_CARD_A_TABLE_PAYS_THE_RAM_BUDGET()
     {
-        var vega = ShelfMachines.Vega;
-        Assert.Equal(FitRegime.FitsGpu, Hub(5 * B, 1_800_000_000, vega));
-        Assert.Equal(FitRegime.DoesNotFit, Hub(20 * B, 18 * B, vega));
+        var card = ShelfMachines.Card;
+        Assert.Equal(FitRegime.FitsGpu, Hub(5 * B, 1_800_000_000, card));
+        Assert.Equal(FitRegime.DoesNotFit, Hub(20 * B, 18 * B, card));
     }
 
     //with no card the whole set lives in system memory, the table with it
@@ -69,7 +69,7 @@ public class StreamedPoolFitTests
     [InlineData(200L * B)]
     public void NO_TABLE_NO_CHANGE(long bytes)
     {
-        foreach (var hw in new[] { Apu, ShelfMachines.Vega, ShelfMachines.NoCard })
+        foreach (var hw in new[] { Apu, ShelfMachines.Card, ShelfMachines.NoCard })
         {
             var needed = bytes * 125 / 100;
             var expected = needed <= (long)hw.GpuBudgetBytes ? FitRegime.FitsGpu
@@ -83,7 +83,7 @@ public class StreamedPoolFitTests
     public void BESIDE_A_DISCRETE_CARD_THE_CUT_READS_WHAT_THE_CARD_CANNOT_HOLD_WHOLE()
     {
         var listing = new HubListing("o/m-GGUF", "gemma3n", 32768, false, 0);
-        var could = HubSearch.TableCouldMove(listing, ShelfMachines.Vega, 4096);
+        var could = HubSearch.TableCouldMove(listing, ShelfMachines.Card, 4096);
         Assert.True(could(new HubQuant("m-Q8_0.gguf", 40 * B, "aa")));
         Assert.False(could(new HubQuant("m-Q4_K_M.gguf", 3 * B, "bb")));
     }

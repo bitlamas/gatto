@@ -184,7 +184,7 @@ internal static class HardwareProbe
             }
             case "vendor":
             {
-                //the child prints 0x1002 device_id=0x1586, so take the four hex digits after the first 0x
+                //the child prints 0x1002 device_id=0x1234, so take the four hex digits after the first 0x
                 var hexAt = rest.IndexOf("0x", StringComparison.Ordinal);
                 if (hexAt < 0) break;
                 var afterHex = rest[(hexAt + 2)..];
