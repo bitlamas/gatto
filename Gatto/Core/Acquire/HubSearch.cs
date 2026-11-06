@@ -397,7 +397,7 @@ internal static class HubSearch
     //the estimate behind a Hub row's regime, exposed so the assumed terms of a row priced without its table can be read
     internal static FitEstimate EstimateOf(long bytes, long? nativeCtx, int ctxForFit, string? arch, long? streamedBytes) =>
         FitArithmetic.Estimate(BareHeader(nativeCtx, arch), bytes,
-            ContextForFit(nativeCtx, ctxForFit), FitArithmetic.ProfileKind, streamedBytes);
+            ContextForFit(nativeCtx, ctxForFit), KvCacheKind.Q8_0, streamedBytes);   //a bare header has no blocks and prices no cache, so the kind changes nothing
 
     //a listing knows only the native context, so every other field stays null and Estimate widens its margin
     private static GgufHeader BareHeader(long? nativeCtx, string? arch = null) => new(

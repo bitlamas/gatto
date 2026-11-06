@@ -20,8 +20,32 @@ internal sealed record ContextPick(int Context, FitRegime Regime);
 //computed from the file's own terms, never tabulated, so it cannot go stale. the estimate alone can run under a real load, and the reserve in Judge's budget is what keeps the answer conservative
 internal static class FitArithmetic
 {
-    //the cache type every profile gatto writes, so a fit prices what the load allocates and no rung is lost to an f16 price
-    internal const KvCacheKind ProfileKind = KvCacheKind.Q8_0;
+    //attention takes the scalar path where the card offers no matrix extensions. the reading is a vulkan one and an NVIDIA card runs the CUDA build here, so it stays out
+    public static bool ScalarAttention(HardwareClass hw) =>
+        hw.Snapshot.GraphicsCoopmat == CoopmatKind.None
+        && !string.Equals(hw.Snapshot.GraphicsVendorId, "10DE", StringComparison.OrdinalIgnoreCase);
+
+    //the cache type gatto writes into a profile on this machine, so a fit prices what the load allocates
+    public static KvCacheKind ProfileKindFor(HardwareClass hw) => ScalarAttention(hw) ? KvCacheKind.F16 : KvCacheKind.Q8_0;
+
+    //the attention scores a -ub may hold beside the display and the baseline compute, and how far past the budget the buffers may reach with them
+    private const long ScoresRoomBytes = 1L << 30;
+    private const long PastBudgetBytes = (1L << 30) * 85 / 100;
+
+    //the smallest ubatch the measured loads ran with, for a header that names no heads to compute from
+    private const int UbatchWithNoHeads = 128;
+
+    //the largest -ub whose attention scores fit, floor 64. a file that just fits whole gets less than one with room, or its buffers land past what the card holds
+    public static int ScalarUbatch(GgufHeader h, long fileBytes, long kvBytes, int context, HardwareClass hw)
+    {
+        if (Plausible(h.HeadCount, MaxKvHeads) is not { } heads) return UbatchWithNoHeads;
+        foreach (var ub in new[] { 512, 256, 128 })
+        {
+            var scores = heads * ub * context * 4;
+            if (scores <= ScoresRoomBytes && fileBytes + kvBytes + scores <= (long)hw.GpuBudgetBytes + PastBudgetBytes) return ub;
+        }
+        return 64;
+    }
 
     //a term past its cap counts as unknown, since the values come from a remote header and Estimate cannot throw
     private const long MaxBlockCount = 512;
@@ -259,7 +283,7 @@ internal static class FitArithmetic
         if (h.ContextLength is not long c || c <= 0 || c > MaxContext) return null;
         var ceiling = (int)c;
         var rungs = new[] { ceiling, 131072, 65536, 32768, 16384, 8192, 4096 }.Where(r => r <= ceiling).Distinct().ToList();
-        FitEstimate At(int context) => Estimate(h, fileBytes, context, ProfileKind, streamedBytes);
+        FitEstimate At(int context) => Estimate(h, fileBytes, context, ProfileKindFor(hw), streamedBytes);
         foreach (var rung in rungs)
             if (Judge(At(rung), hw) == FitRegime.FitsGpu) return new ContextPick(rung, FitRegime.FitsGpu);
         if (SplitRung(rungs, At, hw) is { } split) return new ContextPick(split, FitRegime.FitsSplit);

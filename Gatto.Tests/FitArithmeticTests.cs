@@ -203,7 +203,7 @@ public class FitArithmeticTests
     //qwen3.5-9b's shape: 32 blocks, so q8_0 costs 1,088 MiB at 65536
     private static GgufHeader NineB(long? ceiling = 262144) => new(
         GgufOutcome.Complete, null, "qwen3", "t", ceiling, null,
-        BlockCount: 32, HeadCount: 32, HeadCountKv: 2,
+        BlockCount: 32, HeadCount: 16, HeadCountKv: 2,
         EmbeddingLength: 4096, KeyLength: 128, ValueLength: 128, ChatTemplate: null);
 
     private static readonly HardwareClass EightGib = HardwareClassifier.Classify(
@@ -240,7 +240,7 @@ public class FitArithmeticTests
     {
         var file = 8 * GiB;
         var rungs = new[] { 262144, 131072, 65536, 32768, 16384, 8192, 4096 };
-        var split = FitArithmetic.SplitRung(rungs, r => FitArithmetic.Estimate(NineB(), file, r, FitArithmetic.ProfileKind), EightGib);
+        var split = FitArithmetic.SplitRung(rungs, r => FitArithmetic.Estimate(NineB(), file, r, KvCacheKind.Q8_0), EightGib);
 
         Assert.NotNull(split);
         Assert.Equal(new ContextPick(split.Value, FitRegime.FitsSplit), FitArithmetic.PickContext(NineB(), file, null, EightGib));
@@ -273,8 +273,53 @@ public class FitArithmeticTests
         foreach (var hw in new[] { EightGib, SixteenGib, Pool, CpuOnly })
             for (var file = GiB / 4; file <= 40 * GiB; file += GiB / 4)
             {
-                var at4096 = FitArithmetic.Judge(FitArithmetic.Estimate(NineB(ceiling), file, 4096, FitArithmetic.ProfileKind), hw);
+                var at4096 = FitArithmetic.Judge(FitArithmetic.Estimate(NineB(ceiling), file, 4096, KvCacheKind.Q8_0), hw);
                 Assert.Equal(at4096, FitArithmetic.PickContext(NineB(ceiling), file, null, hw)?.Regime ?? FitRegime.DoesNotFit);
             }
+    }
+
+    private static HardwareClass Card(ulong gib, CoopmatKind coopmat, string vendor = "1002") => HardwareClassifier.Classify(
+        new HardwareSnapshot(32UL << 30, 32UL << 30, GpuKind.Discrete, gib << 30, vendor, GraphicsCoopmat: coopmat));
+
+    [Theory]
+    [InlineData("None", "1002", true)]
+    [InlineData("None", "8086", true)]
+    [InlineData("None", "10DE", false)]
+    [InlineData("None", "10de", false)]
+    [InlineData("Khr", "1002", false)]
+    [InlineData("Nv2", "10DE", false)]
+    [InlineData("Unknown", "1002", false)]
+    public void Attention_takes_the_scalar_path_only_on_a_vulkan_card_with_no_matrix_cores(string coopmat, string vendor, bool scalar)
+    {
+        var hw = Card(8, Enum.Parse<CoopmatKind>(coopmat), vendor);
+
+        Assert.Equal(scalar, FitArithmetic.ScalarAttention(hw));
+        Assert.Equal(scalar ? KvCacheKind.F16 : KvCacheKind.Q8_0, FitArithmetic.ProfileKindFor(hw));
+    }
+
+    [Fact]
+    public void The_pick_on_a_card_with_no_matrix_cores_prices_the_f16_cache()
+    {
+        Assert.Equal(new ContextPick(32768, FitRegime.FitsGpu), FitArithmetic.PickContext(NineB(), 4929 * MiB, null, Card(8, CoopmatKind.None)));
+        Assert.Equal(new ContextPick(65536, FitRegime.FitsGpu), FitArithmetic.PickContext(NineB(), 4929 * MiB, null, Card(8, CoopmatKind.Khr)));
+    }
+
+    private static int Ubatch(GgufHeader h, long file, int context, HardwareClass hw) =>
+        FitArithmetic.ScalarUbatch(h, file, FitArithmetic.Estimate(h, file, context, KvCacheKind.F16).KvCacheBytes, context, hw);
+
+    [Fact]
+    public void The_ubatch_fits_the_scores_in_their_room_and_the_card()
+    {
+        var eight = Card(8, CoopmatKind.None);
+
+        Assert.Equal(512, Ubatch(NineB(), 4929 * MiB, 32768, eight));
+        //the first condition alone: a larger card has the room past its budget and the scores still cap it
+        Assert.Equal(256, Ubatch(NineB(), 4929 * MiB, 65536, Card(16, CoopmatKind.None)));
+        //a file that just fits whole gets less than one with room
+        Assert.Equal(256, Ubatch(NineB(), 5530 * MiB, 32768, eight));
+        Assert.Equal(128, Ubatch(NineB() with { HeadCount = null }, 4929 * MiB, 32768, eight));
+        //the 65536 row a measured 8 GiB card held to 59k at -ub 128
+        Assert.Equal(128, Ubatch(NineB(), 4929 * MiB, 65536, eight));
+        Assert.Equal(64, Ubatch(NineB(), 4929 * MiB, 131072, eight));
     }
 }

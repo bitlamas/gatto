@@ -609,4 +609,38 @@ public class ModelScaffoldTests : IDisposable
     {
         Assert.Equal(id, Gatto.Core.Models.ModelId.FromRepo(repo));
     }
+
+    //the card with no matrix cores: the f16 cache, attention off and the -ub that keeps its scores on the card
+    [Fact]
+    public void A_SCALAR_UBATCH_WRITES_THE_F16_CACHE_AND_ATTENTION_OFF_WITH_ITS_UBATCH()
+    {
+        var id = ModelScaffold.Create(_dir, Fixture("tiny.gguf"), port: 1235, scalarUbatch: 256);
+        var profile = Model.Load(_dir, id).Profile;
+
+        Assert.Equal("f16", profile.CacheTypeK);
+        Assert.Equal("f16", profile.CacheTypeV);
+        Assert.Equal(["-np", "1", "-fa", "off", "-ub", "256", "-lm", "none", "--jinja", "--no-context-shift", "--cache-reuse", "0"], profile.ExtraArgs);
+        var notes = TuningNotes.Compose(profile);
+        Assert.Contains("-fa off (in extra_args)", notes, StringComparison.Ordinal);
+        Assert.Contains("-ub 256 (in extra_args)", notes, StringComparison.Ordinal);
+        Assert.Contains("leave it off on this card", notes, StringComparison.Ordinal);
+        Assert.Contains("leave it f16", notes, StringComparison.Ordinal);
+        Assert.DoesNotContain("PUSH: leave it on", notes, StringComparison.Ordinal);
+        Assert.DoesNotContain("PUSH TO q8_0", notes, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void WITH_NO_SCALAR_UBATCH_THE_PROFILE_IS_TODAYS()
+    {
+        var id = ModelScaffold.Create(_dir, Fixture("tiny.gguf"), port: 1235);
+        var profile = Model.Load(_dir, id).Profile;
+
+        Assert.Equal("q8_0", profile.CacheTypeK);
+        Assert.DoesNotContain("-ub", profile.ExtraArgs);
+        var notes = TuningNotes.Compose(profile);
+        Assert.Contains("-fa on (in extra_args)", notes, StringComparison.Ordinal);
+        Assert.Contains("-b / -ub (not set", notes, StringComparison.Ordinal);
+        Assert.Contains("PUSH: leave it on", notes, StringComparison.Ordinal);
+        Assert.Contains("PUSH TO q8_0", notes, StringComparison.Ordinal);
+    }
 }

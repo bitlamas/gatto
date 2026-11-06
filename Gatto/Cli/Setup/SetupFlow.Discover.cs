@@ -582,6 +582,7 @@ internal sealed partial class SetupFlow
                 Source: SourceOf(model),
                 PinGpu: probes.ServeOnlyGpu(),
                 GpuLayers: probes.SplitLayersFor(model.Path, context, Writes.Projector),
+                ScalarUbatch: probes.ScalarUbatchFor(model.Path, context, Writes.Projector),
                 Sha256: KnownHashFor(model)),
         };
         //pause for the writer before offering anything, no screen may audition a model that isn't on disk yet

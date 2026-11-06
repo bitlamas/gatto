@@ -419,4 +419,81 @@ public class HardwareProbeTests
         }
         finally { Directory.Delete(dir, true); }
     }
+
+    private static string OneCard(string coopmat, string vendor = "0x1002", string type = "DISCRETE_GPU (2)") => $$"""
+        installed=34359738368
+        visible=34281705472
+        vulkan=ok physical_devices=1
+        device_0_name=Tester TX Card
+        device_0_type={{type}}
+        device_0_vendor={{vendor}} device_id=0x1111
+        {{coopmat}}
+        device_0_heap_count=1 type_count=1
+        device_0_heap_0=8573157376 flags=0x01 DEVICE_LOCAL
+        """;
+
+    [Theory]
+    [InlineData("device_0_coopmat=nv2 extensions=200", "Nv2")]
+    [InlineData("device_0_coopmat=khr extensions=220", "Khr")]
+    [InlineData("device_0_coopmat=none extensions=148", "None")]
+    [InlineData("device_0_coopmat=sideways extensions=148", "Unknown")]
+    [InlineData("", "Unknown")]
+    public void THE_COOPMAT_LINE_PARSES_TO_THE_KIND_AND_A_REPORT_WITHOUT_IT_IS_UNKNOWN(string line, string kind)
+    {
+        Assert.Equal(Enum.Parse<CoopmatKind>(kind), HardwareProbe.ParseReport(OneCard(line)).Snapshot!.GraphicsCoopmat);
+    }
+
+    //a list of none at all is a failed enumeration, and a failed reading must not send a card down the slow path
+    [Fact]
+    public void A_FAILED_ENUMERATION_READS_UNKNOWN_NOT_NONE()
+    {
+        Assert.Equal(CoopmatKind.Unknown, HardwareProbe.ParseReport(OneCard("device_0_coopmat=none extensions=0")).Snapshot!.GraphicsCoopmat);
+    }
+
+    private const string TwoCards = """
+        installed=68719476736
+        visible=68719476736
+        vulkan=ok physical_devices=2
+        device_0_name=Tester TX A
+        device_0_type=DISCRETE_GPU (2)
+        device_0_vendor=0x1002 device_id=0x1111
+        device_0_coopmat=khr extensions=200
+        device_0_heap_0=17179869184 flags=0x01 DEVICE_LOCAL
+        device_1_name=Tester TX B
+        device_1_type=DISCRETE_GPU (2)
+        device_1_vendor=0x1002 device_id=0x1112
+        device_1_coopmat=none extensions=148
+        device_1_heap_0=8589934592 flags=0x01 DEVICE_LOCAL
+        """;
+
+    [Fact]
+    public void TWO_CARDS_WITH_ONE_WITHOUT_MATRIX_CORES_READ_NONE()
+    {
+        Assert.Equal(CoopmatKind.None, HardwareProbe.ParseReport(TwoCards).Snapshot!.GraphicsCoopmat);
+    }
+
+    private const string PoolAndCard = """
+        installed=137438953472
+        visible=136524402688
+        vulkan=ok physical_devices=2
+        device_0_name=Tester Pool
+        device_0_type=INTEGRATED_GPU (1)
+        device_0_vendor=0x1002 device_id=0x1234
+        device_0_coopmat=khr extensions=220
+        device_0_heap_0=88643731456 flags=0x01 DEVICE_LOCAL
+        device_1_name=Tester TX Card
+        device_1_type=DISCRETE_GPU (2)
+        device_1_vendor=0x1002 device_id=0x1111
+        device_1_coopmat=none extensions=148
+        device_1_heap_0=8573157376 flags=0x01 DEVICE_LOCAL
+        """;
+
+    [Fact]
+    public void A_POOL_THE_SERVER_IS_PINNED_TO_CARRIES_ITS_OWN_READING()
+    {
+        var r = HardwareProbe.ParseReport(PoolAndCard);
+
+        Assert.Equal(GpuKind.Integrated, r.Snapshot!.GraphicsKind);
+        Assert.Equal(CoopmatKind.Khr, r.Snapshot.GraphicsCoopmat);
+    }
 }

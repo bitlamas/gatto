@@ -28,8 +28,12 @@ public enum IdClash
 public static class ModelScaffold
 {
     //what every scaffolded model passes to llama-server. the last two flags turn the server's own context management off, since gatto is the context manager
-    private static IReadOnlyList<string> StandardExtraArgs(bool streams) =>
-        ["-np", "1", "-fa", "on", .. LoadModeFlags(streams), "--jinja", "--no-context-shift", "--cache-reuse", "0"];   //the load-mode spelling comes from the table the engine update rewrites, so no profile is written in a dialect the pinned build refuses
+    private static IReadOnlyList<string> StandardExtraArgs(bool streams, int? scalarUbatch) =>
+        ["-np", "1", .. FlashAttention(scalarUbatch), .. LoadModeFlags(streams), "--jinja", "--no-context-shift", "--cache-reuse", "0"];   //the load-mode spelling comes from the table the engine update rewrites, so no profile is written in a dialect the pinned build refuses
+
+    //on a card with no matrix cores attention is off for its prefill, and its scores then cost memory the -ub bounds
+    private static IReadOnlyList<string> FlashAttention(int? scalarUbatch) =>
+        scalarUbatch is { } ub ? ["-fa", "off", "-ub", ub.ToString(System.Globalization.CultureInfo.InvariantCulture)] : ["-fa", "on"];
 
     //a streamed table is mapped and read lazily. the engine never puts it on the GPU, and a copy into memory would cost its whole size
     private static IReadOnlyList<string> LoadModeFlags(bool streams)
@@ -43,7 +47,8 @@ public static class ModelScaffold
         int? context = null, bool replace = false, string? projector = null,
         string? llamaServer = null, ModelSource? source = null, string? device = null,
         int? gpuLayers = null,   //a split's layer count, null for a model that fits whole
-        string? sha256 = null)   //the hash of the file, stated with a stat of it here, at the path the profile names
+        string? sha256 = null,   //the hash of the file, stated with a stat of it here, at the path the profile names
+        int? scalarUbatch = null)   //the -ub of a card whose attention takes the scalar path, which also takes the f16 cache
     {
         var resolved = ResolveShardOne(Path.GetFullPath(ggufPath));
 
@@ -104,10 +109,11 @@ public static class ModelScaffold
             //no llama_server key without a binary, so gatto never asks the server manager to spawn nothing
             if (!string.IsNullOrWhiteSpace(llamaServer)) w.WriteString("llama_server", llamaServer);
             w.WriteNumber("gpu_layers", gpuLayers ?? 99);
-            w.WriteString("cache_type_k", "q8_0");
-            w.WriteString("cache_type_v", "q8_0");
+            var cacheType = scalarUbatch is null ? "q8_0" : "f16";
+            w.WriteString("cache_type_k", cacheType);
+            w.WriteString("cache_type_v", cacheType);
             w.WriteStartArray("extra_args");
-            foreach (var a in StandardExtraArgs(ModelDiscovery.StreamedBytesOrNull(resolved) is > 0)) w.WriteStringValue(a);
+            foreach (var a in StandardExtraArgs(ModelDiscovery.StreamedBytesOrNull(resolved) is > 0, scalarUbatch)) w.WriteStringValue(a);
             //the device the fit counted, since llama-server left alone takes a discrete card over a larger unified pool
             if (!string.IsNullOrWhiteSpace(device)) { w.WriteStringValue("-dev"); w.WriteStringValue(device); }
             w.WriteEndArray();

@@ -3,7 +3,11 @@ namespace Gatto.Core.Hardware;
 //the largest heap prices the budget, the heap sum feeds the carve-out test, other cards' heaps add to a discrete one
 internal sealed record HardwareSnapshot(ulong? InstalledBytes, ulong OsVisibleBytes, GpuKind GraphicsKind,
     ulong? GraphicsMemoryBytes, string? GraphicsVendorId = null, ulong? GraphicsLocalTotalBytes = null,
-    IReadOnlyList<ulong>? MoreDiscreteHeaps = null);
+    IReadOnlyList<ulong>? MoreDiscreteHeaps = null,
+    CoopmatKind GraphicsCoopmat = CoopmatKind.Unknown);   //what the counted device offers the engine's attention, unknown when the report does not say
+
+//the matrix extensions a device offers, in the order the engine tries them. unknown is a report with no reading
+internal enum CoopmatKind { Unknown, None, Khr, Nv2 }
 
 //the names stay off the snapshot so the classifier can't read one, the last is the integrated device to pin
 internal sealed record ProbeReading(HardwareSnapshot? Snapshot, string? CpuName, string? GpuName, string? ServeOnlyGpu = null);
@@ -86,7 +90,8 @@ internal static class HardwareProbe
             : new(reading.Snapshot, "ok", reading.CpuName, reading.GpuName, reading.ServeOnlyGpu);
 
     //one device's lines: the vulkan type ordinal and every device-local heap, the largest and the sum read off the list once the report is whole
-    private sealed record VkDevice(int Index, string? Name, uint TypeCode, string? Vendor, IReadOnlyList<ulong> LocalHeaps)
+    private sealed record VkDevice(int Index, string? Name, uint TypeCode, string? Vendor, IReadOnlyList<ulong> LocalHeaps,
+        CoopmatKind Coopmat = CoopmatKind.Unknown)
     {
         public ulong LargestLocalHeap => LocalHeaps.Count == 0 ? 0 : LocalHeaps.Max();
         public ulong LocalHeapSum => LocalHeaps.Aggregate(0UL, (sum, heap) => sum + heap);
@@ -131,8 +136,8 @@ internal static class HardwareProbe
         var cards = usable.Where(d => d.TypeCode == 2).OrderByDescending(d => d.LargestLocalHeap).ToList();
         var integrated = usable.Where(d => d.TypeCode == 1).OrderByDescending(d => d.LargestLocalHeap).FirstOrDefault();
 
-        HardwareSnapshot? Snap(VkDevice? d, GpuKind kind, IReadOnlyList<ulong>? more = null) => visible is { } vis
-            ? new HardwareSnapshot(installed, vis, kind, d?.LargestLocalHeap, d?.Vendor, d?.LocalHeapSum, more)
+        HardwareSnapshot? Snap(VkDevice? d, GpuKind kind, IReadOnlyList<ulong>? more = null, CoopmatKind? coopmat = null) => visible is { } vis
+            ? new HardwareSnapshot(installed, vis, kind, d?.LargestLocalHeap, d?.Vendor, d?.LocalHeapSum, more, coopmat ?? d?.Coopmat ?? CoopmatKind.Unknown)
             : null;
 
         if (cards.Count == 0)
@@ -141,7 +146,8 @@ internal static class HardwareProbe
                 : new ProbeReading(Snap(integrated, GpuKind.Integrated), cpuName, integrated.Name);
 
         //llama-server spreads a model over every discrete card and leaves an integrated device out while one is present, so the cards add up
-        var together = Snap(cards[0], GpuKind.Discrete, cards.Count > 1 ? [.. cards.Skip(1).Select(c => c.LargestLocalHeap)] : null);
+        var together = Snap(cards[0], GpuKind.Discrete, cards.Count > 1 ? [.. cards.Skip(1).Select(c => c.LargestLocalHeap)] : null,
+            cards.Any(c => c.Coopmat == CoopmatKind.None) ? CoopmatKind.None : cards[0].Coopmat);   //attention runs on both, so the scalar path on either is the slow one
         var names = string.Join(" + ", cards.Select(c => c.Name).OfType<string>());
 
         //a unified pool wins only past the floor and above every card together, and then the server must be pinned to it
@@ -152,6 +158,20 @@ internal static class HardwareProbe
             return new ProbeReading(pool, cpuName, integrated.Name, ServeOnlyGpu: integrated.Name);
 
         return new ProbeReading(together, cpuName, names.Length > 0 ? names : null);
+    }
+
+    //the child prints none extensions=148. a list of 0 is a failed enumeration, not a device without the extensions, and that reading must not pick the slow path
+    private static CoopmatKind CoopmatOf(string rest)
+    {
+        var words = rest.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+        if (words.Length == 0 || words.Contains("extensions=0")) return CoopmatKind.Unknown;
+        return words[0] switch
+        {
+            "nv2" => CoopmatKind.Nv2,
+            "khr" => CoopmatKind.Khr,
+            "none" => CoopmatKind.None,
+            _ => CoopmatKind.Unknown,
+        };
     }
 
     //a malformed index, an unknown field or a value that fails its parse is ignored rather than fatal
@@ -193,6 +213,9 @@ internal static class HardwareProbe
                 devices[idx] = dev with { Vendor = IsVendorId(hex) ? hex : null };
                 break;
             }
+            case "coopmat":
+                devices[idx] = dev with { Coopmat = CoopmatOf(rest) };
+                break;
             default:
                 if (field.StartsWith("heap_", StringComparison.Ordinal))
                     ParseHeapLine(devices, idx, dev, rest);

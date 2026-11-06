@@ -7,10 +7,20 @@ internal static class TuningNotes
 {
     public const string FileName = "tuning.txt";
 
+    //the value after a flag in the written arguments, null when the profile does not pass it
+    private static string? ArgAfter(ModelProfile p, string flag)
+    {
+        for (var i = 0; i + 1 < p.ExtraArgs.Count; i++)
+            if (p.ExtraArgs[i] == flag) return p.ExtraArgs[i + 1];
+        return null;
+    }
+
     //keep every character of this string ASCII (type and Get-Content read a BOM-less file as ANSI, em-dashes come out as garbage)
     public static string Compose(ModelProfile p)
     {
         var sb = new StringBuilder();
+        //the profile a card with no matrix cores takes, whose advice must not tell the user to undo either choice
+        var scalar = ArgAfter(p, "-fa") == "off" && p.CacheTypeK == "f16";
         sb.AppendLine("tuning notes for this model");
         sb.AppendLine("==========================");
         sb.AppendLine();
@@ -26,23 +36,33 @@ internal static class TuningNotes
         sb.AppendLine("   when the model loads at all, or when tokens/sec stops collapsing mid-reply.");
         sb.AppendLine();
 
-        sb.AppendLine($"2. Flash attention        {(p.ExtraArgs.Contains("-fa") ? "-fa on (in extra_args)" : "(not set)")}");
+        sb.AppendLine($"2. Flash attention        {(ArgAfter(p, "-fa") is { } fa ? $"-fa {fa} (in extra_args)" : "(not set)")}");
         sb.AppendLine("   A faster attention kernel with a smaller memory footprint at long context.");
-        sb.AppendLine("   PUSH: leave it on. Turn it OFF only if the backend refuses to start with it,");
-        sb.AppendLine("   which some older builds do. You will know it helped by prompt-processing speed");
-        sb.AppendLine("   at long context, not by short-prompt latency.");
+        if (scalar)
+            sb.AppendLine("   PUSH: leave it off on this card, prompt processing was far slower with it on.");
+        else
+        {
+            sb.AppendLine("   PUSH: leave it on. Turn it OFF only if the backend refuses to start with it,");
+            sb.AppendLine("   which some older builds do. You will know it helped by prompt-processing speed");
+            sb.AppendLine("   at long context, not by short-prompt latency.");
+        }
         sb.AppendLine();
 
         sb.AppendLine($"3. KV cache quantization  cache_type_k = {p.CacheTypeK ?? "(default f16)"}"
                       + $", cache_type_v = {p.CacheTypeV ?? "(default f16)"}");
         sb.AppendLine("   The precision of the attention cache, which is what actually grows with context.");
         sb.AppendLine("   q8_0 costs about half of f16 for a quality difference most people cannot see.");
-        sb.AppendLine("   PUSH TO q8_0 if you want more context in the same memory. Keep f16 if you see");
-        sb.AppendLine("   quality drift on long conversations. NOTE: some architectures (MLA-family) are");
-        sb.AppendLine("   unhappy with a quantized cache - if generation degrades, put this back first.");
+        if (scalar)
+            sb.AppendLine("   PUSH: leave it f16, a quantized cache needs flash attention on and the server refuses to start otherwise.");
+        else
+        {
+            sb.AppendLine("   PUSH TO q8_0 if you want more context in the same memory. Keep f16 if you see");
+            sb.AppendLine("   quality drift on long conversations. NOTE: some architectures (MLA-family) are");
+            sb.AppendLine("   unhappy with a quantized cache - if generation degrades, put this back first.");
+        }
         sb.AppendLine();
 
-        sb.AppendLine("4. Batch sizes            -b / -ub (not set; llama.cpp defaults apply)");
+        sb.AppendLine($"4. Batch sizes            {(ArgAfter(p, "-ub") is { } ub ? $"-ub {ub} (in extra_args); -b not set" : "-b / -ub (not set; llama.cpp defaults apply)")}");
         sb.AppendLine("   How much prompt is processed per pass. Larger batches process a long prompt");
         sb.AppendLine("   faster but need more scratch memory during that pass. PUSH UP if prompt");
         sb.AppendLine("   processing is slow and you have memory headroom; PUSH DOWN if load succeeds");

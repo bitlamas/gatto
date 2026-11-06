@@ -143,6 +143,9 @@ internal interface ISetupProbes
     //the layers the card holds when this file at this context is a split, which the profile takes as gpu_layers. null when it fits whole, does not fit, or a reading failed
     int? SplitLayersFor(string ggufPath, int context, string? projectorPath = null) => null;
 
+    //the -ub a profile takes where attention runs the scalar path, null where the profile takes the standard flags
+    int? ScalarUbatchFor(string ggufPath, int context, string? projectorPath = null) => null;
+
     //ask the configured setup to actually say something, against what was written. a config never exercised is as unproven as a fresh install
     Gatto.Core.Acquire.ProveOutcome ProveIt(string? modelId,
         IProgress<Gatto.Roles.Audition.AuditionProgress>? progress = null);

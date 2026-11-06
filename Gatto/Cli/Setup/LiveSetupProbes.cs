@@ -1130,7 +1130,7 @@ internal sealed class LiveSetupProbes(string homePath, Gatto.Terminal.GlyphSet g
             Gatto.Core.Models.FitRegime AtPick(long weights) =>
                 Gatto.Core.Models.FitArithmetic.PickContext(priced, weights, streamed, hw)?.Regime
                 ?? Gatto.Core.Models.FitArithmetic.Judge(Gatto.Core.Models.FitArithmetic.Estimate(
-                    header, weights, SetupFlow.OfferedContext, Gatto.Core.Models.FitArithmetic.ProfileKind, streamed), hw);
+                    header, weights, SetupFlow.OfferedContext, Gatto.Core.Models.FitArithmetic.ProfileKindFor(hw), streamed), hw);
             return (AtPick(bytes), AtPick(bytes + projectorBytes));
         }
         catch (Exception) { return null; }
@@ -1149,10 +1149,29 @@ internal sealed class LiveSetupProbes(string homePath, Gatto.Terminal.GlyphSet g
             //a projector loads beside the model in one process, priced as the pair warning prices it
             var projector = ModelDiscovery.SetBytesOrNull(projectorPath) ?? 0;
             var estimate = Gatto.Core.Models.FitArithmetic.Estimate(
-                header, bytes + projector, context, Gatto.Core.Models.FitArithmetic.ProfileKind, ModelDiscovery.StreamedBytesOrNull(ggufPath, header));
+                header, bytes + projector, context, Gatto.Core.Models.FitArithmetic.ProfileKindFor(hw), ModelDiscovery.StreamedBytesOrNull(ggufPath, header));
             return Gatto.Core.Models.FitArithmetic.Judge(estimate, hw) == Gatto.Core.Models.FitRegime.FitsSplit
                 ? Gatto.Core.Models.FitArithmetic.SplitLayers(estimate, hw)
                 : null;
+        }
+        catch (Exception) { return null; }
+    }
+
+    //the -ub of a profile on a card whose attention takes the scalar path, from the same estimate its context was picked on, null on any other card
+    public int? ScalarUbatchFor(string ggufPath, int context, string? projectorPath = null)
+    {
+        try
+        {
+            if (Hardware() is not { } snapshot) return null;
+            var hw = Gatto.Core.Hardware.HardwareClassifier.Classify(snapshot);
+            if (!Gatto.Core.Models.FitArithmetic.ScalarAttention(hw)) return null;
+            using var fs = File.OpenRead(ggufPath);
+            var header = Gatto.Core.Models.GgufHeaderParser.Parse(fs);
+            if (ModelDiscovery.SetBytesOrNull(ggufPath) is not { } bytes) return null;
+            var projector = ModelDiscovery.SetBytesOrNull(projectorPath) ?? 0;
+            var estimate = Gatto.Core.Models.FitArithmetic.Estimate(
+                header, bytes + projector, context, Gatto.Core.Models.FitArithmetic.ProfileKindFor(hw), ModelDiscovery.StreamedBytesOrNull(ggufPath, header));
+            return Gatto.Core.Models.FitArithmetic.ScalarUbatch(header, estimate.WeightsBytes, estimate.KvCacheBytes, context, hw);
         }
         catch (Exception) { return null; }
     }

@@ -157,7 +157,7 @@ public class SplitFitShelfTests
     {
         var f = File("Q8_0", GiB) with { Header = Header() with { ContextLength = FitArithmetic.MaxContext + 1L } };
 
-        Assert.Equal(FitArithmetic.Judge(FitArithmetic.Estimate(f.Header!, f.FileBytes, 4096, FitArithmetic.ProfileKind), Card()), LocalShelf.FitOf(f, Card(), 4096));
+        Assert.Equal(FitArithmetic.Judge(FitArithmetic.Estimate(f.Header!, f.FileBytes, 4096, KvCacheKind.Q8_0), Card()), LocalShelf.FitOf(f, Card(), 4096));
         Assert.Null(LocalShelf.Row(new LocalShelf.LocalGroup("x", [f]), f, Card()).PickedCtx);
     }
 
@@ -207,5 +207,21 @@ public class SplitFitShelfTests
         var text = PaneText(File("Q4_K_S", 2 * GiB), null);
 
         Assert.Equal(2, text.Split($"context up to {SearchRow.Ctx(32768)}").Length - 1);
+    }
+
+    //the row on a card with no matrix cores prices the f16 cache the scaffold will write, so its pick is that cache's
+    [Fact]
+    public void A_ROW_ON_A_CARD_WITH_NO_MATRIX_CORES_IS_PRICED_AT_F16()
+    {
+        HardwareClass At(CoopmatKind coopmat) => new(
+            MemoryTopology.Discrete, ShareKind.None, 4UL << 30, 24UL << 30,
+            new HardwareSnapshot(0UL, 1UL, GpuKind.Discrete, 4UL << 30, "1002", GraphicsCoopmat: coopmat), 0, BudgetBound.None);
+        var f = File("Q4_K_S", 5 * GiB / 2);
+        var group = new LocalShelf.LocalGroup("x", [f]);
+
+        var q8 = LocalShelf.Row(group, f, At(CoopmatKind.Khr)).PickedCtx;
+        var f16 = LocalShelf.Row(group, f, At(CoopmatKind.None)).PickedCtx;
+
+        Assert.True(f16 < q8, $"f16 picked {f16}, q8_0 picked {q8}");
     }
 }

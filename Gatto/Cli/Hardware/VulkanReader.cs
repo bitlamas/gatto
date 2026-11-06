@@ -39,6 +39,35 @@ internal static class VulkanReader
     [DllImport("vulkan-1.dll")]
     private static extern void vkDestroyInstance(IntPtr instance, IntPtr alloc);
 
+    //the device's extension list, no layer and no logical device, which is where a card says whether it has matrix cores the engine can use
+    [DllImport("vulkan-1.dll")]
+    private static extern int vkEnumerateDeviceExtensionProperties(IntPtr device, IntPtr layerName, ref uint count, IntPtr props);
+
+    //the extension record is a 256-byte name then a 4-byte version
+    private const int ExtensionStride = 260;
+
+    //the engine picks its attention path by these two: coopmat2 first, then KHR coopmat, else the scalar shaders
+    private const string KhrCoopmat = "VK_KHR_cooperative_matrix";
+    private const string NvCoopmat2 = "VK_NV_cooperative_matrix2";
+
+    //the extension names a device offers, empty when the enumeration fails, so a missing reading prints as none rather than a crash
+    private static HashSet<string> Extensions(IntPtr device)
+    {
+        var names = new HashSet<string>(StringComparer.Ordinal);
+        uint count = 0;
+        if (vkEnumerateDeviceExtensionProperties(device, IntPtr.Zero, ref count, IntPtr.Zero) != 0 || count == 0 || count > 4096) return names;
+        var buffer = Marshal.AllocHGlobal((int)count * ExtensionStride);
+        try
+        {
+            Zero(buffer, (int)count * ExtensionStride);
+            if (vkEnumerateDeviceExtensionProperties(device, IntPtr.Zero, ref count, buffer) != 0) return names;
+            for (var i = 0; i < count; i++)
+                if (Marshal.PtrToStringUTF8(buffer + i * ExtensionStride) is { Length: > 0 } name) names.Add(name);
+        }
+        finally { Marshal.FreeHGlobal(buffer); }
+        return names;
+    }
+
     //the VkPhysicalDeviceType ordinal as the word the report prints. an unknown code keeps its number so a new kind arrives visibly
     private static string Kind(uint t) => t switch
     {
@@ -96,6 +125,11 @@ internal static class VulkanReader
                     sb.AppendLine($"device_{i}_vendor=0x{vendor:X4} device_id=0x{deviceId:X4}");
                     sb.AppendLine($"device_{i}_api={(api >> 22) & 0x7F}.{(api >> 12) & 0x3FF}.{api & 0xFFF}"
                         + $" driver_raw={driver}");
+
+                    //what the engine's flash attention can use on this device, read from the extension list rather than guessed from the name
+                    var ext = Extensions(device);
+                    sb.AppendLine($"device_{i}_coopmat=" + (ext.Contains(NvCoopmat2) ? "nv2" : ext.Contains(KhrCoopmat) ? "khr" : "none")
+                        + $" extensions={ext.Count}");
 
                     //the memory properties by offset, and the heap array starts at 264 because VkMemoryHeap needs 8-byte alignment
                     Zero(mem, 1024);

@@ -24,7 +24,7 @@ public sealed class ProfileKindPricingTests : IDisposable
         var id = Gatto.Roles.Models.ModelScaffold.Create(models, Model("any.gguf", GiB), port: 1235, id: "any");
         var profile = Gatto.Roles.Models.Model.Load(models, id).Profile;
 
-        Assert.Equal(KvCacheKind.Q8_0, FitArithmetic.ProfileKind);
+        Assert.Equal(KvCacheKind.Q8_0, FitArithmetic.ProfileKindFor(HardwareClassifier.Classify(new HardwareSnapshot(32UL << 30, 32UL << 30, GpuKind.Discrete, 8UL << 30))));
         Assert.Equal("q8_0", profile.CacheTypeK);
         Assert.Equal("q8_0", profile.CacheTypeV);
     }
