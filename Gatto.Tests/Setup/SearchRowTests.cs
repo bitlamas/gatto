@@ -122,39 +122,41 @@ public class SearchRowTests
         Assert.DoesNotContain(".gguf", table, StringComparison.OrdinalIgnoreCase);
     }
 
+    [Theory]
+    [InlineData(999, "999")]
+    [InlineData(4096, "4k")]
+    [InlineData(32768, "32k")]
+    [InlineData(65536, "65k")]   //the status line's rounding would say 66k, more than was picked
+    [InlineData(262144, "262k")]
+    [InlineData(1048576, "1M")]
+    public void THE_CONTEXT_READS_IN_WHOLE_THOUSANDS_ROUNDED_DOWN(long tokens, string words) =>
+        Assert.Equal(words, SearchRow.CtxK(tokens));
+
     [Fact]
-    public void The_CONTEXT_IS_GROUPED_WITH_COMMAS_and_never_with_the_ambient_culture_separator()
+    public void THE_PANE_SAYS_CONTEXT_IN_K_and_never_the_jargon()
     {
-        //the grouped number always uses a comma, since a narrow no-break space reads as a typo. ctx is spelled out as context, it is jargon.
+        //ctx is spelled out as context, it is jargon
         var pane = Pane(Row(ctx: 32768));
 
-        Assert.Contains("32,768", pane, StringComparison.Ordinal);
-        //the phrase comes from the pane itself, this test is about the number and its separator
-        Assert.Contains("context 32,768", pane, StringComparison.Ordinal);
-        Assert.DoesNotContain("32 768", pane, StringComparison.Ordinal);
+        Assert.Contains("context 32k", pane, StringComparison.Ordinal);
+        Assert.DoesNotContain("32,768", pane, StringComparison.Ordinal);
         Assert.DoesNotContain(" ctx", pane, StringComparison.Ordinal);
     }
 
     [Theory]
-    [InlineData("fr-FR")]   //this culture groups with a narrow no-break space, which must not be the separator
-    [InlineData("de-DE")]   //this culture groups with a period, so 32.768 reads as a decimal
+    [InlineData("fr-FR")]   //this culture groups with a narrow no-break space
+    [InlineData("de-DE")]   //this culture groups with a period
     [InlineData("en-US")]
-    public void THE_CONTEXT_SEPARATOR_IS_THE_SAME_ON_EVERY_MACHINE(string culture)
+    public void THE_CONTEXT_READS_THE_SAME_ON_EVERY_MACHINE(string culture)
     {
-        //change the ambient culture, since a machine-dependent render hides from any one culture. assert the separator itself.
+        //change the ambient culture, since a machine-dependent render hides from any one culture
         var previous = System.Globalization.CultureInfo.CurrentCulture;
         try
         {
             System.Globalization.CultureInfo.CurrentCulture = new System.Globalization.CultureInfo(culture);
             var pane = Pane(Row(ctx: 262144));
 
-            Assert.Contains("262,144", pane, StringComparison.Ordinal);
-            //the phrase comes from the pane itself, this test is about the number and its separator
-            Assert.Contains("context 262,144", pane, StringComparison.Ordinal);
-            Assert.DoesNotContain("262.144", pane, StringComparison.Ordinal);   //a period here reads as a decimal in de-DE
-            //build the three space forms from their code points, U+202F and U+00A0 look like a plain space in the source
-            foreach (var sep in new[] { (char)0x0020, (char)0x202F, (char)0x00A0 })
-                Assert.DoesNotContain("262" + sep + "144", pane, StringComparison.Ordinal);
+            Assert.Contains("context 262k", pane, StringComparison.Ordinal);
         }
         finally { System.Globalization.CultureInfo.CurrentCulture = previous; }
     }

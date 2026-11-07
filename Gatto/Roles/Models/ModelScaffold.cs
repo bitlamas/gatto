@@ -48,7 +48,8 @@ public static class ModelScaffold
         string? llamaServer = null, ModelSource? source = null, string? device = null,
         int? gpuLayers = null,   //a split's layer count, null for a model that fits whole
         string? sha256 = null,   //the hash of the file, stated with a stat of it here, at the path the profile names
-        int? scalarUbatch = null)   //the -ub of a card whose attention takes the scalar path, which also takes the f16 cache
+        int? scalarUbatch = null,   //the -ub of a card whose attention takes the scalar path, which also takes the f16 cache
+        bool projectorInMemory = false)   //the projector stays in system memory and the processor runs it, so the model keeps the card
     {
         var resolved = ResolveShardOne(Path.GetFullPath(ggufPath));
 
@@ -114,6 +115,7 @@ public static class ModelScaffold
             w.WriteString("cache_type_v", cacheType);
             w.WriteStartArray("extra_args");
             foreach (var a in StandardExtraArgs(ModelDiscovery.StreamedBytesOrNull(resolved) is > 0, scalarUbatch)) w.WriteStringValue(a);
+            if (projectorInMemory && !string.IsNullOrWhiteSpace(projector)) w.WriteStringValue("--no-mmproj-offload");   //only beside an mmproj key, the flag alone means nothing
             //the device the fit counted, since llama-server left alone takes a discrete card over a larger unified pool
             if (!string.IsNullOrWhiteSpace(device)) { w.WriteStringValue("-dev"); w.WriteStringValue(device); }
             w.WriteEndArray();

@@ -6,7 +6,7 @@
   gemma · qwen · deepseek · glm · mistral · all
 
   model           params ▾  size · quant    kind      runs      │ gemma-4-E4B-it
-  on the graphics card                                          │ ◈ vision · reads 8B/token · context 131,072
+  on the graphics card                                          │ ◈ vision · reads 8B/token · context 131k
 › gemma-4-E4B-it      8.0B  4.7 GB  Q4_K_M  dense     ✓ GPU     │
                                                                 │ publishers (3)
   in system memory, fastest first                               │ › ▾ unsloth             4.7 GB Q4_K_M  ✓ GPU

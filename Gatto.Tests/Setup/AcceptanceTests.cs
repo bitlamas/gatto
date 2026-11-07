@@ -42,7 +42,7 @@ public class AcceptanceTests
         public (string Path, long Bytes)? ProjectorFor(string p) => null;
         public string? ArchitectureOf(string p) => null;
         public MoveOffer? MoveOfferFor(string p) => null;
-        public (Gatto.Core.Models.FitRegime Alone, Gatto.Core.Models.FitRegime WithProjector)? PairFit(string p, long b) => null;
+        public Gatto.Cli.Setup.ProjectorPlaces? PairFit(string p, long b) => null;
         public TypedIdOutcome EvaluateTypedId(string id) => Typed;
         public Gatto.Roles.Serve.LlamaAsset? ChooseLlamaAsset() => new("z.zip", null, "a graphics card", "Vulkan");
         public Gatto.Core.Acquire.ProbeResult VerifyLlamaServer(string p) =>
@@ -247,7 +247,7 @@ public class AcceptanceTests
         public (string Path, long Bytes)? ProjectorFor(string p) => null;
         public string? ArchitectureOf(string p) => null;
         public MoveOffer? MoveOfferFor(string p) => null;
-        public (Gatto.Core.Models.FitRegime Alone, Gatto.Core.Models.FitRegime WithProjector)? PairFit(string p, long b) => null;
+        public Gatto.Cli.Setup.ProjectorPlaces? PairFit(string p, long b) => null;
         public TypedIdOutcome EvaluateTypedId(string id) => new TypedIdOutcome.Malformed();
         public Gatto.Roles.Serve.LlamaAsset? ChooseLlamaAsset() => null;
         public Gatto.Core.Acquire.ProbeResult VerifyLlamaServer(string p) =>

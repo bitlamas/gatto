@@ -115,7 +115,7 @@ internal sealed class FakeSetupProbes : ISetupProbes
     public Func<string, MoveOffer?>? Move { get; set; }
 
     public MoveOffer? MoveOfferFor(string p) => Move?.Invoke(p);
-    public (Gatto.Core.Models.FitRegime Alone, Gatto.Core.Models.FitRegime WithProjector)? PairFit(string p, long b) => null;
+    public Gatto.Cli.Setup.ProjectorPlaces? PairFit(string p, long b) => null;
     //a delegate that evaluates a typed model id (hard-coded to unreachable, only the failure branch is reachable)
     public Func<string, TypedIdOutcome>? Typed { get; init; }
     public TypedIdOutcome EvaluateTypedId(string id) =>

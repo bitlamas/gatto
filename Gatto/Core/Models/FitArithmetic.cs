@@ -9,7 +9,8 @@ internal sealed record FitEstimate(
     long WeightsBytes, long KvCacheBytes,
     IReadOnlyList<string> UnknownTerms, IReadOnlyList<string> AssumedTerms,
     long StreamedBytes = 0,   //the table taken off the weights, which still sits in system memory
-    long? Blocks = null);   //the header's block count, every layer the weights split over, null when it is not plausible
+    long? Blocks = null,   //the header's block count, every layer the weights split over, null when it is not plausible
+    long HostBytes = 0);   //a file held in system memory beside the model and never on the card, such as a projector the processor runs
 
 //a split puts some layers on the card and the rest in system memory, the card's share priced with the whole KV cache beside it
 internal enum FitRegime { FitsGpu, FitsSplit, FitsRamOnly, DoesNotFit, Unknown }
@@ -63,7 +64,8 @@ internal static class FitArithmetic
 
     //KV bytes come from the file's own terms, since this class touches no disk or network. an out-of-range context throws here, because that argument is a caller bug
     public static FitEstimate Estimate(GgufHeader h, long fileBytes, int contextLength, KvCacheKind kv,
-        long? streamedBytes = null)   //bytes the engine never places on the GPU. null means the tensor tables were not read
+        long? streamedBytes = null,   //bytes the engine never places on the GPU. null means the tensor tables were not read
+        long hostBytes = 0)   //a second file in system memory, priced beside the table and never subtracted from the weights
     {
         if (contextLength <= 0 || contextLength > MaxContext)
             throw new ArgumentOutOfRangeException(nameof(contextLength), contextLength,
@@ -114,7 +116,7 @@ internal static class FitArithmetic
             && (h.DeclaresPerLayerInput || Gatto.Core.Models.StreamedTensors.Load().Streams(h.Architecture)))
             assumed.Add("priced as the whole file: the per-layer input table was not read, and the engine keeps it off the GPU");
 
-        return new FitEstimate(weights, kvBytes, unknown, assumed, table, blocks);
+        return new FitEstimate(weights, kvBytes, unknown, assumed, table, blocks, Math.Max(0, hostBytes));
     }
 
     //llama-server's default -ub, which sizes a window cache. a profile that passes another -ub holds window plus that many cells
@@ -252,7 +254,7 @@ internal static class FitArithmetic
     private static long? Plausible(long? value, long cap) =>
         value is { } v && v > 0 && v <= cap ? v : null;
 
-    //GPU then RAM, a CPU-only machine skips the GPU comparison, and a streamed table is memory too, beside the card in system memory or in the pool unified memory shares
+    //GPU then RAM, and a CPU-only machine skips the GPU comparison. a streamed table or a file held off the card is memory too, in system memory or in the pool unified memory shares
     public static FitRegime Judge(FitEstimate e, HardwareClass hw)
     {
         var gpuBudget = hw.Topology == MemoryTopology.CpuOnly ? 0UL : hw.GpuBudgetBytes;
@@ -263,7 +265,7 @@ internal static class FitArithmetic
             var needed = e.UnknownTerms.Count > 0
                 ? total * HeadroomNumerator / HeadroomDenominator   //the widened margin for unknown terms
                 : total;
-            var table = e.StreamedBytes;
+            var table = e.StreamedBytes + e.HostBytes;
 
             var beside = table == 0 || hw.Topology switch
             {
@@ -320,7 +322,7 @@ internal static class FitArithmetic
             var n = Math.Min(room / perLayer, blocks);
             //the floor of the per-layer share leaves the rounding with the remainder, which errs toward memory
             var rest = e.WeightsBytes - n * perLayer;
-            return rest + e.StreamedBytes <= (long)hw.RamBudgetBytes ? (int)n : null;
+            return rest + e.StreamedBytes + e.HostBytes <= (long)hw.RamBudgetBytes ? (int)n : null;
         }
     }
 }

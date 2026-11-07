@@ -6,7 +6,7 @@
   gemma · qwen · deepseek · glm · mistral · all
 
   model           params ▾  size · quant    kind     │ gemma-4-E4B-it
-❯ gemma-4-E4B-it      8.0B  6.3 GB  Q6_K    dense    │ ◈ vision · reads 8B/token · context 131,072
+❯ gemma-4-E4B-it      8.0B  6.3 GB  Q6_K    dense    │ ◈ vision · reads 8B/token · context 131k
   Qwen3.5-9B          9.0B  7.1 GB  Q6_K    dense    │
   Qwen3.8-27B        27.0B  12.3 GB Q3_K_M  dense    │ publishers (3)
                                                      │ › ▸ unsloth             6.3 GB Q6_K  ✓ fits

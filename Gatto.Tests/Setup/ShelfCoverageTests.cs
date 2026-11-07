@@ -94,7 +94,7 @@ public class ShelfCoverageTests
     public void The_CONTEXT_SIZE_is_reachable()
     {
         //this test asks whether the fact survived somewhere on the run. that it sits beside the model is its own test, since that makes it usable while choosing
-        AssertReachable(ShelfFrames(), "context size", SearchRow.Ctx(TheRow().NativeCtx!.Value));
+        AssertReachable(ShelfFrames(), "context size", SearchRow.CtxK(TheRow().NativeCtx!.Value));
     }
 
     [Fact]
@@ -175,6 +175,6 @@ public class ShelfCoverageTests
     public void The_CONTEXT_SIZE_is_a_column_on_the_model_row()
     {
         //the context window changes the pick, so it must sit beside the model. the page line with the same size has no repo id, so only the table row can pass
-        AssertOnTheModelRow("context", SearchRow.Ctx(TheRow().NativeCtx!.Value));
+        AssertOnTheModelRow("context", SearchRow.CtxK(TheRow().NativeCtx!.Value));
     }
 }

@@ -18,7 +18,7 @@
 
 ────────────────────────────────────────────────────────────────────────────────
   Qwen3.6-35B-A3B  ·  by unsloth
-  context up to 262,144 · ◈ vision · reads 3B params/token
+  context up to 262k · ◈ vision · reads 3B params/token
   files · › Q4_K_M 22.1 GB  ✓ fits · … 2 heavier →
 
 ❯ search models…                                                   ? to search

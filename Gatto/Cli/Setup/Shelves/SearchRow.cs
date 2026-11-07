@@ -4,7 +4,7 @@ using Gatto.Core.Models;
 
 namespace Gatto.Cli.Setup.Shelves;
 
-//the row's words (name, size, fit, marks, context) and nothing more, and a mark says what was measured rather than recommending. keep Gb, FitWords, the mark words and Ctx here, the table, the pane and the tier line all call them
+//the row's words (name, size, fit, marks, context) and nothing more, and a mark says what was measured rather than recommending. keep Gb, FitWords, the mark words and CtxK here, the table, the pane and the tier line all call them
 internal static class SearchRow
 {
     public static string Label(ModelRow r) => r.Model;
@@ -63,7 +63,11 @@ internal static class SearchRow
     internal static string Gb(long bytes) =>
         Gatto.Cli.SizeWords.Gb(bytes);
 
-    //the context window as digits with comma groups from the invariant culture ("32 768" reads as a typo). the table's column and the pane both read it here
-    internal static string Ctx(long tokens) =>
-        tokens.ToString("N0", System.Globalization.CultureInfo.InvariantCulture);
+    //the context window in whole thousands rounded down, so 65536 reads 65k and never more than was picked. display only, the profile keeps the digits
+    internal static string CtxK(long tokens) =>
+        tokens >= 1_000_000 ? Whole(tokens / 1_000_000) + "M"
+        : tokens >= 1_000 ? Whole(tokens / 1_000) + "k"
+        : Whole(tokens);
+
+    private static string Whole(long n) => n.ToString(System.Globalization.CultureInfo.InvariantCulture);
 }

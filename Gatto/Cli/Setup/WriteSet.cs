@@ -24,6 +24,9 @@ internal sealed record WriteSet
     //the vision projector to write into the model's mmproj, or null. it sits outside Model because the screens after the ask rebuild Model wholesale
     public string? Projector { get; init; }
 
+    //the projector is held in system memory and run by the processor, so the model keeps its own context and layers on the card
+    public bool ProjectorInMemory { get; init; }
+
     //a llama-server binary for this model only, written into its profile.json from the unsupported-arch branch, where the pinned build can't run it
     public string? ModelLlamaServer { get; init; }
 

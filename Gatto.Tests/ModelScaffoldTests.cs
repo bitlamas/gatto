@@ -629,6 +629,30 @@ public class ModelScaffoldTests : IDisposable
         Assert.DoesNotContain("PUSH TO q8_0", notes, StringComparison.Ordinal);
     }
 
+    //the projector held in system memory: the one flag after the standard set and before the device pin, beside its mmproj key
+    [Fact]
+    public void A_PROJECTOR_IN_MEMORY_KEEPS_ITS_FILE_OFF_THE_CARD()
+    {
+        var projector = Fixture("tiny.gguf");
+        var id = ModelScaffold.Create(_dir, SecondCopy(), port: 1235, projector: projector, device: "Vulkan1", projectorInMemory: true);
+        var profile = Model.Load(_dir, id).Profile;
+
+        Assert.Equal(["-np", "1", "-fa", "on", "-lm", "none", "--jinja", "--no-context-shift", "--cache-reuse", "0",
+            "--no-mmproj-offload", "-dev", "Vulkan1"], profile.ExtraArgs);
+        using var doc = System.Text.Json.JsonDocument.Parse(File.ReadAllText(Path.Combine(_dir, id, "profile.json")));
+        Assert.Equal(projector, doc.RootElement.GetProperty("mmproj").GetString());
+    }
+
+    [Fact]
+    public void THE_FLAG_NEEDS_A_PROJECTOR_and_a_projector_on_the_card_takes_none()
+    {
+        var alone = ModelScaffold.Create(_dir, Fixture("tiny.gguf"), port: 1235, id: "alone", projectorInMemory: true);
+        Assert.DoesNotContain("--no-mmproj-offload", Model.Load(_dir, alone).Profile.ExtraArgs);
+
+        var onCard = ModelScaffold.Create(_dir, Fixture("tiny.gguf"), port: 1236, id: "on-card", projector: Fixture("tiny.gguf"));
+        Assert.DoesNotContain("--no-mmproj-offload", Model.Load(_dir, onCard).Profile.ExtraArgs);
+    }
+
     [Fact]
     public void WITH_NO_SCALAR_UBATCH_THE_PROFILE_IS_TODAYS()
     {

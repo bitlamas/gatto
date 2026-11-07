@@ -199,8 +199,8 @@ internal static class Pane
     //the pick then the model's own window on a local row picked below it, else the window alone under the line's own words
     private static IReadOnlyList<Run> ContextRuns(ModelRow r, long ctx, string bare, RunInk word) =>
         r.PickedCtx is { } picked && picked != ctx
-            ? [new Run("context ", word), new Run(SearchRow.Ctx(picked), RunInk.Accent), new Run(" of ", word), new Run(SearchRow.Ctx(ctx), RunInk.Accent)]
-            : [new Run(bare, word), new Run(SearchRow.Ctx(ctx), RunInk.Accent)];
+            ? [new Run("context ", word), new Run(SearchRow.CtxK(picked), RunInk.Accent), new Run(" of ", word), new Run(SearchRow.CtxK(ctx), RunInk.Accent)]
+            : [new Run(bare, word), new Run(SearchRow.CtxK(ctx), RunInk.Accent)];
 
     //vision, what one token reads and the context, each part only when the row knows it. a narrow pane breaks the line between parts
     private static IReadOnlyList<PaintedRow> FactsLines(ModelRow r, ModelFacts f, int width, GlyphSet g)

@@ -52,8 +52,8 @@ internal sealed class SetupFace(
             Numbered: c.Shelf is null,
             //the shelf's four control keys, null off the shelf so no other screen can reach SelectOutcome.Control
             ControlKeys: c.Shelf is { } sv ? ShelfControls.Keys(sv) : null,
-            //the cursor returns to the row the user was on, since a control press re-opens this prompt
-            InitialCursor: _resumeCursor,
+            //the cursor returns to the row the user was on, since a control press re-opens this prompt, and a fresh screen opens on its own pick
+            InitialCursor: _resumeCursor > 0 ? _resumeCursor : c.Cursor,
             NoInitialCursor: c.NoDefault,
             //the watch is chosen here, null on every other screen. a download is gatto working, so the row uses Cats.Face's default arm under no role
             Poll: c.Watching && watch is { } arrived

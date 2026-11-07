@@ -355,7 +355,7 @@ internal sealed partial class SetupFlow
         return OfferProjector(Selected!, _moveReplace);
     }
 
-    //a projector sits beside the model, offer to add it. show what the pair costs to run, and only when adding it changes that
+    //a projector sits beside the model, offer to add it with each place it can sit, priced, so the answer is a placement and not vision against speed
     private SetupScreen OfferProjector(FoundModel model, bool replace)
     {
         _projectorReplace = replace;
@@ -368,33 +368,49 @@ internal sealed partial class SetupFlow
         _projector = found.Path;
         var rows = new List<SetupRow>
         {
-            new($"Found {System.IO.Path.GetFileName(found.Path)} beside your model, "
-                + "that is what lets a model read images."),
+            new($"Found {System.IO.Path.GetFileName(found.Path)} beside the model. It lets the model read images."),
         };
 
-        //warn only when the projector changes the fit, a screen that warns about everything trains users to skip warnings
-        if (probes.PairFit(model.Path, found.Bytes) is { } fit && fit.Alone != fit.WithProjector)
-            rows.Add(new SetupRow(
-                $"Loading both together {SearchRow.FitWords(fit.WithProjector, Shape, Glyphs)}, "
-                + $"the model on its own {SearchRow.FitWords(fit.Alone, Shape, Glyphs)}.", RowTone.Aside));
+        //one memory holds model and encoder either way on a unified pool, so the encoder in memory saves the card nothing and only costs the encode
+        var topology = probes.Hardware() is { } hw ? Gatto.Core.Hardware.HardwareClassifier.Classify(hw).Topology : (Gatto.Core.Hardware.MemoryTopology?)null;
+        var unified = topology == Gatto.Core.Hardware.MemoryTopology.Unified;
+        var noCard = topology == Gatto.Core.Hardware.MemoryTopology.CpuOnly;
+        var places = probes.PairFit(model.Path, found.Bytes);
+        //the screen still asks, a projector beside the weights is never armed on its own. with no card there is no card to name
+        var options = new List<ChoiceOption> { new(Yes, noCard ? "Yes, add vision" : "Yes, encoder on the card",
+            places is null ? null : PlaceClause(places.OnCard, unified, false)) };
+        if (!unified && !noCard)
+            options.Add(new(ProjectorInMemory, "Yes, encoder in system memory", places is null ? null : PlaceClause(places.InMemory, unified, true)));
+        options.Add(new(No, "No, text only"));
 
-        return Emit(new SetupScreen.Choice(
-            ProjectorKey,
-            "Add vision to this model?",
-            [
-                //yes leads the cursor, but the screen still asks, a projector beside the weights is never armed on its own
-                new ChoiceOption(Yes, "Yes, add the projector"),
-                new ChoiceOption(No, "No, set it up for text"),
-            ],
-            BodyRows: rows), ProjectorKey);
+        return Emit(new SetupScreen.Choice(ProjectorKey, "Add vision to this model?", options, BodyRows: rows)
+        {
+            //the cursor opens on the card while the pair costs the model nothing there, and on memory once it would move the model off it
+            Cursor = options.Count == 2 || places is null || places.OnCard.Regime == places.Alone.Regime ? 0 : 1,
+        }, ProjectorKey);
     }
 
-    //yes writes the projector, no writes nothing (Back's Writes restore is what stops an abandoned choice)
+    //what each yes does to the model, never the encoder, so no reader has to sort the encoder's place from the model's fit. no seconds and no rate, the check screen measures those
+    private static string? PlaceClause(Gatto.Core.Models.ContextPick pick, bool unified, bool slower)
+    {
+        var where = pick.Regime switch
+        {
+            Gatto.Core.Models.FitRegime.FitsGpu => unified ? "the model fits in the graphics share" : "the model stays whole on the card",
+            Gatto.Core.Models.FitRegime.FitsSplit => "the model splits across card and system memory",
+            Gatto.Core.Models.FitRegime.FitsRamOnly => "the model runs from system memory",
+            Gatto.Core.Models.FitRegime.DoesNotFit => "the model does not fit",
+            _ => null,
+        };
+        return where is null ? null
+            : $"{where}, context {SearchRow.CtxK(pick.Context)}" + (slower ? ", images read slower" : "");
+    }
+
+    //either yes writes the projector, the second also keeps it off the card, and no writes nothing (Back's Writes restore is what stops an abandoned choice)
     private SetupScreen AnswerProjector(string key)
     {
         _awaiting = null;
-        if (key == Yes && _projector is { Length: > 0 } path)
-            Writes = Writes with { Projector = path };
+        if (key is Yes or ProjectorInMemory && _projector is { Length: > 0 } path)
+            Writes = Writes with { Projector = path, ProjectorInMemory = key == ProjectorInMemory };
 
         return OfferCustomBuild(Selected!, _projectorReplace);
     }
@@ -573,16 +589,17 @@ internal sealed partial class SetupFlow
     //the model intent in one place, replacing or not, so the collision branch can't drift on context, port or the pause. it records an intent and pauses for the writer, and a screen put between the two needs the back-walk test in the same commit
     private SetupScreen ScaffoldIntent(FoundModel model, bool replace)
     {
-        //use the computed context, a ceiling this machine can't hold is a model that fails to load
-        var context = probes.ContextFor(model.Path, Writes.Projector);
+        //use the computed context, a ceiling this machine can't hold is a model that fails to load. a projector held in system memory takes no room on the card, so the model is priced alone
+        var onCard = Writes.ProjectorInMemory ? null : Writes.Projector;
+        var context = probes.ContextFor(model.Path, onCard);
         Writes = Writes with
         {
             CreateModel = new WriteSet.Model(model.Path, Port: DefaultPort,
                 Context: context, Replace: replace,
                 Source: SourceOf(model),
                 PinGpu: probes.ServeOnlyGpu(),
-                GpuLayers: probes.SplitLayersFor(model.Path, context, Writes.Projector),
-                ScalarUbatch: probes.ScalarUbatchFor(model.Path, context, Writes.Projector),
+                GpuLayers: probes.SplitLayersFor(model.Path, context, onCard),
+                ScalarUbatch: probes.ScalarUbatchFor(model.Path, context, onCard),
                 Sha256: KnownHashFor(model)),
         };
         //pause for the writer before offering anything, no screen may audition a model that isn't on disk yet

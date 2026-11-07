@@ -15,6 +15,12 @@ internal sealed record ScanResult(
 //what an added model's profile recorded, which a local row reads for its publisher and its vision
 internal sealed record AddedFacts(string? RepoId, bool HasProjector);
 
+//where each answer to the projector screen puts the model. on the card the pair takes its own pick, and in memory the model keeps its own
+internal sealed record ProjectorPlaces(
+    Gatto.Core.Models.ContextPick Alone,
+    Gatto.Core.Models.ContextPick OnCard,
+    Gatto.Core.Models.ContextPick InMemory);
+
 //everything the wizard learns about the world, behind the one seam the tests fake. a probe never writes, and each segment asks its question before it renders
 internal interface ISetupProbes
 {
@@ -159,9 +165,8 @@ internal interface ISetupProbes
     //the vision projector sitting beside this model, or null. null means none was found, so the screen makes no claim
     (string Path, long Bytes)? ProjectorFor(string ggufPath);
 
-    //the fit regime for a model alone and with its projector, priced as one process. null when the machine could not be read
-    (Gatto.Core.Models.FitRegime Alone, Gatto.Core.Models.FitRegime WithProjector)? PairFit(
-        string ggufPath, long projectorBytes);
+    //the context and regime of the model alone and of each place its projector can sit. null when the machine could not be read
+    ProjectorPlaces? PairFit(string ggufPath, long projectorBytes);
 
     //the id of the model that already wraps this model file, or null. asked of every model by resolved path, so a non-default one is not invisible
     string? ExistingModelFor(string ggufPath);

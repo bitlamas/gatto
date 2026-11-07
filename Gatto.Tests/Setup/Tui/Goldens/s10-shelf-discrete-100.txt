@@ -6,7 +6,7 @@
 
   model               params ▾  size · quant    kind      runs      │ gemma-4-26B-A4B-it            
   gemma-4-31B-it         30.7B  18.3 GB Q4_K_M  dense     ✓ GPU     │ ◈ vision · reads 4B/token     
-❯ gemma-4-26B-A4B-it     25.2B  16.9 GB Q4_K_M  MoE A4B   ✓ GPU     │ context 262,144               
+❯ gemma-4-26B-A4B-it     25.2B  16.9 GB Q4_K_M  MoE A4B   ✓ GPU     │ context 262k                  
   gemma-4-12b-it         11.9B  7.1 GB  Q4_K_M  dense     ✓ GPU     │                               
   gemma-4-E4B-it          7.5B  5.0 GB  Q4_K_M  dense     ✓ GPU     │ publishers (1)                
                                                                     │ › ▸ unsloth  16.9 GB Q4_K_M  ✓

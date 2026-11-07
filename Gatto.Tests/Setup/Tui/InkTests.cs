@@ -63,6 +63,42 @@ public class InkTests
         Assert.True(Wears(screen, "❯", Theme.Accent), "the highlighted glyph is not accented");
     }
 
+    //an answer's consequence is dim after its label, and the two consequences start in one column 4 cells past the longer label
+    [Fact]
+    public void AN_OPTIONS_DESCRIPTION_IS_DIM_AND_LINED_UP_WITH_THE_OTHERS()
+    {
+        var (s, f) = Face(120);
+        f.Choose(new SetupScreen.Choice("ask", "Add vision to this model?",
+            [
+                new ChoiceOption("a", "Yes, encoder on the card", "the model splits across card and system memory, context 131k"),
+                new ChoiceOption("b", "Yes, encoder in system memory", "the model stays whole on the card, context 65k, images read slower"),
+                new ChoiceOption("c", "No, text only"),
+            ]) { Cursor = 2 });
+
+        Assert.True(Wears(s.Text, "    the model stays whole on the card, context 65k, images read slower", Theme.Dim),
+            "the second description is not dim 4 cells past the longer label");
+        Assert.True(Wears(s.Text, "         the model splits across card and system memory, context 131k", Theme.Dim),
+            "the first description does not start in the second one's column");
+    }
+
+    //at 100 cells the second answer's row would be 104, so its clause drops under the label whole, and the row that fits keeps the column
+    [Fact]
+    public void A_DESCRIPTION_TOO_WIDE_FOR_THE_WINDOW_DROPS_UNDER_ITS_LABEL_WHOLE()
+    {
+        var (s, f) = Face(100);
+        f.Choose(new SetupScreen.Choice("ask", "Add vision to this model?",
+            [
+                new ChoiceOption("a", "Yes, encoder on the card", "the model splits across card and system memory, context 131k"),
+                new ChoiceOption("b", "Yes, encoder in system memory", "the model stays whole on the card, context 65k, images read slower"),
+                new ChoiceOption("c", "No, text only"),
+            ]) { Cursor = 2 });
+
+        Assert.True(Wears(s.Text, "     the model stays whole on the card, context 65k, images read slower", Theme.Dim),
+            "the clause is not whole on its own dim row indented to the label's words");
+        Assert.True(Wears(s.Text, "         the model splits across card and system memory, context 131k", Theme.Dim),
+            "the row that fits lost the column");
+    }
+
 
     //the model fetch's four screens
 

@@ -7,7 +7,7 @@
 
   model                        params ▾  size · quant    kind     │ Qwen3.6-35B-A3B                 
   Qwen3-Coder-Next                79.7B  48.5 GB Q4_K_M  MoE      │ ◈ vision · reads 3B/token       
-  Qwen3-Next-80B-A3B-Instruct     79.7B  48.5 GB Q4_K_M  MoE A3B  │ context 262,144                 
+  Qwen3-Next-80B-A3B-Instruct     79.7B  48.5 GB Q4_K_M  MoE A3B  │ context 262k                    
   Qwen3-Next-80B-A3B-Thinking     79.7B  48.5 GB Q4_K_M  MoE A3B  │                                 
   Qwen3.5-35B-A3B                 35.5B  22.6 GB Q4_K_M  MoE A3B  │ publishers (1)                  
 ❯ Qwen3.6-35B-A3B                 34.7B  22.1 GB Q4_K_M  MoE A3B  │ › ▸ uns…  22.1 GB Q4_K_M  ✓ fits

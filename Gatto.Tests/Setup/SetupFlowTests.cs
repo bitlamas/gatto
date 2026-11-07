@@ -121,12 +121,12 @@ public class SetupFlowTests
         //the offer to move a model out of Downloads. null is the default, since most models are not there, so a test that wants this screen must set it
         public MoveOffer? Move { get; init; }
         //the fit regimes for the model alone and with its projector. null means the machine could not be read, where the screen says nothing about fit
-        public (Gatto.Core.Models.FitRegime Alone, Gatto.Core.Models.FitRegime WithProjector)? Pair { get; init; }
+        public Gatto.Cli.Setup.ProjectorPlaces? Pair { get; init; }
 
         public (string Path, long Bytes)? ProjectorFor(string ggufPath) { Asked.Add(nameof(ProjectorFor)); return Projector; }
         public string? ArchitectureOf(string ggufPath) { Asked.Add(nameof(ArchitectureOf)); return Architecture; }
         public MoveOffer? MoveOfferFor(string ggufPath) { Asked.Add(nameof(MoveOfferFor)); return Move; }
-        public (Gatto.Core.Models.FitRegime Alone, Gatto.Core.Models.FitRegime WithProjector)? PairFit(string ggufPath, long projectorBytes) => Pair;
+        public Gatto.Cli.Setup.ProjectorPlaces? PairFit(string ggufPath, long projectorBytes) => Pair;
 
         public TypedIdOutcome EvaluateTypedId(string repoId)
         {
@@ -157,6 +157,12 @@ public class SetupFlowTests
             IProgress<Gatto.Roles.Audition.AuditionProgress>? progress = null) { Asked.Add(nameof(ProveIt)); return Proof; }
 
         public int ContextFor(string ggufPath) { Asked.Add(nameof(ContextFor)); return Context; }
+
+        //the pair's own pick when a projector loads on the card with the model, the model's own when the fixture sets none
+        public int? PairContext { get; init; }
+
+        public int ContextFor(string ggufPath, string? projectorPath) =>
+            projectorPath is not null && PairContext is { } pair ? pair : ContextFor(ggufPath);
 
         //the measurements from the check. null is a real state, an audition that ran but reported nothing, and the completion screen must survive it.
         public AuditionFacts? Facts { get; init; }
@@ -2459,13 +2465,24 @@ ew.gguf", model.GgufPath);
         Assert.DoesNotContain("bad", again.Label!, StringComparison.OrdinalIgnoreCase);
     }
 
+    //the measured pair's shape: the model whole at 65536, the pair at 131072, the projector in memory keeping the model's own regime
+    private static Gatto.Cli.Setup.ProjectorPlaces Places(Gatto.Core.Models.FitRegime alone, Gatto.Core.Models.FitRegime onCard,
+        Gatto.Core.Models.FitRegime? inMemory = null) =>
+        new(new(65536, alone), new(131072, onCard), new(65536, inMemory ?? alone));
+
     private static FakeProbes WithProjector(Gatto.Core.Models.FitRegime alone = Gatto.Core.Models.FitRegime.FitsGpu,
-        Gatto.Core.Models.FitRegime paired = Gatto.Core.Models.FitRegime.FitsGpu) => new()
+        Gatto.Core.Models.FitRegime paired = Gatto.Core.Models.FitRegime.FitsGpu, bool priced = true,
+        int context = 8192, int? pairContext = null, bool unified = false, bool noCard = false) => new()
     {
+        Snapshot = new(InstalledBytes: 34359738368, OsVisibleBytes: 34093496320,
+            GraphicsKind: noCard ? GpuKind.None : unified ? GpuKind.Integrated : GpuKind.Discrete,
+            GraphicsMemoryBytes: noCard ? null : unified ? 17179869184UL : 8589934592UL),
         Llama = @"C:\llama\llama-server.exe",
         Found = [new Gatto.Core.Acquire.FoundModel(@"D:\m\qwen.gguf", 4_000_000_000, null)],
         Projector = (@"D:\m\mmproj-qwen-f16.gguf", 1_100_000_000),
-        Pair = (alone, paired),
+        Pair = priced ? Places(alone, paired) : null,
+        Context = context,
+        PairContext = pairContext,
     };
 
     //yes leads the option list, yet the projector is still asked for rather than enabled by itself
@@ -2514,22 +2531,114 @@ ew.gguf", model.GgufPath);
     }
 
     [Fact]
-    public void THE_ASK_PRICES_THE_REGIME_and_says_nothing_when_the_answer_does_not_change()
+    public void THE_ASK_OFFERS_THREE_ANSWERS_each_yes_naming_what_happens_to_the_model()
     {
-        //a projector costs about a fixed size, so the screen shows the pair's regime and warns only when the answer changes it
-        var costs = new SetupFlow(WithProjector(Gatto.Core.Models.FitRegime.FitsGpu, Gatto.Core.Models.FitRegime.FitsRamOnly));
-        costs.StartPastEngine();
-        var warned = Assert.IsType<SetupScreen.Choice>(costs.AnswerSettled("0"));
-        var warnedBody = string.Join(" ", warned.BodyRows!);
+        var flow = new SetupFlow(WithProjector(Gatto.Core.Models.FitRegime.FitsGpu, Gatto.Core.Models.FitRegime.FitsSplit));
+        flow.StartPastEngine();
+        var ask = Assert.IsType<SetupScreen.Choice>(flow.AnswerSettled("0"));
 
-        Assert.Contains(SearchRow.FitWords(Gatto.Core.Models.FitRegime.FitsRamOnly, Gatto.Core.Hardware.MachineShape.Discrete, Gatto.Terminal.GlyphSet.Unicode), warnedBody, StringComparison.Ordinal);
-        Assert.Contains(SearchRow.FitWords(Gatto.Core.Models.FitRegime.FitsGpu, Gatto.Core.Hardware.MachineShape.Discrete, Gatto.Terminal.GlyphSet.Unicode), warnedBody, StringComparison.Ordinal);
+        Assert.Equal([SetupFlow.Yes, SetupFlow.ProjectorInMemory, SetupFlow.No], ask.Options.Select(o => o.Key));
+        Assert.Equal(["Yes, encoder on the card", "Yes, encoder in system memory", "No, text only"], ask.Options.Select(o => o.Label));
+        Assert.Equal("Found mmproj-qwen-f16.gguf beside the model. It lets the model read images.", Assert.Single(ask.BodyRows!).Text);
+        Assert.Equal("the model splits across card and system memory, context 131k", ask.Options[0].Description);
+        Assert.Equal("the model stays whole on the card, context 65k, images read slower", ask.Options[1].Description);
+        Assert.Null(ask.Options[2].Description);
+    }
 
-        var free = new SetupFlow(WithProjector(Gatto.Core.Models.FitRegime.FitsGpu, Gatto.Core.Models.FitRegime.FitsGpu));
-        free.StartPastEngine();
-        var quiet = Assert.IsType<SetupScreen.Choice>(free.AnswerSettled("0"));
+    [Fact]
+    public void EACH_REGIME_HAS_ITS_OWN_CLAUSE_and_an_unknown_one_none()
+    {
+        Assert.Equal("the model runs from system memory, context 131k", Clause(Gatto.Core.Models.FitRegime.FitsRamOnly));
+        Assert.Equal("the model does not fit, context 131k", Clause(Gatto.Core.Models.FitRegime.DoesNotFit));
+        Assert.Null(Clause(Gatto.Core.Models.FitRegime.Unknown));
 
-        Assert.Single(quiet.BodyRows!);   //the single row is the file itself, with no fit sentence
+        static string? Clause(Gatto.Core.Models.FitRegime paired)
+        {
+            var flow = new SetupFlow(WithProjector(Gatto.Core.Models.FitRegime.FitsGpu, paired));
+            flow.StartPastEngine();
+            return Assert.IsType<SetupScreen.Choice>(flow.AnswerSettled("0")).Options[0].Description;
+        }
+    }
+
+    //one memory holds model and encoder either way, so the second yes would save the card nothing
+    [Fact]
+    public void A_UNIFIED_POOL_OFFERS_NO_SECOND_YES_and_the_cursor_on_the_first()
+    {
+        var flow = new SetupFlow(WithProjector(Gatto.Core.Models.FitRegime.FitsGpu, Gatto.Core.Models.FitRegime.FitsSplit, unified: true));
+        flow.StartPastEngine();
+        var ask = Assert.IsType<SetupScreen.Choice>(flow.AnswerSettled("0"));
+
+        Assert.Equal([SetupFlow.Yes, SetupFlow.No], ask.Options.Select(o => o.Key));
+        Assert.Equal("the model splits across card and system memory, context 131k", ask.Options[0].Description);
+        Assert.Equal(0, ask.Cursor);
+    }
+
+    //with no card the place is not a choice, so one yes adds vision and names no card
+    [Fact]
+    public void A_MACHINE_WITH_NO_CARD_OFFERS_ONE_YES_THAT_ADDS_VISION()
+    {
+        var flow = new SetupFlow(WithProjector(Gatto.Core.Models.FitRegime.FitsRamOnly, Gatto.Core.Models.FitRegime.FitsRamOnly, noCard: true));
+        flow.StartPastEngine();
+        var ask = Assert.IsType<SetupScreen.Choice>(flow.AnswerSettled("0"));
+
+        Assert.Equal([SetupFlow.Yes, SetupFlow.No], ask.Options.Select(o => o.Key));
+        Assert.Equal(["Yes, add vision", "No, text only"], ask.Options.Select(o => o.Label));
+        Assert.Equal("the model runs from system memory, context 131k", ask.Options[0].Description);
+        Assert.Equal(0, ask.Cursor);
+    }
+
+    [Fact]
+    public void A_UNIFIED_POOL_THAT_HOLDS_THE_PAIR_SAYS_THE_GRAPHICS_SHARE()
+    {
+        var flow = new SetupFlow(WithProjector(unified: true));
+        flow.StartPastEngine();
+
+        Assert.Equal("the model fits in the graphics share, context 131k",
+            Assert.IsType<SetupScreen.Choice>(flow.AnswerSettled("0")).Options[0].Description);
+    }
+
+    [Fact]
+    public void THE_CURSOR_OPENS_ON_THE_PLACE_THAT_KEEPS_THE_MODEL_WHERE_IT_WAS()
+    {
+        Ask(Gatto.Core.Models.FitRegime.FitsGpu, Gatto.Core.Models.FitRegime.FitsGpu, cursor: 0);
+        Ask(Gatto.Core.Models.FitRegime.FitsGpu, Gatto.Core.Models.FitRegime.FitsSplit, cursor: 1);
+
+        static void Ask(Gatto.Core.Models.FitRegime alone, Gatto.Core.Models.FitRegime paired, int cursor)
+        {
+            var flow = new SetupFlow(WithProjector(alone, paired));
+            flow.StartPastEngine();
+            Assert.Equal(cursor, Assert.IsType<SetupScreen.Choice>(flow.AnswerSettled("0")).Cursor);
+        }
+    }
+
+    [Fact]
+    public void AN_UNREAD_MACHINE_ASKS_WITH_NO_PLACES_and_the_cursor_on_the_first()
+    {
+        var flow = new SetupFlow(WithProjector(priced: false));
+        flow.StartPastEngine();
+        var ask = Assert.IsType<SetupScreen.Choice>(flow.AnswerSettled("0"));
+
+        Assert.Single(ask.BodyRows!);   //the single row is the file itself
+        Assert.All(ask.Options, o => Assert.Null(o.Description));
+        Assert.Equal(0, ask.Cursor);
+    }
+
+    [Fact]
+    public void THE_ENCODER_IN_MEMORY_WRITES_THE_MODELS_OWN_CONTEXT_and_the_card_the_pairs()
+    {
+        Assert.Equal((65536, true), Answered(SetupFlow.ProjectorInMemory));
+        Assert.Equal((131072, false), Answered(SetupFlow.Yes));
+
+        static (int Context, bool InMemory) Answered(string key)
+        {
+            var flow = new SetupFlow(WithProjector(context: 65536, pairContext: 131072));
+            flow.StartPastEngine();
+            flow.AnswerSettled("0");
+            flow.AnswerSettled(key);
+
+            Assert.Equal(@"D:\m\mmproj-qwen-f16.gguf", flow.Writes.Projector);
+            return (flow.Writes.CreateModel!.Context, flow.Writes.ProjectorInMemory);
+        }
     }
 
     [Fact]
@@ -2539,7 +2648,7 @@ ew.gguf", model.GgufPath);
         var flow = new SetupFlow(WithProjector(Gatto.Core.Models.FitRegime.FitsGpu, Gatto.Core.Models.FitRegime.FitsRamOnly));
         flow.StartPastEngine();
         var ask = Assert.IsType<SetupScreen.Choice>(flow.AnswerSettled("0"));
-        var body = string.Join(" ", ask.BodyRows!);
+        var body = string.Join(" ", ask.BodyRows!.Select(r => r.Text).Concat(ask.Options.Select(o => o.Description ?? "")));
 
         foreach (var banned in new[] { "per image", "each image", "tokens", "slower per" })
             Assert.DoesNotContain(banned, body, StringComparison.OrdinalIgnoreCase);
@@ -2713,7 +2822,7 @@ ew.gguf", model.GgufPath);
             Found = [new Gatto.Core.Acquire.FoundModel(@"C:\Users\me\Downloads\qwen.gguf", 4_000_000_000, null)],
             Move = new MoveOffer(@"C:\Users\me\.gatto\models", false, 30_000_000_000, null),
             Projector = (@"C:\Users\me\Downloads\mmproj-qwen-f16.gguf", 1_100_000_000),
-            Pair = (Gatto.Core.Models.FitRegime.FitsGpu, Gatto.Core.Models.FitRegime.FitsGpu),
+            Pair = Places(Gatto.Core.Models.FitRegime.FitsGpu, Gatto.Core.Models.FitRegime.FitsGpu),
         };
 
         var (flow, _) = AtMove(probes);
@@ -2840,7 +2949,7 @@ ew.gguf", model.GgufPath);
             Llama = @"C:\llama\llama-server.exe",
             Found = [new Gatto.Core.Acquire.FoundModel(@"D:\m\qwen.gguf", 4_000_000_000, null)],
             Projector = (@"D:\m\mmproj-qwen-f16.gguf", 1_100_000_000),
-            Pair = (Gatto.Core.Models.FitRegime.FitsGpu, Gatto.Core.Models.FitRegime.FitsGpu),
+            Pair = Places(Gatto.Core.Models.FitRegime.FitsGpu, Gatto.Core.Models.FitRegime.FitsGpu),
             Architecture = "futurearch",
         });
         flow.StartPastEngine();

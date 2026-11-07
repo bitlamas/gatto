@@ -57,7 +57,7 @@ public class UnmappedScreenTests : IDisposable
         public (string Path, long Bytes)? ProjectorFor(string p) => null;
         public string? ArchitectureOf(string p) => null;
         public MoveOffer? MoveOfferFor(string p) => Move;
-        public (Gatto.Core.Models.FitRegime Alone, Gatto.Core.Models.FitRegime WithProjector)? PairFit(string p, long b) => null;
+        public Gatto.Cli.Setup.ProjectorPlaces? PairFit(string p, long b) => null;
         public TypedIdOutcome EvaluateTypedId(string id) => new TypedIdOutcome.Unreachable(false);
         public Gatto.Roles.Serve.LlamaAsset? ChooseLlamaAsset() => new("z.zip", null, "a graphics card", "Vulkan");
         public Gatto.Core.Acquire.ProbeResult VerifyLlamaServer(string p) =>
@@ -183,7 +183,7 @@ public class UnmappedScreenTests : IDisposable
         public ConnectProbe? ProbeAt(string baseUrl) => null;
         public (string Path, long Bytes)? ProjectorFor(string p) => _inner.ProjectorFor(p);
         public MoveOffer? MoveOfferFor(string p) => _inner.MoveOfferFor(p);
-        public (Gatto.Core.Models.FitRegime Alone, Gatto.Core.Models.FitRegime WithProjector)? PairFit(string p, long b) => _inner.PairFit(p, b);
+        public Gatto.Cli.Setup.ProjectorPlaces? PairFit(string p, long b) => _inner.PairFit(p, b);
         public TypedIdOutcome EvaluateTypedId(string id) => _inner.EvaluateTypedId(id);
         public Gatto.Roles.Serve.LlamaAsset? ChooseLlamaAsset() => _inner.ChooseLlamaAsset();
         public Gatto.Core.Acquire.ProbeResult VerifyLlamaServer(string p) => _inner.VerifyLlamaServer(p);

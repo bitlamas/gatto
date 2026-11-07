@@ -8,7 +8,7 @@ ESC[38;2;232;232;232m  Found a model already on this machineESC[0m
 ESC[38;2;153;153;153m  model     params ▾  size · quant    kind    ESC[0m ESC[38;2;255;166;77m│ESC[0m ESC[38;2;232;232;232mQwen3-8BESC[0m                                                               
 ESC[38;2;153;153;153m› ESC[0mESC[38;2;232;232;232mQwen3-8B        8B  4.7 GB Q4_K_M   dense   ESC[0m ESC[38;2;255;166;77m│ESC[0m ESC[38;2;153;153;153mC:\models\ESC[0m                                                             
                                                ESC[38;2;255;166;77m│ESC[0m                                                                        
-                                               ESC[38;2;255;166;77m│ESC[0m context up to ESC[38;2;255;166;77m32,768ESC[0m                                                   
+                                               ESC[38;2;255;166;77m│ESC[0m context up to ESC[38;2;255;166;77m32kESC[0m                                                      
                                                ESC[38;2;255;166;77m│ESC[0m ESC[38;2;153;153;153mreads all ESC[0m8BESC[38;2;153;153;153m params/tokenESC[0m                                              
                                                ESC[38;2;255;166;77m│ESC[0m ESC[38;2;153;153;153march      ESC[0mqwen3                                                        
                                                ESC[38;2;255;166;77m│ESC[0m                                                                        

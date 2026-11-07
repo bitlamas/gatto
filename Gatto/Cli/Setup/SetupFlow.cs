@@ -198,6 +198,7 @@ internal sealed partial class SetupFlow(ISetupProbes probes)
     public const string CtlPick = "shelf.pick:";
     //the vision-projector question.
     public const string ProjectorKey = "projector";
+    public const string ProjectorInMemory = "projector.memory";   //the second yes, the encoder held in system memory and run by the processor
     //the offer of a per-model llama.cpp build, and the path it asks for.
     public const string CustomBuildKey = "custom.build";
     public const string CustomBuildPathKey = "custom.build.path";

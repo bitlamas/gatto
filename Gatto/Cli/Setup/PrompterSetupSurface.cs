@@ -53,7 +53,7 @@ internal sealed class PrompterSetupSurface(
                 Numbered: c.Shelf is null,
                 //offer the same control keys the bare-console face does, the strip above them advertises keys that would otherwise do nothing
                 ControlKeys: c.Shelf is { } sv ? ShelfControls.Keys(sv) : null,
-                InitialCursor: _resumeCursor,
+                InitialCursor: _resumeCursor > 0 ? _resumeCursor : c.Cursor,
                 NoInitialCursor: c.NoDefault));
 
             if (answer is null) return null;                       //backed out

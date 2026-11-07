@@ -1111,9 +1111,8 @@ internal sealed class LiveSetupProbes(string homePath, Gatto.Terminal.GlyphSet g
         catch (Exception) { return null; }
     }
 
-    //the regime for the model alone and with the projector, each at the context setup would pick for it, null when the machine or the header can't be read
-    public (Gatto.Core.Models.FitRegime Alone, Gatto.Core.Models.FitRegime WithProjector)? PairFit(
-        string ggufPath, long projectorBytes)
+    //each place the projector can sit, at the context setup would pick for it, null when the machine or the header can't be read
+    public ProjectorPlaces? PairFit(string ggufPath, long projectorBytes)
     {
         try
         {
@@ -1127,11 +1126,19 @@ internal sealed class LiveSetupProbes(string homePath, Gatto.Terminal.GlyphSet g
             if (ModelDiscovery.SetBytesOrNull(ggufPath) is not { } bytes) return null;
             var streamed = ModelDiscovery.StreamedBytesOrNull(ggufPath, header);
             var priced = WithWindow(header);
-            Gatto.Core.Models.FitRegime AtPick(long weights) =>
-                Gatto.Core.Models.FitArithmetic.PickContext(priced, weights, streamed, hw)?.Regime
-                ?? Gatto.Core.Models.FitArithmetic.Judge(Gatto.Core.Models.FitArithmetic.Estimate(
-                    header, weights, SetupFlow.OfferedContext, Gatto.Core.Models.FitArithmetic.ProfileKindFor(hw), streamed), hw);
-            return (AtPick(bytes), AtPick(bytes + projectorBytes));
+            var kind = Gatto.Core.Models.FitArithmetic.ProfileKindFor(hw);
+            Gatto.Core.Models.ContextPick AtPick(long weights) =>
+                Gatto.Core.Models.FitArithmetic.PickContext(priced, weights, streamed, hw)
+                ?? new Gatto.Core.Models.ContextPick(SetupFlow.OfferedContext, Gatto.Core.Models.FitArithmetic.Judge(
+                    Gatto.Core.Models.FitArithmetic.Estimate(header, weights, SetupFlow.OfferedContext, kind, streamed), hw));
+            var alone = AtPick(bytes);
+            //the model keeps its own context and the projector's bytes sit in system memory beside it, where the processor runs it
+            var inMemory = alone with
+            {
+                Regime = Gatto.Core.Models.FitArithmetic.Judge(
+                    Gatto.Core.Models.FitArithmetic.Estimate(header, bytes, alone.Context, kind, streamed, projectorBytes), hw),
+            };
+            return new ProjectorPlaces(alone, AtPick(bytes + projectorBytes), inMemory);
         }
         catch (Exception) { return null; }
     }

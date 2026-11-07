@@ -57,7 +57,7 @@ public class PaneAccordionTests
     {
         var (_, c) = OnTheShelf(Row() with { Active = 3_000_000_000, Structure = "MoE" });
         var text = Pane(c, []);
-        Assert.Contains("◈ vision · reads 3B/token · context 262,144", text, StringComparison.Ordinal);
+        Assert.Contains("◈ vision · reads 3B/token · context 262k", text, StringComparison.Ordinal);
 
         var (_, plain) = OnTheShelf(Row() with { Vision = false, NativeCtx = null, Active = null, Structure = null });
         var bare = Pane(plain, []);

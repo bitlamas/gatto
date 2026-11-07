@@ -72,7 +72,7 @@ public class ShardFitTests : IDisposable
         var set = probes.PairFit(one, projectorBytes: 0);
 
         Assert.NotNull(set);
-        Assert.NotEqual(FitRegime.FitsGpu, set!.Value.Alone);
+        Assert.NotEqual(FitRegime.FitsGpu, set!.Alone.Regime);
     }
 
     //the lone file of the first shard's size stops the test passing on a machine where nothing fits. the claim is the disagreement alone
@@ -88,7 +88,7 @@ public class ShardFitTests : IDisposable
 
         Assert.NotNull(set);
         Assert.NotNull(alone);
-        Assert.NotEqual(set!.Value.Alone, alone!.Value.Alone);
+        Assert.NotEqual(set!.Alone.Regime, alone!.Alone.Regime);
     }
 
     //this test drives the ContextFor site, where the ladder searches down from the header's ceiling to the largest budget that fits

@@ -65,7 +65,8 @@ internal static class WriteSetApply
                     writes.Projector,
                     //the per-model server override, read from its own member for the same reason. null on every ordinary run
                     writes.ModelLlamaServer,
-                    p.Source, device, p.GpuLayers, p.Sha256, p.ScalarUbatch);
+                    p.Source, device, p.GpuLayers, p.Sha256, p.ScalarUbatch,
+                    writes.ProjectorInMemory);   //from WriteSet's own member, the answer to the same ask
             }
         }
         catch (Exception ex) { return $"couldn't create the model: {ex.Message}"; }

@@ -164,7 +164,9 @@ public sealed class SplitLadderTests : IDisposable
         using (var fs = File.Create(projector)) fs.SetLength(GiB / 2);
         using var probes = Probes();
 
-        Assert.Equal((FitRegime.FitsGpu, FitRegime.FitsGpu), probes.PairFit(path, GiB / 2));
+        var places = probes.PairFit(path, GiB / 2)!;
+        Assert.Equal(FitRegime.FitsGpu, places.Alone.Regime);
+        Assert.Equal(FitRegime.FitsGpu, places.OnCard.Regime);
         Assert.Equal(8192, probes.ContextFor(path, projector));
     }
 
@@ -176,7 +178,11 @@ public sealed class SplitLadderTests : IDisposable
 
         using var probes = Probes();
 
-        Assert.Equal((FitRegime.FitsGpu, FitRegime.FitsSplit), probes.PairFit(path, 7 * GiB / 5));
+        var places = probes.PairFit(path, 7 * GiB / 5)!;
+        Assert.Equal(FitRegime.FitsGpu, places.Alone.Regime);
+        Assert.Equal(FitRegime.FitsSplit, places.OnCard.Regime);
+        //held in system memory the projector leaves the model whole at its own pick
+        Assert.Equal(places.Alone, places.InMemory);
     }
 
     [Fact]

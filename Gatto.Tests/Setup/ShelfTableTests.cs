@@ -135,8 +135,9 @@ public class ShelfTableTests
         var spec = ShelfTable.Spec(
             [Row("unsloth/abc-GGUF")], ShelfStage.Full, Gatto.Core.Hardware.MachineShape.Discrete, glyphs: GlyphSet.Unicode);
 
-        //the digits come from SearchRow.Ctx, the one home for that rule, so no two surfaces spell the number differently
-        Assert.Equal(SearchRow.Ctx(262144), Cell(spec, "context"));
+        //the figure comes from SearchRow.CtxK, the one home for that rule, so no two surfaces spell the number differently
+        Assert.Equal(SearchRow.CtxK(262144), Cell(spec, "context"));
+        Assert.Equal("262k", Cell(spec, "context"));
     }
 
     [Fact]

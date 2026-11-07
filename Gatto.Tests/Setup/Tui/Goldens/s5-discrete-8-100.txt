@@ -7,7 +7,7 @@
 
   model           params ▾  size · quant    kind      runs      │ gemma-4-E4B-it                    
   in system memory, fastest first                               │ ◈ vision · reads 7.5B/token       
-  gemma-4-12b-it     11.9B  7.1 GB Q4_K_M   dense     ⚠ RAM     │ context 131,072                   
+  gemma-4-12b-it     11.9B  7.1 GB Q4_K_M   dense     ⚠ RAM     │ context 131k                      
                                                                 │                                   
   on the graphics card                                          │ publishers (1)                    
 ❯ gemma-4-E4B-it      7.5B  5.0 GB Q4_K_M   dense     ✓ GPU     │ › ▸ unsloth  5.0 GB Q4_K_M  ✓ GPU 

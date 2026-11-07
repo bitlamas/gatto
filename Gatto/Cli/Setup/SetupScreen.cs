@@ -73,6 +73,9 @@ internal abstract record SetupScreen
 
         //one line the face shows above the body until the first key or press, since the face's own loop never hands an arrow back to the flow
         public string? Notice { get; init; }
+
+        //the option the cursor opens on, the first unless the flow priced another as the one to take. a number keeps the order the digits pick by
+        public int Cursor { get; init; }
     }
 
     //rows the user reads and acknowledges, each a SetupRow so a span can be accented like a body row

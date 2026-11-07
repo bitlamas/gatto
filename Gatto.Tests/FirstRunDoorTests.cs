@@ -170,7 +170,7 @@ public class FirstRunDoorTests : IDisposable
         public (string Path, long Bytes)? ProjectorFor(string p) => null;
         public string? ArchitectureOf(string p) => null;
         public MoveOffer? MoveOfferFor(string p) => null;
-        public (Gatto.Core.Models.FitRegime Alone, Gatto.Core.Models.FitRegime WithProjector)? PairFit(string p, long b) => null;
+        public Gatto.Cli.Setup.ProjectorPlaces? PairFit(string p, long b) => null;
         public TypedIdOutcome EvaluateTypedId(string id) => new TypedIdOutcome.Unreachable(false);
         public Gatto.Roles.Serve.LlamaAsset? ChooseLlamaAsset() => new("z.zip", null, "a graphics card", "Vulkan");
         //report a build here, since the real probe reads shape and build from one banner and the flow skips the engine step without it

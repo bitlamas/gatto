@@ -931,7 +931,7 @@ public class GattoAppTests : IDisposable
         public (string Path, long Bytes)? ProjectorFor(string p) => null;
         public string? ArchitectureOf(string p) => null;
         public Gatto.Cli.Setup.MoveOffer? MoveOfferFor(string p) => null;
-        public (Gatto.Core.Models.FitRegime Alone, Gatto.Core.Models.FitRegime WithProjector)? PairFit(string p, long b) => null;
+        public Gatto.Cli.Setup.ProjectorPlaces? PairFit(string p, long b) => null;
         public Gatto.Cli.Setup.TypedIdOutcome EvaluateTypedId(string repoId) => throw new NotSupportedException();
         public Gatto.Cli.Setup.AuditionCheck RunAudition(string modelId, string? repoId,
             IProgress<Gatto.Roles.Audition.AuditionProgress>? progress, CancellationToken ct) => throw new NotSupportedException();

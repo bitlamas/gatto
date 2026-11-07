@@ -65,7 +65,7 @@ public class SetupVoiceTests
         public (string Path, long Bytes)? ProjectorFor(string p) => null;
         public string? ArchitectureOf(string p) => null;
         public MoveOffer? MoveOfferFor(string p) => null;
-        public (Gatto.Core.Models.FitRegime Alone, Gatto.Core.Models.FitRegime WithProjector)? PairFit(string p, long b) => null;
+        public Gatto.Cli.Setup.ProjectorPlaces? PairFit(string p, long b) => null;
         public TypedIdOutcome EvaluateTypedId(string id) => new TypedIdOutcome.Unreachable(false);
         public AuditionCheck RunAudition(string p, string? repoId, IProgress<Gatto.Roles.Audition.AuditionProgress>? progress, CancellationToken ct) =>
             new(AuditionOutcome.Passed);

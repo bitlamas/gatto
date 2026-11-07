@@ -126,8 +126,8 @@ public class SplitFitShelfTests
         Assert.True(pick.Context < 32768, $"the pick is {pick.Context}");
         Assert.Equal(pick.Regime, LocalShelf.FitOf(f, Card(), 4096));
         Assert.Equal(pick.Context, LocalShelf.Row(new LocalShelf.LocalGroup("x", [f]), f, Card()).PickedCtx);
-        Assert.Contains(SearchRow.Ctx(pick.Context), ShelfCells(f, Card()));
-        Assert.DoesNotContain(SearchRow.Ctx(32768), ShelfCells(f, Card()));
+        Assert.Contains(SearchRow.CtxK(pick.Context), ShelfCells(f, Card()));
+        Assert.DoesNotContain(SearchRow.CtxK(32768), ShelfCells(f, Card()));
     }
 
     //no hardware to pick against leaves the file's own window in the column and no regime
@@ -136,7 +136,7 @@ public class SplitFitShelfTests
     {
         var f = File("Q4_K_S", 2 * GiB);
 
-        Assert.Contains(SearchRow.Ctx(32768), ShelfCells(f, null));
+        Assert.Contains(SearchRow.CtxK(32768), ShelfCells(f, null));
         Assert.Equal(FitRegime.Unknown, LocalShelf.FitOf(f, null, 4096));
     }
 
@@ -148,7 +148,7 @@ public class SplitFitShelfTests
 
         Assert.Null(FitArithmetic.PickContext(f.Header!, f.FileBytes, f.StreamedBytes, Card()));
         Assert.Equal(FitRegime.DoesNotFit, LocalShelf.FitOf(f, Card(), 4096));
-        Assert.Contains(SearchRow.Ctx(32768), ShelfCells(f, Card()));
+        Assert.Contains(SearchRow.CtxK(32768), ShelfCells(f, Card()));
     }
 
     //the estimate throws over the cap and the shelf has no catch, so a local file claiming an impossible window must still draw a row
@@ -180,7 +180,7 @@ public class SplitFitShelfTests
 
         var text = PaneText(f, Card());
 
-        Assert.Equal(2, text.Split($"context {SearchRow.Ctx(pick!.Context)} of {SearchRow.Ctx(32768)}").Length - 1);
+        Assert.Equal(2, text.Split($"context {SearchRow.CtxK(pick!.Context)} of {SearchRow.CtxK(32768)}").Length - 1);
         Assert.DoesNotContain("context up to", text, StringComparison.Ordinal);
     }
 
@@ -193,7 +193,7 @@ public class SplitFitShelfTests
 
         var text = PaneText(f, Roomy());
 
-        Assert.Equal(2, text.Split($"context up to {SearchRow.Ctx(32768)}").Length - 1);
+        Assert.Equal(2, text.Split($"context up to {SearchRow.CtxK(32768)}").Length - 1);
         Assert.DoesNotContain(" of ", text, StringComparison.Ordinal);
     }
 
@@ -206,7 +206,7 @@ public class SplitFitShelfTests
     {
         var text = PaneText(File("Q4_K_S", 2 * GiB), null);
 
-        Assert.Equal(2, text.Split($"context up to {SearchRow.Ctx(32768)}").Length - 1);
+        Assert.Equal(2, text.Split($"context up to {SearchRow.CtxK(32768)}").Length - 1);
     }
 
     //the row on a card with no matrix cores prices the f16 cache the scaffold will write, so its pick is that cache's

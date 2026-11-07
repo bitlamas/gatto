@@ -198,6 +198,27 @@ public class FitArithmeticTests
         Assert.Equal(FitRegime.FitsRamOnly, FitArithmetic.Judge(Splittable(), Gpu(4UL * (ulong)GiB, 16UL * (ulong)GiB)));
     }
 
+    //the same model with a 2 GiB projector held in system memory, which the card never sees
+    private static FitEstimate Hosted() => FitArithmetic.Estimate(
+        Full() with { BlockCount = 32, KeyLength = 128, ValueLength = 128, HeadCountKv = 8 }, 8 * GiB, 8192, KvCacheKind.F16, hostBytes: 2 * GiB);
+
+    [Fact]
+    public void A_PROJECTOR_IN_MEMORY_LEAVES_THE_MODEL_WHOLE_when_memory_holds_it()
+    {
+        Assert.Equal(Splittable().WeightsBytes, Hosted().WeightsBytes);
+        Assert.Equal(FitRegime.FitsGpu, FitArithmetic.Judge(Hosted(), Card(16 * GiB, 16 * GiB)));
+        //a split counts it beside the layers memory holds, so the same card keeps its twelve layers only while memory has the room
+        Assert.Equal(12, FitArithmetic.SplitLayers(Hosted(), Card(4 * GiB, 16 * GiB)));
+        Assert.Null(FitArithmetic.SplitLayers(Hosted(), Card(4 * GiB, 6 * GiB)));
+    }
+
+    [Fact]
+    public void A_PROJECTOR_MEMORY_CANNOT_HOLD_IS_NOT_WHOLE_ON_THE_CARD()
+    {
+        Assert.Equal(FitRegime.FitsGpu, FitArithmetic.Judge(Splittable(), Card(16 * GiB, GiB)));
+        Assert.NotEqual(FitRegime.FitsGpu, FitArithmetic.Judge(Hosted(), Card(16 * GiB, GiB)));
+    }
+
     private const long MiB = 1L << 20;
 
     //qwen3.5-9b's shape: 32 blocks, so q8_0 costs 1,088 MiB at 65536

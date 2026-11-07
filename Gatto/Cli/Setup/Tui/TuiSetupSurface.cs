@@ -449,7 +449,7 @@ internal sealed class TuiSetupSurface : ISetupSurface, IDisposable
         //the ring opens on the shelf's region when there is one, in both builders. name Region.List, regions[0] is the strip on every screen that draws one
         var ring = new FocusRing(regions,
             c.Shelf is { } opening ? Shelf.Opening(opening) : Region.List);
-        var cursor = c.NoDefault ? -1 : 0;
+        var cursor = c.NoDefault ? -1 : c.Cursor;
         var at = LocalRow(c, cursor, ShelfCursors.Start);
         //where the keys sit on the strip, null until they move so the painter rests them on the section
         int? stripAt = null;
@@ -963,18 +963,42 @@ internal sealed class TuiSetupSurface : ISetupSurface, IDisposable
 
     //one numbered option row, plus the recommended tail when the flow asked for one. lowercase, two spaces, dim, and on every row, cursor or not
     private static PaintedRow Option(GlyphSet g, ChoiceOption o, int index, int cursor,
-        bool unnumbered = false)
+        bool unnumbered = false) => Options(g, o, index, cursor, unnumbered)[0];
+
+    //the option's rows: the label row, and its description under it when the description does not fit beside the label at this width
+    private static IReadOnlyList<PaintedRow> Options(GlyphSet g, ChoiceOption o, int index, int cursor,
+        bool unnumbered = false, int column = 0, int width = int.MaxValue)
     {
-        //no digit when the screen has no digit keys, a number beside a row promises that typing it picks the row
-        var text = unnumbered ? o.Label : $"{index + 1}. {o.Label}";
+        var text = OptionText(o, index, unnumbered);
         List<Run> runs = index == cursor
             ? [new Run(g.Prompt + " ", RunInk.Accent), new Run(text, RunInk.Bright)]
             : [new Run("  " + text, RunInk.Plain)];
 
+        //a description is the answer's consequence, dim after the label and lined up with the other rows' in one column 4 cells past the longest label
+        string? under = null;
+        if (o.Description is { Length: > 0 } said)
+        {
+            var beside = new string(' ', Math.Max(0, column - UnicodeWidth.Of(text)) + 4) + said;
+            //a clipped clause would cut its words, so one too wide for the window drops under the label, indented to the label's words
+            if (2 + UnicodeWidth.Of(text) + UnicodeWidth.Of(beside) <= width) runs.Add(new Run(beside, RunInk.Dim));
+            else under = new string(' ', 2 + UnicodeWidth.Of(text) - UnicodeWidth.Of(o.Label)) + said;
+        }
+
         //recommended is a claim gatto stands behind, so a picker that only marks the current row gives its own word
         if (o.Recommended) runs.Add(new Run("  " + (o.MarkWord ?? "recommended"), RunInk.Dim));
-        return index == cursor ? new PaintedRow(runs).Banded() : new PaintedRow(runs);
+        List<PaintedRow> rows = [new PaintedRow(runs)];
+        if (under is not null) rows.Add(new PaintedRow([new Run(under, RunInk.Dim)]));
+        return index == cursor ? [.. rows.Select(r => r.Banded())] : rows;
     }
+
+    //no digit when the screen has no digit keys, a number beside a row promises that typing it picks the row
+    private static string OptionText(ChoiceOption o, int index, bool unnumbered) =>
+        unnumbered ? o.Label : $"{index + 1}. {o.Label}";
+
+    //where the descriptions start: past the widest label that carries one, so the consequences read as one column
+    private static int DescriptionColumn(SetupScreen.Choice c) =>
+        c.Options.Select((o, i) => o.Description is { Length: > 0 } ? UnicodeWidth.Of(OptionText(o, i, c.Unnumbered)) : 0)
+            .DefaultIfEmpty(0).Max();
 
     //the terminal screen renders like any other, and the caller prints its rows to scrollback once the alt screen is restored. otherwise they vanish with the buffer
     public void End(SetupScreen.Terminal t) =>
@@ -1606,8 +1630,9 @@ internal sealed class TuiSetupSurface : ISetupSurface, IDisposable
                            ? Shelf.LoadingRow(load?.Step ?? "", loadingMs, _glyphs) : (PaintedRow?)null),
                    //the escape rows index the full shelf, so the window must not move their option index. a cursor is drawn only while the ring holds a list
                    .. Escapes(_glyphs, c, sv, ring.Has(Region.List) ? cursor : -1)]
-                : c.KeysOnly ? [] : c.Options.Select((o, i) =>
-                    Tagged(Option(_glyphs, o, i, cursor, c.Unnumbered), new HitTag(HitKind.OptionRow, Index: i, Answer: o.Key, Area: Region.List))),
+                : c.KeysOnly ? [] : c.Options.SelectMany((o, i) =>
+                    Options(_glyphs, o, i, cursor, c.Unnumbered, DescriptionColumn(c), width)
+                        .Select(r => Tagged(r, new HitTag(HitKind.OptionRow, Index: i, Answer: o.Key, Area: Region.List)))),
             //an option list never sits on the footer rule, so a screen with options but no door or shelf adds the blank itself
             .. !c.KeysOnly && c.Door is null && c.Shelf is null && c.Options.Count > 0
                 ? [PaintedRow.Of("")]

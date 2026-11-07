@@ -23,7 +23,7 @@
 
 ────────────────────────────────────────────────────────────────────────────────
   gemma-4-26B-A4B-it  ·  by unsloth
-  context up to 262,144 · ◈ vision · reads 4B params/token
+  context up to 262k · ◈ vision · reads 4B params/token
   arch · gemma4
   files · › Q4_K_M 16.9 GB  ✓ fits · … 4 heavier →
 

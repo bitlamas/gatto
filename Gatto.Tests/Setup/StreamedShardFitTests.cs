@@ -93,7 +93,7 @@ public sealed class StreamedShardFitTests : IDisposable
 
         Assert.NotNull(marked);
         Assert.NotNull(plain);
-        Assert.NotEqual(plain!.Value.Alone, marked!.Value.Alone);
+        Assert.NotEqual(plain!.Alone.Regime, marked!.Alone.Regime);
     }
 
     //the test drives LiveSetupProbes.ContextFor

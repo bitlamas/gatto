@@ -8,7 +8,7 @@
   model     params ▾  size · quant    kind     │ Qwen3-8B
 › Qwen3-8B        8B  4.7 GB Q4_K_M   dense    │ C:\models\
                                                │
-                                               │ context up to 32,768
+                                               │ context up to 32k
                                                │ › ▾ C:\models   4.7 GB Q4_K_M  ✓ fits
                                                │   ❯ Q4_K_M     4.7 GB  ✓ fits
                                                │   ▸ D:\weights  8.4 GB Q8_0  ✓ fits

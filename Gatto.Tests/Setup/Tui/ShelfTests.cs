@@ -518,7 +518,7 @@ public class ShelfTests
 
         Assert.Equal("gemma-4-12b-it", pane[0]);
         Assert.Equal("◈ vision · reads 11.9B/token", pane[1]);
-        Assert.Equal("context 262,144", pane[2]);
+        Assert.Equal("context 262k", pane[2]);
         //skip an absent-publishers assertion here, since the heading never draws and the golden is its only oracle
         Assert.DoesNotContain(pane, r => r.StartsWith("publishers", StringComparison.Ordinal));
         Assert.DoesNotContain(pane, r => r.Contains("MoE", StringComparison.Ordinal));

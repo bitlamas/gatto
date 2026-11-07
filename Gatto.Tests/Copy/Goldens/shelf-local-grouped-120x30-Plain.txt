@@ -8,7 +8,7 @@
   model     params ▾  size · quant    kind     │ Qwen3-8B
 › Qwen3-8B        8B  4.7 GB Q4_K_M   dense    │ C:\models\
                                                │
-                                               │ context up to 32,768
+                                               │ context up to 32k
                                                │ reads all 8B params/token
                                                │ arch      qwen3
                                                │
