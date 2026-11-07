@@ -87,7 +87,7 @@ public class InstallOnDoneTests
         var row = Assert.IsType<SetupScreen.Choice>(flow.Emitted[^1]).BodyRows!
             .Single(r => r.Text.StartsWith("gatto ", StringComparison.Ordinal));
 
-        Assert.Contains(@"C:\Users\you\AppData\Local\Programs\gatto\", row.Text, StringComparison.Ordinal);
+        Assert.Contains(@"~\AppData\Local\Programs\gatto\", row.Text, StringComparison.Ordinal);
         Assert.DoesNotContain("installed at  ", row.Text, StringComparison.Ordinal);
     }
 

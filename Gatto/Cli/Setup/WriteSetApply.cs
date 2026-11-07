@@ -134,7 +134,7 @@ internal static class WriteSetApply
                 if (copyDeed(Environment.ProcessPath ?? "", dir) is { } copyProblem)
                     return copyProblem;
                 if (pathDeed(dir) is { } pathProblem)
-                    return $"gatto was installed to {dir}, but {pathProblem}";
+                    return $"gatto was installed to {Gatto.Cli.PathWords.Home(dir, Environment.GetFolderPath(Environment.SpecialFolder.UserProfile))}, but {pathProblem}";   //a screen prints this sentence, and the apply step has no probe to ask
             }
             //the repair-only case: findability is fixed and nothing is copied, so it stays an else if on the install branch
             else if (writes.PathOnly)

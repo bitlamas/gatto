@@ -8,7 +8,7 @@
 
   fetching     llama-b12015-bin-win-vulkan-x64.zip
                ━━━━━━━━━━━━━─────────────────  93 of 214 MB · 8.5 MB/s · ~14 s left
-  into         C:\Users\you\.gatto\llama\b12015\
+  into         ~\.gatto\llama\b12015\
 
 ────────────────────────────────────────────────────────────────────────────────────────────────────
   Esc again: stops the fetch and deletes the 93 MB already here

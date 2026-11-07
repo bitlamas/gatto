@@ -82,6 +82,7 @@ public class UnmappedScreenTests : IDisposable
         public bool? UpdateConsent() => false;
         public string? ExistingEndpointFor(string baseUrl) => null;
         public string ConfigPath() => @"C:\home\gatto.json";
+        public string UserProfile() => @"C:\Users\you";
         public ProveOutcome ProveIt(string? modelId,
             IProgress<Gatto.Roles.Audition.AuditionProgress>? progress = null) => new(true, "hi", TimeSpan.FromSeconds(2));
     }
@@ -205,6 +206,7 @@ public class UnmappedScreenTests : IDisposable
         public bool? UpdateConsent() => _inner.UpdateConsent();
         public string? ExistingEndpointFor(string b) => _inner.ExistingEndpointFor(b);
         public string ConfigPath() => _inner.ConfigPath();
+        public string UserProfile() => _inner.UserProfile();
         public ProveOutcome ProveIt(string? modelId,
         IProgress<Gatto.Roles.Audition.AuditionProgress>? progress = null) =>
         _inner.ProveIt(modelId, progress);

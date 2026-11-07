@@ -410,12 +410,12 @@ internal sealed partial class SetupFlow
     }
 
     //compose the fetch block in one place, so the consent screen and the offline arm cannot describe one fetch two ways.
-    private static EngineView EngineBlock(Offer offer, bool gattoFetches) => new(
+    private EngineView EngineBlock(Offer offer, bool gattoFetches) => new(
         gattoFetches,
         offer.Pick.ZipName,
         offer.Assets is { } a ? SizeWords.Auto(a.Server.Size) : null,
         Gatto.Roles.Serve.LlamaAssetSteering.PinnedRelease,
-        offer.Into,
+        Shown(offer.Into),
         //take the companion from the pick rather than the release read, a runtime is a fact about the machine. the offline arm has no release read to consult
         offer.Pick.CudartZipName,
         offer.Assets?.Companion is { } c ? SizeWords.Auto(c.Size) : null);
@@ -535,7 +535,7 @@ internal sealed partial class SetupFlow
         [
             new SetupRow("llama-server.exe is already on this machine.", Glyph: RowGlyph.Good),
             "",
-            EngineFacts.Row(EngineFacts.Found, path),
+            EngineFacts.Row(EngineFacts.Found, Shown(path)),
             //spell the build through ReleaseName, the probe captures what the banner said while gatto writes the b form elsewhere
             EngineFacts.Row(EngineFacts.Build, name + arm.Tail),
             //use the past tense, this reports a run that already happened and the build above came from that same run
@@ -686,7 +686,7 @@ internal sealed partial class SetupFlow
                 + "drives.", RowTone.Aside, Glyph: RowGlyph.Good, Lift: ["That's the one"]),
             "",
             EngineFacts.Row("fetched", zipName + $" {Glyphs.Dot} digest matched", lift: zipName),
-            EngineFacts.Row("into", offer.Into),
+            EngineFacts.Row("into", Shown(offer.Into)),
             EngineFacts.Row(EngineFacts.Checked,
                 $"{Gatto.Roles.Serve.EngineSearch.ExeName} ran, the path gatto writes to its config is "
                 + "the .exe that ran"),
@@ -843,7 +843,7 @@ internal sealed partial class SetupFlow
             //accent the exe name inside the sentence, it is the word to look for, and the highlight skips a span that is absent
             new SetupRow(sentence, Highlight: [Gatto.Roles.Serve.EngineSearch.ExeName], Glyph: RowGlyph.Bad),
             "",
-            EngineFacts.Row(EngineFacts.Tested, tested),
+            EngineFacts.Row(EngineFacts.Tested, Shown(tested)),
         ];
 
         //name the runtime shape explicitly, only there does re-checking the same path help. every other shape falls to the typed door

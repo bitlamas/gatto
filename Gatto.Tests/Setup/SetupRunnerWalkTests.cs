@@ -625,6 +625,7 @@ public class SetupRunnerWalkTests
         public string? ExistingModelFor(string ggufPath) => ExistingModel;
         public string? ExistingEndpointFor(string baseUrl) => ExistingEndpoint;
         public string ConfigPath() => @"C:\home\gatto.json";
+        public string UserProfile() => @"C:\Users\you";
         public ProveOutcome ProveIt(string? modelId,
             IProgress<Gatto.Roles.Audition.AuditionProgress>? progress = null) => new(true, "hi", TimeSpan.FromSeconds(2));
     }

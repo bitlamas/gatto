@@ -5,13 +5,13 @@
 
 ✓ gemma-4-26B-A4B-it-UD-Q4_K_M.gguf arrived, byte for byte the file Hugging Face publishes.
 
-  found      C:\Users\you\Downloads\gemma-4-26B-A4B-it-UD-Q4_K_M.gguf
+  found      ~\Downloads\gemma-4-26B-A4B-it-UD-Q4_K_M.gguf
   with       mmproj-F16.gguf · verified
 
   Downloads is where files land, not where models live, a cleared Downloads folder would take the
   model with it.
 
-❯ 1. Move files into C:\Users\you\.gatto\weights\gemma-4-26b-a4b-it\
+❯ 1. Move files into ~\.gatto\weights\gemma-4-26b-a4b-it\
   2. Leave them in Downloads
 
 ────────────────────────────────────────────────────────────────────────────────────────────────────

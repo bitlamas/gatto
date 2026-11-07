@@ -421,6 +421,7 @@ public class WriteSetAcceptanceTests : IDisposable
         public bool? UpdateConsent() => Consent;
         public string? ExistingEndpointFor(string baseUrl) => null;
         public string ConfigPath() => Path.Combine("home", "gatto.json");
+        public string UserProfile() => @"C:\Users\you";
         //counted rather than flagged (only a count tells running once from being suppressed, and a bad resume route runs prove-it twice)
         public int ProveCalls { get; private set; }
 

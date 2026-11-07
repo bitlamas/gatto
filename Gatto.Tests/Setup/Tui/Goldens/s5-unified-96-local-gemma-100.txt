@@ -3,7 +3,7 @@
 ────────────────────────────────────────────────────────────────────────────────────────────────────
   Which model should gatto start with?
 
-  gemma · qwen · deepseek · glm · mistral · all             folder  C:\Users\you\.lmstudio\models\
+  gemma · qwen · deepseek · glm · mistral · all                        folder  ~\.lmstudio\models\
 
      model                     size · quant    kind
 ❯ 1. gemma-4-26B-A4B-it-UD-Q…  16.9 GB Q4_K_M  MoE A4B 
@@ -13,7 +13,7 @@
 
 ────────────────────────────────────────────────────────────────────────────────────────────────────
   gemma-4-26B-A4B-it-UD-Q4_K_M
-  C:\Users\you\.lmstudio\models\unsloth\gemma-4-26B-A4B-it\
+  ~\.lmstudio\models\unsloth\gemma-4-26B-A4B-it\
   context up to 262,144 · ◈ vision · reads 4B params/token
   files · › Q4_K_M 16.9 GB · 1 file + mmproj  ✓ fits
   ✗ not measured yet

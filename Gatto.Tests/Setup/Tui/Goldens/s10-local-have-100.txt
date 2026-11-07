@@ -10,7 +10,7 @@
 
   Which model should gatto add?
 
-  gemma · qwen · deepseek · glm · mistral · all             folder  C:\Users\you\.lmstudio\models\
+  gemma · qwen · deepseek · glm · mistral · all                        folder  ~\.lmstudio\models\
 
   model                     params ▾  size · quant    kind        │ gemma-4-26B-A4B-it-UD-Q4_K_M    
   minimax-m2.7-REAP-139B-…            82.3 GB Q4_K_S  MoE A10B    │ …\unsloth\gemma-4-26B-A4B-it\   

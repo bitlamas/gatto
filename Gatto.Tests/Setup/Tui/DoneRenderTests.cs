@@ -344,6 +344,20 @@ public class DoneRenderTests
             r => r.Text.StartsWith("prefill ", StringComparison.Ordinal));
     }
 
+    //the summary folds every path under the user's folder but the config row, which stays whole because it is the one a user opens, and its accent still lands
+    [Fact]
+    public void THE_SUMMARY_FOLDS_THE_USERS_FOLDER_BUT_KEEPS_THE_CONFIG_PATH_WHOLE()
+    {
+        var (flow, _) = DoneStep(consent: true);
+        var rows = Assert.IsType<SetupScreen.Choice>(flow.Emitted[^1]).BodyRows!;
+
+        var config = rows.Single(r => r.Text.StartsWith("config ", StringComparison.Ordinal));
+        Assert.EndsWith(@"C:\Users\you\.gatto\gatto.json", config.Text, StringComparison.Ordinal);
+        Assert.Equal([@"C:\Users\you\.gatto\gatto.json"], config.Lift);
+        Assert.Contains(rows, r => r.Text.Trim() == @"~\.gatto\weights\gemma-4-26B-A4B-it\");
+        Assert.DoesNotContain(rows, r => r != config && r.Text.Contains(@"C:\Users\you\", StringComparison.Ordinal));
+    }
+
     //both screens must say where the context number came from. compare the two rendered rows rather than the constant, on both arms of the ternary.
     [Theory]
     [InlineData(null, "your input")]

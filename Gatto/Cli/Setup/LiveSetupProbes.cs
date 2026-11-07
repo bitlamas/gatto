@@ -1220,6 +1220,8 @@ internal sealed class LiveSetupProbes(string homePath, Gatto.Terminal.GlyphSet g
     //the file the user opens afterwards, composed like every other home path here so it can't name a file the writer didn't write
     public string ConfigPath() => System.IO.Path.Combine(homePath, "gatto.json");
 
+    public string UserProfile() => Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
+
     //the id comes in as an argument rather than from default_model, so this proves what the run just built
     public ProveOutcome ProveIt(string? modelId,
         IProgress<Gatto.Roles.Audition.AuditionProgress>? progress = null)

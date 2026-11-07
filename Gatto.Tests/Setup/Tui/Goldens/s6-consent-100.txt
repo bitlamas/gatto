@@ -9,7 +9,7 @@
   fetch      gemma-4-26B-A4B-it-UD-Q4_K_M.gguf · 16.9 GB
   with       mmproj-F16.gguf · 851 MB · the vision encoder
   from       huggingface.co/unsloth/gemma-4-26B-A4B-it-GGUF · every file's fingerprint verified
-  into       C:\Users\you\.gatto\weights\gemma-4-26b-a4b-it\
+  into       ~\.gatto\weights\gemma-4-26b-a4b-it\
 
 ❯ 1. Fetch it now
   2. Pick a different model

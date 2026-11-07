@@ -215,4 +215,7 @@ internal interface ISetupProbes
 
     //where this run's settings are written, named after a successful finish and nowhere else. say nothing about writing until something is written
     string ConfigPath();
+
+    //the user's own folder, which a screen spells as ~. behind the seam so a fixture's paths fold the way a real machine's do
+    string UserProfile();
 }

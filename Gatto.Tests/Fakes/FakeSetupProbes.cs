@@ -478,6 +478,7 @@ internal sealed class FakeSetupProbes : ISetupProbes
     public string Config { get; init; } = @"C:\home\gatto.json";
 
     public string ConfigPath() => Config;
+    public string UserProfile() => @"C:\Users\you";
     //settable, since a hard-coded pass would leave the failure screen unreachable
     public ProveOutcome Prove { get; init; } = new(true, "hi", TimeSpan.FromSeconds(2));
 

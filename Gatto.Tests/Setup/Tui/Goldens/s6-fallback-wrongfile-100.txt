@@ -6,13 +6,13 @@
 ✗ A file with the right name is here, but it isn't the published one.
 
   expected   a1b29c…44e0 · the file's fingerprint on Hugging Face
-  got        7c3df1…9aa2 · the file in C:\Users\you\Downloads\
+  got        7c3df1…9aa2 · the file in ~\Downloads\
 
   A broken copy looks like this, downloading it again usually fixes it. gatto keeps watching.
 
   It is watching:                                                       checking every few seconds
-    C:\Users\you\.gatto\weights\gemma-4-26b-a4b-it\
-    C:\Users\you\Downloads\
+    ~\.gatto\weights\gemma-4-26b-a4b-it\
+    ~\Downloads\
 
 ❯ 1. Pick a different model
 

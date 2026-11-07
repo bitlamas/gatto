@@ -10,7 +10,7 @@
 
   download     llama-b12015-bin-win-vulkan-x64.zip
   from         github.com/ggml-org/llama.cpp/releases/tag/b12015
-  extract to   C:\Users\you\.gatto\llama\b12015\
+  extract to   ~\.gatto\llama\b12015\
 
 ❯ 1. Done, check that folder
 

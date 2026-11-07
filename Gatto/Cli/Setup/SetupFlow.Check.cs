@@ -118,8 +118,8 @@ internal sealed partial class SetupFlow
             new SetupRow("The model file is incomplete, gatto didn't try to load it.",
                 Glyph: RowGlyph.Bad),
             "",
-            CheckFacts.Row("file", filed.File, lift: filed.File),
-            CheckFacts.Cont($"in {filed.Folder}"),
+            CheckFacts.Row("file", Shown(filed.File), lift: Shown(filed.File)),
+            CheckFacts.Cont($"in {Shown(filed.Folder)}"),
             CheckFacts.Row("found", $"{Gatto.Cli.SizeWords.Gb(filed.FoundBytes)} on disk",
                 lift: Gatto.Cli.SizeWords.Gb(filed.FoundBytes)),
             CheckFacts.Row("expected",
@@ -179,7 +179,7 @@ internal sealed partial class SetupFlow
                   ]
                 : [CheckFacts.Row("last lines", "none, the server exited without writing anything")],
             .. logPath is { Length: > 0 } log
-                ? (IReadOnlyList<SetupRow>)[CheckFacts.Cont($"full log: {log}", wide: true)]
+                ? (IReadOnlyList<SetupRow>)[CheckFacts.Cont($"full log: {Shown(log)}", wide: true)]
                 : [],
             "",
             stopped

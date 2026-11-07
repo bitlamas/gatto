@@ -136,7 +136,7 @@ internal sealed partial class SetupFlow
             options.Add(new ChoiceOption(
                 at.ToString(System.Globalization.CultureInfo.InvariantCulture), //index into the scan's groups even when a chip filters, AnswerDiscovered regroups the same scan and reads the row's file by path
                 g.Name,
-                $"{Gb((ulong)Math.Max(0, m.FileBytes))} {Glyphs.Dot} {System.IO.Path.GetDirectoryName(m.Path)}"));
+                $"{Gb((ulong)Math.Max(0, m.FileBytes))} {Glyphs.Dot} {Shown(System.IO.Path.GetDirectoryName(m.Path) ?? "")}"));
 
         return Emit(new SetupScreen.Choice(
             DiscoveredKey,
@@ -258,7 +258,7 @@ internal sealed partial class SetupFlow
         [
             new(verified, RowTone.Aside, Glyph: RowGlyph.Good, Lift: [name]),
             "",
-            ModelFacts.Row("found", model.Path),
+            ModelFacts.Row("found", Shown(model.Path)),
         ];
 
         //name the encoder that arrived too, two files fetched and one reported would under-claim
@@ -276,7 +276,7 @@ internal sealed partial class SetupFlow
         return Emit(new SetupScreen.Choice(
             MoveKey,
             ModelTitle,
-            [new ChoiceOption(Yes, $"Move files into {offer.SuggestedDir}"),
+            [new ChoiceOption(Yes, $"Move files into {Shown(offer.SuggestedDir)}"),
              new ChoiceOption(No, "Leave them in Downloads")],
             BodyRows: rows,
             PurredSinceWatch: true), MoveKey);
@@ -318,7 +318,7 @@ internal sealed partial class SetupFlow
             "Where should this model live?",
             [
                 new ChoiceOption(No, "Leave it where it is"),
-                new ChoiceOption(Yes, $"Move it to {offer.SuggestedDir}"),
+                new ChoiceOption(Yes, $"Move it to {Shown(offer.SuggestedDir)}"),
                 new ChoiceOption(Elsewhere, "Move it somewhere I choose"),
             ],
             BodyRows: rows), MoveKey);

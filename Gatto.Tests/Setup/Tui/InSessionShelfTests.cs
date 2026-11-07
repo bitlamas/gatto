@@ -289,7 +289,8 @@ public class InSessionShelfTests
             "1 file + mmproj", @"google\gemma-3-12b-it", HaveMark.Added),
     ];
 
-    private const string LocalDir = @"C:\Users\you\.lmstudio\models\";
+    //the view carries the flow's words, and the flow spells a folder under the user's own as ~
+    private const string LocalDir = @"~\.lmstudio\models\";
 
     private static long Gib(double gb) => (long)Math.Round(gb * 1024 * 1024 * 1024);
 

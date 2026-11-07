@@ -3,7 +3,7 @@
 ────────────────────────────────────────────────────────────────────────────────────────────────────
   A newer gatto is running than the one installed
 
-  Installed: 0.4.2 at C:\Users\you\AppData\Local\Programs\gatto\
+  Installed: 0.4.2 at ~\AppData\Local\Programs\gatto\
   This one:  0.5.0
 
   Updating copies this gatto over the installed one. Nothing is downloaded, the files are

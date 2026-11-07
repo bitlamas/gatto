@@ -102,6 +102,7 @@ public class SetupVoiceTests
         public Gatto.Core.Acquire.ProveOutcome ProveIt(string? id,
             IProgress<Gatto.Roles.Audition.AuditionProgress>? progress = null) => new(true, "hi", TimeSpan.FromSeconds(1));
         public string ConfigPath() => @"C:\home\gatto.json";
+        public string UserProfile() => @"C:\Users\you";
     }
 
     [Fact]

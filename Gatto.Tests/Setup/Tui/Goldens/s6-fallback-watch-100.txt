@@ -13,8 +13,8 @@
   gatto is watching for it, you don't need to press anything.
 
   It is watching:                                          checking every few seconds, nothing yet
-    C:\Users\you\.gatto\weights\gemma-4-26b-a4b-it\
-    C:\Users\you\Downloads\
+    ~\.gatto\weights\gemma-4-26b-a4b-it\
+    ~\Downloads\
 
   This can take hours on a big model. You can leave with Esc and run gatto setup again later,
   gatto will find the file.

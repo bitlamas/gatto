@@ -14,8 +14,8 @@
   both; gatto keeps watching.
 
   It is watching:                                                       checking every few seconds
-    C:\Users\you\.gatto\weights\gemma-4-26b-a4b-it\
-    C:\Users\you\Downloads\
+    ~\.gatto\weights\gemma-4-26b-a4b-it\
+    ~\Downloads\
 
 ❯ 1. Use it text-only
   2. Pick a different model

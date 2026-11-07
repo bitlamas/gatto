@@ -152,6 +152,7 @@ public class SetupFlowTests
         }
 
         public string ConfigPath() => @"C:\home\gatto.json";
+        public string UserProfile() => @"C:\Users\you";
 
         public Gatto.Core.Acquire.ProveOutcome ProveIt(string? modelId,
             IProgress<Gatto.Roles.Audition.AuditionProgress>? progress = null) { Asked.Add(nameof(ProveIt)); return Proof; }
@@ -3898,6 +3899,18 @@ ew.gguf", model.GgufPath);
         Assert.Contains("from", body, StringComparison.Ordinal);
         Assert.Contains("gatto.exe", body, StringComparison.Ordinal);
         Assert.DoesNotContain("A new terminal will find it", body, StringComparison.Ordinal);
+    }
+
+    //an engine under the user's folder reads as ~ on the found row, the frames' fixture engine sits outside it so the golden guard cannot see this row
+    [Fact]
+    public void THE_FOUND_ENGINE_UNDER_THE_USERS_FOLDER_READS_AS_A_TILDE()
+    {
+        var found = Assert.IsType<SetupScreen.Choice>(new SetupFlow(
+            new FakeProbes { Llama = @"C:\Users\you\.gatto\llama\b12015\llama-server.exe" }).StartPastOpening());
+
+        Assert.Equal(SetupFlow.FoundKey, found.Key);
+        Assert.Contains(found.BodyRows!, r => r.Text.EndsWith(@"~\.gatto\llama\b12015\llama-server.exe", StringComparison.Ordinal));
+        Assert.DoesNotContain(found.BodyRows!, r => r.Text.Contains(@"C:\Users\you\", StringComparison.Ordinal));
     }
 
     [Fact]

@@ -170,7 +170,7 @@ public class EngineFetchTests
         var fetches = Assert.IsType<EngineView>(Consent().Engine);
         var byHand = Assert.IsType<EngineView>(Fallback().Engine);
 
-        Assert.Equal(Into, fetches.Into);
+        Assert.Equal(@"~\.gatto\llama\b12015\", fetches.Into);   //the view is screen words, so the folder under the user's own reads as ~
         Assert.Equal(fetches.Into, byHand.Into);
         Assert.Equal(fetches.ZipName, byHand.ZipName);
     }

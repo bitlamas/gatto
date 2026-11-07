@@ -13,7 +13,7 @@
                 'D:\ai\test\exploration\.lmstudio\models\lmstudio-community\Llama-3.3-70B\Llama-3.3-
                 70B-Instruct-IQ2_XS.gguf'
                 main: exiting due to model loading error
-                full log: C:\Users\you\.gatto\serve.log
+                full log: ~\.gatto\serve.log
 
   The check couldn't run, so gatto can't judge this model yet, the lines above are the server's
   own account of what happened.

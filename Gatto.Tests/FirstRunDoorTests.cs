@@ -194,6 +194,7 @@ public class FirstRunDoorTests : IDisposable
         public bool? UpdateConsent() => false;
         public string? ExistingEndpointFor(string baseUrl) => null;
         public string ConfigPath() => Path.Combine("home", "gatto.json");
+        public string UserProfile() => @"C:\Users\you";
         public ProveOutcome ProveIt(string? modelId,
             IProgress<Gatto.Roles.Audition.AuditionProgress>? progress = null) => new(true, "hi", TimeSpan.FromSeconds(2));
     }

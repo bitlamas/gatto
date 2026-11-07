@@ -61,12 +61,13 @@ internal static class LocalShelf
     public static Gatto.Cli.Setup.Shelves.ModelFacts FactsFor(LocalGroup g, FoundModel rowFile, bool ruled, HardwareClass? hw,
         int ctxForFit = 4096, Gatto.Terminal.HaveMark have = Gatto.Terminal.HaveMark.None, string? haveId = null,
         string? publisher = null,
-        Func<string, Gatto.Cli.Setup.Shelves.MarkSet>? marksFor = null)   //each listed file's marks by its path, read by the flow
+        Func<string, Gatto.Cli.Setup.Shelves.MarkSet>? marksFor = null,   //each listed file's marks by its path, read by the flow
+        Func<string, string>? shown = null)   //how the flow spells a folder on screen, the folder itself when none is given
     {
         var dir = System.IO.Path.GetDirectoryName(rowFile.Path);
         Gatto.Cli.Setup.Shelves.PaneFile Line(FoundModel f) => new(QuantToken.Of(f.Path), f.FileBytes, FitOf(f, hw, ctxForFit),
             FileRefOf(f), Tag: f.Set is { IsSet: true } ? FilesWords(f) : null, Marks: marksFor?.Invoke(f.Path) ?? default);
-        var publishers = Folders(g).Select(f => new Gatto.Cli.Setup.Shelves.PanePublisher(f.Folder, [.. f.Files.Select(Line)],
+        var publishers = Folders(g).Select(f => new Gatto.Cli.Setup.Shelves.PanePublisher(shown?.Invoke(f.Folder) ?? f.Folder, [.. f.Files.Select(Line)],
             FileRefOf(f.Files.Contains(rowFile) ? rowFile : f.Files.FirstOrDefault(x => x.IsComplete) ?? f.Files[0]),
             Marked: ruled && f.Files.Contains(rowFile))).ToList();
         return new Gatto.Cli.Setup.Shelves.ModelFacts(
@@ -75,7 +76,7 @@ internal static class LocalShelf
             //the folded frame steps through the row's folder, the face starts it on the row's file
             Files: [.. Folders(g).First(f => f.Files.Contains(rowFile)).Files.Select(Line)],
             Publishers: publishers,
-            LocalPath: dir is { Length: > 0 } ? dir + System.IO.Path.DirectorySeparatorChar : null,
+            LocalPath: dir is { Length: > 0 } ? (shown ?? (s => s))(dir + System.IO.Path.DirectorySeparatorChar) : null,
             FilesHere: FilesWords(rowFile),
             Have: have,
             HaveId: haveId,

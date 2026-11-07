@@ -420,7 +420,7 @@ internal sealed partial class SetupFlow
 
             //declined, so name where it runs from and offer gatto setup without pushing
             InstallState.NotInstalled or InstallState.InstalledButNotOnPath => new SetupRow(
-                $"gatto stays where it is, {probes.RunningFrom()}. Run it from there; gatto setup "
+                $"gatto stays where it is, {Shown(probes.RunningFrom())}. Run it from there; gatto setup "
                 + "can install it later. Have fun with your local model!",
                 Highlight: ["gatto setup"]),
 
@@ -692,7 +692,7 @@ internal sealed partial class SetupFlow
         var facts = $"{System.IO.Path.GetFileName(file.Path)} {Glyphs.Dot} {SizeWords.Auto(file.Bytes)}";
         return (
             SummaryFacts.Row("model", _modelVerified ? facts + $" {Glyphs.Dot} verified" : facts),
-            SummaryFacts.Row("", System.IO.Path.GetDirectoryName(file.Path) + System.IO.Path.DirectorySeparatorChar));
+            SummaryFacts.Row("", Shown(System.IO.Path.GetDirectoryName(file.Path) + System.IO.Path.DirectorySeparatorChar)));
     }
 
     //the found road drops the backend word from the engine row, only the truth fills it
@@ -701,11 +701,11 @@ internal sealed partial class SetupFlow
         if (_offer is { } offer)
             return SummaryFacts.Row("engine",
                 $"llama.cpp {Gatto.Roles.Serve.LlamaAssetSteering.PinnedRelease} {Glyphs.Dot} {offer.Pick.BuildName}"
-                + $" {Glyphs.Dot} {offer.Into}");
+                + $" {Glyphs.Dot} {Shown(offer.Into)}");
 
         if (_llamaPath is { Length: > 0 } exe && _foundBuild is { Length: > 0 } build)
             return SummaryFacts.Row("engine",
-                $"llama.cpp {build} {Glyphs.Dot} {System.IO.Path.GetDirectoryName(exe)}"
+                $"llama.cpp {build} {Glyphs.Dot} {Shown(System.IO.Path.GetDirectoryName(exe) ?? "")}"
                 + System.IO.Path.DirectorySeparatorChar);
 
         return null;
@@ -758,8 +758,8 @@ internal sealed partial class SetupFlow
                 SummaryFacts.Row("gatto", "runs from a development build"),
             InstallState.AlreadyInstalledElsewhere =>
                 SummaryFacts.Row("gatto",
-                    $"runs from {probes.RunningFrom()}, gatto is also installed at {dir}"),
-            _ => SummaryFacts.Row("gatto", $"not installed, runs from {probes.RunningFrom()}"),
+                    $"runs from {Shown(probes.RunningFrom())}, gatto is also installed at {Shown(dir)}"),
+            _ => SummaryFacts.Row("gatto", $"not installed, runs from {Shown(probes.RunningFrom())}"),
         };
     }
 

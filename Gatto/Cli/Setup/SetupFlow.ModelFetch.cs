@@ -26,7 +26,7 @@ internal sealed partial class SetupFlow
         if (offer.Projector is { } encoder)
             foreach (var m in encoder.Members)
                 files.Add(new(m.FileName, SizeWords.Auto(m.Bytes), Encoder: true));
-        return new(HubLabel(offer.RepoId), offer.IntoDir, files, FreeWords(offer.IntoDir));
+        return new(HubLabel(offer.RepoId), Shown(offer.IntoDir), files, FreeWords(offer.IntoDir));
     }
 
     //return nothing when there is only one file, the sentence exists to explain two files and absence is the honest copy
@@ -237,8 +237,8 @@ internal sealed partial class SetupFlow
 
 
     //keep the trailing separator on the folder that holds a file, so a row reads as a place rather than as a truncated path.
-    private static string Folder(string path) =>
-        System.IO.Path.GetDirectoryName(path) + System.IO.Path.DirectorySeparatorChar;
+    private string Folder(string path) =>
+        Shown(System.IO.Path.GetDirectoryName(path) + System.IO.Path.DirectorySeparatorChar);
 
     //set _arrivedByWatch where the watch's find is adopted, so OfferMove gives the arrival's words rather than a bare question
     private SetupScreen AdoptFromWatch(FoundModel model)

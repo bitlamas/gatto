@@ -920,6 +920,7 @@ public class GattoAppTests : IDisposable
         public Gatto.Core.Acquire.ConnectProbe? ProbeAt(string baseUrl) => null;
         public string? ExistingEndpointFor(string url) => null;
         public string ConfigPath() => "gatto.json";
+        public string UserProfile() => @"C:\Users\you";
         public Gatto.Core.Acquire.ProveOutcome ProveIt(string? modelId,
             IProgress<Gatto.Roles.Audition.AuditionProgress>? progress = null) =>
             new(true, "ok", TimeSpan.FromMilliseconds(1));

@@ -52,6 +52,8 @@ internal enum WatchCause
 //keep the flow pure and resumeless, a user who leaves mid-way leaves nothing behind. every fact from ISetupProbes, every word out as a SetupScreen
 internal sealed partial class SetupFlow(ISetupProbes probes)
 {
+    //every path a screen prints goes through here, so a path under the user's folder reads as ~. the config row is the one exception, it is the path a user opens
+    private string Shown(string path) => Gatto.Cli.PathWords.Home(path, probes.UserProfile());
     //keep screen keys stable for tests, the copy beside them changes but the key can't. write keys as literals, the census greps raw source for them, and it greps comments too, so a comment must not quote the constructor pattern
 
     //the first segment, which puts gatto where a terminal can find it.

@@ -178,7 +178,7 @@ internal sealed partial class SetupFlow
                 ],
                 BodyRows:
                 [
-                    new SetupRow($"Installed: {probes.InstalledVersion()} at {dir}"),
+                    new SetupRow($"Installed: {probes.InstalledVersion()} at {Shown(dir)}"),
                     new SetupRow($"This one:  {probes.RunningVersion()}"),
                     new SetupRow(""),
                     new SetupRow("Updating copies this gatto over the installed one. Nothing is "
@@ -208,7 +208,7 @@ internal sealed partial class SetupFlow
                 ?
                 (IReadOnlyList<SetupRow>)[
                     //keep these as two rows, the copy's location then why the window can't find it, one paragraph wraps them together
-                    new SetupRow($"A copy is already at {dir}."),
+                    new SetupRow($"A copy is already at {Shown(dir)}."),
                     new SetupRow("Windows doesn't know to look there yet, so typing gatto in a "
                         + "new window won't work until it does."),
                     //show the version rows only when both versions can be read, a row that says unknown teaches nothing
@@ -233,8 +233,8 @@ internal sealed partial class SetupFlow
                     new SetupRow("Installing puts a copy in your account's programs folder, so "
                         + "you can type gatto in any terminal instead of finding this file again."),
                     new SetupRow(""),
-                    MapRow(ColumnLabel.From, probes.RunningFrom()),
-                    MapRow(ColumnLabel.To, dir),
+                    MapRow(ColumnLabel.From, Shown(probes.RunningFrom())),
+                    MapRow(ColumnLabel.To, Shown(dir)),
                     new SetupRow(""),
                     //the new-terminal line belongs on the completion screen (before a decision it reads as a caveat)
                     new SetupRow("Your account only, Windows won't ask for administrator "

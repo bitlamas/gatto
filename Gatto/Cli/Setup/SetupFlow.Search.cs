@@ -174,7 +174,7 @@ internal sealed partial class SetupFlow
                 Families: Families.Load().Ladder, Family: hub ? LitChip() : _localFamily ?? "all",
                 Lit: hub ? _lit : null,
                 Source: hub ? ShelfSource.Hub : ShelfSource.Local,
-                Folder: hub ? null : _scanTyped,
+                Folder: hub ? null : _scanTyped is { } typedRoot ? Shown(typedRoot) : null,
                 Searched: hub && _search is { Length: > 0 },
                 Loading: true),
             Watching: true,
@@ -455,10 +455,10 @@ internal sealed partial class SetupFlow
             Total: total,
             Facts: [.. shown.Select((s, i) => LocalShelf.FactsFor(s.Group, s.File, s.Ruled, hw,
                 have: HaveFor(read[i].Id, loadedId, s.File.Path, loadedPath), haveId: read[i].Id, publisher: read[i].Publisher,
-                marksFor: path => MarksFor(existing(path), path)))],
+                marksFor: path => MarksFor(existing(path), path), shown: Shown))],
             Source: ShelfSource.Local,
             SmallestFirst: _smallestFirst,
-            Folder: _scanTyped,
+            Folder: _scanTyped is { } typed ? Shown(typed) : null,
             HiddenByFamily: total - shown.Count,
             Empty: empty);
     }
@@ -614,7 +614,7 @@ internal sealed partial class SetupFlow
 
     //put the indent on the row rather than in the text, a wrapped path reads as two paths
     private IReadOnlyList<SetupRow> RootRows() =>
-        [.. _scanRoots.Select(root => new SetupRow(root, Indent: 2))];
+        [.. _scanRoots.Select(root => new SetupRow(Shown(root), Indent: 2))];
 
     //the words are the user's, quoted and not paraphrased, quoting is what makes the sentence checkable by the person who typed it
     private string SearchEmptySentence() => $"nothing on Hugging Face answers \"{_search}\"";
@@ -747,7 +747,7 @@ internal sealed partial class SetupFlow
         _scanTyped is null
             ? "no models on this machine yet, gatto looked in:"
             : "no models in that folder, gatto looked in:",
-        .. _scanRoots,
+        .. _scanRoots.Select(Shown),
         "",
         "type a folder path below, gatto looks there and in its subfolders",
         //the one key besides the door, with the footer's verb, back only where there is a step to go back to

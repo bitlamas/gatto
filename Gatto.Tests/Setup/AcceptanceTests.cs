@@ -76,6 +76,7 @@ public class AcceptanceTests
         public bool? UpdateAnswered { get; init; } = false;
         public string? ExistingEndpointFor(string baseUrl) => ExistingEndpoint;
         public string ConfigPath() => @"C:\home\gatto.json";
+        public string UserProfile() => @"C:\Users\you";
         public ProveOutcome ProveIt(string? modelId,
             IProgress<Gatto.Roles.Audition.AuditionProgress>? progress = null) => new(true, "hi", TimeSpan.FromSeconds(2));
     }
@@ -230,6 +231,7 @@ public class AcceptanceTests
         public string RunningVersion() => Gatto.Core.GattoVersion.String;
         public (Gatto.Roles.Models.IdClash Kind, string? Id) ClashFor(string ggufPath, string? incomingRepoId) => (Gatto.Roles.Models.IdClash.Free, null);
         public string ConfigPath() => @"C:\home\gatto.json";
+        public string UserProfile() => @"C:\Users\you";
         public HardwareSnapshot? Hardware() => new(34359738368, 34093496320, GpuKind.Discrete, 8589934592);
 
         //names are display-only, so report none. a fake that invents a name shows hardware no probe reported

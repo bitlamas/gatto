@@ -7,8 +7,8 @@
   Installing puts a copy in your account's programs folder, so you can type gatto in any terminal
   instead of finding this file again.
 
-  from      C:\Users\you\Downloads\gatto\gatto.exe
-  to        C:\Users\you\AppData\Local\Programs\gatto\
+  from      ~\Downloads\gatto\gatto.exe
+  to        ~\AppData\Local\Programs\gatto\
 
   Your account only, Windows won't ask for administrator permission.
 

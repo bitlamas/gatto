@@ -414,7 +414,7 @@ internal sealed partial class SetupFlow
                     + "in the same folder before it can use any of them."),
                 "",
                 //leave it raw, the face sanitizes every row it renders, sanitizing here would be the rule's second home
-                new SetupRow($"  {folder}"),
+                new SetupRow($"  {Shown(folder)}"),
                 "",
                 new SetupRow("gatto is watching for the rest, you don't need to press anything."),
             ], Watching: true), PartialSetKey);

@@ -858,7 +858,7 @@ public class CheckTests
         Assert.Contains(rows, r => r.Contains("model is corrupted or incomplete",
             StringComparison.Ordinal));
         Assert.DoesNotContain(rows, r => r.Contains('…'));
-        Assert.Contains(rows, r => r.Contains(@"full log: C:\Users\you\.gatto\serve.log",
+        Assert.Contains(rows, r => r.Contains(@"full log: ~\.gatto\serve.log",
             StringComparison.Ordinal));
     }
 

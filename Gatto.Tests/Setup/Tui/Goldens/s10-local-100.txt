@@ -10,7 +10,7 @@
 
   Which model should gatto add?
 
-  gemma · qwen · deepseek · glm · mistral · all             folder  C:\Users\you\.lmstudio\models\
+  gemma · qwen · deepseek · glm · mistral · all                        folder  ~\.lmstudio\models\
 
      model                     size · quant    kind
 ❯ 1. minimax-m2.7-REAP-139B-…  82.3 GB Q4_K_S  MoE A10B
@@ -23,7 +23,7 @@
 
 ────────────────────────────────────────────────────────────────────────────────────────────────────
   minimax-m2.7-REAP-139B-A10B-Q4_K_S
-  C:\Users\you\.lmstudio\models\minimaxai\minimax-m2.7-REAP\
+  ~\.lmstudio\models\minimaxai\minimax-m2.7-REAP\
   context up to 196,608 · text only · reads 10B params/token
   files · › Q4_K_S 82.3 GB · 3 of 3 files here  ✓ fits
   ✗ not measured yet
