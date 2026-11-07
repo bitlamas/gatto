@@ -45,4 +45,9 @@ internal sealed class RecordingServeListener : IServeListener
         Add(nameof(Status), model, port, pid, healthy);
 
     public void PumpFault(ServeLogFault fault) => Add(nameof(PumpFault), fault);
+
+    public void WrongDevice(string model, int pid, string wanted, string got, string index) =>
+        Add(nameof(WrongDevice), model, pid, wanted, got, index);
+
+    public void DeviceUnread(string model, string wanted, bool foreground) => Add(nameof(DeviceUnread), model, wanted, foreground);
 }

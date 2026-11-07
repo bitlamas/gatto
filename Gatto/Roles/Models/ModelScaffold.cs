@@ -49,7 +49,8 @@ public static class ModelScaffold
         int? gpuLayers = null,   //a split's layer count, null for a model that fits whole
         string? sha256 = null,   //the hash of the file, stated with a stat of it here, at the path the profile names
         int? scalarUbatch = null,   //the -ub of a card whose attention takes the scalar path, which also takes the f16 cache
-        bool projectorInMemory = false)   //the projector stays in system memory and the processor runs it, so the model keeps the card
+        bool projectorInMemory = false,   //the projector stays in system memory and the processor runs it, so the model keeps the card
+        string? deviceName = null)   //the product name behind the -dev index, so a start can tell when the index landed on another card
     {
         var resolved = ResolveShardOne(Path.GetFullPath(ggufPath));
 
@@ -109,6 +110,8 @@ public static class ModelScaffold
             if (!string.IsNullOrWhiteSpace(projector)) w.WriteString("mmproj", projector);
             //no llama_server key without a binary, so gatto never asks the server manager to spawn nothing
             if (!string.IsNullOrWhiteSpace(llamaServer)) w.WriteString("llama_server", llamaServer);
+            //no device key without a name, the loader reads an absent key as no check
+            if (!string.IsNullOrWhiteSpace(deviceName)) w.WriteString("device", deviceName);
             w.WriteNumber("gpu_layers", gpuLayers ?? 99);
             var cacheType = scalarUbatch is null ? "q8_0" : "f16";
             w.WriteString("cache_type_k", cacheType);

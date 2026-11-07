@@ -50,7 +50,8 @@ internal static class WriteSetApply
             {
                 //llama-server's own name for the GPU the fit counted, so the profile runs where the shelf said the model fits
                 string? device = null;
-                if (p.PinGpu is { Length: > 0 } gpu)
+                var gpu = p.PinGpu;
+                if (gpu is { Length: > 0 })
                 {
                     device = DeviceFor(homePath, writes, gpu);
                     if (device is null)
@@ -65,8 +66,10 @@ internal static class WriteSetApply
                     writes.Projector,
                     //the per-model server override, read from its own member for the same reason. null on every ordinary run
                     writes.ModelLlamaServer,
+                    //the name travels only beside a resolved index, an unpinned profile has nothing to check
                     p.Source, device, p.GpuLayers, p.Sha256, p.ScalarUbatch,
-                    writes.ProjectorInMemory);   //from WriteSet's own member, the answer to the same ask
+                    writes.ProjectorInMemory,   //from WriteSet's own member, the answer to the same ask
+                    device is null ? null : gpu);
             }
         }
         catch (Exception ex) { return $"couldn't create the model: {ex.Message}"; }

@@ -54,7 +54,9 @@ public sealed record ModelProfile(
     //the repo and file this model came from, so a hub row matches by repo. null for one adopted off local disk, where a repo name would be a guess
     ModelSource? Source = null,
     //this model's own preferred thinking level, used when the role's thinking key is absent, and stored as the level its own map has
-    ThinkingLevel? DefaultEffort = null)
+    ThinkingLevel? DefaultEffort = null,
+    //the product name of the card this profile means, the engine's own spelling, so a start can read back which card it took
+    string? Device = null)
 {
     //the weights this profile serves. the loader already refused a list without exactly one active file, so this just reads the answer
     public string ActivePath => Files.Single(f => f.Active).Path;
@@ -69,7 +71,7 @@ public sealed record ModelProfile(
         $"Seed = {Seed}, LlamaServer = {LlamaServer}, ReasoningHistory = {ReasoningHistory}, " +
         $"ApiKey = {(ApiKey is null ? "null" : "***")}, MemoryIndexBudget = {MemoryIndexBudget}, " +
         $"AutoServe = {AutoServe}, " +
-        $"MmProj = {MmProj}, DefaultEffort = {DefaultEffort} }}";
+        $"MmProj = {MmProj}, DefaultEffort = {DefaultEffort}, Device = {Device} }}";
 }
 
 //a model directory: its serving profile plus the signal files an audition leaves behind, and a fresh model has none of them
@@ -83,7 +85,7 @@ public sealed record Model(string Id, ModelProfile Profile, string? SystemAppend
         //model_path is retired with no shim, so an old profile that still has it is refused by the unknown-key path
         "files", "source", "port", "context", "gpu_layers",
         "cache_type_k", "cache_type_v", "sampling", "thinking", "extra_args", "seed", "llama_server",
-        "reasoning_history", "api_key", "memory", "mmproj", "auto_serve", "default_effort",
+        "reasoning_history", "api_key", "memory", "mmproj", "auto_serve", "default_effort", "device",
     };
 
     //a model's memory section holds only index_budget, since the enabled switch is global and can't be set per model
@@ -230,6 +232,9 @@ public sealed record Model(string Id, ModelProfile Profile, string? SystemAppend
         //the multimodal projector file. when absent, --mmproj isn't passed
         var mmproj = GetOptionalString(root, id, path, "mmproj");
 
+        //the card the profile means. absent means no check after a start, since -dev pins an index and the index can land elsewhere
+        var device = GetOptionalString(root, id, path, "device");
+
         //a present auto_serve must be a real bool, a broken one is an error. absent stays null
         bool? autoServe = null;
         if (root.TryGetProperty("auto_serve", out var asv))
@@ -310,7 +315,7 @@ public sealed record Model(string Id, ModelProfile Profile, string? SystemAppend
             }
         }
 
-        return new ModelProfile(files, port, context, gpuLayers, cacheTypeK, cacheTypeV, sampling, thinking, extraArgs, seed, llamaServer, reasoningHistory, apiKey, memoryIndexBudget, mmproj, autoServe, source, defaultEffort);
+        return new ModelProfile(files, port, context, gpuLayers, cacheTypeK, cacheTypeV, sampling, thinking, extraArgs, seed, llamaServer, reasoningHistory, apiKey, memoryIndexBudget, mmproj, autoServe, source, defaultEffort, device);
     }
 
     //does the loaded file belong to this model, null means unknown (no probe, no path, no normalization). never show unknown as a mismatch

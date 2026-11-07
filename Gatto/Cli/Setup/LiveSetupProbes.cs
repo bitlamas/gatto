@@ -79,6 +79,8 @@ internal sealed class LiveSetupProbes(string homePath, Gatto.Terminal.GlyphSet g
             inner.DiedOnStatus(model, pid, exitCode, exitedAt, tail);
         public void Status(string model, int port, int pid, bool healthy) => inner.Status(model, port, pid, healthy);
         public void PumpFault(Gatto.Roles.Serve.ServeLogFault fault) => inner.PumpFault(fault);
+        public void WrongDevice(string model, int pid, string wanted, string got, string index) => inner.WrongDevice(model, pid, wanted, got, index);
+        public void DeviceUnread(string model, string wanted, bool foreground) => inner.DeviceUnread(model, wanted, foreground);
     }
 
     //the server this wizard started and therefore must stop, a server that was already running belongs to somebody else

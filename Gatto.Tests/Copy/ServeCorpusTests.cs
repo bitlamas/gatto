@@ -198,10 +198,10 @@ public class ServeCorpusTests : IDisposable
 
     //the start path
 
-    private static Model ModelFor(string llamaServer) => new(
+    private static Model ModelFor(string llamaServer, string? device = null) => new(
         CorpusFacts.ModelId,
         new ModelProfile([new ModelFile("m.gguf", null, true)], CorpusFacts.Port, 8192,
-            null, null, null, null, null, Array.Empty<string>(), null, llamaServer),
+            null, null, null, null, null, Array.Empty<string>(), null, llamaServer, Device: device),
         null, null);
 
     [Theory]
@@ -266,6 +266,34 @@ public class ServeCorpusTests : IDisposable
         Check("serve-start-died-tail", mode, w =>
             Manager(pid => pid == proc.Pid ? proc : null, spawn: _ => proc, http: Unreachable())
                 .StartAsync(ModelFor(bin), w, CancellationToken.None).GetAwaiter().GetResult());
+    }
+
+    //the engine's log names the other card, so the start stops the server and says both names
+    [Theory]
+    [InlineData(CorpusMode.Dark)]
+    [InlineData(CorpusMode.Plain)]
+    public void START_THAT_LANDS_ON_THE_WRONG_CARD(CorpusMode mode)
+    {
+        File.WriteAllText(Path.Combine(_home, "serve.log"),
+            "0.00.297.169 I llama_prepare_model_devices: using device Vulkan1 (Invented Card B) (unknown id) - 7000 MiB free\n");
+        var proc = new FakeProc { Pid = 7777 };
+        var bin = FakeLlama();
+        Check("serve-start-wrong-device", mode, w =>
+            Manager(pid => pid == proc.Pid ? proc : null, spawn: _ => proc, http: Healthy())
+                .StartAsync(ModelFor(bin, "Invented Card A"), w, CancellationToken.None).GetAwaiter().GetResult());
+    }
+
+    //the profile names a card and the log never said which was taken, so the start says so once and goes on
+    [Theory]
+    [InlineData(CorpusMode.Dark)]
+    [InlineData(CorpusMode.Plain)]
+    public void START_WHOSE_LOG_NAMES_NO_CARD(CorpusMode mode)
+    {
+        var proc = new FakeProc { Pid = 7777 };
+        var bin = FakeLlama();
+        Check("serve-start-device-unread", mode, w =>
+            Manager(pid => pid == proc.Pid ? proc : null, spawn: _ => proc, http: Healthy())
+                .StartAsync(ModelFor(bin, "Invented Card A"), w, CancellationToken.None).GetAwaiter().GetResult());
     }
 
     //the foreground start, whose three lines only this path prints, since ctrl+c arrives while gatto holds the terminal

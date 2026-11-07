@@ -394,5 +394,7 @@ public class CommandCorpusTests : IDisposable
         "serve-start-died-Dark", "serve-start-died-Plain",
         "serve-start-died-tail-Dark", "serve-start-died-tail-Plain",
         "serve-start-died-empty-log-Dark", "serve-start-died-empty-log-Plain",
+        "serve-start-wrong-device-Dark", "serve-start-wrong-device-Plain",
+        "serve-start-device-unread-Dark", "serve-start-device-unread-Plain",
     ];
 }

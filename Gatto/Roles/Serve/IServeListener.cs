@@ -57,6 +57,12 @@ public interface IServeListener
 
     //the rolling log could not be created, and the server is unaffected
     void PumpFault(ServeLogFault fault);
+
+    //the engine's log named a card other than the profile's, and the server was stopped before its weights loaded
+    void WrongDevice(string model, int pid, string wanted, string got, string index);
+
+    //the profile names a card and no engine line said which was taken, so nothing was checked and nothing stopped
+    void DeviceUnread(string model, string wanted, bool foreground);
 }
 
 //what went wrong with the rolling log, a fact that the layer which paints it turns into a sentence
@@ -87,4 +93,6 @@ public sealed class NullServeListener : IServeListener
     public void StaleOnStatus(int pid, string model) { }
     public void Status(string model, int port, int pid, bool healthy) { }
     public void PumpFault(ServeLogFault fault) { }
+    public void WrongDevice(string model, int pid, string wanted, string got, string index) { }
+    public void DeviceUnread(string model, string wanted, bool foreground) { }
 }

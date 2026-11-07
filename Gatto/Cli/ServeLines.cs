@@ -87,6 +87,21 @@ internal sealed class ServeLines(CliSurface cli, GlyphSet glyphs, StartWatch? wa
             Under("serve.log was empty");
     }
 
+    //the engine took another card, so the server was stopped before it loaded. the row states both names and ends bare, the sentence after it says what to do
+    public void WrongDevice(string model, int pid, string wanted, string got, string index)
+    {
+        Row(Happened("llama-server took "), Model(got), Machinery($" ({index})"), Sep,
+            Happened("stopped "), Model(model), Machinery($" (pid {pid})"));
+        Row(Happened("the profile names "), Model(wanted));
+        Row(Happened("the device order changes between starts; start it again, or check with "),
+            CliSurface.Command("llama-server --list-devices"), Happened("."));
+    }
+
+    //nothing was checked and nothing stopped, so one row says so and names the card the profile means
+    public void DeviceUnread(string model, string wanted, bool foreground) =>
+        Row(Happened(foreground ? "device not checked, a foreground start writes no log" : "device not read from serve.log"), Sep,
+            Machinery($"the profile names {wanted}"));
+
     public void NotServingOnStop() =>
         Row(Happened("not serving"), Machinery(" (no serve.json)"));
 

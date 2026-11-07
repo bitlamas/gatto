@@ -44,8 +44,21 @@ public class ModelScaffoldTests : IDisposable
     {
         var id = ModelScaffold.Create(_dir, Fixture("tiny.gguf"), port: 1235, device: "Vulkan0");
 
+        var profile = Model.Load(_dir, id).Profile;
         Assert.Equal(["-np", "1", "-fa", "on", "-lm", "none", "--jinja", "--no-context-shift", "--cache-reuse", "0", "-dev", "Vulkan0"],
-            Model.Load(_dir, id).Profile.ExtraArgs);
+            profile.ExtraArgs);
+        Assert.Null(profile.Device);   //an index alone names no card, so the start has nothing to check
+    }
+
+    //the name beside the index is what a start reads back from the engine's log, so it is written as its own key
+    [Fact]
+    public void A_PINNED_MODEL_NAMES_ITS_CARD()
+    {
+        var id = ModelScaffold.Create(_dir, Fixture("tiny.gguf"), port: 1235, device: "Vulkan0", deviceName: "Invented Card A");
+
+        var profile = Model.Load(_dir, id).Profile;
+        Assert.Equal("Invented Card A", profile.Device);
+        Assert.Equal("Vulkan0", profile.ExtraArgs[^1]);
     }
 
     [Fact]

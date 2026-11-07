@@ -149,16 +149,20 @@ public sealed class ServeManager
         IServeListener listener, CancellationToken ct)
     {
         var sw = Stopwatch.StartNew();
+        var deviceAnswered = false;
         while (sw.Elapsed < _pollTimeout)
         {
             if (proc.HasExited)
                 return DiedDuringLoad(listener);
+
+            if (DeviceGate(model, proc, ref deviceAnswered, last: false, listener) is { } stopped) return stopped;
 
             //ctrl+c stops the wait but must never touch the child (a detached server stays up and the exit is 0)
             try
             {
                 if (await HealthOkAsync(port, ct).ConfigureAwait(false))
                 {
+                    if (DeviceGate(model, proc, ref deviceAnswered, last: true, listener) is { } late) return late;
                     listener.Ready(model.Id, port, proc.Pid);
                     return 0;
                 }
@@ -171,9 +175,53 @@ public sealed class ServeManager
         if (proc.HasExited)
             return DiedDuringLoad(listener);
 
+        if (DeviceGate(model, proc, ref deviceAnswered, last: true, listener) is { } lateStop) return lateStop;
+
         //the server is still coming up. it keeps running and serve.json stays, the user checks with gatto serve status
         listener.StillLoading(model.Id, proc.Pid);
         return 0;
+    }
+
+    //the engine names the card it took in 1 log line before any weight moves, and a bracketed id follows the name, so a greedy name keeps its own parentheses
+    private static readonly System.Text.RegularExpressions.Regex DeviceTaken =
+        new(@"using device (?<dev>[A-Za-z]+\d+) \((?<name>.+)\) \(", System.Text.RegularExpressions.RegexOptions.CultureInvariant);
+
+    //the first such line in serve.log, or null while there is none (no log, an unreadable one, or the engine has not written it yet)
+    private (string Index, string Name)? DeviceLine()
+    {
+        foreach (var line in TailLog(int.MaxValue))
+        {
+            var m = DeviceTaken.Match(line);
+            if (m.Success) return (m.Groups["dev"].Value, m.Groups["name"].Value);
+        }
+        return null;
+    }
+
+    //compares the line with the card the profile names, once: null continues the poll, an exit code means the server was stopped
+    private int? DeviceGate(Model model, IServeProcess proc, ref bool answered, bool last, IServeListener listener)
+    {
+        if (answered || model.Profile.Device is not { } wanted) return null;
+        if (DeviceLine() is { } took)
+        {
+            answered = true;
+            if (string.Equals(took.Name.Trim(), wanted.Trim(), StringComparison.Ordinal)) return null;
+            listener.WrongDevice(model.Id, proc.Pid, wanted, took.Name, took.Index);
+            try { proc.Kill(); }
+            catch (Exception ex)
+            {
+                //the server is alive after a failed kill, so its record stays for stop to retry
+                listener.KillFailed(proc.Pid, ex.Message);
+                return 1;
+            }
+            CleanupServeJson();
+            return 1;
+        }
+        if (last)
+        {
+            answered = true;
+            listener.DeviceUnread(model.Id, wanted, foreground: false);
+        }
+        return null;
     }
 
     //wait till the port really answers, start's exit 0 doesn't mean ready (it also comes back while the model loads). use this before sending requests
@@ -203,6 +251,8 @@ public sealed class ServeManager
         CancellationToken ct)
     {
         listener.ServingForeground(model.Id, proc.Pid);
+        //no log in the foreground, so a named card cannot be checked and the row says so once
+        if (model.Profile.Device is { } named) listener.DeviceUnread(model.Id, named, foreground: true);
 
         //set e.Cancel so gatto lives to stop the child cleanly and tidy serve.json (ctrl+c would otherwise kill both raw)
         using var linked = CancellationTokenSource.CreateLinkedTokenSource(ct);
@@ -500,8 +550,12 @@ public sealed class ServeManager
         try
         {
             if (!File.Exists(ServeLogPath)) return Array.Empty<string>();
-            var lines = File.ReadAllLines(ServeLogPath);
-            return lines.Length <= n ? lines : lines[^n..];
+            //the engine holds the file open for writing while it runs, and a plain read asks for a share it refuses, so the read allows a writer
+            using var stream = new FileStream(ServeLogPath, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete);
+            using var reader = new StreamReader(stream, new UTF8Encoding(false));
+            var lines = new List<string>();
+            while (reader.ReadLine() is { } line) lines.Add(line);
+            return lines.Count <= n ? lines : lines[^n..];
         }
         catch (Exception)
         {
