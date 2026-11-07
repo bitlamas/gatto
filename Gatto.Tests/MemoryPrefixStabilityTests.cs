@@ -30,7 +30,7 @@ public class MemoryPrefixStabilityTests : IDisposable
     {
         var loaded = MemoryIndex.Compose(MemoryDir.FindProjectRoot(_root), Budget);
         return RoleComposition.Compose(
-            Role(), null, Array.Empty<(string, string)>(), null, cwd: _root,
+            Role(), null, Array.Empty<(string, string)>(), null, modelName: "test-model", os: "Windows", sessionId: null, cwd: _root,
             memoryIndex: loaded.Text, memoryTruncatedLines: loaded.TruncatedLines, memoryNudge: true).SystemText;
     }
 
@@ -57,7 +57,7 @@ public class MemoryPrefixStabilityTests : IDisposable
         //composing again from the same launch-time load must be byte-identical, compose never reads the disk
         var launchLoad = new MemoryIndex.LoadResult("- seeded fact", 0);
         Assert.Equal(systemA, RoleComposition.Compose(
-            Role(), null, Array.Empty<(string, string)>(), null, cwd: _root,
+            Role(), null, Array.Empty<(string, string)>(), null, modelName: "test-model", os: "Windows", sessionId: null, cwd: _root,
             memoryIndex: launchLoad.Text, memoryTruncatedLines: launchLoad.TruncatedLines,
             memoryNudge: true).SystemText);
 
@@ -75,7 +75,7 @@ public class MemoryPrefixStabilityTests : IDisposable
         SeedIndex("- seeded fact");
 
         var systemText = RoleComposition.Compose(
-            Role(), null, Array.Empty<(string, string)>(), null, cwd: _root).SystemText;
+            Role(), null, Array.Empty<(string, string)>(), null, modelName: "test-model", os: "Windows", sessionId: null, cwd: _root).SystemText;
 
         Assert.DoesNotContain("## Memory", systemText, StringComparison.Ordinal);
         Assert.DoesNotContain("memory_write", systemText, StringComparison.Ordinal);

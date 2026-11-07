@@ -70,7 +70,12 @@ public class SessionPrefixTests : IDisposable
         var prefix = GattoApp.ComposeSessionPrefix(_home, "local", "test-model");
 
         Assert.NotNull(prefix);
-        Assert.Equal(sent.GetProperty("messages")[0].GetProperty("content").GetString(), prefix!.SystemText);
+        //the one allowed difference is the launch's session line, which a prefix that belongs to no session leaves out
+        var launched = sent.GetProperty("messages")[0].GetProperty("content").GetString()!;
+        var cut = launched.LastIndexOf("\n\nThis is session ", StringComparison.Ordinal);
+        Assert.True(cut > 0, "the launch's prompt names no session");
+        Assert.Equal(launched[..cut], prefix!.SystemText);
+        Assert.DoesNotContain("This is session", prefix.SystemText, StringComparison.Ordinal);
         var tools = sent.GetProperty("tools").EnumerateArray().Select(t => t.GetProperty("function")).ToList();
         Assert.Equal(tools.Select(t => t.GetProperty("name").GetString()), prefix.Tools.Select(t => t.Name));
         Assert.Equal(tools.Select(t => t.GetProperty("description").GetString()), prefix.Tools.Select(t => t.Description));

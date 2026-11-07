@@ -30,7 +30,7 @@ public class ContextLayerStabilityTests : IDisposable
 
     private static string Compose(string homeMd, string cwd) =>
         RoleComposition.Compose(
-            Role(), null, ContextFiles.Collect(cwd, false, homeMd), null, cwd: cwd).SystemText;
+            Role(), null, ContextFiles.Collect(cwd, false, homeMd), null, modelName: "test-model", os: "Windows", sessionId: null, cwd: cwd).SystemText;
 
     [Fact]
     public void The_home_block_precedes_every_ancestor_block_so_the_project_file_wins()

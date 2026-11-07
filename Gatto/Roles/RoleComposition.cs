@@ -22,9 +22,12 @@ public sealed record Composition(
 //role x model x context files, pure and total so /role and /compact can recompose through it
 public static class RoleComposition
 {
-    //the first block of every system prompt, naming the OS and the shell so a model that assumes Linux doesn't reach for ls. don't reword without a gate
+    //the model is the mind and gatto the body, so a model asked who it is answers with its own name and where it runs. don't reword without a gate
+    public static string IdentityLine(string modelName, string os) =>
+        $"You are {modelName}, running through gatto, a local agent harness, on {os}. Use the provided tools; keep answers grounded in what you actually read or ran.";
+
+    //the lines under the identity, naming the shell so a model that assumes Linux doesn't reach for ls. don't reword without a gate
     public const string BasePrompt =
-        "You are gatto, a local agent harness on Windows. Use the provided tools; keep answers grounded in what you actually read or ran.\n" +
         "The shell is PowerShell. Never use Bash or Linux-only commands; when a Unix habit tempts you, find the PowerShell way.\n" +
         "Say what you actually conclude. If the user's idea has a problem, name it plainly before helping -- agreement you don't hold is a disservice.\n" +
         "When you are unsure, say so and say why; never present a guess as a fact.\n" +
@@ -60,6 +63,11 @@ public static class RoleComposition
         Model? model,
         IReadOnlyList<(string Path, string Content)> contextFiles,
         IReadOnlyDictionary<string, JsonElement?>? endpointThinkingMap,
+        //the model string the first line names, the profile id on a local endpoint and the endpoint's own string on a cloud one
+        string modelName,
+        string os,
+        //the session the prompt names last, null for a composition that belongs to no session, the audition's prefix read
+        string? sessionId,
         //required, and null means no working-directory line, since an optional parameter is one a call site can silently omit
         string? cwd,
         DateTime? date = null,
@@ -78,13 +86,12 @@ public static class RoleComposition
             ? $"Today's date: {d.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture)}."
             : null;
 
-        var modelLine = model is null ? null : $"Model: {model.Id}.";   //a local model can't tell which model it is, so the stanza names the profile id the footer and the request body show
         //the working directory is caller-supplied and composed once, an environment fact, so the model is told where it is. null means no line
         var cwdLine = string.IsNullOrWhiteSpace(cwd) ? null : $"Working directory: {cwd}.";
-        var envParts = new[] { dateLine, modelLine, cwdLine }.Where(p => p is not null).ToArray();
+        var envParts = new[] { dateLine, cwdLine }.Where(p => p is not null).ToArray();
         var envLine = envParts.Length == 0 ? null : string.Join("\n", envParts);
 
-        //the memory block goes last, after the context files, and is built outside the whitespace filter since an empty index still renders its truncation note
+        //the memory block goes after the context files with only the session line behind it. it is built outside the whitespace filter since an empty index still renders its truncation note
         var memoryBlock = memoryIndex is null
             ? null
             : MemoryHeading + "\n"
@@ -103,7 +110,7 @@ public static class RoleComposition
         var labelled = new (string Label, string? Detail, string? Text)[]
             {
                 //a raw role leaves out the three blocks gatto writes on its own, and every block the user or a file supplies stays
-                ("system prompt", null, role.Raw ? null : BasePrompt), ("system prompt", null, memoryNudge && !role.Raw ? MemoryNudge : null), ("system prompt", null, role.Raw ? null : envLine),
+                ("system prompt", null, role.Raw ? null : IdentityLine(modelName, os) + "\n" + BasePrompt), ("system prompt", null, memoryNudge && !role.Raw ? MemoryNudge : null), ("system prompt", null, role.Raw ? null : envLine),
                 ("model folder", null, model?.SystemAppend), ("role", role.Name, role.Append),
                 ("extension policy", null, policyBlock),
             }
@@ -112,6 +119,8 @@ public static class RoleComposition
             .Concat(contextFiles.Select(f => (Label: "context files", Detail: (string?)$"{contextFiles.Count}", Text: $"## Context: {f.Path}\n{f.Content}")))
             .ToList();
         if (memoryBlock is not null) labelled.Add(("memory index", null, memoryBlock));
+        //last, so a second session in the same project re-reads this line and not the head before it. a raw role keeps it, it serves the user's tooling
+        if (sessionId is { Length: > 0 }) labelled.Add(("session", null, $"This is session {sessionId}."));
         var systemText = string.Join("\n\n", labelled.Select(p => p.Text));
         //one part per source in first-seen order, the blocks of a source joined as the prompt joins them
         var systemParts = labelled.GroupBy(p => p.Label)

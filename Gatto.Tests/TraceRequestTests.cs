@@ -147,7 +147,7 @@ public class TraceRequestTests : IDisposable
         var runAgent = new RunAgentTool(
             roles: () => [role],
             refuseRole: _ => null,
-            composeChild: r => (RoleComposition.Compose(r, null, Array.Empty<(string, string)>(), null, cwd: null), "m"),
+            composeChild: r => (RoleComposition.Compose(r, null, Array.Empty<(string, string)>(), null, modelName: "test-model", os: "Windows", sessionId: null, cwd: null), "m"),
             subagentWiring: _ => (new ToolRegistry(), new HookBus()),
             client: client,
             requestSettings: () => ("m", null, null, null),

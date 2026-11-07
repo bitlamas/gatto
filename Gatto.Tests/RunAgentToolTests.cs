@@ -79,7 +79,7 @@ public sealed class RunAgentToolTests : IDisposable
 
     //the child's prefix as GattoApp composes it, minus the launch state: no model, no context files, no memory
     private static Composition Compose(RoleFile role) =>
-        RoleComposition.Compose(role, null, Array.Empty<(string, string)>(), null, cwd: null);
+        RoleComposition.Compose(role, null, Array.Empty<(string, string)>(), null, modelName: "test-model", os: "Windows", sessionId: null, cwd: null);
 
     //use the real SubagentWiring.Build here, a hand-built copy could pass while the production wiring differs
     private static Func<RoleFile, (ToolRegistry, HookBus)> Wiring(
@@ -427,7 +427,7 @@ public sealed class RunAgentToolTests : IDisposable
         var callerFiles = new[] { (@"C:\p\GATTO.md", "CALLER CONTEXT") };
         Composition ComposeWithFiles(RoleFile r) => RoleComposition.Compose(
             RoleMerge.ForChild(r, Role(name: "caller", append: "CALLER APPEND")), null,
-            r.ContextFiles ? callerFiles : Array.Empty<(string, string)>(), null, cwd: null);
+            r.ContextFiles ? callerFiles : Array.Empty<(string, string)>(), null, modelName: "test-model", os: "Windows", sessionId: null, cwd: null);
         var tool = Build(client, FreshGate(new RecordingPermPrompter()), composeChild: ComposeWithFiles);
 
         await tool.ExecuteAsync(Args("helper", "the task"), new TestToolContext(_dir), default);
@@ -448,7 +448,7 @@ public sealed class RunAgentToolTests : IDisposable
         var callerFiles = new[] { (@"C:\p\GATTO.md", "CALLER CONTEXT") };
         var tool = Build(client, FreshGate(new RecordingPermPrompter()), roles: new[] { Role(contextFiles: false) },
             composeChild: r => RoleComposition.Compose(r, null,
-                r.ContextFiles ? callerFiles : Array.Empty<(string, string)>(), null, cwd: null));
+                r.ContextFiles ? callerFiles : Array.Empty<(string, string)>(), null, modelName: "test-model", os: "Windows", sessionId: null, cwd: null));
 
         await tool.ExecuteAsync(Args("helper", "the task"), new TestToolContext(_dir), default);
 
@@ -487,7 +487,7 @@ public sealed class RunAgentToolTests : IDisposable
             server.Enqueue(new FakeResponse(Frames: TextRound("done")));
             var client = new OpenAiCompatClient(new HttpClient(), "local", new EndpointConfig(server.BaseUrl));
             var tool = Build(client, FreshGate(new RecordingPermPrompter()), roles: new[] { role },
-                composeChild: r => RoleComposition.Compose(r, null, Array.Empty<(string, string)>(), map, cwd: null),
+                composeChild: r => RoleComposition.Compose(r, null, Array.Empty<(string, string)>(), map, modelName: "test-model", os: "Windows", sessionId: null, cwd: null),
                 requestSettings: () => ("m", null, Json("""{"marker":"caller"}"""), "/caller"));
             await tool.ExecuteAsync(Args(role.Name, "t"), new TestToolContext(_dir), default);
             var body = server.RequestBodies[0];

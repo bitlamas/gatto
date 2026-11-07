@@ -209,8 +209,17 @@ public class PolicyLineLaunchTests : IDisposable
         Assert.Equal(2, server.RequestCount);
         var systems = server.RequestBodies.Select(SystemOf).ToList();
         Assert.All(systems, s => Assert.Contains(Line, s));
-        //the prefix must stay byte-identical, since a moved or respaced block keeps every contains green and re-prefills the whole prompt
-        Assert.Equal(systems[0], systems[1]);
+        //the prefix must stay byte-identical up to the session line, since a moved or respaced block keeps every contains green and re-prefills the whole prompt
+        Assert.Equal(SessionLine.Masked(systems[0]), SessionLine.Masked(systems[1]));
+        Assert.NotEqual(systems[0], systems[1]);   //the /new names its own session, not the one it ended
+
+        //each prompt names the session its own file records, the /new one included, since the prompt is composed before the store moves
+        var recorded = Directory.GetFiles(Path.Combine(_home, "sessions"), "*.jsonl")
+            .Where(p => !p.EndsWith(".ledger.jsonl", StringComparison.Ordinal) && !p.EndsWith(".trace.jsonl", StringComparison.Ordinal))
+            .Select(p => $"This is session {Gatto.Core.Session.SessionStore.IdentityOf(p)!.IdText}.")
+            .ToList();
+        Assert.Equal(2, recorded.Count);
+        Assert.All(systems, s => Assert.Contains(recorded, line => s.EndsWith(line, StringComparison.Ordinal)));
     }
 
     //when the /new re-read throws, the closure serves its last composed system verbatim, so keep the policy block in that local
@@ -302,8 +311,8 @@ public class PolicyLineLaunchTests : IDisposable
     {
         var role = new RoleFile("r", "p", null, new[] { "grounding" }, false, null, ThinkingLevel.Medium, null, null, 10, true, null, null, null, null);
 
-        var without = RoleComposition.Compose(role, null, Array.Empty<(string, string)>(), null, cwd: @"C:\p");
-        var with = RoleComposition.Compose(role, null, Array.Empty<(string, string)>(), null, cwd: @"C:\p",
+        var without = RoleComposition.Compose(role, null, Array.Empty<(string, string)>(), null, modelName: "test-model", os: "Windows", sessionId: null, cwd: @"C:\p");
+        var with = RoleComposition.Compose(role, null, Array.Empty<(string, string)>(), null, modelName: "test-model", os: "Windows", sessionId: null, cwd: @"C:\p",
             policyLines: new[] { ("ask_user", Line) });
 
         Assert.NotEqual(without.SystemText, with.SystemText);          //the policy block must change the system text.

@@ -44,7 +44,7 @@ public sealed class RawEmptyTextLaunchTests : IDisposable
             .ToList();
 
     [Fact]
-    public async Task AN_EMPTY_RAW_TEXT_SENDS_NO_SYSTEM_TURN_AND_RESUMES_WITH_THE_SAME_SHAPE()
+    public async Task A_RAW_ROLE_WITH_NO_TEXT_SENDS_ONLY_ITS_SESSION_LINE_AND_RESUMES_WITH_IT()
     {
         await using var server = new FakeOpenAiServer();
         Directory.CreateDirectory(Path.Combine(_home, "roles"));
@@ -63,19 +63,21 @@ public sealed class RawEmptyTextLaunchTests : IDisposable
         foreach (var f in Directory.GetFiles(_home, "*.jsonl", SearchOption.AllDirectories)) File.Delete(f);
 
         await Run(server, "-p", "first");
-        Assert.Equal(new[] { ("user", (string?)"first") }, Sent(server));
-
         var session = Directory.GetFiles(_home, "*.jsonl", SearchOption.AllDirectories).Single(p => !p.EndsWith(".ledger.jsonl", StringComparison.Ordinal));
+        //a raw role drops what gatto says about itself and keeps the session line, which the user's tooling reads
+        var line = $"This is session {SessionStore.IdentityOf(session)!.IdText}.";
+        Assert.Equal(new[] { ("system", (string?)line), ("user", "first") }, Sent(server));
+
         var system = File.ReadLines(session).Select(l => JsonDocument.Parse(l).RootElement)
             .First(r => r.TryGetProperty("role", out var role) && role.GetString() is "system" or "user" or "assistant" or "tool");
         Assert.Equal("system", system.GetProperty("role").GetString());
-        Assert.Equal("", system.GetProperty("content").GetString());
+        Assert.Equal(line, system.GetProperty("content").GetString());
         Assert.NotNull(SessionStore.LoadBaseline(session));
 
         var err = await Run(server, "-p", "second", "--continue");
         var sent = Sent(server);
-        Assert.DoesNotContain(sent, m => m.Role == "system");
-        Assert.Equal(("user", (string?)"first"), sent[0]);
+        Assert.Equal(("system", (string?)line), sent[0]);
+        Assert.Equal(("user", (string?)"first"), sent[1]);
         Assert.Equal("user", sent[^1].Role);
         Assert.DoesNotContain("predates", err, StringComparison.Ordinal);
     }

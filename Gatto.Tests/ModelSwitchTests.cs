@@ -100,22 +100,24 @@ public class ModelSwitchTests : IDisposable
         Assert.False(File.Exists(configPath));
 
         var outcome = ModelSwitch.Decide(_modelsDir, _home, "qwen3.6-35b", MinimalRole(),
-            Array.Empty<(string, string)>(), null, "http://127.0.0.1:1235");
+            Array.Empty<(string, string)>(), null, "http://127.0.0.1:1235", sessionId: null);
 
         Assert.True(outcome.Success);
         Assert.False(File.Exists(configPath));
     }
 
-    //a switch rebuilds the whole prompt, the model line names the model switched to
+    //a switch rebuilds the whole prompt, the first line names the model switched to and the session stays the one in hand
     [Fact]
-    public void A_SWITCH_RECOMPOSES_THE_MODEL_LINE_FOR_THE_NEW_MODEL()
+    public void A_SWITCH_RECOMPOSES_THE_FIRST_LINE_FOR_THE_NEW_MODEL()
     {
         CreateModel("qwen3.6-35b");
         var outcome = ModelSwitch.Decide(_modelsDir, _home, "qwen3.6-35b", MinimalRole(),
-            Array.Empty<(string, string)>(), null, "http://127.0.0.1:1235", cwd: @"C:\proj");
+            Array.Empty<(string, string)>(), null, "http://127.0.0.1:1235", sessionId: "6f1c2a3b-0000-4000-8000-000000000001", cwd: @"C:\proj");
 
         Assert.True(outcome.Success);
-        Assert.Contains("\nModel: qwen3.6-35b.\nWorking directory: C:\\proj.", outcome.SystemText, StringComparison.Ordinal);
+        Assert.StartsWith("You are qwen3.6-35b, running through gatto, a local agent harness, on ", outcome.SystemText, StringComparison.Ordinal);
+        Assert.EndsWith("This is session 6f1c2a3b-0000-4000-8000-000000000001.", outcome.SystemText, StringComparison.Ordinal);
+        Assert.DoesNotContain("Model:", outcome.SystemText, StringComparison.Ordinal);
     }
 
     [Fact]

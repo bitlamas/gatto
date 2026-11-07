@@ -112,9 +112,47 @@ public sealed class ResumeEqualityTests : IDisposable
             await Run(server, "-p", "first");
             await Run(server, "-p", "second", "--continue");
         }
-        Assert.Equal(server.RequestBodies[0].GetRawText(), server.RequestBodies[1].GetRawText());
+        //two launches are two sessions, so the session line is the one span allowed to differ
+        Assert.Equal(SessionLine.Masked(server.RequestBodies[0].GetRawText()), SessionLine.Masked(server.RequestBodies[1].GetRawText()));
         AssertPrefix(server.RequestBodies[1], server.RequestBodies[2]);
         Assert.Equal(2, Directory.GetFiles(Path.Combine(_home, "sessions"), "*.trace.jsonl").Length);
+    }
+
+    //the session line of a request, the last part the composition writes, null when the prompt names none
+    private static string? SessionLineOf(System.Text.Json.JsonElement body)
+    {
+        var system = body.GetProperty("messages")[0].GetProperty("content").GetString() ?? "";
+        var at = system.LastIndexOf("This is session ", StringComparison.Ordinal);
+        return at < 0 ? null : system[at..(system.IndexOf('.', at) + 1)];
+    }
+
+    //the launch composes before a resume adopts its identity, so a resume that resets composes again and names the session it continues
+    [Fact]
+    public async Task A_RESUME_THAT_RESETS_NAMES_THE_SESSION_IT_CONTINUES()
+    {
+        await using var server = new FakeOpenAiServer();
+        Home(server, reasoningHistory: "all");
+        await Run(server, "-p", "first");
+        var first = SessionLineOf(server.RequestBodies[0]);
+        Assert.NotNull(first);
+
+        //a changed reasoning history is one of the reset reasons, so the second launch leads with a fresh composition
+        Home(server, reasoningHistory: "none");
+        await Run(server, "-p", "second", "--continue");
+
+        Assert.Equal(first, SessionLineOf(server.RequestBodies[1]));
+    }
+
+    //a replay sends the stored text, so the line it carries is the one the first launch wrote
+    [Fact]
+    public async Task A_RESUME_THAT_REPLAYS_KEEPS_THE_STORED_SESSION_LINE()
+    {
+        await using var server = new FakeOpenAiServer();
+        Home(server);
+        await Run(server, "-p", "first");
+        await Run(server, "-p", "second", "--continue");
+
+        Assert.Equal(SessionLineOf(server.RequestBodies[0]), SessionLineOf(server.RequestBodies[1]));
     }
 
     [Fact]

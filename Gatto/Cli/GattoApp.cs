@@ -537,7 +537,8 @@ public static class GattoApp
             }
 
             //one instance holds what the launch resolves and every switch moves, so no switch reads a copy another switch left behind
-            state = new LaunchState(args, config, home, cwd, rolesDir, modelsDir, endpoints, launchEndpoint, sessionModel, warn, memoryOn, policyLines, glyphs, bare);
+            state = new LaunchState(args, config, home, cwd, rolesDir, modelsDir, endpoints, launchEndpoint, sessionModel, warn, memoryOn, policyLines, glyphs, bare,
+                sessionOf: bare ? () => null : () => sessions.Identity.IdText);   //the prefix a check prices belongs to no session, so a bare launch names none
 
             var picked = LaunchRole.Resolve(args.Role, config.DefaultRole, RoleFile.ListNames(rolesDir), name =>
             {
@@ -1022,13 +1023,15 @@ public static class GattoApp
                 }
                 else
                 {
-                    //a reset leads with the launch composition, one sequence above the stored one
+                    //the launch composed before the identity was adopted, so the lead is composed again to name the session this file continues
+                    var lead = state.RecomposeSystem(sessions.Identity).Text;
+                    //a reset leads with that composition, one sequence above the stored one
                     state.BaselineSeq = (stored?.Seq ?? 0) + 1;
                     var fresh = convo.Baseline! with { Seq = state.BaselineSeq };
                     //the last marker, a GATTO.md that documents it can put an earlier one in the system prompt
                     var idx = priorSystem?.LastIndexOf(Compactor.ContextMarker, StringComparison.Ordinal) ?? -1;
                     //re-append the compaction block, the fresh system dropped it and the model resumes with no context behind the lead
-                    convo.ReplaceSystem(idx >= 0 ? convo.Messages[0].Content + "\n\n" + priorSystem![idx..] : convo.Messages[0].Content!, fresh);
+                    convo.ReplaceSystem(idx >= 0 ? lead + "\n\n" + priorSystem![idx..] : lead, fresh);
                 }
 
                 //restore from the sidecar beside the resumed file, they stay in memory and a new save writes its own
@@ -1185,7 +1188,7 @@ public static class GattoApp
                 defaultRole: config.DefaultRole ?? "generalist",
                 roleTint: state.Role.ParsedTint(), roleAvatar: state.Role.Avatar, firstMessage: state.Role.FirstMessage,
                 armTasks: tasks => ((AppToolContext)toolCtx).Tasks = tasks,
-                listExtensions: listExtensions, setExtension: setExtension,
+                listExtensions: listExtensions, setExtension: setExtension, recomposeFor: state.RecomposeSystem,
                 //read when /context asks, so a /role or /model since is followed. the shape is the loop's last request, its tools split by origin
                 contextInputs: usage =>
                 {

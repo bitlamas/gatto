@@ -26,7 +26,8 @@ internal sealed class LaunchState(
     ParsedArgs args, GattoConfig config, string home, string cwd, string rolesDir, string modelsDir,
     IReadOnlyDictionary<string, EndpointConfig> endpoints, string? launchEndpoint, string? sessionModel, WarningSink warn,
     bool memoryOn, List<(string Extension, string Line)> policyLines, GlyphSet glyphs,
-    bool bare = false)   //true composes what every session in this home carries, so no project's context files and no project's memory index
+    bool bare = false,   //true composes what every session in this home carries, so no project's context files and no project's memory index
+    Func<string?>? sessionOf = null)   //the store's live session, read when a composition runs, null for a prefix that belongs to no session
 {
     //a stale default is said once per process, since /role and the policy pass resolve again
     private readonly HashSet<string> _staleDefaultWarned = new(StringComparer.Ordinal);
@@ -40,6 +41,8 @@ internal sealed class LaunchState(
     internal string ModelString = "";
     internal Composition Comp = null!;
     internal string LastComposedSystem = "";
+    //the session every composition names last, read from the store after it changed, so a rotation that never committed names nothing it began
+    private string? SessionId => sessionOf?.Invoke();
     internal BaselineSources LastComposedSources = null!;
     internal string? LaunchBaseUrl;
     internal bool Cloud;
@@ -213,7 +216,7 @@ internal sealed class LaunchState(
         //reloaded beside the context files at launch and on every /role, so the memory budget follows the model the role resolves to
         var memory = LoadMemory(model);
         MemoryTicks += System.Diagnostics.Stopwatch.GetTimestamp() - memoryFrom;
-        var comp = RoleComposition.Compose(role, model, contextFiles, endpoint.Thinking, cwd: cwd, date: DateTime.Now,
+        var comp = RoleComposition.Compose(role, model, contextFiles, endpoint.Thinking, modelString, OsWords.Name(), SessionId, cwd: cwd, date: DateTime.Now,
             memoryIndex: memory.Text, memoryTruncatedLines: memory.TruncatedLines, memoryNudge: memoryOn,
             policyLines: policyLines,
             savedEffort: endpointIsLocal ? null : SavedCloudEffort(config, endpointName, modelString));
@@ -311,7 +314,12 @@ internal sealed class LaunchState(
         && (Model?.Profile.Thinking ?? Endpoint.Thinking) is null;
 
     //re-walks the context files and the memory index on each call, so /new, /compact and auto-compaction see edits and no ordinary turn does
-    internal ComposedSystem RecomposeSystem()
+    internal ComposedSystem RecomposeSystem() => RecomposeSystem(SessionId);
+
+    //the session the prompt names is an argument, so /new can compose with the identity it is about to start. nothing here remembers it
+    internal ComposedSystem RecomposeSystem(Gatto.Core.SessionIdentity? identity) => RecomposeSystem(identity?.IdText);
+
+    private ComposedSystem RecomposeSystem(string? sessionId)
     {
         IReadOnlyList<(string Path, string Content)> contextFiles;
         try
@@ -332,7 +340,7 @@ internal sealed class LaunchState(
             warn.Warn(GattoApp.MemoryTruncationWarning(memory.TruncatedLines));
         var composed = RoleComposition.Compose(
             Role, Model, contextFiles,
-            Endpoint.Thinking, cwd: cwd, date: DateTime.Now,
+            Endpoint.Thinking, ModelString, OsWords.Name(), sessionId, cwd: cwd, date: DateTime.Now,
             memoryIndex: memory.Text, memoryTruncatedLines: memory.TruncatedLines, memoryNudge: memoryOn,
             policyLines: policyLines);
         LastComposedSystem = composed.SystemText;
@@ -449,7 +457,7 @@ internal sealed class LaunchState(
 
         //the index is re-read against the model being switched to, so the load is a delegate rather than a value read up front
         var outcome = ModelSwitch.Decide(
-            modelsDir, home, requestedModel, Role, contextFiles, Endpoint.Thinking, LaunchBaseUrl, cwd,
+            modelsDir, home, requestedModel, Role, contextFiles, Endpoint.Thinking, LaunchBaseUrl, SessionId, cwd,
             loadMemory: LoadMemory,
             memoryNudge: memoryOn);
         if (!outcome.Success || outcome.Model is null || outcome.Composition is null)
@@ -763,12 +771,12 @@ internal sealed class LaunchState(
             ? ContextFiles.Collect(cwd, config.ContextCompat, config.ContextHome ? Path.Combine(home, "GATTO.md") : null)
             : Array.Empty<(string Path, string Content)>();
         if (called.Model is null)
-            return (RoleComposition.Compose(merged, Model, files, Endpoint.Thinking, cwd: cwd, date: DateTime.Now,
+            return (RoleComposition.Compose(merged, Model, files, Endpoint.Thinking, ModelString, OsWords.Name(), SessionId, cwd: cwd, date: DateTime.Now,
                 memoryIndex: null, memoryNudge: false, policyLines: null,
                 savedEffort: EndpointName == "local" ? null : SavedCloudEffort(config, EndpointName, ModelString)), ModelString);
         //the refusal check resolved the same merged role before this runs, so a throw here is a file changed in between and the loop reports it
         var res = ResolveLoaded(called.ThinkingRequested is null ? merged with { ThinkingRequested = Comp.Thinking } : merged);   //another model with no level of its own takes the session's, and --effort still wins inside
-        return (RoleComposition.Compose(res.Role, res.Model, files, res.Endpoint.Thinking, cwd: cwd, date: DateTime.Now,
+        return (RoleComposition.Compose(res.Role, res.Model, files, res.Endpoint.Thinking, res.ModelString, OsWords.Name(), SessionId, cwd: cwd, date: DateTime.Now,
             memoryIndex: null, memoryNudge: false, policyLines: null,
             savedEffort: res.EndpointName == "local" ? null : SavedCloudEffort(config, res.EndpointName, res.ModelString)), res.ModelString);
     }

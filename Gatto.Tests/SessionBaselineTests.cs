@@ -124,7 +124,7 @@ public sealed class SessionBaselineTests
     {
         var role = new Gatto.Roles.RoleFile("r", "p", null, Array.Empty<string>(), false, null, Gatto.Roles.Models.ThinkingLevel.Medium, null, null, 10, true, null, null, null, null);
         var c = Gatto.Roles.RoleComposition.Compose(role, null,
-            new[] { (@"C:\proj\GATTO.md", "context text") }, null, cwd: @"C:\proj",
+            new[] { (@"C:\proj\GATTO.md", "context text") }, null, modelName: "test-model", os: "Windows", sessionId: null, cwd: @"C:\proj",
             date: new DateTime(2026, 9, 29), memoryIndex: "- a fact\n- another", memoryTruncatedLines: 2,
             policyLines: new[] { ("zeta", "zeta line"), ("alpha", "alpha line") });
         Assert.Equal("2026-09-29", c.Sources.Date);
@@ -133,7 +133,7 @@ public sealed class SessionBaselineTests
         Assert.Equal(new[] { new PolicyMark("alpha", "alpha line"), new PolicyMark("zeta", "zeta line") }, c.Sources.Policy);
         Assert.Equal(BaselineMarks.Sha256Hex(role.Append ?? ""), c.Sources.RoleAppendSha256);
         Assert.Equal(BaselineMarks.Sha256Hex(""), c.Sources.ModelAppendSha256);
-        var bare = Gatto.Roles.RoleComposition.Compose(role, null, Array.Empty<(string, string)>(), null, cwd: null);
+        var bare = Gatto.Roles.RoleComposition.Compose(role, null, Array.Empty<(string, string)>(), null, modelName: "test-model", os: "Windows", sessionId: null, cwd: null);
         Assert.Null(bare.Sources.Date);
         Assert.Null(bare.Sources.Memory);
     }

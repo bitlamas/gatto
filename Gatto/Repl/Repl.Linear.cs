@@ -738,12 +738,13 @@ public sealed partial class Repl
             var carry = new List<string>();
             _lastBankFailure = null;   //only this rotation's failure may be carried, BankMemory may not run at all
             //the recompose, the bookkeeping and the display reset are one seam, a separate reset would discard the ♯ rows the recompose just committed
-            RotateForNew(recomposeSystem, held,
+            var (next, compose) = NextSession();
+            RotateForNew(compose, held,
                 adopt: fresh =>
                 {
                     fresh.SetGattoRole(roleName);          //every record after a reset carries the running role, as the launch's do
                     convo = fresh;
-                    sessions?.StartNew();
+                    if (next is not null) sessions?.StartNew(next);
                     sessionName = null;                    //the name belongs to the session /new ends
                     s.Painter.AltScreen.Name(null);        //and the tab goes back to what the unnamed sequence holds
                     _offered = false;                      //a fresh session, so the 85% offer may fire again

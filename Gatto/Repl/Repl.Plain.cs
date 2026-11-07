@@ -89,10 +89,11 @@ public sealed partial class Repl
             }
             if (trimmedLine == "/new")
             {
-                var composed = recomposeSystem();              //recomposeSystem rereads the context files, so a reset picks up any edits
+                var (next, compose) = NextSession();
+                var composed = compose();              //rereads the context files, so a reset picks up any edits, and names the session it starts
                 convo = new Conversation(composed.Text, baseline: composed.Baseline);
                 convo.SetGattoRole(roleName);          //every record after a reset carries the running role, as the launch's do
-                sessions?.StartNew();                  //the next save starts a new session file and leaves the old transcript alone
+                if (next is not null) sessions?.StartNew(next);   //the next save starts a new session file and leaves the old transcript alone
                 sessionName = null;                    //the name belongs to the session /new ends
                 _offered = false;                      //a fresh session, so the 85% offer can fire again
                 _usageState.Clear();                   //the old usage reading describes the conversation that just ended

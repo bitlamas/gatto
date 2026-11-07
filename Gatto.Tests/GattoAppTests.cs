@@ -2659,7 +2659,7 @@ public class GattoAppTests : IDisposable
         var baseUrl = config.Endpoints["local"].BaseUrl;
 
         var outcome = ModelSwitch.Decide(
-            modelsDir, home, requestedModel, role, Array.Empty<(string, string)>(), null, baseUrl);
+            modelsDir, home, requestedModel, role, Array.Empty<(string, string)>(), null, baseUrl, sessionId: null);
         if (!outcome.Success || outcome.Model is null)
             return new SwitchHarnessResult(outcome.Success, outcome.ModelId, outcome.SystemText,
                 outcome.ContextBudget, outcome.Message);
@@ -3429,7 +3429,10 @@ public class GattoAppTests : IDisposable
         Assert.Equal(3, server.RequestCount);
         Assert.Equal("a-model", server.RequestBodies[0].GetProperty("model").GetString());
         Assert.Equal("b-model", server.RequestBodies[1].GetProperty("model").GetString());
-        Assert.Contains("Model: b-model.", SystemOf(server.RequestBodies[1]), StringComparison.Ordinal);
+        Assert.StartsWith("You are b-model, running through gatto, a local agent harness, on ", SystemOf(server.RequestBodies[1]), StringComparison.Ordinal);
+        //the child runs inside the parent's session, so its prompt names the parent's session and its own model
+        var parentSession = SystemOf(server.RequestBodies[0])[SystemOf(server.RequestBodies[0]).LastIndexOf("This is session ", StringComparison.Ordinal)..];
+        Assert.EndsWith(parentSession, SystemOf(server.RequestBodies[1]), StringComparison.Ordinal);
         Assert.DoesNotContain("a-model", SystemOf(server.RequestBodies[1]), StringComparison.Ordinal);
         Assert.Equal("a-model", server.RequestBodies[2].GetProperty("model").GetString());
     }

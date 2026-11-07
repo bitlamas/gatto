@@ -48,15 +48,29 @@ public sealed class SessionStore(string homePath, string cwd)
     //flushed after each write and before each change of file, so the trace holds what the session file holds
     public Trace Trace { get; set; } = Trace.Off;
 
+    //the identity a new session would have, made before the session starts so its prompt can name it. the file it is named after is kept for StartNew, nothing is written
+    public SessionIdentity NewIdentity()
+    {
+        var planned = Begin(homePath, cwd, null);
+        lock (_saveLock) _planned = planned;
+        return planned.Identity;
+    }
+
+    private (string File, SessionIdentity Identity)? _planned;
+
     //a new session in a new file, which is what /new asks for
-    public void StartNew()
+    public void StartNew() => StartNew(NewIdentity());
+
+    //a new session under the identity its prompt was composed with, in the file that identity is named after when this store planned it
+    public void StartNew(SessionIdentity identity)
     {
         Trace.Flush();
         lock (_saveLock)
         {
             _currentFile = null;
             _resumedFrom = null;
-            _begun = Begin(homePath, cwd, null);
+            _begun = _planned is { } p && p.Identity == identity ? p : Begin(homePath, cwd, identity);
+            _planned = null;
         }
     }
 

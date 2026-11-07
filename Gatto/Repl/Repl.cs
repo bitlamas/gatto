@@ -160,8 +160,17 @@ public sealed partial class Repl(
     //every source in the home as the launch and the off flag left it, read at each view of the help panel. null shows the extensions tab empty
     Func<IReadOnlyList<Prompts.ExtensionView>>? listExtensions = null,
     //turns a source on or off for this session and writes the off list, returning the line of a failed write. null names no Space
-    Func<string, bool, string?>? setExtension = null)
+    Func<string, bool, string?>? setExtension = null,
+    //compose for a session that has not started yet, so /new names the identity it is about to begin. null composes with recomposeSystem, which names the live one
+    Func<Gatto.Core.SessionIdentity, ComposedSystem>? recomposeFor = null)
 {
+    //the next session's identity and the prompt that names it, made together so the prompt and the file agree. null identity when there is no store
+    private (Gatto.Core.SessionIdentity? Next, Func<ComposedSystem> Compose) NextSession()
+    {
+        var next = sessions?.NewIdentity();
+        return (next, next is not null && recomposeFor is not null ? () => recomposeFor(next) : recomposeSystem);
+    }
+
     //the name the top rule shows, null when the running role is the default, compared as the launch resolves a name against the files
     private string? DisplayRole() => string.Equals(roleName, defaultRole, StringComparison.OrdinalIgnoreCase) ? null : roleName;
 
