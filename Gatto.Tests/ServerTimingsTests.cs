@@ -44,4 +44,25 @@ public class ServerTimingsTests
 
         Assert.Equal(50.0, rate!.Value, 3);
     }
+
+    //a cold read is the count and the prompt time, and the decode time beside it is far larger so a wrong field gives a different answer
+    [Fact]
+    public void A_COLD_PROMPT_IS_ITS_COUNT_AND_ITS_PROMPT_TIME()
+    {
+        var read = ServerTimings.ColdPrompt("""{"cache_n":0,"prompt_n":8200,"prompt_ms":17000,"predicted_ms":90000}""");
+
+        Assert.Equal(8200, read!.Value.Tokens);
+        Assert.Equal(8200 / 17.0, read.Value.TokensPerSecond, 3);
+    }
+
+    //a reused head makes the read short and fast, and a server that does not say what it reused proves nothing cold
+    [Theory]
+    [InlineData("""{"cache_n":785,"prompt_n":36,"prompt_ms":365}""")]
+    [InlineData("""{"prompt_n":821,"prompt_ms":2938}""")]
+    [InlineData("""{"cache_n":0,"prompt_n":0,"prompt_ms":10}""")]
+    [InlineData("""{"cache_n":0,"prompt_n":821,"prompt_ms":0}""")]
+    [InlineData("not json at all")]
+    [InlineData(null)]
+    public void ONLY_A_READ_THAT_REUSED_NOTHING_IS_COLD(string? timings) =>
+        Assert.Null(ServerTimings.ColdPrompt(timings));
 }

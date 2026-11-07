@@ -14,7 +14,9 @@ internal enum AuditionOutcome
 //what the check measured, with each field nullable and dropped when absent. the task counts come from the verdict, since a pass can be four of five
 internal sealed record AuditionFacts(
     string? Quant, string? Sampling, string? Thinking, double? TokensPerSecond,
-    int? TasksPassed = null, int? TasksTotal = null);
+    int? TasksPassed = null, int? TasksTotal = null,
+    //one cold read of this home's session prefix after the tasks, both null when it was not measured
+    int? PrefixTokens = null, double? PrefillTokS = null);
 
 //why a check could not run, typed, while the verdict stays at three. every arm still reports CouldNotRun and the sentence is composed at the face
 internal abstract record CheckStumble

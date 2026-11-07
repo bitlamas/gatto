@@ -41,7 +41,12 @@ internal static class Epilogue
         SetupRow Check,
         SetupRow Gatto,
         SetupRow Config,
-        ServerFact? Server = null);
+        ServerFact? Server = null,
+        SetupRow? Speed = null,
+        PrefillFact? Prefill = null);
+
+    //the prefill figure and its cost sentence as data, since the summary has room for the sentence and the record keeps the figure alone
+    internal readonly record struct PrefillFact(string Figure, string Cost);
 
     //the connect server as data rather than as rows, since the composer owns the fold. the note holds the long form the record cuts short
     internal readonly record struct ServerFact(
@@ -183,7 +188,7 @@ internal static class Epilogue
     public static IReadOnlyList<SetupRow> Compose(in Facts f, Face face, GlyphSet? glyphs)
     {
         var g = glyphs ?? GlyphSet.Unicode;
-        //both differences between the two renders are here: what leads, and what the lead contains. everything below the lead is the same on both
+        //the renders differ in what leads, in what the lead contains, and in the prefill row, which the record keeps to its figure. everything else below the lead is the same on both
         SetupRow?[] lead = (face, f.Server) switch
         {
             //the record's server row holds the model and the context too, since a record spends one line per fact
@@ -208,6 +213,10 @@ internal static class Epilogue
             if (row is not null) rows.Add(row);
 
         rows.Add(f.Check);
+        if (f.Speed is { } speed) rows.Add(speed);
+        if (f.Prefill is { } prefill)
+            rows.Add(SetupFlow.SummaryFacts.Row("prefill",
+                face == Face.Record ? prefill.Figure : $"{prefill.Figure} {g.Dot} {prefill.Cost}"));
         rows.Add(f.Gatto);
         //the config row is last on every done screen and both epilogues, added in this one place so both renders keep the rule
         rows.Add(f.Config);

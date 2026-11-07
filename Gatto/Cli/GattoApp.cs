@@ -294,9 +294,42 @@ public static class GattoApp
         return await launch.RunAsync();
     }
 
-    //the launch of a session, one step per stage with what a later stage reads held in a field, so no stage reaches into another through a captured local
-    private sealed class SessionLaunch(ParsedArgs args, string home, GlyphSet glyphs, long launchedAt) : IDisposable
+    //the system text and tools a session in this home sends to this model, with no project's context. null when a launch here would refuse
+    internal static Gatto.Roles.Audition.SessionPrefix? ComposeSessionPrefix(string home, string? endpoint, string? model)
     {
+        try
+        {
+            using var launch = new SessionLaunch(
+                new ParsedArgs("launch", Role: null, Model: model, Prompt: "", Continue: false, Yes: false, Endpoint: endpoint),
+                home, CommandBanner.GlyphsFor(home), Stopwatch.GetTimestamp(), bare: true);
+            return launch.Prefix();
+        }
+        //a launch that throws past its own refusals is no prefix, and the check it feeds goes on without one
+        catch (Exception) { return null; }
+    }
+
+    //the launch of a session, one step per stage with what a later stage reads held in a field, so no stage reaches into another through a captured local
+    private sealed class SessionLaunch(ParsedArgs args, string home, GlyphSet glyphs, long launchedAt,
+        bool bare = false) : IDisposable   //true runs the steps a prefix needs and writes nothing, to the home, the screen or the environment
+    {
+        //a bare run says nothing, its caller owns the screen and reads a failure as no prefix
+        private TextWriter err => bare ? TextWriter.Null : Console.Error;
+
+        //the prefix a session in this home sends, built by the launch's own steps in the launch's order, so the two cannot drift
+        internal Gatto.Roles.Audition.SessionPrefix? Prefix()
+        {
+            if (LoadHome() is not null) return null;
+            Begin();
+            LoadExtensions();
+            if (ResolveLaunch() is not null) return null;
+            RegisterTools();
+            hooks = new HookBus(state.Armed) { Trace = trace };
+            BuildClient();
+            if (CommitExtensions() is not null) return null;
+            tools.Register(NewRunAgent());
+            return new Gatto.Roles.Audition.SessionPrefix(state.Comp.SystemText, tools.Specs());
+        }
+
         private GattoConfig config = null!;
         private long homeTicks, shippedTicks, probeTicks;
         private string rolesDir = "", modelsDir = "", cwd = "", launchRole = "";
@@ -381,16 +414,16 @@ public static class GattoApp
             //config resolution runs before anything is created, so a launch that dies on a config error leaves the home untouched
             var homeFrom = Stopwatch.GetTimestamp();
             try { config = GattoConfig.Load(home); }
-            catch (GattoConfigException ex) { Console.Error.WriteLine(ex.Message); return 2; }
+            catch (GattoConfigException ex) { err.WriteLine(ex.Message); return 2; }
 
-            GattoHome.EnsureInitialized(home);
+            if (!bare) GattoHome.EnsureInitialized(home);
             homeTicks = Stopwatch.GetTimestamp() - homeFrom;
             rolesDir = Path.Combine(home, "roles");
             modelsDir = Path.Combine(home, "models");
             //shipped files are written before anything reads them, a user edit survives, and a write failure warns rather than aborting the launch
             var shippedFrom = Stopwatch.GetTimestamp();
-            try { ShippedExtensions.EnsureWritten(home); }
-            catch (Exception ex) { Console.Error.WriteLine($"! extension: could not write shipped files: {ex.Message}"); }
+            try { if (!bare) ShippedExtensions.EnsureWritten(home); }
+            catch (Exception ex) { err.WriteLine($"! extension: could not write shipped files: {ex.Message}"); }
             shippedTicks = Stopwatch.GetTimestamp() - shippedFrom;
 
             //an id names the session's folder, so the process moves there first and every read below takes that folder
@@ -401,7 +434,7 @@ public static class GattoApp
             if (args.Continue && args.ContinueId is { } earlyId)
             {
                 try { continueById = SessionStore.ResolvePathById(home, earlyId); }
-                catch (GattoConfigException ex) { Console.Error.WriteLine(ex.Message); return 2; }
+                catch (GattoConfigException ex) { err.WriteLine(ex.Message); return 2; }
                 var storedFolder = SessionStore.CwdOf(continueById);
                 if (storedFolder is not null && Directory.Exists(storedFolder)) Environment.CurrentDirectory = storedFolder;
                 else { folderGone = true; goneFolder = storedFolder; }
@@ -422,7 +455,7 @@ public static class GattoApp
         private void Begin()
         {
             //project memory: resolved once here from the home setting and every .gatto.json ruling, which can only remove it
-            memoryOn = ProjectFileConfig.EffectiveMemoryEnabled(cwd, config.MemoryEnabled);
+            memoryOn = bare ? config.MemoryEnabled : ProjectFileConfig.EffectiveMemoryEnabled(cwd, config.MemoryEnabled);
             //the session's -m, seeded at launch and moved by every switch, so ResolveRole reads it rather than the stale args.Model
             sessionModel = args.Model;
 
@@ -433,12 +466,12 @@ public static class GattoApp
             launchWarnings = new List<string>();
             var carryWarnings = args.Prompt is null && Gatto.Repl.Repl.RichFace(TermCaps.Detect(), config.AltScreen);
             //stderr until the rich loop rebinds it to a ♯ system line, so a mid-session diagnostic never corrupts the alt-screen frame
-            warn = new Gatto.Core.WarningSink(LaunchSink(launchWarnings, carryWarnings));
+            warn = new Gatto.Core.WarningSink(bare ? _ => { } : LaunchSink(launchWarnings, carryWarnings));
             //null until the prompters are built below, so an extension that asks at load time gets the no-interactive-input error
             prompter = null;
             sessions = new SessionStore(home, cwd);
             //read once here like the wire log, and handed down, so nothing below reads the environment for it
-            trace = TraceOverride.Value || Environment.GetEnvironmentVariable("GATTO_TRACE") == "1"
+            trace = !bare && (TraceOverride.Value || Environment.GetEnvironmentVariable("GATTO_TRACE") == "1")
                 ? new Gatto.Core.Trace(launchedAt, DateTimeOffset.Now - Stopwatch.GetElapsedTime(launchedAt),
                     () => sessions.CurrentPath is { } tp ? SessionFiles.Sidecar(tp, SessionFiles.Trace) : null,
                     () => sessions.Identity.IdText,
@@ -475,7 +508,7 @@ public static class GattoApp
             if (memoryOn) reservedTools.AddRange(new[] { "memory_write", "recall_memory" });
             var off = (config.ExtensionsOff ?? []).ToHashSet(StringComparer.Ordinal);
             loadedExtensions = ExtensionHost.Survivors(
-                ExtensionHost.LoadAll(extensionsDir, extApi, extDiag, off, extLedger), reservedTools, config.Endpoints.Keys, extDiag, extLedger);
+                ExtensionHost.LoadAll(extensionsDir, extApi, extDiag, off, extLedger, writeCache: !bare), reservedTools, config.Endpoints.Keys, extDiag, extLedger);
             //the table every resolution reads: the endpoints of gatto.json plus the ones the surviving extensions contributed
             endpoints = new Dictionary<string, EndpointConfig>(config.Endpoints, StringComparer.Ordinal);
             endpointOwner = new Dictionary<string, string>(StringComparer.Ordinal);
@@ -496,7 +529,7 @@ public static class GattoApp
             {
                 if (!endpoints.ContainsKey(recordedOn))
                 {
-                    Console.Error.WriteLine($"this session was recorded on endpoint '{recordedOn}', which no longer exists. Endpoints: {string.Join(", ", endpoints.Keys.OrderBy(k => k, StringComparer.Ordinal))}");
+                    err.WriteLine($"this session was recorded on endpoint '{recordedOn}', which no longer exists. Endpoints: {string.Join(", ", endpoints.Keys.OrderBy(k => k, StringComparer.Ordinal))}");
                     return 2;
                 }
                 launchEndpoint ??= recordedOn;
@@ -504,22 +537,22 @@ public static class GattoApp
             }
 
             //one instance holds what the launch resolves and every switch moves, so no switch reads a copy another switch left behind
-            state = new LaunchState(args, config, home, cwd, rolesDir, modelsDir, endpoints, launchEndpoint, sessionModel, warn, memoryOn, policyLines, glyphs);
+            state = new LaunchState(args, config, home, cwd, rolesDir, modelsDir, endpoints, launchEndpoint, sessionModel, warn, memoryOn, policyLines, glyphs, bare);
 
             var picked = LaunchRole.Resolve(args.Role, config.DefaultRole, RoleFile.ListNames(rolesDir), name =>
             {
                 try { RoleFile.Load(rolesDir, name); return null; }
                 catch (GattoConfigException ex) { return ex; }
             });
-            if (picked.Refusal is { } refusal) { Console.Error.WriteLine(refusal); return 2; }
+            if (picked.Refusal is { } refusal) { err.WriteLine(refusal); return 2; }
             launchRole = picked.Role;
             string? brokenName = picked.BrokenName, brokenMessage = picked.BrokenMessage;
             try { launchRes = state.ResolveRole(launchRole); }
             catch (GattoConfigException ex)
             {
                 //a fallback that fails too leaves nothing to run, so both messages go out
-                if (brokenMessage is not null) Console.Error.WriteLine(brokenMessage);
-                Console.Error.WriteLine(ex.Message);
+                if (brokenMessage is not null) err.WriteLine(brokenMessage);
+                err.WriteLine(ex.Message);
                 return 2;
             }
             if (brokenMessage is not null) warn.Warn(brokenMessage + $", running {launchRole} instead");
@@ -530,7 +563,7 @@ public static class GattoApp
                 && SessionStore.LoadBaseline(recordedPath)?.Endpoint is { } recordedEndpoint
                 && recordedEndpoint != launchRes.EndpointName)
             {
-                Console.Error.WriteLine(endpoints.ContainsKey(recordedEndpoint)
+                err.WriteLine(endpoints.ContainsKey(recordedEndpoint)
                     ? $"this session was recorded on endpoint '{recordedEndpoint}' and -e names '{launchRes.EndpointName}'. Leave -e out, or give -e {recordedEndpoint}, to continue it"
                     : $"this session was recorded on endpoint '{recordedEndpoint}', which no longer exists. Endpoints: {string.Join(", ", endpoints.Keys.OrderBy(k => k, StringComparer.Ordinal))}");
                 return 2;
@@ -557,9 +590,12 @@ public static class GattoApp
         private void Adopt(RoleResolution r)
         {
             //set from the launch resolution only, so a refused /role and a later /effort cannot change what shell children read
-            Environment.SetEnvironmentVariable("GATTO_ENDPOINT", r.EndpointName);
-            Environment.SetEnvironmentVariable("GATTO_MODEL", r.ModelString);
-            Environment.SetEnvironmentVariable("GATTO_EFFORT", EffortSwitch.Name(r.Comp.Thinking));
+            if (!bare)
+            {
+                Environment.SetEnvironmentVariable("GATTO_ENDPOINT", r.EndpointName);
+                Environment.SetEnvironmentVariable("GATTO_MODEL", r.ModelString);
+                Environment.SetEnvironmentVariable("GATTO_EFFORT", EffortSwitch.Name(r.Comp.Thinking));
+            }
             state.Role = r.Role;
             state.Model = r.Model;
             state.Endpoint = r.Endpoint;
@@ -743,7 +779,7 @@ public static class GattoApp
         {
             toolCtx = new AppToolContext(cwd, home, prompter, sessions, sandbox);
             permissions = PermissionStore.Load(home, cwd, out var permWarning);   //a corrupt permissions file loads as no grants, so every mutating tool prompts, with a warning
-            if (permWarning is not null) Console.Error.WriteLine($"! {permWarning}");
+            if (permWarning is not null) err.WriteLine($"! {permWarning}");
 
             //one shared switch that auto-allows every permission, seeded from the folder's grant or gatto.json's wild unless a .gatto.json up the path forbids it
             var wildForbiddenBy = ProjectFileConfig.EffectiveWildAllowed(cwd, out var forbiddingFile) ? null : forbiddingFile;
@@ -753,7 +789,7 @@ public static class GattoApp
             hooks.On(HookEvent.ToolCall, gate.CheckAsync);
             //the wire log is read once here from GATTO_DEBUG_WIRE and never in the request path, so off costs a null field
             var wireLog = WireLog.FromFlag(
-                Environment.GetEnvironmentVariable("GATTO_DEBUG_WIRE"),
+                bare ? null : Environment.GetEnvironmentVariable("GATTO_DEBUG_WIRE"),
                 WireLog.RunDirectory(home, DateTimeOffset.UtcNow, Environment.ProcessId));
             client = new OpenAiCompatClient(
                 new HttpClient(new SocketsHttpHandler { ConnectTimeout = TimeSpan.FromSeconds(10) })   //only the connect is bounded, so a black-holed host fails fast while a long local generation runs on
@@ -869,7 +905,7 @@ public static class GattoApp
             //the early pass should have skipped it already, and a launch must not run on the endpoint of an extension that did not commit
             if (endpointOwner.TryGetValue(state.EndpointName, out var owner) && !committedExtensions.Any(e => e.Name == owner))
             {
-                Console.Error.WriteLine($"endpoint '{state.EndpointName}' comes from extension '{owner}', which was skipped");
+                err.WriteLine($"endpoint '{state.EndpointName}' comes from extension '{owner}', which was skipped");
                 return 2;
             }
             //a read-class claim counts only from a vetted shipped extension, and an unvetted one still prompts
@@ -906,18 +942,7 @@ public static class GattoApp
 
             //a one-slot holder the Repl fills once its renderer exists, and on -p it stays empty so stdout stays byte-pure
             subagentProgress = new Action<string>?[1];
-            var runAgent = new RunAgentTool(   //a role may only name the six core built-ins, so a child's registry can never hold run_agent, ask_user or an extension tool
-                roles: () => state.RoleFiles,
-                refuseRole: state.RefuseRole,
-                composeChild: state.ComposeChild,
-                subagentWiring: SubagentWiring.Build(gate, diag: warn.Warn),   //a fresh registry per call over the shared gate, which tags each of its prompts with the role's name
-                client: client,
-                requestSettings: state.RequestSettings,
-                parentCtx: toolCtx,
-                progress: m => subagentProgress[0]?.Invoke(m),
-                contextBudget: state.ContextBudget,
-                reasoningHistory: state.ReasoningHistory,
-                marks: CommandBanner.MarksFor(home));
+            var runAgent = NewRunAgent();
             tools.Register(runAgent);   //main registry only, so a sub-agent cannot call run_agent (depth 1)
 
             loop = new AgentLoop(client, tools, hooks, toolCtx, state.ModelString, state.Comp.Sampling, state.Comp.ThinkingBody, state.ContextBudget,
@@ -936,6 +961,20 @@ public static class GattoApp
             if (state.ThinkCap == ThinkCapability.Toggle)
                 state.ApplyToggle(state.ThinkOn);
         }
+
+        //one constructor for the session's run_agent and the prefix's, so the description a request carries is built the same way in both
+        private RunAgentTool NewRunAgent() => new(   //a role may only name the six core built-ins, so a child's registry can never hold run_agent, ask_user or an extension tool
+            roles: () => state.RoleFiles,
+            refuseRole: state.RefuseRole,
+            composeChild: state.ComposeChild,
+            subagentWiring: SubagentWiring.Build(gate, diag: warn.Warn),   //a fresh registry per call over the shared gate, which tags each of its prompts with the role's name
+            client: client,
+            requestSettings: state.RequestSettings,
+            parentCtx: toolCtx,
+            progress: m => subagentProgress[0]?.Invoke(m),
+            contextBudget: state.ContextBudget,
+            reasoningHistory: state.ReasoningHistory,
+            marks: CommandBanner.MarksFor(home));
 
         private void Resume()
         {

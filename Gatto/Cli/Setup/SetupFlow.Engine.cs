@@ -166,7 +166,7 @@ internal sealed partial class SetupFlow
     internal static class SummaryFacts
     {
         public static readonly string[] Labels =
-            ["machine", "engine", "model", "check", "config", "gatto", "server", "context"];
+            ["machine", "engine", "model", "check", "speed", "prefill", "config", "gatto", "server", "context"];
 
         public static readonly int Column = Labels.Max(l => l.Length) + 3;
 
@@ -191,7 +191,7 @@ internal sealed partial class SetupFlow
         public static SetupRow Speed(double rate)
         {
             var shown = Math.Round(rate, 1);
-            var figure = $"~{shown:0.#} tok/s";
+            var figure = RateFigure(rate);
             return new SetupRow(
                 "speed".PadRight(Column)
                     + $"{figure}, {Gatto.Roles.Audition.AuditionReport.SpeedNote(shown)}",
@@ -375,7 +375,7 @@ internal sealed partial class SetupFlow
         public static readonly string[] Labels =
         [
             "model", "tasks", "server", "running", "done", "quant", "sampling", "thinking",
-            "speed", "recorded", "file", "found", "expected", "last lines", "first reply",
+            "speed", "prefill", "recorded", "file", "found", "expected", "last lines", "first reply",
         ];
 
         public static readonly int Column = Labels.Max(l => l.Length) + 3;

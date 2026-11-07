@@ -25,7 +25,7 @@ public class EpilogueTests
             rows[line.Split(' ')[0]] = line;
         }
 
-        Assert.Equal(6, rows.Count);   //the drawn record has six facts, and this file reads all of them
+        Assert.Equal(7, rows.Count);   //the drawn record has seven facts, and this file reads all of them
         return rows;
     }
 
@@ -47,18 +47,18 @@ public class EpilogueTests
         var (summary, record) = BothRenders();
 
         //the order is the corpus's, read off the drawn record rather than typed here
-        Assert.Equal(["machine", "engine", "model", "check", "gatto", "config"], Labels(record));
+        Assert.Equal(["machine", "engine", "model", "check", "speed", "gatto", "config"], Labels(record));
         Assert.Equal([.. DrawnRecord().Keys], Labels(record));
 
         //the set: the summary leads with the model and hangs its folder under it
-        Assert.Equal(["model", "engine", "check", "gatto", "config"], Labels(summary));
+        Assert.Equal(["model", "engine", "check", "speed", "gatto", "config"], Labels(summary));
         Assert.Contains(summary, r => r.Text.StartsWith("  ", StringComparison.Ordinal)
             && r.Text.Contains(@"\weights\", StringComparison.Ordinal));
         Assert.DoesNotContain(record, r => r.Text.Contains(@"\weights\gemma-4-26B-A4B-it\",
             StringComparison.Ordinal) && !r.Text.Contains(".gguf", StringComparison.Ordinal));
 
-        //the rows both renders hold must be the same text, so one fact worded twice fails
-        foreach (var label in new[] { "model", "check", "gatto", "config" })
+        //the rows both renders hold must be the same text, so one fact worded twice fails. prefill is the one exception, the record keeps its figure without the cost sentence
+        foreach (var label in new[] { "model", "check", "speed", "gatto", "config" })
             Assert.Equal(
                 summary.Single(r => r.Text.StartsWith(label + " ", StringComparison.Ordinal)).Text,
                 record.Single(r => r.Text.StartsWith(label + " ", StringComparison.Ordinal)).Text);
@@ -324,8 +324,9 @@ public class EpilogueTests
 
     //gatto model closes on its header and one line naming what the user did with the check, never the frame with its rules
     [Theory]
-    [InlineData("passed", "gemma-4-26B-A4B-it added and checked · run gatto, then /model gemma-4-26B-A4B-it to use it")]
-    [InlineData("struggled", "gemma-4-26B-A4B-it added, it struggled on the check and you kept it · run gatto, then /model gemma-4-26B-A4B-it to use it")]
+    [InlineData("passed", "gemma-4-26B-A4B-it added and checked, ~31.4 tok/s · run gatto, then /model gemma-4-26B-A4B-it to use it")]
+    [InlineData("skipped", "gemma-4-26B-A4B-it added, it answers and the five tasks were skipped, ~37.8 tok/s · run gatto, then /model gemma-4-26B-A4B-it to use it")]
+    [InlineData("struggled", "gemma-4-26B-A4B-it added, it struggled on the check and you kept it, ~22.6 tok/s · run gatto, then /model gemma-4-26B-A4B-it to use it")]
     [InlineData("stopped", "gemma-4-26B-A4B-it added, you stopped the check · run gatto, then /model gemma-4-26B-A4B-it to use it")]
     [InlineData("stopped-dead", "gemma-4-26B-A4B-it added, but its server didn't start · gatto doctor checks everything and says what to fix")]
     [InlineData("dead", "gemma-4-26B-A4B-it added, but its server didn't start · gatto doctor checks everything and says what to fix")]
@@ -335,11 +336,16 @@ public class EpilogueTests
         var dead = new Gatto.Core.Acquire.ProveOutcome(false, "no server", TimeSpan.Zero, StartFailed: true);
         var (flow, done) = DoneRenderTests.DoneStep(consent: true, inSession: true,
             block: road.StartsWith("stopped", StringComparison.Ordinal),
-            audition: road == "struggled" ? new AuditionCheck(AuditionOutcome.Failed, null, new DateOnly(2026, 8, 24)) : null,
-            prove: road.EndsWith("dead", StringComparison.Ordinal) ? dead : null,
+            //a failed audition carries its facts as a passed one does, and its rate must win over the prove's
+            audition: road == "struggled" ? new AuditionCheck(AuditionOutcome.Failed,
+                new AuditionFacts("Q4_K_M", "defaults", "template default", 22.6, 1, 5), new DateOnly(2026, 8, 24)) : null,
+            prove: road.EndsWith("dead", StringComparison.Ordinal) ? dead
+                : road is "skipped" or "struggled" ? new Gatto.Core.Acquire.ProveOutcome(true, "OK", TimeSpan.FromSeconds(2), TokensPerSecond: 37.84)
+                : null,
             check: road switch
             {
                 "passed" => DoneRenderTests.Passes,
+                "skipped" => DoneRenderTests.Skips,
                 "struggled" => DoneRenderTests.Struggles,
                 "stopped" => DoneRenderTests.Stops,
                 "stopped-dead" => [.. DoneRenderTests.Stops, SetupFlow.Finish],

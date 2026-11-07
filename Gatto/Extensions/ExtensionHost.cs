@@ -56,7 +56,8 @@ public static class ExtensionHost
 
     //load every extension in discovery order, report each failure and keep the ones that loaded. an off source is neither compiled nor run, a cached DLL included
     public static IReadOnlyList<LoadedExtension> LoadAll(string extensionsDir, GattoApi api, Action<string> diagnostic,
-        IReadOnlySet<string>? off = null, ExtensionLedger? ledger = null)
+        IReadOnlySet<string>? off = null, ExtensionLedger? ledger = null,
+        bool writeCache = true)   //false reads a cached DLL and emits none, for a caller that must leave the home as it found it
     {
         var loaded = new List<LoadedExtension>();
         var sources = ExtensionDiscovery.Discover(extensionsDir, diagnostic);
@@ -75,7 +76,7 @@ public static class ExtensionHost
             }
             try
             {
-                var runner = ResolveRunner(src, extRoot, cacheDir, diagnostic, ledger);
+                var runner = ResolveRunner(src, extRoot, cacheDir, diagnostic, ledger, writeCache);
                 if (runner is null) continue;   //a null runner means a compile error, already reported
 
                 api.BeginExtension(src.Name);
@@ -225,7 +226,8 @@ public static class ExtensionHost
 
     //a cache hit runs the compiled DLL, a miss compiles and emits one, falling back to memory when the emit fails
     private static Func<ScriptGlobals, Task>? ResolveRunner(
-        ExtensionSource src, string extRoot, string cacheDir, Action<string> diagnostic, ExtensionLedger? ledger = null)
+        ExtensionSource src, string extRoot, string cacheDir, Action<string> diagnostic, ExtensionLedger? ledger = null,
+        bool writeCache = true)
     {
         var hash12 = ExtensionDiscovery.ComputeHash(src, EffectiveHostApiVersion, RoslynVersion, HostBinaryVersion)[..12];
         var dllPath = Path.Combine(cacheDir, $"{src.Name}-{hash12}.dll");
@@ -246,7 +248,7 @@ public static class ExtensionHost
             return null;
         }
 
-        if (TryEmit(script, cacheDir, dllPath, src.Name) && TryFactoryRunner(dllPath, out var freshRunner))
+        if (writeCache && TryEmit(script, cacheDir, dllPath, src.Name) && TryFactoryRunner(dllPath, out var freshRunner))
             return freshRunner;
 
         //the emit failed, so run in memory this time and cache nothing

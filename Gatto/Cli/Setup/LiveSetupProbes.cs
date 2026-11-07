@@ -761,7 +761,9 @@ internal sealed class LiveSetupProbes(string homePath, Gatto.Terminal.GlyphSet g
             var verdict = Gatto.Roles.Audition.AuditionRunner
                 .RunAsync(homePath, modelId, feed, ct, serveVoice: w => Lines(w),
                     loadingWords: elapsed => Gatto.Cli.LoadingRow.Words(
-                        elapsed, modelId, SizeWordsOrNull(modelId), _glyphs))
+                        elapsed, modelId, SizeWordsOrNull(modelId), _glyphs),
+                    //the prefix this home's sessions send this model, read once after the tasks. local is the one endpoint gatto serves, so it is the name a session reaches this server by
+                    prefix: GattoApp.ComposeSessionPrefix(homePath, "local", modelId))
                 .GetAwaiter().GetResult();
             ticker?.Finish();
 
@@ -785,7 +787,9 @@ internal sealed class LiveSetupProbes(string homePath, Gatto.Terminal.GlyphSet g
                     verdict.DecodeTokS,
                     //take the verdict's own tally, a count taken here would be a second opinion about the same run
                     tally.Passed,
-                    tally.Ran),
+                    tally.Ran,
+                    verdict.PrefixTokens,
+                    verdict.PrefillTokS),
                 recorded,
                 //pass the runner's records whole, so the wizard's rows and the CLI report say the same thing about one run
                 verdict.Tasks);

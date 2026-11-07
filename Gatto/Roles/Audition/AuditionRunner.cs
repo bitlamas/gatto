@@ -34,7 +34,9 @@ internal sealed record AuditionVerdict(bool Pass, bool Disqualified,
     IReadOnlyList<AuditionTaskResult> Tasks, AuditionStamp Stamp,
     TimeSpan WallClock, double? DecodeTokS,
     //the folder holding each task's conversation, null when it could not be written, so a failed check can be read and not only believed
-    string? Transcripts = null)
+    string? Transcripts = null,
+    //one cold read of the prefix a session in this home sends, both null when it was not handed in or the read failed
+    int? PrefixTokens = null, double? PrefillTokS = null)
 {
     //the tally both the report and the wizard read, M counts the tasks that ran and a skipped task is neither pass nor failure
     public (int Passed, int Ran) Tally()
@@ -43,6 +45,9 @@ internal sealed record AuditionVerdict(bool Pass, bool Disqualified,
         return (ran - Tasks.Count(t => t.Failed), ran);
     }
 }
+
+//what a session in the home sends before its first turn, handed in as data so the check needs no part of the launch
+internal sealed record SessionPrefix(string SystemText, IReadOnlyList<ToolSpec> Tools);
 
 //the check drives gatto's real loop, a copy would only measure the copy. the offer binds to RunAsync, RunBatteryAsync is the injectable half beneath it
 internal static class AuditionRunner
@@ -66,9 +71,9 @@ internal static class AuditionRunner
     public static Task<AuditionVerdict> RunAsync(string homePath, string modelId,
         IProgress<AuditionProgress>? progress, CancellationToken ct, EngineMarks? engineMarks = null,
         Func<TextWriter, IServeListener>? serveVoice = null,
-        Func<TimeSpan, string>? loadingWords = null)
+        Func<TimeSpan, string>? loadingWords = null, SessionPrefix? prefix = null)
         => RunAsync(homePath, modelId, progress, ct, manager: null, readyBudget: null,
-            engineMarks: engineMarks, serveVoice: serveVoice, loadingWords: loadingWords);
+            engineMarks: engineMarks, serveVoice: serveVoice, loadingWords: loadingWords, prefix: prefix);
 
     //ten minutes for a server to become ready, a shorter budget would fail a slow load and the verdict would blame the model
     internal static readonly TimeSpan ReadyBudget = TimeSpan.FromMinutes(10);
@@ -93,7 +98,7 @@ internal static class AuditionRunner
         IProgress<AuditionProgress>? progress, CancellationToken ct,
         ServeManager? manager, TimeSpan? readyBudget, EngineMarks? engineMarks = null,
         Func<TextWriter, IServeListener>? serveVoice = null,
-        Func<TimeSpan, string>? loadingWords = null)
+        Func<TimeSpan, string>? loadingWords = null, SessionPrefix? prefix = null)
     {
         var marks = engineMarks ?? EngineMarks.Unicode;
         var config = GattoConfig.Load(homePath);
@@ -156,7 +161,7 @@ internal static class AuditionRunner
                     StampFor(model, loaded, sha256), progress, ct,
                     //pass the model's own reasoning_history, the default would measure a heavier setup than the model actually runs
                     reasoning: model.Profile.ReasoningHistory,
-                    thinkingBody: thinkingBody, promptSuffix: thinkingSuffix).ConfigureAwait(false);
+                    thinkingBody: thinkingBody, promptSuffix: thinkingSuffix, prefix: prefix).ConfigureAwait(false);
             }
             catch (GattoConnectionException) when (manager.DescribeRunning() is null)
             {
@@ -423,7 +428,7 @@ internal static class AuditionRunner
     internal static async Task<AuditionVerdict> RunBatteryAsync(IChatClient client, string homePath,
         string model, AuditionStamp stamp, IProgress<AuditionProgress>? progress, CancellationToken ct,
         TaskLimits? taskLimits = null, ReasoningHistory reasoning = ReasoningHistory.All,
-        System.Text.Json.JsonElement? thinkingBody = null, string? promptSuffix = null)
+        System.Text.Json.JsonElement? thinkingBody = null, string? promptSuffix = null, SessionPrefix? prefix = null)
     {
         var limits = taskLimits ?? TaskLimits.Default;
         var wall = Stopwatch.StartNew();
@@ -524,10 +529,35 @@ internal static class AuditionRunner
         wall.Stop();
         var passed = results.Count(r => r.Pass);
         var disqualified = results.Any(r => r.Shapes.Contains(FailureShape.FabricatedResult));
+        //after the clock stops, the wall clock stays the five tasks' own
+        var prefill = prefix is null ? null : await ReadPrefixAsync(client, model, prefix, transcripts, ct).ConfigureAwait(false);
 
         //a fabrication disqualifies at any score, the count of passes cannot outvote it
         return new AuditionVerdict(passed >= PassThreshold && !disqualified, disqualified,
-            results, stamp, wall.Elapsed, DecodeRate(everyMessage), transcripts);
+            results, stamp, wall.Elapsed, DecodeRate(everyMessage), transcripts,
+            prefill?.Tokens, prefill?.TokensPerSecond);
+    }
+
+    //a session prompt needs a user turn, some chat templates refuse a conversation without one, so the read carries the shortest
+    private const string PrefixAsk = "say OK.";
+
+    //one uncached read of the prefix, one token of answer, its count and rate from the server's own timings. any failure is no row and the verdict stands
+    private static async Task<(int Tokens, double TokensPerSecond)?> ReadPrefixAsync(
+        IChatClient client, string model, SessionPrefix prefix, string? transcripts, CancellationToken ct)
+    {
+        List<ChatMessage> messages = [new("system", prefix.SystemText), new("user", PrefixAsk)];
+        var body = System.Text.Json.JsonDocument.Parse("""{"max_tokens":1,"cache_prompt":false}""").RootElement;
+        try
+        {
+            string? timings = null;
+            await foreach (var ev in client.StreamAsync(
+                new ChatRequest(model, messages, prefix.Tools, BodyOverrides: body), ct).ConfigureAwait(false))
+                if (ev is StreamEvent.Finished f) timings = f.Timings;
+            KeepTranscript(transcripts, "prefix", [.. messages, new ChatMessage("assistant", "", Timings: timings)]);
+            return ServerTimings.ColdPrompt(timings);
+        }
+        catch (OperationCanceledException) when (ct.IsCancellationRequested) { throw; }
+        catch (Exception) { return null; }
     }
 
     //one folder per model file under the home, emptied first so it holds the last run only. null when it cannot be made, the check still runs

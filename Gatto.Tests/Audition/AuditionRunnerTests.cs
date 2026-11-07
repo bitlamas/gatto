@@ -850,4 +850,92 @@ public class AuditionRunnerTests
         }
         finally { try { Directory.Delete(home, true); } catch { } }
     }
+
+    private static readonly SessionPrefix Prefix = new("the system text a session in this home sends",
+        [new ToolSpec("memory_write", "keeps a fact", JsonDocument.Parse("""{"type":"object"}""").RootElement.Clone())]);
+
+    //every task request carries a cold read of its own, so a runner that read the tasks' timings would find 821 tokens and not the prefix's
+    private const string TaskTimings = """{"cache_n":0,"prompt_n":821,"prompt_ms":2938.5,"predicted_n":100,"predicted_ms":1000}""";
+
+    //answers the prefix read itself and hands every task request to the sim, so the read is seen apart from the battery
+    private sealed class PrefixServer(IChatClient tasks, string? timings, bool fails = false) : IChatClient
+    {
+        public int Requests;
+        public List<(int At, ChatRequest Request)> Reads { get; } = [];
+
+        public async IAsyncEnumerable<StreamEvent> StreamAsync(ChatRequest request,
+            [System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken ct = default)
+        {
+            Requests++;
+            if (request.Messages[0].Content == Prefix.SystemText)
+            {
+                Reads.Add((Requests, request));
+                if (fails) throw new InvalidOperationException("the server dropped the read");
+                yield return new StreamEvent.TextDelta("O");
+                yield return new StreamEvent.Finished("length", null, timings);
+                yield break;
+            }
+            await foreach (var e in tasks.StreamAsync(request, ct)) yield return e;
+        }
+    }
+
+    //one read after the last task, the prefix as handed in, one token of answer and no cache, and the row from that read alone
+    [Fact]
+    public async Task THE_PREFIX_IS_READ_ONCE_AFTER_THE_TASKS_UNCACHED_and_its_timings_alone_are_the_row()
+    {
+        var home = Directory.CreateTempSubdirectory("gatto-prefix-read-").FullName;
+        try
+        {
+            var server = new PrefixServer(new ModelSim(Behaviour.Competent) { Timings = [TaskTimings] },
+                """{"cache_n":0,"prompt_n":8200,"prompt_ms":17000}""");
+
+            var verdict = await AuditionRunner.RunBatteryAsync(server, home, "m", Stamp, null, default, prefix: Prefix);
+
+            var (at, read) = Assert.Single(server.Reads);
+            Assert.Equal(server.Requests, at);
+            Assert.Equal(["system", "user"], read.Messages.Select(m => m.Role));
+            Assert.Equal(Prefix.Tools, read.Tools);
+            using var body = JsonDocument.Parse(read.BodyOverrides!.Value.GetRawText());
+            Assert.Equal(1, body.RootElement.GetProperty("max_tokens").GetInt32());
+            Assert.False(body.RootElement.GetProperty("cache_prompt").GetBoolean());
+
+            Assert.True(verdict.Pass);
+            Assert.Equal(8200, verdict.PrefixTokens);
+            Assert.Equal(8200 / 17.0, verdict.PrefillTokS!.Value, 3);
+            //the decode rate is still the tasks' own, the read decoded nothing worth a figure
+            Assert.Equal(100.0, verdict.DecodeTokS!.Value, 3);
+            Assert.Contains("\"prompt_n\":8200", File.ReadAllText(Path.Combine(verdict.Transcripts!, "prefix.jsonl")));
+        }
+        finally { try { Directory.Delete(home, true); } catch { } }
+    }
+
+    //a read that failed, or that a cached head shortened, measured nothing this row may state, and neither touches the verdict
+    [Theory]
+    [InlineData(false, """{"cache_n":785,"prompt_n":7415,"prompt_ms":15000}""")]
+    [InlineData(false, """{"prompt_n":8200,"prompt_ms":17000}""")]
+    [InlineData(false, null)]
+    [InlineData(true, null)]
+    public async Task A_PREFIX_READ_THAT_FAILED_OR_HIT_THE_CACHE_IS_NO_ROW_and_the_verdict_stands(bool fails, string? timings)
+    {
+        var server = new PrefixServer(new ModelSim(Behaviour.Competent) { Timings = [TaskTimings] }, timings, fails);
+
+        var verdict = await AuditionRunner.RunBatteryAsync(server, Path.GetTempPath(), "m", Stamp, null, default, prefix: Prefix);
+
+        Assert.Single(server.Reads);
+        Assert.True(verdict.Pass);
+        Assert.Null(verdict.PrefixTokens);
+        Assert.Null(verdict.PrefillTokS);
+    }
+
+    //no prefix handed in is no read at all, the CLI's own audition sends none
+    [Fact]
+    public async Task NO_PREFIX_HANDED_IN_SENDS_NO_READ()
+    {
+        var server = new PrefixServer(new ModelSim(Behaviour.Competent), null);
+
+        var verdict = await AuditionRunner.RunBatteryAsync(server, Path.GetTempPath(), "m", Stamp, null, default);
+
+        Assert.Empty(server.Reads);
+        Assert.Null(verdict.PrefixTokens);
+    }
 }

@@ -496,7 +496,7 @@ internal sealed partial class SetupFlow
             .. check.Tasks is { } ran && ran.Any(t => !t.Pass)
                 ? (IReadOnlyList<SetupRow>)[.. TaskRows([.. ran.Where(t => !t.Pass)]), ""]
                 : [],
-            .. StampRows(f),
+            .. StampRows(f, Glyphs),
             .. check.Recorded is not null
                 ? (IReadOnlyList<SetupRow>)["", CheckFacts.Row("recorded",
                     "the shelf marks it as passed on this machine")]
@@ -543,7 +543,7 @@ internal sealed partial class SetupFlow
 
         if (facts is { } measured)
         {
-            rows.AddRange(StampRows(measured));
+            rows.AddRange(StampRows(measured, g));
             rows.Add("");
         }
         rows.Add("You can still use it if you want to.");

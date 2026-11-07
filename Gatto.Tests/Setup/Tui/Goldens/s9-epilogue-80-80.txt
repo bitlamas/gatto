@@ -4,6 +4,7 @@ machine   128 GB shared with the graphics chip · about 88 GB for a model
 engine    llama.cpp b12015 · Vulkan · C:\Users\you\.gatto\llama\b12015\
 model     gemma-4-26B-A4B-it-UD-Q4_K_M.gguf · 16.9 GB · verified
 check     ✓ passed, it ran commands and edited files
+speed     ~31.4 tok/s
 gatto     ✓ installed, any terminal finds it
 config    C:\Users\you\.gatto\gatto.json
 

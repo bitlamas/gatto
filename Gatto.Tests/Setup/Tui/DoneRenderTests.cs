@@ -235,7 +235,7 @@ public class DoneRenderTests
     }
 
     //an unmanaged server that reports models and no context window, its own fixture since the summary draws three rows the llama path lacks
-    private static SetupFlow ConnectWalk(int? reported = null, string? already = null)
+    private static SetupFlow ConnectWalk(int? reported = null, string? already = null, double? rate = null)
     {
         var flow = new SetupFlow(new FakeSetupProbes
         {
@@ -244,7 +244,7 @@ public class DoneRenderTests
             Llama = @"C:\llama\llama-b12015-bin-win-vulkan-x64\llama-server.exe",
             Server = new Gatto.Core.Acquire.ConnectProbe(
                 "http://127.0.0.1:1234", ["qwen/qwen3-30b-a3b-2507"], reported),
-            Prove = new Gatto.Core.Acquire.ProveOutcome(true, "OK", TimeSpan.FromSeconds(6)),
+            Prove = new Gatto.Core.Acquire.ProveOutcome(true, "OK", TimeSpan.FromSeconds(6), TokensPerSecond: rate),
             Install = Gatto.Cli.Install.InstallState.Installed,
             Config = @"C:\Users\you\.gatto\gatto.json",
             UpdateAnswered = true,
@@ -279,6 +279,69 @@ public class DoneRenderTests
 
         Golden.AssertEquals("s9", "summary-connect", 100,
             WalkRender.SettledFrame(summary, 100, SetupFlow.SummaryKey).Rows);
+    }
+
+    //every road that measured a rate states it under the check on both renders, the figure alone with no band words, and the check screen keeps its band
+    [Theory]
+    [InlineData("skipped")]
+    [InlineData("connect")]
+    public void A_MEASURED_RATE_IS_ON_THE_SUMMARY_AND_THE_RECORD_AS_THE_FIGURE_ALONE(string road)
+    {
+        var flow = road == "connect"
+            ? ConnectWalk(rate: 37.84)
+            : DoneStep(consent: true, check: Skips,
+                prove: new ProveOutcome(true, "OK", TimeSpan.FromSeconds(2), TokensPerSecond: 37.84)).Flow;
+        var summary = Assert.IsType<SetupScreen.Choice>(flow.Emitted[^1]);
+        Assert.Equal(SetupFlow.SummaryKey, summary.Key);
+        var row = "speed".PadRight(SetupFlow.SummaryFacts.Column) + "~37.8 tok/s";
+
+        foreach (var rows in new[] { summary.BodyRows!, flow.RecordRows() })
+        {
+            var labels = rows.Select(r => r.Text.Split(' ')[0]).Where(l => l.Length > 0).ToList();
+            Assert.Equal(labels.IndexOf("check") + 1, labels.IndexOf("speed"));
+            Assert.Contains(rows, r => r.Text == row);
+            Assert.DoesNotContain(rows, r => r.Text.Contains(Gatto.Roles.Audition.AuditionReport.SpeedNote(37.8), StringComparison.Ordinal));
+            //no check ran on either road, so nothing read a prefix and no cost is stated
+            Assert.DoesNotContain("prefill", labels);
+        }
+
+        Assert.Contains(flow.Emitted.OfType<SetupScreen.Choice>().SelectMany(c => c.BodyRows ?? []),
+            r => r.Text.Contains("~37.8 tok/s, " + Gatto.Roles.Audition.AuditionReport.SpeedNote(37.8), StringComparison.Ordinal));
+    }
+
+    //the check's prefix read prices a compaction on the pass screen, the summary and the record, each number as measured and the seconds their quotient
+    [Fact]
+    public void A_CHECK_THAT_READ_THE_PREFIX_STATES_WHAT_A_COMPACTION_RE_READS()
+    {
+        var measured = new AuditionCheck(AuditionOutcome.Passed,
+            new AuditionFacts("Q4_K_M", "defaults", "template default", 31.4, 5, 5, PrefixTokens: 8213, PrefillTokS: 482.43),
+            new DateOnly(2026, 8, 24));
+        var (flow, _) = DoneStep(consent: true, audition: measured);
+        var said = "~482.4 tok/s · after a compaction gatto re-reads its ~8,200-token prefix, about 17 s at this rate";
+
+        var pass = flow.Emitted.OfType<SetupScreen.Choice>().Single(c => c.Key == SetupFlow.AuditionPassedKey);
+        Assert.Contains(pass.BodyRows!, r => r.Text == "prefill".PadRight(SetupFlow.CheckFacts.Column) + said);
+
+        //the summary has room for the sentence, the record keeps the figure alone, the one shared fact the two renders word differently
+        var summary = Assert.IsType<SetupScreen.Choice>(flow.Emitted[^1]);
+        foreach (var (rows, text) in new[] { (summary.BodyRows!, said), (flow.RecordRows(), "~482.4 tok/s") })
+        {
+            var labels = rows.Select(r => r.Text.Split(' ')[0]).Where(l => l.Length > 0).ToList();
+            Assert.Equal(labels.IndexOf("speed") + 1, labels.IndexOf("prefill"));
+            Assert.Contains(rows, r => r.Text == "prefill".PadRight(SetupFlow.SummaryFacts.Column) + text);
+        }
+    }
+
+    //a check whose prefix read failed has its rate and no cost line, the honest empty and never an estimate
+    [Fact]
+    public void A_CHECK_WITHOUT_A_PREFIX_READ_HAS_NO_COST_LINE()
+    {
+        var (flow, _) = DoneStep(consent: true);
+
+        var summary = Assert.IsType<SetupScreen.Choice>(flow.Emitted[^1]);
+        Assert.Contains(summary.BodyRows!, r => r.Text.StartsWith("speed ", StringComparison.Ordinal));
+        Assert.DoesNotContain(flow.Emitted.OfType<SetupScreen.Choice>().SelectMany(c => c.BodyRows ?? []),
+            r => r.Text.StartsWith("prefill ", StringComparison.Ordinal));
     }
 
     //both screens must say where the context number came from. compare the two rendered rows rather than the constant, on both arms of the ternary.

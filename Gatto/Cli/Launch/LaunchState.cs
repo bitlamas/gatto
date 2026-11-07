@@ -25,7 +25,8 @@ internal sealed record RoleResolution(
 internal sealed class LaunchState(
     ParsedArgs args, GattoConfig config, string home, string cwd, string rolesDir, string modelsDir,
     IReadOnlyDictionary<string, EndpointConfig> endpoints, string? launchEndpoint, string? sessionModel, WarningSink warn,
-    bool memoryOn, List<(string Extension, string Line)> policyLines, GlyphSet glyphs)
+    bool memoryOn, List<(string Extension, string Line)> policyLines, GlyphSet glyphs,
+    bool bare = false)   //true composes what every session in this home carries, so no project's context files and no project's memory index
 {
     //a stale default is said once per process, since /role and the policy pass resolve again
     private readonly HashSet<string> _staleDefaultWarned = new(StringComparer.Ordinal);
@@ -92,7 +93,7 @@ internal sealed class LaunchState(
         ?? GattoApp.DerivedMemoryBudget(p?.Profile.Context);
 
     //the shared load, with the model passed in so a caller composes against the model armed at call time
-    internal MemoryIndex.LoadResult LoadMemory(Model? p) => memoryOn
+    internal MemoryIndex.LoadResult LoadMemory(Model? p) => memoryOn && !bare
         ? MemoryIndex.Compose(MemoryDir.FindProjectRoot(cwd), MemoryBudget(p))
         : new MemoryIndex.LoadResult(null, 0);
 
@@ -203,8 +204,10 @@ internal sealed class LaunchState(
         }
 
         var readFrom = System.Diagnostics.Stopwatch.GetTimestamp();
-        var contextFiles = ContextFiles.Collect(
-            cwd, config.ContextCompat, config.ContextHome ? Path.Combine(home, "GATTO.md") : null);
+        var homeFile = config.ContextHome ? Path.GetFullPath(Path.Combine(home, "GATTO.md")) : null;
+        var contextFiles = ContextFiles.Collect(cwd, config.ContextCompat, homeFile);
+        //bare keeps the home's own file, which every session here carries, and drops each project's
+        if (bare) contextFiles = [.. contextFiles.Where(f => string.Equals(f.Path, homeFile, StringComparison.OrdinalIgnoreCase))];
         var memoryFrom = System.Diagnostics.Stopwatch.GetTimestamp();
         ContextFilesTicks += memoryFrom - readFrom;
         //reloaded beside the context files at launch and on every /role, so the memory budget follows the model the role resolves to

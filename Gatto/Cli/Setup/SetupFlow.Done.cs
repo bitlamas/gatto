@@ -449,30 +449,38 @@ internal sealed partial class SetupFlow
     }
 
     //one stamp composer for the pass, failure and completion screens, drop every row whose fact is missing
-    private static IReadOnlyList<SetupRow> StampRows(AuditionFacts f)
+    private static IReadOnlyList<SetupRow> StampRows(AuditionFacts f, Gatto.Terminal.GlyphSet g)
     {
         var rows = new List<SetupRow>();
         //the quant gets lifted, its neighbour notes don't, the quant is what readers scan for
         if (f.Quant is { Length: > 0 } q) rows.Add(CheckFacts.Row("quant", q, lift: q));
         if (f.Sampling is { Length: > 0 } s) rows.Add(CheckFacts.Row("sampling", s));
         if (f.Thinking is { Length: > 0 } t) rows.Add(CheckFacts.Row("thinking", t));
-        if (f.TokensPerSecond is { } rate)
-        {
-            //round the number first and read the band off the rounded value, else the sentence contradicts what's on screen
-            var shown = Math.Round(rate, 1);
-            var figure = $"~{shown:0.#} tok/s";
-            //accent the speed figure, it's the number readers turn into an expectation of waiting
-            rows.Add(SpeedRow(rate));
-        }
+        if (f.TokensPerSecond is { } rate) rows.Add(SpeedRow(rate));
+        if (PrefillText(f, g) is { } prefill) rows.Add(CheckFacts.Row("prefill", prefill));
 
         return rows;
+    }
+
+    //the figure with its cost sentence, for the screens that have room for both
+    private static string? PrefillText(AuditionFacts? f, Gatto.Terminal.GlyphSet g) =>
+        PrefillFact(f) is { } p ? $"{p.Figure} {g.Dot} {p.Cost}" : null;
+
+    //the prefix re-read a compaction costs, both numbers measured at the check on this machine. the larger summary request has no number here and is not stated
+    private static Tui.Epilogue.PrefillFact? PrefillFact(AuditionFacts? f)
+    {
+        if (f is not { PrefixTokens: { } tokens, PrefillTokS: { } rate } || rate <= 0) return null;
+        var hundreds = Math.Max(100, Math.Round(tokens / 100.0, MidpointRounding.AwayFromZero) * 100);
+        var seconds = Math.Max(1, Math.Round(tokens / rate, MidpointRounding.AwayFromZero));
+        return new(RateFigure(rate),
+            $"after a compaction gatto re-reads its ~{hundreds:N0}-token prefix, about {seconds:0} s at this rate");
     }
 
     //one number feeds figure and band words, rounded first so they match. the figure takes the accent, it's what readers turn into wait time
     private static SetupRow SpeedRow(double rate)
     {
         var shown = Math.Round(rate, 1);
-        var figure = $"~{shown:0.#} tok/s";
+        var figure = RateFigure(rate);
         return new SetupRow(
             "speed".PadRight(CheckFacts.Column)
                 + $"{figure}, {Gatto.Roles.Audition.AuditionReport.SpeedNote(shown)}",
@@ -551,6 +559,11 @@ internal sealed partial class SetupFlow
 
     //what the user did with the check, read from the deed. a server that failed after the check outranks its verdict, the tail sends the user to doctor
     private string AddedHow =>
+        AddedWords + (!(_proveFailed is not null && _summaryOutcome is null)
+            && MeasuredRate(_summaryOutcome) is { } rate ? $", {RateFigure(rate)}" : "");
+
+    //the outcome words alone, the measured rate follows them as its own clause
+    private string AddedWords =>
         _proveFailed is { StartFailed: true } && _summaryOutcome is null ? ", but its server didn't start"
         : _proveFailed is not null && _summaryOutcome is null ? ", but it didn't answer"
         : _check is { Outcome: AuditionOutcome.Passed } ? " and checked"
@@ -604,8 +617,18 @@ internal sealed partial class SetupFlow
             MachineRow(), model, folder, EngineRow(), CheckRow(outcome), GattoRow(),
             //accent the config path, it's the one thing on screen a user may want to open
             SummaryFacts.Row("config", probes.ConfigPath(), probes.ConfigPath()),
-            ServerFact());
+            ServerFact(),
+            MeasuredRate(outcome) is { } rate ? SummaryFacts.Row("speed", RateFigure(rate)) : null,
+            //only a check reads the prefix, so the skip road and the connect road have no such row
+            PrefillFact(_check?.Facts));
     }
+
+    //the audition's rate wins over the one prove request, five tasks of decoding against one 16-token answer
+    private double? MeasuredRate(Gatto.Core.Acquire.ProveOutcome? outcome) =>
+        _check?.Facts?.TokensPerSecond ?? outcome?.TokensPerSecond;
+
+    //the one spelling of a rate, so the done screens and the check screens cannot word one fact two ways. the done screens print it with no band words
+    private static string RateFigure(double rate) => $"~{Math.Round(rate, 1):0.#} tok/s";
 
     //where the context number came from, said once, the check screen and the summary share the wording
     private string ContextNote() =>

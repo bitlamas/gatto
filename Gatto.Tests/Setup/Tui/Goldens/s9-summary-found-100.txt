@@ -7,6 +7,7 @@
             C:\Users\you\.gatto\weights\gemma-4-26B-A4B-it\
   engine    llama.cpp b12015 · C:\llama\llama-b12015-bin-win-vulkan-x64\
   check     ✓ passed, it ran commands and edited files
+  speed     ~31.4 tok/s
   gatto     ✓ installed, any terminal finds it
   config    C:\Users\you\.gatto\gatto.json
 

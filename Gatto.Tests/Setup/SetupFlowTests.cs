@@ -497,11 +497,12 @@ public class SetupFlowTests
         Assert.Contains("a minute or two", string.Join(" ", rows), StringComparison.Ordinal);
     }
 
-    //this screen reports the verdict, and the measured values stay on the earlier screen
+    //this screen reports the verdict and the measured rate, the rest of the stamp stays on the earlier screen
     [Fact]
     public void THE_COMPLETION_SCREEN_SHOWS_WHAT_WAS_MEASURED()
     {
-        var flow = AtAuditionOffer(new AuditionFacts("Q6_K", "defaults", "template default", 49.4));
+        //the prove's own rate is set too and far apart, so a summary that read it instead of the audition's fails
+        var flow = AtAuditionOffer(new AuditionFacts("Q6_K", "defaults", "template default", 49.4), proveRate: 12.3);
         var done = Assert.IsType<SetupScreen.Choice>(PastThePass(flow));
         var body = string.Join("\n", done.BodyRows!.Select(r => r.Text));
 
@@ -511,9 +512,11 @@ public class SetupFlowTests
         Assert.Contains("passed, it ran commands and edited files", body, StringComparison.Ordinal);
         Assert.DoesNotContain("Congratulations", body, StringComparison.Ordinal);
 
-        //check both halves of the model stamp, since one half alone would pass
+        //the figure alone, no band words beside it and the prove's figure nowhere
+        Assert.Contains(done.BodyRows!, r => r.Text == "speed".PadRight(SetupFlow.SummaryFacts.Column) + "~49.4 tok/s");
+        Assert.DoesNotContain(Gatto.Roles.Audition.AuditionReport.SpeedNote(49.4), body, StringComparison.Ordinal);
+        Assert.DoesNotContain("12.3", body, StringComparison.Ordinal);
         Assert.DoesNotContain("quant", body, StringComparison.Ordinal);
-        Assert.DoesNotContain("tok/s", body, StringComparison.Ordinal);
 
         //the config path is the accented fact this screen owns, so read it from Lift, the member a fact row writes it to
         Assert.Contains(done.BodyRows!, r => r.Lift is { } h && h.Contains(@"C:\home\gatto.json"));
@@ -817,13 +820,14 @@ public class SetupFlowTests
     }
 
     //returns a run standing at the audition offer, with its writes applied.
-    private static SetupFlow AtAuditionOffer(AuditionFacts? facts = null)
+    private static SetupFlow AtAuditionOffer(AuditionFacts? facts = null, double? proveRate = null)
     {
         var flow = new SetupFlow(new FakeProbes
         {
             Llama = @"C:\llama\llama-server.exe",
             Found = [new Gatto.Core.Acquire.FoundModel(@"D:\m\qwen.gguf", 4_000_000_000, null)],
             Facts = facts,
+            Proof = new Gatto.Core.Acquire.ProveOutcome(true, "hello", TimeSpan.FromSeconds(3), TokensPerSecond: proveRate),
         });
         flow.StartPastEngine();
         flow.AnswerSettled("0");
