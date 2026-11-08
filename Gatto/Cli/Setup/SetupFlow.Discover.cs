@@ -127,8 +127,10 @@ internal sealed partial class SetupFlow
             if (_localFamily is not { } fam || Families.Load().FamilyOf(file.Header?.Architecture) == fam)
                 shown.Add((i, groups[i], file, ruled));
         }
-        //a params click sorts the local shelf as it sorts the Hub's, each option moving with its row
-        shown = [.. SortedBy(shown, s => ModelStructure.SizeMagnitude(s.File.Header?.SizeLabel), s => s.Group.Name)];
+        //a params click sorts the local shelf as it sorts the Hub's, and before one each regime is one group, each option moving with its row
+        shown = _smallestFirst is null
+            ? [.. LocalShelf.ByRegime(shown, s => s.File, hw)]
+            : [.. SortedBy(shown, s => ModelStructure.SizeMagnitude(s.File.Header?.SizeLabel), s => s.Group.Name)];
 
         var options = new List<ChoiceOption>();
         foreach (var (at, g, m, _) in shown)

@@ -98,6 +98,11 @@ internal static class LocalShelf
         return HubSearch.ModelNameOf(head.Length > 0 ? head : stem);
     }
 
+    //the order before a params click: each regime once, in the order its headings run, the largest model first inside it as the caret says. a tie keeps the scan's order
+    internal static IReadOnlyList<T> ByRegime<T>(IReadOnlyList<T> items, Func<T, FoundModel> fileOf, HardwareClass? hw, int ctxForFit = 4096) =>
+        [.. items.Select(x => (Item: x, Fit: FitOf(fileOf(x), hw, ctxForFit), Total: ModelStructure.SizeMagnitude(fileOf(x).Header?.SizeLabel)))
+            .OrderBy(k => k.Fit).ThenBy(k => k.Total is null).ThenByDescending(k => k.Total ?? 0).Select(k => k.Item)];
+
     //one group per model name, without case or folder. architecture and size label split a name, the architecture alone where no label says more, so a generic name such as model never merges two models
     internal static IReadOnlyList<LocalGroup> Group(IReadOnlyList<FoundModel> found)
     {

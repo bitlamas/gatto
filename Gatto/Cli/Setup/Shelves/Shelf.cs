@@ -208,7 +208,7 @@ internal static class Shelf
             if (grouped && (i == 0 || v.Rows[i - 1].Fit != r.Fit))
             {
                 if (i > 0) rows.Add(PaintedRow.Of(""));
-                rows.Add(PaintedRow.Of(Indent + GroupHeading(r.Fit), RunInk.Dim));
+                rows.Add(PaintedRow.Of(Indent + GroupHeading(r.Fit, v.Source), RunInk.Dim));
             }
             var number = "";
             var body = Pane.Cells(Name(v, r, g), mw) + "  "
@@ -272,10 +272,11 @@ internal static class Shelf
         return rows;
     }
 
-    //the table splits by where its rows run only on a discrete card, in the engine's order, when two of the card, the split and memory have rows
+    //the table splits by where its rows run only on a discrete card, in the engine's order, when two of the card, the split and memory have rows. the local shelf counts too big as one more, since it keeps those rows in its order
     internal static bool Grouped(ShelfView v) =>
         v.Groups ?? FitMarks.HasRunsColumn(v.Shape) && !v.Lift && v.SmallestFirst is null
-        && v.Rows.Select(x => x.Fit).Where(f => f is FitRegime.FitsGpu or FitRegime.FitsSplit or FitRegime.FitsRamOnly).Distinct().Count() >= 2;
+        && v.Rows.Select(x => x.Fit).Where(f => f is FitRegime.FitsGpu or FitRegime.FitsSplit or FitRegime.FitsRamOnly
+            || f == FitRegime.DoesNotFit && v.Source == ShelfSource.Local).Distinct().Count() >= 2;
 
     //the rows the two headings and the blank between the groups take, which the row window pays for
     internal static int GroupRows(ShelfView v) => Grouped(v) ? 3 : 0;
@@ -283,12 +284,12 @@ internal static class Shelf
     //the table's rows that are not models, its header and the more-below line, which sit beside the pane as the models do
     internal const int TableChrome = 2;
 
-    //where a group of rows runs, said as the drawn page says it. memory is fastest first because the engine orders it by what is read per token
-    internal static string GroupHeading(FitRegime fit) => fit switch
+    //where a group of rows runs, said as the drawn page says it. the Hub's memory is fastest first because the engine orders it by what is read per token, the local shelf's is largest first
+    internal static string GroupHeading(FitRegime fit, ShelfSource source = ShelfSource.Hub) => fit switch
     {
         FitRegime.FitsGpu => "on the graphics card",
         FitRegime.FitsSplit => "on the card and in memory",
-        FitRegime.FitsRamOnly => "in system memory, fastest first",
+        FitRegime.FitsRamOnly => source == ShelfSource.Local ? "in system memory" : "in system memory, fastest first",
         _ => "too big for this machine",
     };
 
