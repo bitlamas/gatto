@@ -19,7 +19,7 @@ public sealed class ShellTool : ITool
     public const string ForegroundNote = "(background is not available here; the command ran in the foreground)";
 
     public string Name => "shell";
-    public string Description => "Run a PowerShell command in the working directory. Args: command, optional timeout_ms (default 120000 in the foreground, none in the background), optional background (true starts the command and returns at once; its output arrives when it ends).";
+    public string Description => "Run a PowerShell command in the working directory; timeout_ms defaults to 120000 in the foreground and to none in the background, and background true returns at once with the output arriving when the command ends.";
     public JsonElement ParametersSchema => ToolArgs.Schema("""
         {"type":"object","properties":{"command":{"type":"string"},"timeout_ms":{"type":"integer"},"background":{"type":"boolean"}},"required":["command"]}
         """);

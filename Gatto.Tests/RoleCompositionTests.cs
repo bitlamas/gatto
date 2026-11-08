@@ -705,14 +705,23 @@ public class RoleCompositionTests
     //the three paths share one bullet shape, and the clause about what a fact states goes only where a fact is written
 
     [Fact]
-    public void Nudge_And_ToolDescription_TeachTheSameIndexFormat_AsTheCompactionTemplate()
+    public void THE_TOOL_TEACHES_THE_INDEX_FORMAT_THE_COMPACTION_TEMPLATE_TEACHES_and_the_nudge_does_not_repeat_it()
     {
-        //all three sources must teach the same bullet shape, so the guard is the convergence rather than the exact phrase
+        //both write paths teach the same bullet shape, and the nudge carries the trigger only, so the format is said once in the prefix
         const string format = "\"- \" bullet";
 
         Assert.Contains(format, Gatto.Core.Loop.Compactor.TemplatePromptForTests, StringComparison.Ordinal);
-        Assert.Contains(format, RoleComposition.MemoryNudge, StringComparison.Ordinal);
         Assert.Contains(format, new MemoryWriteTool(() => 1000).Description, StringComparison.Ordinal);
+        Assert.DoesNotContain(format, RoleComposition.MemoryNudge, StringComparison.Ordinal);
+    }
+
+    //the two format rules the nudge gave up live in the tool, said as rules with no reasons
+    [Fact]
+    public void THE_MEMORY_TOOL_CARRIES_THE_LENGTH_RULE_AND_THE_REPO_RULE()
+    {
+        var description = new MemoryWriteTool(() => 1000).Description;
+        Assert.Contains("bullet under about 15 words", description, StringComparison.Ordinal);
+        Assert.Contains("never as the mistake to avoid, and never one the repo already states;", description, StringComparison.Ordinal);
     }
 
     //the nudge rides every prefix and says the shape of a line, so the clause stays out of it
@@ -747,39 +756,24 @@ public class RoleCompositionTests
 
         const string golden =
             "You are test-model, running through gatto, a local agent harness, on Windows. Use the provided tools; keep answers grounded in what you actually read or ran.\n"
-            + "The shell is PowerShell. Never use Bash or Linux-only commands; when a Unix habit tempts you, find the PowerShell way.\n"
-            + "Say what you actually conclude. If the user's idea has a problem, name it plainly before helping -- agreement you don't hold is a disservice.\n"
-            + "When you are unsure, say so and say why; never present a guess as a fact.\n"
-            + "Be direct and warm; no flattery, no filler praise, no apologizing for existing."
+            + "Be direct; say what you conclude, and when you are unsure say so."
             + "\n\nToday's date: 2026-03-04.\nWorking directory: C:\\proj."
             + "\n\nSYSAPPEND\n\nROLE"
             + "\n\n## Context: C:\\proj\\GATTO.md\nrules";
         Assert.Equal(golden, c.SystemText);
     }
 
-    //the prompt must name the platform and shell, or a model assumes linux and reaches for ls and grep
+    //the OS is the identity line's fact and the shell is the shell tool's, each said once, so no line of the system text names a shell
     [Fact]
-    public void THE_PROMPT_NAMES_THE_OS_AND_THE_SHELL()
-    {
-        var c = RoleComposition.Compose(Role(), Pk(), [], null, modelName: "test-model", os: "Windows", sessionId: null, cwd: @"C:\proj",
-            date: new DateTime(2026, 3, 4));
-
-        Assert.Contains("a local agent harness, on Windows.", c.SystemText, StringComparison.Ordinal);
-        Assert.Contains(
-            "The shell is PowerShell. Never use Bash or Linux-only commands; when a Unix habit tempts you, find the PowerShell way.",
-            c.SystemText, StringComparison.Ordinal);
-    }
-
-    //the count makes "only inside that sentence" falsifiable. a substring guard alone stays green when the sentence goes and another block names Bash
-    [Fact]
-    public void BASH_IS_NAMED_ONCE_AND_ONLY_IN_THAT_SENTENCE()
+    public void THE_OS_IS_NAMED_BY_THE_IDENTITY_AND_THE_SHELL_BY_ITS_TOOL()
     {
         var text = RoleComposition.Compose(Role(), Pk(), [], null, modelName: "test-model", os: "Windows", sessionId: null, cwd: @"C:\proj",
             date: new DateTime(2026, 3, 4)).SystemText;
 
-        var occurrences = text.Split("Bash").Length - 1;
-        Assert.Equal(1, occurrences);
-        Assert.Contains("Never use Bash or Linux-only commands", text, StringComparison.Ordinal);
+        Assert.Contains("a local agent harness, on Windows.", text, StringComparison.Ordinal);
+        Assert.StartsWith("Run a PowerShell command", new Gatto.Core.Tools.ShellTool().Description, StringComparison.Ordinal);
+        Assert.DoesNotContain("PowerShell", text, StringComparison.Ordinal);
+        Assert.DoesNotContain("Bash", text, StringComparison.Ordinal);
     }
 
     //the policy block sits between the harness text and the user text, so a user can countermand a line in their own file

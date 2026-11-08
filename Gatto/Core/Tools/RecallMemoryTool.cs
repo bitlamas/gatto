@@ -14,7 +14,7 @@ public sealed class RecallMemoryTool : ITool
     public string Description =>
         "Search this project's past sessions and memory files (.gatto\\memory\\); returns " +
         "pointers and short excerpts, never full turns. Results name absolute file paths " +
-        "readable with read_file. Args: query (string), optional limit (default 5).";
+        "readable with read_file; limit defaults to 5.";
 
     public JsonElement ParametersSchema => ToolArgs.Schema("""
         {"type":"object","properties":{"query":{"type":"string"},"limit":{"type":"integer"}},"required":["query"]}

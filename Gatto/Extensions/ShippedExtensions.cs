@@ -114,6 +114,8 @@ public static class ShippedExtensions
         "b07b989999757448219958fa71d5d913abb97340daef614812aa6fd7e7e8203a",
         //ask_user.csx while it refused a header over 32 chars
         "f8a8110df3bbc9dd4535cee47d75c70a1899815e64ee1b87334a84505efdeb6b",
+        //ask_user.csx before its description and its policy line were cut to what the schema cannot say
+        "9ee8205f69c0d04e4c813296350407cde6da00368eedf8aea571c57eb68c3256",
         //undo.csx as it first shipped, logging every write it did not snapshot
         "091278e7e57e17bf2bf307db403f934d1c16a3e41ff29fb0f28e95eeb5d7052d",
         //undo.csx while it logged a path outside the folder once a session

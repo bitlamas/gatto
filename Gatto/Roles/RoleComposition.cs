@@ -26,25 +26,16 @@ public static class RoleComposition
     public static string IdentityLine(string modelName, string os) =>
         $"You are {modelName}, running through gatto, a local agent harness, on {os}. Use the provided tools; keep answers grounded in what you actually read or ran.";
 
-    //the lines under the identity, naming the shell so a model that assumes Linux doesn't reach for ls. don't reword without a gate
-    public const string BasePrompt =
-        "The shell is PowerShell. Never use Bash or Linux-only commands; when a Unix habit tempts you, find the PowerShell way.\n" +
-        "Say what you actually conclude. If the user's idea has a problem, name it plainly before helping -- agreement you don't hold is a disservice.\n" +
-        "When you are unsure, say so and say why; never present a guess as a fact.\n" +
-        "Be direct and warm; no flattery, no filler praise, no apologizing for existing.";
+    //the one line under the identity, the tool's voice. the shell is named by the shell tool and the OS by the identity line. don't reword without a gate
+    public const string BasePrompt = "Be direct; say what you conclude, and when you are unsure say so.";
 
     //the standing write instruction, armed by memory.enabled even when no fact exists, so the first one gets written. don't reword without a gate
     public const string MemoryNudge =
-        "When you learn something durable — a build quirk, an environment gotcha, a decision, a fact " +
-        "about this project you'd otherwise rediscover — save it with memory_write as you go; don't " +
-        "wait for the end — compactions can't lose what's on disk. One fact per slug: before minting " +
-        "a new slug, check the Memory block for an existing entry on the same subject and rewrite " +
-        "that slug instead; delete a fact you've disproven. First line is the fact as one \"- \" " +
-        "bullet and SHORT — aim under about 15 words, because line 1 of every fact rides every " +
-        "future prompt; put values, specifics, and reasoning on the lines BELOW it, where they " +
-        "cost nothing until something reads the file. Don't save what the repo already states or what only matters " +
-        "to this conversation — asked to remember something like that anyway, save what was " +
-        "non-obvious about it instead.";
+        "When you learn something durable (a build quirk, an environment gotcha, a decision, a fact " +
+        "about this project you'd otherwise rediscover), save it with memory_write as you go. One fact " +
+        "per slug: before minting a new slug, check the Memory block for an existing entry on the same " +
+        "subject and rewrite that slug instead; delete a fact you've disproven. Don't save what the repo " +
+        "already states or what only matters to this conversation.";
 
     //the heading says what the block is and who wrote it, so the model doesn't read its own notes as instructions
     private const string MemoryHeading = "## Memory (project notes gatto keeps between sessions):";

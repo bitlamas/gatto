@@ -106,7 +106,7 @@ internal static class Globbing
 public sealed class GlobTool : ITool
 {
     public string Name => "glob";
-    public string Description => "Find files and folders by glob pattern (* stays in one folder, ** crosses folders, a folder is listed with a trailing separator). Args: pattern, optional root.";
+    public string Description => "Find files and folders by glob pattern (* stays in one folder, ** crosses folders, a folder is listed with a trailing separator); root defaults to the working directory.";
     public JsonElement ParametersSchema => ToolArgs.Schema("""
         {"type":"object","properties":{"pattern":{"type":"string"},"root":{"type":"string"}},"required":["pattern"]}
         """);
@@ -139,7 +139,7 @@ public sealed class GlobTool : ITool
 public sealed class GrepTool : ITool
 {
     public string Name => "grep";
-    public string Description => "Search file contents by regex. Args: pattern (regex), optional root, optional glob filter (matches the path relative to root; a slashless pattern like *.cs matches at any depth).";
+    public string Description => "Search file contents by regex; glob matches the path relative to root, and a slashless pattern like *.cs matches at any depth.";
     public JsonElement ParametersSchema => ToolArgs.Schema("""
         {"type":"object","properties":{"pattern":{"type":"string"},"root":{"type":"string"},"glob":{"type":"string"}},"required":["pattern"]}
         """);

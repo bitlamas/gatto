@@ -153,7 +153,7 @@ public class PolicyLineLaunchTests : IDisposable
         var exit = await GattoApp.RunAsync(new[] { "-p", "hi" });
 
         Assert.Equal(0, exit);
-        Assert.Contains("stop and ask with ask_user", SystemOf(server.RequestBodies[0]));
+        Assert.Contains("When a choice is the user's, ask with ask_user instead of choosing.", SystemOf(server.RequestBodies[0]));
     }
 
     private static string[] RunAgentToolCallRound() => new[]

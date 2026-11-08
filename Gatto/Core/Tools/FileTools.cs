@@ -50,7 +50,7 @@ internal static class ToolArgs
 public sealed class ReadFileTool : ITool
 {
     public string Name => "read_file";
-    public string Description => "Read a file. Args: path (string), optional offset/limit (1-based line window).";
+    public string Description => "Read a file; offset and limit are a 1-based line window.";
     public JsonElement ParametersSchema => ToolArgs.Schema("""
         {"type":"object","properties":{"path":{"type":"string"},"offset":{"type":"integer"},"limit":{"type":"integer"}},"required":["path"]}
         """);
@@ -91,7 +91,7 @@ public sealed class ReadFileTool : ITool
 public sealed class WriteFileTool : ITool
 {
     public string Name => "write_file";
-    public string Description => "Write (create or overwrite) a file. Args: path, content.";
+    public string Description => "Write (create or overwrite) a file.";
     public JsonElement ParametersSchema => ToolArgs.Schema("""
         {"type":"object","properties":{"path":{"type":"string"},"content":{"type":"string"}},"required":["path","content"]}
         """);
@@ -114,7 +114,7 @@ public sealed class WriteFileTool : ITool
 public sealed class EditFileTool : ITool
 {
     public string Name => "edit_file";
-    public string Description => "Replace an exact, unique string in a file. Args: path, old_string, new_string.";
+    public string Description => "Replace an exact, unique string in a file.";
     public JsonElement ParametersSchema => ToolArgs.Schema("""
         {"type":"object","properties":{"path":{"type":"string"},"old_string":{"type":"string"},"new_string":{"type":"string"}},"required":["path","old_string","new_string"]}
         """);

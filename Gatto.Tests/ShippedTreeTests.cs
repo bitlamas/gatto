@@ -12,8 +12,8 @@ public class ShippedTreeTests
         new(StringComparer.Ordinal)
         {
             ["extensions/ask_user.csx"] =
-                ("9ee8205f69c0d04e4c813296350407cde6da00368eedf8aea571c57eb68c3256",
-                 6845, "e1f51f086f53ce4f39cebfdc2d9ad057010d5f8a66d50a020ed61076199f1c7b"),
+                ("09718eee7ff3217f2077789a8ad0d195c68714a5102107ea42892cba322888f3",
+                 6652, "393101eb1c3d23b5a8fde984086ca4963beab513adbb1535aa35fec2e997f853"),
             ["extensions/web_search.csx"] =
                 ("4c9acb8c8681dc592a8451d92fb6988736f43c0fcca8b98859fca03792ab500f",
                  11835, "6a80e1c43e24a6d660dde9fbe040bf5cbd07a805dbbae50943f27a16d6d7a516"),
@@ -114,6 +114,11 @@ public class ShippedTreeTests
             Pins.Keys.OrderBy(k => k, StringComparer.Ordinal),
             ShippedExtensions.Files.Keys.OrderBy(k => k, StringComparer.Ordinal));
     }
+
+    //an installed copy written before the description and policy cut still runs vetted, so the revision before it stays in the set
+    [Fact]
+    public void THE_ASK_USER_REVISION_BEFORE_THE_PREFIX_CUT_STAYS_VETTED() =>
+        Assert.Contains("9ee8205f69c0d04e4c813296350407cde6da00368eedf8aea571c57eb68c3256", ShippedExtensions.VettedContentHashes);
 
     [Fact]
     public void SHIPPED_HASHES_ARE_UNCHANGED_BY_THE_MOVE()

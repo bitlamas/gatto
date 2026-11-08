@@ -178,8 +178,8 @@ public class ShellToolTests : IDisposable
         var tool = new ShellTool();
         Assert.Equal("boolean", tool.ParametersSchema.GetProperty("properties").GetProperty("background").GetProperty("type").GetString());
         Assert.Equal(["command"], tool.ParametersSchema.GetProperty("required").EnumerateArray().Select(e => e.GetString()));
-        Assert.Equal("Run a PowerShell command in the working directory. Args: command, optional timeout_ms (default 120000 in the foreground, "
-            + "none in the background), optional background (true starts the command and returns at once; its output arrives when it ends).",
+        Assert.Equal("Run a PowerShell command in the working directory; timeout_ms defaults to 120000 in the foreground and to none "
+            + "in the background, and background true returns at once with the output arriving when the command ends.",
             tool.Description);
     }
 

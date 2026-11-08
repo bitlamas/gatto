@@ -29,7 +29,7 @@ Func<string, int, string> cap = (s, max) =>
 
 Gatto.Register(
     "ask_user",
-    "Ask the user 1-4 multiple-choice questions (2-4 options each; user can always type a free-text answer). Use for decisions you cannot make yourself. Each option is a plain string, or an object {\"label\":string,\"description\"?:string,\"recommended\"?:bool} — description stays one short line; if you have a recommendation, mark exactly one option recommended and list it first.",
+    "Ask the user 1-4 multiple-choice questions (2-4 options each; user can always type a free-text answer). Use for decisions you cannot make yourself. An option's description stays one short line; if you have a recommendation, mark exactly one option recommended and list it first.",
     """
     {"type":"object","properties":{"questions":{"type":"array","items":{"type":"object","properties":{"question":{"type":"string"},"header":{"type":"string"},"options":{"type":"array","items":{"anyOf":[{"type":"string"},{"type":"object","properties":{"label":{"type":"string"},"description":{"type":"string"},"recommended":{"type":"boolean"}},"required":["label"]}]}},"multi_select":{"type":"boolean"}},"required":["question","header","options"]}}},"required":["questions"]}
     """,
@@ -103,4 +103,4 @@ Gatto.Register(
 
 //when to reach for this tool, as opposed to how to call it. the description above is the
 //per-call contract; this line is the standing rule, and it leaves with the file.
-Gatto.Policy("When a choice is the user's to make, such as a design direction, a name, or a trade-off, stop and ask with ask_user (2-4 options) instead of choosing for them.");
+Gatto.Policy("When a choice is the user's, ask with ask_user instead of choosing.");
