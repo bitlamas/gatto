@@ -1,5 +1,8 @@
 using System.Text.Json;
+using Gatto.Core;
+using Gatto.Core.Client;
 using Gatto.Core.Tools;
+using Gatto.Tests.Fakes;
 
 namespace Gatto.Tests;
 
@@ -8,6 +11,14 @@ public sealed class TestToolContext(string cwd) : IToolContext
     public string Cwd => cwd;
     public string HomePath => cwd;
     public IUserPrompter? Prompter => null;
+}
+
+public sealed class BlindToolContext(string cwd, bool blind) : IToolContext
+{
+    public string Cwd => cwd;
+    public string HomePath => cwd;
+    public IUserPrompter? Prompter => null;
+    public Func<bool>? VisionBlind => () => blind;
 }
 
 public class FileToolsTests : IDisposable
@@ -37,33 +48,104 @@ public class FileToolsTests : IDisposable
         Assert.Contains("nope.txt", ex.Message);
     }
 
-    //reading a binary file as text is never what the caller wanted, so the tool throws and the loop reports that as an error result
+    //an image comes back as one line of text and the picture travels on the result's Images, which the loop delivers after the round
 
-    [Fact]
-    public async Task Read_refuses_a_jpeg_and_names_the_format()
+    [Theory]
+    [InlineData("shot.png", "image/png")]
+    [InlineData("photo.jpg", "image/jpeg")]
+    [InlineData("anim.gif", "image/gif")]
+    [InlineData("scan.bmp", "image/bmp")]
+    public async Task Read_returns_an_image_as_one_line_and_its_ref(string name, string mediaType)
     {
-        //write the real jpeg magic bytes and its JFIF tag, so the detector meets the shape a real jpeg has
-        File.WriteAllBytes(Path.Combine(_dir, "image.jpg"),
-            new byte[] { 0xFF, 0xD8, 0xFF, 0xE0, 0x00, 0x10, (byte)'J', (byte)'F', (byte)'I', (byte)'F', 0x00 });
+        var bytes = name switch
+        {
+            "shot.png" => ImageFixtures.Png1x1,
+            "photo.jpg" => ImageFixtures.Jpeg1x1,
+            "anim.gif" => ImageFixtures.Gif1x1,
+            _ => ImageFixtures.Bmp1x1(),
+        };
+        var path = Path.Combine(_dir, name);
+        File.WriteAllBytes(path, bytes);
 
-        var ex = await Assert.ThrowsAsync<InvalidOperationException>(
-            () => new ReadFileTool().ExecuteAsync(Args(new { path = "image.jpg" }), Ctx, default));
+        var r = await new ReadFileTool().ExecuteAsync(Args(new { path = name }), Ctx, default);
 
-        Assert.Contains("image.jpg", ex.Message, StringComparison.Ordinal);
-        Assert.Contains("JPEG", ex.Message, StringComparison.Ordinal);   //assert the format name, since a bare binary tells the model nothing
+        Assert.False(r.IsError);
+        Assert.Equal($"image: {name}, {Plural.Of(bytes.Length, "byte")}", r.Text);
+        var img = Assert.Single(r.Images!);
+        Assert.Equal((path, (long)bytes.Length, mediaType), (img.Path, img.Bytes, img.MediaType));
+        Assert.Equal(ImageRef.ShaOf(bytes), img.Sha256);
     }
 
     [Fact]
-    public async Task Read_refuses_a_png()
+    public async Task Read_says_offset_and_limit_are_ignored_on_an_image()
     {
-        File.WriteAllBytes(Path.Combine(_dir, "shot.png"),
-            new byte[] { 0x89, (byte)'P', (byte)'N', (byte)'G', 0x0D, 0x0A, 0x1A, 0x0A, 0, 0, 0, 13 });
+        File.WriteAllBytes(Path.Combine(_dir, "shot.png"), ImageFixtures.Png1x1);
+        var r = await new ReadFileTool().ExecuteAsync(Args(new { path = "shot.png", offset = 2, limit = 5 }), Ctx, default);
+        Assert.Equal($"image: shot.png, {Plural.Of(ImageFixtures.Png1x1.Length, "byte")}; offset and limit do not apply to an image", r.Text);
+        Assert.Single(r.Images!);
+    }
+
+    [Fact]
+    public async Task Read_refuses_an_image_on_a_blind_model_with_the_fact_alone()
+    {
+        File.WriteAllBytes(Path.Combine(_dir, "shot.png"), ImageFixtures.Png1x1);
+        var ex = await Assert.ThrowsAsync<InvalidOperationException>(
+            () => new ReadFileTool().ExecuteAsync(Args(new { path = "shot.png" }), new BlindToolContext(_dir, blind: true), default));
+        Assert.Equal("this model cannot see images", ex.Message);
+    }
+
+    [Fact]
+    public async Task Read_reads_an_image_when_the_probe_says_the_model_can_see()
+    {
+        File.WriteAllBytes(Path.Combine(_dir, "shot.png"), ImageFixtures.Png1x1);
+        var r = await new ReadFileTool().ExecuteAsync(Args(new { path = "shot.png" }), new BlindToolContext(_dir, blind: false), default);
+        Assert.Single(r.Images!);
+    }
+
+    [Fact]
+    public async Task Read_refuses_an_image_over_the_ceiling_before_reading_it()
+    {
+        //a sparse length past the ceiling, the bytes past the PNG head are never written and never read
+        var path = Path.Combine(_dir, "huge.png");
+        using (var fs = new FileStream(path, FileMode.CreateNew))
+        {
+            fs.Write(ImageFixtures.Png1x1);
+            fs.SetLength(ImageRef.MaxBytes + 1);
+        }
 
         var ex = await Assert.ThrowsAsync<InvalidOperationException>(
-            () => new ReadFileTool().ExecuteAsync(Args(new { path = "shot.png" }), Ctx, default));
+            () => new ReadFileTool().ExecuteAsync(Args(new { path = "huge.png" }), Ctx, default));
 
-        Assert.Contains("PNG", ex.Message, StringComparison.Ordinal);
+        Assert.Equal("image too large (20.1 MB, limit 20 MB)", ex.Message);
     }
+
+    [Fact]
+    public async Task Read_reads_a_text_file_opening_with_bm_as_text()
+    {
+        File.WriteAllText(Path.Combine(_dir, "notes.txt"), "BMI notes, the weekly readings");
+        var r = await new ReadFileTool().ExecuteAsync(Args(new { path = "notes.txt" }), Ctx, default);
+        Assert.Equal("BMI notes, the weekly readings", r.Text);
+        Assert.Null(r.Images);
+    }
+
+    [Theory]
+    [InlineData("doc.pdf", new byte[] { (byte)'%', (byte)'P', (byte)'D', (byte)'F', (byte)'-', (byte)'1' }, "PDF")]
+    [InlineData("tool.exe", new byte[] { (byte)'M', (byte)'Z', 0x90, 0x00 }, "executable")]
+    public async Task Read_refuses_every_other_binary_with_the_widened_sentence(string name, byte[] bytes, string kind)
+    {
+        File.WriteAllBytes(Path.Combine(_dir, name), bytes);
+
+        var ex = await Assert.ThrowsAsync<InvalidOperationException>(
+            () => new ReadFileTool().ExecuteAsync(Args(new { path = name }), Ctx, default));
+
+        Assert.Contains(kind, ex.Message, StringComparison.Ordinal);
+        Assert.Contains("read_file reads text and images", ex.Message, StringComparison.Ordinal);
+        Assert.Contains("Use the shell for binary inspection", ex.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void Read_describes_itself_as_reading_a_file_or_an_image() =>
+        Assert.Equal("Read a file or an image; offset and limit are a 1-based line window.", new ReadFileTool().Description);
 
     [Fact]
     public async Task Read_refuses_an_unrecognised_binary_by_its_nul_bytes()

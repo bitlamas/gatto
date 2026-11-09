@@ -12,7 +12,7 @@ public static class BinarySniff
         ([0xFF, 0xD8, 0xFF], "JPEG image"),
         ([0x89, (byte)'P', (byte)'N', (byte)'G', 0x0D, 0x0A, 0x1A, 0x0A], "PNG image"),
         ([(byte)'G', (byte)'I', (byte)'F', (byte)'8'], "GIF image"),
-        ([(byte)'B', (byte)'M'], "BMP image"),
+        ([(byte)'B', (byte)'M'], BmpName),
         ([0x00, 0x00, 0x01, 0x00], "ICO icon"),
         ([(byte)'%', (byte)'P', (byte)'D', (byte)'F'], "PDF document"),
         ([(byte)'P', (byte)'K', 0x03, 0x04], "ZIP archive (or a zip-based format: docx/xlsx/jar)"),
@@ -35,7 +35,7 @@ public static class BinarySniff
         if (StartsWith(head, [0xFE, 0xFF])) return null;         //UTF-16 BE
 
         foreach (var (magic, name) in Signatures)
-            if (StartsWith(head, magic)) return name;
+            if (StartsWith(head, magic) && (name != BmpName || HasDibHeader(head))) return name;
 
         //a NUL byte means binary, no text encoding we read without a BOM has one
         return head.IndexOf((byte)0) >= 0 ? "binary" : null;
@@ -49,6 +49,12 @@ public static class BinarySniff
         var n = fs.Read(buf);
         return Describe(buf[..n]);
     }
+
+    private const string BmpName = "BMP image";
+
+    //the DIB header sizes a real bitmap writes at offset 14, so BM alone does not call a text file an image
+    private static bool HasDibHeader(ReadOnlySpan<byte> head) =>
+        head.Length >= 18 && System.Buffers.Binary.BinaryPrimitives.ReadUInt32LittleEndian(head[14..18]) is 12 or 40 or 52 or 56 or 108 or 124;
 
     private static bool StartsWith(ReadOnlySpan<byte> head, ReadOnlySpan<byte> prefix) =>
         head.Length >= prefix.Length && head[..prefix.Length].SequenceEqual(prefix);

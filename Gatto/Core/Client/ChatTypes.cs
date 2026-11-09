@@ -25,7 +25,9 @@ public sealed record ChatMessage(string Role, string? Content,
     //the number of the background task whose end this user-role record carries, so a reader tells it from the user's own words
     int? Background = null,
     //the file a watched letter was read from, set by the watch alone, so a reader tells a letter from typed words without parsing its text
-    string? Watch = null);
+    string? Watch = null,
+    //the tool whose read put these images here, so a reader tells gatto's image record from the user's words without parsing its text
+    string? By = null);
 public sealed record ChatRequest(string Model, IReadOnlyList<ChatMessage> Messages,
     IReadOnlyList<ToolSpec>? Tools = null,
     JsonElement? SamplingOverrides = null, JsonElement? BodyOverrides = null,

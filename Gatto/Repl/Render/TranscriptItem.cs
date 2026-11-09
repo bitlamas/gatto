@@ -471,6 +471,32 @@ public sealed record LetterItem(LetterText Letter) : TranscriptItem
         Rows(width, theme, glyphs).Select(r => new RowWrap(r.Continuation, r.PrefixCells)).ToList();
 }
 
+//the pictures a tool read, one dim row per image under the system marker, drawn from the record live and on restore. the picture itself is never drawn
+public sealed record ImageBlockItem(IReadOnlyList<string> Lines) : TranscriptItem
+{
+    //one line per image the record carries, then what its line says it did not send
+    public static ImageBlockItem From(ChatMessage record) =>
+        new([.. (record.Images ?? []).Select(i => $"image {i.Name}, {i.Size}"),
+             .. (record.Content ?? "").Split("; ").Where(s => s.Length > 0 && !s.StartsWith("images read this round: ", StringComparison.Ordinal))]);
+
+    private List<RenderedRow> Rows(int width, Theme theme, GlyphSet? glyphs)
+    {
+        var g = glyphs ?? GlyphSet.Unicode;
+        var rows = new List<RenderedRow>();
+        for (var i = 0; i < Lines.Count; i++)
+            rows.AddRange(i == 0
+                ? GutterWrap.RowsTagged(theme.Paint(g.Sharp, Theme.Dim) + " ", g.Sharp + " ", TermText.Sanitize(Lines[i]), width, s => theme.Paint(s, Theme.Dim))
+                : GutterWrap.RowsTagged(GutterWrap.Hang, GutterWrap.Hang, TermText.Sanitize(Lines[i]), width, s => theme.Paint(s, Theme.Dim)));
+        return rows;
+    }
+
+    protected override IReadOnlyList<string> RenderBody(int width, Theme theme, GlyphSet? glyphs) =>
+        Rows(width, theme, glyphs).Select(r => r.Text).ToList();
+
+    protected override IReadOnlyList<RowWrap> RowWrapsBody(int width, Theme theme, GlyphSet? glyphs) =>
+        Rows(width, theme, glyphs).Select(r => new RowWrap(r.Continuation, r.PrefixCells)).ToList();
+}
+
 public sealed record UserEchoItem(IReadOnlyList<string> RawLines) : TranscriptItem
 {
     protected override IReadOnlyList<string> RenderBody(int width, Theme theme, GlyphSet? glyphs) =>

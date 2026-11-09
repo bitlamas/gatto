@@ -14,7 +14,7 @@ public static class RequestJson
         w.WriteString("role", m.Role);
         //no images keeps content a plain string and images become the parts array, so a missing cache must never drop them
         if (m.Images is { Count: > 0 } imgs)
-            WriteContentParts(w, m.Content, imgs, images ?? new ImageCache(), onUnavailable);
+            WriteContentParts(w, m.Content, imgs, images ?? new ImageCache(), onUnavailable, m.By is not null);
         else if (m.Content is not null) w.WriteString("content", m.Content);
         //resend the assistant turn's reasoning, a model that conditions on prior thinking needs the channel again next turn
         if (m.ReasoningContent is not null) w.WriteString("reasoning_content", m.ReasoningContent);
@@ -40,7 +40,7 @@ public static class RequestJson
 
     //content as an OpenAI parts array, text first then one image_url per image, and a missing file becomes a text stub inside the array
     private static void WriteContentParts(Utf8JsonWriter w, string? text,
-        IReadOnlyList<ImageRef> imgs, ImageCache cache, Action<string>? onUnavailable)
+        IReadOnlyList<ImageRef> imgs, ImageCache cache, Action<string>? onUnavailable, bool toolRead)
     {
         w.WriteStartArray("content");
         w.WriteStartObject();
@@ -58,11 +58,12 @@ public static class RequestJson
             {
                 //an unavailable image keeps its slot, dropping it would claim N images while the model counts N-1
                 w.WriteString("type", "text");
-                //the stub instructs, a bare "unavailable" left the model to guess which picture it had lost
+                //the stub names its picture, and a tool-read one points back to the tool
                 w.WriteString("text",
-                    $"{label} — unavailable, not shown. It was attached earlier and has since been "
+                    $"{label} — unavailable, not shown. It was {(toolRead ? "read" : "attached")} earlier and has since been "
                     + "moved, deleted or changed. You cannot see it: do not describe it and do not "
-                    + "confuse it with any other image here; ask the user to attach it again.");
+                    + "confuse it with any other image here; "
+                    + (toolRead ? "read_file reads it again." : "ask the user to attach it again."));
                 w.WriteEndObject();
             }
             else

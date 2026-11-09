@@ -192,6 +192,7 @@ file sealed class ChildToolContext(IToolContext parent) : IToolContext
     public IReadOnlyList<string> SessionFiles => parent.SessionFiles;   //a child's recall leaves out the parent's files, whose turns are the parent's context
     public Gatto.Core.Sandbox.SandboxState? Sandbox => parent.Sandbox;
     public BackgroundTasks? Tasks => null;
+    public Func<bool>? VisionBlind => parent.VisionBlind;   //a child talks to the parent's server, so the parent's probe answers for it
     public Gatto.Core.Trace Trace => parent.Trace;
     public long TraceParent => parent.TraceParent;
 }

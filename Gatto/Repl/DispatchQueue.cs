@@ -74,13 +74,13 @@ internal sealed class DispatchQueue(int cap)
         lock (_lock) return [.. TakeWhere(e => e.IsTyped).Select(e => e.Text)];
     }
 
-    //what the loop delivers at a round boundary: every plain message and at most watchBudget letters, in queue order. commands, attachments and ends wait for the dispatcher
+    //what the loop delivers at a round boundary: plain messages, ends and up to watchBudget letters, in queue order
     public IReadOnlyList<QueueEntry> TakeQueuedForTurn(int watchBudget)
     {
         lock (_lock)
             return TakeWhere(e =>
             {
-                if (e.IsTask) return false;
+                if (e.IsTask) return true;
                 if (e.Kind == EntryKind.Plain) return true;
                 if (e.Kind != EntryKind.Watch || watchBudget <= 0) return false;
                 watchBudget--;

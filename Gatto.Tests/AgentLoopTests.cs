@@ -138,6 +138,21 @@ public class AgentLoopTests
     }
 
     [Fact]
+    public void AN_IMAGE_RECORD_LEAVES_THE_RESUME_NOTE_FOR_THE_NEXT_TYPED_MESSAGE()
+    {
+        var convo = new Conversation(null);
+        var note = new SessionUpdate("the note", new BaselineSources("2026-10-24", null, [], [], "r", "m"), 1);
+        convo.SetPendingUpdate(note);
+
+        var record = convo.ImageRecord("images read this round: a.png (9 bytes)", [new ImageRef("a.png", 9, "ab", "image/png")], "read_file");
+        convo.Append(record);
+
+        Assert.Null(record.Update);
+        Assert.Same(note, convo.PendingUpdate);
+        Assert.Same(note, convo.UserRecord("typed").Update);
+    }
+
+    [Fact]
     public async Task A_TYPED_TURN_STILL_TAKES_THE_RESUME_NOTE()
     {
         var (loop, client, _, convo, obs) = Setup();
@@ -699,7 +714,7 @@ public class AgentLoopTests
 
         //exactly one elision warning must fire, with the exact message text.
         Assert.Equal(1, obs.Warnings.Count(w => w.Contains("elided")));
-        Assert.Contains("context: elided 1 oldest tool results", obs.Warnings);
+        Assert.Contains("context: elided 1 oldest results", obs.Warnings);
         //the request holds the stub in place of the full tool result
         var toolMsg = server.LastRequestBody!.Value.GetProperty("messages").EnumerateArray()
             .Single(m => m.GetProperty("role").GetString() == "tool");

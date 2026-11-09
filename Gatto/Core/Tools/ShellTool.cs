@@ -15,11 +15,14 @@ public sealed class ShellTool : ITool
     //how long the drains wait for EOF after the process exits. generous for a flush, tiny against a turn hung on a grandchild's inherited handle
     internal const int DrainGraceMs = 5_000;
 
+    //a killed command's gloss, which the shell block reads to word its row and open on what the command printed
+    public const string TimedOutGloss = "timed out";
+
     //the first line of a background call's result where no registry exists, so the model reads that it waited on the command
     public const string ForegroundNote = "(background is not available here; the command ran in the foreground)";
 
     public string Name => "shell";
-    public string Description => "Run a PowerShell command in the working directory; timeout_ms defaults to 120000 in the foreground and to none in the background, and background true returns at once with the output arriving when the command ends.";
+    public string Description => "Run a PowerShell command in the working directory; timeout_ms defaults to 120000 in the foreground, background true returns at once and the output arrives when the command ends, so a long command goes in the background.";
     public JsonElement ParametersSchema => ToolArgs.Schema("""
         {"type":"object","properties":{"command":{"type":"string"},"timeout_ms":{"type":"integer"},"background":{"type":"boolean"}},"required":["command"]}
         """);
@@ -122,6 +125,7 @@ public sealed class ShellTool : ITool
 
         using var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
         timeoutCts.CancelAfter(timeoutMs);
+        var timedOut = false;
         try
         {
             await proc.WaitForExitAsync(timeoutCts.Token);
@@ -130,8 +134,14 @@ public sealed class ShellTool : ITool
         {
             try { proc.Kill(entireProcessTree: true); } catch { }
             if (ct.IsCancellationRequested) throw;
-            return new ToolResult(note + $"command timed out after {timeoutMs}ms", IsError: true);
+            timedOut = true;
+            //the kill returns before the exit, and the exit code is read below, so wait for it under the drain's own bound
+            using var killWait = new CancellationTokenSource(DrainGraceMs);
+            try { await proc.WaitForExitAsync(killWait.Token); } catch (OperationCanceledException) { }
         }
+
+        //a kill that outlived its wait has no exit code to read, the timed-out text writes none anyway
+        var exit = proc.HasExited ? proc.ExitCode : -1;
 
         //the drains can still be blocked after the process exits, so wait a short grace and take what arrived. the turn must not wait on a reader that is still blocked
         var pipeHeld = false;
@@ -146,20 +156,28 @@ public sealed class ShellTool : ITool
             {
                 pipeHeld = true;
             }
-            drain.Set("exit", proc.ExitCode);
+            drain.Set("exit", exit);
             if (ctx.Trace.Enabled) drain.Set("drain_us", (Stopwatch.GetTimestamp() - drainFrom) * 1_000_000 / Stopwatch.Frequency);
             drain.Set("background_child", pipeHeld ? 1 : 0);
         }
 
         string outText, errText;
         lock (gate) { outText = outBuf.ToString(); errText = errBuf.ToString(); }
-        var text = note + Compose(outText, errText, proc.ExitCode, pipeHeld, sandboxProject, sandboxRoots);
-        return new ToolResult(text, IsError: proc.ExitCode != 0, Gloss: $"exit {proc.ExitCode}");
+        if (timedOut)
+        {
+            //what the command printed before the kill is often the part that says why it hung
+            var kept = Compose(outText, errText, exit, pipeHeld, sandboxProject, sandboxRoots, timedOut: true);
+            var head = $"command timed out after {timeoutMs}ms, killed";
+            return new ToolResult(note + (kept.Length > 0 ? head + "; output so far:" + Environment.NewLine + kept : head + "; no output"),
+                IsError: true, Gloss: TimedOutGloss);
+        }
+        var text = note + Compose(outText, errText, exit, pipeHeld, sandboxProject, sandboxRoots);
+        return new ToolResult(text, IsError: exit != 0, Gloss: $"exit {exit}");
     }
 
     //the result text from what the pipes gave, in one place, so a foreground call and a background task's end cannot read differently
     internal static string Compose(string stdout, string stderr, int exitCode, bool pipeHeld,
-        string? sandboxProject, IReadOnlyList<string>? sandboxRoots)
+        string? sandboxProject, IReadOnlyList<string>? sandboxRoots, bool timedOut = false)
     {
         var outText = stdout.TrimEnd();
         var errText = stderr.TrimEnd();
@@ -169,7 +187,7 @@ public sealed class ShellTool : ITool
         if (sandboxProject is not null && Gatto.Core.Sandbox.SandboxRefusal.Note(errText, sandboxProject, sandboxRoots) is { } refusal)
             sb.AppendLine().Append(refusal);
         if (pipeHeld) sb.AppendLine().Append(PipeHeldNote);
-        if (exitCode != 0) sb.AppendLine().Append($"(exit code {exitCode})");
+        if (exitCode != 0 && !timedOut) sb.AppendLine().Append($"(exit code {exitCode})");   //a killed command's exit code is gatto's
         return ToolArgs.HeadCap(sb.ToString(), OutputCap);
     }
 

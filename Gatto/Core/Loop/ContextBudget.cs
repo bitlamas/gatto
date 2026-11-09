@@ -28,19 +28,24 @@ public static class ContextBudget
     public static int ElideBefore(IReadOnlyList<int> roundStarts, int turnUserIndex) =>
         roundStarts.Count > RecentRounds ? roundStarts[^RecentRounds] : turnUserIndex;
 
+    //one picture's tokens, an estimate read on one vision model, since a picture has no characters to count
+    public const int ImageTokensEstimate = 1950;
+
     //counts what the given messages hold, callers that want the size of the real request must estimate the shaped copy
     public static int Estimate(IEnumerable<ChatMessage> messages)
     {
         long chars = 0;
+        long images = 0;
         foreach (var m in messages)
         {
             chars += m.Content?.Length ?? 0;
             chars += m.ReasoningContent?.Length ?? 0;
+            images += m.Images?.Count ?? 0;
             if (m.ToolCalls is { } calls)
                 foreach (var c in calls)
                     chars += c.ArgumentsJson?.Length ?? 0;
         }
-        return (int)(chars / CharsPerToken);
+        return (int)(chars / CharsPerToken + images * ImageTokensEstimate);
     }
 
     //the json each tool definition adds around its name, description and schema, an approximation of the request body
@@ -124,6 +129,14 @@ public static class ContextBudget
         void CutAt(int i)
         {
             var content = working[i].Content ?? "";
+            //a tool's pictures go and its line stays, and neither size guard below applies
+            if (working[i] is { By: not null, Images.Count: > 0 } read)
+            {
+                working[i] = read with { Images = null, Content = content + " — images elided, read_file reads them again" };
+                elided++;
+                through = Math.Max(through, i + 1);
+                return;
+            }
             string stub;
             if (working[i].Role == "tool") stub = Cut(content, ToolNameFor(working, i) + " result", " — re-run if needed");
             //a background end's head line already says what ran and how it ended, so it is the stub's subject and no head is kept

@@ -14,8 +14,8 @@ public enum TruncationKind { Length, Stream }
 //the full shape of a finished turn, where finish_reason tells a token-limit stop from a clean one
 public sealed record TurnResult(TurnOutcome Outcome, string? FinishReason, TruncationKind? Truncation, int Rounds, string? LastError);
 
-//one queued text the loop delivers at a round boundary, and the file a watched letter came from, null for typed words
-public sealed record QueuedInput(string Text, string? Watch = null);
+//one queued text the loop delivers at a round boundary, the file a watched letter came from and the background end it carries, both null for typed words
+public sealed record QueuedInput(string Text, string? Watch = null, BackgroundEnd? End = null);
 
 //the loop's malformed-arguments text as one constant, since the audition grader reads the same string
 public static class LoopErrors
@@ -38,6 +38,8 @@ public interface ITurnObserver
     void OnToolCallCancelled(ToolCall call) { }
     //a queued message the loop delivered at a round boundary, told after its record is saved, so a renderer commits it where the record sits
     void OnQueuedDelivered(ChatMessage record) { }
+    //the images a tool read this round, told after their record is saved, so a renderer draws them where the record sits
+    void OnImagesDelivered(ChatMessage record) { }
     //the server's prefill progress for the request in flight, and only the rich renderer shows it
     void OnPromptProgress(long total, long processed) { }
     //the traced turn's span, told before the first round, so a renderer can open its delta spans under it
@@ -204,11 +206,15 @@ public sealed class AgentLoop(
         //a rescue may fire more than once per turn, since a fresh oversized result is a new problem
         var reactiveHasRescued = false;
         var madeProgressSinceRescue = false;
+        //the image record the last round appended, which the next request alone may withdraw
+        ChatMessage? imageRecord = null;
         convo.Append(userRecord);
         while (true)
         {
             round++;
             _traceRounds = round;
+            var imageBefore = imageRecord;
+            imageRecord = null;
 
             var overhead = ContextBudget.EstimateTools(tools.Specs());   //the definitions ride every request, read per round so a /role swap is seen
             //an armed compaction decides on the uncut conversation and nothing new is cut, so elision runs only where no compaction is armed
@@ -293,7 +299,7 @@ public sealed class AgentLoop(
 
             if (elidedCount > 0 && !elisionWarned)
             {
-                Warn($"context: elided {elidedCount} oldest tool results");
+                Warn($"context: elided {elidedCount} oldest results");
                 elisionWarned = true;
             }
             if (stillOver && !stillOverWarned)
@@ -370,6 +376,15 @@ public sealed class AgentLoop(
                 observer.OnWarning($"auto-compacted{pct} — continuing");
                 continue;                                              //re-enter the round on the rebuilt conversation
             }
+            //a server that judged the picture refuses with 400 or 500, so that record alone leaves
+            catch (GattoHttpStatusException refused) when (imageBefore is { Images.Count: > 0 }
+                && refused is not GattoContextOverflowException && refused.StatusCode is 400 or 500)
+            {
+                convo.Remove(imageBefore);
+                Persist(convo, observer);
+                Warn($"the server refused the request after {string.Join(", ", imageBefore.Images!.Select(i => i.Name))}; image withdrawn");
+                throw;
+            }
 
             Release();                        //a dropped or stopped stream still owes the screen its held tail
             madeProgressSinceRescue = true;   //this round streamed without overflowing, so a later overflow may rescue again
@@ -425,6 +440,19 @@ public sealed class AgentLoop(
             Persist(convo, observer);
             observer.OnToolCallsRecorded(calls);
 
+            //the pictures this round's persisted results carried, delivered after the round's last result so the tool-result run is never split
+            var roundImages = new List<ImageRef>();
+            void DeliverImages()
+            {
+                if (roundImages.Count == 0) return;
+                var record = ImageDelivery.Build(convo, roundImages, ImageDelivery.CarriedShas(convo.Messages, usageState?.ElidedThrough ?? 0));
+                roundImages.Clear();
+                convo.Append(record);
+                Persist(convo, observer);
+                observer.OnImagesDelivered(record);
+                imageRecord = record;
+            }
+
             //answer this call and every remaining call so --continue reads a balanced transcript, then end the turn
             TurnResult CancelFrom(int first)
             {
@@ -433,6 +461,7 @@ public sealed class AgentLoop(
                     convo.AddToolResult(calls[j].Id, new ToolResult(LoopErrors.Cancelled, IsError: true));
                     observer.OnToolCallCancelled(calls[j]);
                 }
+                DeliverImages();
                 Warn(TurnLines.RemainingCancelled);
                 return new TurnResult(TurnOutcome.Cancelled, finishReason, null, round, lastWarning);
             }
@@ -456,10 +485,10 @@ public sealed class AgentLoop(
                     toolSpan.Dispose();
                     return CancelFrom(i);   //a cancel that lands mid-tool, Ctrl+C or esc
                 }
-                //a tool_result hook may rewrite the result the model reads, a throwing handler leaves it unchanged
+                //a tool_result hook may rewrite the result the model reads, a throwing handler leaves it unchanged. the pictures ride the tool's own result
+                var ran = result;
                 using (var resultSpan = _trace.Open(Trace.ToolResult, toolSpan.Id))
                 {
-                    var ran = result;
                     result = await hooks.EmitToolResultAsync(new HookPayload(Call: call, Result: result));
                     resultSpan.Set("handlers", hooks.HandlerCount(HookEvent.ToolResult));
                     resultSpan.Set("replaced", ReferenceEquals(ran, result) ? 0 : 1);
@@ -472,7 +501,11 @@ public sealed class AgentLoop(
                 //persist after AddToolResult, so a kill from here on still leaves the result on disk
                 Persist(convo, observer);
                 observer.OnToolResult(call, result);
+                //a hook that refuses a picture says so with IsError, and a refused result delivers nothing
+                if (ran.Images is { Count: > 0 } read && !result.IsError) roundImages.AddRange(read);
             }
+
+            DeliverImages();
 
             //a stop at the round's last prompt ends the turn here, the next request would go out on the stopped turn and leave a truncated record
             if (ct.IsCancellationRequested)
@@ -487,11 +520,15 @@ public sealed class AgentLoop(
                 var records = new List<ChatMessage>(queued.Count);
                 foreach (var typed in queued)
                 {
-                    var record = convo.UserRecord(typed.Text, watch: typed.Watch);
+                    //an end is the record its own dispatch builds, so it never takes the resume note and every reader knows it by Background
+                    var record = typed.End is { } end
+                        ? convo.BackgroundRecord(end.Number, end.Text, end.Gloss, end.IsError)
+                        : convo.UserRecord(typed.Text, watch: typed.Watch);
                     convo.Append(record);
                     records.Add(record);
                 }
-                delivered.AddRange(queued.Select(q => q.Text));
+                //a compaction's continuation carries an end as its head line, never its output
+                delivered.AddRange(queued.Select(q => q.End is null ? q.Text : BackgroundTasks.HeadOf(q.Text)));
                 Persist(convo, observer);
                 foreach (var record in records) observer.OnQueuedDelivered(record);
             }

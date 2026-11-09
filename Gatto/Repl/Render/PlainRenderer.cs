@@ -35,6 +35,8 @@ public sealed class PlainRenderer(ReasoningMode reasoning = ReasoningMode.Collap
     internal static string ResultLine(ToolCall c, ToolResult r, GlyphSet g)
     {
         var name = TermText.Sanitize(c.Name);
+        if (name == "shell" && r.Gloss == ShellTool.TimedOutGloss)
+            return $"[tool] {name} " + ShellBlockRender.PlainTimedOut(ShellOutput.Parse(r.Text), g);
         if (name == "shell" && ShellOutput.ExitCodeOf(r.Gloss) is int exit)
             return $"[tool] {name} " + ShellBlockRender.PlainWords(ShellOutput.Parse(r.Text), exit, r.Text.Length, g);
         return r.IsError
@@ -50,6 +52,12 @@ public sealed class PlainRenderer(ReasoningMode reasoning = ReasoningMode.Collap
         Console.ResetColor();
     }
     public void OnUsage(Usage u) { }
+
+    //a tool's pictures as gatto's own line, live and on replay, since the plain face has no block for them
+    public void OnImagesDelivered(ChatMessage record) => Console.WriteLine(ImageLine(record, _glyphs));
+
+    internal static string ImageLine(ChatMessage record, GlyphSet g) => $"\n{g.Sharp} " + TermText.Sanitize(record.Content ?? "");
+
     private static string Truncate(string s, int max, GlyphSet g) =>
         s.Length <= max ? s : s[..max] + g.Ellipsis;
 }

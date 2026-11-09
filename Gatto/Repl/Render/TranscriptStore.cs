@@ -80,6 +80,10 @@ public static class TranscriptStore
                     //a letter draws as it did live, folded on its own band, keyed on the field the watch wrote
                     model.Append(LetterItem.From(m));
                     break;
+                case "user" when m.By is not null:
+                    //a tool's pictures draw as their block, never as the user's words
+                    model.Append(ImageBlockItem.From(m));
+                    break;
                 case "user" when m.Background is not null:
                     //a background end draws as it did live, its block from the record and never as the user's words
                     model.Append(BackgroundEndItem.From(m, theme, glyphs, role));

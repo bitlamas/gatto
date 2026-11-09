@@ -62,6 +62,20 @@ public sealed class Conversation
     public ChatMessage BackgroundRecord(int number, string text, string gloss, bool isError) =>
         new("user", text, IsError: isError, Gloss: gloss, Ts: _now(), Background: number);
 
+    //the images a tool read this round as one user-role record, which never takes the resume note, so the note waits for the next typed message
+    public ChatMessage ImageRecord(string line, IReadOnlyList<ImageRef>? images, string by) =>
+        new("user", line, Ts: _now(), Images: images, By: by);
+
+    //take one record out and leave everything after it, the withdrawal of a picture the server refused keeps the messages delivered after it
+    public void Remove(ChatMessage record)
+    {
+        lock (_write)
+        {
+            var i = _messages.FindIndex(m => ReferenceEquals(m, record));
+            if (i > 0) _messages.RemoveAt(i);
+        }
+    }
+
     //a record built by UserRecord or BackgroundRecord, the user record a turn opens with, and each queued message the loop delivers inside it
     public void Append(ChatMessage record) { lock (_write) _messages.Add(record); }
     //stripped says how many control tokens already came out of text, callers pass pre-stripped text and the strip stays at the loop seam

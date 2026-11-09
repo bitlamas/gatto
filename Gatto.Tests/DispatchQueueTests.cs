@@ -183,7 +183,7 @@ public class DispatchQueueTests
     }
 
     [Fact]
-    public async Task THE_TURN_TAKES_PLAIN_MESSAGES_AND_LETTERS_IN_ORDER_AND_LEAVES_THE_REST_WITH_THEIR_PERMITS()
+    public async Task THE_TURN_TAKES_PLAIN_MESSAGES_LETTERS_AND_ENDS_IN_ORDER_AND_LEAVES_THE_REST_WITH_THEIR_PERMITS()
     {
         var q = new DispatchQueue(10);
         q.TryEnqueue("one");
@@ -195,23 +195,24 @@ public class DispatchQueueTests
 
         var taken = q.TakeQueuedForTurn(watchBudget: 6);
 
-        Assert.Equal([("one", EntryKind.Plain), ("C:\\inbox\\a.md\n\nletter a", EntryKind.Watch), ("two", EntryKind.Plain)],
-            taken.Select(e => (e.Text, e.Kind)));
+        Assert.Equal([("one", (int?)null), ("C:\\inbox\\a.md\n\nletter a", null), (End(1).Text, 1), ("two", null)],
+            taken.Select(e => (e.Text, e.End?.Number)));
         using var cts = Deadline();
         Assert.Equal("/compact", (await q.TakeAsync(cts.Token))?.Text);
-        Assert.Equal(1, (await q.TakeAsync(cts.Token))?.End?.Number);
         Assert.Equal("look at [Image #1]", (await q.TakeAsync(cts.Token))?.Text);
         await Blocks(q);   //one permit went with each taken entry, so nothing phantom is left
     }
 
     [Fact]
-    public void THE_TURN_TAKES_NOTHING_FROM_A_QUEUE_OF_ENDS()
+    public async Task THE_TURN_TAKES_A_PARKED_END_AND_LEAVES_NO_PERMIT_BEHIND()
     {
         var q = new DispatchQueue(10);
-        q.EnqueueTask(End(1));
         q.EnqueueTask(End(2));
-        Assert.Empty(q.TakeQueuedForTurn(watchBudget: 6));
-        Assert.Equal(2, q.Count);
+        q.Park(new QueueEntry(End(1).Text, End(1), Drawn: true));
+
+        Assert.Equal([1, 2], q.TakeQueuedForTurn(watchBudget: 6).Select(e => e.End!.Number));
+        Assert.Equal(0, q.Count);
+        await Blocks(q);
     }
 
     [Fact]

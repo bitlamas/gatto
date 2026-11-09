@@ -127,4 +127,45 @@ public class ImagePersistenceTests : IDisposable
         Assert.DoesNotContain("image_url", json, StringComparison.Ordinal);
         Assert.Contains("changed", warnings[0], StringComparison.OrdinalIgnoreCase);
     }
+
+    [Fact]
+    public void A_tool_image_record_round_trips_its_images_and_by()
+    {
+        var img = ImageRef.FromFile(Write("page.png", Png(0x30)));
+        var line = SessionStore.ChatJson(new Conversation(null).ImageRecord("images read this round: page.png (9 bytes)", [img], "read_file"));
+        Assert.Contains("\"by\":\"read_file\"", line, StringComparison.Ordinal);
+
+        var back = SessionStore.ParseChatElement(JsonDocument.Parse(line).RootElement);
+        Assert.Equal(("user", "read_file"), (back.Role, back.By));
+        Assert.Equal(img.Sha256, Assert.Single(back.Images!).Sha256);
+    }
+
+    [Fact]
+    public void A_typed_record_writes_no_by_field() =>
+        Assert.DoesNotContain("\"by\"", SessionStore.ChatJson(new ChatMessage("user", "look")), StringComparison.Ordinal);
+
+    [Fact]
+    public void A_tool_image_record_writes_its_line_first_then_the_picture()
+    {
+        var img = ImageRef.FromFile(Write("p.png", Png(0x31)));
+        var json = RequestJson.SerialiseMessage(new ChatMessage("user", "images read this round: p.png (9 bytes)", Images: [img], By: "read_file"));
+
+        using var doc = JsonDocument.Parse(json);
+        var parts = doc.RootElement.GetProperty("content");
+        Assert.Equal("images read this round: p.png (9 bytes)", parts[0].GetProperty("text").GetString());
+        Assert.Equal("image_url", parts[2].GetProperty("type").GetString());
+    }
+
+    [Fact]
+    public void A_tool_read_file_that_changed_stubs_with_read_file_reads_it_again()
+    {
+        var path = Write("chart.png", Png(0x62));
+        var m = new ChatMessage("user", "images read this round: chart.png (9 bytes)", Images: [ImageRef.FromFile(path)], By: "read_file");
+        File.WriteAllBytes(path, Png(0x63));
+
+        var json = RequestJson.SerialiseMessage(m, new ImageCache());
+
+        Assert.Contains("read_file reads it again", json, StringComparison.Ordinal);
+        Assert.DoesNotContain("attach it again", json, StringComparison.Ordinal);
+    }
 }

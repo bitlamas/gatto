@@ -41,6 +41,9 @@ public interface IToolContext
     //the background tasks a shell call may start, armed by the rich face alone. null everywhere else, where the flag runs in the foreground
     BackgroundTasks? Tasks => null;
 
+    //true when the answering model definitely cannot see, asked at each image read. null where the face has no probe, and unknown never refuses
+    Func<bool>? VisionBlind => null;
+
     //the trace and the open tool.exec span, which the loop hands a tool per call only when tracing. no ambient span exists
     Trace Trace => Trace.Off;
     long TraceParent => 0;

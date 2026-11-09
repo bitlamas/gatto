@@ -77,7 +77,15 @@ public static class ShellBlockRender
             var prefix = GutterWrap.Hang + theme.Paint(g.Elbow, Theme.Dim) + " ";
             var prefixCells = GutterWrap.Hang.Length + UnicodeWidth.Of(g.Elbow) + 1;
             var gloss = input.PaintedGloss;
-            if (ShellOutput.ExitCodeOf(input.RawGloss) is int exit)
+            if (input.RawGloss == ShellTool.TimedOutGloss)
+            {
+                var room = budget == int.MaxValue ? budget : budget - prefixCells;
+                var printed = Printed(entries.Count);
+                (gloss, linkStart, linkEnd) = PaintWords(TimedOutWords(printed, open, input.ResultChars, g), room, theme, g);
+                if (linkEnd > linkStart) { linkStart += prefixCells; linkEnd += prefixCells; }
+                opens |= printed > 0;
+            }
+            else if (ShellOutput.ExitCodeOf(input.RawGloss) is int exit)
             {
                 var room = budget == int.MaxValue ? budget : budget - prefixCells;
                 List<(string Text, ShellInk Ink)> Words(bool isOpen)
@@ -170,6 +178,27 @@ public static class ShellBlockRender
         if (entries > (lastErr is null ? 0 : 1)) { w.Add((dot, ShellInk.Dim)); w.Add((link, ShellInk.Link)); }
         return w;
     }
+
+    //the lines a killed command printed, the tool's note line above them not counted
+    private static int Printed(int entries) => Math.Max(0, entries - 1);
+
+    //a killed command has no exit code of its own, so the row says it timed out and counts what it printed before the kill
+    private static List<(string Text, ShellInk Ink)> TimedOutWords(int printed, bool open, int resultChars, GlyphSet g)
+    {
+        var dot = $" {g.Dot} ";
+        var w = new List<(string, ShellInk)> { (g.Bad, ShellInk.Err), (" timed out", ShellInk.Err) };
+        if (printed == 0) { w.Add((dot + "no output", ShellInk.Dim)); return w; }
+        w.Add((dot + Plural.Of(printed, "line"), ShellInk.Dim));
+        w.Add((dot, ShellInk.Dim));
+        w.Add((open ? CollapseWords : ExpandWords, ShellInk.Link));
+        if (resultChars > 0) w.Add(($"{dot}~{InputFrame.KFormat(resultChars / 4)} tok", ShellInk.Tok));
+        return w;
+    }
+
+    //the timed-out words for a surface with no click, the link and the count of tokens dropped
+    public static string PlainTimedOut(ShellOutput output, GlyphSet g) =>
+        string.Concat(TimedOutWords(Printed(Entries(output).Count), open: false, 0, g)
+            .TakeWhile(p => p.Ink != ShellInk.Link).Select(Clean)).TrimEnd(' ', g.Dot[0]);
 
     //the result words for a surface with no click, the link and its separator dropped
     public static string PlainWords(ShellOutput output, int exit, int resultChars, GlyphSet g)

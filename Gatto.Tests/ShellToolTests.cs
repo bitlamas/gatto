@@ -53,6 +53,31 @@ public class ShellToolTests : IDisposable
         Assert.Contains("timed out", r.Text);
     }
 
+    //the output printed before the timeout comes back under the note, and the kill's exit code is gatto's, so no exit line is written
+    [Fact]
+    public async Task A_TIMED_OUT_COMMAND_KEEPS_WHAT_IT_PRINTED()
+    {
+        var r = await new ShellTool().ExecuteAsync(
+            Args(new { command = "Write-Output 'before the wait'; Start-Sleep -Seconds 30", timeout_ms = 4000 }), Ctx, default);
+
+        Assert.True(r.IsError);
+        Assert.Equal("timed out", r.Gloss);
+        Assert.Equal("command timed out after 4000ms, killed; output so far:\nbefore the wait", r.Text.Replace("\r\n", "\n"));
+    }
+
+    [Fact]
+    public async Task A_TIMED_OUT_COMMAND_THAT_PRINTED_NOTHING_SAYS_SO()
+    {
+        var r = await new ShellTool().ExecuteAsync(
+            Args(new { command = "Start-Sleep -Seconds 30", timeout_ms = 1500 }), Ctx, default);
+
+        Assert.Equal("command timed out after 1500ms, killed; no output", r.Text);
+    }
+
+    [Fact]
+    public void A_TIMED_OUT_COMPOSE_WRITES_NO_EXIT_LINE() =>
+        Assert.Equal("partial", ShellTool.Compose("partial\r\n", "", -1, pipeHeld: false, null, null, timedOut: true));
+
     [Fact]
     public async Task Shell_GlossIsExitCode()
     {
@@ -178,8 +203,8 @@ public class ShellToolTests : IDisposable
         var tool = new ShellTool();
         Assert.Equal("boolean", tool.ParametersSchema.GetProperty("properties").GetProperty("background").GetProperty("type").GetString());
         Assert.Equal(["command"], tool.ParametersSchema.GetProperty("required").EnumerateArray().Select(e => e.GetString()));
-        Assert.Equal("Run a PowerShell command in the working directory; timeout_ms defaults to 120000 in the foreground and to none "
-            + "in the background, and background true returns at once with the output arriving when the command ends.",
+        Assert.Equal("Run a PowerShell command in the working directory; timeout_ms defaults to 120000 in the foreground, "
+            + "background true returns at once and the output arrives when the command ends, so a long command goes in the background.",
             tool.Description);
     }
 

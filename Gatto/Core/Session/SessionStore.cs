@@ -179,6 +179,7 @@ public sealed class SessionStore(string homePath, string cwd)
             if (m.Gloss is not null) w.WriteString("gloss", m.Gloss);
             if (m.Background is int task) w.WriteNumber("background", task);
             if (m.Watch is not null) w.WriteString("watch", m.Watch);
+            if (m.By is not null) w.WriteString("by", m.By);
             if (m.Update is { } update)
             {
                 w.WriteStartObject("gatto_update");
@@ -301,7 +302,8 @@ public sealed class SessionStore(string homePath, string cwd)
             ReadUpdate(el),
             ReadShape(el),
             el.TryGetProperty("background", out var bg) && bg.ValueKind == JsonValueKind.Number && bg.TryGetInt32(out var task) ? task : null,
-            el.TryGetProperty("watch", out var wt) && wt.ValueKind == JsonValueKind.String ? wt.GetString() : null);
+            el.TryGetProperty("watch", out var wt) && wt.ValueKind == JsonValueKind.String ? wt.GetString() : null,
+            el.TryGetProperty("by", out var by) && by.ValueKind == JsonValueKind.String ? by.GetString() : null);
     }
 
     //both fields or neither, an absent pair is a reply whose request went out uncut

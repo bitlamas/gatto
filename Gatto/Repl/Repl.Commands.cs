@@ -245,7 +245,7 @@ public sealed partial class Repl
             if (msgs[i].Role == "assistant" && msgs[i].Content is { Length: > 0 }) { aIdx = i; break; }
         if (aIdx < 0) return null;
         for (var i = aIdx - 1; i >= 0; i--)
-            if (msgs[i].Role == "user" && msgs[i].Content is { Length: > 0 } u)
+            if (msgs[i].Role == "user" && msgs[i].By is null && msgs[i].Content is { Length: > 0 } u)   //a tool's image record is not the user's words, the search goes past it
                 //a background end is not the user's words, so its head line names it and its output stays out of the summary
                 return (msgs[i].Background is null ? u : Gatto.Core.Tools.BackgroundTasks.HeadOf(u), msgs[aIdx].Content!);
         return null;

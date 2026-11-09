@@ -7,7 +7,7 @@ namespace Gatto.Core.Loop;
 public enum ContextGroup { Prefix, Messages, Reasoning, ToolResults }
 
 //one part of a request with the text the server would read for it, the detail drawn after the label behind the glyph set's dot
-public sealed record ContextPartText(string Label, ContextGroup Group, string Text, string? Detail = null);
+public sealed record ContextPartText(string Label, ContextGroup Group, string Text, string? Detail = null, int Pictures = 0);
 
 //one part with its count, exact from the server's tokenizer or estimated from its characters
 public sealed record ContextPart(string Label, ContextGroup Group, int Tokens, string? Detail = null);
@@ -52,9 +52,9 @@ public static class ContextCount
                 var counted = new List<ContextPart>();
                 foreach (var p in parts)
                 {
-                    if (p.Text.Length == 0) { counted.Add(new ContextPart(p.Label, p.Group, 0, p.Detail)); continue; }
+                    if (p.Text.Length == 0) { counted.Add(new ContextPart(p.Label, p.Group, PicturesTokens(p), p.Detail)); continue; }
                     if (await counter.TokenizeCountAsync(p.Text, ct) is not int n) { counted = null; break; }
-                    counted.Add(new ContextPart(p.Label, p.Group, n, p.Detail));
+                    counted.Add(new ContextPart(p.Label, p.Group, n + PicturesTokens(p), p.Detail));
                 }
                 if (counted is not null)
                 {
@@ -67,7 +67,7 @@ public static class ContextCount
 
         //chars over four scaled by the server's ratio, and the total is the server's own reading when there is one
         var estimated = parts.Select(p => new ContextPart(p.Label, p.Group,
-            (int)Math.Round((p.Text.Length / 4.0) * inputs.Ratio), p.Detail)).ToList();
+            (int)Math.Round((p.Text.Length / 4.0) * inputs.Ratio) + PicturesTokens(p), p.Detail)).ToList();
         var sum = estimated.Sum(e => e.Tokens);
         var totalEstimate = before ? sum : inputs.LastPromptTokens ?? sum;
         return new ContextFigures(inputs.Window, totalEstimate, false, counter is not null, before, inputs.AutoCompactAt,
@@ -87,15 +87,26 @@ public static class ContextCount
         var tools = chat.Where(m => m.Role == "tool").ToList();
         //a background end is gatto's record, not the user's words, so it counts on its own line
         var ends = chat.Where(m => m.Role == "user" && m.Background is not null).ToList();
-        parts.Add(new ContextPartText("user", ContextGroup.Messages, Join(chat.Where(m => m.Role == "user" && m.Background is null).Select(m => m.Content))));
+        //a tool's image record is gatto's too, counted on its own line with the pictures it carries
+        var images = chat.Where(m => m.Role == "user" && m.By is not null).ToList();
+        var typed = chat.Where(m => m.Role == "user" && m.Background is null && m.By is null).ToList();
+        parts.Add(new ContextPartText("user", ContextGroup.Messages, Join(typed.Select(m => m.Content)), Pictures: typed.Sum(m => m.Images?.Count ?? 0)));
         if (ends.Count > 0)
             parts.Add(new ContextPartText("background", ContextGroup.Messages, Join(ends.Select(m => m.Content)), $"{ends.Count}"));
+        if (images.Count > 0)
+        {
+            var pictures = images.Sum(m => m.Images?.Count ?? 0);
+            parts.Add(new ContextPartText("images", ContextGroup.Messages, Join(images.Select(m => m.Content)), $"{pictures}", pictures));
+        }
         parts.Add(new ContextPartText("assistant", ContextGroup.Messages, Join(chat.Where(m => m.Role == "assistant")
             .SelectMany(m => new[] { m.Content }.Concat(m.ToolCalls?.Select(c => c.Name + c.ArgumentsJson) ?? [])))));
         parts.Add(new ContextPartText("reasoning", ContextGroup.Reasoning, Join(chat.Select(m => m.ReasoningContent))));
         parts.Add(new ContextPartText("tool results", ContextGroup.ToolResults, Join(tools.Select(m => m.Content)), $"{tools.Count}"));
         return parts;
     }
+
+    //a picture has no text to tokenize, so its row carries the per-picture estimate on top of its line
+    private static int PicturesTokens(ContextPartText p) => p.Pictures * ContextBudget.ImageTokensEstimate;
 
     private static int PrefixEnd(List<ContextPart> parts)
     {

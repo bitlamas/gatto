@@ -133,6 +133,41 @@ public sealed class BackgroundDispatchTests : IDisposable
         Assert.Equal("still talking", h.Convo.Messages[users[1].i - 1].Content);   //it joined after the turn's last reply
     }
 
+    //an end queued while a round's tools run joins at that round's boundary, after its results, and the turn that kept it marks it delivered
+    [Fact]
+    public async Task AN_END_DURING_A_TOOL_ROUND_JOINS_AT_ITS_BOUNDARY_AND_IS_DELIVERED()
+    {
+        var chrome = new Gatto.Repl.Render.Chrome.ChromeHandle();
+        var h = Harness(chrome: chrome);
+        var bg = JsonSerializer.Serialize(new { command = "Write-Output 'quick'", background = true });
+        var fg = JsonSerializer.Serialize(new { command = "Write-Output 'more'" });
+        h.Client.EnqueueTurn(new StreamEvent.ToolCallReady(new ToolCall("c1", "shell", bg)), new StreamEvent.Finished("tool_calls", null));
+        h.Client.EnqueueTurn(new StreamEvent.ToolCallReady(new ToolCall("c2", "shell", fg)), new StreamEvent.Finished("tool_calls", null));
+        Says(h.Client, "seen it");
+        var queued = false;
+        //the round after the background start waits until the end is in the queue, so the end is there when that round's results are in
+        h.Client.HoldNextTurn = _ =>
+        {
+            h.Client.HoldNextTurn = async ct => queued = await h.UntilAsync(() => QueueHoldsAnEnd(chrome), Waits.Bound);
+            return Task.CompletedTask;
+        };
+        var forgotten = false;
+        h.Keys.Line("go");
+
+        await h.RunUntilAsync(() =>
+        {
+            if (h.Client.Requests.Count < 3 || !h.Saw("seen it")) return false;
+            forgotten = h.Tasks?.Snapshot.Count == 0;
+            return true;
+        });
+
+        Assert.True(queued, "the end never reached the queue while the round ran");
+        var roles = h.Convo.Messages.Where(m => m.Role != "system").Select(m => m.Background is not null ? "end" : m.Role).ToList();
+        Assert.Equal(["user", "assistant", "tool", "assistant", "tool", "end", "assistant"], roles);
+        Assert.Equal(3, h.Client.Requests.Count);   //no turn of its own for the end
+        Assert.True(forgotten, "the registry still lists the task the turn delivered");
+    }
+
     [Fact]
     public async Task A_PASTE_PENDING_WHEN_AN_END_ARRIVES_STAYS_FOR_THE_NEXT_TYPED_MESSAGE()
     {

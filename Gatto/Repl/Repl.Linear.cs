@@ -130,9 +130,27 @@ public sealed partial class Repl
             //the letters the watch's budget allows, and what was taken told back to it in queue order, so a typed message between two letters resets the count where it stood
             var taken = queue.TakeQueuedForTurn(watch?.Budget() ?? int.MaxValue);
             if (taken.Count == 0) return [];
-            watch?.Taken(taken.Select(e => e.Kind));
-            lock (s.Gate) { if (!stopped) { PublishQueueLocked(); RedrawLocked(lastView); } }
-            return [.. taken.Select(e => new QueuedInput(e.Text, e.WatchPath))];
+            //an end is not the user's typing, so it leaves the letter count where it stood
+            watch?.Taken(taken.Where(e => !e.IsTask).Select(e => e.Kind));
+            lock (s.Gate)
+            {
+                _endsTaken.AddRange(taken.Where(e => e.IsTask));
+                if (!stopped) { PublishQueueLocked(); RedrawLocked(lastView); }
+            }
+            return [.. taken.Select(e => new QueuedInput(e.Text, e.WatchPath, e.End))];
+        };
+
+        //the ends a turn delivered are marked when it is kept and parked in order when it rolled back
+        _settleEnds = kept =>
+        {
+            lock (s.Gate)
+            {
+                var ends = _endsTaken.ToList();
+                _endsTaken.Clear();
+                if (kept) { foreach (var e in ends) _tasks?.Delivered(e.End!.Number); return; }
+                for (var i = ends.Count - 1; i >= 0; i--) queue.Park(ends[i] with { Drawn = true });
+                if (ends.Count > 0) s.Painter.State.QueueTexts = queue.Texts();
+            }
         };
 
         //the letter lands in the row the moment it is read, mid-turn included, and a letter of a watch that was moved, turned off or ended by /new is dropped
@@ -576,6 +594,10 @@ public sealed partial class Repl
     //the session's background tasks, armed by the rich loop alone and null outside it
     private Gatto.Core.Tools.BackgroundTasks? _tasks;
 
+    //the ends the running turn's boundaries delivered, under the gate, and the settle the rich loop arms for them after the turn
+    private readonly List<QueueEntry> _endsTaken = new();
+    private Action<bool>? _settleEnds;
+
     //how many tasks the coming /new ended, said in the new transcript after its rotation
     private int _endedAtNew;
 
@@ -761,7 +783,7 @@ public sealed partial class Repl
             _endedAtNew = 0;
             if (SeedFirstMessage(convo, firstMessage))
             {
-                ReplayTranscript(convo.Messages, s.Renderer, u => s.Renderer.CommitUser(u.Split('\n')), s.Renderer.CommitBackground, s.Renderer.CommitLetter);
+                ReplayTranscript(convo.Messages, s.Renderer, u => s.Renderer.CommitUser(u.Split('\n')), s.Renderer.CommitBackground, s.Renderer.CommitLetter, s.Renderer.CommitImages);
                 s.Renderer.EndTurn();
             }
             s.Painter.Repaint();
@@ -869,7 +891,7 @@ public sealed partial class Repl
                 //the switch seeded the new role's opening, painted through the rebuilt renderer in the new tint
                 if (result.Opened)
                 {
-                    ReplayTranscript(convo.Messages, s.Renderer, u => s.Renderer.CommitUser(u.Split('\n')), s.Renderer.CommitBackground, s.Renderer.CommitLetter);
+                    ReplayTranscript(convo.Messages, s.Renderer, u => s.Renderer.CommitUser(u.Split('\n')), s.Renderer.CommitBackground, s.Renderer.CommitLetter, s.Renderer.CommitImages);
                     s.Renderer.EndTurn();
                 }
             }
@@ -955,6 +977,7 @@ public sealed partial class Repl
             deafWatch?.Disarm();
             lock (_ctsLock) { s.TurnCts?.Dispose(); s.TurnCts = null; }
         }
+        _settleEnds?.Invoke(kept);
         //name the session's folder in the tab once a turn ran to its end, a cancelled turn is not that boundary
         if (!turnCancelled) s.Painter.AltScreen.SetFinalTitle(TerminalTitle.Project(cwd));
         s.Refresh();                                   //a turn may have committed or switched branches, and tokens moved

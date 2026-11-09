@@ -644,13 +644,17 @@ public sealed partial class Repl(
     //repaint a restored transcript through the renderer channels, sending each tool call and its result as a pair, and change nothing
     public static void ReplayTranscript(
         IReadOnlyList<ChatMessage> messages, ITurnObserver observer, Action<string> echoUser, Action<ChatMessage> echoBackground,
-        Action<ChatMessage>? echoLetter = null)   //null echoes a letter as its text, the plain face has no block for it
+        Action<ChatMessage>? echoLetter = null, Action<ChatMessage>? echoImages = null)   //null echoes a letter as its text, the plain face has no block for it
     {
         var pending = new Dictionary<string, ToolCall>(StringComparer.Ordinal);
         foreach (var m in messages)
         {
             switch (m.Role)
             {
+                //a tool's pictures are gatto's record, drawn as their block where a face has one and never echoed as typed
+                case "user" when m.By is not null:
+                    echoImages?.Invoke(m);
+                    break;
                 //a background end is gatto's record, so each face draws it its own way and never echoes it as typed
                 case "user" when m.Background is not null:
                     echoBackground(m);

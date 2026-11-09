@@ -550,4 +550,53 @@ public class ContextBudgetTests
         Assert.Null(ContextBudget.UsedTokens(convo, new ContextUsageState()));
         Assert.Null(ContextBudget.UsedTokens(convo, null));
     }
+
+    private static ImageRef Pic(string name) => new($@"C:\proj\{name}", 70, name, "image/png");
+
+    private static ChatMessage Read(string name) =>
+        new Conversation(null).ImageRecord($"images read this round: {name} (70 bytes)", [Pic(name)], "read_file");
+
+    //a tool's pictures are cut to its line before the frontier, the user's own are never cut, and the line is far shorter than the guards ask
+    [Fact]
+    public void A_TOOL_READ_IMAGE_BEFORE_THE_FRONTIER_IS_CUT_TO_ITS_LINE_AND_A_TYPED_ONE_IS_NOT()
+    {
+        var msgs = Rounds(40);
+        msgs.Insert(1, Read("a.png"));
+        var typed = new ChatMessage("user", "look", Images: [Pic("b.png")]);
+        msgs.Insert(2, typed);
+
+        var (first, elided, _, through) = ContextBudget.Apply(msgs, 10_500, msgs.Count);
+
+        Assert.Null(first[1].Images);
+        Assert.Equal(("read_file", "images read this round: a.png (70 bytes) — images elided, read_file reads them again"), (first[1].By, first[1].Content));
+        Assert.Same(typed, first[2]);
+        Assert.True(elided > 1);
+        Assert.True(through >= 2);
+        Assert.Single(msgs[1].Images!);   //the request copy only, the conversation keeps the picture
+
+        var (again, _, _, throughAgain) = ContextBudget.Apply(msgs, 10_500, msgs.Count, elidedThrough: through, extend: false);
+        Assert.Equal(first[1], again[1]);   //the cut repeats byte for byte, so the prefix the server holds stays
+        Assert.True(throughAgain >= through);
+    }
+
+    [Fact]
+    public void ESTIMATE_COUNTS_EACH_PICTURE_BY_THE_CONSTANT()
+    {
+        var plain = new ChatMessage("user", new string('t', 400));
+        var two = plain with { Images = [Pic("a.png"), Pic("b.png")] };
+
+        Assert.Equal(100, ContextBudget.Estimate([plain]));
+        Assert.Equal(100 + 2 * ContextBudget.ImageTokensEstimate, ContextBudget.Estimate([two]));
+    }
+
+    //a typed picture is carried anywhere, a tool's only at or past the frontier
+    [Fact]
+    public void THE_CARRIED_SHAS_ARE_TYPED_ONES_ANYWHERE_AND_TOOL_ONES_AT_OR_PAST_THE_FRONTIER()
+    {
+        List<ChatMessage> msgs = [new("system", "sys"), Read("a.png"), new("user", "look", Images: [Pic("b.png")]), Read("c.png")];
+
+        var carried = ImageDelivery.CarriedShas(msgs, elidedThrough: 3);
+
+        Assert.Equal(["b.png", "c.png"], carried.Order());
+    }
 }

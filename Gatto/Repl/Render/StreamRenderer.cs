@@ -235,6 +235,7 @@ public sealed class StreamRenderer : ITurnObserver
     public void OnQueuedDelivered(ChatMessage record)
     {
         if (record.Watch is not null) CommitLetter(record);
+        else if (record.Background is not null) CommitBackground(record);
         else CommitUser((record.Content ?? "").Split('\n'));
     }
 
@@ -560,6 +561,24 @@ public sealed class StreamRenderer : ITurnObserver
             _blankPending = true;   //the block has closed, so the next commit leads with a blank row
         },
         () => _surface.Write("\n! " + TermText.Sanitize(Gatto.Core.Tools.BackgroundTasks.HeadOf(record.Content)) + "\n"));
+
+    //the pictures a tool read this round, after the round's results and before the next reply, live and on restore alike, appended before the paint
+    public void OnImagesDelivered(ChatMessage record) => CommitImages(record);
+
+    public void CommitImages(ChatMessage record) => Guarded(
+        () =>
+        {
+            if (_inReasoning) CloseReasoningBlock();
+            else FlushOpenLine();
+            if (_last != LastWrite.None) _blankPending = true;
+            var item = ImageBlockItem.From(record);
+            _model?.Append(item);
+            CommitRows([.. item.Render(_surface.Width, _theme, _glyphs).Skip(item.LeadingBlank ? 1 : 0)]);
+            _last = LastWrite.Tool;
+            _blockOpen = false;
+            _blankPending = true;   //the block has closed, so the next commit leads with a blank row
+        },
+        () => _surface.Write("\n" + string.Join("\n", ImageBlockItem.From(record).Lines.Select(TermText.Sanitize)) + "\n"));
 
     //a watched letter as its folded block on its own band, live and on restore alike, appended before the paint
     public void CommitLetter(ChatMessage record) => Guarded(

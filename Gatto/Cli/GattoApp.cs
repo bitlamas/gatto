@@ -40,6 +40,8 @@ file sealed class AppToolContext(string cwd, string home, IUserPrompter? prompte
 
     //null at construction, and the rich face alone sets it when it starts, so -p and the plain face run the flag in the foreground
     public BackgroundTasks? Tasks { get; set; }
+
+    public Func<bool>? VisionBlind { get; init; }
 }
 
 file sealed class OneShotObserver : ITurnObserver
@@ -778,7 +780,8 @@ public static class GattoApp
 
         private void BuildClient()
         {
-            toolCtx = new AppToolContext(cwd, home, prompter, sessions, sandbox);
+            //blind only on a definite false, read live so a /model switch is seen, and a cloud endpoint answers unknown
+            toolCtx = new AppToolContext(cwd, home, prompter, sessions, sandbox) { VisionBlind = () => state.ProbeServing().Vision == false };
             permissions = PermissionStore.Load(home, cwd, out var permWarning);   //a corrupt permissions file loads as no grants, so every mutating tool prompts, with a warning
             if (permWarning is not null) err.WriteLine($"! {permWarning}");
 

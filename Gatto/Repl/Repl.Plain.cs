@@ -37,11 +37,11 @@ public sealed partial class Repl
             Console.WriteLine($"(resumed from {resumedFrom})");
             if (resumeLine is not null) Console.WriteLine(resumeLine);
             _usageState.SeedFrom(convo.Messages);   //the last reply's cut, so the first request keeps the prefix the server last read
-            ReplayTranscript(convo.Messages, renderer, u => Console.WriteLine("\n> " + u), PlainBackgroundEcho);
+            ReplayTranscript(convo.Messages, renderer, u => Console.WriteLine("\n> " + u), PlainBackgroundEcho, echoImages: m => Console.WriteLine(PlainRenderer.ImageLine(m, _glyphs)));
             Console.WriteLine();
         }
         else if (SeedFirstMessage(convo, firstMessage))
-            ReplayTranscript(convo.Messages, renderer, u => Console.WriteLine("\n> " + u), PlainBackgroundEcho);
+            ReplayTranscript(convo.Messages, renderer, u => Console.WriteLine("\n> " + u), PlainBackgroundEcho, echoImages: m => Console.WriteLine(PlainRenderer.ImageLine(m, _glyphs)));
         //plain prints subagent progress as a bracketed line like its [tool] rows, and the sink is a one-slot holder filled once a renderer exists
         if (subagentProgressSink is { Length: > 0 })
             subagentProgressSink[0] = m => Console.WriteLine("[agent] " + m);
@@ -101,7 +101,7 @@ public sealed partial class Repl
                 loop.ResetAutoCompact();               //a fresh session may auto-compact again
                 Console.WriteLine(NewConversationLine);
                 if (SeedFirstMessage(convo, firstMessage))
-                    ReplayTranscript(convo.Messages, renderer, u => Console.WriteLine("\n> " + u), PlainBackgroundEcho);
+                    ReplayTranscript(convo.Messages, renderer, u => Console.WriteLine("\n> " + u), PlainBackgroundEcho, echoImages: m => Console.WriteLine(PlainRenderer.ImageLine(m, _glyphs)));
                 continue;
             }
             if (SlashGate.TryMatchCommand(trimmedLine, "/wild", out var wildArg))
@@ -190,7 +190,7 @@ public sealed partial class Repl
                 }
                 Console.WriteLine(result.Success ? CommandText.RoleLine(roleName) : result.Message);
                 if (result.Opened)   //the switch seeded the new role's opening, so it alone is painted
-                    ReplayTranscript(convo.Messages, renderer, u => Console.WriteLine("\n> " + u), PlainBackgroundEcho);
+                    ReplayTranscript(convo.Messages, renderer, u => Console.WriteLine("\n> " + u), PlainBackgroundEcho, echoImages: m => Console.WriteLine(PlainRenderer.ImageLine(m, _glyphs)));
                 continue;
             }
             if (trimmedLine == "/model" || trimmedLine.StartsWith("/model ", StringComparison.Ordinal))

@@ -300,7 +300,7 @@ public sealed partial class Repl
             }
             else   //resumedFrom without a resumedPath, so replay the chat records only
             {
-                ReplayTranscript(convo.Messages, renderer, u => renderer.CommitUser(u.Split('\n')), renderer.CommitBackground, renderer.CommitLetter);
+                ReplayTranscript(convo.Messages, renderer, u => renderer.CommitUser(u.Split('\n')), renderer.CommitBackground, renderer.CommitLetter, renderer.CommitImages);
                 renderer.EndTurn();
             }
             _usageState.SeedFrom(convo.Messages);   //the last reply's cut, so the first request keeps the prefix the server last read
@@ -311,7 +311,7 @@ public sealed partial class Repl
         }
         else if (SeedFirstMessage(convo, firstMessage))
         {
-            ReplayTranscript(convo.Messages, renderer, u => renderer.CommitUser(u.Split('\n')), renderer.CommitBackground, renderer.CommitLetter);
+            ReplayTranscript(convo.Messages, renderer, u => renderer.CommitUser(u.Split('\n')), renderer.CommitBackground, renderer.CommitLetter, renderer.CommitImages);
             renderer.EndTurn();
         }
         painter.Repaint();   //first paint, so the banner and empty composer are up before the loop starts

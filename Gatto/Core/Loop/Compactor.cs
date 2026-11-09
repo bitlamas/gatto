@@ -410,6 +410,9 @@ public sealed class Compactor(IChatClient client, string model, RequestShape? sh
         //the last user message always stays, so a background end keeps its head line alone, or its whole output would ride every retry
         if (lastUserIdx >= 0 && messages[lastUserIdx] is { Background: not null } end)
             messages = [.. messages.Take(lastUserIdx), end with { Content = Tools.BackgroundTasks.HeadOf(end.Content) }, .. messages.Skip(lastUserIdx + 1)];
+        //a tool's image record keeps its line and drops its pictures, as an end keeps its head
+        else if (lastUserIdx >= 0 && messages[lastUserIdx] is { By: not null } read)
+            messages = [.. messages.Take(lastUserIdx), read with { Images = null }, .. messages.Skip(lastUserIdx + 1)];
 
         if (windowTokens <= 0)
         {

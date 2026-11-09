@@ -7,7 +7,7 @@ namespace Gatto.Repl.Input;
 //what one message may attach, a count that asks above the threshold and a byte ceiling that no grant waives
 public readonly record struct AttachLimits(int PromptAboveImages, long MaxTotalBytes)
 {
-    public static AttachLimits Default => new(PromptAboveImages: 10, MaxTotalBytes: 20L * 1024 * 1024);
+    public static AttachLimits Default => new(PromptAboveImages: 10, MaxTotalBytes: ImageRef.MaxBytes);
 }
 
 //find image files named in a user's message, pure and cwd-relative, with the attached shas passed in by the caller

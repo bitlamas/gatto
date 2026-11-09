@@ -32,6 +32,14 @@ file sealed class TasksContext(string cwd, BackgroundTasks tasks) : IToolContext
     public BackgroundTasks? Tasks => tasks;
 }
 
+file sealed class BlindContext(string cwd) : IToolContext
+{
+    public string Cwd => cwd;
+    public string HomePath => cwd;
+    public IUserPrompter? Prompter => null;
+    public Func<bool>? VisionBlind => () => true;
+}
+
 public sealed class ToolCallRunTests : IDisposable
 {
     private readonly string _dir = Directory.CreateTempSubdirectory("gatto-callrun-").FullName;
@@ -58,6 +66,26 @@ public sealed class ToolCallRunTests : IDisposable
         Assert.NotSame(context, probe.Seen);   //the traced wrapper, not the session's own context
         Assert.Same(tasks, probe.Seen!.Tasks);
         Assert.Equal(context.SessionFiles, probe.Seen.SessionFiles);
+    }
+
+    //the traced wrapper forwards the vision probe by name, the interface default would let a read past a blind model
+    [Fact]
+    public async Task A_TRACED_IMAGE_READ_ON_A_BLIND_MODEL_STILL_REFUSES()
+    {
+        File.WriteAllBytes(Path.Combine(_dir, "shot.png"), ImageFixtures.Png1x1);
+        using var trace = new Gatto.Core.Trace(Stopwatch.GetTimestamp(), DateTimeOffset.Now, () => Path.Combine(_dir, "t.trace.jsonl"), () => "s", "b", 1);
+        var reg = new ToolRegistry();
+        reg.Register(new ReadFileTool());
+        var client = new FakeChatClient();
+        client.EnqueueTurn(new StreamEvent.ToolCallReady(new ToolCall("c1", "read_file", "{\"path\":\"shot.png\"}")), new StreamEvent.Finished("tool_calls", null));
+        client.EnqueueTurn(new StreamEvent.Finished("stop", null));
+        var observer = new RecordingObserver();
+        var loop = new AgentLoop(client, reg, new HookBus(), new BlindContext(_dir), "m", trace: trace);
+
+        await loop.RunTurnAsync(new Conversation(null), "go", observer, default);
+
+        var (_, result) = Assert.Single(observer.Results);
+        Assert.Equal((true, "this model cannot see images"), (result.IsError, result.Text));
     }
 
     //a call to a tool of a source turned off answers before the gate, so nobody is asked to allow a tool that cannot run

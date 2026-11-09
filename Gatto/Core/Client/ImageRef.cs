@@ -7,6 +7,9 @@ namespace Gatto.Core.Client;
 public sealed record ImageRef(string Path, long Bytes, string Sha256, string MediaType,
     string? DisplayName = null)
 {
+    //the most image bytes one message or one round may carry, the typed path and read_file share this one number
+    public const long MaxBytes = 20L * 1024 * 1024;
+
     public static ImageRef FromFile(string path)
     {
         var bytes = File.ReadAllBytes(path);
@@ -15,6 +18,11 @@ public sealed record ImageRef(string Path, long Bytes, string Sha256, string Med
 
     //the display name, falling back to the file's own name
     public string Name => DisplayName ?? System.IO.Path.GetFileName(Path);
+
+    //the size as the tool's line, the image record and its block all say it: bytes below 1 KB, whole KB below 1 MB, tenths of a MB above
+    public string Size => Bytes < 1024 ? Plural.Of(Bytes, "byte")
+        : Bytes < 1024 * 1024 ? $"{Bytes / 1024} KB"
+        : (Bytes / (1024.0 * 1024)).ToString("0.0", System.Globalization.CultureInfo.InvariantCulture) + " MB";
 
     internal static string ShaOf(ReadOnlySpan<byte> bytes) =>
         Convert.ToHexString(SHA256.HashData(bytes)).ToLowerInvariant();

@@ -448,4 +448,8 @@ public class ImageAttachTests : IDisposable
         Directory.CreateDirectory(Path.Combine(_dir, "shots.png"));
         Assert.Empty(Detect("open shots.png").Attached);
     }
+
+    [Fact]
+    public void The_typed_ceiling_is_the_one_read_file_uses() =>
+        Assert.Equal(ImageRef.MaxBytes, AttachLimits.Default.MaxTotalBytes);
 }

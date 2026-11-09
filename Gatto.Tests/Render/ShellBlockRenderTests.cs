@@ -124,6 +124,44 @@ public sealed class ShellBlockRenderTests
         Assert.EndsWith("GIVEN", Visible(l.Rows[l.ResultRow].Text), StringComparison.Ordinal);
     }
 
+    private static ShellBlockInput TimedOut(string result) =>
+        new(Short, ShellOutput.Parse(result), result.Length, ShellTool.TimedOutGloss, "painted", HasResult: true, "coder");
+
+    //a timed-out command's row says so in its own words and opens on the note and what the command printed, never the bare note
+    [Fact]
+    public void A_timed_out_result_reads_timed_out_with_its_lines_and_opens_on_them()
+    {
+        var i = TimedOut("command timed out after 4000ms, killed; output so far:\r\nwaiting for port 8080\r\nstill waiting");
+        var closed = Closed(i, 120);
+        var row = Visible(closed.Rows[closed.ResultRow].Text);
+
+        Assert.Contains($"{U.Bad} timed out {U.Dot} 2 lines {U.Dot} {ShellBlockRender.ExpandWords}", row, StringComparison.Ordinal);
+        Assert.DoesNotContain("output so far", row, StringComparison.Ordinal);
+        Assert.Equal(ShellBlockRender.ExpandWords, row[closed.LinkStart..closed.LinkEnd]);
+        Assert.True(closed.Opens);
+
+        var open = Open(i, 120);
+        var shown = open.Rows.Skip(open.OutputFirst).Take(open.OutputShown).Select(r => Visible(r.Text)).ToList();
+        Assert.Contains(shown, r => r.Contains("output so far:", StringComparison.Ordinal));
+        Assert.Contains(shown, r => r.Contains("still waiting", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public void A_timed_out_result_that_printed_nothing_says_so_and_offers_nothing()
+    {
+        var l = Closed(TimedOut("command timed out after 1500ms, killed; no output"), 120);
+        Assert.EndsWith($"{U.Bad} timed out {U.Dot} no output", Visible(l.Rows[l.ResultRow].Text), StringComparison.Ordinal);
+        Assert.Equal(l.LinkStart, l.LinkEnd);
+        Assert.False(l.Opens);
+    }
+
+    [Fact]
+    public void The_plain_face_reads_a_timed_out_result_in_the_same_words()
+    {
+        var r = new ToolResult("command timed out after 4000ms, killed; output so far:\r\none\r\ntwo", IsError: true, Gloss: ShellTool.TimedOutGloss);
+        Assert.Equal($"[tool] shell {U.Bad} timed out {U.Dot} 2 lines", PlainRenderer.ResultLine(new Gatto.Core.Client.ToolCall("c1", "shell", "{}"), r, U));
+    }
+
     [Fact]
     public void The_stderr_line_is_cut_first_so_the_link_stays_visible()
     {

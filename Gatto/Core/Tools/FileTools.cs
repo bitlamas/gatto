@@ -50,7 +50,7 @@ internal static class ToolArgs
 public sealed class ReadFileTool : ITool
 {
     public string Name => "read_file";
-    public string Description => "Read a file; offset and limit are a 1-based line window.";
+    public string Description => "Read a file or an image; offset and limit are a 1-based line window.";
     public JsonElement ParametersSchema => ToolArgs.Schema("""
         {"type":"object","properties":{"path":{"type":"string"},"offset":{"type":"integer"},"limit":{"type":"integer"}},"required":["path"]}
         """);
@@ -59,14 +59,18 @@ public sealed class ReadFileTool : ITool
     {
         var path = ToolArgs.Resolve(ctx, ToolArgs.RequiredString(args, "path"));
         if (!File.Exists(path)) throw new FileNotFoundException($"file not found: {path}");
-        //refuse unusable bytes before reading the body, the loop turns the throw into an IsError result with this message
-        if (BinarySniff.DescribeFile(path) is string kind)
-            throw new InvalidOperationException(
-                $"{Path.GetFileName(path)} is a {kind} — read_file reads text, and decoding these bytes "
-                + "would fill the context with unusable output. Use the shell for binary inspection "
-                + "(file size, hashes, metadata).");
         var offset = ToolArgs.OptionalInt(args, "offset");
         var limit = ToolArgs.OptionalInt(args, "limit");
+        //refuse unusable bytes before reading the body, the loop turns the throw into an IsError result with this message
+        if (BinarySniff.DescribeFile(path) is string kind)
+        {
+            if (kind is "PNG image" or "JPEG image" or "GIF image" or "BMP image")
+                return ReadImage(path, ctx, offset is not null || limit is not null);
+            throw new InvalidOperationException(
+                $"{Path.GetFileName(path)} is a {kind} — read_file reads text and images, and decoding these bytes "
+                + "would fill the context with unusable output. Use the shell for binary inspection "
+                + "(file size, hashes, metadata).");
+        }
         string text;
         if (offset is null && limit is null)
             text = await File.ReadAllTextAsync(path, ct);
@@ -85,6 +89,21 @@ public sealed class ReadFileTool : ITool
         return new ToolResult(capped, Gloss: truncated
             ? $"{Plural.Of(lineCount, "line")} (truncated)"
             : Plural.Of(lineCount, "line"));
+    }
+
+    //the size before a byte of the body, then the model's sight, then the read
+    private static ToolResult ReadImage(string path, IToolContext ctx, bool windowed)
+    {
+        var length = new FileInfo(path).Length;
+        //tenths rounded up, so a file one byte over never reads as the limit itself
+        if (length > ImageRef.MaxBytes)
+            throw new InvalidOperationException(
+                $"image too large ({(Math.Ceiling(length * 10.0 / (1024 * 1024)) / 10).ToString("0.0", System.Globalization.CultureInfo.InvariantCulture)} MB, limit {ImageRef.MaxBytes / (1024 * 1024)} MB)");
+        //the fact alone, the model runs no slash command and the user's fix sentence stays on the typed path
+        if (ctx.VisionBlind?.Invoke() == true) throw new InvalidOperationException("this model cannot see images");
+        var img = ImageRef.FromFile(path);
+        var text = $"image: {img.Name}, {img.Size}" + (windowed ? "; offset and limit do not apply to an image" : "");
+        return new ToolResult(text, Gloss: img.Size, Images: [img]);
     }
 }
 
