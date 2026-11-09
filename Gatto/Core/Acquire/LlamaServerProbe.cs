@@ -18,7 +18,8 @@ internal static class LlamaServerProbe
 
     //this pattern is blind to which program answered, every tool in the release prints the same banner, so the name gate decides
     private static readonly Regex ClassicBanner = new(   //releases from 10703 print a package version, then the build and the commit, so both shapes must identify the server
-        @"version:\s*(?:(?<build>\d+)\s*\([0-9a-f]+\)|[^\s(]+\s*\(build\s+(?<build>\d+),\s*commit\s+[0-9a-f]+\))",
+        //a build from a modified tree tags its commit, upstream with -dirty, so a hyphen suffix after the hex still identifies the server
+        @"version:\s*(?:(?<build>\d+)\s*\([0-9a-f]+(?:-[\w.-]+)?\)|[^\s(]+\s*\(build\s+(?<build>\d+),\s*commit\s+[0-9a-f]+(?:-[\w.-]+)?\))",
         RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
 
     //no default here, a new call site must pass the discriminator rather than inherit the neutral sentence

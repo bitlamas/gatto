@@ -888,6 +888,88 @@ public class DoctorTests : IDisposable
         Assert.DoesNotContain("llama_server (", output.ToString(), StringComparison.Ordinal);
     }
 
+    //another model whose profile names an engine, on its own port so the models check stays green
+    private void WriteModel(string id, int port, string enginePath)
+    {
+        var dir = Path.Combine(_home, "models", id);
+        Directory.CreateDirectory(dir);
+        File.WriteAllText(Path.Combine(dir, "profile.json"),
+            $$"""{"files":[{"path":"{{_modelPath.Replace("\\", "\\\\")}}","active":true}],"port":{{port}},"context":8192,"llama_server":"{{enginePath.Replace("\\", "\\\\")}}"}""");
+    }
+
+    private static List<string> EngineRows(StringWriter output) =>
+        [.. output.ToString().Split('\n', StringSplitOptions.RemoveEmptyEntries)
+            .Select(l => l.TrimEnd('\r')).Where(l => l.Length > 2 && l[2..].StartsWith("llama_server", StringComparison.Ordinal))];
+
+    //the profiles on one engine share its row and its probe, a path spelled in another case included, so 3 profiles on 2 engines draw 2 rows
+    [Fact]
+    public async Task Check5_Profiles_on_one_engine_share_one_row_and_one_probe()
+    {
+        WriteGreenHome();
+        WriteProfileEngine(_llamaServerPath);
+        WriteModel("second-model", Port + 1, _llamaServerPath.ToUpperInvariant());
+        var other = Path.Combine(_home, "engines", "own", "llama-server.exe");
+        Directory.CreateDirectory(Path.GetDirectoryName(other)!);
+        File.WriteAllText(other, "");
+        WriteModel("third-model", Port + 2, other);
+        var probed = new List<string>();
+        var doctor = new Doctor(HealthyClient(), probeBinary: p =>
+        {
+            probed.Add(p);
+            return new ProbeResult(ProbeShape.ClassicServer, "version: 10076 (fake)");
+        });
+        var output = new StringWriter();
+
+        var exit = await doctor.RunAsync(_home, _cwd, output, CancellationToken.None);
+
+        Assert.Equal(0, exit);
+        Assert.Equal([_llamaServerPath, other], probed);
+        var dot = GlyphSet.Unicode.Dot;
+        Assert.Equal(
+            [$"✓ llama_server: {_llamaServerPath} (version: 10076 (fake)) {dot} gatto.json and 2 profiles",
+             $"✓ llama_server: {other} (version: 10076 (fake)) {dot} 1 profile"],
+            EngineRows(output));
+    }
+
+    //a failing engine names each profile on it and each file to fix, in one row
+    [Fact]
+    public async Task Check5_A_failing_engine_names_each_profile_on_it_in_one_row()
+    {
+        WriteGreenHome();
+        var missing = Path.Combine(_home, "engines", "gone", "llama-server.exe");
+        WriteProfileEngine(missing);
+        WriteModel("second-model", Port + 1, missing);
+        var output = new StringWriter();
+
+        var exit = await NewDoctor(HealthyClient()).RunAsync(_home, _cwd, output, CancellationToken.None);
+
+        Assert.Equal(1, exit);
+        var rows = EngineRows(output);
+        Assert.Equal(2, rows.Count);
+        Assert.StartsWith("✓ llama_server: " + _llamaServerPath, rows[0], StringComparison.Ordinal);
+        Assert.StartsWith($"✗ llama_server (second-model, test-model): {missing} does not exist", rows[1], StringComparison.Ordinal);
+        Assert.Contains("run: fix \"llama_server\" in " + Path.Combine("models", "second-model", "profile.json")
+            + " and " + Path.Combine("models", "test-model", "profile.json") + " to point", rows[1], StringComparison.Ordinal);
+    }
+
+    //the global engine failing with a profile on it names gatto.json beside the profile, both files to fix
+    [Fact]
+    public async Task Check5_A_failing_global_engine_names_gatto_json_and_the_profiles_on_it()
+    {
+        WriteGreenHome();
+        WriteProfileEngine(_llamaServerPath);
+        File.Delete(_llamaServerPath);
+        var output = new StringWriter();
+
+        var exit = await NewDoctor(HealthyClient()).RunAsync(_home, _cwd, output, CancellationToken.None);
+
+        Assert.Equal(1, exit);
+        var rows = EngineRows(output);
+        Assert.Single(rows);
+        Assert.StartsWith($"✗ llama_server (gatto.json, test-model): {_llamaServerPath} does not exist", rows[0], StringComparison.Ordinal);
+        Assert.Contains("in gatto.json and " + Path.Combine("models", "test-model", "profile.json") + " to point", rows[0], StringComparison.Ordinal);
+    }
+
     [Fact]
     public async Task Check6_CorruptPermissionsFile_FailsAlone_OtherChecksStayGreen()
     {

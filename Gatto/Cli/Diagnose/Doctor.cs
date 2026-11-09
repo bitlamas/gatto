@@ -82,9 +82,8 @@ public sealed class Doctor(
                 modelIds, loadedModels, config, g),
             CheckRoles(rolesDir, config, g),
             CheckExtensions(home, extensionsDir, g, shippedHistorical),
-            CheckLlamaServer(config, modelIds, g),
         });
-        results.AddRange(CheckProfileEngines(loadedModels, g));
+        results.AddRange(CheckEngines(config, modelIds, loadedModels, g));
         results.AddRange(new List<CheckResult>
         {
             CheckPermissions(home, cwd, g),
@@ -460,8 +459,42 @@ public sealed class Doctor(
         return new CheckResult(true, $"extensions: {count} script(s) compile " + g.Dot + $" {named}");
     }
 
-    //5. llama_server is set and exists (skipped with no local model configured)
-    private CheckResult CheckLlamaServer(GattoConfig? config, IReadOnlyList<string> modelIds, Gatto.Terminal.GlyphSet g)
+    //5. llama_server, one row per engine: gatto.json's and each profile's own, grouped by full path so one binary is probed once whatever names it
+    private IEnumerable<CheckResult> CheckEngines(GattoConfig? config, IReadOnlyList<string> modelIds,
+        Dictionary<string, (Model? Model, string? Error)> loadedModels, Gatto.Terminal.GlyphSet g)
+    {
+        var engines = new List<EngineUse>();
+        if (CheckGlobalEngineSet(config, modelIds, g) is { } unset) yield return unset;
+        else engines.Add(new EngineUse(config!.LlamaServer!, Global: true));
+
+        //serve starts the profile's own engine instead of the global one, so each one it names joins the row of its path
+        foreach (var (id, (model, _)) in loadedModels.OrderBy(m => m.Key, StringComparer.OrdinalIgnoreCase))
+        {
+            if (model?.Profile.LlamaServer is not { } path || string.IsNullOrWhiteSpace(path)) continue;
+            var key = EngineKey(path);
+            var use = engines.FirstOrDefault(e => string.Equals(EngineKey(e.Path), key, StringComparison.OrdinalIgnoreCase));
+            if (use is null) engines.Add(use = new EngineUse(path, Global: false));
+            use.Profiles.Add(id);
+        }
+
+        foreach (var use in engines) yield return CheckEngine(use, g);
+    }
+
+    //one engine path and what names it, gatto.json and the profiles in id order
+    private sealed record EngineUse(string Path, bool Global)
+    {
+        public List<string> Profiles { get; } = new();
+    }
+
+    //a path that cannot be made full is compared as written, its row then says it does not exist
+    private static string EngineKey(string path)
+    {
+        try { return Path.GetFullPath(path); }
+        catch (Exception) { return path; }
+    }
+
+    //the global engine is set when a local model needs one, null when it is and its path goes to the probe
+    private static CheckResult? CheckGlobalEngineSet(GattoConfig? config, IReadOnlyList<string> modelIds, Gatto.Terminal.GlyphSet g)
     {
         if (modelIds.Count == 0)
             return new CheckResult(true, "llama_server: skipped " + g.Dot + " no local models configured");
@@ -473,20 +506,17 @@ public sealed class Doctor(
         if (string.IsNullOrWhiteSpace(config.LlamaServer))
             return new CheckResult(false, "llama_server: not set " + g.Dot + " run: set \"llama_server\" in gatto.json to your llama-server.exe path");
 
-        return CheckEngine("llama_server", config.LlamaServer, "gatto.json", g);
+        return null;
     }
 
-    //5b. each model whose profile names its own llama_server, checked as the global one is and named in its row, since serve starts that one instead
-    private IEnumerable<CheckResult> CheckProfileEngines(Dictionary<string, (Model? Model, string? Error)> loadedModels, Gatto.Terminal.GlyphSet g)
+    //one engine path: present, then its --version probe read for shape. a passing row counts what names it, a failing row names each and each file to fix
+    private CheckResult CheckEngine(EngineUse use, Gatto.Terminal.GlyphSet g)
     {
-        foreach (var (id, (model, _)) in loadedModels.OrderBy(m => m.Key, StringComparer.OrdinalIgnoreCase))
-            if (model?.Profile.LlamaServer is { } path && !string.IsNullOrWhiteSpace(path))
-                yield return CheckEngine($"llama_server ({id})", path, Path.Combine("models", id, "profile.json"), g);
-    }
+        var global = use.Global ? new[] { "gatto.json" } : [];
+        var label = use.Profiles.Count == 0 ? "llama_server" : $"llama_server ({string.Join(", ", global.Concat(use.Profiles))})";
+        var source = JoinAnd([.. global, .. use.Profiles.Select(id => Path.Combine("models", id, "profile.json"))]);
+        var path = use.Path;
 
-    //one engine path: present, then its --version probe read for shape, each failure naming the file to fix
-    private CheckResult CheckEngine(string label, string path, string source, Gatto.Terminal.GlyphSet g)
-    {
         if (!File.Exists(path))
             return new CheckResult(false,
                 $"{label}: {path} does not exist {g.Dot} run: fix \"llama_server\" in {source} to point at your llama-server.exe");
@@ -495,7 +525,7 @@ public sealed class Doctor(
         var probe = (probeBinary ?? (p => LlamaServerProbe.Run(p, TimeSpan.FromSeconds(5))))(path);
         return probe.Shape switch
         {
-            ProbeShape.ClassicServer => new CheckResult(true, $"{label}: {path} ({probe.Detail})"),
+            ProbeShape.ClassicServer => new CheckResult(true, $"llama_server: {path} ({probe.Detail})" + UsedBy(use, g)),
             ProbeShape.TimedOut => new CheckResult(false,
                 $"{label}: {path} {g.Dot} {probe.Detail} {g.Dot} run: check this is llama-server.exe and not a hung binary, then: gatto doctor"),
             ProbeShape.NotClassic => new CheckResult(false,
@@ -519,6 +549,18 @@ public sealed class Doctor(
                 $"{label}: {path} {g.Dot} {probe.Detail} {g.Dot} run: check the binary is the classic llama-server.exe, then: gatto doctor"),
         };
     }
+
+    //the tail of a passing row: nothing for gatto.json alone, else the count of profiles on this engine
+    private static string UsedBy(EngineUse use, Gatto.Terminal.GlyphSet g)
+    {
+        if (use.Profiles.Count == 0) return "";
+        var count = use.Profiles.Count == 1 ? "1 profile" : $"{use.Profiles.Count} profiles";
+        return $" {g.Dot} " + (use.Global ? $"gatto.json and {count}" : count);
+    }
+
+    //a, b and c, so a failing row names every file to fix in one sentence
+    private static string JoinAnd(IReadOnlyList<string> items) =>
+        items.Count <= 1 ? string.Join("", items) : string.Join(", ", items.Take(items.Count - 1)) + " and " + items[^1];
 
     //6. this folder's grants in the home parse
     private static CheckResult CheckPermissions(string home, string cwd, Gatto.Terminal.GlyphSet g)

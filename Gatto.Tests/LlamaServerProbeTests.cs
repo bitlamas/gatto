@@ -43,6 +43,18 @@ public class LlamaServerProbeTests
         Assert.Contains("'version: X (build N, commit sha)'", r.Detail, StringComparison.Ordinal);
     }
 
+    //a self-built engine tags its commit, so the banner of a lab build and of a modified tree both identify the server and keep their build number
+    [Theory]
+    [InlineData("version: 0.8.0-dev (build 12015, commit a34de8618-lab)\nbuilt with Clang 20.1.8 for Windows x86_64\n", "12015")]
+    [InlineData("version: 0.8.0-dev (build 12015, commit a34de8618-dirty)\nbuilt with Clang 20.1.8 for Windows x86_64\n", "12015")]
+    [InlineData("version: 10076 (305ba519a-dirty)\nbuilt with Clang 20.1.8 for Windows x86_64\n", "10076")]
+    public void A_commit_with_a_suffix_still_identifies_the_server(string banner, string build)
+    {
+        var r = LlamaServerProbe.Interpret(0, "", banner, timedOut: false, vcRuntimeAbsent: false);
+        Assert.Equal(ProbeShape.ClassicServer, r.Shape);
+        Assert.Equal(build, r.Build);
+    }
+
     //both spellings of the exit code must map to DllNotFound. the probe names only the observation, since a missing cudart dies like a missing runtime
     [Theory]
     [InlineData(-1073741515L)]   //the signed value a real Process.ExitCode reports
