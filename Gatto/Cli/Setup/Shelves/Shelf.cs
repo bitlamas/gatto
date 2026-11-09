@@ -278,9 +278,6 @@ internal static class Shelf
         && v.Rows.Select(x => x.Fit).Where(f => f is FitRegime.FitsGpu or FitRegime.FitsSplit or FitRegime.FitsRamOnly
             || f == FitRegime.DoesNotFit && v.Source == ShelfSource.Local).Distinct().Count() >= 2;
 
-    //the rows the two headings and the blank between the groups take, which the row window pays for
-    internal static int GroupRows(ShelfView v) => Grouped(v) ? 3 : 0;
-
     //the table's rows that are not models, its header and the more-below line, which sit beside the pane as the models do
     internal const int TableChrome = 2;
 

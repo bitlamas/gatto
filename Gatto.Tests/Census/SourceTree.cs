@@ -40,7 +40,7 @@ internal static class SourceTree
     //the launch file, the launch state its switches went to, and the six command files its command methods went to, the set two censuses read
     public static IReadOnlyList<string> LaunchAndCommands() =>
         [.. new[] { "Cli/GattoApp.cs", "Cli/Launch/LaunchState.cs", "Cli/ServeCommand.cs", "Cli/Install/UninstallCommand.cs", "Cli/Diagnose/DoctorCommand.cs",
-                    "Cli/AuditionCommand.cs", "Cli/Setup/SetupCommand.cs", "Cli/StatusCommand.cs" }
+                    "Cli/AuditionCommand.cs", "Cli/Setup/SetupCommand.cs", "Cli/StatusCommand.cs", "Cli/SessionsCommand.cs" }
             .Select(r => Path.Combine([RepoRoot(), "Gatto", .. r.Split('/')]))];
 
     //every partial part of the setup flow, SetupFlow.cs and SetupFlow.*.cs directly in Cli/Setup, so a part nobody named is still read

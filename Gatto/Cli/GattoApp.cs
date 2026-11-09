@@ -100,7 +100,7 @@ public static class GattoApp
         gatto, a terminal assistant that runs AI models on your own computer
         usage: gatto [role|command] [options]
           roles:    {roles}
-          commands: setup | serve start [model] [--detach] | serve stop|status | doctor | status | audition | model new [gguf] [id] | update | uninstall
+          commands: setup | serve start [model] [--detach] | serve stop|status | doctor | status | audition | model new [gguf] [id] | sessions sweep <date> | update | uninstall
           options:  -m <model>  -p <prompt>  -e <endpoint>  --effort <level>  --continue[ <id>]  --yes  --sandbox  --version  -h
         """;
 
@@ -252,6 +252,7 @@ public static class GattoApp
         if (args.Command == "model") return await SetupCommand.RunModelAsync(args, ctx);
         if (args.Command == "audition") return await AuditionCommand.RunAuditionAsync(args);
         if (args.Command == "uninstall") return UninstallCommand.RunUninstall(ctx);
+        if (args.Command == "sessions") return await SessionsCommand.RunAsync(args, ctx);
         if (args.Command == "update")
             return await UpdateCommand.RunAsync(ctx ?? CommandContext.Production(), CancellationToken.None);
         //the wizard falls through to the launch path instead of returning, so the setup screen's start option really starts gatto
@@ -1311,7 +1312,7 @@ public static class GattoApp
         return await work.ConfigureAwait(false);
     }
 
-    private static readonly TimeSpan ResidueFrame = TimeSpan.FromMilliseconds(140);   //the pulse's step, the audition ticker's own
+    private static readonly TimeSpan ResidueFrame = TimeSpan.FromMilliseconds(Setup.AuditionTicker.FrameMs);   //the pulse's step, one home for it
 
     //what turns the sandbox on, the command line first, then the home, then the nearest .gatto.json that asks. null leaves it off
     internal static string? SandboxSource(bool flag, bool fromHome, string cwd) =>

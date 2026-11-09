@@ -16,7 +16,7 @@ internal sealed class AuditionTicker : IProgress<AuditionProgress>, IDisposable
     private bool _done;
 
     //how often the row repaints, matching ChromeTicker so gatto's motion reads at one speed
-    private const int FrameMs = 140;
+    internal const int FrameMs = 140;
 
     private readonly Gatto.Terminal.GlyphSet _glyphs;
     private readonly Gatto.Repl.Render.Chrome.PurrFrames _frames;

@@ -10,9 +10,24 @@ public class ServedModelNameTests
 
     [Theory]
     [InlineData(@"C:\models\Qwen3.5-9B-Q4_K_M.gguf", "Qwen3.5-9B-Q4_K_M")]
-    [InlineData("/home/x/weights/model-00001-of-00003.GGUF", "model-00001-of-00003")]
     [InlineData("Qwen3.5-9B-Q4_K_M.gguf", "Qwen3.5-9B-Q4_K_M")]
     public void A_gguf_path_shows_as_its_file_name_without_the_extension(string id, string shown) =>
+        Assert.Equal(shown, ServedModelName.Display(id));
+
+    //the server answers with the first shard's path, and the shard suffix says nothing the quant before it does not
+    [Theory]
+    [InlineData("/home/x/weights/model-00001-of-00003.GGUF", "model")]
+    [InlineData(@"D:\w\Qwen3.8-Flash-Next-Q4_K_XL-IQ4NL-00001-of-00004.gguf", "Qwen3.8-Flash-Next-Q4_K_XL-IQ4NL")]
+    [InlineData("Qwen3.8-Flash-Next-Q4_K_XL-IQ4NL-00003-of-00004.gguf", "Qwen3.8-Flash-Next-Q4_K_XL-IQ4NL")]
+    public void A_shard_path_shows_without_its_shard_suffix(string id, string shown) =>
+        Assert.Equal(shown, ServedModelName.Display(id));
+
+    //only the exact -NNNNN-of-NNNNN before the extension is a shard suffix, and a set of zero shards is a file with an odd name
+    [Theory]
+    [InlineData("Qwen-9B-1-of-4.gguf", "Qwen-9B-1-of-4")]
+    [InlineData("Qwen-9B-00001-of-00000.gguf", "Qwen-9B-00001-of-00000")]
+    [InlineData("Qwen-9B-00001-of-00004-Q4.gguf", "Qwen-9B-00001-of-00004-Q4")]
+    public void A_name_that_is_not_a_shard_suffix_shows_whole(string id, string shown) =>
         Assert.Equal(shown, ServedModelName.Display(id));
 
     //a slash in a cloud id names the provider, and a dot inside a name is no extension, so both show whole
@@ -37,6 +52,10 @@ public class ServedModelNameTests
     [Fact]
     public void The_model_notice_names_a_gguf_path_by_its_file_name() =>
         Assert.Equal("model: Qwen-9B", Gatto.Repl.Commands.CommandText.ModelLine(@"C:\models\Qwen-9B.gguf"));
+
+    [Fact]
+    public void The_model_notice_drops_the_shard_suffix() =>
+        Assert.Equal("model: Qwen-9B-Q4_K_M", Gatto.Repl.Commands.CommandText.ModelLine(@"C:\models\Qwen-9B-Q4_K_M-00001-of-00004.gguf"));
 
     [Fact]
     public void The_status_line_names_a_gguf_path_by_its_file_name()

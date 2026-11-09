@@ -1448,10 +1448,9 @@ internal sealed class TuiSetupSurface : ISetupSurface, IDisposable
             ? new FocusRing(Shelf.Regions(sv, Width, cursor, c.Door is not null), Shelf.Opening(sv))
             : null!;
 
-    //the rows the pane may take beside the table: the models the window allows and the table's own header and more-below line, 0 for an unknown height
-    private static int PaneRows(ShelfView v, int allowance, int outside) =>
-        allowance <= 0 ? 0
-            : Shelf.RowBudget(Math.Max(1, allowance - outside - Shelf.GroupRows(v))) + Shelf.TableChrome + Shelf.GroupRows(v);
+    //the rows the pane may take beside the table: the lines the window allows and the table's own header and more-below line, 0 for an unknown height
+    private static int PaneRows(int allowance, int outside) =>
+        allowance <= 0 ? 0 : Shelf.RowBudget(Math.Max(1, allowance - outside)) + Shelf.TableChrome;
 
     //the first row the shelf's window shows, kept between frames so the window moves only when the cursor leaves it
     private int _shelfTop;
@@ -1460,9 +1459,8 @@ internal sealed class TuiSetupSurface : ISetupSurface, IDisposable
     private ShelfView Windowed(ShelfView v, int cursor, int allowance, int outside)
     {
         if (allowance <= 0) return v;
-        //at least 1 model row, an allowance of 0 means an unknown height. the group headings are rows the models pay for
-        var groups = Shelf.GroupRows(v);
-        var room = Shelf.RowBudget(Math.Max(1, allowance - outside - groups)) + groups;
+        //the lines the window allows, at least 1 so a short window still shows a row. each group heading is charged to them in Fits, so none is reserved here
+        var room = Shelf.RowBudget(Math.Max(1, allowance - outside));
         if (Fits(v, 0, room) >= v.Rows.Count) { _shelfTop = 0; return v; }
         var top = Math.Clamp(_shelfTop, 0, v.Rows.Count - 1);
         if (cursor >= 0 && cursor < top) top = cursor;
@@ -1678,7 +1676,7 @@ internal sealed class TuiSetupSurface : ISetupSurface, IDisposable
         var wv = Windowed(sv, cursor, allowance, outside);
         return Shelf.Body(wv, cursor < 0 ? cursor : cursor - wv.MoreAbove, at.Chip, at.File,
             ring.Current, width, at.Open, _glyphs, working, shownMs: Math.Max(0, _nowMs() - _shownAtMs),
-            paneRows: PaneRows(sv, allowance, outside));
+            paneRows: PaneRows(allowance, outside));
     }
 
     //the body rows above the shelf or the options, composed in one place so the row window can count them

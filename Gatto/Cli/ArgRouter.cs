@@ -15,7 +15,7 @@ public static class ArgRouter
 {
     //a word gatto acts on must never read as a role name, and the child word comes from HardwareProbe.ChildWord so it has one home
     private static readonly string[] Reserved =
-        { "serve", "doctor", "status", "audition", "model", "setup", "uninstall", "update",
+        { "serve", "doctor", "status", "audition", "model", "setup", "uninstall", "update", "sessions",
           Gatto.Core.Hardware.HardwareProbe.ChildWord };
     private static readonly string[] ServeSubcommands = { "start", "stop", "status" };
 
@@ -128,6 +128,9 @@ public static class ArgRouter
         //model takes new as its one subcommand, and RunModelAsync refuses a target or any other subcommand. audition reads its first bare token as the target rather than a subcommand, so shift it out of sub here
         if (command == "audition") { target = sub; sub = null; }
 
-        return new ParsedArgs(command, role, null, null, false, false, sub, target, Detach: detach, Json: json);
+        //only the sessions sweep takes --yes here, since setup falls through to a launch that reads it as tool approval
+        var yes = command == "sessions" && argv.Any(a => a == "--yes");
+
+        return new ParsedArgs(command, role, null, null, false, yes, sub, target, Detach: detach, Json: json);
     }
 }
