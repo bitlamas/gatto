@@ -98,6 +98,7 @@ public sealed class Doctor(
         if (CheckRunningServer(loadedModels, g) is { } runLine) results.Add(runLine);
         if (CheckSingleServerConsistency(rolesDir, config, loadedModels, g) is { } oneLine) results.Add(oneLine);
         results.AddRange(CheckTintContrast(rolesDir));
+        results.AddRange(CheckStores(home, cwd, g));
         //doctor checks for updates whatever update_check says, typing the command is the consent
         if (checkUpdate is not null)
             results.Add(await CheckUpdateAsync(checkUpdate, SelfInstall.IsInstalled(), ct).ConfigureAwait(false));
@@ -419,6 +420,28 @@ public sealed class Doctor(
                 lines.Add(new CheckResult(true, $"roles: {name} tint {light} reads at {RatioText(onWhite)}:1 on white", Info: true));
         }
         return lines;
+    }
+
+    //the weight of the sessions and blobs of the whole home and of this folder's mailbox, three info rows that never judge
+    private static IEnumerable<CheckResult> CheckStores(string home, string cwd, Gatto.Terminal.GlyphSet g)
+    {
+        var sessions = Path.Combine(home, "sessions");
+        var blobs = Path.Combine(home, "blobs");
+        var mailbox = Path.Combine(cwd, ".gatto", "mailbox");
+        yield return Weigh("sessions", "transcript", sessions, StoreWeight.IsTranscript, recurse: false, Tilde(sessions));
+        yield return Weigh("blobs", "image", blobs, _ => true, recurse: false, Tilde(blobs));
+        yield return Weigh("mailbox", "letter", mailbox, StoreWeight.IsLetter, recurse: true, Short(mailbox, cwd));
+
+        CheckResult Weigh(string store, string noun, string folder, Func<string, bool> isItem, bool recurse, string shown)
+        {
+            StoreWeight.Weight? weight;
+            try { weight = StoreWeight.Of(folder, isItem, recurse); }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+            {
+                return new CheckResult(true, $"{store}: not weighed {g.Dot} {ex.Message}", Info: true);
+            }
+            return new CheckResult(true, StoreWeight.Row(store, noun, weight, shown, g.Dot), Info: true);
+        }
     }
 
     //floored to one decimal, so a colour flagged under 4.5 never prints as 4.5

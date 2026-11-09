@@ -90,9 +90,89 @@ public class DoctorTests : IDisposable
 
         Assert.Equal(0, exit);
         var lines = output.ToString().Split('\n', StringSplitOptions.RemoveEmptyEntries);
-        //doctor prints the 10 checks and nothing else, since the version belongs to the shared banner
-        Assert.Equal(10, lines.Length);
-        Assert.All(lines, l => Assert.StartsWith("✓", l));
+        //doctor prints the 10 checks and the 3 store rows and nothing else, since the version belongs to the shared banner
+        Assert.Equal(13, lines.Length);
+        Assert.All(lines[..10], l => Assert.StartsWith("✓", l));
+        Assert.All(lines[10..], l => Assert.StartsWith("i ", l));
+    }
+
+    //each store says it is empty rather than leaving its row out
+    [Fact]
+    public async Task THE_STORE_ROWS_SAY_NONE_WHEN_A_STORE_IS_EMPTY_OR_ABSENT()
+    {
+        WriteGreenHome();
+        Directory.CreateDirectory(Path.Combine(_home, "sessions"));
+
+        var output = new StringWriter();
+        await NewDoctor(HealthyClient()).RunAsync(_home, _cwd, output, CancellationToken.None);
+
+        Assert.Equal($"i sessions: none · {Path.Combine(_home, "sessions")}", Line(output, "sessions:").TrimEnd('\r'));
+        Assert.Equal($"i blobs: none · no {Path.Combine(_home, "blobs")}", Line(output, "blobs:").TrimEnd('\r'));
+        Assert.Equal($"i mailbox: none · no {Path.Combine(".gatto", "mailbox")}", Line(output, "mailbox:").TrimEnd('\r'));
+    }
+
+    //a transcript counts and its sidecars only weigh, the oldest date is the earliest last write
+    [Fact]
+    public async Task THE_SESSIONS_ROW_COUNTS_TRANSCRIPTS_AND_WEIGHS_THEIR_SIDECARS()
+    {
+        WriteGreenHome();
+        var sessions = Path.Combine(_home, "sessions");
+        Directory.CreateDirectory(sessions);
+        Plant(Path.Combine(sessions, "a-1.jsonl"), 1024, new DateTime(2026, 3, 4, 12, 0, 0));
+        Plant(Path.Combine(sessions, "a-2.jsonl"), 1024, new DateTime(2026, 5, 6, 12, 0, 0));
+        Plant(Path.Combine(sessions, "a-1.ledger.jsonl"), 1024, new DateTime(2026, 1, 2, 12, 0, 0));
+        Plant(Path.Combine(sessions, "a-1.trace.jsonl"), 1024, new DateTime(2026, 1, 2, 12, 0, 0));
+
+        var output = new StringWriter();
+        await NewDoctor(HealthyClient()).RunAsync(_home, _cwd, output, CancellationToken.None);
+
+        Assert.Equal($"i sessions: 2 transcripts, 4 KB, oldest 2026-03-04 · {sessions}", Line(output, "sessions:").TrimEnd('\r'));
+    }
+
+    [Fact]
+    public async Task THE_BLOBS_ROW_COUNTS_EVERY_IMAGE()
+    {
+        WriteGreenHome();
+        var blobs = Path.Combine(_home, "blobs");
+        Directory.CreateDirectory(blobs);
+        Plant(Path.Combine(blobs, "aa.png"), 2 * 1024 * 1024, new DateTime(2026, 7, 8, 12, 0, 0));
+
+        var output = new StringWriter();
+        await NewDoctor(HealthyClient()).RunAsync(_home, _cwd, output, CancellationToken.None);
+
+        Assert.Equal($"i blobs: 1 image, 2 MB, oldest 2026-07-08 · {blobs}", Line(output, "blobs:").TrimEnd('\r'));
+    }
+
+    //inboxes and the archive count together, a read sidecar weighs and is not a letter
+    [Fact]
+    public async Task THE_MAILBOX_ROW_COUNTS_THE_LETTERS_OF_EVERY_INBOX_AND_THE_ARCHIVE()
+    {
+        WriteGreenHome();
+        var mailbox = Path.Combine(_cwd, ".gatto", "mailbox");
+        Plant(Path.Combine(mailbox, "gatto", "m", "r", "2026-09-10-x.md"), 100, new DateTime(2026, 9, 10, 12, 0, 0));
+        Plant(Path.Combine(mailbox, "archive", "gatto", "m", "r", "2026-08-01-y.md"), 100, new DateTime(2026, 8, 1, 12, 0, 0));
+        Plant(Path.Combine(mailbox, "archive", "gatto", "m", "r", "2026-08-01-y.md.read"), 100, new DateTime(2026, 7, 1, 12, 0, 0));
+
+        var output = new StringWriter();
+        await NewDoctor(HealthyClient()).RunAsync(_home, _cwd, output, CancellationToken.None);
+
+        Assert.Equal($"i mailbox: 2 letters, 1 KB, oldest 2026-08-01 · {Path.Combine(".gatto", "mailbox")}", Line(output, "mailbox:").TrimEnd('\r'));
+    }
+
+    [Theory]
+    [InlineData(0, "0 KB")]
+    [InlineData(1, "1 KB")]
+    [InlineData(1024 * 1024 - 1, "1 MB")]
+    [InlineData(5L * 1024 * 1024, "5 MB")]
+    [InlineData(3L * 1024 * 1024 * 1024, "3.0 GB")]
+    public void A_STORE_SIZE_READS_IN_KB_BELOW_A_MEGABYTE(long bytes, string shown) =>
+        Assert.Equal(shown, StoreWeight.Size(bytes));
+
+    private static void Plant(string path, int bytes, DateTime written)
+    {
+        Directory.CreateDirectory(Path.GetDirectoryName(path)!);
+        File.WriteAllBytes(path, new byte[bytes]);
+        File.SetLastWriteTime(path, written);
     }
 
     [Fact]
@@ -622,7 +702,7 @@ public class DoctorTests : IDisposable
         //a broken extension must fail only its own check, leaving every other line green.
         var lines = output.ToString().Split('\n', StringSplitOptions.RemoveEmptyEntries);
         foreach (var l in lines)
-            if (!l.Contains("extensions:") )
+            if (!l.Contains("extensions:") && !l.StartsWith("i "))
                 Assert.StartsWith("✓", l);
     }
 
@@ -985,8 +1065,8 @@ public class DoctorTests : IDisposable
 
         Assert.Equal(1, exit);
         var lines = output.ToString().Split('\n', StringSplitOptions.RemoveEmptyEntries);
-        //doctor prints the 10 checks and nothing else, since the version belongs to the shared banner
-        Assert.Equal(10, lines.Length);
+        //doctor prints the 10 checks and the 3 store rows and nothing else, since the version belongs to the shared banner
+        Assert.Equal(13, lines.Length);
 
         var permLine = Line(output, "permissions file");
         Assert.StartsWith("✗", permLine);
@@ -996,7 +1076,7 @@ public class DoctorTests : IDisposable
 
         //one failure must never abort the other checks, so every other line stays green.
         foreach (var l in lines)
-            if (!l.Contains("permissions file") )
+            if (!l.Contains("permissions file") && !l.StartsWith("i "))
                 Assert.StartsWith("✓", l);
     }
 
@@ -1263,7 +1343,7 @@ public class DoctorTests : IDisposable
         //one failure must never abort the other checks, so every other line stays green.
         var lines = output.ToString().Split('\n', StringSplitOptions.RemoveEmptyEntries);
         foreach (var l in lines)
-            if (!l.Contains(".gatto.json") )
+            if (!l.Contains(".gatto.json") && !l.StartsWith("i "))
                 Assert.StartsWith("✓", l);
     }
 
