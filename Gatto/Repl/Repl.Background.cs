@@ -123,7 +123,7 @@ public sealed partial class Repl
             cursor = keyed >= 0 ? keyed : Math.Clamp(cursor, 0, options.Count - 1);
             var numbers = live.Select(t => t.Number).ToList();
             var shells = live.Count;
-            var fields = new PanelFields("tasks", TaskKeys, Count: watchScreen ? BackgroundPanel.WatchKey : BackgroundPanel.Count(shells, watched is not null, g),
+            var fields = new PanelFields("tasks", TaskKeys, Count: watchScreen ? BackgroundPanel.InboxWord : BackgroundPanel.Count(shells, watched is not null, g),
                 Role: roleName, SearchWhenLong: false, LabelWhole: true,
                 KeysFor: i => i < shells ? TaskKeys : WatchKeys,
                 DetailOf: i => i < shells ? BackgroundPanel.ShellDetail(live[i], g) : WatchNow() is { } w ? BackgroundPanel.WatchDetail(w, g) : null,

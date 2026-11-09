@@ -17,6 +17,9 @@ public static class BackgroundPanel
     //the watch row's key, beside the shells keyed on their task numbers
     internal const string WatchKey = "watch";
 
+    //the word the panel shows for the watch, as its row label and in the title
+    internal const string InboxWord = "inbox";
+
     //the first line of a command, as a row shows it
     internal static string Head(string command) => TermText.Sanitize(command.Split('\n')[0].Trim());
 
@@ -32,14 +35,14 @@ public static class BackgroundPanel
             rows.Add(new SelectOption($"{t.Number}  {state}", Key: t.Number.ToString(CultureInfo.InvariantCulture), Columns: [Head(t.Command)]));
         }
         if (watch is { } w)
-            rows.Add(new SelectOption("watch", Key: WatchKey,
+            rows.Add(new SelectOption(InboxWord, Key: WatchKey,
                 Columns: [w.Paused ? $"paused {g.Dot} {Plural.Of(w.Count, "letter")} since your last message" : w.Shown]));
         return rows;
     }
 
-    //the words after the title's dot: the shells the list shows, then the watch, or the watch alone
+    //the words after the title's dot: the shells the list shows, then the inbox, or the inbox alone
     public static string Count(int shells, bool watch, GlyphSet g) =>
-        shells == 0 ? "watch" : Plural.Of(shells, "shell") + (watch ? $" {g.Dot} watch" : "");
+        shells == 0 ? InboxWord : Plural.Of(shells, "shell") + (watch ? $" {g.Dot} {InboxWord}" : "");
 
     //what moves while the panel is open, every runtime, gloss and output length, so the poll repaints only when a view would read differently
     public static string StateKey(IReadOnlyList<BackgroundTasks.BackgroundLive> live) =>

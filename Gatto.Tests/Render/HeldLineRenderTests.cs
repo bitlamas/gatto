@@ -59,7 +59,7 @@ public sealed class HeldLineRenderTests
         r.CommitUser(["go"]);
         r.BeginTurn();
         r.OnReasoningDelta("thinking about it");
-        r.CommitSystemBetweenBlocks("watch off");
+        r.CommitSystemBetweenBlocks("inbox closed");
         Assert.DoesNotContain(nameof(SystemLineItem), Kinds(model));
         r.OnTextDelta("done\n");
         r.EndTurn();
@@ -76,7 +76,7 @@ public sealed class HeldLineRenderTests
         r.OnToolCallsRecorded([call]);
         r.OnToolCallStart(call);
         r.OnToolResult(call, new Gatto.Core.Tools.ToolResult("listed", Gloss: "exit 0"));
-        r.CommitSystemBeforeNextReply("watch paused after 6 letters, /watch to resume");
+        r.CommitSystemBeforeNextReply("inbox paused after 6 letters, /inbox to resume");
         r.OnQueuedDelivered(new Gatto.Core.Client.ChatMessage("user", "C:\\inbox\\a.md\n\nletter a"));
         r.OnQueuedDelivered(new Gatto.Core.Client.ChatMessage("user", "C:\\inbox\\b.md\n\nletter b"));
         r.OnTextDelta("read both\n");
@@ -84,7 +84,7 @@ public sealed class HeldLineRenderTests
 
         var rows = Rows(model);
         var b = rows.IndexOf("letter b", StringComparison.Ordinal);
-        var paused = rows.IndexOf("♯ watch paused", StringComparison.Ordinal);
+        var paused = rows.IndexOf("♯ inbox paused", StringComparison.Ordinal);
         var reply = rows.IndexOf("● read both", StringComparison.Ordinal);
         Assert.True(b < paused && paused < reply, rows);
     }
@@ -106,7 +106,7 @@ public sealed class HeldLineRenderTests
     public void AT_REST_THE_PAUSE_ROW_COMMITS_AT_ONCE()
     {
         var (r, model) = Wire();
-        r.CommitSystemBeforeNextReply("watch paused after 6 letters, /watch to resume");
+        r.CommitSystemBeforeNextReply("inbox paused after 6 letters, /inbox to resume");
         Assert.Equal(nameof(SystemLineItem), Kinds(model)[^1]);
     }
 

@@ -4,7 +4,7 @@ using Gatto.Tests.Fakes;
 
 namespace Gatto.Tests.Repl;
 
-//the rich face with a real watch: /watch acts at once on the composer, and a letter at rest starts a turn of its own with nothing attached. /new takes the queued letters with it
+//the rich face with a real watch: /inbox acts at once on the composer, and a letter at rest starts a turn of its own with nothing attached. /new takes the queued letters with it
 [Collection("e2e")]
 public sealed class WatchDispatchTests : IDisposable
 {
@@ -30,14 +30,14 @@ public sealed class WatchDispatchTests : IDisposable
         Gatto.Repl.Input.HomePath.AbbreviateProfile(folder, Environment.GetFolderPath(Environment.SpecialFolder.UserProfile));
 
     [Fact]
-    public async Task THE_WATCHING_LINE_READS_THE_PROFILE_AS_A_TILDE_AND_THE_WATCH_KEEPS_THE_ABSOLUTE_PATH()
+    public async Task THE_OPEN_LINE_READS_THE_PROFILE_AS_A_TILDE_AND_THE_WATCH_KEEPS_THE_ABSOLUTE_PATH()
     {
         var h = new RichReplHarness(_cwd, width: 400);
         string? folder = null;
-        h.Keys.Line("/watch inbox");
+        h.Keys.Line("/inbox inbox");
         await h.RunUntilAsync(() =>
         {
-            if (!h.Saw("♯ watching ")) return false;
+            if (!h.Saw("♯ inbox open: ")) return false;
             folder = h.Watch?.Folder;
             return true;
         });
@@ -45,8 +45,8 @@ public sealed class WatchDispatchTests : IDisposable
         var profile = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
         Assert.Equal(Inbox, folder);
         Assert.StartsWith(profile, Inbox, StringComparison.OrdinalIgnoreCase);   //the temp folder sits under the profile, so the line must abbreviate it
-        Assert.True(h.Saw("♯ watching ~\\"), h.Written());
-        Assert.False(h.Saw($"watching {profile}"), h.Written());
+        Assert.True(h.Saw("♯ inbox open: ~\\"), h.Written());
+        Assert.False(h.Saw($"inbox open: {profile}"), h.Written());
     }
 
     private static void Says(FakeChatClient client, string text) =>
@@ -55,14 +55,14 @@ public sealed class WatchDispatchTests : IDisposable
     private static readonly byte[] Png = [0x89, (byte)'P', (byte)'N', (byte)'G', 0x0D, 0x0A, 0x1A, 0x0A, 0x07];
 
     [Fact]
-    public async Task THE_ANSWERS_ARE_ONE_LINE_EACH_AND_A_BARE_WATCH_PRINTS_THE_FOLDER_IT_ARMED()
+    public async Task THE_ANSWERS_ARE_ONE_LINE_EACH_AND_A_BARE_INBOX_PRINTS_THE_FOLDER_IT_OPENED()
     {
         var h = new RichReplHarness(_cwd, width: 400);
-        h.Keys.Line("/watch off").Line("/watch inbox").Line("/watch").Line("/watch off").Line("/watch bad|name").Line("/quit");
+        h.Keys.Line("/inbox off").Line("/inbox inbox").Line("/inbox").Line("/inbox off").Line("/inbox bad|name").Line("/quit");
         await h.RunAsync();
 
         var text = h.Written();
-        var at = new[] { "not watching", $"watching {Shown(Inbox)}", $"watching {Shown(Inbox)}", "watch off", "watch failed: " }
+        var at = new[] { "no inbox open", $"inbox open: {Shown(Inbox)}", $"inbox open: {Shown(Inbox)}", "inbox closed", "inbox not opened: " }
             .Aggregate((Pos: 0, Ok: true), (acc, line) =>
             {
                 var i = text.IndexOf(line, acc.Pos, StringComparison.Ordinal);
@@ -70,19 +70,80 @@ public sealed class WatchDispatchTests : IDisposable
             });
         Assert.True(at.Ok, text);
         Assert.Empty(h.Client.Requests);   //no answer reached the model
-        Assert.DoesNotContain(h.Convo.Messages, m => m.Content?.Contains("/watch", StringComparison.Ordinal) == true);
+        Assert.DoesNotContain(h.Convo.Messages, m => m.Content?.Contains("/inbox", StringComparison.Ordinal) == true);
     }
 
     [Fact]
-    public async Task A_BARE_WATCH_ARMS_THE_MODELS_MAILBOX_AND_WRITES_ITS_GITIGNORE()
+    public async Task A_BARE_INBOX_OPENS_THE_SEATS_INBOX_AND_WRITES_ITS_GITIGNORE()
+    {
+        var h = new RichReplHarness(_cwd, width: 400);
+        h.Keys.Line("/inbox").Line("/quit");
+        await h.RunAsync();
+
+        var folder = Path.Combine(_cwd, ".gatto", "mailbox", "gatto", "test-model", "generalist");
+        Assert.Equal(folder, Gatto.Repl.Repl.SeatInboxFor(_cwd, h.ModelName, "generalist"));
+        Assert.True(h.Saw($"inbox open: {Shown(folder)}"), h.Written());
+        Assert.Equal("*\n", File.ReadAllText(Path.Combine(folder, ".gitignore")));
+    }
+
+    [Fact]
+    public async Task A_BARE_INBOX_UNDER_A_NAMED_ROLE_OPENS_THAT_ROLES_FOLDER()
+    {
+        var h = new RichReplHarness(_cwd, width: 400, roleName: "Reviewer");
+        h.Keys.Line("/inbox").Line("/quit");
+        await h.RunAsync();
+
+        var folder = Path.Combine(_cwd, ".gatto", "mailbox", "gatto", "test-model", "Reviewer");
+        Assert.True(h.Saw($"inbox open: {Shown(folder)}"), h.Written());
+        Assert.True(File.Exists(Path.Combine(folder, ".gitignore")));
+    }
+
+    [Fact]
+    public async Task AFTER_A_ROLE_SWITCH_THE_NEXT_BARE_INBOX_OPENS_THE_NEW_ROLES_FOLDER()
+    {
+        var h = new RichReplHarness(_cwd, width: 400,
+            switchRole: _ => new RoleSwitchResult(true, "other", "test-model", "sys2", null));
+        var asked = false;
+        string? armed = null;
+        h.Keys.Line("/role other");
+        await h.RunUntilAsync(() =>
+        {
+            if (!asked && h.Saw("role: other"))
+            {
+                asked = true;
+                h.Keys.Line("/inbox");
+            }
+            if (!asked || !h.Saw("inbox open: ")) return false;
+            armed = h.Watch?.Folder;
+            return true;
+        });
+
+        var folder = Path.Combine(_cwd, ".gatto", "mailbox", "gatto", "test-model", "other");
+        Assert.True(h.Saw($"inbox open: {Shown(folder)}"), h.Written());
+        Assert.Equal(folder, armed);
+    }
+
+    [Fact]
+    public async Task THE_OLD_WATCH_COMMAND_IS_REFUSED_AS_AN_UNKNOWN_COMMAND()
     {
         var h = new RichReplHarness(_cwd, width: 400);
         h.Keys.Line("/watch").Line("/quit");
         await h.RunAsync();
 
-        var folder = Path.Combine(_cwd, ".gatto", "mailbox", Gatto.Repl.Repl.MailboxName(h.ModelName));
-        Assert.True(h.Saw($"watching {Shown(folder)}"), h.Written());
-        Assert.Equal("*\n", File.ReadAllText(Path.Combine(folder, ".gitignore")));
+        Assert.True(h.Saw("/watch is not a command"), h.Written());
+        Assert.Empty(h.Client.Requests);
+        Assert.Null(h.Watch);
+        Assert.False(Directory.Exists(Path.Combine(_cwd, ".gatto")));
+    }
+
+    [Theory]
+    [InlineData("m", "reviewer", "m", "reviewer")]
+    [InlineData("m", "generalist", "m", "generalist")]
+    [InlineData("m", "a:b", "m", "a-b")]
+    [InlineData("org/m", "reviewer", "org-m", "reviewer")]
+    public void THE_SEAT_INBOX_IS_GATTO_MODEL_ROLE_EACH_A_FOLDER_NAME(string model, string role, string modelFolder, string roleFolder)
+    {
+        Assert.Equal(Path.Combine("x", ".gatto", "mailbox", "gatto", modelFolder, roleFolder), Gatto.Repl.Repl.SeatInboxFor("x", model, role));
     }
 
     [Fact]
@@ -114,11 +175,11 @@ public sealed class WatchDispatchTests : IDisposable
         var path = Path.Combine(Inbox, "2026-10-27-a.md");
         var written = false;
         int? budget = null;
-        h.Keys.Line("/watch inbox");
+        h.Keys.Line("/inbox inbox");
 
         await h.RunUntilAsync(() =>
         {
-            if (!written && h.Saw($"watching {Shown(Inbox)}"))
+            if (!written && h.Saw($"inbox open: {Shown(Inbox)}"))
             {
                 File.WriteAllText(path, "look at shot.png and [Image #1]");
                 written = true;
@@ -144,11 +205,11 @@ public sealed class WatchDispatchTests : IDisposable
         var written = false;
         var typed = false;
         int? budgetAfterRetake = null;
-        h.Keys.Line("/watch inbox");
+        h.Keys.Line("/inbox inbox");
 
         await h.RunUntilAsync(() =>
         {
-            if (!written && h.Saw($"watching {Shown(Inbox)}"))
+            if (!written && h.Saw($"inbox open: {Shown(Inbox)}"))
             {
                 File.WriteAllText(Path.Combine(Inbox, "a.md"), "the letter");
                 written = true;
@@ -177,7 +238,7 @@ public sealed class WatchDispatchTests : IDisposable
         var newQueued = false;
         var dropped = false;
         System.Diagnostics.Stopwatch? sinceHandled = null;
-        h.Keys.Line("/watch inbox").Line("go");
+        h.Keys.Line("/inbox inbox").Line("go");
         h.Client.HoldNextTurn = _ => release.Task;
 
         await h.RunForAsync(() =>

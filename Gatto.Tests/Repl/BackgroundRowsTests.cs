@@ -9,21 +9,21 @@ public class BackgroundRowsTests
     private static readonly GlyphSet G = GlyphSet.Unicode;
 
     [Fact]
-    public void The_count_says_the_shells_then_the_watch_or_the_watch_alone()
+    public void The_count_says_the_shells_then_the_inbox_or_the_inbox_alone()
     {
-        Assert.Equal("3 shells · watch", BackgroundPanel.Count(3, true, G));
+        Assert.Equal("3 shells · inbox", BackgroundPanel.Count(3, true, G));
         Assert.Equal("1 shell", BackgroundPanel.Count(1, false, G));
-        Assert.Equal("watch", BackgroundPanel.Count(0, true, G));
+        Assert.Equal("inbox", BackgroundPanel.Count(0, true, G));
     }
 
     [Fact]
-    public void The_watch_row_is_the_word_watch_with_its_folder_or_its_paused_words_as_the_column()
+    public void The_watch_row_is_the_word_inbox_with_its_folder_or_its_paused_words_as_the_column()
     {
         var armed = BackgroundPanel.Rows([], new WatchView("inbox", false, 0, 6, []), G).Single();
         var paused = BackgroundPanel.Rows([], new WatchView("inbox", true, 1, 6, []), G).Single();
 
-        Assert.Equal(("watch", "watch", "inbox"), (armed.Label, armed.Key, armed.Columns![0]));
-        Assert.Equal("watch", paused.Label);
+        Assert.Equal(("inbox", "watch", "inbox"), (armed.Label, armed.Key, armed.Columns![0]));
+        Assert.Equal("inbox", paused.Label);
         Assert.Equal("paused · 1 letter since your last message", paused.Columns![0]);
     }
 

@@ -29,9 +29,9 @@ public class BackgroundCellTests
     [InlineData(0, false, false, null)]
     [InlineData(1, false, false, "1 shell")]
     [InlineData(2, false, false, "2 shells")]
-    [InlineData(0, true, false, "watch")]
-    [InlineData(2, true, false, "2 shells · watch")]
-    [InlineData(1, true, true, "1 shell · watch paused")]
+    [InlineData(0, true, false, "inbox")]
+    [InlineData(2, true, false, "2 shells · inbox")]
+    [InlineData(1, true, true, "1 shell · inbox paused")]
     public void The_cell_names_what_runs(int shells, bool watch, bool paused, string? words)
     {
         var row = Line(Info(), 200, new BackgroundFacts(shells, watch, paused));
@@ -48,7 +48,7 @@ public class BackgroundCellTests
         {
             var row = Line(Info(), w, facts);
             Assert.True(UnicodeWidth.Of(row) <= w, $"{UnicodeWidth.Of(row)} cells at {w}: {row}");
-            Assert.Contains("2 shells · watch", row, StringComparison.Ordinal);
+            Assert.Contains("2 shells · inbox", row, StringComparison.Ordinal);
             Assert.Contains("(high)", row, StringComparison.Ordinal);
         }
     }
@@ -74,7 +74,7 @@ public class BackgroundCellTests
     public void The_cell_wears_its_inks_at_rest_and_never_the_dim()
     {
         var row = InputFrame.BuildStatusLine(Info(), 200, T, U, new BackgroundFacts(2, true, false));
-        Assert.Contains(T.Paint("2 shells", Theme.CampbellBrightYellow) + T.Paint(" · ", Theme.Dim) + T.Paint("watch", T.RoleTint("coder")), row, StringComparison.Ordinal);
+        Assert.Contains(T.Paint("2 shells", Theme.CampbellBrightYellow) + T.Paint(" · ", Theme.Dim) + T.Paint("inbox", T.RoleTint("coder")), row, StringComparison.Ordinal);
         Assert.DoesNotContain(T.Paint("2 shells", Theme.Dim), row, StringComparison.Ordinal);
         Assert.DoesNotContain(Ansi.Bg(T.Map(Theme.UserInputBg), T.TrueColor), row, StringComparison.Ordinal);
         Assert.DoesNotContain(Ansi.Bg(T.BandOf(Theme.CampbellBrightYellow), T.TrueColor), row, StringComparison.Ordinal);
@@ -96,7 +96,7 @@ public class BackgroundCellTests
         }
         var shells = (selected ?? hovered) == StatusCell.Shells;
         var expected = (shells ? On("2 shells", Theme.CampbellBrightYellow) : T.Paint("2 shells", Theme.CampbellBrightYellow))
-            + T.Paint(" · ", Theme.Dim) + (shells ? T.Paint("watch", T.RoleTint("coder")) : On("watch", T.RoleTint("coder")));
+            + T.Paint(" · ", Theme.Dim) + (shells ? T.Paint("inbox", T.RoleTint("coder")) : On("inbox", T.RoleTint("coder")));
         Assert.Contains(expected, row, StringComparison.Ordinal);
         Assert.DoesNotContain(Ansi.Bg(T.Map(Theme.UserInputBg), T.TrueColor), row, StringComparison.Ordinal);
         Assert.Equal(StripSgr(InputFrame.BuildStatusLine(Info(), 200, T, U, new BackgroundFacts(2, true, false, selected))), StripSgr(row));
@@ -148,7 +148,7 @@ public class BackgroundCellTests
         var shells = cells.Single(c => c.Kind == StatusCell.Shells);
         var watch = cells.Single(c => c.Kind == StatusCell.Watch);
         Assert.Equal(UnicodeWidth.Of("2 shells"), shells.End - shells.Start);
-        Assert.Equal(UnicodeWidth.Of("watch"), watch.End - watch.Start);
+        Assert.Equal(UnicodeWidth.Of("inbox"), watch.End - watch.Start);
         Assert.Equal(UnicodeWidth.Of(" · "), watch.Start - shells.End);
         Assert.True(shells.Start > row.IndexOf("ctx", StringComparison.Ordinal));
         Assert.Equal([StatusCell.Shells, StatusCell.Watch], facts.Cells);

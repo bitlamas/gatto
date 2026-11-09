@@ -440,7 +440,7 @@ public sealed record LetterItem(LetterText Letter) : TranscriptItem
             new(Band(theme.Paint(Cut(g.Sharp + " " + TermText.Sanitize(LetterText.Head(Letter.Path)), width), Theme.Warn)), false),
         };
         var open = !Collapsed;
-        var fields = Letter.Fields.Where(f => open || FoldedKeys.Contains(f.Key)).Select(f => TermText.Sanitize($"{f.Key} {f.Value}")).ToList();
+        var fields = Letter.Fields.Where(f => open || FoldedKeys.Contains(f.Key)).Select(f => TermText.Sanitize($"{f.Key}: {f.Value}")).ToList();
         if (fields.Count > 0)
         {
             var meta = string.Join($" {g.Dot} ", fields);

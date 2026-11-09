@@ -294,8 +294,8 @@ public class PanelComposerTests
     [Fact]
     public void A_count_the_caller_composed_draws_as_given()
     {
-        Assert.Equal("  tasks · watch", Plain(Compose(Tasks("watch"), Shells(), View(2), numbered: false))[0]);
-        Assert.Equal("  tasks · 1 shell · watch", Plain(Compose(Tasks("1 shell · watch"), Shells(), View(2), numbered: false))[0]);
+        Assert.Equal("  tasks · inbox", Plain(Compose(Tasks("inbox"), Shells(), View(2), numbered: false))[0]);
+        Assert.Equal("  tasks · 1 shell · inbox", Plain(Compose(Tasks("1 shell · inbox"), Shells(), View(2), numbered: false))[0]);
     }
 
     //a whole label column keeps the state readable at 80 and the command takes the cut

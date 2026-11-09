@@ -352,7 +352,7 @@ public class PanelStateTests
     private static readonly FooterKey[] WatchKeys = [new("Enter", "detail"), new("Esc", "close")];
 
     //two shells and the watch, each with a detail, the watch's naming no x
-    private static PanelFields Tasks(Func<int, int>? lines = null) => new("tasks", TaskKeys, Count: "2 shells · watch", SearchWhenLong: false,
+    private static PanelFields Tasks(Func<int, int>? lines = null) => new("tasks", TaskKeys, Count: "2 shells · inbox", SearchWhenLong: false,
         LabelWhole: true, KeysFor: i => i == 2 ? WatchKeys : TaskKeys,
         DetailOf: i => [new($"command {i}"), .. Enumerable.Range(1, lines?.Invoke(i) ?? 30).Select(n => new DetailRow($"line {n}", Dim: true))],
         DetailKeysFor: i => i == 2 ? [new("Esc", "back")] : [new("x", "stop"), new("Esc", "back")]);

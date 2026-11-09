@@ -211,7 +211,7 @@ public sealed class WatchTests : IDisposable
         Assert.Equal(6, Got().Count);   //at most K ahead of what was taken
         w.Taken(Enumerable.Repeat(EntryKind.Watch, 6));
         Assert.True(w.Paused);
-        Assert.Equal(["watch paused after 6 letters, /watch to resume"], _rows);
+        Assert.Equal(["inbox paused after 6 letters, /inbox to resume"], _rows);
         await Settle();
         Assert.Equal(6, Got().Count);
     }

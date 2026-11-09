@@ -46,7 +46,7 @@ public static class SlashCommands
         new("/help", "", "this screen", BypassesQueue: true),
         new("/new", "", "reset the conversation"),
         new("/role", "[name]", "show or switch role"),
-        //acts at once on the composer like /watch, at rest and during a turn, and answers in a line, so no bypass flag
+        //acts at once on the composer like /inbox, at rest and during a turn, and answers in a line, so no bypass flag
         new("/name", "[text]", "name this session, on the composer and the tab"),
         //quant is named here so a verb the dispatch accepts is findable in /help. add stays out, since its only outcome is a sentence pointing at gatto model
         new("/model", "[name|quant]", "show or switch the model, or manage its files"),
@@ -67,7 +67,7 @@ public static class SlashCommands
         //the kill acts at once on its own arm, during a turn too, and the list answers in the panel then
         new("/tasks", "[kill <n>]", "list the background tasks, or end one", BypassesQueue: true),
         //acts at once on the composer like a kill, at rest and during a turn, so no bypass flag: that path answers in a panel, this one in a line
-        new("/watch", "[folder|off]", "send each new letter in a folder to the model"),
+        new("/inbox", "[folder|off]", "let other AI tools on this PC write to gatto"),
         //like /remember, the input becomes InitPrompt and is dispatched as if typed
         new("/init", "", "survey the project, write GATTO.md", ReachesModel: true),
         new("/quit", "", "exit"),

@@ -85,40 +85,46 @@ public sealed partial class Repl
         return true;
     }
 
-    //the watch acts at once on the composer thread, at rest and during a turn, reaches no model and never enters the queue. its line waits for a streaming block to close
+    //the /inbox command acts at once on the composer thread, at rest and during a turn, reaches no model and never enters the queue. its line waits for a streaming block to close
     private bool WatchNow(string text, RichState s, DispatchQueue queue)
     {
-        if (!SlashGate.TryMatchCommand(text.Trim(), "/watch", out var arg)) return false;
+        if (!SlashGate.TryMatchCommand(text.Trim(), "/inbox", out var arg)) return false;
         arg = arg.Trim();
         string line;
         if (arg == "off")
         {
-            line = _watch is null ? "not watching" : "watch off";
+            line = _watch is null ? "no inbox open" : "inbox closed";
             Disarm(s, queue);
         }
         else if (arg.Length == 0 && _watch is { } armed)
         {
             if (armed.Paused) armed.Lift();
-            line = $"watching {Shown(armed.Folder)}";
+            line = $"inbox open: {Shown(armed.Folder)}";
         }
-        else
-        {
-            var folder = arg.Length == 0
-                ? Path.Combine(cwd, ".gatto", "mailbox", MailboxName(Gatto.Core.Models.ServedModelName.Display(modelName)))
-                : Path.Combine(cwd, arg);
-            try
-            {
-                //a failed arm leaves the watch that was armed as it was
-                var w = Watch.Arm(folder, _watchSink!, row => s.Renderer.CommitSystemBeforeNextReply(row));
-                Disarm(s, queue);
-                lock (s.Gate) _watch = w;
-                w.Start();
-                line = $"watching {Shown(w.Folder)}";
-            }
-            catch (Exception ex) { line = $"watch failed: {ex.Message}"; }
-        }
+        else line = ArmWatch(arg.Length == 0 ? SeatInbox() : Path.Combine(cwd, arg), hold: false, s, queue);
         s.Renderer.CommitSystemBetweenBlocks(line);
         return true;
+    }
+
+    //the seat's inbox for the model and role running now
+    private string SeatInbox() => SeatInboxFor(cwd, modelName, roleName);
+
+    //gatto\<model>\<role> under the project's mailbox, each segment the folder name MailboxName gives
+    internal static string SeatInboxFor(string cwd, string modelName, string roleName) =>
+        Path.Combine(cwd, ".gatto", "mailbox", "gatto", MailboxName(Gatto.Core.Models.ServedModelName.Display(modelName)), MailboxName(roleName));
+
+    //the one site that arms a watch. a failed arm leaves the inbox that was open as it was, and the line says which happened
+    private string ArmWatch(string folder, bool hold, RichState s, DispatchQueue queue)
+    {
+        try
+        {
+            var w = Watch.Arm(folder, _watchSink!, row => s.Renderer.CommitSystemBeforeNextReply(row));
+            Disarm(s, queue);
+            lock (s.Gate) _watch = w;
+            w.Start();
+            return $"inbox open: {Shown(w.Folder)}";
+        }
+        catch (Exception ex) { return $"inbox not opened: {ex.Message}"; }
     }
 
     //the name acts at once on the composer thread, at rest and during a turn, and reaches no model. the file is written here only while nothing dispatches, so it never races a turn's own saves
@@ -171,9 +177,9 @@ public sealed partial class Repl
         }
     }
 
-    //a model id as a folder name, each character a path cannot hold, a cloud id's slash or colon, turned into a hyphen
-    internal static string MailboxName(string modelId) =>
-        string.Concat(modelId.Select(c => Path.GetInvalidFileNameChars().Contains(c) ? '-' : c));
+    //a model id or a role name as a folder of the /inbox address, each character a path cannot hold, a cloud id's slash or colon, turned into a hyphen
+    internal static string MailboxName(string segment) =>
+        string.Concat(segment.Select(c => Path.GetInvalidFileNameChars().Contains(c) ? '-' : c));
 
     //built-ins first, then the registered rows in commit order. every site that reads the command table reads this, so none can disagree
     internal IReadOnlyList<SlashCommands.Cmd> KnownCommands() =>

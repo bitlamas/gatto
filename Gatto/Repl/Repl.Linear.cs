@@ -943,7 +943,7 @@ public sealed partial class Repl
         }
         if (trimmed == "/init") input = InitPrompt.Text;   //sent through the normal turn below, as if the user had typed it
 
-        //a typed message reaching the model resets the watch's count, and a pause stays until /watch lifts it
+        //a typed message reaching the model resets the watch's count, and a pause stays until /inbox lifts it
         Watch? watch;
         lock (s.Gate) watch = _watch;
         watch?.Typed();

@@ -703,7 +703,7 @@ public class ReplRememberTests : IDisposable
         Assert.Null(Gatto.Repl.Commands.SlashGate.UntakenArgumentLine("/remember the slots poll", known));
         Assert.Null(Gatto.Repl.Commands.SlashGate.UntakenArgumentLine("/nope x", known));
         Assert.Null(Gatto.Repl.Commands.SlashGate.UntakenArgumentLine("hello /tools x", known));
-        Assert.Equal("usage: /watch [folder|off]", Gatto.Repl.Commands.SlashGate.UntakenArgumentLine("/watch a b", known));
+        Assert.Equal("usage: /inbox [folder|off]", Gatto.Repl.Commands.SlashGate.UntakenArgumentLine("/inbox a b", known));
     }
 
     [Fact]

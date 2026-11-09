@@ -177,7 +177,7 @@ internal sealed class Watch : IDisposable
             }
             freed &= !_paused;
         }
-        if (paused) _row($"watch paused after {K} letters, /watch to resume");
+        if (paused) _row($"inbox paused after {K} letters, /inbox to resume");
         if (freed) Kick();
     }
 

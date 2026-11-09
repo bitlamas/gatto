@@ -489,7 +489,7 @@ public sealed class InputFrame(ITermSurface surface, Theme theme, string? role, 
         if (facts.Running > 0)
             AddCell(Gatto.Core.Plural.Of(facts.Running, "shell"), Theme.CampbellBrightYellow, StatusCell.Shells);
         if (facts.WatchArmed)
-            AddCell(facts.WatchPaused ? "watch paused" : "watch", theme.RoleTint(s.Role), StatusCell.Watch);
+            AddCell(facts.WatchPaused ? "inbox paused" : "inbox", theme.RoleTint(s.Role), StatusCell.Watch);
         void AddCell(string word, RgbColor ink, StatusCell kind) =>
             parts.Add(new Part(word, facts.Banded(kind) ? Banded(word, ink, theme) : theme.Paint(word, ink), kind));
 

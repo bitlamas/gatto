@@ -70,7 +70,7 @@ public sealed class LetterBlockTests
         var rows = Plain(LetterItem.From(Record()), 80);
         Assert.Equal([
             "♯ New mail: qwen3.8-flash-next\\2026-10-28-planner-ask.md",
-            "  from seat/planner/5b6a8a37 · re the build · kind letter",
+            "  from: seat/planner/5b6a8a37 · re: the build · kind: letter",
             "  line one",
             "  ⎿ … 4 more · click to expand",
         ], rows);
@@ -93,7 +93,7 @@ public sealed class LetterBlockTests
         var item = LetterItem.From(Record());
         item.Collapsed = false;
         var rows = Plain(item, 200);
-        Assert.Equal("  to gatto/qwen3.8-flash-next · from seat/planner/5b6a8a37 · date 2026-10-28T10:02:14-04:00 · re the build · kind letter", rows[1]);
+        Assert.Equal("  to: gatto/qwen3.8-flash-next · from: seat/planner/5b6a8a37 · date: 2026-10-28T10:02:14-04:00 · re: the build · kind: letter", rows[1]);
         Assert.Equal(["  line one", "  line two", "  line three", "", "  line five", "  ⎿ click to collapse"], rows[2..]);
         Assert.DoesNotContain(rows, r => r.Contains("<!--"));
     }
@@ -123,7 +123,7 @@ public sealed class LetterBlockTests
     {
         var item = LetterItem.From(new ChatMessage("user", Path + "\n\n<!-- letter:x -->\nto: t\nfrom: a\ndate: d\nre: b\nkind: letter\n\nhi\n<!-- /letter -->\n", Watch: Path));
         Assert.False(item.Opens(80));
-        Assert.Equal(["♯ New mail: qwen3.8-flash-next\\2026-10-28-planner-ask.md", "  from a · re b · kind letter", "  hi"], Plain(item, 80));
+        Assert.Equal(["♯ New mail: qwen3.8-flash-next\\2026-10-28-planner-ask.md", "  from: a · re: b · kind: letter", "  hi"], Plain(item, 80));
     }
 
     [Fact]
