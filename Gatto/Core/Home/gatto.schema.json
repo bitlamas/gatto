@@ -181,6 +181,16 @@
       "default": false,
       "description": "start every session from this home in wild mode: no permission prompts. a project's .gatto.json with \"wild\": false still forbids it. /safe turns it off for one session."
     },
+    "inbox": {
+      "type": "boolean",
+      "default": false,
+      "description": "open this seat's inbox from launch, the folder /inbox opens with no argument, so other AI tools on this PC can write to gatto. letters already there wait for your first message; /inbox hands them over at once. the plain face has no inbox."
+    },
+    "inbox_pause": {
+      "type": "boolean",
+      "default": false,
+      "description": "pause the inbox after 6 letters arrive with no message from you, until you type /inbox. off, gatto keeps answering letters; on, it stops two AI tools from writing to each other without you."
+    },
     "sandbox": {
       "type": "boolean",
       "default": false,

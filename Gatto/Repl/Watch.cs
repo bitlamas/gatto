@@ -3,10 +3,10 @@ using Gatto.Core.Tools;
 
 namespace Gatto.Repl;
 
-//one folder watched for letters, each new .md handed over as its path and body. one pump alone reads and marks files, so two events for one name cannot both pass
+//one folder watched for letters, each new .md handed over as its path and body by one pump, so two events for one name cannot both pass. a held arm keeps back the letters present at the arm
 internal sealed class Watch : IDisposable
 {
-    //the letters delivered since the last typed message before the watch pauses, so two seats writing to each other stop
+    //the most letters handed over and not yet taken. with the pause on, also the letters delivered since the last typed message before the watch pauses, so two seats writing to each other stop
     public const int K = 6;
 
     //the first and the longest wait before a locked or empty letter is tried again
@@ -18,6 +18,8 @@ internal sealed class Watch : IDisposable
     private readonly object _lock = new();
     private readonly HashSet<string> _seen = new(StringComparer.OrdinalIgnoreCase);   //the delivery guard by path, a name leaves it when its letter is archived
     private readonly HashSet<string> _handed = new(StringComparer.OrdinalIgnoreCase);   //every name handed over, for the panel, never removed
+    private readonly HashSet<string> _held = new(StringComparer.OrdinalIgnoreCase);   //the paths present at a held arm, skipped until the release
+    private readonly bool _pause;
     private readonly SemaphoreSlim _kick = new(0, 1);
     private readonly CancellationTokenSource _off = new();
     private FileSystemWatcher? _events;
@@ -28,6 +30,12 @@ internal sealed class Watch : IDisposable
     public string Folder { get; }
 
     public bool Paused { get { lock (_lock) return _paused; } }
+
+    //whether this watch counts letters toward a pause at all, which the home's inbox_pause key turns on
+    public bool Pauses => _pause;
+
+    //the letters present at a held arm and not yet released
+    public int Held { get { lock (_lock) return _held.Count; } }
 
     //the letters taken since the last typed message, read against K
     public int Count { get { lock (_lock) return _count; } }
@@ -45,19 +53,23 @@ internal sealed class Watch : IDisposable
         Kick();
     }
 
-    private Watch(string folder, Func<Watch, string, bool> enqueue, Action<string> row)
+    private Watch(string folder, Func<Watch, string, bool> enqueue, Action<string> row, bool pause)
     {
         Folder = folder;
         _enqueue = enqueue;
         _row = row;
+        _pause = pause;
     }
 
-    //creates the folder and its .gitignore when absent and builds the watcher, a throw arms nothing. the enqueue sink drops a letter for a watch that is no longer the armed one
-    public static Watch Arm(string folder, Func<Watch, string, bool> enqueue, Action<string> row)
+    //creates the folder and its .gitignore when absent and builds the watcher, a throw arms nothing. the enqueue sink drops a letter for a watch that is no longer the armed one. hold takes the letters present before the first scan can
+    public static Watch Arm(string folder, Func<Watch, string, bool> enqueue, Action<string> row, bool hold = false, bool pause = false)
     {
         var full = Path.GetFullPath(folder);
         CreateFolder(full);
-        var w = new Watch(full, enqueue, row);
+        var w = new Watch(full, enqueue, row, pause);
+        if (hold)
+            foreach (var path in Directory.GetFiles(full, "*.md", SearchOption.TopDirectoryOnly))
+                if (Path.GetExtension(path).Equals(".md", StringComparison.OrdinalIgnoreCase)) w._held.Add(path);
         var events = new FileSystemWatcher(full, "*.md") { IncludeSubdirectories = false, NotifyFilter = NotifyFilters.FileName };
         //a buffer overflow loses events and raises Error, so every event only wakes the pump and the pump rescans the folder
         events.Created += (_, _) => w.Kick();
@@ -128,8 +140,8 @@ internal sealed class Watch : IDisposable
             if (!Path.GetExtension(path).Equals(".md", StringComparison.OrdinalIgnoreCase)) continue;
             lock (_lock)
             {
-                if (_off.IsCancellationRequested || _paused || _count + _pending >= K) return again;
-                if (_seen.Contains(path)) continue;
+                if (_off.IsCancellationRequested || _paused || (_pause ? _count + _pending : _pending) >= K) return again;
+                if (_seen.Contains(path) || _held.Contains(path)) continue;
             }
             string? text;
             try { text = Read(path); }
@@ -170,11 +182,12 @@ internal sealed class Watch : IDisposable
         lock (_lock) return _paused ? 0 : Math.Max(0, K - _count);
     }
 
-    //what was taken, in queue order: a letter counts toward K, a typed message resets the count. the pause says so once
+    //what was taken, in queue order. a typed message releases the held letters once. with the pause on a letter counts toward K, a typed message resets the count and the pause says so once. with it off a taken letter frees its place
     public void Taken(IEnumerable<EntryKind> kinds)
     {
         var paused = false;
         var freed = false;
+        var released = false;
         lock (_lock)
         {
             foreach (var kind in kinds)
@@ -182,11 +195,14 @@ internal sealed class Watch : IDisposable
                 if (kind == EntryKind.Watch)
                 {
                     _pending = Math.Max(0, _pending - 1);
+                    if (!_pause) { freed = true; continue; }
                     _count++;
                     if (_count >= K && !_paused) _paused = paused = true;
                 }
                 else if (kind == EntryKind.Plain)
                 {
+                    released |= _held.Count > 0;
+                    _held.Clear();
                     freed |= _count > 0;
                     _count = 0;
                 }
@@ -194,10 +210,17 @@ internal sealed class Watch : IDisposable
             freed &= !_paused;
         }
         if (paused) _row($"inbox paused after {K} letters, /inbox to resume");
-        if (freed) Kick();
+        if (freed || released) Kick();
     }
 
     public void Typed() => Taken([EntryKind.Plain]);
+
+    //the held letters become unseen ones, and the scan hands them over in name order within the budget
+    public void Release()
+    {
+        lock (_lock) _held.Clear();
+        Kick();
+    }
 
     //a paused watch goes on from zero, and the scan delivers what landed during the pause
     public void Lift()

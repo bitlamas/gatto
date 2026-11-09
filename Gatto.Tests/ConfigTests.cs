@@ -350,6 +350,29 @@ public class ConfigTests : IDisposable
         Assert.Contains(key, ex.Message, StringComparison.Ordinal);
     }
 
+    [Theory]
+    [InlineData("", false, false)]
+    [InlineData(",\"inbox\":true", true, false)]
+    [InlineData(",\"inbox\":false,\"inbox_pause\":true", false, true)]
+    public void THE_INBOX_KEYS_ARE_READ_AND_ABSENT_IS_OFF(string fragment, bool inbox, bool pause)
+    {
+        var config = LoadWith(fragment);
+        Assert.Equal(inbox, config.Inbox);
+        Assert.Equal(pause, config.InboxPause);
+    }
+
+    [Theory]
+    [InlineData("\"inbox\":\"yes\"", "inbox")]
+    [InlineData("\"inbox_pause\":1", "inbox_pause")]
+    public void THE_INBOX_KEYS_OF_THE_WRONG_TYPE_ARE_REFUSED_BY_NAME(string fragment, string key)
+    {
+        Directory.CreateDirectory(_home);
+        File.WriteAllText(Path.Combine(_home, "gatto.json"),
+            """{"endpoints":{"local":{"base_url":"http://x"}},"default_endpoint":"local",""" + fragment + "}");
+        var ex = Assert.Throws<GattoConfigException>(() => GattoConfig.Load(_home));
+        Assert.Contains($"\"{key}\"", ex.Message, StringComparison.Ordinal);
+    }
+
     [Fact]
     public void EXTENSIONS_OFF_IS_READ_AS_SOURCE_NAMES_AND_ABSENT_IS_EMPTY()
     {

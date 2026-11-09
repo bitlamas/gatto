@@ -100,6 +100,8 @@ public sealed partial class Repl(
     string? cloudNotice = null,   //said once per home, the first time a session runs on a cloud endpoint
     string? sandboxNotice = null,   //the sandbox line of this launch, on or did not start, which a resume says for itself
     string? wildNotice = null,   //wild on or forbidden at this launch, which a resume says for itself
+    bool inbox = false,   //the home's inbox key: open the seat's inbox at launch and again at /new, the letters present held until the first typed message
+    bool inboxPause = false,   //the home's inbox_pause key: every inbox this session opens pauses after K letters with no typed message
     string? servedNotice = null,   //the launch found a server holding something other than the default, and the launch screen goes unread once a server is up
     //the launch lines in arrival order, said after the banner: the sink's warnings on the rich face only, the wild notice on both. null says none
     IReadOnlyList<string>? launchWarnings = null,

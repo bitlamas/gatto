@@ -20,9 +20,9 @@ public sealed class WatchTests : IDisposable
 
     private string Folder => Path.Combine(_root, "inbox");
 
-    private Watch Arm(string? folder = null)
+    private Watch Arm(string? folder = null, bool hold = false, bool pause = false)
     {
-        _watch = Watch.Arm(folder ?? Folder, (_, text) => { lock (_got) _got.Add(text); return true; }, row => { lock (_rows) _rows.Add(row); });
+        _watch = Watch.Arm(folder ?? Folder, (_, text) => { lock (_got) _got.Add(text); return true; }, row => { lock (_rows) _rows.Add(row); }, hold, pause);
         _watch.Start();
         return _watch;
     }
@@ -204,7 +204,7 @@ public sealed class WatchTests : IDisposable
     [Fact]
     public async Task SIX_LETTERS_PAUSE_THE_WATCH_WITH_ITS_ROW_AND_THE_SEVENTH_WAITS()
     {
-        var w = Arm();
+        var w = Arm(pause: true);
         for (var i = 1; i <= 7; i++) Letter($"{i}.md", $"letter {i}");
         WaitFor(6);
         await Settle();
@@ -219,7 +219,7 @@ public sealed class WatchTests : IDisposable
     [Fact]
     public async Task SIX_TYPED_MESSAGES_NEVER_PAUSE_AND_A_TYPED_MESSAGE_RESETS_THE_COUNT()
     {
-        var w = Arm();
+        var w = Arm(pause: true);
         for (var i = 0; i < 6; i++) w.Typed();
         Assert.False(w.Paused);
         w.Taken([EntryKind.Watch, EntryKind.Watch, EntryKind.Watch, EntryKind.Watch, EntryKind.Watch, EntryKind.Plain, EntryKind.Watch]);
@@ -231,7 +231,7 @@ public sealed class WatchTests : IDisposable
     [Fact]
     public void A_TYPED_MESSAGE_RESETS_THE_COUNT_AND_LEAVES_A_PAUSE_IN_PLACE()
     {
-        var w = Arm();
+        var w = Arm(pause: true);
         w.Taken(Enumerable.Repeat(EntryKind.Watch, 6));
         Assert.True(w.Paused);
         w.Typed();
@@ -242,7 +242,7 @@ public sealed class WatchTests : IDisposable
     [Fact]
     public async Task A_LETTER_THAT_LANDS_DURING_THE_PAUSE_ARRIVES_ONCE_ON_RESUME()
     {
-        var w = Arm();
+        var w = Arm(pause: true);
         w.Taken(Enumerable.Repeat(EntryKind.Watch, 6));
         Letter("during.md", "during");
         await Settle();
@@ -259,7 +259,7 @@ public sealed class WatchTests : IDisposable
     {
         Directory.CreateDirectory(Folder);
         for (var i = 1; i <= 20; i++) Letter($"{i:00}.md", $"letter {i}");
-        var w = Arm();
+        var w = Arm(pause: true);
         WaitFor(6);
         await Settle();
         Assert.Equal(Enumerable.Range(1, 6).Select(i => $"letter {i}"), Got().Select(t => t.Split("\n\n", 2)[1]));
@@ -356,5 +356,111 @@ public sealed class WatchTests : IDisposable
         WaitFor(2);
         w.Archived(a);
         Assert.Equal(["a.md", "b.md"], w.Seen);
+    }
+
+    private static string Body(string text) => text.Split("\n\n", 2)[1];
+
+    [Fact]
+    public async Task A_HELD_ARM_KEEPS_THE_LETTERS_PRESENT_AND_THE_RELEASE_HANDS_THEM_OVER_IN_NAME_ORDER()
+    {
+        Directory.CreateDirectory(Folder);
+        Letter("b.md", "two");
+        Letter("a.md", "one");
+        var w = Arm(hold: true);
+        await Settle();
+        Assert.Empty(Got());
+        Assert.Equal(2, w.Held);
+        w.Release();
+        WaitFor(2);
+        Assert.Equal(["one", "two"], Got().Select(Body));
+        Assert.Equal(0, w.Held);
+    }
+
+    [Fact]
+    public async Task A_LETTER_AFTER_A_HELD_ARM_ARRIVES_WHILE_THE_PRESENT_ONES_STAY_HELD()
+    {
+        Directory.CreateDirectory(Folder);
+        Letter("a.md", "one");
+        Letter("b.md", "two");
+        var w = Arm(hold: true);
+        Letter("c.md", "three");
+        WaitFor(1);
+        await Settle();
+        Assert.Equal(["three"], Got().Select(Body));
+        Assert.Equal(2, w.Held);
+    }
+
+    [Fact]
+    public void AN_ARM_WITHOUT_HOLD_HANDS_OVER_THE_LETTERS_PRESENT_AT_ONCE()
+    {
+        Directory.CreateDirectory(Folder);
+        Letter("a.md", "one");
+        Letter("b.md", "two");
+        var w = Arm();
+        WaitFor(2);
+        Assert.Equal(0, w.Held);
+    }
+
+    [Fact]
+    public async Task A_TYPED_MESSAGE_RELEASES_THE_HOLD_ONCE()
+    {
+        Directory.CreateDirectory(Folder);
+        Letter("a.md", "one");
+        Letter("b.md", "two");
+        var w = Arm(hold: true);
+        await Settle();
+        w.Taken([EntryKind.Plain]);
+        WaitFor(2);
+        w.Taken([EntryKind.Plain]);
+        await Settle();
+        Assert.Equal(2, Got().Count);
+    }
+
+    [Fact]
+    public async Task EIGHT_HELD_LETTERS_RELEASE_SIX_AND_THE_LAST_TWO_WAIT_ON_K()
+    {
+        Directory.CreateDirectory(Folder);
+        for (var i = 1; i <= 8; i++) Letter($"{i}.md", $"letter {i}");
+        var w = Arm(hold: true);
+        w.Release();
+        WaitFor(6);
+        await Settle();
+        Assert.Equal(6, Got().Count);
+        w.Taken(Enumerable.Repeat(EntryKind.Watch, 6));
+        WaitFor(8);
+        Assert.Equal(Enumerable.Range(1, 8).Select(i => $"letter {i}"), Got().Select(Body));
+    }
+
+    [Fact]
+    public async Task A_HELD_LETTER_DELETED_BEFORE_THE_RELEASE_IS_NOT_HANDED_OVER_AND_NOTHING_IS_SAID()
+    {
+        Directory.CreateDirectory(Folder);
+        var a = Letter("a.md", "one");
+        Letter("b.md", "two");
+        var w = Arm(hold: true);
+        File.Delete(a);
+        w.Release();
+        WaitFor(1);
+        await Settle();
+        Assert.Equal(["two"], Got().Select(Body));
+        Assert.Empty(_rows);
+    }
+
+    [Fact]
+    public async Task WITH_THE_PAUSE_OFF_EIGHT_LETTERS_TAKEN_IN_TWO_TURNS_OF_FOUR_ALL_ARRIVE_AND_NOTHING_PAUSES()
+    {
+        Directory.CreateDirectory(Folder);
+        for (var i = 1; i <= 8; i++) Letter($"{i}.md", $"letter {i}");
+        var w = Arm();
+        WaitFor(6);
+        w.Taken(Enumerable.Repeat(EntryKind.Watch, 4));
+        WaitFor(8);
+        w.Taken(Enumerable.Repeat(EntryKind.Watch, 4));
+        await Settle();
+        Assert.Equal(8, Got().Count);
+        Assert.Empty(_rows);
+        Assert.False(w.Paused);
+        Assert.Equal(0, w.Count);
+        Assert.Equal(Watch.K, w.Budget());
     }
 }

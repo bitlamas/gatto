@@ -29,6 +29,7 @@ public sealed partial class Repl
         foreach (var w in LaunchWarningsNow()) Console.WriteLine($"{_glyphs.Sharp} " + TermText.Sanitize(w));   //an extension's error text reaches this list, so strip it like OnWarning does
         if (sandboxNotice is not null) Console.WriteLine($"{_glyphs.Sharp} " + sandboxNotice);
         if (wildNotice is not null) Console.WriteLine($"{_glyphs.Sharp} " + wildNotice);
+        if (inbox) Console.WriteLine($"{_glyphs.Sharp} inbox not opened, the plain face has no inbox");   //said once, a silent non-arm would read as an open inbox
 
         var renderer = new PlainRenderer(reasoning, _glyphs);
         //the resumedFrom flag on its own still prints the marker, a compact-then-quit session has no turns to replay

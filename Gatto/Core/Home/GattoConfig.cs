@@ -77,6 +77,9 @@ public sealed record GattoConfig(
     //the role a bare launch runs and wild for every launch from this home, both optional so hand-built instances stay terse
     string? DefaultRole = null,
     bool Wild = false,
+    //the seat's inbox opened at every launch from this home, and the pause after K letters with no typed message, both home only
+    bool Inbox = false,
+    bool InboxPause = false,
     //sandbox mode for every launch from this home, and the folders beyond the project the confined shell may write
     bool Sandbox = false,
     IReadOnlyList<string>? SandboxGrants = null,
@@ -104,7 +107,7 @@ public sealed record GattoConfig(
 
     //the one statement of what gatto.json accepts, asserted against the schema in both directions, so a key added here needs a schema entry
     internal static readonly string[] TopKeys =
-        { "$schema", "endpoints", "default_endpoint", "default_model", "defaults", "llama_server", "context_files", "theme", "glyphs", "reasoning", "regions", "search", "weights_root", "think", "alt_screen", "dump_on_exit", "stop_server_on_exit", "mouse", "wheel_lines", "copy_on_select", "auto_compact", "deny_reason", "memory", "update_check", "extensions", "extensions_off", "default_role", "wild", "sandbox", "sandbox_grants" };
+        { "$schema", "endpoints", "default_endpoint", "default_model", "defaults", "llama_server", "context_files", "theme", "glyphs", "reasoning", "regions", "search", "weights_root", "think", "alt_screen", "dump_on_exit", "stop_server_on_exit", "mouse", "wheel_lines", "copy_on_select", "auto_compact", "deny_reason", "memory", "update_check", "extensions", "extensions_off", "default_role", "wild", "inbox", "inbox_pause", "sandbox", "sandbox_grants" };
     internal static readonly string[] ValidThemes = { "dark", "light", "auto" };
     //the same three-value shape as theme: auto asks the host, the two names answer for it
     internal static readonly string[] ValidGlyphs = { "auto", "unicode", "ascii" };
@@ -471,6 +474,24 @@ public sealed record GattoConfig(
             wildDefault = wd.GetBoolean();
         }
 
+        //the seat's inbox opened at launch and at /new, home only since a project must not arm its own mail
+        var inbox = false;
+        if (root.TryGetProperty("inbox", out var ib))
+        {
+            if (ib.ValueKind is not (JsonValueKind.True or JsonValueKind.False))
+                throw new GattoConfigException("gatto.json has an \"inbox\" with the wrong type, it must be a boolean");
+            inbox = ib.GetBoolean();
+        }
+
+        //the pause after K letters with no typed message, off unless the home asks for it
+        var inboxPause = false;
+        if (root.TryGetProperty("inbox_pause", out var ip))
+        {
+            if (ip.ValueKind is not (JsonValueKind.True or JsonValueKind.False))
+                throw new GattoConfigException("gatto.json has an \"inbox_pause\" with the wrong type, it must be a boolean");
+            inboxPause = ip.GetBoolean();
+        }
+
         //sandbox mode for every launch from this home. a project can turn it on too, never off
         var sandbox = false;
         if (root.TryGetProperty("sandbox", out var sb))
@@ -588,7 +609,7 @@ public sealed record GattoConfig(
             }
         }
 
-        return new GattoConfig(endpoints, defaultEp, defaults, llamaServer, contextCompat, contextHome, theme, glyphs, reasoning, search, weightsDir, think, altScreen, dumpOnExit, mouse, wheelLines, copyOnSelect, autoCompact, denyReason, memoryEnabled, memoryIndexBudget, updateCheck, stopServerOnExit, defaultRole, wildDefault, sandbox, sandboxGrants, extensionsOff)
+        return new GattoConfig(endpoints, defaultEp, defaults, llamaServer, contextCompat, contextHome, theme, glyphs, reasoning, search, weightsDir, think, altScreen, dumpOnExit, mouse, wheelLines, copyOnSelect, autoCompact, denyReason, memoryEnabled, memoryIndexBudget, updateCheck, stopServerOnExit, defaultRole, wildDefault, inbox, inboxPause, sandbox, sandboxGrants, extensionsOff)
         { Raw = root };
     }
 

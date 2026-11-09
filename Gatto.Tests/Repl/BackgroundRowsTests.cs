@@ -37,6 +37,14 @@ public class BackgroundRowsTests
     }
 
     [Fact]
+    public void With_the_pause_off_the_detail_has_no_count_row()
+    {
+        var rows = BackgroundPanel.WatchDetail(new WatchView("inbox", false, 0, 6, ["a.md"], Pauses: false), G);
+
+        Assert.Equal(["inbox", "a.md"], rows.Select(r => r.Text));
+    }
+
+    [Fact]
     public void A_shells_command_rows_wrap_and_its_output_rows_do_not()
     {
         var rows = BackgroundPanel.ShellRows("first line\nsecond line", "out one\nout two", "", G);

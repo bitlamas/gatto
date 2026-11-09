@@ -99,6 +99,7 @@ public sealed partial class Repl
         else if (arg.Length == 0 && _watch is { } armed)
         {
             if (armed.Paused) armed.Lift();
+            armed.Release();   //the user asking for the inbox is asking for what it holds
             line = $"inbox open: {Shown(armed.Folder)}";
         }
         else line = ArmWatch(arg.Length == 0 ? SeatInbox() : Path.Combine(cwd, arg), hold: false, s, queue);
@@ -113,16 +114,17 @@ public sealed partial class Repl
     internal static string SeatInboxFor(string cwd, string modelName, string roleName) =>
         Path.Combine(cwd, ".gatto", "mailbox", "gatto", MailboxName(Gatto.Core.Models.ServedModelName.Display(modelName)), MailboxName(roleName));
 
-    //the one site that arms a watch. a failed arm leaves the inbox that was open as it was, and the line says which happened
+    //the one site that arms a watch, for /inbox, the launch and /new. a failed arm leaves the inbox that was open as it was, and the line says which happened
     private string ArmWatch(string folder, bool hold, RichState s, DispatchQueue queue)
     {
         try
         {
-            var w = Watch.Arm(folder, _watchSink!, row => s.Renderer.CommitSystemBeforeNextReply(row));
+            var w = Watch.Arm(folder, _watchSink!, row => s.Renderer.CommitSystemBeforeNextReply(row), hold, inboxPause);
             Disarm(s, queue);
             lock (s.Gate) _watch = w;
             w.Start();
-            return $"inbox open: {Shown(w.Folder)}";
+            var held = w.Held;
+            return $"inbox open: {Shown(w.Folder)}" + (held > 0 ? $", {Gatto.Core.Plural.Of(held, "letter")} waiting" : "");
         }
         catch (Exception ex) { return $"inbox not opened: {ex.Message}"; }
     }
@@ -156,9 +158,20 @@ public sealed partial class Repl
         }
     }
 
-    //the folder as the screen shows it, the profile read as ~, while the watch and every letter keep the absolute path
-    private static string Shown(string folder)
+    //an inbox as the screen shows it, while the watch and every letter keep the absolute path
+    private string Shown(string folder) => ShownFrom(cwd, folder, _glyphs.Ellipsis);
+
+    //a folder inside the project reads from the project folder's name as the footer does, one outside it keeps the profile as ~
+    internal static string ShownFrom(string cwd, string folder, string ellipsis)
     {
+        var leaf = Path.GetFileName(Path.TrimEndingDirectorySeparator(cwd));
+        var relative = Path.GetRelativePath(cwd, folder);
+        var outside = relative == ".." || relative.StartsWith(".." + Path.DirectorySeparatorChar, StringComparison.Ordinal) || Path.IsPathRooted(relative);
+        if (leaf.Length > 0 && !outside)
+        {
+            var project = ellipsis + Path.DirectorySeparatorChar + leaf;
+            return relative == "." ? project : Path.Combine(project, relative);
+        }
         string profile;
         try { profile = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile); }
         catch (Exception) { return folder; }

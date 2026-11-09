@@ -181,6 +181,8 @@ public sealed class RichReplHarness
         string? servedNotice = null,
         //the wild line the launch says, absent as a launch with wild off and nothing forbidding it
         string? wildNotice = null,
+        //the home's inbox keys, absent as a home that sets neither
+        bool inbox = false, bool inboxPause = false,
         //the sandbox line the launch says, absent as a launch with the mode off
         string? sandboxNotice = null,
         //the tools /tools lists and their extensions' policy, absent unless a test hands them in, as a session with no registry has none
@@ -229,7 +231,7 @@ public sealed class RichReplHarness
             contextInputs: contextInputs,
             chrome: chrome,
             commands: commands,
-            launchWarnings: launchWarnings, servedNotice: servedNotice, sandboxNotice: sandboxNotice, wildNotice: wildNotice,
+            launchWarnings: launchWarnings, servedNotice: servedNotice, sandboxNotice: sandboxNotice, wildNotice: wildNotice, inbox: inbox, inboxPause: inboxPause,
             clipboardImageSource: clipboardImages,
             listTools: listTools, listPolicy: listPolicy,
             listExtensions: listExtensions, setExtension: setExtension,

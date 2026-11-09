@@ -5,8 +5,8 @@ using Gatto.Terminal;
 
 namespace Gatto.Repl.Prompts;
 
-//the watch as the background panel shows it, read once per view
-public sealed record WatchView(string Shown, bool Paused, int Count, int Limit, IReadOnlyList<string> Seen);
+//the watch as the background panel shows it, read once per view. the last field says whether the count means anything
+public sealed record WatchView(string Shown, bool Paused, int Count, int Limit, IReadOnlyList<string> Seen, bool Pauses = true);
 
 //the background panel's words and rows, pure over the handles and the watch one view froze, so a label can never land on a neighbour's row
 public static class BackgroundPanel
@@ -67,10 +67,11 @@ public static class BackgroundPanel
         return rows;
     }
 
-    //the watch's detail: its folder, the count against the limit, and the letters it has handed over by name
+    //the watch's detail: its folder, the count against the limit when the pause is on, and the letters it has handed over by name
     public static IReadOnlyList<DetailRow> WatchDetail(WatchView w, GlyphSet g)
     {
-        var rows = new List<DetailRow> { new(w.Shown), new($"{w.Count} of {w.Limit} letters since your last message", Dim: true) };
+        var rows = new List<DetailRow> { new(w.Shown) };
+        if (w.Pauses) rows.Add(new($"{w.Count} of {w.Limit} letters since your last message", Dim: true));
         foreach (var name in w.Seen) rows.Add(new DetailRow(TermText.Sanitize(name), Gutter: g.Elbow + " ", Dim: true));
         return rows;
     }

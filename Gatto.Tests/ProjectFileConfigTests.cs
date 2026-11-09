@@ -46,6 +46,18 @@ public class ProjectFileConfigTests : IDisposable
         Assert.Contains("compat", ex.Message);
     }
 
+    [Theory]
+    [InlineData("inbox")]
+    [InlineData("inbox_pause")]
+    public void The_inbox_keys_are_home_only_and_a_project_file_refuses_them(string key)
+    {
+        //a project that could open the inbox would arm its own mail when someone opens it
+        Write("{\"" + key + "\":true}");
+
+        var ex = Assert.Throws<GattoConfigException>(() => ProjectFileConfig.TryReadCompat(_dir));
+        Assert.Contains(key, ex.Message);
+    }
+
     [Fact]
     public void UnknownNestedKey_Throws()
     {

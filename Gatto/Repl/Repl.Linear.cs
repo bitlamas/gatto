@@ -198,6 +198,9 @@ public sealed partial class Repl
         _tasks = tasks;
         armTasks?.Invoke(tasks);
 
+        //the home's inbox key opens the seat's inbox once the sink exists, below the launch rows and any restored transcript. the row is this launch's state, so a resume says its own
+        if (inbox) s.Renderer.CommitSystem(ArmWatch(SeatInbox(), hold: true, s, queue), transient: true);
+
         //one fault slot shared with the composer and resize tasks, the first fault wins, and the cancel is punted off the timer thread
         void OnChromeFault(Exception ex)
         {
@@ -595,7 +598,7 @@ public sealed partial class Repl
         }
         return await DispatchBracketAsync(s.Gate, s.Painter, s.Ticker, () => s.Renderer,
             queue.Texts(), input.Split('\n'), Cats.Face(_glyphs), KnownCommands(),
-            () => DispatchLinearBodyAsync(input, s, attach, appCt, gate.Literal),
+            () => DispatchLinearBodyAsync(input, s, queue, attach, appCt, gate.Literal),
             //what the model is about to re-read, measured before the turn appends anything
             promptEstimate: ScaledPromptEstimate(ContextBudget.Estimate(convo.Messages), _usageState.Ratio),
             purrSet: purrSet, classifyAs: submitted);
@@ -775,7 +778,7 @@ public sealed partial class Repl
             : null;
 
     //the command chain and the model turn, true ends the session. every status line is a ♯ row, the bracket owns the echo, turn and purr
-    private async Task<bool> DispatchLinearBodyAsync(string input, RichState s, AttachDecision attach,
+    private async Task<bool> DispatchLinearBodyAsync(string input, RichState s, DispatchQueue queue, AttachDecision attach,
         CancellationToken appCt, bool literal = false)
     {
         var trimmed = literal ? "" : input.Trim();
@@ -815,6 +818,8 @@ public sealed partial class Repl
                 ReplayTranscript(convo.Messages, s.Renderer, u => s.Renderer.CommitUser(u.Split('\n')), s.Renderer.CommitBackground, s.Renderer.CommitLetter, s.Renderer.CommitImages);
                 s.Renderer.EndTurn();
             }
+            //a new conversation is the same seat, so the key opens its inbox again with a fresh hold, below the role's opening as at launch
+            if (inbox) s.Renderer.CommitSystem(ArmWatch(SeatInbox(), hold: true, s, queue), transient: true);
             s.Painter.Repaint();
             return false;
         }

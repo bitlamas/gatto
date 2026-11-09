@@ -110,7 +110,7 @@ public sealed partial class Repl
             lock (s.Gate) watched = _watch;
             if (watchScreen && watched is null) return;   //the watch the screen showed was turned off, and no list stands behind it
             WatchView? WatchNow() => watched is null ? null
-                : new WatchView(Shown(watched.Folder), watched.Paused, watched.Count, Watch.K, watched.Seen);
+                : new WatchView(Shown(watched.Folder), watched.Paused, watched.Count, Watch.K, watched.Seen, watched.Pauses);
             var options = BackgroundPanel.Rows(live, WatchNow(), g);
             if (options.Count == 0)
             {

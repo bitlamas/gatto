@@ -204,7 +204,7 @@ public class PlainGateWalkTests : System.IDisposable
 
         //the body skips its chain on the gate's Literal flag alone, whatever the stripped text now reads as
         Assert.Contains("var trimmed = literal ? \"\" : input.Trim();", source, System.StringComparison.Ordinal);
-        Assert.Contains("DispatchLinearBodyAsync(input, s, attach, appCt, gate.Literal)", source, System.StringComparison.Ordinal);
+        Assert.Contains("DispatchLinearBodyAsync(input, s, queue, attach, appCt, gate.Literal)", source, System.StringComparison.Ordinal);
     }
 
     //the rich face as behaviour: RunUntilAsync, because a refused message goes back to the composer and a scripted /quit races the restore
