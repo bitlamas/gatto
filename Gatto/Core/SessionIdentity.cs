@@ -17,8 +17,10 @@ public sealed record SessionIdentity(Guid Id, DateTimeOffset Start, string? Name
 
     public string IdText => Id.ToString("D");
 
-    //local time with its offset to the second, the format of the journal and the letters, one formatter for the transcript and the child
-    public string StartText => Start.ToLocalTime().ToString("yyyy-MM-dd'T'HH:mm:sszzz", CultureInfo.InvariantCulture);
+    //local time with its offset to the second, the format of the journal and the letters, one formatter for the transcript, the child and the archive's read file
+    public static string TimeText(DateTimeOffset at) => at.ToLocalTime().ToString("yyyy-MM-dd'T'HH:mm:sszzz", CultureInfo.InvariantCulture);
+
+    public string StartText => TimeText(Start);
 
     //the fields as a transcript holds them, null when the id or the start is missing or unreadable. a record with no name is a session never named
     public static SessionIdentity? Parse(string? id, string? start, string? name = null) =>

@@ -16,7 +16,8 @@ internal sealed class Watch : IDisposable
     private readonly Func<Watch, string, bool> _enqueue;
     private readonly Action<string> _row;
     private readonly object _lock = new();
-    private readonly HashSet<string> _seen = new(StringComparer.OrdinalIgnoreCase);
+    private readonly HashSet<string> _seen = new(StringComparer.OrdinalIgnoreCase);   //the delivery guard by path, a name leaves it when its letter is archived
+    private readonly HashSet<string> _handed = new(StringComparer.OrdinalIgnoreCase);   //every name handed over, for the panel, never removed
     private readonly SemaphoreSlim _kick = new(0, 1);
     private readonly CancellationTokenSource _off = new();
     private FileSystemWatcher? _events;
@@ -34,7 +35,14 @@ internal sealed class Watch : IDisposable
     //the letters this watch has handed over, by file name in name order
     public IReadOnlyList<string> Seen
     {
-        get { lock (_lock) return [.. _seen.Select(Path.GetFileName).OfType<string>().Order(StringComparer.OrdinalIgnoreCase)]; }
+        get { lock (_lock) return [.. _handed.Order(StringComparer.OrdinalIgnoreCase)]; }
+    }
+
+    //the letter left the inbox, so its name is free: a new letter written under it is a new letter. the kick delivers one that landed before this call, whose event a scan already spent
+    public void Archived(string path)
+    {
+        lock (_lock) _seen.Remove(path);
+        Kick();
     }
 
     private Watch(string folder, Func<Watch, string, bool> enqueue, Action<string> row)
@@ -48,9 +56,7 @@ internal sealed class Watch : IDisposable
     public static Watch Arm(string folder, Func<Watch, string, bool> enqueue, Action<string> row)
     {
         var full = Path.GetFullPath(folder);
-        Directory.CreateDirectory(full);
-        var ignore = Path.Combine(full, ".gitignore");
-        if (!File.Exists(ignore)) File.WriteAllText(ignore, "*\n");
+        CreateFolder(full);
         var w = new Watch(full, enqueue, row);
         var events = new FileSystemWatcher(full, "*.md") { IncludeSubdirectories = false, NotifyFilter = NotifyFilters.FileName };
         //a buffer overflow loses events and raises Error, so every event only wakes the pump and the pump rescans the folder
@@ -59,6 +65,14 @@ internal sealed class Watch : IDisposable
         events.Error += (_, _) => w.Rescan();
         w._events = events;
         return w;
+    }
+
+    //the folder and a .gitignore holding * in it, so a git add of the project never takes an inbox or an archive
+    internal static void CreateFolder(string full)
+    {
+        Directory.CreateDirectory(full);
+        var ignore = Path.Combine(full, ".gitignore");
+        if (!File.Exists(ignore)) File.WriteAllText(ignore, "*\n");
     }
 
     //starts the events and the first scan off the caller's thread, so arming never waits on a file
@@ -126,6 +140,7 @@ internal sealed class Watch : IDisposable
             {
                 if (_off.IsCancellationRequested || _paused) return again;
                 _seen.Add(path);
+                _handed.Add(Path.GetFileName(path));
                 _pending++;
             }
             if (!_enqueue(this, text))
@@ -143,9 +158,10 @@ internal sealed class Watch : IDisposable
             body = reader.ReadToEnd();
         if (body.Length == 0) return null;
         //a letter past what a tool result may carry goes as its path, so a file dropped in the folder cannot fill the context by itself
-        return body.Length > GrepTool.MaxTotalChars
-            ? path + "\n\n" + $"this letter holds {body.Length} characters, more than a tool result may carry; read_file reads it"
-            : path + "\n\n" + body;
+        if (body.Length <= GrepTool.MaxTotalChars) return path + "\n\n" + body;
+        var said = $"this letter holds {body.Length} characters, more than a tool result may carry; read_file reads it";
+        //the record keeps the inbox path, so the sentence names where the file will be once the turn moves it
+        return path + "\n\n" + (Archive.PathFor(path) is { } kept ? said + $"; when this turn ends gatto moves it to {kept}" : said);
     }
 
     //how many letters a turn may take now
@@ -198,6 +214,6 @@ internal sealed class Watch : IDisposable
     {
         _off.Cancel();
         _events?.Dispose();
-        lock (_lock) _seen.Clear();
+        lock (_lock) { _seen.Clear(); _handed.Clear(); }
     }
 }

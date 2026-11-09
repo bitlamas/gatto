@@ -302,4 +302,59 @@ public sealed class WatchTests : IDisposable
         Assert.Equal("qwen3.8-flash-next", Gatto.Repl.Repl.MailboxName("qwen3.8-flash-next"));
         Assert.Equal("openrouter-qwen-free", Gatto.Repl.Repl.MailboxName("openrouter/qwen:free"));
     }
+
+    [Fact]
+    public async Task AFTER_ARCHIVED_A_NEW_LETTER_UNDER_THE_SAME_NAME_IS_HANDED_OVER_AND_LISTED_ONCE()
+    {
+        var w = Arm();
+        var path = Letter("a.md", "first");
+        WaitFor(1);
+        File.Move(path, Path.Combine(_root, "a.md"));
+        w.Archived(path);
+        await Settle();
+        Assert.Single(Got());
+        Letter("a.md", "second");
+        WaitFor(2);
+        Assert.Equal(path + "\n\nsecond", Got()[1]);
+        Assert.Equal(["a.md"], w.Seen);
+    }
+
+    //a rewrite in place raises no event the watch listens for, so only the kick in Archived can deliver it
+    [Fact]
+    public async Task A_LETTER_WRITTEN_AT_A_HANDED_PATH_BEFORE_ARCHIVED_ARRIVES_ON_THE_CALL_ALONE()
+    {
+        var w = Arm();
+        var path = Letter("a.md", "first");
+        WaitFor(1);
+        File.WriteAllText(path, "second");
+        await Settle();
+        Assert.Single(Got());
+        w.Archived(path);
+        WaitFor(2);
+        Assert.Equal(path + "\n\nsecond", Got()[1]);
+    }
+
+    [Fact]
+    public void AN_OVERSIZE_LETTER_UNDER_A_MAILBOX_NAMES_WHERE_IT_WILL_BE_KEPT()
+    {
+        var inbox = Path.Combine(_root, ".gatto", "mailbox", "gatto", "m", "r");
+        Arm(inbox);
+        var path = Path.Combine(inbox, "big.md");
+        File.WriteAllText(path, new string('x', 60_000));
+        WaitFor(1);
+        var kept = Path.Combine(_root, ".gatto", "mailbox", "archive", "gatto", "m", "r", "big.md");
+        Assert.Equal(path + "\n\nthis letter holds 60000 characters, more than a tool result may carry; read_file reads it; when this turn ends gatto moves it to " + kept,
+            Assert.Single(Got()));
+    }
+
+    [Fact]
+    public void THE_PANEL_KEEPS_EVERY_NAME_HANDED_OVER_AFTER_ONE_IS_ARCHIVED()
+    {
+        var w = Arm();
+        var a = Letter("a.md", "one");
+        Letter("b.md", "two");
+        WaitFor(2);
+        w.Archived(a);
+        Assert.Equal(["a.md", "b.md"], w.Seen);
+    }
 }

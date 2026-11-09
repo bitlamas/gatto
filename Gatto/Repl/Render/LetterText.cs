@@ -58,5 +58,5 @@ public sealed record LetterText(string Path, IReadOnlyList<(string Key, string V
     }
 
     //what the queue row and the block's head say, the same words in both places
-    public static string Head(string path) => "New mail: " + ShortPath(path);
+    public static string Head(string path) => "inbox: " + ShortPath(path);
 }

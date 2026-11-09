@@ -61,7 +61,7 @@ public sealed class LetterBlockTests
     public void THE_HEAD_NAMES_THE_PATH_FROM_THE_MAILBOX_ROOT(string path, string shown)
     {
         Assert.Equal(shown, LetterText.ShortPath(path));
-        Assert.Equal("New mail: " + shown, LetterText.Head(path));
+        Assert.Equal("inbox: " + shown, LetterText.Head(path));
     }
 
     [Fact]
@@ -69,7 +69,7 @@ public sealed class LetterBlockTests
     {
         var rows = Plain(LetterItem.From(Record()), 80);
         Assert.Equal([
-            "♯ New mail: qwen3.8-flash-next\\2026-10-28-planner-ask.md",
+            "♯ inbox: qwen3.8-flash-next\\2026-10-28-planner-ask.md",
             "  from: seat/planner/5b6a8a37 · re: the build · kind: letter",
             "  line one",
             "  ⎿ … 4 more · click to expand",
@@ -104,7 +104,7 @@ public sealed class LetterBlockTests
         var rows = LetterItem.From(Record()).Render(80, T, GlyphSet.Unicode);
         Assert.Contains(Ansi.Fg(T.Map(Theme.Dim), true) + "line one", rows[2]);
         Assert.Contains(Ansi.Fg(T.Map(Theme.Thought), true) + "click to expand", rows[3]);
-        Assert.Contains(Ansi.Fg(T.Map(Theme.Warn), true) + "♯ New mail", rows[0]);
+        Assert.Contains(Ansi.Fg(T.Map(Theme.Warn), true) + "♯ inbox:", rows[0]);
         Assert.DoesNotContain(rows, r => r.Contains(Ansi.Fg(T.Map(Theme.Bright), true)));
     }
 
@@ -123,7 +123,7 @@ public sealed class LetterBlockTests
     {
         var item = LetterItem.From(new ChatMessage("user", Path + "\n\n<!-- letter:x -->\nto: t\nfrom: a\ndate: d\nre: b\nkind: letter\n\nhi\n<!-- /letter -->\n", Watch: Path));
         Assert.False(item.Opens(80));
-        Assert.Equal(["♯ New mail: qwen3.8-flash-next\\2026-10-28-planner-ask.md", "  from: a · re: b · kind: letter", "  hi"], Plain(item, 80));
+        Assert.Equal(["♯ inbox: qwen3.8-flash-next\\2026-10-28-planner-ask.md", "  from: a · re: b · kind: letter", "  hi"], Plain(item, 80));
     }
 
     [Fact]
@@ -154,7 +154,7 @@ public sealed class LetterBlockTests
         var q = new DispatchQueue(10);
         q.EnqueueWatch(Path + "\n\n" + File);
         var view = Assert.Single(q.Texts());
-        Assert.Equal(("New mail: qwen3.8-flash-next\\2026-10-28-planner-ask.md", true), (view.Text, view.Task));
+        Assert.Equal(("inbox: qwen3.8-flash-next\\2026-10-28-planner-ask.md", true), (view.Text, view.Task));
     }
 
     [Fact]

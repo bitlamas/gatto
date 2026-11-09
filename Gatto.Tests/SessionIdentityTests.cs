@@ -43,6 +43,18 @@ public class SessionIdentityTests : IDisposable
         Assert.Equal(identity.Start, back.Start);
     }
 
+    //the offset comes from the machine's own zone, so the test holds wherever the public tree runs
+    [Fact]
+    public void THE_TIME_TEXT_IS_THE_LOCAL_DATE_AND_TIME_WITH_THE_ZONES_OFFSET()
+    {
+        var local = new DateTime(2026, 11, 9, 11, 16, 3, DateTimeKind.Local);
+        var offset = TimeZoneInfo.Local.GetUtcOffset(local);
+        var sign = offset < TimeSpan.Zero ? "-" : "+";
+        Assert.Equal("2026-11-09T11:16:03" + sign + offset.Duration().ToString(@"hh\:mm"), SessionIdentity.TimeText(new DateTimeOffset(local, offset)));
+        var identity = new SessionIdentity(Guid.NewGuid(), new DateTimeOffset(2026, 10, 6, 16, 59, 33, TimeSpan.Zero));
+        Assert.Equal(SessionIdentity.TimeText(identity.Start), identity.StartText);
+    }
+
     //the id exists before the first save, since the first shell call runs before it, and is the projection of the file that save then writes
     [Fact]
     public void A_FRESH_SESSION_IS_NAMED_AFTER_THE_FILE_IT_WRITES()

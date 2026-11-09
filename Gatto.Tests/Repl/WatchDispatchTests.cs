@@ -1,4 +1,5 @@
 using Gatto.Core.Client;
+using Gatto.Core.Session;
 using Gatto.Repl;
 using Gatto.Tests.Fakes;
 
@@ -264,6 +265,160 @@ public sealed class WatchDispatchTests : IDisposable
         Assert.Single(h.Client.Requests);   //the letters never reached the model
         Assert.DoesNotContain(h.Convo.Messages, m => m.Content?.Contains("old seat", StringComparison.Ordinal) == true);
         Assert.Null(h.Watch);
+    }
+
+    private string Seat => Path.Combine(_cwd, ".gatto", "mailbox", "gatto", "test-model", "generalist");
+
+    private string Kept => Path.Combine(_cwd, ".gatto", "mailbox", "archive", "gatto", "test-model", "generalist");
+
+    private RichReplHarness Saving(out SessionStore store) =>
+        new(_cwd, width: 400, sessions: store = new SessionStore(_home, _cwd));
+
+    [Fact]
+    public async Task A_LETTER_WHOSE_TURN_IS_KEPT_MOVES_TO_THE_ARCHIVE_WITH_ITS_READ_FILE()
+    {
+        var h = Saving(out var store);
+        Says(h.Client, "read it");
+        var written = false;
+        h.Keys.Line("/inbox");
+        await h.RunUntilAsync(() =>
+        {
+            if (!written && h.Saw("inbox open: "))
+            {
+                File.WriteAllText(Path.Combine(Seat, "a.md"), "the letter");
+                written = true;
+            }
+            return File.Exists(Path.Combine(Kept, "a.md.read"));
+        });
+
+        Assert.False(File.Exists(Path.Combine(Seat, "a.md")));
+        Assert.False(File.Exists(Path.Combine(Seat, "a.md.read")));
+        Assert.Equal("the letter", File.ReadAllText(Path.Combine(Kept, "a.md")));
+        Assert.Equal("*\n", File.ReadAllText(Path.Combine(Kept, ".gitignore")));
+        var id = store.Identity.IdText;
+        var lines = File.ReadAllText(Path.Combine(Kept, "a.md.read")).Split('\n');
+        Assert.Equal($"read-by: gatto/test-model/generalist/{id[..8]}", lines[0]);
+        Assert.Equal($"session: {id}", lines[1]);
+        Assert.Single(h.Client.Requests);   //the read file sits where no watch scans and never reaches the queue
+    }
+
+    [Fact]
+    public async Task A_LETTER_WHOSE_TURN_ROLLS_BACK_STAYS_IN_THE_INBOX_UNTIL_ITS_RETAKE_IS_KEPT()
+    {
+        var h = Saving(out _);
+        h.Client.EnqueueThrow(new GattoConnectionException("the server went away"));
+        Says(h.Client, "read it now");
+        Says(h.Client, "and the typed one");
+        var written = false;
+        bool? stayed = null;
+        h.Keys.Line("/inbox");
+        await h.RunUntilAsync(() =>
+        {
+            if (!written && h.Saw("inbox open: "))
+            {
+                File.WriteAllText(Path.Combine(Seat, "a.md"), "the letter");
+                written = true;
+            }
+            if (stayed is null && h.Saw("the server went away"))
+            {
+                stayed = File.Exists(Path.Combine(Seat, "a.md")) && !File.Exists(Path.Combine(Kept, "a.md"));
+                h.Keys.Line("next");
+            }
+            return h.Saw("and the typed one") && File.Exists(Path.Combine(Kept, "a.md"));
+        });
+
+        Assert.True(stayed);
+        Assert.False(File.Exists(Path.Combine(Seat, "a.md")));
+    }
+
+    [Fact]
+    public async Task A_NEW_LETTER_UNDER_AN_ARCHIVED_NAME_IS_DELIVERED_AND_KEPT_IN_THE_INBOX_WITH_ONE_ROW()
+    {
+        var h = Saving(out _);
+        Says(h.Client, "first read");
+        Says(h.Client, "second read");
+        var first = false;
+        var second = false;
+        h.Keys.Line("/inbox");
+        await h.RunUntilAsync(() =>
+        {
+            if (!first && h.Saw("inbox open: "))
+            {
+                File.WriteAllText(Path.Combine(Seat, "a.md"), "one");
+                first = true;
+            }
+            if (!second && File.Exists(Path.Combine(Kept, "a.md")))
+            {
+                File.WriteAllText(Path.Combine(Seat, "a.md"), "two");
+                second = true;
+            }
+            return h.Saw("archive: a.md already there, letter kept in the inbox");
+        });
+
+        Assert.Equal("two", File.ReadAllText(Path.Combine(Seat, "a.md")));
+        Assert.Equal("one", File.ReadAllText(Path.Combine(Kept, "a.md")));
+        Assert.Equal(2, h.Client.Requests.Count);
+    }
+
+    [Theory]
+    [InlineData("inbox")]
+    [InlineData(".gatto\\mailbox\\archive\\gatto\\x\\y")]
+    public async Task AN_INBOX_WITH_NO_MAILBOX_ROOT_OR_UNDER_THE_ARCHIVE_ARCHIVES_NOTHING_AND_SAYS_NOTHING(string folder)
+    {
+        var h = Saving(out _);
+        Says(h.Client, "read it");
+        var inbox = Path.Combine(_cwd, folder);
+        var written = false;
+        System.Diagnostics.Stopwatch? since = null;
+        h.Keys.Line("/inbox " + folder);
+        await h.RunUntilAsync(() =>
+        {
+            if (!written && h.Saw("inbox open: "))
+            {
+                File.WriteAllText(Path.Combine(inbox, "a.md"), "the letter");
+                written = true;
+            }
+            if (since is null && h.Saw("read it")) since = System.Diagnostics.Stopwatch.StartNew();
+            return since is { ElapsedMilliseconds: > 400 };
+        });
+
+        Assert.True(File.Exists(Path.Combine(inbox, "a.md")));
+        Assert.False(h.Saw("archive: ") || h.Saw("archive failed"), h.Written());
+        if (folder == "inbox") Assert.False(Directory.Exists(Path.Combine(_cwd, ".gatto")));
+        else Assert.False(Directory.Exists(Path.Combine(_cwd, ".gatto", "mailbox", "archive", "archive")));
+    }
+
+    [Fact]
+    public async Task TWO_LETTERS_DELIVERED_MID_TURN_ARE_BOTH_ARCHIVED_WHEN_THE_TURN_ENDS()
+    {
+        var h = Saving(out _);
+        var release = new TaskCompletionSource();
+        h.Client.EnqueueTurn(new StreamEvent.ToolCallReady(new ToolCall("c1", "probe", "{}")), new StreamEvent.Finished("tool_calls", null));
+        Says(h.Client, "read both");
+        var armed = false;
+        var written = false;
+        h.Keys.Line("/inbox");
+        await h.RunUntilAsync(() =>
+        {
+            if (!armed && h.Saw("inbox open: "))
+            {
+                armed = true;
+                h.Client.HoldNextTurn = _ => release.Task;
+                h.Keys.Line("go");
+            }
+            if (armed && !written && h.Client.Requests.Count >= 1)
+            {
+                File.WriteAllText(Path.Combine(Seat, "a.md"), "letter a");
+                File.WriteAllText(Path.Combine(Seat, "b.md"), "letter b");
+                written = true;
+            }
+            if (written && h.ScreenText().Contains("b.md", StringComparison.Ordinal)) release.TrySetResult();
+            return File.Exists(Path.Combine(Kept, "a.md")) && File.Exists(Path.Combine(Kept, "b.md"));
+        });
+
+        Assert.Equal(2, h.Client.Requests.Count);   //both rode the turn's second round, none started a turn of its own
+        Assert.Equal(["a.md", "b.md"], h.Convo.Messages.Where(m => m.Watch is not null).Select(m => Path.GetFileName(m.Watch!)));
+        Assert.False(File.Exists(Path.Combine(Seat, "a.md")) || File.Exists(Path.Combine(Seat, "b.md")));
     }
 
     [Fact]

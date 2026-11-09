@@ -40,6 +40,7 @@ public class PathJoinCensusTests
         ("Gatto/Repl/Commands/CommandText.cs", @": $""{Environment.NewLine}{Environment.NewLine}/model quant <name> to use another one"";"),   //a command named
         ("Gatto/Repl/Render/Chrome/ChromeTicker.cs", @"? "" "" + g.Dot + "" "" + K(streamed.PromptProcessed) + ""/"" + K(promptTotal)"),   //a count over a total
         ("Gatto/Repl/Render/Syntax/MarkupScanner.cs", @"var end = Text.IndexOf(""</"" + name, Pos, language.NamesIgnoreCase ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal);"),   //a closing tag
+        ("Gatto/Repl/Repl.Linear.cs", @": $""gatto/{MailboxName(Gatto.Core.Models.ServedModelName.Display(modelName))}/{MailboxName(roleName)}/{session[..8]}"";"),   //an instance name, which a letter writes with slashes
         ("Gatto/Repl/Repl.cs", @"rows.Add(theme.Paint($""/quit exits{sep}/new resets{sep}Ctrl+C twice exits{sep}{g.UpKey} history"","),   //commands named
         ("Gatto/Roles/Serve/LlamaAssetSteering.cs", @"public static string ReleasePage => $""{ReleaseBase}/tag/{PinnedRelease}"";"),   //a release page url
     ];

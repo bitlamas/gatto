@@ -99,7 +99,7 @@ public sealed class HeldLineRenderTests
         r.OnQueuedDelivered(new Gatto.Core.Client.ChatMessage("user", "C:\\inbox\\b.md\n\nletter b"));
         r.EndTurn();
         Assert.Equal([nameof(UserEchoItem), nameof(LetterItem), nameof(UserEchoItem)], Kinds(model)[..3]);
-        Assert.Contains("♯ New mail: inbox\\a.md", Rows(model));
+        Assert.Contains("♯ inbox: inbox\\a.md", Rows(model));
     }
 
     [Fact]

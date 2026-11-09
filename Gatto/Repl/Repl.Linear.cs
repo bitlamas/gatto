@@ -135,22 +135,32 @@ public sealed partial class Repl
             lock (s.Gate)
             {
                 _endsTaken.AddRange(taken.Where(e => e.IsTask));
+                _lettersTaken.AddRange(taken.Where(e => e.Kind == EntryKind.Watch && !e.IsTask));
                 if (!stopped) { PublishQueueLocked(); RedrawLocked(lastView); }
             }
             return [.. taken.Select(e => new QueuedInput(e.Text, e.WatchPath, e.End))];
         };
 
-        //the ends a turn delivered are marked when it is kept and parked in order when it rolled back
-        _settleEnds = kept =>
+        //the ends a turn delivered are marked when it is kept and parked in order when it rolled back. a kept turn's letters move to the archive after the gate, and a rolled-back letter is parked by its dispatcher
+        _settle = kept =>
         {
+            List<QueueEntry> letters;
+            Watch? watch;
             lock (s.Gate)
             {
                 var ends = _endsTaken.ToList();
                 _endsTaken.Clear();
-                if (kept) { foreach (var e in ends) _tasks?.Delivered(e.End!.Number); return; }
-                for (var i = ends.Count - 1; i >= 0; i--) queue.Park(ends[i] with { Drawn = true });
-                if (ends.Count > 0) s.Painter.State.QueueTexts = queue.Texts();
+                letters = [.. _lettersTaken];
+                _lettersTaken.Clear();
+                watch = _watch;
+                if (kept) foreach (var e in ends) _tasks?.Delivered(e.End!.Number);
+                else
+                {
+                    for (var i = ends.Count - 1; i >= 0; i--) queue.Park(ends[i] with { Drawn = true });
+                    if (ends.Count > 0) s.Painter.State.QueueTexts = queue.Texts();
+                }
             }
+            if (kept) ArchiveLetters(letters, watch, s);
         };
 
         //the letter lands in the row the moment it is read, mid-turn included, and a letter of a watch that was moved, turned off or ended by /new is dropped
@@ -596,7 +606,26 @@ public sealed partial class Repl
 
     //the ends the running turn's boundaries delivered, under the gate, and the settle the rich loop arms for them after the turn
     private readonly List<QueueEntry> _endsTaken = new();
-    private Action<bool>? _settleEnds;
+    private Action<bool>? _settle;
+
+    //the letters the running turn delivered, at rest or at a boundary, under the gate, which the settle archives when the turn is kept
+    private readonly List<QueueEntry> _lettersTaken = new();
+
+    //each letter of a kept turn moved to its archive outside the gate. a moved letter frees its name in the watch, and each failure is one row
+    private void ArchiveLetters(IReadOnlyList<QueueEntry> letters, Watch? watch, RichState s)
+    {
+        if (letters.Count == 0) return;
+        var session = sessions?.Identity.IdText;
+        var readBy = session is null ? null
+            : $"gatto/{MailboxName(Gatto.Core.Models.ServedModelName.Display(modelName))}/{MailboxName(roleName)}/{session[..8]}";
+        foreach (var e in letters)
+        {
+            if (e.WatchPath is not { } path) continue;
+            var (moved, row) = Archive.Move(path, readBy, session, DateTimeOffset.Now);
+            if (moved) watch?.Archived(path);
+            if (row is not null) s.Renderer.CommitSystemBetweenBlocks(row);
+        }
+    }
 
     //how many tasks the coming /new ended, said in the new transcript after its rotation
     private int _endedAtNew;
@@ -624,7 +653,7 @@ public sealed partial class Repl
                 var record = convo.UserRecord(entry.Text, watch: entry.WatchPath);
                 if (!entry.Drawn) s.Renderer.CommitLetter(record);   //a parked letter's block stayed on screen from its first take
                 Watch? watch;
-                lock (s.Gate) watch = _watch;
+                lock (s.Gate) { watch = _watch; _lettersTaken.Add(entry); }   //before the turn, since the settle that archives it runs inside RunModelTurnAsync
                 if (!entry.Counted) watch?.Taken([EntryKind.Watch]);   //after its block, so a pause row follows the letter that reached K
                 var kept = await RunModelTurnAsync(s, [],
                     ct => RunTurnGuardedAsync(loop, convo, record, s.Renderer, sessions, ct, s.Painter.Model, serverGone, _takeQueued), appCt);
@@ -977,7 +1006,7 @@ public sealed partial class Repl
             deafWatch?.Disarm();
             lock (_ctsLock) { s.TurnCts?.Dispose(); s.TurnCts = null; }
         }
-        _settleEnds?.Invoke(kept);
+        _settle?.Invoke(kept);
         //name the session's folder in the tab once a turn ran to its end, a cancelled turn is not that boundary
         if (!turnCancelled) s.Painter.AltScreen.SetFinalTitle(TerminalTitle.Project(cwd));
         s.Refresh();                                   //a turn may have committed or switched branches, and tokens moved
