@@ -144,6 +144,45 @@ public class WorkspaceBoundaryTests
     [InlineData("Write-Output $env:GATTO_SESSION_ID $env:GATTO_HOME")]
     public void GATTO_HOME_LEAVES_IN_EVERY_SPELLING(string command) => Assert.True(Boundary.Leaves(command));
 
+    //a URL names a network address and no folder, whatever its path, query or encoding spells
+    [Theory]
+    [InlineData("curl.exe -s https://example.com/api/models/org/name")]
+    [InlineData("Invoke-RestMethod https://example.com/api/v1/items")]
+    [InlineData("Invoke-WebRequest -Uri 'https://example.com/a/b' -OutFile out.json")]
+    [InlineData("python -c \"import urllib.request as u; print(u.urlopen('https://example.com/x').read())\"")]
+    [InlineData("git clone https://example.com/org/repo.git")]
+    [InlineData("curl http://127.0.0.1:8080/v1/models")]
+    [InlineData("curl \"https://example.com/search?q=hello%20world%20again\"")]
+    [InlineData("curl https://example.com/a/../b")]
+    [InlineData("curl https://example.com/~user/page")]
+    [InlineData("curl \"https://example.com/r?next=/home/x\"")]
+    [InlineData("(Invoke-RestMethod 'https://example.com/x').name")]
+    [InlineData("curl -s https://example.com/x|jq .name")]
+    [InlineData("curl -s https://example.com/x -o out.json")]
+    public void A_command_naming_a_URL_STAYS(string command) => Assert.False(Boundary.Leaves(command));
+
+    //a share in forward slashes, a file URL and a path written after a URL still reach outside
+    [Theory]
+    [InlineData("Get-ChildItem //server/share")]
+    [InlineData("curl file:///C:/Windows/win.ini")]
+    [InlineData("curl file://server/share/x")]
+    [InlineData("curl FILE://server/share/x")]
+    [InlineData("curl https://example.com/x -o C:\\Windows\\x.txt")]
+    [InlineData("curl https://example.com/x -o ..\\x.txt")]
+    [InlineData("curl https://example.com/x; Get-ChildItem C:\\")]
+    [InlineData("curl \"https://example.com/x\" -o \"C:/Users/x.txt\"")]
+    [InlineData("curl https://example.com/x -o $env:USERPROFILE\\x.txt")]
+    public void A_command_with_a_URL_that_also_reaches_outside_LEAVES(string command) => Assert.True(Boundary.Leaves(command));
+
+    //a variable read inside a URL sends the variable's value, so the environment screen still reads the URL
+    [Theory]
+    [InlineData("curl https://example.com/$env:USERPROFILE")]
+    [InlineData("curl \"https://example.com/?p=${env:PATH}\"")]
+    [InlineData("curl https://example.com/$HOME")]
+    [InlineData("cmd /c curl https://example.com/%USERPROFILE%")]
+    [InlineData("cmd /c curl https://example.com/a%20b/%USERPROFILE%")]
+    public void A_URL_carrying_a_variable_read_LEAVES(string command) => Assert.True(Boundary.Leaves(command));
+
     [Fact]
     public void A_command_spelling_the_folder_or_a_grant_in_full_stays_and_one_naming_a_sibling_leaves()
     {

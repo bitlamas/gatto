@@ -120,8 +120,8 @@ public sealed class ShellTool : ITool
         var outBuf = new HeadBuffer();
         var errBuf = new HeadBuffer();
         var gate = new object();
-        var stdoutTask = DrainAsync(stdout, outBuf, gate, ct);
-        var stderrTask = DrainAsync(stderr, errBuf, gate, ct);
+        var stdoutTask = Drain(stdout, outBuf, gate);
+        var stderrTask = Drain(stderr, errBuf, gate);
 
         using var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
         timeoutCts.CancelAfter(timeoutMs);
@@ -194,16 +194,24 @@ public sealed class ShellTool : ITool
     //the most a result shows, so no stream needs to keep more than this while it drains
     internal const int OutputCap = 50_000;
 
-    //read the stream in chunks into the shared buffer. the caller snapshots the buffer under the same gate, so a late drain is harmless
-    internal static async Task DrainAsync(StreamReader reader, HeadBuffer into, object gate, CancellationToken ct)
+    //read the stream in chunks on a thread of its own. a pipe read blocks, and a busy pool would hold the last read past the grace. the caller snapshots the buffer under the same gate, so a late drain is harmless
+    internal static Task Drain(StreamReader reader, HeadBuffer into, object gate)
     {
-        var buf = new char[4096];
-        while (true)
+        var done = new TaskCompletionSource(); //completes on the drain thread, so a busy pool cannot delay the drain's end past the grace
+        var thread = new Thread(() =>
         {
-            var n = await reader.ReadAsync(buf.AsMemory(), ct);
-            if (n == 0) return;
-            lock (gate) into.Append(buf.AsSpan(0, n));
-        }
+            try
+            {
+                var buf = new char[4096];
+                int n;
+                while ((n = reader.Read(buf, 0, buf.Length)) > 0)
+                    lock (gate) into.Append(buf.AsSpan(0, n));
+                done.SetResult();
+            }
+            catch (Exception ex) { done.SetException(ex); }
+        }) { IsBackground = true, Name = "gatto shell drain" };
+        thread.Start();
+        return done.Task;
     }
 }
 

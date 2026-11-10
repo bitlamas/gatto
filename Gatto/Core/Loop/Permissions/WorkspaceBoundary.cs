@@ -23,9 +23,11 @@ internal sealed partial class WorkspaceBoundary(string workingFolder, Func<strin
     //true when the command's text reaches for something outside the working folder or a grant. a path built at run time from parts is not seen here
     public bool Leaves(string command)
     {
-        var text = command.Replace('/', '\\');
+        //a URL is a network address and no folder, so the path patterns skip it whole and the variable screen reads it without its percent escapes
+        var text = Url().Replace(command, " ").Replace('/', '\\');
+        var reads = Url().Replace(command, m => PercentEscape().Replace(m.Value, ""));
         //gatto's own variables are read out of the text first, so the pattern judges whatever the command reads besides them
-        if (Upward().IsMatch(text) || Elsewhere().IsMatch(GattoReads().Replace(command, " "))) return true;
+        if (Upward().IsMatch(text) || Elsewhere().IsMatch(GattoReads().Replace(reads, " "))) return true;
 
         foreach (Match m in Rooted().Matches(text))
         {
@@ -82,6 +84,14 @@ internal sealed partial class WorkspaceBoundary(string workingFolder, Func<strin
     //a read of one GATTO_ variable in each spelling Elsewhere screens, named whole after the prefix so MY_GATTO_X is not one. GATTO_HOME holds a path, so neither it nor a wildcard that could match it is one
     [GeneratedRegex(@"(?<![\w.\-])(\$\{env:gatto_(?!home(?![\w*?\[]))\w+(?![\w*?\[])\}|\$?env:\\?gatto_(?!home(?![\w*?\[]))\w+(?![\w*?\[]))|(?<![%\w])%gatto_(?!home%)\w+%|\[(system\.)?environment\]::getenvironmentvariable\(\s*(?<q>['""])gatto_(?!home\k<q>)\w+\k<q>\s*\)", RegexOptions.IgnoreCase)]
     private static partial Regex GattoReads();
+
+    //a scheme of two letters or more and two slashes, up to a space, a quote or a shell separator. file: names a folder, so it is no URL here
+    [GeneratedRegex(@"(?<![\w+.\-])(?!file:)[a-z][a-z0-9+.\-]+://[^\s""'<>|;)`]*", RegexOptions.IgnoreCase)]
+    private static partial Regex Url();
+
+    //one percent escape of a URL, which the variable screen would read as half of a %name%
+    [GeneratedRegex(@"%[0-9a-f]{2}", RegexOptions.IgnoreCase)]
+    private static partial Regex PercentEscape();
 
     //the variable that points the home elsewhere, in both spellings
     [GeneratedRegex(@"\$env:gatto_home\b|%gatto_home%", RegexOptions.IgnoreCase)]

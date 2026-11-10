@@ -191,8 +191,8 @@ public sealed class BackgroundTasks : IDisposable
     {
         var ct = _cts.Token;
         var proc = e.Started.Process;
-        var stdoutTask = ShellTool.DrainAsync(e.Started.Stdout, e.Out, e.Gate, ct);
-        var stderrTask = ShellTool.DrainAsync(e.Started.Stderr, e.Err, e.Gate, ct);
+        var stdoutTask = ShellTool.Drain(e.Started.Stdout, e.Out, e.Gate);
+        var stderrTask = ShellTool.Drain(e.Started.Stderr, e.Err, e.Gate);
         try
         {
             using (var deadline = CancellationTokenSource.CreateLinkedTokenSource(ct))

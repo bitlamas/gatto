@@ -13,7 +13,7 @@ public class ShellOutputCapTests
     private static async Task<HeadBuffer> Drained(string text)
     {
         var into = new HeadBuffer();
-        await ShellTool.DrainAsync(Reader(text), into, new object(), default);
+        await ShellTool.Drain(Reader(text), into, new object());
         return into;
     }
 
