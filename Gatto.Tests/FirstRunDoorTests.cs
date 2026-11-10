@@ -53,6 +53,18 @@ public class FirstRunDoorTests : IDisposable
         Assert.False(FirstRunDoor.NotConfigured(_home));
     }
 
+    [Fact]
+    public void A_home_whose_contributed_default_endpoint_has_a_companion_model_is_configured()
+    {
+        Directory.CreateDirectory(Path.Combine(_home, "extensions"));
+        File.WriteAllText(Path.Combine(_home, "gatto.json"), """{"endpoints":{"local":{}},"default_endpoint":"hosted"}""");
+        Assert.True(FirstRunDoor.NotConfigured(_home));
+
+        File.WriteAllText(Path.Combine(_home, "extensions", "hosted.json"), """{"defaults":{"hosted":{"model":"h1"}}}""");
+
+        Assert.False(FirstRunDoor.NotConfigured(_home));
+    }
+
     //a default endpoint that lists models launches on its first entry with nothing saved, so the home needs no setup
     [Fact]
     public void A_LISTED_MODEL_ON_THE_DEFAULT_ENDPOINT_MEANS_CONFIGURED()

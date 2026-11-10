@@ -350,12 +350,12 @@ public class GattoConfigWriterTests : IDisposable
     [Fact]
     public void SetExtensionsOff_writes_the_list_and_removes_the_key_when_it_empties()
     {
-        Write("""{"endpoints":{},"default_endpoint":"local","extensions":{"web_search":{"providers":["ddg"]}}}""");
+        Write("""{"endpoints":{},"default_endpoint":"local","search":{"providers":["ddg"]}}""");
 
         GattoConfigWriter.SetExtensionsOff(_home, ["cards", "web_search"]);
         var root = JsonDocument.Parse(File.ReadAllText(Path.Combine(_home, "gatto.json"))).RootElement;
         Assert.Equal(["cards", "web_search"], root.GetProperty("extensions_off").EnumerateArray().Select(e => e.GetString()));
-        Assert.True(root.GetProperty("extensions").TryGetProperty("web_search", out _));
+        Assert.True(root.GetProperty("search").TryGetProperty("providers", out _));
 
         GattoConfigWriter.SetExtensionsOff(_home, []);
         root = JsonDocument.Parse(File.ReadAllText(Path.Combine(_home, "gatto.json"))).RootElement;

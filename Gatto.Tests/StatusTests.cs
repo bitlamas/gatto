@@ -85,4 +85,40 @@ public class StatusTests : IDisposable
         Assert.Contains("not serving", text);   //with no serve.json the serve state reads as not serving
         Assert.Contains("sessions for this project: 0", text);
     }
+
+    private async Task<string> StatusOnContributed(params (string Name, string Json)[] companions)
+    {
+        File.WriteAllText(Path.Combine(_home, "gatto.json"), """{"endpoints":{"local":{}},"default_endpoint":"hosted"}""");
+        Directory.CreateDirectory(Path.Combine(_home, "extensions"));
+        foreach (var (name, json) in companions) File.WriteAllText(Path.Combine(_home, "extensions", name + ".json"), json);
+        var output = new StringWriter();
+        Assert.Equal(0, await Status.RunAsync(_home, _cwd, output, new HttpClient(new FakeHandler()), CancellationToken.None));
+        return output.ToString();
+    }
+
+    [Fact]
+    public async Task The_status_names_a_contributed_default_endpoints_companion_model_and_file()
+    {
+        var text = await StatusOnContributed(("hostext", """{"defaults":{"hosted":{"model":"h1"}}}"""));
+
+        Assert.Contains($"default_model: h1 ({Path.Combine("extensions", "hostext.json")})", text);
+    }
+
+    [Fact]
+    public async Task The_status_names_two_companions_and_doctor()
+    {
+        var text = await StatusOnContributed(
+            ("alpha", """{"defaults":{"hosted":{"model":"a1"}}}"""),
+            ("beta", """{"defaults":{"hosted":{"model":"b1"}}}"""));
+
+        Assert.Contains("default_model: (none; 2 companion files carry hosted, see gatto doctor)", text);
+    }
+
+    [Fact]
+    public async Task The_status_with_no_companion_says_none()
+    {
+        var text = await StatusOnContributed();
+
+        Assert.Contains("default_model: (none)", text);
+    }
 }

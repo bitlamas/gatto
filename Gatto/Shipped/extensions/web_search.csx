@@ -49,11 +49,11 @@ Func<string, string> unwrap = href =>
 };
 
 //--- provider chain --------------------------------------------------------------------
-//web_search walks the chain from gatto.json's "search" section, validated at startup and
+//web_search walks the chain from gatto.json's core "search" section, validated at startup and
 //defaulting to ["ddg"]. a provider succeeds only if it returns at least one result; a throw
 //or an empty set falls through to the next one.
 //cascading on empty covers rare queries and silent parse rot alike.
-var searchCfg = Gatto.Config.Section("search");
+var searchCfg = Gatto.Config.Core("search");
 var chain = new List<string> { "ddg" };
 string? tavilyKey = null;
 string? searxngUrl = null;

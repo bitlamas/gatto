@@ -88,12 +88,9 @@ public static class GattoApp
     internal static string CloudSwitchHint(string endpointName) =>
         $"endpoint {endpointName} lists no models: type /model <name> to switch to any model it serves";
 
-    //an extension's section comes from the extensions object first, so it needs no new top-level key and search keeps working
-    internal static Func<string, JsonElement?> SectionReader(JsonElement? raw) => name =>
-        raw is not { } r ? null
-        : r.TryGetProperty("extensions", out var ext) && ext.ValueKind == JsonValueKind.Object && ext.TryGetProperty(name, out var inner) ? inner
-        : r.TryGetProperty(name, out var top) ? top
-        : null;
+    //a script reads only the keys gatto.json accepts, so no extension setting can live there by habit
+    internal static Func<string, JsonElement?> CoreReader(JsonElement? raw) => name =>
+        raw is { } r && GattoConfig.TopKeys.Contains(name) && r.TryGetProperty(name, out var top) ? top : null;
 
     //the help text is the first thing a stranger reads, so it uses the user's words rather than harness. internal so a guard drives the string that ships, since a guard over a copy is an oracle about the copy
     internal const string Help = """
@@ -500,7 +497,7 @@ public static class GattoApp
                 ledgerPath: () => sessions.CurrentPath is { } sp ? SessionFiles.Sidecar(sp, SessionFiles.Ledger) : null,
                 prompter: () => prompter,
                 log: extDiag,
-                configSection: SectionReader(config.Raw),
+                configSection: CoreReader(config.Raw),
                 allowedOrigins: allowedOrigins);
             //every name a built-in registers below, so an extension that would collide is skipped here and never lends the launch its endpoint
             var reservedTools = new List<string>
@@ -541,7 +538,8 @@ public static class GattoApp
 
             //one instance holds what the launch resolves and every switch moves, so no switch reads a copy another switch left behind
             state = new LaunchState(args, config, home, cwd, rolesDir, modelsDir, endpoints, launchEndpoint, sessionModel, warn, memoryOn, policyLines, glyphs, bare,
-                sessionOf: bare ? () => null : () => sessions.Identity.IdText);   //the prefix a check prices belongs to no session, so a bare launch names none
+                sessionOf: bare ? () => null : () => sessions.Identity.IdText,   //the prefix a check prices belongs to no session, so a bare launch names none
+                endpointOwner: endpointOwner);
 
             var picked = LaunchRole.Resolve(args.Role, config.DefaultRole, RoleFile.ListNames(rolesDir), name =>
             {
@@ -1174,7 +1172,7 @@ public static class GattoApp
             var unlistedRemote = !state.ServedHere() && state.Endpoint.Models is not { Count: > 0 };
 
             //the hint reads the same two locals as the reuse line, so the two sentences cannot disagree about what is loaded
-            var repl = new Gatto.Repl.Repl(loop, convo, state.Role.Name, state.ModelString, sessions, client, state.Endpoint.Context, state.ContextBudget, cwd, state.RecomposeSystem, state.SwitchRole, wildState, on => permissions.SetWild(on, persist: true), hooks, themeMode, subagentProgress, resumedFrom: resumedFrom, reasoning: config.ReasoningMode, thinkingName: initialThinkingName, setEffort: state.SetEffort, listEfforts: state.ListEfforts, glyphs: glyphs, purrSet: Gatto.Repl.Render.Chrome.PurrFrames.RandomFromPool, versionLine: CommandBanner.DottedVersion(Gatto.Core.GattoVersion.String, Gatto.Core.GattoVersion.Build ?? "", CommandBanner.IsDevBuild(), glyphs), pump: pump, chrome: chrome, switchModel: state.SwitchModel, setDefault: id => ModelSwitch.Persist(home, state.EndpointName, id),   //the role name as ResolveRole cased it from disk, which the banner and the status line key on
+            var repl = new Gatto.Repl.Repl(loop, convo, state.Role.Name, state.ModelString, sessions, client, state.Endpoint.Context, state.ContextBudget, cwd, state.RecomposeSystem, state.SwitchRole, wildState, on => permissions.SetWild(on, persist: true), hooks, themeMode, subagentProgress, resumedFrom: resumedFrom, reasoning: config.ReasoningMode, thinkingName: initialThinkingName, setEffort: state.SetEffort, listEfforts: state.ListEfforts, glyphs: glyphs, purrSet: Gatto.Repl.Render.Chrome.PurrFrames.RandomFromPool, versionLine: CommandBanner.DottedVersion(Gatto.Core.GattoVersion.String, Gatto.Core.GattoVersion.Build ?? "", CommandBanner.IsDevBuild(), glyphs), pump: pump, chrome: chrome, switchModel: state.SwitchModel, setDefault: id => ModelSwitch.Persist(home, state.EndpointName, state.OwnerOf(state.EndpointName), id),   //the role name as ResolveRole cased it from disk, which the banner and the status line key on
                         launchServing: state.LaunchServing, probeServing: state.ProbeServing, listModels: unlistedRemote ? null : state.ListModels, picker: replPicker, slotsReader: slotsReader, warn: warn, altScreen: config.AltScreen, dumpOnExit: config.DumpOnExit, thinkingIsToggle: state.ThinkCap == ThinkCapability.Toggle, thinkingIsUnavailable: state.ThinkingUnavailable(), mouseEnabled: config.Mouse && config.AltScreen && pump is not null, wheelLines: config.WheelLines, copyOnSelect: config.CopyOnSelect, resumedPath: continuePath, resumeLine: resumeLine,
                 modelMarkLegend: !state.ServedHere() ? "current" : "loaded",
                 setDefaultEffort: state.SetModelDefaultEffort,

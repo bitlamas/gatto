@@ -92,7 +92,7 @@ public sealed record GattoConfig(
     //expanded maps to Expanded and every other value to Collapsed, so a hand-built show or hide can't quietly mean Expanded
     public ReasoningMode ReasoningMode => Reasoning == "expanded" ? ReasoningMode.Expanded : ReasoningMode.Collapsed;
 
-    //the cloned gatto.json root for the extension host's Gatto.Config.Section, null on hand-built instances
+    //the cloned gatto.json root for the extension host's Gatto.Config.Core, null on hand-built instances
     public JsonElement? Raw { get; init; }
 
     //the default endpoint's model, the meaning default_model always had, so its readers need no change
@@ -107,7 +107,7 @@ public sealed record GattoConfig(
 
     //the one statement of what gatto.json accepts, asserted against the schema in both directions, so a key added here needs a schema entry
     internal static readonly string[] TopKeys =
-        { "$schema", "endpoints", "default_endpoint", "default_model", "defaults", "llama_server", "context_files", "theme", "glyphs", "reasoning", "regions", "search", "weights_root", "think", "alt_screen", "dump_on_exit", "stop_server_on_exit", "mouse", "wheel_lines", "copy_on_select", "auto_compact", "deny_reason", "memory", "update_check", "extensions", "extensions_off", "default_role", "wild", "inbox", "inbox_pause", "sandbox", "sandbox_grants" };
+        { "$schema", "endpoints", "default_endpoint", "default_model", "defaults", "llama_server", "context_files", "theme", "glyphs", "reasoning", "regions", "search", "weights_root", "think", "alt_screen", "dump_on_exit", "stop_server_on_exit", "mouse", "wheel_lines", "copy_on_select", "auto_compact", "deny_reason", "memory", "update_check", "extensions_off", "default_role", "wild", "inbox", "inbox_pause", "sandbox", "sandbox_grants" };
     internal static readonly string[] ValidThemes = { "dark", "light", "auto" };
     //the same three-value shape as theme: auto asks the host, the two names answer for it
     internal static readonly string[] ValidGlyphs = { "auto", "unicode", "ascii" };
@@ -144,16 +144,6 @@ public sealed record GattoConfig(
             if (!TopKeys.Contains(prop.Name))
                 throw new GattoConfigException(
                     $"unknown key in gatto.json: {prop.Name} — {ConfigSection.Known(TopKeys)}");
-
-        //each extension owns the keys inside its own object, so gatto checks only that every value is an object and validates nothing below it
-        if (root.TryGetProperty("extensions", out var extensions))
-        {
-            if (extensions.ValueKind != JsonValueKind.Object)
-                throw new GattoConfigException("gatto.json has an \"extensions\" with the wrong type — must be an object");
-            foreach (var ext in extensions.EnumerateObject())
-                if (ext.Value.ValueKind != JsonValueKind.Object)
-                    throw new GattoConfigException($"gatto.json extensions.{ext.Name} must be an object");
-        }
 
         if (!root.TryGetProperty("endpoints", out var eps) || eps.ValueKind != JsonValueKind.Object)
             throw new GattoConfigException("gatto.json needs an \"endpoints\" object");
@@ -516,7 +506,7 @@ public sealed record GattoConfig(
             }
         }
 
-        //a list of source names, kept clear of the extensions object whose children each script reads as its own
+        //a list of source names, the one extension key gatto.json keeps, since turning a script off is gatto's choice and not the script's
         var extensionsOff = new List<string>();
         if (root.TryGetProperty("extensions_off", out var eo))
         {

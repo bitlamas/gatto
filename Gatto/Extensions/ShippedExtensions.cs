@@ -122,6 +122,8 @@ public static class ShippedExtensions
         "d799ef861f06a6114e3e2e66cfdbe48c41f34a013cce0e76604910e1613715e1",
         //undo.csx while /undo answered text alone
         "c0272134a0b119bf5d1043678f37cba7157f77f387c6bf3e7db8573e09a232f6",
+        //web_search.csx while it read its search section through Config.Section, which this host no longer has
+        "4c9acb8c8681dc592a8451d92fb6988736f43c0fcca8b98859fca03792ab500f",
     };
 
     //hashes of superseded shipped revisions, an unmodified copy that matches one is safely overwritten by the current text

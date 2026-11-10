@@ -258,13 +258,6 @@
       "type": "boolean",
       "description": "may gatto ask github whether a newer release exists. absent means never asked, and nothing is sent."
     },
-    "extensions": {
-      "type": "object",
-      "additionalProperties": {
-        "type": "object"
-      },
-      "description": "settings for installed extensions, one object per extension name. gatto checks only that each value is an object; the extension reads its own keys."
-    },
     "extensions_off": {
       "type": "array",
       "items": { "type": "string" },

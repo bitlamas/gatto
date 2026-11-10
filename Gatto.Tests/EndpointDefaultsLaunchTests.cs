@@ -126,19 +126,66 @@ public class EndpointDefaultsLaunchTests : IDisposable
         Assert.Contains("default_endpoint 'acme' is not a configured endpoint and no extension contributes it", _err.ToString());
     }
 
+    //an extension named hosted contributes the endpoint hosted, its companion file beside it when the test passes one
+    private void Hosted(FakeOpenAiServer server, string models, string? companion = null, string thinking = "")
+    {
+        Directory.CreateDirectory(Path.Combine(_home, "extensions"));
+        File.WriteAllText(Path.Combine(_home, "extensions", "hosted.csx"),
+            "Gatto.Endpoint(\"hosted\", \"" + server.BaseUrl + "\"" + thinking + (models.Length > 0 ? ", models: new[] { " + models + " }" : "") + ");");
+        if (companion is not null) File.WriteAllText(Path.Combine(_home, "extensions", "hosted.json"), companion);
+    }
+
     [Fact]
     public async Task A_default_endpoint_an_extension_contributes_launches_on_its_saved_model()
     {
         await using var server = new FakeOpenAiServer();
-        Directory.CreateDirectory(Path.Combine(_home, "extensions"));
-        File.WriteAllText(Path.Combine(_home, "extensions", "hosted.csx"),
-            "Gatto.Endpoint(\"hosted\", \"" + server.BaseUrl + "\", models: new[] { \"h1\", \"h2\" });");
-        WriteConfig("{\"endpoints\":{\"local\":{}},\"default_endpoint\":\"hosted\",\"defaults\":{\"hosted\":{\"model\":\"h2\"}}}");
+        Hosted(server, "\"h1\", \"h2\"", """{"defaults":{"hosted":{"model":"h2"}}}""");
+        WriteConfig("{\"endpoints\":{\"local\":{}},\"default_endpoint\":\"hosted\"}");
         WriteRole("generalist", "{}");
         server.Enqueue(Completion("ok"));
 
         Assert.Equal(0, await GattoApp.RunAsync(new[] { "-p", "hi" }));
         Assert.Equal("h2", SentModel(server));
+    }
+
+    [Fact]
+    public async Task A_defaults_row_in_gatto_json_for_a_contributed_endpoint_is_inert()
+    {
+        await using var server = new FakeOpenAiServer();
+        Hosted(server, "\"h1\", \"h2\"");
+        WriteConfig("{\"endpoints\":{\"local\":{}},\"default_endpoint\":\"hosted\",\"defaults\":{\"hosted\":{\"model\":\"h2\"}}}");
+        WriteRole("generalist", "{}");
+        server.Enqueue(Completion("ok"));
+
+        Assert.Equal(0, await GattoApp.RunAsync(new[] { "-p", "hi" }));
+        Assert.Equal("h1", SentModel(server));
+        Assert.False(File.Exists(Path.Combine(_home, "extensions", "hosted.json")));
+    }
+
+    [Fact]
+    public async Task A_contributed_endpoint_with_no_model_names_the_companion_in_its_refusal()
+    {
+        await using var server = new FakeOpenAiServer();
+        Hosted(server, "");
+        WriteConfig("{\"endpoints\":{\"local\":{}},\"default_endpoint\":\"hosted\"}");
+        WriteRole("generalist", "{}");
+
+        Assert.Equal(2, await GattoApp.RunAsync(new[] { "-p", "hi" }));
+        Assert.Contains("defaults.hosted.model in " + Path.Combine("extensions", "hosted.json"), _err.ToString());
+    }
+
+    [Fact]
+    public async Task A_saved_cloud_effort_in_the_companion_is_the_launch_effort()
+    {
+        await using var server = new FakeOpenAiServer();
+        Hosted(server, "\"m1\", \"m2\"", """{"defaults":{"hosted":{"effort":{"m1":"high"}}}}""",
+            thinking: ", thinking: \"{\\\"none\\\":null,\\\"low\\\":{\\\"reasoning_effort\\\":\\\"low\\\"},\\\"high\\\":{\\\"reasoning_effort\\\":\\\"high\\\"}}\"");
+        WriteConfig("{\"endpoints\":{\"local\":{}},\"default_endpoint\":\"hosted\"}");
+        WriteRole("generalist", "{}");
+        server.Enqueue(Completion("ok"));
+
+        Assert.Equal(0, await GattoApp.RunAsync(new[] { "-p", "hi" }));
+        Assert.Equal("high", SentEffort(server.LastRequestBody!.Value));
     }
 
     [Fact]

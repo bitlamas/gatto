@@ -17,6 +17,17 @@ public class ExtensionDiscoveryTests : IDisposable
     }
 
     [Fact]
+    public void A_json_file_beside_a_script_is_not_an_extension()
+    {
+        WriteFile("alpha.csx", "var x = 1;");
+        WriteFile("alpha.json", """{"owner":"gatto"}""");
+
+        var source = Assert.Single(ExtensionDiscovery.Discover(_dir));
+
+        Assert.Equal("alpha", source.Name);
+    }
+
+    [Fact]
     public void Discover_finds_single_file_and_folder_extensions_sorted_by_name()
     {
         WriteFile("zeta.csx", "// zeta");

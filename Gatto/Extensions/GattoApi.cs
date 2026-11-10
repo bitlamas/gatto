@@ -42,7 +42,7 @@ public sealed class StagedRegistrations
 public sealed class GattoApi
 {
     //bump on any additive change to this surface, the extension cache hash includes the version so a host upgrade recompiles every .csx
-    public const string HostApiVersion = "7";
+    public const string HostApiVersion = "8";
 
     private static readonly Regex NameRx = new(@"\A[a-z0-9_]+\z", RegexOptions.Compiled);   //a dollar anchor also matches before a final newline
     private static readonly string[] ValidEvents = { "tool_call", "tool_result", "message_end", "session_summary" };
@@ -271,12 +271,12 @@ public sealed class GattoHttp
     public Task<FetchResult> FetchAsync(string url, FetchOptions options, CancellationToken ct) => _fetch(url, options, ct);
 }
 
-//a section is extensions.<name> in gatto.json, else the top-level key, else null (null also means no config, so every script must default)
+//a core section is a top-level key gatto.json accepts, else null (null also means no config, so every script must default). an extension keeps its own settings in its companion file
 public sealed class GattoConfigSurface
 {
     private readonly Func<string, JsonElement?> _section;
     internal GattoConfigSurface(Func<string, JsonElement?>? section) => _section = section ?? (_ => null);
-    public JsonElement? Section(string name) => _section(name);
+    public JsonElement? Core(string name) => _section(name);
 }
 
 //the citation recorder handed to extensions, it writes through the host's ledger

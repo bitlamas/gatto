@@ -75,14 +75,16 @@ public sealed class Doctor(
                 if (name != "local" && ep.BaseUrl is not null)
                     results.Add(await CheckEndpointReachableAsync(name, ep, g, ct).ConfigureAwait(false));
 
+        var conflicts = new List<string>();   //the roles check finds them, the companions line says them, since their fix is a companion file
         results.AddRange(new List<CheckResult>
         {
             CheckConfig(config, configError, configPath, g),
             CheckModels(modelsDir, Gatto.Core.Acquire.ModelLocation.SuggestedDir(home, config?.WeightsRoot),
                 modelIds, loadedModels, config, g),
-            CheckRoles(rolesDir, config, g),
+            CheckRoles(rolesDir, home, config, g, conflicts),
             CheckExtensions(home, extensionsDir, g, shippedHistorical),
         });
+        if (CheckCompanions(home, extensionsDir, conflicts, g) is { } companions) results.Add(companions);
         results.AddRange(CheckEngines(config, modelIds, loadedModels, g));
         results.AddRange(new List<CheckResult>
         {
@@ -354,7 +356,7 @@ public sealed class Doctor(
     }
 
     //4. roles parse and validate
-    private static CheckResult CheckRoles(string rolesDir, GattoConfig? config, Gatto.Terminal.GlyphSet g)
+    private static CheckResult CheckRoles(string rolesDir, string home, GattoConfig? config, Gatto.Terminal.GlyphSet g, List<string> conflicts)
     {
         var names = RoleFile.ListNames(rolesDir);
         if (names.Count == 0)
@@ -369,6 +371,7 @@ public sealed class Doctor(
                 "roles: cannot validate " + g.Dot + " gatto.json failed to load " + g.Dot + " fix gatto.json (see the check below), then run: gatto doctor");
 
         var problems = new List<string>();
+        var saidOnce = new HashSet<string>(StringComparer.Ordinal);   //an endpoint's companion line is said once however many roles resolve there
         foreach (var name in names)
         {
             RoleFile role;
@@ -376,15 +379,36 @@ public sealed class Doctor(
             catch (GattoConfigException ex) { problems.Add($"'{name}': {ex.Message}"); continue; }
 
             var endpointName = role.Endpoint ?? config.DefaultEndpoint;
-            //doctor runs no extension, so an endpoint outside gatto.json may be a contributed one and is left to the launch
-            if (!config.Endpoints.ContainsKey(endpointName)) continue;
+            string? saved;
+            string savedIn;
+            if (config.Endpoints.TryGetValue(endpointName, out var ep))
+            {
+                //a bare launch takes the first listed model when nothing is saved, so a listed endpoint has a model either way
+                saved = config.ModelDefaultFor(endpointName) ?? (ep.Models is { Count: > 0 } listed ? listed[0] : null);
+                savedIn = "gatto.json";
+            }
+            else
+            {
+                //doctor runs no extension, so with no companion file it cannot know whether the launch has a model and leaves it to the launch
+                IReadOnlyList<(string File, string? Model)> found;
+                try { found = CompanionDefaults.Scan(home, endpointName); }
+                catch (GattoConfigException ex) { if (saidOnce.Add(endpointName)) conflicts.Add(ex.Message); continue; }
+                if (found.Count == 0) continue;
+                if (found.Count > 1)
+                {
+                    if (saidOnce.Add(endpointName))
+                        conflicts.Add($"endpoint '{endpointName}': defaults.{endpointName} is in {found.Count} companion files: {string.Join(", ", found.Select(f => f.File))}");
+                    continue;
+                }
+                (savedIn, saved) = found[0];
+            }
 
             //the same EffectiveModel precedence the launch uses, and a cloud role with no model fails here too, so the condition needs no isLocal guard
-            var effectiveModel = RoleFile.EffectiveModel(role, null, config.ModelDefaultFor(endpointName));
+            var effectiveModel = RoleFile.EffectiveModel(role, null, saved);
             if (effectiveModel is null)
             {
                 //a role with no model is the normal unconfigured state, so the line names the first-run fix
-                problems.Add($"'{name}': no model configured yet {g.Dot} set defaults.{endpointName}.model in gatto.json, " +
+                problems.Add($"'{name}': no model configured yet {g.Dot} set defaults.{endpointName}.model in {savedIn}, " +
                     "add \"model\" to this role, or launch with -m <model>");
             }
         }
@@ -480,6 +504,15 @@ public sealed class Doctor(
 
         var named = string.Join("; ", excused.Select(e => $"{e} is an older shipped copy, the next gatto launch updates it"));
         return new CheckResult(true, $"extensions: {count} script(s) compile " + g.Dot + $" {named}");
+    }
+
+    //a companion file the launch would refuse on, or two that carry one endpoint, is a problem line and not a silent pass. no line when every companion reads alone
+    private static CheckResult? CheckCompanions(string home, string extensionsDir, List<string> conflicts, Gatto.Terminal.GlyphSet g)
+    {
+        var problems = conflicts.Concat(CompanionDefaults.Broken(home).Select(b => b.Problem)).ToList();
+        return problems.Count == 0
+            ? null
+            : new CheckResult(false, $"companions: {string.Join("; ", problems)} " + g.Dot + $" fix or remove the listed file(s) under {extensionsDir}");
     }
 
     //5. llama_server, one row per engine: gatto.json's and each profile's own, grouped by full path so one binary is probed once whatever names it
@@ -806,6 +839,21 @@ public sealed class Doctor(
 //the endpoint, model and role defaults plus the serve state and the session count for this folder. read-only, reusing StatusAsync and CountForCwd
 public static class Status
 {
+    //a contributed default endpoint's model comes from the one companion file that carries it, named so the reader knows where it was read
+    internal static string StatusDefaultModel(string home, GattoConfig config)
+    {
+        if (config.Endpoints.ContainsKey(config.DefaultEndpoint)) return config.DefaultModel ?? "(none)";
+        IReadOnlyList<(string File, string? Model)> found;
+        try { found = CompanionDefaults.Scan(home, config.DefaultEndpoint); }
+        catch (GattoConfigException) { return "(none; a companion file does not read, see gatto doctor)"; }
+        return found.Count switch
+        {
+            0 => "(none)",
+            1 => found[0].Model is { } m ? $"{m} ({Path.Combine("extensions", Path.GetFileName(found[0].File))})" : "(none)",
+            _ => $"(none; {found.Count} companion files carry {config.DefaultEndpoint}, see gatto doctor)",
+        };
+    }
+
     public static async Task<int> RunAsync(string home, string cwd, TextWriter output, HttpClient http, CancellationToken ct)
     {
         //no status header here, CommandBanner already prints the command's name and version
@@ -822,7 +870,7 @@ public static class Status
                 ? ep.BaseUrl ?? "(derived from the active model's port)"
                 : "not in gatto.json, an extension may contribute it";
             output.WriteLine($"endpoint: {config.DefaultEndpoint} ({where})");
-            output.WriteLine($"default_model: {config.DefaultModel ?? "(none)"}");
+            output.WriteLine($"default_model: {StatusDefaultModel(home, config)}");
         }
         output.WriteLine("role: generalist (default; override with gatto <role>)");
 

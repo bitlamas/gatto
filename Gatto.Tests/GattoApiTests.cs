@@ -40,10 +40,10 @@ public class GattoApiTests
 
     //the host api version is asserted in one test only, a second assertion could drift from it
     [Fact]
-    public void HostApiVersion_IsSeven() => Assert.Equal("7", GattoApi.HostApiVersion);
+    public void HostApiVersion_IsEight() => Assert.Equal("8", GattoApi.HostApiVersion);
 
     [Fact]
-    public void Config_section_reaches_scripts_and_defaults_to_null()
+    public void Config_core_reaches_scripts_and_defaults_to_null()
     {
         var home = Directory.CreateTempSubdirectory("gatto-api-cfg-").FullName;
         try
@@ -52,11 +52,11 @@ public class GattoApiTests
             var (api, _, _) = ExtensionHost.BuildApi(
                 home, Path.GetTempPath(), () => null, () => null, _ => { },
                 configSection: n => n == "search" ? search : (JsonElement?)null);
-            Assert.Equal("""{"providers":["ddg"]}""", api.Config.Section("search")!.Value.GetRawText());
-            Assert.Null(api.Config.Section("nope"));
+            Assert.Equal("""{"providers":["ddg"]}""", api.Config.Core("search")!.Value.GetRawText());
+            Assert.Null(api.Config.Core("nope"));
 
             var (bare, _, _) = ExtensionHost.BuildApi(home, Path.GetTempPath(), () => null, () => null, _ => { });
-            Assert.Null(bare.Config.Section("search"));
+            Assert.Null(bare.Config.Core("search"));
         }
         finally { Directory.Delete(home, recursive: true); }
     }

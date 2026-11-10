@@ -63,9 +63,9 @@ internal static class ModelSwitch
     }
 
     //commit a decision that was already made and proven, separate from Decide so the caller can put the serving change between them
-    internal static string? Persist(string homePath, string endpoint, string modelId)
+    internal static string? Persist(string homePath, string endpoint, string? owner, string modelId)
     {
-        try { GattoConfigWriter.SetEndpointDefaultModel(homePath, endpoint, modelId); return null; }
+        try { CompanionDefaults.SetModel(homePath, endpoint, owner, modelId); return null; }
         catch (GattoConfigException ex) { return $"could not persist the model choice: {ex.Message}"; }
     }
 

@@ -97,6 +97,95 @@ public sealed class ExtensionHostTests : IClassFixture<RoslynWarmupFixture>, IDi
         Assert.Equal("got 2", Assert.IsType<CommandAnswer.Text>(await row.Handler("2", CancellationToken.None)).Value);
     }
 
+    //a temp home whose extensions folder is the one LoadAll reads, so the companion lands where the script runs from
+    private (GattoApi Api, string Home, string Extensions, List<string> Logs) HomeApi()
+    {
+        var home = Path.Combine(_dir, "home");
+        var extensions = Path.Combine(home, "extensions");
+        Directory.CreateDirectory(extensions);
+        var logs = new List<string>();
+        var (api, _, _) = ExtensionHost.BuildApi(home, _dir, () => null, () => null, logs.Add);
+        return (api, home, extensions, logs);
+    }
+
+    [Fact]
+    public void A_script_reads_and_writes_its_own_settings_file()
+    {
+        var (api, _, extensions, logs) = HomeApi();
+        File.WriteAllText(Path.Combine(extensions, "alpha.csx"), """
+            Settings.Set("k", 1);
+            Gatto.Log(Settings.Get<int>("k").ToString());
+            """);
+        var diags = new List<string>();
+
+        ExtensionHost.LoadAll(extensions, api, diags.Add);
+
+        Assert.Empty(diags);
+        Assert.Equal(["1"], logs);
+        var file = JsonDocument.Parse(File.ReadAllText(Path.Combine(extensions, "alpha.json"))).RootElement;
+        Assert.Equal(1, file.GetProperty("k").GetInt32());
+    }
+
+    [Fact]
+    public async Task Two_scripts_get_two_bindings_and_a_callback_of_the_first_reads_its_own_secret()
+    {
+        if (!OperatingSystem.IsWindows()) return;   //a script reaches the real seal only
+        var (api, home, extensions, _) = HomeApi();
+        File.WriteAllText(Path.Combine(extensions, "alpha.csx"), """
+            Secrets.Set("t", "A");
+            Gatto.Register("alpha_read", "reads alpha's secret", "{\"type\":\"object\"}",
+                (a, c, t) => Task.FromResult(new ToolResult(Secrets.Get("t") ?? "none")));
+            """);
+        File.WriteAllText(Path.Combine(extensions, "beta.csx"), """
+            Secrets.Set("t", "B");
+            """);
+        var diags = new List<string>();
+
+        var loaded = ExtensionHost.LoadAll(extensions, api, diags.Add);
+
+        Assert.Empty(diags);
+        Assert.Equal("beta", api.CurrentExtension);   //the shared api names the last script, so a binding read from it would answer B
+        var tool = loaded.Single(l => l.Name == "alpha").Registrations.Tools.Single().Tool;
+        var result = await tool.ExecuteAsync(JsonDocument.Parse("{}").RootElement, new FakeCtx(), CancellationToken.None);
+        Assert.Equal("A", result.Text);
+        Assert.True(File.Exists(Path.Combine(home, "secrets", "alpha.bin")));
+        Assert.True(File.Exists(Path.Combine(home, "secrets", "beta.bin")));
+    }
+
+    [Fact]
+    public void A_script_that_sets_nothing_leaves_no_companion()
+    {
+        var (api, home, extensions, _) = HomeApi();
+        File.WriteAllText(Path.Combine(extensions, "alpha.csx"), """
+            var owner = Settings.Get<string>("owner") ?? "gatto";
+            var token = Secrets.Get("t");
+            """);
+        var diags = new List<string>();
+
+        ExtensionHost.LoadAll(extensions, api, diags.Add);
+
+        Assert.Empty(diags);
+        Assert.False(File.Exists(Path.Combine(extensions, "alpha.json")));
+        Assert.False(Directory.Exists(Path.Combine(home, "secrets")));
+    }
+
+    [Fact]
+    public void A_script_declares_a_setting_by_its_kind()
+    {
+        var (api, _, extensions, logs) = HomeApi();
+        File.WriteAllText(Path.Combine(extensions, "alpha.csx"), """
+            Settings.Declare("on", SettingKind.Bool, "a toggle", false);
+            Gatto.Log(Settings.Declared.Count + " " + Settings.Declared[0].Kind);
+            """);
+        var diags = new List<string>();
+
+        ExtensionHost.LoadAll(extensions, api, diags.Add);
+
+        Assert.Empty(diags);
+        Assert.Equal(["1 Bool"], logs);
+        Assert.False(File.Exists(Path.Combine(extensions, "alpha.json")));
+    }
+
     [Fact]
     public async Task A_HANDLER_ANSWERS_A_LISTING_WITH_NO_USING_OF_ITS_OWN_AND_ITS_PICK_RUNS()
     {

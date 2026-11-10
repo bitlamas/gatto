@@ -27,7 +27,8 @@ internal sealed class LaunchState(
     IReadOnlyDictionary<string, EndpointConfig> endpoints, string? launchEndpoint, string? sessionModel, WarningSink warn,
     bool memoryOn, List<(string Extension, string Line)> policyLines, GlyphSet glyphs,
     bool bare = false,   //true composes what every session in this home carries, so no project's context files and no project's memory index
-    Func<string?>? sessionOf = null)   //the store's live session, read when a composition runs, null for a prefix that belongs to no session
+    Func<string?>? sessionOf = null,   //the store's live session, read when a composition runs, null for a prefix that belongs to no session
+    IReadOnlyDictionary<string, string>? endpointOwner = null)   //the extension that contributed each endpoint, whose companion file holds that endpoint's defaults
 {
     //a stale default is said once per process, since /role and the policy pass resolve again
     private readonly HashSet<string> _staleDefaultWarned = new(StringComparer.Ordinal);
@@ -100,14 +101,22 @@ internal sealed class LaunchState(
         ? MemoryIndex.Compose(MemoryDir.FindProjectRoot(cwd), MemoryBudget(p))
         : new MemoryIndex.LoadResult(null, 0);
 
+    //the owner of the endpoint a site resolves, asked per endpoint since a child or a picker may read another endpoint than the session's
+    internal string? OwnerOf(string endpoint) => endpointOwner?.GetValueOrDefault(endpoint);
+
+    //where a refusal sends the user to save a default: the contributing extension's companion file, else gatto.json
+    private string DefaultsFile(string endpoint) =>
+        OwnerOf(endpoint) is { } owner ? Path.Combine("extensions", owner + ".json") : "gatto.json";
+
     //a non-local session's saved level, parsed here since Core holds only the name, and a bad name is a config error naming its key
-    internal static ThinkingLevel? SavedCloudEffort(GattoConfig cfg, string onEndpoint, string modelId)
+    internal static ThinkingLevel? SavedCloudEffort(GattoConfig? cfg, string home, string onEndpoint, string? owner, string modelId)
     {
-        if (cfg.EffortDefaultFor(onEndpoint, modelId) is not { } levelName) return null;
+        if (CompanionDefaults.Effort(home, cfg, onEndpoint, owner, modelId) is not { } levelName) return null;
         try { return Thinking.Parse(levelName); }
         catch (GattoConfigException ex)
         {
-            throw new GattoConfigException($"gatto.json defaults.{onEndpoint}.effort.{modelId}: {ex.Message}");
+            var where = owner is null ? "gatto.json" : Path.Combine("extensions", owner + ".json");
+            throw new GattoConfigException($"{where} defaults.{onEndpoint}.effort.{modelId}: {ex.Message}");
         }
     }
 
@@ -187,7 +196,7 @@ internal sealed class LaunchState(
             var explicitModel = ep.Models is { Count: > 0 }
                 ? SessionModel ?? (role.Endpoint == endpointName ? role.Model : null)
                 : SessionModel ?? role.Model;
-            var choice = LaunchModel.Resolve(endpointName, ep.Models, explicitModel, config.ModelDefaultFor(endpointName));
+            var choice = LaunchModel.Resolve(endpointName, ep.Models, explicitModel, CompanionDefaults.Model(home, config, endpointName, OwnerOf(endpointName)));
             if (choice.Warning is { } stale && _staleDefaultWarned.Add(stale)) warn.Warn(stale);
             var effectiveModel = choice.Model;
             if (ep.Models is { Count: > 0 } listed && !listed.Contains(effectiveModel, StringComparer.Ordinal))
@@ -196,7 +205,7 @@ internal sealed class LaunchState(
             if (effectiveModel is null)
                 throw new GattoConfigException(
                     $"role '{role.Name}' has no model for cloud endpoint '{endpointName}'. Set one via " +
-                    $"-m <model>, \"model\" in the role file, or defaults.{endpointName}.model in gatto.json (see: gatto doctor)");
+                    $"-m <model>, \"model\" in the role file, or defaults.{endpointName}.model in {DefaultsFile(endpointName)} (see: gatto doctor)");
 
             role = role with { Model = effectiveModel };
 
@@ -219,7 +228,7 @@ internal sealed class LaunchState(
         var comp = RoleComposition.Compose(role, model, contextFiles, endpoint.Thinking, modelString, OsWords.Name(), SessionId, cwd: cwd, date: DateTime.Now,
             memoryIndex: memory.Text, memoryTruncatedLines: memory.TruncatedLines, memoryNudge: memoryOn,
             policyLines: policyLines,
-            savedEffort: endpointIsLocal ? null : SavedCloudEffort(config, endpointName, modelString));
+            savedEffort: endpointIsLocal ? null : SavedCloudEffort(config, home, endpointName, OwnerOf(endpointName), modelString));
 
         return new RoleResolution(role, model, endpoint, endpointName, modelString, comp, memory.TruncatedLines);
     }
@@ -540,7 +549,7 @@ internal sealed class LaunchState(
     //read from disk on each open, since the launch snapshot would miss a default written this session or keep one whose write failed
     internal string? CurrentDefaultFor(string onEndpoint)
     {
-        try { return GattoConfig.Load(home).ModelDefaultFor(onEndpoint); }
+        try { return CompanionDefaults.Model(home, null, onEndpoint, OwnerOf(onEndpoint)); }
         catch (GattoConfigException) { return null; }   //a config that will not parse marks no default, and the rows still list
     }
 
@@ -591,7 +600,7 @@ internal sealed class LaunchState(
     //read fresh, since a level saved this session must show, and a file that will not load saves nothing to read
     internal ThinkingLevel? SavedCloudEffortOrNull(string modelId)
     {
-        try { return SavedCloudEffort(GattoConfig.Load(home), EndpointName, modelId); }
+        try { return SavedCloudEffort(null, home, EndpointName, OwnerOf(EndpointName), modelId); }
         catch (GattoConfigException) { return null; }
     }
 
@@ -609,7 +618,7 @@ internal sealed class LaunchState(
                 Model = Model with { Profile = Model.Profile with { DefaultEffort = level } };   //so the picker's default mark does not lag the write
                 return $", saved as {Model.Id}'s default";
             }
-            GattoConfigWriter.SetEndpointEffort(home, EndpointName, ModelString, EffortSwitch.Name(level));
+            CompanionDefaults.SetEffort(home, EndpointName, OwnerOf(EndpointName), ModelString, EffortSwitch.Name(level));
             return $", saved as {ModelString}'s default";
         }
         catch (GattoConfigException ex) { return $", not saved: {ex.Message}"; }
@@ -622,7 +631,7 @@ internal sealed class LaunchState(
         {
             if (!ServedHere() && Endpoint.Models is { Count: > 0 })
             {
-                GattoConfigWriter.SetEndpointEffort(home, EndpointName, id, EffortSwitch.Name(ModelLevels.Resolve(Endpoint.Thinking, levelName)));
+                CompanionDefaults.SetEffort(home, EndpointName, OwnerOf(EndpointName), id, EffortSwitch.Name(ModelLevels.Resolve(Endpoint.Thinking, levelName)));
                 return null;
             }
             var target = Model.Load(modelsDir, id);
@@ -773,12 +782,12 @@ internal sealed class LaunchState(
         if (called.Model is null)
             return (RoleComposition.Compose(merged, Model, files, Endpoint.Thinking, ModelString, OsWords.Name(), SessionId, cwd: cwd, date: DateTime.Now,
                 memoryIndex: null, memoryNudge: false, policyLines: null,
-                savedEffort: EndpointName == "local" ? null : SavedCloudEffort(config, EndpointName, ModelString)), ModelString);
+                savedEffort: EndpointName == "local" ? null : SavedCloudEffort(config, home, EndpointName, OwnerOf(EndpointName), ModelString)), ModelString);
         //the refusal check resolved the same merged role before this runs, so a throw here is a file changed in between and the loop reports it
         var res = ResolveLoaded(called.ThinkingRequested is null ? merged with { ThinkingRequested = Comp.Thinking } : merged);   //another model with no level of its own takes the session's, and --effort still wins inside
         return (RoleComposition.Compose(res.Role, res.Model, files, res.Endpoint.Thinking, res.ModelString, OsWords.Name(), SessionId, cwd: cwd, date: DateTime.Now,
             memoryIndex: null, memoryNudge: false, policyLines: null,
-            savedEffort: res.EndpointName == "local" ? null : SavedCloudEffort(config, res.EndpointName, res.ModelString)), res.ModelString);
+            savedEffort: res.EndpointName == "local" ? null : SavedCloudEffort(config, home, res.EndpointName, OwnerOf(res.EndpointName), res.ModelString)), res.ModelString);
     }
 
     //what every run_agent request carries, read at call time so a child follows the last switch

@@ -32,6 +32,30 @@ public static class SecretFile
         }
     }
 
+    //replace path whole through a temp file restricted before any byte goes in, since a move carries the temp's descriptor to the target
+    public static void WriteAtomic(string path, byte[] content)
+    {
+        var dir = Path.GetDirectoryName(path);
+        if (!string.IsNullOrEmpty(dir)) Directory.CreateDirectory(dir);
+
+        var tmp = path + "." + Guid.NewGuid().ToString("N") + ".tmp";
+        try
+        {
+            File.WriteAllBytes(tmp, []);
+            Restrict(tmp);
+            File.WriteAllBytes(tmp, content);
+            File.Move(tmp, path, overwrite: true);
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            throw new GattoConfigException($"could not write {path}: {ex.Message}");
+        }
+        finally
+        {
+            TryDelete(tmp);
+        }
+    }
+
     private static void TryDelete(string path)
     {
         try { if (File.Exists(path)) File.Delete(path); } catch (Exception) { } //best effort

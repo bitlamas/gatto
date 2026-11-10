@@ -15,8 +15,8 @@ public class ShippedTreeTests
                 ("09718eee7ff3217f2077789a8ad0d195c68714a5102107ea42892cba322888f3",
                  6652, "393101eb1c3d23b5a8fde984086ca4963beab513adbb1535aa35fec2e997f853"),
             ["extensions/web_search.csx"] =
-                ("4c9acb8c8681dc592a8451d92fb6988736f43c0fcca8b98859fca03792ab500f",
-                 11835, "6a80e1c43e24a6d660dde9fbe040bf5cbd07a805dbbae50943f27a16d6d7a516"),
+                ("eaad2d32fce3b0ce6029f453447545338eee62353c7b7814497480696566367f",
+                 11837, "6ac34e291304451c3985e35920c9cd7c4e4154d90dabc1aeab9268eedf893ff0"),
             ["extensions/cards.csx"] =
                 ("1d56f684cd3868094f6668ac49a39d96abeb41d0eafe99dff452147b4b40f469",
                  8795, "a36da9665ec57b7b39923e0f19d5f5f5dd8fc13f942f9c286f653fa9f982f8fb"),

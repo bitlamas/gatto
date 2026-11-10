@@ -2665,7 +2665,7 @@ public class GattoAppTests : IDisposable
                 outcome.ContextBudget, outcome.Message);
 
         //the harness goes straight from the decision to persisting, since it has no server to swap. persisting is a step of its own, after the decision
-        if (ModelSwitch.Persist(home, "local", outcome.Model.Id) is { } problem)
+        if (ModelSwitch.Persist(home, "local", null, outcome.Model.Id) is { } problem)
             return new SwitchHarnessResult(false, outcome.ModelId, null, null, problem);
 
         return new SwitchHarnessResult(true, outcome.ModelId, outcome.SystemText,

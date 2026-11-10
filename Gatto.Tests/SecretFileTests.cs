@@ -88,6 +88,52 @@ public sealed class SecretFileTests : IDisposable
     }
 
     [Fact]
+    [SupportedOSPlatform("windows")]
+    public void WriteAtomic_leaves_the_restricted_acl_on_the_final_file()
+    {
+        if (!OperatingSystem.IsWindows()) return;
+        var p = Path_("alpha.bin");
+
+        SecretFile.WriteAtomic(p, [1, 2, 3]);
+
+        AssertRestricted(p);
+        Assert.Equal(["alpha.bin"], Directory.GetFiles(_dir).Select(Path.GetFileName));
+    }
+
+    [Fact]
+    public void WriteAtomic_replaces_an_existing_file_wholesale()
+    {
+        var p = Path_("alpha.bin");
+        SecretFile.WriteAtomic(p, [9, 9, 9, 9, 9, 9]);
+
+        SecretFile.WriteAtomic(p, [1, 2]);
+
+        Assert.Equal(new byte[] { 1, 2 }, File.ReadAllBytes(p));
+    }
+
+    //only the current user, system and administrators, and the file does not inherit the folder's rules
+    [SupportedOSPlatform("windows")]
+    internal static void AssertRestricted(string p)
+    {
+        var acl = new FileInfo(p).GetAccessControl();
+        Assert.True(acl.AreAccessRulesProtected, "the file must not inherit the directory's ACL");
+        var allowed = acl.GetAccessRules(includeExplicit: true, includeInherited: true, typeof(SecurityIdentifier))
+            .Cast<FileSystemAccessRule>()
+            .Where(r => r.AccessControlType == AccessControlType.Allow)
+            .Select(r => (SecurityIdentifier)r.IdentityReference)
+            .ToList();
+        Assert.NotEmpty(allowed);
+        var permitted = new List<SecurityIdentifier>
+        {
+            WindowsIdentity.GetCurrent().User!,
+            new(WellKnownSidType.LocalSystemSid, null),
+            new(WellKnownSidType.BuiltinAdministratorsSid, null),
+        };
+        foreach (var sid in allowed)
+            Assert.True(permitted.Contains(sid), $"unexpected principal allowed on the secret file: {sid}");
+    }
+
+    [Fact]
     public void Write_LeavesNoFileBehind_WhenTheContentCannotBeWritten()
     {
         //a failed write must leave no readable remnant. a half-written credential nobody owns is worse than none.

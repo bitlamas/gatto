@@ -406,6 +406,96 @@ public class DoctorTests : IDisposable
         Assert.StartsWith("✓", Line(output, "roles:"));
     }
 
+    //a home whose default endpoint an extension contributes, with the roles and companion files a test names
+    private async Task<StringWriter> DoctorOnContributed(string[] roles, params (string Name, string Json)[] companions)
+    {
+        File.WriteAllText(Path.Combine(_home, "gatto.json"), """
+            {"endpoints":{"local":{}},"default_endpoint":"acme","glyphs":"unicode"}
+            """);
+        var rolesDir = Path.Combine(_home, "roles");
+        Directory.CreateDirectory(rolesDir);
+        foreach (var r in roles) File.WriteAllText(Path.Combine(rolesDir, r + ".json"), r == "pinned" ? """{"model":"own"}""" : "{}");
+        var extDir = Path.Combine(_home, "extensions");
+        Directory.CreateDirectory(extDir);
+        foreach (var (name, json) in companions) File.WriteAllText(Path.Combine(extDir, name + ".json"), json);
+        var output = new StringWriter();
+        await NewDoctor(HealthyClient()).RunAsync(_home, _cwd, output, CancellationToken.None);
+        return output;
+    }
+
+    [Fact]
+    public async Task A_contributed_default_endpoint_with_one_companion_passes()
+    {
+        var output = await DoctorOnContributed(["generalist"], ("acmeext", """{"defaults":{"acme":{"model":"a1"}}}"""));
+
+        Assert.StartsWith("✓", Line(output, "roles:"));
+        Assert.DoesNotContain("companions:", output.ToString());
+    }
+
+    [Fact]
+    public async Task A_contributed_default_endpoint_whose_companion_holds_no_model_names_that_file()
+    {
+        var output = await DoctorOnContributed(["generalist"], ("acmeext", """{"defaults":{"acme":{"effort":{"a1":"high"}}}}"""));
+
+        var line = Line(output, "roles:");
+        Assert.StartsWith("✗", line);
+        Assert.Contains("set defaults.acme.model in " + Path.Combine(_home, "extensions", "acmeext.json"), line);
+    }
+
+    [Fact]
+    public async Task A_role_naming_its_own_model_on_a_contributed_endpoint_passes_with_no_companion()
+    {
+        var output = await DoctorOnContributed(["pinned"]);
+
+        Assert.StartsWith("✓", Line(output, "roles:"));
+    }
+
+    [Fact]
+    public async Task Two_companions_for_one_endpoint_are_one_line_per_endpoint_naming_both_in_file_order()
+    {
+        var output = await DoctorOnContributed(["generalist", "reviewer"],
+            ("beta", """{"defaults":{"acme":{"model":"b1"}}}"""),
+            ("alpha", """{"defaults":{"acme":{"model":"a1"}}}"""));
+
+        var line = Line(output, "companions:");
+        Assert.StartsWith("✗", line);
+        Assert.Single(System.Text.RegularExpressions.Regex.Matches(output.ToString(), "is in 2 companion files"));
+        Assert.Contains("endpoint 'acme': defaults.acme is in 2 companion files: ", line);
+        var a = line.IndexOf(Path.Combine(_home, "extensions", "alpha.json"), StringComparison.Ordinal);
+        var b = line.IndexOf(Path.Combine(_home, "extensions", "beta.json"), StringComparison.Ordinal);
+        Assert.True(a > 0 && b > a, line);
+        Assert.Contains("fix or remove the listed file(s) under " + Path.Combine(_home, "extensions"), line);
+        Assert.StartsWith("✓", Line(output, "roles:"));   //the role files are not what needs the fix
+    }
+
+    [Fact]
+    public async Task A_companion_that_does_not_parse_is_a_problem_line()
+    {
+        var output = await DoctorOnContributed(["generalist"], ("broken", "{not json"));
+
+        var line = Line(output, "companions:");
+        Assert.StartsWith("✗", line);
+        Assert.Contains(Path.Combine(_home, "extensions", "broken.json") + " is not valid JSON", line);
+        Assert.StartsWith("✓", Line(output, "roles:"));
+    }
+
+    //a bare launch takes the first listed model when nothing is saved, so the role check agrees with the launch and the door
+    [Fact]
+    public async Task A_configured_endpoint_with_a_models_list_and_no_saved_default_is_no_role_problem()
+    {
+        File.WriteAllText(Path.Combine(_home, "gatto.json"), """
+            {"endpoints":{"local":{},"cloudy":{"base_url":"https://cloudy.example.test/v1","models":["m1","m2"]}},"default_endpoint":"cloudy","glyphs":"unicode"}
+            """);
+        var rolesDir = Path.Combine(_home, "roles");
+        Directory.CreateDirectory(rolesDir);
+        File.WriteAllText(Path.Combine(rolesDir, "generalist.json"), "{}");
+
+        var output = new StringWriter();
+        await NewDoctor(HealthyClient()).RunAsync(_home, _cwd, output, CancellationToken.None);
+
+        Assert.StartsWith("✓", Line(output, "roles:"));
+    }
+
     //the legacy key belongs to the default endpoint, so a cloud default never reaches the local port derivation
     [Fact]
     public async Task The_server_check_reads_the_local_entry_not_another_endpoints_default()

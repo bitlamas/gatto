@@ -1,5 +1,6 @@
 using System.Net;
 using System.Reflection;
+using Gatto.Core.Home;
 using Gatto.Core.Loop;
 using Gatto.Core.Tools;
 using Gatto.Core.Web;
@@ -37,6 +38,7 @@ public static class ExtensionHost
         "System", "System.Collections.Generic", "System.Linq", "System.Text.Json",
         "System.Threading", "System.Threading.Tasks",
         "Gatto.Core.Tools", "Gatto.Core.Loop", "Gatto.Core.Web", "Gatto.Core.Client", "Gatto.Core.Commands",
+        "Gatto.Core.Home",   //so a script names SettingKind bare when it declares a setting
     };
 
     //public API
@@ -80,7 +82,9 @@ public static class ExtensionHost
                 if (runner is null) continue;   //a null runner means a compile error, already reported
 
                 api.BeginExtension(src.Name);
-                runner(new ScriptGlobals(api)).GetAwaiter().GetResult();   //the script stages its tools onto the api as it runs
+                var globals = new ScriptGlobals(api, new ExtensionSettings(api.Home, src.Name),
+                    new ExtensionSecrets(api.Home, src.Name, SecretSeal.ForThisOs()));   //bound to this name now, a callback that runs later still reaches its own files
+                runner(globals).GetAwaiter().GetResult();   //the script stages its tools onto the api as it runs
                 loaded.Add(new LoadedExtension(src.Name, src, api.TakeStaged()));
             }
             catch (Exception ex)
