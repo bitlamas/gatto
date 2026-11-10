@@ -27,6 +27,7 @@ public class RealHttpClientCensusTests
         ["Gatto.Tests/LaunchLoadingWaitTests.cs"] = new(1, "the recorded ports are a fake server's port or that port plus one"),
         ["Gatto.Tests/LaunchStartLineTests.cs"] = new(1, "the model's port is the port of a fake server the test bound"),
         ["Gatto.Tests/LiveCaptureFixtureTests.cs"] = new(4, "each client targets the `BaseUrl` of a fake server replaying a capture"),
+        ["Gatto.Tests/LoginFirstTests.cs"] = new(14, "each client targets a fake server's `BaseUrl` or the closed port 1"),
         ["Gatto.Tests/ModelSwitchDeedTests.cs"] = new(1, "every model, endpoint and serve record the class writes names port 9"),
         ["Gatto.Tests/OpenAiCompatClientTests.cs"] = new(8, "each client targets a fake server's `BaseUrl` or the closed port 1"),
         ["Gatto.Tests/OpenAiCompatPropsTests.cs"] = new(3, "each client targets a fake server's `BaseUrl` or the closed port 1"),

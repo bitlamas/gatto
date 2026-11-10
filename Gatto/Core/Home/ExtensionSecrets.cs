@@ -30,10 +30,20 @@ public sealed class ExtensionSecrets(string home, string name, ISecretSeal seal)
 
     public void RemoveAll()
     {
-        try { if (File.Exists(Path)) File.Delete(Path); }
+        try { Retried(() => { if (File.Exists(Path)) File.Delete(Path); return true; }); }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
         {
             throw new GattoConfigException($"could not delete {Path}: {ex.Message}");
+        }
+    }
+
+    //another caller's read or write holds the file for milliseconds, so a step that meets it is tried again before it fails
+    private static T Retried<T>(Func<T> step)
+    {
+        for (var attempt = 1; ; attempt++)
+        {
+            try { return step(); }
+            catch (Exception ex) when (attempt < 20 && ex is IOException or UnauthorizedAccessException) { Thread.Sleep(10); }
         }
     }
 
@@ -44,16 +54,28 @@ public sealed class ExtensionSecrets(string home, string name, ISecretSeal seal)
 
     private JsonObject Read()
     {
-        byte[] sealedBytes;
+        byte[]? sealedBytes;
         try
         {
-            if (!File.Exists(Path)) return new JsonObject();
-            sealedBytes = File.ReadAllBytes(Path);
+            sealedBytes = Retried(() =>
+            {
+                if (!File.Exists(Path)) return null;
+                try
+                {
+                    //shared for delete and write, so a read on the pool never fails a logout or a login that lands beside it
+                    using var file = new FileStream(Path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete);
+                    using var copy = new MemoryStream();
+                    file.CopyTo(copy);
+                    return copy.ToArray();
+                }
+                catch (FileNotFoundException) { return null; }   //removed between the check and the open
+            });
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
         {
             throw new GattoConfigException($"could not read {Path}: {ex.Message}");
         }
+        if (sealedBytes is null) return new JsonObject();
 
         var plain = seal.Unseal(sealedBytes, Path);   //a failure throws the seal's own message and leaves the file
         try

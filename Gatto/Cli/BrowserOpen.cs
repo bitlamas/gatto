@@ -1,5 +1,6 @@
 using System.ComponentModel;
 using System.Diagnostics;
+using Gatto.Terminal;
 
 namespace Gatto.Cli;
 
@@ -11,6 +12,12 @@ internal static class BrowserOpen
 
     internal static void Open(string url, Action<string> warn)
     {
+        //the shell starts whatever it is handed, so a page from a login server is opened only as an absolute web address
+        if (!Uri.TryCreate(url, UriKind.Absolute, out var page) || (page.Scheme != Uri.UriSchemeHttps && page.Scheme != Uri.UriSchemeHttp))
+        {
+            warn($"could not open the browser; open {TermText.Sanitize(url)} yourself");
+            return;
+        }
         if (OpenOverride.Value is { } open) { open(url); return; }
         try
         {
@@ -18,7 +25,7 @@ internal static class BrowserOpen
         }
         catch (Exception ex) when (ex is Win32Exception or InvalidOperationException)
         {
-            warn($"could not open the browser; open {url} yourself");
+            warn($"could not open the browser; open {TermText.Sanitize(url)} yourself");
         }
     }
 }

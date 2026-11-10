@@ -366,6 +366,8 @@ public static class GattoApp
         private LaunchState state = null!;
         private string? launchEndpoint, launchEndpointName;
         private ModelCatalogue? catalogue;
+        private bool launchLoggedIn;   //the launch ran one device login, and a second one in the same launch is never offered
+        private const int CatalogueLoggedOut = -1;   //the read's third answer beside read and an exit code, failed and the login now gone
         private LaunchRoleResult picked = null!;
         private Theme? earlyTheme;
         private bool earlyThemeResolved;
@@ -411,7 +413,13 @@ public static class GattoApp
             LoadExtensions();
             if (ResolveEndpointName() is { } nameExit) return nameExit;
             if (await LoginAsync() is { } loginExit) return loginExit;
-            if (await ReadCatalogueAsync() is { } catalogueExit) return catalogueExit;
+            var read = await ReadCatalogueAsync(mayLogIn: true);
+            if (read == CatalogueLoggedOut)
+            {
+                if (await LoginAsync() is { } againExit) return againExit;
+                read = await ReadCatalogueAsync(mayLogIn: false);
+            }
+            if (read is { } catalogueExit) return catalogueExit;
             if (ResolveLaunch() is { } roleExit) return roleExit;
             RegisterTools();
             BuildPrompters();
@@ -572,15 +580,13 @@ public static class GattoApp
         private async Task<int?> LoginAsync()
         {
             if (launchEndpointName is not { } name || !endpoints.TryGetValue(name, out var ep) || ep.Login is not { } login) return null;
-            bool loggedIn;
-            try { loggedIn = ep.LoggedIn?.Invoke() == true; }
-            catch (Exception) { loggedIn = false; }   //extension code, a check that fails is a secret that is not usable
-            if (loggedIn) return null;
+            if (LoggedInNow(ep)) return null;
             if (args.Prompt is not null)
             {
                 err.WriteLine($"endpoint {name}: not logged in; run gatto -e {name} and log in once");
                 return 2;
             }
+            launchLoggedIn = true;
             var surface = new CliSurface(Console.Out, EarlyLaunchTheme(), glyphs);
             void Say(string row) => surface.Say($"{name}: {row}");
             var screen = new LoginScreen(Say, url => BrowserOpen.Open(url, Say));
@@ -604,6 +610,13 @@ public static class GattoApp
             }
         }
 
+        //the launch's reading of the login, extension code where a check that fails is a secret that is not usable
+        private static bool LoggedInNow(EndpointConfig ep)
+        {
+            try { return ep.LoggedIn?.Invoke() == true; }
+            catch (Exception) { return false; }
+        }
+
         //the handshake inside a session, its rows on the warn sink, which the rich face draws as system rows
         private async Task<string> SessionLoginAsync(Func<LoginScreen, CancellationToken, Task<string>> login, string name, CancellationToken ct)
         {
@@ -613,7 +626,7 @@ public static class GattoApp
         }
 
         //the live model list, read once under the header bound on a row with its timer, and a failed read falls back to the declared list with one warning
-        private async Task<int?> ReadCatalogueAsync()
+        private async Task<int?> ReadCatalogueAsync(bool mayLogIn)
         {
             catalogue = null;
             if (launchEndpointName is not { } name || !endpoints.TryGetValue(name, out var ep) || ep.Catalogue is not { } read) return null;
@@ -649,6 +662,8 @@ public static class GattoApp
             }
             catch (TimeoutException) { reason = "it did not answer in time"; }
             catch (Exception ex) { reason = TermText.Sanitize(ex.Message); }
+            //a read that dropped a dead login asks for one, once per launch, so a fresh login whose tokens fail at once falls back
+            if (mayLogIn && !launchLoggedIn && ep.Login is not null && !LoggedInNow(ep)) return CatalogueLoggedOut;
             if (ep.Models is { Count: > 0 })
             {
                 warn.Warn($"{name}: the model list could not be read ({reason}); using the list the extension declares");

@@ -69,19 +69,25 @@ public sealed class OpenAiCompatClient : IChatClient, Gatto.Core.Client.ITokenCo
             try { wireLog.Record(body); }
             catch (Exception) { } //fail-open, a debug instrument must never end a turn
         }
-        var resp = await SendOnceAsync(body, request.Model, ct);
+        var login = new RequestLogin();
+        HttpResponseMessage resp;
+        try { resp = await SendOnceAsync(body, request.Model, login, ct); }
+        finally
+        {
+            if (traced && login.BeforeSend) span.Set("logged_in_first", 1);   //the time to first byte then holds the login, and a send that failed after it still shows it
+        }
         string? errBody = null;
         //one retry at most, on the status alone and before a byte of the stream, so nothing the model said is ever asked twice
         if ((int)resp.StatusCode is 401 or 403 or 426)
         {
             errBody = await resp.Content.ReadAsStringAsync(ct);
-            if (await RetryAsync((int)resp.StatusCode, errBody, ct))
+            if (await RetryAsync((int)resp.StatusCode, errBody, login, ct))
             {
                 if (traced) span.Set("retried", 1);   //the time to first byte then holds the refusal, the retry and any login
                 resp.RequestMessage?.Dispose();
                 resp.Dispose();
                 errBody = null;
-                resp = await SendOnceAsync(body, request.Model, ct);
+                resp = await SendOnceAsync(body, request.Model, login, ct);
             }
         }
 
@@ -308,7 +314,7 @@ public sealed class OpenAiCompatClient : IChatClient, Gatto.Core.Client.ITokenCo
     private static readonly string[] TracedTimings = ["cache_n", "prompt_n", "prompt_ms", "predicted_ms"];
 
     //one send of the body, its headers asked of the endpoint each time, so a resend carries what a refresh just stored
-    private async Task<HttpResponseMessage> SendOnceAsync(string body, string model, CancellationToken ct)
+    private async Task<HttpResponseMessage> SendOnceAsync(string body, string model, RequestLogin login, CancellationToken ct)
     {
         var msg = new HttpRequestMessage(HttpMethod.Post, $"{baseUrl.TrimEnd('/')}/v1/chat/completions")
         {
@@ -316,7 +322,7 @@ public sealed class OpenAiCompatClient : IChatClient, Gatto.Core.Client.ITokenCo
         };
         try
         {
-            await AuthorizeAsync(msg, ct);
+            await AuthorizeLoggedInAsync(msg, login, ct);
             return await http.SendAsync(msg, HttpCompletionOption.ResponseHeadersRead, ct);
         }
         catch (HttpRequestException)
@@ -338,7 +344,7 @@ public sealed class OpenAiCompatClient : IChatClient, Gatto.Core.Client.ITokenCo
     }
 
     //the extension's word on a refused request, then on a 401 it did not fix the login in place, and true sends the request once more
-    private async Task<bool> RetryAsync(int status, string errBody, CancellationToken ct)
+    private async Task<bool> RetryAsync(int status, string errBody, RequestLogin login, CancellationToken ct)
     {
         if (endpoint.Retry is { } retry)
         {
@@ -356,10 +362,70 @@ public sealed class OpenAiCompatClient : IChatClient, Gatto.Core.Client.ITokenCo
             catch (Exception ex) { throw new GattoConnectionException(ex.Message); }
             if (again) return true;
         }
-        if (status != 401 || LoginInPlace is not { } login) return false;
-        try { return await login(ct); }
+        //a bearer refused right after a login in place ends with the provider's sentence, never a second code
+        if (status != 401 || LoginInPlace is not { } inPlace || login.Spent) return false;
+        login.Spent = true;
+        try { return await inPlace(ct); }
         catch (OperationCanceledException) when (ct.IsCancellationRequested) { throw; }
         catch (Exception ex) { throw new GattoConnectionException(ex.Message); }
+    }
+
+    //one login in place per request, whichever step ran it, and whether it ran before the first send
+    private sealed class RequestLogin
+    {
+        public bool Spent;
+        public bool BeforeSend;
+    }
+
+    //an endpoint with a login is asked before its headers, so nothing leaves without a bearer, and a callback that dropped its login is asked once more after one
+    private async Task AuthorizeLoggedInAsync(HttpRequestMessage msg, RequestLogin login, CancellationToken ct)
+    {
+        if (endpoint.Login is null)
+        {
+            await AuthorizeAsync(msg, ct);
+            return;
+        }
+        if (!login.Spent && !await LoggedInAsync(ct)) await LoginFirstAsync(login, ct);
+        GattoConnectionException failed;
+        try
+        {
+            await AuthorizeAsync(msg, ct);
+            return;
+        }
+        catch (GattoConnectionException ex) when (!login.Spent) { failed = ex; }
+        if (await LoggedInAsync(ct)) System.Runtime.ExceptionServices.ExceptionDispatchInfo.Throw(failed);
+        await LoginFirstAsync(login, ct);
+        await AuthorizeAsync(msg, ct);
+    }
+
+    //only false is logged out, a throw or a timeout fails the turn, since a store that will not read would ask for a login on every prompt
+    private async Task<bool> LoggedInAsync(CancellationToken ct)
+    {
+        if (endpoint.LoggedIn is not { } check) return true;
+        try
+        {
+            return await Task.Run(check, ct).WaitAsync(EndpointAuth.HeaderBound, ct);
+        }
+        catch (OperationCanceledException) when (ct.IsCancellationRequested) { throw; }
+        catch (TimeoutException)
+        {
+            throw new GattoConnectionException($"endpoint {endpointName}: its extension did not answer in time");
+        }
+        catch (Exception ex) { throw new GattoConnectionException(ex.Message); }
+    }
+
+    //the session's login rows, or on -p the line that names the login, and a login that did not finish sends nothing
+    private async Task LoginFirstAsync(RequestLogin login, CancellationToken ct)
+    {
+        if (LoginInPlace is not { } inPlace)
+            throw new GattoConnectionException($"endpoint {endpointName}: not logged in; run gatto -e {endpointName} and log in once");
+        login.Spent = true;
+        login.BeforeSend = true;
+        bool done;
+        try { done = await inPlace(ct); }
+        catch (OperationCanceledException) when (ct.IsCancellationRequested) { throw; }
+        catch (Exception ex) { throw new GattoConnectionException(ex.Message); }
+        if (!done) throw new GattoConnectionException($"endpoint {endpointName}: not logged in");
     }
 
     //add the endpoint's credential to the request, its header callback first, then ApiKey, then KeyEnv, and no header at all when none is set

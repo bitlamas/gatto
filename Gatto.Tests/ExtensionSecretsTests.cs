@@ -23,6 +23,34 @@ public sealed class ExtensionSecretsTests : IDisposable
 
     private ExtensionSecrets New(ISecretSeal seal, string name = "alpha") => new(_home, name, seal);
 
+    //a logout or a login while another caller reads the store, as a usage read on the pool does beside a typed /logout, never fails on the open file
+    [Fact]
+    public void A_read_in_flight_never_fails_a_remove_or_a_write()
+    {
+        var s = New(new FakeSeal());
+        s.Set("refresh", "rt-0");
+        using var stop = new CancellationTokenSource();
+        var reader = Task.Run(() =>
+        {
+            while (!stop.IsCancellationRequested) _ = s.Get("refresh");
+        });
+        try
+        {
+            for (var i = 0; i < 300; i++)
+            {
+                s.RemoveAll();
+                s.Set("refresh", "rt-" + i);
+            }
+        }
+        finally
+        {
+            stop.Cancel();
+            reader.GetAwaiter().GetResult();
+        }
+
+        Assert.Equal("rt-299", s.Get("refresh"));
+    }
+
     [Fact]
     public void Set_then_Get_round_trips_and_no_plaintext_of_the_value_is_under_the_home()
     {

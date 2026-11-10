@@ -229,6 +229,97 @@ public class CatalogueLaunchTests : IDisposable
         Assert.Equal("low", Sent(server, "reasoning_effort"));
     }
 
+    private string CompanionFile => Path.Combine(_home, "extensions", "hosted.json");
+
+    private const string Dropped = "the saved effort 'medium' is no longer offered by 'c1'; using '";
+
+    private static int Count(string text, string line) => text.Split(line).Length - 1;
+
+    private static void SaysOnce(string text, string used)
+    {
+        Assert.Equal(1, Count(text, Dropped));
+        Assert.Contains(Dropped + used + "'", text);
+    }
+
+    [Fact]
+    public async Task A_saved_effort_the_entry_dropped_warns_once_and_sends_the_entrys_default()
+    {
+        await using var server = new FakeOpenAiServer();
+        Hosted(server);
+        File.WriteAllText(CompanionFile, """{"defaults":{"hosted":{"effort":{"c1":"medium"}}}}""");
+        var before = File.ReadAllBytes(CompanionFile);
+        server.Enqueue(Text("one"));
+        server.Enqueue(Text("two"));
+        Console.SetIn(new StringReader("hi\n/role generalist\nagain\n/quit\n"));
+
+        Assert.Equal(0, await GattoApp.RunAsync(Array.Empty<string>()));
+
+        Assert.All(Chats(server), body => Assert.Equal("high", body.GetProperty("reasoning_effort").GetString()));
+        Assert.Equal(2, Chats(server).Count);
+        SaysOnce(_out.ToString() + _err, "high");
+        Assert.Equal(before, File.ReadAllBytes(CompanionFile));
+    }
+
+    [Theory]
+    [InlineData("")]
+    [InlineData(", DefaultEffort: \"turbo\"")]
+    public async Task A_dropped_saved_effort_with_no_entry_default_sends_the_first_offered_level(string defaultEffort)
+    {
+        await using var server = new FakeOpenAiServer();
+        Hosted(server, catalogue: "Task.FromResult(new ModelCatalogue(new[] { new ModelEntry(\"c1\", Efforts: new[] { \"low\", \"high\" }" + defaultEffort + ") }))");
+        File.WriteAllText(CompanionFile, """{"defaults":{"hosted":{"effort":{"c1":"medium"}}}}""");
+        server.Enqueue(Text("ok"));
+
+        Assert.Equal(0, await GattoApp.RunAsync(new[] { "-p", "hi" }));
+
+        Assert.Equal("low", Sent(server, "reasoning_effort"));
+        SaysOnce(_err.ToString(), "low");
+    }
+
+    [Fact]
+    public async Task A_model_switch_onto_a_model_whose_saved_effort_was_dropped_sends_the_entrys_default_and_warns_once()
+    {
+        await using var server = new FakeOpenAiServer();
+        Hosted(server);
+        File.WriteAllText(CompanionFile, """{"defaults":{"hosted":{"effort":{"c1":"medium"}}}}""");
+        server.Enqueue(Text("ok"));
+        Console.SetIn(new StringReader("/model c1\nhi\n/quit\n"));
+
+        Assert.Equal(0, await GattoApp.RunAsync(new[] { "-m", "c2" }));
+
+        Assert.Equal("c1", Sent(server, "model"));
+        Assert.Equal("high", Sent(server, "reasoning_effort"));
+        SaysOnce(_out.ToString() + _err, "high");
+    }
+
+    [Fact]
+    public async Task A_saved_effort_the_entry_offers_is_sent_with_no_warning()
+    {
+        await using var server = new FakeOpenAiServer();
+        Hosted(server);
+        File.WriteAllText(CompanionFile, """{"defaults":{"hosted":{"effort":{"c1":"low"}}}}""");
+        server.Enqueue(Text("ok"));
+
+        Assert.Equal(0, await GattoApp.RunAsync(new[] { "-p", "hi" }));
+
+        Assert.Equal("low", Sent(server, "reasoning_effort"));
+        Assert.DoesNotContain("no longer offered", _out.ToString() + _err);
+    }
+
+    [Fact]
+    public async Task An_entry_with_no_levels_narrows_nothing()
+    {
+        await using var server = new FakeOpenAiServer();
+        Hosted(server);
+        File.WriteAllText(CompanionFile, """{"defaults":{"hosted":{"effort":{"c2":"medium"}}}}""");
+        server.Enqueue(Text("ok"));
+
+        Assert.Equal(0, await GattoApp.RunAsync(new[] { "-p", "hi", "-m", "c2" }));
+
+        Assert.Equal("medium", Sent(server, "reasoning_effort"));
+        Assert.DoesNotContain("no longer offered", _out.ToString() + _err);
+    }
+
     [Fact]
     public async Task The_entrys_default_window_is_the_budget_and_context_draws_the_offered_sizes()
     {
@@ -274,7 +365,7 @@ public class CatalogueLaunchTests : IDisposable
         foreach (var body in chats)
         {
             var raw = body.GetRawText();
-            Assert.DoesNotContain("c2", raw);
+            Assert.DoesNotContain("\"c2\"", raw);   //quoted, since the prompt names a random session id and a temp folder that can hold the two characters
             Assert.DoesNotContain("256000", raw);
             Assert.DoesNotContain("500000", raw);
             Assert.DoesNotContain("ultra", raw);

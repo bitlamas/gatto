@@ -53,14 +53,33 @@ public class FirstRunDoorTests : IDisposable
         Assert.False(FirstRunDoor.NotConfigured(_home));
     }
 
+    //a default endpoint gatto.json does not hold is an extension's, and its first launch has no saved model yet, so no companion is needed
     [Fact]
-    public void A_home_whose_contributed_default_endpoint_has_a_companion_model_is_configured()
+    public void A_default_endpoint_gatto_json_does_not_configure_keeps_the_door_shut()
+    {
+        Directory.CreateDirectory(_home);
+        File.WriteAllText(Path.Combine(_home, "gatto.json"), """{"endpoints":{"local":{}},"default_endpoint":"hosted"}""");
+
+        Assert.False(FirstRunDoor.NotConfigured(_home));
+    }
+
+    //local is left out of the rule, since a config may name it with no entry and still be the scaffold
+    [Fact]
+    public void A_default_endpoint_of_local_with_no_local_entry_still_needs_setup()
+    {
+        Directory.CreateDirectory(_home);
+        File.WriteAllText(Path.Combine(_home, "gatto.json"), """{"endpoints":{},"default_endpoint":"local"}""");
+
+        Assert.True(FirstRunDoor.NotConfigured(_home));
+    }
+
+    //the companion scan is reached for local with no entry, so a saved model there still shuts the door
+    [Fact]
+    public void A_companion_model_for_an_unconfigured_local_keeps_the_door_shut()
     {
         Directory.CreateDirectory(Path.Combine(_home, "extensions"));
-        File.WriteAllText(Path.Combine(_home, "gatto.json"), """{"endpoints":{"local":{}},"default_endpoint":"hosted"}""");
-        Assert.True(FirstRunDoor.NotConfigured(_home));
-
-        File.WriteAllText(Path.Combine(_home, "extensions", "hosted.json"), """{"defaults":{"hosted":{"model":"h1"}}}""");
+        File.WriteAllText(Path.Combine(_home, "gatto.json"), """{"endpoints":{},"default_endpoint":"local"}""");
+        File.WriteAllText(Path.Combine(_home, "extensions", "hosted.json"), """{"defaults":{"local":{"model":"h1"}}}""");
 
         Assert.False(FirstRunDoor.NotConfigured(_home));
     }

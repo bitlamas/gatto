@@ -132,9 +132,9 @@ internal sealed class LaunchState(
     internal int? EntryWindow(string id) => EntryOf(id)?.DefaultWindow is int w and > 0 ? w : null;
 
     //the levels the entry offers that the endpoint's map can send, empty when the entry names none or none of them parse
-    private IReadOnlyList<ThinkingLevel> EntryLevels(string id)
+    private IReadOnlyList<ThinkingLevel> EntryLevels(string endpointName, string id)
     {
-        if (EntryOf(id)?.Efforts is not { Count: > 0 } names) return [];
+        if (EntryFor(endpointName, id)?.Efforts is not { Count: > 0 } names) return [];
         var levels = new List<ThinkingLevel>();
         foreach (var name in names)
         {
@@ -273,7 +273,8 @@ internal sealed class LaunchState(
             memoryIndex: memory.Text, memoryTruncatedLines: memory.TruncatedLines, memoryNudge: memoryOn,
             policyLines: policyLines,
             savedEffort: endpointIsLocal ? null
-                : SavedCloudEffort(config, home, endpointName, OwnerOf(endpointName), modelString) ?? EntryEffort(endpointName, modelString));
+                : SavedOffered(endpointName, modelString, SavedCloudEffort(config, home, endpointName, OwnerOf(endpointName), modelString), model?.Profile.Thinking ?? endpoint.Thinking)
+                  ?? EntryEffort(endpointName, modelString));
 
         return new RoleResolution(role, model, endpoint, endpointName, modelString, comp, memory.TruncatedLines);
     }
@@ -481,7 +482,7 @@ internal sealed class LaunchState(
             else
             {
                 //the new model takes its own level as a launch would, never the one the previous model was on
-                var switchedLevel = Role.ThinkingRequested ?? SavedCloudEffortOrNull(requestedModel)
+                var switchedLevel = Role.ThinkingRequested ?? SavedOffered(EndpointName, requestedModel, SavedCloudEffortOrNull(requestedModel), ReasoningMap)
                     ?? EntryEffort(EndpointName, requestedModel) ?? Model?.Profile.DefaultEffort ?? ThinkingLevel.Medium;
                 SetEffort(EffortSwitch.Name(switchedLevel), false);
             }
@@ -650,7 +651,8 @@ internal sealed class LaunchState(
     //a listed row's levels as /effort would offer them for that model, landing on the saved level, else the live entry's, else the map's medium
     private (IReadOnlyList<string>? Levels, string? Default) RowLevels(string id)
     {
-        var (levels, effort) = ModelLevels.For(Endpoint.Thinking, SavedCloudEffortOrNull(id) ?? EntryEffort(EndpointName, id),
+        var saved = SavedOffered(EndpointName, id, SavedCloudEffortOrNull(id), Model?.Profile.Thinking ?? Endpoint.Thinking, warnStale: false);   //a picker opens without a notice
+        var (levels, effort) = ModelLevels.For(Endpoint.Thinking, saved ?? EntryEffort(EndpointName, id),
             knownToggle: id == ModelString && ThinkCap == ThinkCapability.Toggle, thinkOnByDefault: config.Think != "off");
         var names = OfferedLevels(id).Select(EffortSwitch.Name).ToList();
         if (levels is null || names.Count == 0) return (levels, effort);
@@ -772,9 +774,10 @@ internal sealed class LaunchState(
     }
 
     //the entry's levels the map can send, empty when the entry narrows nothing, so a model off the live list offers the whole map
-    private IReadOnlyList<ThinkingLevel> OfferedLevels(string id)
+    private IReadOnlyList<ThinkingLevel> OfferedLevels(string id) => OfferedOn(EndpointName, id, Model?.Profile.Thinking ?? Endpoint.Thinking);
+
+    private IReadOnlyList<ThinkingLevel> OfferedOn(string endpointName, string id, IReadOnlyDictionary<string, JsonElement?>? map)
     {
-        var map = Model?.Profile.Thinking ?? Endpoint.Thinking;
         if (map is null) return [];
         var keys = new HashSet<ThinkingLevel>();
         foreach (var key in map.Keys)
@@ -782,7 +785,19 @@ internal sealed class LaunchState(
             try { keys.Add(Thinking.Parse(key)); }
             catch (GattoConfigException) { }   //the launch already refused a bad key, nothing to offer from one here
         }
-        return [.. EntryLevels(id).Where(keys.Contains).Distinct().Order()];
+        return [.. EntryLevels(endpointName, id).Where(keys.Contains).Distinct().Order()];
+    }
+
+    //a saved level the live entry no longer offers falls to the entry's default, else its first offered level, warned once per process and never written
+    private ThinkingLevel? SavedOffered(string endpointName, string id, ThinkingLevel? saved, IReadOnlyDictionary<string, JsonElement?>? map, bool warnStale = true)
+    {
+        if (saved is not { } level) return null;
+        var offered = OfferedOn(endpointName, id, map);
+        if (offered.Count == 0 || offered.Contains(level)) return level;
+        var used = EntryEffort(endpointName, id) is { } d && offered.Contains(d) ? d : offered[0];
+        var line = $"the saved effort '{EffortSwitch.Name(level)}' is no longer offered by '{id}'; using '{EffortSwitch.Name(used)}'";
+        if (warnStale && _staleDefaultWarned.Add(line)) warn.Warn(line);
+        return used;
     }
 
     //one row per level this model's map declares, or none and on for a Toggle, and empty when there is nothing to offer
@@ -863,7 +878,8 @@ internal sealed class LaunchState(
         if (called.Model is null)
             return (RoleComposition.Compose(merged, Model, files, Endpoint.Thinking, ModelString, OsWords.Name(), SessionId, cwd: cwd, date: DateTime.Now,
                 memoryIndex: null, memoryNudge: false, policyLines: null,
-                savedEffort: EndpointName == "local" ? null : SavedCloudEffort(config, home, EndpointName, OwnerOf(EndpointName), ModelString)), ModelString);
+                savedEffort: EndpointName == "local" ? null
+                    : SavedOffered(EndpointName, ModelString, SavedCloudEffort(config, home, EndpointName, OwnerOf(EndpointName), ModelString), Model?.Profile.Thinking ?? Endpoint.Thinking)), ModelString);
         //the refusal check resolved the same merged role before this runs, so a throw here is a file changed in between and the loop reports it
         var res = ResolveLoaded(called.ThinkingRequested is null ? merged with { ThinkingRequested = Comp.Thinking } : merged);   //another model with no level of its own takes the session's, and --effort still wins inside
         return (RoleComposition.Compose(res.Role, res.Model, files, res.Endpoint.Thinking, res.ModelString, OsWords.Name(), SessionId, cwd: cwd, date: DateTime.Now,

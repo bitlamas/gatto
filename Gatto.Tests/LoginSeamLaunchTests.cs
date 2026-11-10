@@ -228,6 +228,96 @@ public class LoginSeamLaunchTests : IDisposable
         Assert.False(File.Exists(Secret("hosted")));
     }
 
+    private string Dead => Path.Combine(_home, "dead.flag");
+
+    //a list read that finds the flag drops the secret and throws, as an extension does on a refresh the provider refused, and lists h2 first otherwise
+    private string DroppingCatalogue(bool once = true) =>
+        ", catalogue: ct => { System.IO.File.AppendAllText(\"" + Esc(Marks) + "\", \"C \"); " +
+        "if (System.IO.File.Exists(\"" + Esc(Dead) + "\")) { " + (once ? "System.IO.File.Delete(\"" + Esc(Dead) + "\"); " : "") +
+        "System.IO.File.Delete(\"" + Esc(Secret("hosted")) + "\"); throw new InvalidOperationException(\"the login expired\"); } " +
+        "return Task.FromResult(new ModelCatalogue(new[] { new ModelEntry(\"h2\"), new ModelEntry(\"h1\") })); }";
+
+    private static string Model(FakeOpenAiServer server) =>
+        server.RequestBodies.Last(b => b.TryGetProperty("messages", out _)).GetProperty("model").GetString()!;
+
+    [Fact]
+    public async Task A_read_that_logs_the_endpoint_out_runs_the_login_and_reads_again()
+    {
+        await using var server = new FakeOpenAiServer();
+        Hosted(server, catalogue: DroppingCatalogue());
+        File.WriteAllText(Secret("hosted"), "t");
+        File.WriteAllText(Dead, "");
+        server.Enqueue(Text("ok"));
+        Console.SetIn(new StringReader("hi\n/quit\n"));
+
+        Assert.Equal(0, await GattoApp.RunAsync(Array.Empty<string>()));
+
+        var o = _out.ToString();
+        Assert.Equal("C Lhosted C ", MarksRead);
+        var first = o.IndexOf("hosted: reading the model list", StringComparison.Ordinal);
+        var label = o.IndexOf("hosted: logged in as someone@example.test", StringComparison.Ordinal);
+        var second = o.IndexOf("hosted: reading the model list", label + 1, StringComparison.Ordinal);
+        Assert.True(first >= 0 && label > first && second > label, o);
+        Assert.DoesNotContain("could not be read", o + _err);
+        Assert.Equal("h2", Model(server));
+    }
+
+    [Fact]
+    public async Task A_launch_that_already_logged_in_runs_no_second_login_when_the_read_logs_out()
+    {
+        await using var server = new FakeOpenAiServer();
+        Hosted(server, catalogue: DroppingCatalogue());
+        File.WriteAllText(Dead, "");
+
+        Assert.Equal(0, await GattoApp.RunAsync(Array.Empty<string>()));
+
+        Assert.Equal("Lhosted C ", MarksRead);
+        Assert.Contains("hosted: the model list could not be read (the login expired); using the list the extension declares", _out.ToString() + _err);
+    }
+
+    [Fact]
+    public async Task A_p_run_whose_read_logs_out_refuses_with_the_login_line()
+    {
+        await using var server = new FakeOpenAiServer();
+        Hosted(server, catalogue: DroppingCatalogue());
+        File.WriteAllText(Secret("hosted"), "t");
+        File.WriteAllText(Dead, "");
+
+        Assert.Equal(2, await GattoApp.RunAsync(new[] { "-p", "hi" }));
+
+        Assert.Contains("endpoint hosted: not logged in; run gatto -e hosted and log in once", _err.ToString());
+        Assert.Equal("C ", MarksRead);
+        Assert.Equal(0, server.RequestCount);
+    }
+
+    [Fact]
+    public async Task A_read_that_fails_while_still_logged_in_keeps_the_declared_list_and_runs_no_login()
+    {
+        await using var server = new FakeOpenAiServer();
+        Hosted(server, catalogue: ", catalogue: ct => { System.IO.File.AppendAllText(\"" + Esc(Marks) + "\", \"C \"); " +
+            "throw new InvalidOperationException(\"the list did not answer\"); }");
+        File.WriteAllText(Secret("hosted"), "t");
+
+        Assert.Equal(0, await GattoApp.RunAsync(Array.Empty<string>()));
+
+        Assert.Equal("C ", MarksRead);
+        Assert.Contains("hosted: the model list could not be read (the list did not answer); using the list the extension declares", _out.ToString() + _err);
+    }
+
+    [Fact]
+    public async Task A_second_logged_out_read_falls_back_and_does_not_loop()
+    {
+        await using var server = new FakeOpenAiServer();
+        Hosted(server, catalogue: DroppingCatalogue(once: false));
+        File.WriteAllText(Secret("hosted"), "t");
+        File.WriteAllText(Dead, "");
+
+        Assert.Equal(0, await GattoApp.RunAsync(Array.Empty<string>()));
+
+        Assert.Equal("C Lhosted C ", MarksRead);
+        Assert.Contains("hosted: the model list could not be read (the login expired); using the list the extension declares", _out.ToString() + _err);
+    }
+
     [Fact]
     public async Task Login_on_an_endpoint_without_the_seam_answers_its_sentence()
     {

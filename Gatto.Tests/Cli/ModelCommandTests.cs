@@ -127,6 +127,18 @@ public class ModelCommandTests : IDisposable
         Assert.Contains("gatto setup", ran.Err);
     }
 
+    //a home whose default endpoint is an extension's is configured, so with no engine the engine sentence still answers
+    [Fact]
+    public void gatto_model_on_a_contributed_default_endpoint_with_no_engine_names_setup()
+    {
+        File.WriteAllText(Path.Combine(_home, "gatto.json"), """{"endpoints":{"local":{}},"default_endpoint":"hosted"}""");
+
+        var ran = Run(interactive: true);
+
+        Assert.Equal(2, ran.Exit);
+        Assert.Contains("gatto setup", ran.Err);
+    }
+
     //every refusal must end with one empty line, so the prompt that follows does not sit against the sentence.
     [Theory]
     [InlineData("pipe")]

@@ -113,6 +113,56 @@ public sealed class ContributedDefaultsSwitchTests : IDisposable
     }
 
     [Fact]
+    public void The_picker_row_of_a_model_whose_saved_effort_was_dropped_lands_on_the_entrys_default()
+    {
+        //medium is saved and the entry offers low and high only, so the row lands where the launch would send, never on the first level
+        var state = LiveState(out _);
+        Companion("hostext", """{"defaults":{"hosted":{"effort":{"c1":"medium"}}}}""");
+
+        var rows = state.ListModels();
+
+        Assert.Equal(["low", "high"], rows[0].Levels);
+        Assert.Equal("high", rows[0].DefaultEffort);
+    }
+
+    [Fact]
+    public void A_child_on_the_sessions_model_sends_the_entrys_default_when_the_saved_effort_was_dropped()
+    {
+        var state = LiveState(out var warned);
+        Companion("hostext", """{"defaults":{"hosted":{"effort":{"c1":"medium"}}}}""");
+        File.WriteAllText(Path.Combine(_home, "roles", "helper.json"), "{}");
+        state.Role = Gatto.Roles.RoleFile.Load(Path.Combine(_home, "roles"), "generalist");
+
+        var (comp, model) = state.ComposeChild(Gatto.Roles.RoleFile.Load(Path.Combine(_home, "roles"), "helper"));
+
+        Assert.Equal("c1", model);
+        Assert.Equal(ThinkingLevel.High, comp.Thinking);
+        Assert.Equal(["the saved effort 'medium' is no longer offered by 'c1'; using 'high'"], warned);
+    }
+
+    //the session on c1 of a live list whose entry offers low and high with high its default
+    private LaunchState LiveState(out List<string> warned)
+    {
+        Directory.CreateDirectory(Path.Combine(_home, "roles"));
+        File.WriteAllText(Path.Combine(_home, "roles", "generalist.json"), "{}");
+        File.WriteAllText(GattoJson, """{"endpoints":{"local":{}},"default_endpoint":"hosted"}""");
+        var config = GattoConfig.Load(_home);
+        var endpoints = new Dictionary<string, EndpointConfig>(config.Endpoints, StringComparer.Ordinal)
+        {
+            ["hosted"] = new("https://hosted.example.test/v1", Thinking: Levels, Models: ["h1"], Owner: "hostext"),
+        };
+        var live = new ModelCatalogue([new ModelEntry("c1", Efforts: ["low", "high"], DefaultEffort: "high"), new ModelEntry("c2")]);
+        var seen = new List<string>();
+        warned = seen;
+        return new LaunchState(new ParsedArgs("launch", null, null, "", false, false), config, _home, _cwd,
+            Path.Combine(_home, "roles"), Path.Combine(_home, "models"), endpoints, null, null, new WarningSink(seen.Add),
+            false, [], Gatto.Terminal.GlyphSet.Unicode, catalogue: live, catalogueFor: "hosted")
+        {
+            EndpointName = "hosted", Endpoint = endpoints["hosted"], ModelString = "c1",
+        };
+    }
+
+    [Fact]
     public void A_live_entry_narrows_the_picker_row_to_its_levels_and_its_default()
     {
         //the row steps through the levels /effort would take for that model, and lands on the entry's own default when nothing is saved

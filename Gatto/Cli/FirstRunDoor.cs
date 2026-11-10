@@ -17,6 +17,7 @@ internal static class FirstRunDoor
         {
             var config = GattoConfig.Load(homePath);
             if (CompanionDefaults.Model(homePath, config, config.DefaultEndpoint, null) is not null) return false;   //a contributed default endpoint's model sits in one companion file
+            if (config.DefaultEndpoint != "local" && !config.Endpoints.ContainsKey(config.DefaultEndpoint)) return false;   //only an edit names an endpoint gatto.json does not hold, and the launch refuses it by name when nothing contributes it
             //a bare launch takes the first listed model of the default endpoint, so a list with nothing saved is configured
             return !(config.Endpoints.TryGetValue(config.DefaultEndpoint, out var ep) && ep.Models is { Count: > 0 });
         }
