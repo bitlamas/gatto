@@ -19,6 +19,11 @@
     <Using Include="Xunit" />
   </ItemGroup>
 
+  <!-- xunit starts many classes at once and their blocking waits starve a pool sized to the CPU count, so timing-bound tests ran out of time in the first seconds of a run -->
+  <ItemGroup>
+    <RuntimeHostConfigurationOption Include="System.Threading.ThreadPool.MinThreads" Value="256" />
+  </ItemGroup>
+
   <ItemGroup>
     <ProjectReference Include="..\Gatto\Gatto.csproj" />
     <ProjectReference Include="..\Gatto.Terminal.Tests\Gatto.Terminal.Tests.csproj" />
