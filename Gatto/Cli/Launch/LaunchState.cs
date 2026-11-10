@@ -28,7 +28,8 @@ internal sealed class LaunchState(
     bool memoryOn, List<(string Extension, string Line)> policyLines, GlyphSet glyphs,
     bool bare = false,   //true composes what every session in this home carries, so no project's context files and no project's memory index
     Func<string?>? sessionOf = null,   //the store's live session, read when a composition runs, null for a prefix that belongs to no session
-    IReadOnlyDictionary<string, string>? endpointOwner = null)   //the extension that contributed each endpoint, whose companion file holds that endpoint's defaults
+    ModelCatalogue? catalogue = null,   //the live list the launch read, which speaks for the endpoint it was read for alone
+    string? catalogueFor = null)
 {
     //a stale default is said once per process, since /role and the policy pass resolve again
     private readonly HashSet<string> _staleDefaultWarned = new(StringComparer.Ordinal);
@@ -102,7 +103,46 @@ internal sealed class LaunchState(
         : new MemoryIndex.LoadResult(null, 0);
 
     //the owner of the endpoint a site resolves, asked per endpoint since a child or a picker may read another endpoint than the session's
-    internal string? OwnerOf(string endpoint) => endpointOwner?.GetValueOrDefault(endpoint);
+    internal string? OwnerOf(string endpoint) => endpoints.TryGetValue(endpoint, out var ep) ? ep.Owner : null;
+
+    internal ModelCatalogue? Catalogue => catalogue;
+
+    internal string? CatalogueFor => catalogueFor;
+
+    //the names /model offers and a launch resolves against: the live list on the endpoint it was read for, else the declared one
+    internal IReadOnlyList<string>? Listed => ListedFor(EndpointName, Endpoint);
+
+    private IReadOnlyList<string>? ListedFor(string endpointName, EndpointConfig ep) =>
+        catalogue is not null && catalogueFor == endpointName ? catalogue.Ids : ep.Models;
+
+    //the live entry of a model on the session's endpoint, null when no list was read for it, so a /role onto another endpoint inherits nothing
+    internal ModelEntry? EntryOf(string id) => EntryFor(EndpointName, id);
+
+    private ModelEntry? EntryFor(string endpointName, string id) => catalogueFor == endpointName ? catalogue?.EntryOf(id) : null;
+
+    //the entry's default level, which comes after a saved one, and a name no level parses to offers nothing
+    private ThinkingLevel? EntryEffort(string endpointName, string id)
+    {
+        if (EntryFor(endpointName, id)?.DefaultEffort is not { } name) return null;
+        try { return Thinking.Parse(name); }
+        catch (GattoConfigException) { return null; }
+    }
+
+    //the entry's own window when it names a usable one
+    internal int? EntryWindow(string id) => EntryOf(id)?.DefaultWindow is int w and > 0 ? w : null;
+
+    //the levels the entry offers that the endpoint's map can send, empty when the entry names none or none of them parse
+    private IReadOnlyList<ThinkingLevel> EntryLevels(string id)
+    {
+        if (EntryOf(id)?.Efforts is not { Count: > 0 } names) return [];
+        var levels = new List<ThinkingLevel>();
+        foreach (var name in names)
+        {
+            try { levels.Add(Thinking.Parse(name)); }
+            catch (GattoConfigException) { }   //a level core does not know is dropped from the offer, never a refusal of the launch
+        }
+        return levels;
+    }
 
     //where a refusal sends the user to save a default: the contributing extension's companion file, else gatto.json
     private string DefaultsFile(string endpoint) =>
@@ -137,14 +177,17 @@ internal sealed class LaunchState(
     private string OffClause() => config.ExtensionsOff is { Count: > 0 } off
         ? $"; extensions off: {string.Join(", ", off.Order(StringComparer.Ordinal))}" : "";
 
+    //the -e endpoint first, so a /role with no endpoint of its own keeps the launch one, and the launch asks this before the state exists
+    internal static string EndpointNameFor(string? launchEndpoint, RoleFile role, GattoConfig config) =>
+        launchEndpoint ?? role.Endpoint ?? config.DefaultEndpoint;
+
     //the resolution of a role already in hand, so run_agent can check a merged role that was never a file
     internal RoleResolution ResolveLoaded(RoleFile role)
     {
         //the --effort flag wins over the role's own thinking, like -e wins over its endpoint
         if (args.Effort is { } flagEffort) role = role with { ThinkingRequested = flagEffort };
 
-        //the -e endpoint is read here too, so a /role with no endpoint of its own keeps the launch one
-        var endpointName = launchEndpoint ?? role.Endpoint ?? config.DefaultEndpoint;
+        var endpointName = EndpointNameFor(launchEndpoint, role, config);
         if (!endpoints.TryGetValue(endpointName, out var ep))
             throw new GattoConfigException(args.Endpoint is not null
                 ? $"-e names endpoint '{endpointName}', which is not defined in gatto.json. Endpoints: {string.Join(", ", endpoints.Keys.OrderBy(k => k, StringComparer.Ordinal))}{OffClause()}"
@@ -193,13 +236,14 @@ internal sealed class LaunchState(
         else
         {
             //the -m flag is a verbatim model string on a cloud endpoint. a listed endpoint hears the role only when the role was written for it, an unlisted one as before
-            var explicitModel = ep.Models is { Count: > 0 }
+            var offered = ListedFor(endpointName, ep);
+            var explicitModel = offered is { Count: > 0 }
                 ? SessionModel ?? (role.Endpoint == endpointName ? role.Model : null)
                 : SessionModel ?? role.Model;
-            var choice = LaunchModel.Resolve(endpointName, ep.Models, explicitModel, CompanionDefaults.Model(home, config, endpointName, OwnerOf(endpointName)));
+            var choice = LaunchModel.Resolve(endpointName, offered, explicitModel, CompanionDefaults.Model(home, config, endpointName, OwnerOf(endpointName)));
             if (choice.Warning is { } stale && _staleDefaultWarned.Add(stale)) warn.Warn(stale);
             var effectiveModel = choice.Model;
-            if (ep.Models is { Count: > 0 } listed && !listed.Contains(effectiveModel, StringComparer.Ordinal))
+            if (offered is { Count: > 0 } listed && !listed.Contains(effectiveModel, StringComparer.Ordinal))
                 throw new GattoConfigException(
                     $"endpoint '{endpointName}' has no model '{effectiveModel}'. Models: {string.Join(", ", listed)}");
             if (effectiveModel is null)
@@ -228,7 +272,8 @@ internal sealed class LaunchState(
         var comp = RoleComposition.Compose(role, model, contextFiles, endpoint.Thinking, modelString, OsWords.Name(), SessionId, cwd: cwd, date: DateTime.Now,
             memoryIndex: memory.Text, memoryTruncatedLines: memory.TruncatedLines, memoryNudge: memoryOn,
             policyLines: policyLines,
-            savedEffort: endpointIsLocal ? null : SavedCloudEffort(config, home, endpointName, OwnerOf(endpointName), modelString));
+            savedEffort: endpointIsLocal ? null
+                : SavedCloudEffort(config, home, endpointName, OwnerOf(endpointName), modelString) ?? EntryEffort(endpointName, modelString));
 
         return new RoleResolution(role, model, endpoint, endpointName, modelString, comp, memory.TruncatedLines);
     }
@@ -407,10 +452,10 @@ internal sealed class LaunchState(
     internal ModelSwitchResult SwitchModel(string requestedModel, bool confirmed)
     {
         //an endpoint that names its models has no server to swap, so the switch is the name the next request carries
-        var route = ModelSwitch.RouteOf(ServedHere(), Endpoint.Models is { Count: > 0 }, Cloud);
+        var route = ModelSwitch.RouteOf(ServedHere(), Listed is { Count: > 0 }, Cloud);
         if (route == SwitchRoute.ByName)
         {
-            if (Endpoint.Models is { Count: > 0 } offered && !offered.Contains(requestedModel, StringComparer.Ordinal))
+            if (Listed is { Count: > 0 } offered && !offered.Contains(requestedModel, StringComparer.Ordinal))
                 return new ModelSwitchResult(false, requestedModel, null, null,
                     $"endpoint {EndpointName} has no model '{requestedModel}'. Models: {string.Join(", ", offered)}", null, null);
             //re-resolved for the new name, so its folder's parts replace the old one's and a model with no folder drops them
@@ -437,10 +482,17 @@ internal sealed class LaunchState(
             {
                 //the new model takes its own level as a launch would, never the one the previous model was on
                 var switchedLevel = Role.ThinkingRequested ?? SavedCloudEffortOrNull(requestedModel)
-                    ?? Model?.Profile.DefaultEffort ?? ThinkingLevel.Medium;
+                    ?? EntryEffort(EndpointName, requestedModel) ?? Model?.Profile.DefaultEffort ?? ThinkingLevel.Medium;
                 SetEffort(EffortSwitch.Name(switchedLevel), false);
             }
             _loop.UpdateOverrides(ModelString, Comp.Sampling, Comp.ThinkingBody, Comp.ThinkingSuffix);
+            //a live entry names its own window, and a model with none on a listed endpoint takes the endpoint's
+            if (catalogue is not null && catalogueFor == EndpointName)
+            {
+                ContextBudget = EntryWindow(ModelString) ?? Endpoint.Context;
+                _loop.UpdateContextBudget(ContextBudget);   //the loop and the children cut against the window the screen names
+                _runAgent.UpdateContextBudget(ContextBudget);
+            }
             //the system text changes only when a folder's parts came or went, else only the baseline moves so a later continue finds the model the session ended on
             return new ModelSwitchResult(true, requestedModel,
                 string.Equals(systemBefore, Comp.SystemText, StringComparison.Ordinal) ? null : Comp.SystemText,
@@ -557,10 +609,8 @@ internal sealed class LaunchState(
     internal IReadOnlyList<PickerItem> ListModels()
     {
         //an endpoint that names its models lists those, with nothing to probe
-        if (!ServedHere() && Endpoint.Models is { Count: > 0 } offered)
-            return ListedModelRows.Build(offered, ModelString, CurrentDefaultFor(EndpointName),
-                id => ModelLevels.For(Endpoint.Thinking, SavedCloudEffortOrNull(id),
-                    knownToggle: id == ModelString && ThinkCap == ThinkCapability.Toggle, thinkOnByDefault: config.Think != "off"));
+        if (!ServedHere() && Listed is { Count: > 0 } offered)
+            return ListedModelRows.Build(offered, ModelString, CurrentDefaultFor(EndpointName), RowLevels);
 
         var loaded = LaunchBaseUrl is null
             ? null
@@ -597,6 +647,18 @@ internal sealed class LaunchState(
         return rows;
     }
 
+    //a listed row's levels as /effort would offer them for that model, landing on the saved level, else the live entry's, else the map's medium
+    private (IReadOnlyList<string>? Levels, string? Default) RowLevels(string id)
+    {
+        var (levels, effort) = ModelLevels.For(Endpoint.Thinking, SavedCloudEffortOrNull(id) ?? EntryEffort(EndpointName, id),
+            knownToggle: id == ModelString && ThinkCap == ThinkCapability.Toggle, thinkOnByDefault: config.Think != "off");
+        var names = OfferedLevels(id).Select(EffortSwitch.Name).ToList();
+        if (levels is null || names.Count == 0) return (levels, effort);
+        var kept = levels.Where(names.Contains).ToList();
+        if (kept.Count == 0) return (levels, effort);
+        return (kept, effort is not null && kept.Contains(effort) ? effort : kept[0]);
+    }
+
     //read fresh, since a level saved this session must show, and a file that will not load saves nothing to read
     internal ThinkingLevel? SavedCloudEffortOrNull(string modelId)
     {
@@ -629,7 +691,7 @@ internal sealed class LaunchState(
     {
         try
         {
-            if (!ServedHere() && Endpoint.Models is { Count: > 0 })
+            if (!ServedHere() && Listed is { Count: > 0 })
             {
                 CompanionDefaults.SetEffort(home, EndpointName, OwnerOf(EndpointName), id, EffortSwitch.Name(ModelLevels.Resolve(Endpoint.Thinking, levelName)));
                 return null;
@@ -667,6 +729,9 @@ internal sealed class LaunchState(
             }
 
             var (effective, name, message) = EffortSwitch.Resolve(levelArg);
+            if (OfferedLevels(ModelString) is { Count: > 0 } offered && !offered.Contains(effective))
+                return new EffortResult(false, null,
+                    $"effort {name} is not offered by {ModelString}: {string.Join(", ", offered.Select(EffortSwitch.Name))}");
             var map = Model?.Profile.Thinking ?? Endpoint.Thinking;
 
             //nothing is ever sent with no map, so the level name stays null and the footer chip hidden
@@ -706,6 +771,20 @@ internal sealed class LaunchState(
         catch (GattoConfigException ex) { return new EffortResult(false, null, ex.Message); }
     }
 
+    //the entry's levels the map can send, empty when the entry narrows nothing, so a model off the live list offers the whole map
+    private IReadOnlyList<ThinkingLevel> OfferedLevels(string id)
+    {
+        var map = Model?.Profile.Thinking ?? Endpoint.Thinking;
+        if (map is null) return [];
+        var keys = new HashSet<ThinkingLevel>();
+        foreach (var key in map.Keys)
+        {
+            try { keys.Add(Thinking.Parse(key)); }
+            catch (GattoConfigException) { }   //the launch already refused a bad key, nothing to offer from one here
+        }
+        return [.. EntryLevels(id).Where(keys.Contains).Distinct().Order()];
+    }
+
     //one row per level this model's map declares, or none and on for a Toggle, and empty when there is nothing to offer
     internal IReadOnlyList<PickerItem> ListEfforts()   //built fresh on each open, so a /model shows at the next /effort
     {
@@ -723,8 +802,10 @@ internal sealed class LaunchState(
         if ((Model?.Profile.Thinking ?? Endpoint.Thinking) is not { } effortMap) return Array.Empty<PickerItem>();
 
         var savedLevel = SavedEffortNow();
+        var offered = OfferedLevels(ModelString);
         return effortMap.Keys
             .Select(Thinking.Parse)
+            .Where(l => offered.Count == 0 || offered.Contains(l))
             .OrderBy(l => l)
             .Select(l =>
             {

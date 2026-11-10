@@ -222,6 +222,7 @@ public class RegisteredCommandTests
         var h = new RichReplHarness(Path.GetTempPath(), commands: Undo(arg => $"ran with [{arg}]"));
         h.Keys.Key(new ConsoleKeyInfo('/', ConsoleKey.NoName, false, false, false))
             .Key(new ConsoleKeyInfo('u', ConsoleKey.U, false, false, false))
+            .Key(new ConsoleKeyInfo('n', ConsoleKey.N, false, false, false))
             .Key(new ConsoleKeyInfo('\t', ConsoleKey.Tab, false, false, false))
             .Line("")
             .Line("/quit");
@@ -234,8 +235,9 @@ public class RegisteredCommandTests
     {
         var h = new RichReplHarness(Path.GetTempPath(), commands: Undo(_ => ""));
         h.Keys.Key(new ConsoleKeyInfo('/', ConsoleKey.NoName, false, false, false))
-            .Key(new ConsoleKeyInfo('u', ConsoleKey.U, false, false, false));
-        await h.RunUntilAsync(() => h.Written().Contains("ndo [n|path]", StringComparison.Ordinal));
+            .Key(new ConsoleKeyInfo('u', ConsoleKey.U, false, false, false))
+            .Key(new ConsoleKeyInfo('n', ConsoleKey.N, false, false, false));
+        await h.RunUntilAsync(() => h.Written().Contains("do [n|path]", StringComparison.Ordinal));
     }
 
     [Fact]

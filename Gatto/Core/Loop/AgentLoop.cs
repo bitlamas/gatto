@@ -284,6 +284,7 @@ public sealed class AgentLoop(
             //the round's usage and timings, threaded onto the completed turn's AddAssistant below. the truncated and empty-turn paths deliberately record neither
             Usage? turnUsage = null;
             string? turnTimings = null;
+            string? turnServed = null;
 
             var (requestMessages, elidedCount, stillOver, elidedThrough) = shaped;   //shaped after any compaction above, so it describes the live conversation
             usageState?.NoteElided(elidedThrough);
@@ -332,6 +333,7 @@ public sealed class AgentLoop(
                             Release();
                             turnUsage = f.Usage;
                             turnTimings = f.Timings;
+                            turnServed = f.ServedModel;
                             if (f.Timings is not null) Volatile.Write(ref _lastTimings, f.Timings);
                             if (f.Usage is not null) Volatile.Write(ref _lastUsage, f.Usage);
                             finishReason = f.FinishReason;
@@ -424,7 +426,7 @@ public sealed class AgentLoop(
 
             //the reply records how its request was cut, and the ratio the next one will use, only when something was cut
             var shape = usageState is { ElidedThrough: > 0 } us ? new ShapeMark(us.ElidedThrough, us.Ratio) : null;
-            convo.AddAssistant(cleanText, calls.Count > 0 ? calls : null, turnUsage, turnTimings, cleanReasoning, strippedCount, shape);
+            convo.AddAssistant(cleanText, calls.Count > 0 ? calls : null, turnUsage, turnTimings, cleanReasoning, strippedCount, shape, turnServed);
 
             if (calls.Count == 0)
             {

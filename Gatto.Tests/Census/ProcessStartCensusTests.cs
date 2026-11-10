@@ -18,6 +18,7 @@ public class ProcessStartCensusTests
     //a pin is a ceiling. lower it in the commit that removes a start, and raise it only after reading the new start at the code.
     private static readonly Dictionary<string, int> Pins = new(StringComparer.Ordinal)
     {
+        ["Gatto/Cli/BrowserOpen.cs"] = 1,
         ["Gatto/Cli/Install/UninstallCommand.cs"] = 1,
         ["Gatto/Cli/Update/UpdateSeam.cs"] = 1,
         ["Gatto/Core/Acquire/LlamaServerProbe.cs"] = 1,
@@ -33,6 +34,8 @@ public class ProcessStartCensusTests
     [
         new("Gatto/Cli/Install/UninstallCommand.cs", "System.Diagnostics.Process.Start(psi);",
             "uninstall's self-delete helper waits for gatto to exit and then removes the install folder, so it must outlive gatto"),
+        new("Gatto/Cli/BrowserOpen.cs", "Process.Start(new ProcessStartInfo(url) { UseShellExecute = true });",
+            "a login page opens in the user's own browser, a program gatto hands the url to and never bounds"),
     ];
 
     private static List<(string Rel, string Source)> ProductionTree() =>

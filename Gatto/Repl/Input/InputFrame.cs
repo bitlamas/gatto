@@ -15,7 +15,7 @@ public sealed record StatusInfo(
     int HintIndex = 0,          //the chosen hint's place in the composed list, clamped against it at compose
     string? ChordHint = null,   //the live Esc·Esc / Ctrl+C·Ctrl+C hint, drawn in the top rule's label slot
     bool Cloud = false,         //the endpoint is in the cloud, and the mark stands before the model
-    Gatto.Core.Client.QuotaReading? Quota = null,
+    Gatto.Core.Client.Allowance? Allowance = null,   //the provider's footer reading, never shed
     decimal? Cost = null,       //the session sum of what the provider reported as cost, null when it reported none
     string? SessionName = null);   //the name /name gave the session, which takes the word gatto's place on the top rule
 
@@ -309,7 +309,7 @@ public sealed class InputFrame(ITermSurface surface, Theme theme, string? role, 
 
     //the rungs of the shed ladder after the hint, each gives up one more thing than the one before
     private const int DropCtxCount = 1, ShortBranch = 2, DropBranch = 3, FolderLast = 4, ModelMid = 5,
-        DropTokens = 6, FolderCapped = 7, ModelShort = 8;
+        DropTokens = 6, FolderCapped = 7, ModelShort = 8, DropCost = 9;
 
     //quota warns at or below this share of the total, and only when the provider reported a total
     private const int QuotaWarnPercent = 20;
@@ -317,10 +317,13 @@ public sealed class InputFrame(ITermSurface surface, Theme theme, string? role, 
     //quota also warns at this many requests left whatever the total, since a turn with tool calls spends several
     private const int QuotaWarnRemaining = 10;
 
-    //the sections a rung can shorten or drop, each with its forms longest first, so the ladder and the fill speak one vocabulary
-    private enum Piece { Folder, Branch, Model, Tokens, Ctx }
+    //an allowance reported as spent warns at or above this share used
+    private const int UsedWarnPercent = 80;
 
-    private const int PieceCount = 5;
+    //the sections a rung can shorten or drop, each with its forms longest first, so the ladder and the fill speak one vocabulary
+    private enum Piece { Folder, Branch, Model, Tokens, Ctx, Cost }
+
+    private const int PieceCount = 6;
 
     //the floor's forms, past the ladder: no folder, and the model as its mark and effort with no name
     private const int FolderGone = 3, ModelBare = 3;
@@ -344,13 +347,13 @@ public sealed class InputFrame(ITermSurface surface, Theme theme, string? role, 
         if (width <= 0) return Finish(Assemble(s, facts, theme, MapOf(0), g), null);
 
         int[]? map = null;
-        for (var rung = 0; rung <= ModelShort && map is null; rung++)
+        for (var rung = 0; rung <= DropCost && map is null; rung++)
             if (Fits(MapOf(rung))) map = MapOf(rung);
 
         //past the last rung the head goes before the tail: no folder, then the model without its name, then the cut
         if (map is null)
         {
-            var floor = MapOf(ModelShort);
+            var floor = MapOf(DropCost);
             floor[(int)Piece.Folder] = FolderGone;
             if (!Fits(floor)) floor[(int)Piece.Model] = ModelBare;
             var cut = Finish(Assemble(s, facts, theme, floor, g), null);
@@ -438,6 +441,7 @@ public sealed class InputFrame(ITermSurface surface, Theme theme, string? role, 
         map[(int)Piece.Model] = rung >= ModelShort ? 2 : rung >= ModelMid ? 1 : 0;
         map[(int)Piece.Tokens] = rung >= DropTokens ? 1 : 0;
         map[(int)Piece.Ctx] = rung >= DropCtxCount ? 1 : 0;
+        map[(int)Piece.Cost] = rung >= DropCost ? 1 : 0;
         return map;
     }
 
@@ -462,6 +466,8 @@ public sealed class InputFrame(ITermSurface surface, Theme theme, string? role, 
                 return s.TokensUp != 0 || s.TokensDown != 0
                     ? [$"{g.Up} {KFormat(s.TokensUp)} {g.Down} {KFormat(s.TokensDown)}", ""]
                     : ["", ""];
+            case Piece.Cost:
+                return s.Cost is decimal cost ? ["$" + cost.ToString("0.00", CultureInfo.InvariantCulture), ""] : ["", ""];
             default:
                 //keep the count in parentheses, the · separator would make it read as a second section
                 if (s.Ctx?.Percent is not int p) return ["", ""];
@@ -469,7 +475,7 @@ public sealed class InputFrame(ITermSurface surface, Theme theme, string? role, 
         }
     }
 
-    //the footer's sections at one map of forms. the mark, the effort, ctx and the quota or cost are never shed, the floor keeps the mark and the effort too
+    //the footer's sections at one map of forms. the mark, the effort, ctx and the allowance are never shed, the money goes at the last rung, the floor keeps the mark and the effort too
     private static List<Part> Assemble(StatusInfo s, BackgroundFacts facts, Theme theme, int[] map, GlyphSet g)
     {
         var parts = new List<Part>();
@@ -493,21 +499,56 @@ public sealed class InputFrame(ITermSurface surface, Theme theme, string? role, 
         void AddCell(string word, RgbColor ink, StatusCell kind) =>
             parts.Add(new Part(word, facts.Banded(kind) ? Banded(word, ink, theme) : theme.Paint(word, ink), kind));
 
-        //the provider supplies the numbers and core writes the words, a quota turns warn with few requests left, or when low against a reported total
-        if (s.Quota is { } q)
+        //the provider supplies the numbers and core writes the words, the allowance is never shed and the money after it is the last rung
+        if (s.Allowance is { } q)
         {
-            var quota = $"{q.Label} {q.Remaining.ToString(CultureInfo.InvariantCulture)} left";
-            var low = q.Remaining <= QuotaWarnRemaining
-                || (q.Total is long total and > 0 && q.Remaining * 100 <= total * QuotaWarnPercent);
-            parts.Add(new Part(quota, theme.Paint(quota, low ? Theme.Warn : Theme.Dim), StatusCell.Quota));
+            var text = AllowanceText(q);
+            parts.Add(new Part(text, theme.Paint(text, AllowanceLow(q) ? Theme.Warn : Theme.Dim), StatusCell.Quota));
         }
-        if (s.Cost is decimal cost)
-        {
-            var money = "$" + cost.ToString("0.00", CultureInfo.InvariantCulture);
-            parts.Add(new Part(money, theme.Paint(money, Theme.Dim), StatusCell.Cost));
-        }
+        Add(Piece.Cost, StatusCell.Cost, Theme.Dim);
 
         return parts;
+    }
+
+    //the one grammar of an allowance on the footer, a dash for a number the provider did not send and the label cut to its budget
+    internal static string AllowanceText(Gatto.Core.Client.Allowance a) => AllowanceGrammar(a, LabelCut(a.Label));
+
+    //the grammar under a label the caller chose, /usage passes the label whole
+    internal static string AllowanceGrammar(Gatto.Core.Client.Allowance a, string label)
+    {
+        static string N(long? n) => n?.ToString(CultureInfo.InvariantCulture) ?? "-";
+        return a.Shape switch
+        {
+            Gatto.Core.Client.AllowanceShape.Percent => $"{label} {N(a.UsedPercent)}% used",
+            Gatto.Core.Client.AllowanceShape.Remaining => $"{label} {N(a.Remaining)} left",
+            Gatto.Core.Client.AllowanceShape.UsedOfTotal => $"{label} {N(a.Used)} of {N(a.Total)}",
+            _ => label,
+        };
+    }
+
+    //warn at 80 percent used, at 20 percent left of a total, or at 10 left whatever the total, and never on a missing number or a label row
+    internal static bool AllowanceLow(Gatto.Core.Client.Allowance a)
+    {
+        if (a.Shape == Gatto.Core.Client.AllowanceShape.Label) return false;
+        if (a.UsedPercent is int p && p >= UsedWarnPercent) return true;
+        if (a.Used is long u && a.Total is long t && u * 100 >= t * UsedWarnPercent) return true;
+        if (a.Remaining is not long left) return false;
+        return left <= QuotaWarnRemaining || (a.Total is long total and > 0 && left * 100 <= total * QuotaWarnPercent);
+    }
+
+    //cut by cells and not by characters, so a wide label spends no more of the row than a narrow one
+    private static string LabelCut(string label)
+    {
+        var sb = new StringBuilder();
+        var w = 0;
+        foreach (var r in label.EnumerateRunes())
+        {
+            var rw = UnicodeWidth.Of(r.ToString());
+            if (w + rw > Gatto.Core.Client.UsageMeter.MaxLabel) break;
+            sb.Append(r.ToString());
+            w += rw;
+        }
+        return sb.ToString();
     }
 
     private static int VisWidth(List<Part> parts, GlyphSet g)

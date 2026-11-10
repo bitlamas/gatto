@@ -57,8 +57,6 @@ public sealed class OpenAiCompatClient : IChatClient, Gatto.Core.Client.ITokenCo
         var chunks = 0;
         long bytesIn = 0;
         var firstToken = false;
-        using var msg = new HttpRequestMessage(HttpMethod.Post,
-            $"{baseUrl.TrimEnd('/')}/v1/chat/completions");
         var body = BuildBody(request, imageCache, OnImageUnavailable, returnProgress);
         if (traced)
         {
@@ -71,30 +69,29 @@ public sealed class OpenAiCompatClient : IChatClient, Gatto.Core.Client.ITokenCo
             try { wireLog.Record(body); }
             catch (Exception) { } //fail-open, a debug instrument must never end a turn
         }
-        msg.Content = new StringContent(body, Encoding.UTF8, "application/json");
-        await AuthorizeAsync(msg, ct);
-
-        HttpResponseMessage resp;
-        try
+        var resp = await SendOnceAsync(body, request.Model, ct);
+        string? errBody = null;
+        //one retry at most, on the status alone and before a byte of the stream, so nothing the model said is ever asked twice
+        if ((int)resp.StatusCode is 401 or 403 or 426)
         {
-            resp = await http.SendAsync(msg, HttpCompletionOption.ResponseHeadersRead, ct);
-        }
-        catch (HttpRequestException)
-        {
-            throw new GattoConnectionException(DownMessage(request.Model));
-        }
-        catch (OperationCanceledException) when (!ct.IsCancellationRequested)
-        {
-            //a connect timeout throws an OCE rather than HttpRequestException, so only a cancel the caller did not ask for becomes the connection error
-            throw new GattoConnectionException(DownMessage(request.Model));
+            errBody = await resp.Content.ReadAsStringAsync(ct);
+            if (await RetryAsync((int)resp.StatusCode, errBody, ct))
+            {
+                if (traced) span.Set("retried", 1);   //the time to first byte then holds the refusal, the retry and any login
+                resp.RequestMessage?.Dispose();
+                resp.Dispose();
+                errBody = null;
+                resp = await SendOnceAsync(body, request.Model, ct);
+            }
         }
 
         using var _ = resp;
+        using var sent = resp.RequestMessage;
         if (traced) span.Set("ttfb_us", Micros(sentAt));
         if (!resp.IsSuccessStatusCode)
         {
             //parse the whole body before truncating, the trailing n_ctx field sits past the display limit
-            var errBody = await resp.Content.ReadAsStringAsync(ct);
+            errBody ??= await resp.Content.ReadAsStringAsync(ct);
             var display = $"endpoint {endpointName} returned {(int)resp.StatusCode}: {Truncate(ServerSaid(errBody), 200)}";
             if ((int)resp.StatusCode == 400 && TryParseContextOverflow(errBody, out var np, out var nc))
                 throw new GattoContextOverflowException(display, np, nc, (int)resp.StatusCode, errBody);
@@ -112,6 +109,8 @@ public sealed class OpenAiCompatClient : IChatClient, Gatto.Core.Client.ITokenCo
         Usage? usage = null;
         JsonElement? usageRaw = null;
         string? timings = null;
+        string? served = null;
+        var servedSeen = false;
         var stream = await resp.Content.ReadAsStreamAsync(ct);
 
         //an IO failure ends the turn as Truncated, a cancelled token propagates
@@ -168,6 +167,15 @@ public sealed class OpenAiCompatClient : IChatClient, Gatto.Core.Client.ITokenCo
             var chunkEvents = new List<StreamEvent>();
             try
             {
+                //the first name the provider answers under, raised once per request so an answer under the asked name takes a rename back, and recorded only when it differs
+                if (ReadsServedName && !servedSeen && root.TryGetProperty("model", out var sm) && sm.ValueKind == JsonValueKind.String
+                    && sm.GetString() is { Length: > 0 } servedName && !servedName.Any(char.IsControl))
+                {
+                    servedSeen = true;
+                    if (!string.Equals(servedName, request.Model, StringComparison.Ordinal)) served = servedName;
+                    try { OnServed?.Invoke(request.Model, servedName); }
+                    catch (Exception) { }   //a screen's handler never fails the stream
+                }
                 if (root.TryGetProperty("usage", out var u) && u.ValueKind == JsonValueKind.Object)
                 {
                     //the whole object is kept for OnUsage, a provider's limits and cost sit beside the two counts the loop reads
@@ -280,7 +288,7 @@ public sealed class OpenAiCompatClient : IChatClient, Gatto.Core.Client.ITokenCo
             try { onUsage(reported); }
             catch (Exception) { }   //fail-open, the footer's feed must never end a turn
         }
-        yield return new StreamEvent.Finished(finishReason, usage, timings);
+        yield return new StreamEvent.Finished(finishReason, usage, timings, served);
     }
 
     private static long Micros(long since) => (Stopwatch.GetTimestamp() - since) * 1_000_000 / Stopwatch.Frequency;
@@ -298,6 +306,61 @@ public sealed class OpenAiCompatClient : IChatClient, Gatto.Core.Client.ITokenCo
     }
 
     private static readonly string[] TracedTimings = ["cache_n", "prompt_n", "prompt_ms", "predicted_ms"];
+
+    //one send of the body, its headers asked of the endpoint each time, so a resend carries what a refresh just stored
+    private async Task<HttpResponseMessage> SendOnceAsync(string body, string model, CancellationToken ct)
+    {
+        var msg = new HttpRequestMessage(HttpMethod.Post, $"{baseUrl.TrimEnd('/')}/v1/chat/completions")
+        {
+            Content = new StringContent(body, Encoding.UTF8, "application/json"),
+        };
+        try
+        {
+            await AuthorizeAsync(msg, ct);
+            return await http.SendAsync(msg, HttpCompletionOption.ResponseHeadersRead, ct);
+        }
+        catch (HttpRequestException)
+        {
+            msg.Dispose();
+            throw new GattoConnectionException(DownMessage(model));
+        }
+        catch (OperationCanceledException) when (!ct.IsCancellationRequested)
+        {
+            msg.Dispose();
+            //a connect timeout throws an OCE rather than HttpRequestException, so only a cancel the caller did not ask for becomes the connection error
+            throw new GattoConnectionException(DownMessage(model));
+        }
+        catch
+        {
+            msg.Dispose();
+            throw;
+        }
+    }
+
+    //the extension's word on a refused request, then on a 401 it did not fix the login in place, and true sends the request once more
+    private async Task<bool> RetryAsync(int status, string errBody, CancellationToken ct)
+    {
+        if (endpoint.Retry is { } retry)
+        {
+            bool again;
+            try
+            {
+                //on the pool under the header bound, since a script can block before it returns its task or ignore the token
+                again = await Task.Run(() => retry(status, errBody, ct), ct).WaitAsync(EndpointAuth.HeaderBound, ct);
+            }
+            catch (OperationCanceledException) when (ct.IsCancellationRequested) { throw; }
+            catch (TimeoutException)
+            {
+                throw new GattoConnectionException($"endpoint {endpointName}: its extension did not answer the retry in time");
+            }
+            catch (Exception ex) { throw new GattoConnectionException(ex.Message); }
+            if (again) return true;
+        }
+        if (status != 401 || LoginInPlace is not { } login) return false;
+        try { return await login(ct); }
+        catch (OperationCanceledException) when (ct.IsCancellationRequested) { throw; }
+        catch (Exception ex) { throw new GattoConnectionException(ex.Message); }
+    }
 
     //add the endpoint's credential to the request, its header callback first, then ApiKey, then KeyEnv, and no header at all when none is set
     private Task AuthorizeAsync(HttpRequestMessage msg, CancellationToken ct) => EndpointAuth.ApplyAsync(msg, endpoint, endpointName, ct);
@@ -440,6 +503,15 @@ public sealed class OpenAiCompatClient : IChatClient, Gatto.Core.Client.ITokenCo
 
     //the raw usage of each finished request, once and at the end, so a run_agent child on this client feeds it too
     public Action<JsonElement>? OnUsage { get; set; }
+
+    //the requested id and the name the provider answered under, once per request that names one, equal names included, a run_agent child's requests too
+    public Action<string, string>? OnServed { get; set; }
+
+    //off for a server gatto runs, which answers under its file name and not the id the request names
+    public bool ReadsServedName { get; set; }
+
+    //the login rows run again in the session after a 401 the refresh could not fix, true when the user logged in. null on -p, which keeps its line
+    public Func<CancellationToken, Task<bool>>? LoginInPlace { get; set; }
 
     private static string BuildBody(ChatRequest request, ImageCache images, Action<string>? onImageUnavailable,
         bool returnProgress)

@@ -105,6 +105,7 @@ public sealed partial class Repl
         //the repaint any thread can call, take the gate, rebuild the frame, repaint, and skip it once stopped
         void RepaintChrome() { lock (s.Gate) { if (!stopped) { s.Refresh(); s.Painter.Repaint(); } } }
         onUsageChanged?.Invoke(RepaintChrome);
+        _repaintChrome = RepaintChrome;
         //one reusable timer re-armed on each press so a hint vanishes by itself after the window, disposed at teardown
         var hintTimer = new System.Threading.Timer(_ => RepaintChrome(), null, Timeout.Infinite, Timeout.Infinite);
         //the timer only wakes the frame, and each hint's own staleness check drops it when RefreshStatus runs
@@ -853,6 +854,33 @@ public sealed partial class Repl
         {
             //one ♯ row per line, as /wild commits its lines
             await AnswerRegisteredAsync(reg.Row, reg.Arg, s.Renderer.CommitSystem, s, appCt);
+            return false;
+        }
+        if (trimmed == "/login")
+        {
+            //held like /compact, so Esc ends a handshake the way it ends a turn
+            lock (_ctsLock) { s.TurnCts = CancellationTokenSource.CreateLinkedTokenSource(appCt); }
+            try { s.Renderer.CommitSystem(await LoginLineAsync(s.TurnCts!.Token)); }
+            finally { lock (_ctsLock) { s.TurnCts?.Dispose(); s.TurnCts = null; } }
+            s.Refresh();
+            return false;
+        }
+        if (trimmed == "/logout")
+        {
+            s.Renderer.CommitSystem(LogoutLine());
+            return false;
+        }
+        if (trimmed == "/usage")
+        {
+            //held like /compact, so Esc ends a read the provider is slow to answer
+            lock (_ctsLock) { s.TurnCts = CancellationTokenSource.CreateLinkedTokenSource(appCt); }
+            try
+            {
+                foreach (var line in await UsageLinesAsync(row => s.Renderer.CommitSystem(row, transient: true), s.TurnCts!.Token))
+                    s.Renderer.CommitSystem(line);
+            }
+            finally { lock (_ctsLock) { s.TurnCts?.Dispose(); s.TurnCts = null; } }
+            s.Refresh();   //the re-read may move the footer's allowance
             return false;
         }
         if (trimmed == "/context")

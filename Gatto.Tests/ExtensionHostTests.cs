@@ -293,6 +293,21 @@ public sealed class ExtensionHostTests : IClassFixture<RoslynWarmupFixture>, IDi
     }
 
     [Fact]
+    public void A_login_with_no_logged_in_check_fails_the_load_with_the_endpoint_named()
+    {
+        //with no way to say it already logged in, a login would run at every launch and -p would refuse forever
+        WriteFile("hosted.csx", """
+            Gatto.Endpoint("hosted", "https://cloud.example.test/api", models: new[] { "h1" },
+                login: (screen, ct) => Task.FromResult("someone"));
+            """);
+        var diags = new List<string>();
+
+        ExtensionHost.LoadAll(_dir, NewApi(), diags.Add);
+
+        Assert.Contains(diags, d => d.Contains("endpoint 'hosted' has a login and no loggedIn", StringComparison.Ordinal));
+    }
+
+    [Fact]
     public async Task A_script_contributes_an_endpoint_with_headers_and_a_quota_reader()
     {
         WriteFile("hosted.csx", """
@@ -300,7 +315,7 @@ public sealed class ExtensionHostTests : IClassFixture<RoslynWarmupFixture>, IDi
                 thinking: "{\"none\":null,\"high\":{\"reasoning_effort\":\"high\"}}",
                 headers: ct => Task.FromResult<IReadOnlyDictionary<string, string>>(
                     new Dictionary<string, string> { ["Authorization"] = "Bearer t", ["x-account"] = "a" }),
-                quota: usage => usage.TryGetProperty("left", out var n) ? new QuotaReading(n.GetInt64(), "big") : null);
+                quota: usage => usage.TryGetProperty("left", out var n) ? new Allowance("big", AllowanceShape.Remaining, Remaining: n.GetInt64()) : null);
             """);
         var diags = new List<string>();
 
@@ -310,7 +325,7 @@ public sealed class ExtensionHostTests : IClassFixture<RoslynWarmupFixture>, IDi
         var (name, config) = Assert.Single(Assert.Single(loaded).Registrations.Endpoints);
         Assert.Equal("hosted", name);
         Assert.Equal("a", (await config.Headers!(CancellationToken.None))["x-account"]);
-        Assert.Equal(new Gatto.Core.Client.QuotaReading(7, "big"), config.Quota!(JsonDocument.Parse("{\"left\":7}").RootElement));
+        Assert.Equal(new Gatto.Core.Client.Allowance("big", Gatto.Core.Client.AllowanceShape.Remaining, Remaining: 7), config.Quota!(JsonDocument.Parse("{\"left\":7}").RootElement));
     }
 
     private sealed class FakeCtx : IToolContext

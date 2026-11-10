@@ -125,15 +125,15 @@ public sealed partial class Repl
                 painter.Model.Items.OfType<ReasoningItem>().Any(r => r.Collapsed), focusTaught,
                 lastKinds, status.HintIndex, cellOn ? [HintKind.Background] : [], _glyphs);
             focusTaught = picked.Taught;
-            var usage = readUsage?.Invoke() ?? (null, null);
+            var usage = readUsage?.Invoke();
             status = status with
             {
-                Model = modelName, Role = roleName, Branch = GitBranch.Read(cwd), SessionName = sessionName,
+                Model = ShownModel, Role = roleName, Branch = GitBranch.Read(cwd), SessionName = sessionName,
                 TokensUp = tokensUp, TokensDown = tokensDown, Wild = wild?.On == true, Thinking = thinkingName,
                 ThinkingToggle = thinkingToggle, Hints = picked.Hints, HintIndex = picked.Index,
                 //an expired arm yields null at repaint so the chord hint vanishes on its own, and the paste hint wins over it
                 ChordHint = LivePasteHint() ?? chords.Hint,
-                Quota = usage.Quota, Cost = usage.Cost,
+                Allowance = usage?.Footer, Cost = usage?.Cost,
             };
             frame = new InputFrame(surface, theme, DisplayRole(), status, _glyphs, KnownCommands);
             //the retarget takes the gate too, the ticker repaints from its own thread while this runs on the dispatcher's

@@ -188,7 +188,11 @@ public sealed class RichReplHarness
         //the tools /tools lists and their extensions' policy, absent unless a test hands them in, as a session with no registry has none
         Func<IReadOnlyList<ToolInfo>>? listTools = null, Func<IReadOnlyList<(string Extension, string Line)>>? listPolicy = null,
         //the sources /help lists and its toggle, absent unless a test hands them in, as a home with no extension has none
-        Func<IReadOnlyList<ExtensionView>>? listExtensions = null, Func<string, bool, string?>? setExtension = null)
+        Func<IReadOnlyList<ExtensionView>>? listExtensions = null, Func<string, bool, string?>? setExtension = null,
+        //what /usage reads and the sentence it says alone, absent as a local session
+        Func<bool, CancellationToken, Task<AllowanceReport>>? readAllowance = null, string? allowanceEndpoint = null, string? noAllowanceLine = null,
+        //the login seams, absent as a local session
+        Func<CancellationToken, Task<string>>? loginNow = null, Func<string>? logoutNow = null, string? noLoginLine = null)
     {
         Surface = new VtScreenSurface(width, height);
         _tap = new TappedSurface(Surface, _changes);
@@ -236,7 +240,9 @@ public sealed class RichReplHarness
             listTools: listTools, listPolicy: listPolicy,
             listExtensions: listExtensions, setExtension: setExtension,
             roleTint: roleTint, roleAvatar: roleAvatar, firstMessage: firstMessage,
-            armTasks: tasks => _context.Tasks = tasks);
+            armTasks: tasks => _context.Tasks = tasks,
+            readAllowance: readAllowance, allowanceEndpoint: allowanceEndpoint, noAllowanceLine: noAllowanceLine,
+            loginNow: loginNow, logoutNow: logoutNow, noLoginLine: noLoginLine);
     }
 
     //the tool context the loop runs on, which the rich face arms with its background tasks as the app context is armed

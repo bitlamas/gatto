@@ -20,7 +20,7 @@ public class BackgroundCellTests
     }
 
     private static StatusInfo Info() => new(@"C:\Users\user\projects\gatto", "qwen3.6-35b", "coder", Ctx(50_000, 100_000),
-        @"C:\Users\user", Branch: "main", Thinking: "high", Cloud: true, Quota: new QuotaReading(18, "max"), Cost: 0.42m);
+        @"C:\Users\user", Branch: "main", Thinking: "high", Cloud: true, Allowance: new Allowance("max", AllowanceShape.Remaining, Remaining: 18), Cost: 0.42m);
 
     private static string Line(StatusInfo s, int width, BackgroundFacts facts, GlyphSet? g = null) =>
         StripSgr(InputFrame.BuildStatusLine(s, width, T, g ?? U, facts));
@@ -57,7 +57,7 @@ public class BackgroundCellTests
     [Fact]
     public void The_background_hint_follows_the_cell_and_the_selection()
     {
-        var s = Info() with { Cost = null, Quota = null };
+        var s = Info() with { Cost = null, Allowance = null };
         Assert.DoesNotContain("background", Line(s, 200, default), StringComparison.Ordinal);
         Assert.EndsWith("↓ selects footer", Line(s, 200, new BackgroundFacts(1, false, false)), StringComparison.Ordinal);
         Assert.EndsWith("Enter opens", Line(s, 200, new BackgroundFacts(1, false, false, StatusCell.Shells)), StringComparison.Ordinal);

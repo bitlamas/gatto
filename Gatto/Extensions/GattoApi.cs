@@ -143,15 +143,22 @@ public sealed class GattoApi
         _policy = trimmed;
     }
 
-    //stage an endpoint the user selects with -e. the base URL has no /v1 segment, headers runs before each request, quota reads each usage object, models lists what /model offers
+    //stage an endpoint the user selects with -e, its base URL without /v1 and each callback a seam core calls
     public void Endpoint(
         string name,
         string baseUrl,
         int? context = null,
         string? thinking = null,
         Func<CancellationToken, Task<IReadOnlyDictionary<string, string>>>? headers = null,
-        Func<JsonElement, QuotaReading?>? quota = null,
-        IReadOnlyList<string>? models = null)
+        Func<JsonElement, Allowance?>? quota = null,
+        IReadOnlyList<string>? models = null,
+        Func<LoginScreen, CancellationToken, Task<string>>? login = null,
+        Func<bool>? loggedIn = null,
+        Action? logout = null,
+        Func<int, string, CancellationToken, Task<bool>>? retry = null,
+        Func<CancellationToken, Task<ModelCatalogue>>? catalogue = null,
+        Func<CancellationToken, Task<IReadOnlyList<Allowance>>>? usage = null,
+        Func<JsonElement, decimal?>? cost = null)
     {
         if (name is null || !NameRx.IsMatch(name))
             throw new InvalidOperationException($"endpoint name '{name}' must match [a-z0-9_]+");
@@ -165,10 +172,14 @@ public sealed class GattoApi
             throw new InvalidOperationException($"endpoint '{name}' context must be a positive token count");
         if (_endpoints.Any(e => e.Name == name))
             throw new InvalidOperationException($"endpoint '{name}' is contributed twice by this extension");
+        //a login with no way to say it already happened would run at every launch and refuse every -p
+        if (login is not null && loggedIn is null)
+            throw new InvalidOperationException($"endpoint '{name}' has a login and no loggedIn, which says whether a usable secret exists");
         if (models is not null && (models.Count == 0 || models.Any(string.IsNullOrWhiteSpace) || models.Distinct(StringComparer.Ordinal).Count() != models.Count))
             throw new InvalidOperationException($"endpoint '{name}' models must be a list of distinct names, the first one the default");
         _endpoints.Add((name, new EndpointConfig(baseUrl, Context: context, Thinking: ParseThinkingMap(name, thinking), Headers: headers, Quota: quota,
-            Models: models?.ToList())));
+            Models: models?.ToList(), Login: login, LoggedIn: loggedIn, Logout: logout, Retry: retry, Catalogue: catalogue,
+            Usage: usage, Cost: cost)));
     }
 
     //stage a slash command. the name rule is checked now so a bad name fails at load, the collision check waits for commit where the other files are known

@@ -209,6 +209,8 @@ public sealed class SessionStore(string homePath, string cwd)
                 w.WriteNumber("completion_tokens", m.Usage.CompletionTokens);
                 w.WriteEndObject();
             }
+            //written only when the provider answered under another name than the one asked for
+            if (m.ServedModel is { } servedModel) w.WriteString("served_model", servedModel);
             //the llama.cpp timings object goes in as raw JSON rather than a quoted string, so the file matches the wire shape
             if (m.Timings is not null)
             {
@@ -303,7 +305,8 @@ public sealed class SessionStore(string homePath, string cwd)
             ReadShape(el),
             el.TryGetProperty("background", out var bg) && bg.ValueKind == JsonValueKind.Number && bg.TryGetInt32(out var task) ? task : null,
             el.TryGetProperty("watch", out var wt) && wt.ValueKind == JsonValueKind.String ? wt.GetString() : null,
-            el.TryGetProperty("by", out var by) && by.ValueKind == JsonValueKind.String ? by.GetString() : null);
+            el.TryGetProperty("by", out var by) && by.ValueKind == JsonValueKind.String ? by.GetString() : null,
+            el.TryGetProperty("served_model", out var sv) && sv.ValueKind == JsonValueKind.String ? sv.GetString() : null);
     }
 
     //both fields or neither, an absent pair is a reply whose request went out uncut

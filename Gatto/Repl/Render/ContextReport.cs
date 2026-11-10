@@ -45,6 +45,7 @@ public static class ContextReport
             head.Add(sep, theme, Theme.Dim).Add($"{(int)Math.Round(f.Total * 100.0 / window)}%", theme, Theme.Accent, bold: true);
         rows.Add(head.Indent(2));
         rows.Add(new Line().Add(Source(f, wide, window, g), theme, Theme.Dim).Indent(2));
+        if (Offered(f, window) is { } offered) rows.Add(new Line().Add(offered, theme, Theme.Dim).Indent(2));
         rows.Add(new Row("", ""));
 
         var groups = new[] { ContextGroup.Prefix, ContextGroup.Messages, ContextGroup.Reasoning, ContextGroup.ToolResults };
@@ -129,6 +130,14 @@ public static class ContextReport
         //a narrow window cuts a row rather than wrapping it, so the panel's row count stays the rows it was given
         return [.. rows.Select(r => UnicodeWidth.Of(r.Visible) <= width ? r
             : new Row(TermText.TruncateCells(r.Rendered, width, g), TermText.TruncateCells(r.Visible, width, g)))];
+    }
+
+    //the window beside the sizes the provider lists, the numbers plain as it lists them, and only when it lists another
+    internal static string? Offered(ContextFigures f, int window)
+    {
+        var others = (f.OfferedWindows ?? []).Where(w => w > 0 && w != window).Distinct().ToList();
+        if (window <= 0 || others.Count == 0) return null;
+        return $"window {window.ToString(CultureInfo.InvariantCulture)} ({string.Join(", ", others.Select(w => w.ToString(CultureInfo.InvariantCulture)))} offered)";
     }
 
     //where the counts came from, the long form from the two-column width up, and when they were taken

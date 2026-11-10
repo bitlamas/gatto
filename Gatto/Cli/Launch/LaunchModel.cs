@@ -12,7 +12,7 @@ internal static class LaunchModel
         if (listed is not { Count: > 0 }) return new(saved, null);
         if (saved is null || listed.Contains(saved, StringComparer.Ordinal)) return new(saved ?? listed[0], null);
         //a provider can rename a model, so a stale choice falls back and says so instead of refusing every launch
-        return new(listed[0], $"the saved model '{saved}' is no longer offered by endpoint '{endpointName}'; using '{listed[0]}'");
+        return new(listed[0], $"the saved model '{saved}' is no longer offered by endpoint '{endpointName}'; using '{listed[0]}', pick one with /model and d to make it the default");
     }
 
     internal static string MissingDefaultEndpoint(string name) =>

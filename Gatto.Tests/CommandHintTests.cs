@@ -17,13 +17,13 @@ public class CommandHintTests
     [Fact]
     public void A_REGISTERED_ROW_GHOSTS_AND_A_BARE_SLASH_OFFERS_IT_AFTER_THE_BUILT_INS()
     {
-        var c = CommandHint.For(new List<string> { "/u" }, 0, 2, WithUndo());
-        Assert.Equal("ndo [n|path]", c.Hint(0));
+        var c = CommandHint.For(new List<string> { "/un" }, 0, 3, WithUndo());   //a bare /u is the built-in /usage's, which comes first
+        Assert.Equal("do [n|path]", c.Hint(0));
         Assert.Equal("/undo", c.Completion(0));
         var all = CommandHint.For(new List<string> { "/" }, 0, 1, WithUndo());
         Assert.Equal(SlashCommands.All.Count + 1, all.Candidates.Count);
         Assert.Equal("/undo", all.Candidates[^1].Name);
-        Assert.False(CommandHint.For(new List<string> { "/u" }, 0, 2, SlashCommands.All).Any);   //without the registration nothing completes
+        Assert.False(CommandHint.For(new List<string> { "/un" }, 0, 3, SlashCommands.All).Any);   //without the registration nothing completes
     }
 
     [Fact]

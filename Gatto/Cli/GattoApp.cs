@@ -128,6 +128,18 @@ public static class GattoApp
     //the null ctx is the production path, and only the outermost return holds a fatal exit open so it can be read
     public static async Task<int> RunAsync(string[] argv) => FatalPause.Hold(await RunAsync(argv, null));
 
+    //a test's hand on the launch login's cancel, carried in its own async flow, and null in production where Esc and Ctrl+C hold it
+    internal static readonly AsyncLocal<CancellationTokenSource?> LoginCancelOverride = new();
+
+    //the handshake on the pool, awaited with the caller's token so a cancel ends the wait whatever the script does, null for an empty label
+    internal static async Task<string?> RunLogin(Func<LoginScreen, CancellationToken, Task<string>> login, LoginScreen screen, CancellationToken ct)
+    {
+        var label = await Task.Run(() => login(screen, ct), ct).WaitAsync(ct);
+        return string.IsNullOrWhiteSpace(label) ? null : TermText.Sanitize(label.Trim());
+    }
+
+    internal static string NoLabel(string endpoint) => $"endpoint {endpoint}: its extension returned no account label";
+
     //a test's launch probe deadline, carried in its own async flow so a parallel test never sees it, and null in production
     private static readonly AsyncLocal<TimeSpan?> ProbeDeadlineOverride = new();
 
@@ -321,6 +333,8 @@ public static class GattoApp
             if (LoadHome() is not null) return null;
             Begin();
             LoadExtensions();
+            //a prefix sends nothing and refuses nothing, so it neither logs in nor reads a live list
+            if (ResolveEndpointName() is not null) return null;
             if (ResolveLaunch() is not null) return null;
             RegisterTools();
             hooks = new HookBus(state.Armed) { Trace = trace };
@@ -349,8 +363,12 @@ public static class GattoApp
         //every source discovery found, in its order, and what became of each, read by the help panel's extensions tab
         private readonly ExtensionLedger extLedger = new();
         private Dictionary<string, EndpointConfig> endpoints = null!;
-        private Dictionary<string, string> endpointOwner = null!;
         private LaunchState state = null!;
+        private string? launchEndpoint, launchEndpointName;
+        private ModelCatalogue? catalogue;
+        private LaunchRoleResult picked = null!;
+        private Theme? earlyTheme;
+        private bool earlyThemeResolved;
         private RoleResolution launchRes = null!;
         private PiggybackSeam? piggyback;
         private ToolRegistry tools = null!;
@@ -379,6 +397,8 @@ public static class GattoApp
         private Gatto.Core.Commands.CommandRegistry commands = null!;
         private IReadOnlyList<(LoadedExtension Extension, string Name, bool ReadClass)> committedExt = [];
         private Action<string>?[] subagentProgress = [];
+        //the REPL's served-name setter once it exists, a holder since the client is built before it
+        private readonly Action<string, string>?[] servedSink = new Action<string, string>?[1];
         private AgentLoop loop = null!;
         private Conversation convo = null!;
 
@@ -389,6 +409,9 @@ public static class GattoApp
             Begin();
             if (RefuseEmptyContinue() is { } continueExit) return continueExit;
             LoadExtensions();
+            if (ResolveEndpointName() is { } nameExit) return nameExit;
+            if (await LoginAsync() is { } loginExit) return loginExit;
+            if (await ReadCatalogueAsync() is { } catalogueExit) return catalogueExit;
             if (ResolveLaunch() is { } roleExit) return roleExit;
             RegisterTools();
             BuildPrompters();
@@ -511,19 +534,16 @@ public static class GattoApp
                 ExtensionHost.LoadAll(extensionsDir, extApi, extDiag, off, extLedger, writeCache: !bare), reservedTools, config.Endpoints.Keys, extDiag, extLedger);
             //the table every resolution reads: the endpoints of gatto.json plus the ones the surviving extensions contributed
             endpoints = new Dictionary<string, EndpointConfig>(config.Endpoints, StringComparer.Ordinal);
-            endpointOwner = new Dictionary<string, string>(StringComparer.Ordinal);
             foreach (var ext in loadedExtensions)
                 foreach (var (epName, epConfig) in ext.Registrations.Endpoints)
-                {
-                    endpoints[epName] = epConfig;
-                    endpointOwner[epName] = ext.Name;
-                }
+                    endpoints[epName] = epConfig with { Owner = ext.Name };   //the host stamps the owner, a script has no word in it
         }
 
-        private int? ResolveLaunch()
+        //the endpoint the launch will resolve, named before any role is resolved, so a login and a live list run for the endpoint the session lands on
+        private int? ResolveEndpointName()
         {
             //a continue with no -e goes back to the endpoint the session was recorded on, and on a cloud endpoint with no -m to its model. a record with no endpoint is from before the field and changes nothing
-            var launchEndpoint = args.Endpoint;
+            launchEndpoint = args.Endpoint;
             if (args.Continue && (continueById ?? sessions.LatestPathForCwd()) is { } resumePath
                 && SessionStore.LoadBaseline(resumePath) is { Endpoint: { } recordedOn } recorded)
             {
@@ -536,17 +556,144 @@ public static class GattoApp
                 if (launchEndpoint == recordedOn && recordedOn != "local") sessionModel ??= recorded.Model;
             }
 
-            //one instance holds what the launch resolves and every switch moves, so no switch reads a copy another switch left behind
-            state = new LaunchState(args, config, home, cwd, rolesDir, modelsDir, endpoints, launchEndpoint, sessionModel, warn, memoryOn, policyLines, glyphs, bare,
-                sessionOf: bare ? () => null : () => sessions.Identity.IdText,   //the prefix a check prices belongs to no session, so a bare launch names none
-                endpointOwner: endpointOwner);
-
-            var picked = LaunchRole.Resolve(args.Role, config.DefaultRole, RoleFile.ListNames(rolesDir), name =>
+            picked = LaunchRole.Resolve(args.Role, config.DefaultRole, RoleFile.ListNames(rolesDir), name =>
             {
                 try { RoleFile.Load(rolesDir, name); return null; }
                 catch (GattoConfigException ex) { return ex; }
             });
             if (picked.Refusal is { } refusal) { err.WriteLine(refusal); return 2; }
+            //the role the launch will resolve, the fallback past a broken pick included, so the two names cannot part
+            try { launchEndpointName = LaunchState.EndpointNameFor(launchEndpoint, RoleFile.Load(rolesDir, picked.Role), config); }
+            catch (GattoConfigException) { launchEndpointName = null; }   //the role's own resolution below refuses it with its message
+            return null;
+        }
+
+        //an endpoint with a login and no usable secret runs the handshake before anything resolves, its rows printed as launch rows, and -p refuses for it
+        private async Task<int?> LoginAsync()
+        {
+            if (launchEndpointName is not { } name || !endpoints.TryGetValue(name, out var ep) || ep.Login is not { } login) return null;
+            bool loggedIn;
+            try { loggedIn = ep.LoggedIn?.Invoke() == true; }
+            catch (Exception) { loggedIn = false; }   //extension code, a check that fails is a secret that is not usable
+            if (loggedIn) return null;
+            if (args.Prompt is not null)
+            {
+                err.WriteLine($"endpoint {name}: not logged in; run gatto -e {name} and log in once");
+                return 2;
+            }
+            var surface = new CliSurface(Console.Out, EarlyLaunchTheme(), glyphs);
+            void Say(string row) => surface.Say($"{name}: {row}");
+            var screen = new LoginScreen(Say, url => BrowserOpen.Open(url, Say));
+            var owned = LoginCancelOverride.Value is null ? new CancellationTokenSource() : null;
+            var cancel = LoginCancelOverride.Value ?? owned!;
+            ConsoleCancelEventHandler onCtrlC = (_, e) => { e.Cancel = true; cancel.Cancel(); };
+            Console.CancelKeyPress += onCtrlC;
+            try
+            {
+                var label = await WithEsc(RunLogin(login, screen, cancel.Token), cancel);
+                if (label is null) { surface.Say(NoLabel(name)); return 2; }
+                Say("logged in as " + label);
+                return null;
+            }
+            catch (OperationCanceledException) { Say("login cancelled"); return 2; }
+            catch (Exception ex) { Say(TermText.Sanitize(ex.Message)); return 2; }
+            finally
+            {
+                Console.CancelKeyPress -= onCtrlC;
+                owned?.Dispose();
+            }
+        }
+
+        //the handshake inside a session, its rows on the warn sink, which the rich face draws as system rows
+        private async Task<string> SessionLoginAsync(Func<LoginScreen, CancellationToken, Task<string>> login, string name, CancellationToken ct)
+        {
+            void Say(string row) => warn.Warn($"{name}: {row}");
+            return await RunLogin(login, new LoginScreen(Say, url => BrowserOpen.Open(url, Say)), ct)
+                ?? throw new InvalidOperationException(NoLabel(name));
+        }
+
+        //the live model list, read once under the header bound on a row with its timer, and a failed read falls back to the declared list with one warning
+        private async Task<int?> ReadCatalogueAsync()
+        {
+            catalogue = null;
+            if (launchEndpointName is not { } name || !endpoints.TryGetValue(name, out var ep) || ep.Catalogue is not { } read) return null;
+            var theme = args.Prompt is null ? EarlyLaunchTheme() : null;
+            using var line = args.Prompt is null ? new TickLine(Console.Out, theme is not null, blankBeforeFirst: true) : null;
+            var work = Task.Run(() => read(CancellationToken.None)).WaitAsync(EndpointAuth.HeaderBound);
+            if (line is not null)
+            {
+                var words = $"{name}: reading the model list{glyphs.Ellipsis}";
+                var from = Stopwatch.GetTimestamp();
+                var frame = 0;
+                //a host that cannot repaint gets the words once, committed, so the wait is never silent
+                if (!line.Rich) line.Note(words);
+                while (line.Rich && !work.IsCompleted)
+                {
+                    line.LivePainted(LoadingRow.Render(words, Stopwatch.GetElapsedTime(from), glyphs, theme, frame++), glyphs);
+                    await Task.WhenAny(work, Task.Delay(ResidueFrame));
+                }
+                line.Finish();
+            }
+            string reason;
+            try
+            {
+                var got = await work;
+                if (got?.Entries is not { Count: > 0 } entries) reason = "it returned no models";
+                else if (entries.Any(x => string.IsNullOrWhiteSpace(x.Id) || x.Id.Any(char.IsControl))) reason = "it returned a model name gatto cannot show";
+                else if (entries.Select(x => x.Id).Distinct(StringComparer.Ordinal).Count() != entries.Count) reason = "it listed a model twice";
+                else
+                {
+                    catalogue = got;
+                    return null;
+                }
+            }
+            catch (TimeoutException) { reason = "it did not answer in time"; }
+            catch (Exception ex) { reason = TermText.Sanitize(ex.Message); }
+            if (ep.Models is { Count: > 0 })
+            {
+                warn.Warn($"{name}: the model list could not be read ({reason}); using the list the extension declares");
+                return null;
+            }
+            err.WriteLine($"endpoint {name}: no model list could be read and the extension declares none ({reason})");
+            return 2;
+        }
+
+        //the wait ends on Esc whatever the script does, read by a poll since the cancel key event never sees it, and only while a person holds the console
+        private static async Task<string?> WithEsc(Task<string?> running, CancellationTokenSource cancel)
+        {
+            while (!running.IsCompleted)
+            {
+                await Task.WhenAny(running, Task.Delay(EscPoll));
+                try
+                {
+                    if (Console.IsInputRedirected) continue;
+                    while (Console.KeyAvailable)
+                        if (Console.ReadKey(intercept: true).Key == ConsoleKey.Escape) cancel.Cancel();
+                }
+                catch (InvalidOperationException) { }   //no console to read, the cancel key and the token remain
+            }
+            return await running;
+        }
+
+        private static readonly TimeSpan EscPoll = TimeSpan.FromMilliseconds(50);
+
+        //the rows before the prompters exist, decided once and reused by them, so the background query runs once and only when a row needs it
+        private Theme? EarlyLaunchTheme()
+        {
+            if (earlyThemeResolved) return earlyTheme;
+            earlyThemeResolved = true;
+            if (args.Prompt is not null || !Gatto.Repl.Repl.IsRichTerminal()) return null;
+            themeMode = Theme.ResolveMode(config.Theme, true, TermCaps.QueryBackgroundColor);
+            return earlyTheme = new Theme(TermCaps.Detect(), themeMode);
+        }
+
+        private int? ResolveLaunch()
+        {
+            //one instance holds what the launch resolves and every switch moves, so no switch reads a copy another switch left behind
+            state = new LaunchState(args, config, home, cwd, rolesDir, modelsDir, endpoints, launchEndpoint, sessionModel, warn, memoryOn, policyLines, glyphs, bare,
+                sessionOf: bare ? () => null : () => sessions.Identity.IdText,   //the prefix a check prices belongs to no session, so a bare launch names none
+                catalogue: catalogue, catalogueFor: launchEndpointName);
+
             launchRole = picked.Role;
             string? brokenName = picked.BrokenName, brokenMessage = picked.BrokenMessage;
             try { launchRes = state.ResolveRole(launchRole); }
@@ -632,7 +779,8 @@ public static class GattoApp
             hooks = new HookBus(state.Armed) { Trace = trace };
             hooks.OnHandlerError += (evt, ex) => warn.Warn($"hook error ({evt}): {ex.Message}");
             //the theme is resolved on the interactive REPL path only, so a -p run stays byte-pure and never sends the background query
-            themeMode = ThemeMode.Dark;
+            var modeResolved = earlyTheme is not null;
+            if (!modeResolved) themeMode = ThemeMode.Dark;
             //hoisted so the launch notices render through the themed layer, and the prompters share it so the background probe runs once
             launchTheme = null;
 
@@ -655,7 +803,8 @@ public static class GattoApp
             else
             {
                 var rich = Gatto.Repl.Repl.IsRichTerminal();   //the test Repl.RunAsync uses, so the permission prompt matches the turn output around it
-                themeMode = Theme.ResolveMode(config.Theme, rich, TermCaps.QueryBackgroundColor);
+                if (!modeResolved)
+                    themeMode = Theme.ResolveMode(config.Theme, rich, TermCaps.QueryBackgroundColor);
                 if (rich)
                 {
                     //with mouse capture on the pump reads the native console source, with it off the plain key source
@@ -804,10 +953,38 @@ public static class GattoApp
             //a dropped attached image must warn the user, the sink paints a ♯ row in the REPL and stderr for -p
             client.OnImageUnavailable = m => warn.Warn(m);
             //every request on this client feeds the footer's cost and quota, run_agent children included since they share it
-            usageMeter = new UsageMeter(state.Endpoint.Quota);
+            usageMeter = new UsageMeter(state.Endpoint);
             client.OnUsage = u => _ = usageMeter.Record(u);
+            //the REPL fills the sink when it exists, so an answer before it was built names nothing on a screen
+            client.OnServed = (requested, served) => servedSink[0]?.Invoke(requested, served);
+            client.ReadsServedName = !state.ServedHere();
+            //a 401 the refresh could not fix runs the login rows again in the session, and -p keeps the provider's sentence
+            var launchName = state.EndpointName;   //the client keeps the launch endpoint, so its lines name that one
+            if (args.Prompt is null && state.Endpoint.Login is { } inPlace)
+                client.LoginInPlace = async ct =>
+                {
+                    try
+                    {
+                        var label = await SessionLoginAsync(inPlace, launchName, ct);
+                        warn.Warn($"{launchName}: logged in as {label}");
+                        return true;
+                    }
+                    catch (OperationCanceledException) when (ct.IsCancellationRequested) { throw; }
+                    catch (Exception ex)
+                    {
+                        warn.Warn($"{launchName}: {TermText.Sanitize(ex.Message)}");
+                        return false;
+                    }
+                };
+            //the provider's limits are read at launch and after each turn, never per request, and a -p run has no footer to read them for
+            if (args.Prompt is null && state.Endpoint.Usage is not null)
+            {
+                _ = usageMeter.RefreshAsync(CancellationToken.None);
+                hooks.On(HookEvent.MessageEnd, ended => { _ = usageMeter.RefreshAsync(CancellationToken.None); return Task.CompletedTask; });
+            }
             //the model's window on a local endpoint, the endpoint's on a cloud one, and no enforcement when neither is configured
-            state.ContextBudget = ServeCommand.ServingFor(state.ServedHere(), state.Model, state.Endpoint, state.LaunchBaseUrl).Window;
+            state.ContextBudget = state.EntryWindow(state.ModelString)
+                ?? ServeCommand.ServingFor(state.ServedHere(), state.Model, state.Endpoint, state.LaunchBaseUrl).Window;
         }
 
         private async Task CheckWindowAsync()
@@ -906,7 +1083,7 @@ public static class GattoApp
             //every extension that committed, in discovery order, and a tool-less one is a legal load with no tool row
             (committedExt, committedExtensions) = ExtensionHost.Commit(loadedExtensions, tools, hooks, commands, Gatto.Repl.Commands.SlashCommands.All.Select(c => c.Name), extDiag, extLedger);
             //the early pass should have skipped it already, and a launch must not run on the endpoint of an extension that did not commit
-            if (endpointOwner.TryGetValue(state.EndpointName, out var owner) && !committedExtensions.Any(e => e.Name == owner))
+            if (state.Endpoint.Owner is { } owner && !committedExtensions.Any(e => e.Name == owner))
             {
                 err.WriteLine($"endpoint '{state.EndpointName}' comes from extension '{owner}', which was skipped");
                 return 2;
@@ -1133,7 +1310,7 @@ public static class GattoApp
             var policyRows = policyLines.ToList();
             Func<IReadOnlyList<(string Extension, string Line)>> listPolicy = () => policyRows;
             //every source discovery found, read at each view so a toggle shows at once, with the names its committed registrations hold
-            var servingSource = endpointOwner.GetValueOrDefault(state.EndpointName);
+            var servingSource = state.Endpoint.Owner;
             Func<IReadOnlyList<Gatto.Repl.Prompts.ExtensionView>> listExtensions = () => [.. extLedger.Names.Select(name =>
             {
                 var committed = committedExtensions.FirstOrDefault(e => e.Name == name);
@@ -1168,8 +1345,11 @@ public static class GattoApp
                 ? new Gatto.Core.Client.HttpSlotsReader(slotsHttp, state.LaunchBaseUrl, state.Endpoint.ApiKey)
                 : null;
 
+            //the seams below are the launch endpoint's, so their lines name it even after a /role moves to another at the same address
+            var sessionEndpoint = state.EndpointName;
+
             //a non-local endpoint that names no models has no rows to offer, the local shelf is not its to switch to
-            var unlistedRemote = !state.ServedHere() && state.Endpoint.Models is not { Count: > 0 };
+            var unlistedRemote = !state.ServedHere() && state.Listed is not { Count: > 0 };
 
             //the hint reads the same two locals as the reuse line, so the two sentences cannot disagree about what is loaded
             var repl = new Gatto.Repl.Repl(loop, convo, state.Role.Name, state.ModelString, sessions, client, state.Endpoint.Context, state.ContextBudget, cwd, state.RecomposeSystem, state.SwitchRole, wildState, on => permissions.SetWild(on, persist: true), hooks, themeMode, subagentProgress, resumedFrom: resumedFrom, reasoning: config.ReasoningMode, thinkingName: initialThinkingName, setEffort: state.SetEffort, listEfforts: state.ListEfforts, glyphs: glyphs, purrSet: Gatto.Repl.Render.Chrome.PurrFrames.RandomFromPool, versionLine: CommandBanner.DottedVersion(Gatto.Core.GattoVersion.String, Gatto.Core.GattoVersion.Build ?? "", CommandBanner.IsDevBuild(), glyphs), pump: pump, chrome: chrome, switchModel: state.SwitchModel, setDefault: id => ModelSwitch.Persist(home, state.EndpointName, state.OwnerOf(state.EndpointName), id),   //the role name as ResolveRole cased it from disk, which the banner and the status line key on
@@ -1182,7 +1362,7 @@ public static class GattoApp
                     : null,
                         autoCompact: config.AutoCompact, permissions: permissions, listTools: listTools, listPolicy: listPolicy, commands: commands, memoryWarning: launchRes.MemoryTruncatedLines > 0 ? MemoryTruncationWarning(launchRes.MemoryTruncatedLines) : null, cloudNotice: cloudNotice, sandboxNotice: sandboxLine, wildNotice: wildLaunchNotice, inbox: config.Inbox, inboxPause: config.InboxPause, servedNotice: servedInSession && servedLine is not null ? TermText.Sanitize(ServeNotice.Text(servedLine)) : null, launchWarnings: launchWarnings, cloud: state.Cloud, readUsage: usageMeter.Read, onUsageChanged: repaint => usageMeter.Changed = repaint,piggyback: piggyback, turnAbort: turnAbort,
                 //a session with no model talks to a server gatto does not manage, so the notice says that instead of offering a model fix
-                unmanagedNotice: !state.ServedHere() && state.Endpoint.Models is not { Count: > 0 } && !state.Cloud ? UnmanagedSession.ModelUnavailable(state.LaunchBaseUrl) : null,
+                unmanagedNotice: !state.ServedHere() && state.Listed is not { Count: > 0 } && !state.Cloud ? UnmanagedSession.ModelUnavailable(state.LaunchBaseUrl) : null,
                 cloudSwitchHint: unlistedRemote && state.Cloud ? CloudSwitchHint(state.EndpointName) : null,
                 unmanagedVisionNotice: !state.ServedHere() ? UnmanagedSession.VisionUnavailable(state.LaunchBaseUrl) : null,
                 deafWatch: deafWatch,
@@ -1191,13 +1371,21 @@ public static class GattoApp
                 roleTint: state.Role.ParsedTint(), roleAvatar: state.Role.Avatar, firstMessage: state.Role.FirstMessage,
                 armTasks: tasks => ((AppToolContext)toolCtx).Tasks = tasks,
                 listExtensions: listExtensions, setExtension: setExtension, recomposeFor: state.RecomposeSystem,
+                readAllowance: (fresh, ct) => fresh ? usageMeter.RefreshAsync(ct).ContinueWith(_ => usageMeter.Read(), TaskScheduler.Default) : Task.FromResult(usageMeter.Read()),
+                allowanceEndpoint: state.EndpointName,
+                loginNow: state.Endpoint.Login is { } sessionLogin ? ct => SessionLoginAsync(sessionLogin, sessionEndpoint, ct) : null,
+                logoutNow: state.Endpoint.Logout is { } logout ? () => { logout(); return $"logged out of {sessionEndpoint}"; } : null,
+                noLoginLine: $"endpoint {state.EndpointName} has no login",
+                noAllowanceLine: state.ServedHere() ? Gatto.Repl.Repl.LocalAllowance
+                    : usageMeter.Read().HasReader ? null : $"endpoint {state.EndpointName} reports no allowance",
                 //read when /context asks, so a /role or /model since is followed. the shape is the loop's last request, its tools split by origin
                 contextInputs: usage =>
                 {
                     var shape = loop.RequestShape;
                     return new ContextInputs(state.ModelString, state.Comp.SystemText, state.Comp.SystemParts ?? [],
                         [.. shape.Tools.Where(t => !tools.IsExtension(t.Name))], [.. shape.Tools.Where(t => tools.IsExtension(t.Name))],
-                        shape, state.ContextBudget, loop.ArmedAutoCompactAt, usage.Ratio, usage.LastPromptTokens, loop.LastTimings, loop.LastUsage);
+                        shape, state.ContextBudget, loop.ArmedAutoCompactAt, usage.Ratio, usage.LastPromptTokens, loop.LastTimings, loop.LastUsage,
+                        state.EntryOf(state.ModelString)?.Windows);
                 },
                 //a cloud endpoint has no llama-server routes, any other may and falls back to the estimate when it does not
                 tokenCounter: state.Cloud ? null : client,
@@ -1233,6 +1421,7 @@ public static class GattoApp
                         Confirming(prompter))))
     ;
             repl.OnReady = CloseLaunch;
+            servedSink[0] = repl.SetServedName;
             var replExit = await repl.RunAsync(CancellationToken.None);
             trace.Flush();
 

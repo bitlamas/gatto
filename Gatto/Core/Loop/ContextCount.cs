@@ -19,14 +19,16 @@ public sealed record ContextCache(int FromCache, int Fresh);
 public sealed record ContextFigures(
     int? Window, int Total, bool Exact, bool FellBack, bool BeforeFirstRequest, double? AutoCompactAt,
     IReadOnlyList<ContextPart> Parts, ContextCache? Cache,
-    string? Folder = null);   //the session's working folder, whole, which the status line shows only by its tail
+    string? Folder = null,   //the session's working folder, whole, which the status line shows only by its tail
+    IReadOnlyList<int>? OfferedWindows = null);   //the sizes the provider lists for the model, drawn beside the window when another is offered
 
 //what the figures are built from: the composed prefix, the tools by source, the request last sent and the usage the loop measured
 public sealed record ContextInputs(
     string Model, string SystemText, IReadOnlyList<ContextPartText> SystemParts,
     IReadOnlyList<ToolSpec> BuiltinTools, IReadOnlyList<ToolSpec> ExtensionTools,
     RequestShape Shape, int? Window, double? AutoCompactAt, double Ratio, int? LastPromptTokens, string? LastTimings,
-    Usage? LastUsage = null);
+    Usage? LastUsage = null,
+    IReadOnlyList<int>? OfferedWindows = null);
 
 public static class ContextCount
 {
@@ -60,7 +62,8 @@ public static class ContextCount
                 {
                     var markup = Math.Max(0, total - counted.Sum(c => c.Tokens));
                     counted.Insert(PrefixEnd(counted), new ContextPart(TemplateMarkup, ContextGroup.Prefix, markup));
-                    return new ContextFigures(inputs.Window, total, true, false, before, inputs.AutoCompactAt, counted, cache);
+                    return new ContextFigures(inputs.Window, total, true, false, before, inputs.AutoCompactAt, counted, cache,
+                        OfferedWindows: inputs.OfferedWindows);
                 }
             }
         }
@@ -71,7 +74,7 @@ public static class ContextCount
         var sum = estimated.Sum(e => e.Tokens);
         var totalEstimate = before ? sum : inputs.LastPromptTokens ?? sum;
         return new ContextFigures(inputs.Window, totalEstimate, false, counter is not null, before, inputs.AutoCompactAt,
-            estimated, cache);
+            estimated, cache, OfferedWindows: inputs.OfferedWindows);
     }
 
     //the prefix part by part, then the conversation as last sent by role, reasoning apart and tool results with their count

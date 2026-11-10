@@ -46,13 +46,12 @@ public sealed class ContributedDefaultsSwitchTests : IDisposable
         var config = GattoConfig.Load(_home);
         var endpoints = new Dictionary<string, EndpointConfig>(config.Endpoints, StringComparer.Ordinal)
         {
-            ["hosted"] = new("https://hosted.example.test/v1", Thinking: Levels, Models: ["h1", "h2"]),
-            ["second"] = new("https://second.example.test/v1", Thinking: Levels, Models: ["s1", "s2"]),
+            ["hosted"] = new("https://hosted.example.test/v1", Thinking: Levels, Models: ["h1", "h2"], Owner: "hostext"),
+            ["second"] = new("https://second.example.test/v1", Thinking: Levels, Models: ["s1", "s2"], Owner: "secondext"),
         };
-        var owners = new Dictionary<string, string>(StringComparer.Ordinal) { ["hosted"] = "hostext", ["second"] = "secondext" };
         var state = new LaunchState(new ParsedArgs("launch", null, null, "", false, false), config, _home, _cwd,
             Path.Combine(_home, "roles"), Path.Combine(_home, "models"), endpoints, null, null, new WarningSink(_ => { }),
-            false, [], Gatto.Terminal.GlyphSet.Unicode, endpointOwner: owners);
+            false, [], Gatto.Terminal.GlyphSet.Unicode);
         state.EndpointName = onEndpoint;
         state.Endpoint = endpoints[onEndpoint];
         state.ModelString = endpoints[onEndpoint].Models![0];
@@ -111,5 +110,38 @@ public sealed class ContributedDefaultsSwitchTests : IDisposable
         File.WriteAllText(GattoJson, """{"endpoints":{"local":{}},"default_endpoint":"hosted","defaults":{"local":{"model":"right"}}}""");
 
         Assert.Equal("right", state.CurrentDefaultFor("local"));
+    }
+
+    [Fact]
+    public void A_live_entry_narrows_the_picker_row_to_its_levels_and_its_default()
+    {
+        //the row steps through the levels /effort would take for that model, and lands on the entry's own default when nothing is saved
+        Directory.CreateDirectory(Path.Combine(_home, "roles"));
+        File.WriteAllText(Path.Combine(_home, "roles", "generalist.json"), "{}");
+        File.WriteAllText(GattoJson, """{"endpoints":{"local":{}},"default_endpoint":"hosted"}""");
+        var config = GattoConfig.Load(_home);
+        var map = new Dictionary<string, JsonElement?>(Levels)
+        {
+            ["medium"] = JsonDocument.Parse("""{"reasoning_effort":"medium"}""").RootElement.Clone(),
+        };
+        var endpoints = new Dictionary<string, EndpointConfig>(config.Endpoints, StringComparer.Ordinal)
+        {
+            ["hosted"] = new("https://hosted.example.test/v1", Thinking: map, Models: ["h1"], Owner: "hostext"),
+        };
+        var live = new ModelCatalogue([new ModelEntry("c1", Efforts: ["low", "high"], DefaultEffort: "high"), new ModelEntry("c2")]);
+        var state = new LaunchState(new ParsedArgs("launch", null, null, "", false, false), config, _home, _cwd,
+            Path.Combine(_home, "roles"), Path.Combine(_home, "models"), endpoints, null, null, new WarningSink(_ => { }),
+            false, [], Gatto.Terminal.GlyphSet.Unicode, catalogue: live, catalogueFor: "hosted")
+        {
+            EndpointName = "hosted", Endpoint = endpoints["hosted"], ModelString = "c1",
+        };
+
+        var rows = state.ListModels();
+
+        Assert.Equal(["c1", "c2"], rows.Select(r => r.Id));
+        Assert.Equal(["low", "high"], rows[0].Levels);
+        Assert.Equal("high", rows[0].DefaultEffort);
+        Assert.Equal(["none", "low", "medium", "high"], rows[1].Levels);
+        Assert.Equal("medium", rows[1].DefaultEffort);
     }
 }

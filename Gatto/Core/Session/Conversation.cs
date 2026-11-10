@@ -81,11 +81,11 @@ public sealed class Conversation
     //stripped says how many control tokens already came out of text, callers pass pre-stripped text and the strip stays at the loop seam
     public void AddAssistant(string text, IReadOnlyList<ToolCall>? toolCalls = null,
         Usage? usage = null, string? timings = null, string? reasoningContent = null, int stripped = 0,
-        ShapeMark? shape = null) =>
+        ShapeMark? shape = null, string? servedModel = null) =>
         Append(new ChatMessage("assistant", text.Length > 0 ? text : null, toolCalls,
             GattoRole: GattoRole, Ts: _now(), Usage: usage, Timings: timings,
             ReasoningContent: string.IsNullOrEmpty(reasoningContent) ? null : reasoningContent,
-            Stripped: stripped, Shape: shape));
+            Stripped: stripped, Shape: shape, ServedModel: servedModel));
     public void AddToolResult(string toolCallId, ToolResult result) =>
         Append(new ChatMessage("tool", result.Text, ToolCallId: toolCallId,
             GattoRole: GattoRole, IsError: result.IsError, Gloss: result.Gloss, Ts: _now(), View: result.View));

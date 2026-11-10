@@ -57,7 +57,7 @@ public class StatusFillTests
         @"C:\Users\user\projects\cc-usage-monitor-long", "qwen3.6-35b-a3b-instruct", "coder", Ctx(340, 1000),
         @"C:\Users\user", Branch: "feature-branch-long", TokensUp: 1200, TokensDown: 3400, Thinking: "high",
         Hints: new[] { Paste, Focus, Teaser, Fourth }.Take(hints).ToList(), Cloud: true,
-        Quota: new QuotaReading(18, "max"), Cost: 0.42m);
+        Allowance: new Allowance("max", AllowanceShape.Remaining, Remaining: 18), Cost: 0.42m);
 
     [Fact]
     public void Input_A_at_90_keeps_its_two_folder_segments_from_the_rung_that_shed_the_ctx_count()
@@ -111,8 +111,8 @@ public class StatusFillTests
                 Assert.True(UnicodeWidth.Of(row) <= w, $"{hints} hints at {w}: {UnicodeWidth.Of(row)} cells: {row}");
                 Assert.Contains(U.Cloud + " ", row);
                 Assert.Contains("(high)", row);
-                //the tail alone, the bare model, ctx, the quota and the cost, is 42 cells, and only below that the cut takes the tail's end
-                if (w >= 42) Assert.Contains("· $0.42", row, StringComparison.Ordinal);
+                //the tail alone, the bare model, ctx and the quota, is 34 cells, the money went at the last rung, and only below that the cut takes the tail's end
+                if (w >= 34) Assert.Contains("· max 18 left", row, StringComparison.Ordinal);
                 else Assert.Equal(w, UnicodeWidth.Of(row));
             }
         }

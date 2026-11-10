@@ -27,7 +27,9 @@ public sealed record ChatMessage(string Role, string? Content,
     //the file a watched letter was read from, set by the watch alone, so a reader tells a letter from typed words without parsing its text
     string? Watch = null,
     //the tool whose read put these images here, so a reader tells gatto's image record from the user's words without parsing its text
-    string? By = null);
+    string? By = null,
+    //the name the provider answered under when it differs from the one requested, drawn and recorded and never sent back
+    string? ServedModel = null);
 public sealed record ChatRequest(string Model, IReadOnlyList<ChatMessage> Messages,
     IReadOnlyList<ToolSpec>? Tools = null,
     JsonElement? SamplingOverrides = null, JsonElement? BodyOverrides = null,
@@ -44,6 +46,6 @@ public abstract record StreamEvent
     public sealed record ToolCallDelta(string? Name = null, string? PartialArguments = null, int Index = 0) : StreamEvent;
     public sealed record ToolCallReady(ToolCall Call) : StreamEvent;
     //the Timings argument defaults to null so existing 2-arg call sites stay source-compatible
-    public sealed record Finished(string? FinishReason, Usage? Usage, string? Timings = null) : StreamEvent;
+    public sealed record Finished(string? FinishReason, Usage? Usage, string? Timings = null, string? ServedModel = null) : StreamEvent;
     public sealed record Truncated() : StreamEvent;
 }

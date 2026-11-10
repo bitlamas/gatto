@@ -120,6 +120,22 @@ public sealed partial class Repl
                 Console.WriteLine(HandleSafe());
                 continue;
             }
+            if (trimmedLine == "/login")
+            {
+                Console.WriteLine(await LoginLineAsync(appCt));
+                continue;
+            }
+            if (trimmedLine == "/logout")
+            {
+                Console.WriteLine(LogoutLine());
+                continue;
+            }
+            if (trimmedLine == "/usage")
+            {
+                foreach (var row in await UsageLinesAsync(Console.WriteLine, appCt))
+                    Console.WriteLine(row);
+                continue;
+            }
             if (trimmedLine == "/context")
             {
                 var width = 80;

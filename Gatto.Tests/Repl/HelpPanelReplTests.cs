@@ -122,7 +122,7 @@ public sealed class HelpPanelReplTests : IDisposable
         var run = h.RunAsync(60_000);
 
         h.Keys.Line("/help");
-        await Shows(h, s => s.Contains("help    commands    shortcuts    extensions") && s.Contains("this screen") && s.Contains("↓ 10 more"),
+        await Shows(h, s => s.Contains("help    commands    shortcuts    extensions") && s.Contains("this screen") && s.Contains("↓ 13 more"),
             "the commands tab never listed the built-ins and the registered row under the tabbed title");
         await Shows(h, s => s.Contains("↑↓ move   Enter compose   ←→ tabs   Esc close"), "the commands tab's key row");
         await Press(h, Right);

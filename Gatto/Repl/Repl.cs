@@ -106,8 +106,8 @@ public sealed partial class Repl(
     //the launch lines in arrival order, said after the banner: the sink's warnings on the rich face only, the wild notice on both. null says none
     IReadOnlyList<string>? launchWarnings = null,
     bool cloud = false,           //the footer's mark before the model, fixed for the session since the endpoint is
-    //the provider's summed cost and latest quota, read at each footer rebuild, and null shows neither
-    Func<(decimal? Cost, Gatto.Core.Client.QuotaReading? Quota)>? readUsage = null,
+    //the provider's summed cost and allowance, read at each footer rebuild, and null shows neither
+    Func<Gatto.Core.Client.AllowanceReport>? readUsage = null,
     //hands the rich loop's any-thread repaint to the usage feed, so a new quota shows without waiting for a key
     Action<Action>? onUsageChanged = null,
     //the memory write half over the compact seam, banking candidates and composing the index. null marks memory off, and only a user-chosen compact reaches it
@@ -164,7 +164,14 @@ public sealed partial class Repl(
     //turns a source on or off for this session and writes the off list, returning the line of a failed write. null names no Space
     Func<string, bool, string?>? setExtension = null,
     //compose for a session that has not started yet, so /new names the identity it is about to begin. null composes with recomposeSystem, which names the live one
-    Func<Gatto.Core.SessionIdentity, ComposedSystem>? recomposeFor = null)
+    Func<Gatto.Core.SessionIdentity, ComposedSystem>? recomposeFor = null,
+    //what /usage draws, the bool asking for a fresh read from the provider first. null with no sentence below answers as a local session
+    Func<bool, CancellationToken, Task<Gatto.Core.Client.AllowanceReport>>? readAllowance = null,
+    string? allowanceEndpoint = null,   //the endpoint /usage names when nothing was read yet
+    string? noAllowanceLine = null,   //the sentence /usage says alone, on a local endpoint or one with no reader
+    //the endpoint's handshake run again, returning the account label, and its logout returning the line said. null names no login
+    Func<CancellationToken, Task<string>>? loginNow = null, Func<string>? logoutNow = null,
+    string? noLoginLine = null)   //what /login and /logout say on an endpoint without the seam
 {
     //the next session's identity and the prompt that names it, made together so the prompt and the file agree. null identity when there is no store
     private (Gatto.Core.SessionIdentity? Next, Func<ComposedSystem> Compose) NextSession()

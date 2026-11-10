@@ -26,6 +26,10 @@ public class InSessionThemeProbeCensusTests
             "themeMode = Theme.ResolveMode(config.Theme, rich, TermCaps.QueryBackgroundColor);", 1,
             "RunInnerAsync — ⬥ THE launch probe, and the one that must exist: it runs BEFORE the pump "
           + "is started, which is the ordering Repl.RunRichAsync documents"),
+        ("Gatto/Cli/GattoApp.cs",
+            "themeMode = Theme.ResolveMode(config.Theme, true, TermCaps.QueryBackgroundColor);", 1,
+            "EarlyLaunchTheme, the same launch probe run earlier for a login or model list row, before any pump exists, "
+          + "and BuildPrompters then reuses its mode instead of probing again"),
         ("Gatto/Cli/Setup/SetupCommand.cs",
             "new Theme(TermCaps.Detect(), Theme.ResolveMode(config.Theme, rich, TermCaps.QueryBackgroundColor)),", 1,
             "RunModelAsync — a command entry point"),

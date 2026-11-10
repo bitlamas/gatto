@@ -25,6 +25,60 @@ public sealed partial class Repl
 
     internal const string ContextUnavailable = "context figures are unavailable in this session";
 
+    internal const string LocalAllowance = "local models have no allowance";
+
+    internal const string LocalLogin = "endpoint local has no login";
+
+    //the name each requested id was last served under, so the footer draws the provider's name for the model in use and never a child's
+    private readonly System.Collections.Concurrent.ConcurrentDictionary<string, string> _served = new(StringComparer.Ordinal);
+
+    //the rich loop's any-thread repaint, null until it runs and on the plain face
+    private Action? _repaintChrome;
+
+    //called from the client's stream on any thread, a rename repaints the footer at once
+    internal void SetServedName(string requested, string served)
+    {
+        if (requested == served) _served.TryRemove(requested, out _);   //an answer under the asked name takes a rename back
+        else _served[requested] = served;
+        if (requested == modelName) _repaintChrome?.Invoke();
+    }
+
+    //what the footer draws: the provider's name once it answered for the chosen id, else the chosen id
+    private string ShownModel => _served.TryGetValue(modelName, out var s) ? s : modelName;
+
+    //the footer's model name, for a test that reads it without a frame
+    internal string ShownModelForTest => ShownModel;
+
+    //the handshake's own words are the extension's rows, this is the one line after them
+    private async Task<string> LoginLineAsync(CancellationToken ct)
+    {
+        if (loginNow is null) return noLoginLine ?? LocalLogin;
+        try { return "logged in as " + await loginNow(ct); }
+        catch (OperationCanceledException) when (ct.IsCancellationRequested) { return "login cancelled"; }
+        catch (Exception ex) { return TermText.Sanitize(ex.Message); }
+    }
+
+    private string LogoutLine()
+    {
+        if (logoutNow is null) return noLoginLine ?? LocalLogin;
+        try { return logoutNow(); }
+        catch (Exception ex) { return TermText.Sanitize(ex.Message); }
+    }
+
+    //what /usage says on either face: a reader-less endpoint's sentence and its cost, else a fresh read, said before the wait, then the report
+    private async Task<IReadOnlyList<string>> UsageLinesAsync(Action<string> say, CancellationToken ct)
+    {
+        if (readAllowance is null) return [noAllowanceLine ?? LocalAllowance];
+        var held = await readAllowance(false, ct);
+        if (noAllowanceLine is not null) return held.Cost is { } cost ? [noAllowanceLine, UsageText.CostLine(cost)] : [noAllowanceLine];
+        //a reader of each response has nothing to ask the provider, so what it holds is drawn and no read is announced
+        if (!held.Refreshes) return UsageText.Lines(held, allowanceEndpoint ?? "", DateTimeOffset.Now);
+        say($"{allowanceEndpoint}: reading the allowance{_glyphs.Ellipsis}");
+        //a cancelled read stores nothing, so Esc draws the rows read before
+        var report = await readAllowance(true, ct);
+        return UsageText.Lines(report, allowanceEndpoint ?? "", DateTimeOffset.Now);
+    }
+
     //the keys of an open info panel: the page keys and the bare arrows scroll it, Enter closes it, any other key closes it and goes on to the composer
     internal static Func<ConsoleKeyInfo, KeyDisposition> BuildInfoPanelSink(ChromePainter painter, object gate) => k =>
     {

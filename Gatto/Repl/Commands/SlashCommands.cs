@@ -64,6 +64,10 @@ public static class SlashCommands
         new("/permissions", "[all|revoke <n>]", "review + revoke standing permission grants"),
         new("/tools", "", "list the tools armed this session", BypassesQueue: true),
         new("/context", "", "show what fills the context window", BypassesQueue: true),
+        //it may read the provider first, so it waits in the queue like any command that does more than read local state
+        new("/usage", "", "what the provider reports as left, and the session's cost"),
+        new("/login", "", "log in to this session's endpoint again"),
+        new("/logout", "", "log out of this session's endpoint and forget its secret"),
         //the kill acts at once on its own arm, during a turn too, and the list answers in the panel then
         new("/tasks", "[kill <n>]", "list the background tasks, or end one", BypassesQueue: true),
         //acts at once on the composer like a kill, at rest and during a turn, so no bypass flag: that path answers in a panel, this one in a line
