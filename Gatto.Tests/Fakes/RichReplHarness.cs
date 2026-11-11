@@ -262,6 +262,9 @@ public sealed class RichReplHarness
     //how the session ended, set when the rich loop returns
     public SessionEnd? Ended => _repl.Ended;
 
+    //the session's login wait, as the client's login in place opens and closes it inside a turn
+    public void LoginWait(bool open) => _repl.LoginWait(open);
+
     //answers the attach-count question without a terminal. set it to a function of the SelectSpec, and null keeps the real widget.
     public Func<SelectSpec, SelectOutcome>? OnConfirmAttach
     {

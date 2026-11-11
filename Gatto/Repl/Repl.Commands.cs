@@ -35,6 +35,12 @@ public sealed partial class Repl
     //the rich loop's any-thread repaint, null until it runs and on the plain face
     private Action? _repaintChrome;
 
+    //the rich loop's user wait, null on the plain face, which has no ticker to stop
+    private Action<bool>? _loginWait;
+
+    //a login inside a turn waits on the user in the browser, so the ticker shows its waiting row and the turn clock stops, as for a prompt
+    internal void LoginWait(bool open) => _loginWait?.Invoke(open);
+
     //called from the client's stream on any thread, a rename repaints the footer at once
     internal void SetServedName(string requested, string served)
     {

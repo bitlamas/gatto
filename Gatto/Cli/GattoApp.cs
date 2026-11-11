@@ -401,6 +401,7 @@ public static class GattoApp
         private Action<string>?[] subagentProgress = [];
         //the REPL's served-name setter once it exists, a holder since the client is built before it
         private readonly Action<string, string>?[] servedSink = new Action<string, string>?[1];
+        private readonly Action<bool>?[] loginWaitSink = new Action<bool>?[1];   //the REPL's login wait once it exists, a login before it has no ticker to stop
         private AgentLoop loop = null!;
         private Conversation convo = null!;
 
@@ -978,6 +979,7 @@ public static class GattoApp
             if (args.Prompt is null && state.Endpoint.Login is { } inPlace)
                 client.LoginInPlace = async ct =>
                 {
+                    loginWaitSink[0]?.Invoke(true);
                     try
                     {
                         var label = await SessionLoginAsync(inPlace, launchName, ct);
@@ -990,6 +992,7 @@ public static class GattoApp
                         warn.Warn($"{launchName}: {TermText.Sanitize(ex.Message)}");
                         return false;
                     }
+                    finally { loginWaitSink[0]?.Invoke(false); }
                 };
             //the provider's limits are read at launch and after each turn, never per request, and a -p run has no footer to read them for
             if (args.Prompt is null && state.Endpoint.Usage is not null)
@@ -1437,6 +1440,7 @@ public static class GattoApp
     ;
             repl.OnReady = CloseLaunch;
             servedSink[0] = repl.SetServedName;
+            loginWaitSink[0] = repl.LoginWait;
             var replExit = await repl.RunAsync(CancellationToken.None);
             trace.Flush();
 

@@ -247,6 +247,13 @@ public sealed class ChromeTicker(ChromePainter painter, object gate, ISlotsReade
                             painter.Glyphs);
                         painter.State.BlinkOn = true;
                     }
+                    else if (_wait.Open)
+                    {
+                        //a wait on the user with no panel, a login in the browser, takes the purr row with the waiting words while the turn clock stays frozen
+                        painter.State.PurrText = WaitingRow(_wait.OpenAt(ms), tokens, toolTokens, painter.Glyphs);
+                        painter.State.ToolWait = null;
+                        painter.State.BlinkOn = true;
+                    }
                     else
                     {
                         //poll /slots for the whole turn, since its count is the truth and the estimate is only the fallback with no reader wired

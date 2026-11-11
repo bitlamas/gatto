@@ -54,6 +54,7 @@ public sealed partial class Repl
             ? new Gatto.Terminal.ConsoleInputMode(modeControl ?? new Gatto.Terminal.Win32ConsoleModeControl())
             : null;
         var ticker = new ChromeTicker(painter, gate, slotsReader);
+        _loginWait = open => { if (open) ticker.BeginUserWait(); else ticker.EndUserWait(); };
         //the turn clock stops while a prompt is up, hooked at the pump where every prompt reads its key through PushFocus
         keys.SetModalWaitSink(open =>
         {
