@@ -54,7 +54,7 @@ public sealed class LaunchStartLineTests : IDisposable
 
         var row = new LoadingLine(rich: true, live: l => lines.Add((l, lookups)),
             note: l => lines.Add((l, lookups)), GlyphSet.Unicode, theme: null);
-        var ok = await AutoServeAsk.StartAndWaitAsync(manager, ModelOn(new Uri(server.BaseUrl).Port), _ => { },
+        var ok = await ServerStart.StartAndWaitAsync(manager, ModelOn(new Uri(server.BaseUrl).Port), _ => { },
             CancellationToken.None, GlyphSet.Unicode, row, size: null,
             clock: () => TimeSpan.FromSeconds(10 * ++reads));
 
@@ -79,7 +79,7 @@ public sealed class LaunchStartLineTests : IDisposable
             + "ggml_vulkan: device memory allocation of 21474836480 failed");
         var said = new List<string>();
 
-        var ok = await AutoServeAsk.StartAndWaitAsync(manager, ModelOn(1), said.Add, CancellationToken.None,
+        var ok = await ServerStart.StartAndWaitAsync(manager, ModelOn(1), said.Add, CancellationToken.None,
             GlyphSet.Unicode);
 
         Assert.False(ok);

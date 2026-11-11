@@ -5,7 +5,7 @@ using Gatto.Roles.Serve;
 namespace Gatto.Cli.Launch;
 
 //starts a model's server and waits for it, reporting progress as it goes
-internal static class AutoServeAsk
+internal static class ServerStart
 {
     //this path starts nothing, it only waits for a server of ours still loading on the launch port. the line's number is the elapsed time the ready poll measured
     internal static async Task<ServerReadiness?> AwaitOursLoadingAsync(

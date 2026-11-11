@@ -54,7 +54,7 @@ public sealed class LaunchLoadingWaitTests : IDisposable
         var manager = Manager(port);
         var lines = new List<string>();
 
-        var readiness = await AutoServeAsk.AwaitOursLoadingAsync(
+        var readiness = await ServerStart.AwaitOursLoadingAsync(
             manager, port, TimeSpan.FromSeconds(10), Row(lines), _ => "~23.8 GB", CancellationToken.None);
 
         Assert.Equal(ServerReadiness.Ready, readiness);
@@ -71,7 +71,7 @@ public sealed class LaunchLoadingWaitTests : IDisposable
         var port = new Uri(server.BaseUrl).Port;
         var manager = Manager(servedPort: port + 1);   //the recorded port differs from the launch port, so the record is compared and no request may be sent.
 
-        var readiness = await AutoServeAsk.AwaitOursLoadingAsync(manager, port, TimeSpan.FromSeconds(10),
+        var readiness = await ServerStart.AwaitOursLoadingAsync(manager, port, TimeSpan.FromSeconds(10),
             Silent(), null, CancellationToken.None);
 
         Assert.Null(readiness);
@@ -85,7 +85,7 @@ public sealed class LaunchLoadingWaitTests : IDisposable
         var port = new Uri(server.BaseUrl).Port;
         var manager = Manager(servedPort: null);
 
-        var readiness = await AutoServeAsk.AwaitOursLoadingAsync(manager, port, TimeSpan.FromSeconds(10),
+        var readiness = await ServerStart.AwaitOursLoadingAsync(manager, port, TimeSpan.FromSeconds(10),
             Silent(), null, CancellationToken.None);
 
         Assert.Null(readiness);

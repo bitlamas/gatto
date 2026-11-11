@@ -882,7 +882,7 @@ public static class GattoApp
                 if (args.Prompt is null && Uri.TryCreate(state.LaunchBaseUrl, UriKind.Absolute, out var waitUri))
                 {
                     using var loadingLine = new TickLine(Console.Out, launchTheme is not null, blankBeforeFirst: true);
-                    await AutoServeAsk.AwaitOursLoadingAsync(
+                    await ServerStart.AwaitOursLoadingAsync(
                         new ServeManager(home, ServeCommand.ServerBinaryFor(state.Model, config)), waitUri.Port,
                         Gatto.Roles.Audition.AuditionRunner.ReadyBudget,
                         LoadingLine.Over(loadingLine, glyphs, launchTheme), id => SizeWordsOnDiskOrNull(home, id),
@@ -1071,7 +1071,7 @@ public static class GattoApp
                 using var startingLine = new TickLine(Console.Out, launchTheme is not null, blankBeforeFirst: true);
                 //measured before the wait, so the last rung can name the size while the wait is still running
                 var loadingBytes = Gatto.Core.Acquire.ModelDiscovery.SetBytesOrNull(state.Model.Profile.ActivePath);
-                serverAlreadyUp = await AutoServeAsk.StartAndWaitAsync(
+                serverAlreadyUp = await ServerStart.StartAndWaitAsync(
                     manager, state.Model, m => { startingLine.Finish(); warn.Warn(m); }, CancellationToken.None,
                     glyphs, LoadingLine.Over(startingLine, glyphs, launchTheme),
                     loadingBytes is { } b ? SizeWords.Gb(b, approx: true) : null);

@@ -97,7 +97,7 @@ internal static class ServeCommand
         //the stop's rows go to NullServeListener, this path says what happened in its own sentence below
         await manager.StopAsync(Gatto.Roles.Serve.NullServeListener.Instance, CancellationToken.None).ConfigureAwait(false);
 
-        if (await AutoServeAsk.StartAndWaitAsync(manager, incoming, say, CancellationToken.None, glyphs ?? Gatto.Terminal.GlyphSet.Unicode)
+        if (await ServerStart.StartAndWaitAsync(manager, incoming, say, CancellationToken.None, glyphs ?? Gatto.Terminal.GlyphSet.Unicode)
             .ConfigureAwait(false)) return true;
 
         if (previous is null)
@@ -108,7 +108,7 @@ internal static class ServeCommand
         }
 
         say($"loading {previous.Id} back{(glyphs ?? Gatto.Terminal.GlyphSet.Unicode).Ellipsis}");
-        if (await AutoServeAsk.StartAndWaitAsync(manager, previous, say, CancellationToken.None, glyphs ?? Gatto.Terminal.GlyphSet.Unicode)
+        if (await ServerStart.StartAndWaitAsync(manager, previous, say, CancellationToken.None, glyphs ?? Gatto.Terminal.GlyphSet.Unicode)
             .ConfigureAwait(false)) return false;
 
         //with both models gone the sentence names a reboot, memory a dead process still holds is the likely cause

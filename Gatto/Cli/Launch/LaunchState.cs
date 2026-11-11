@@ -544,7 +544,7 @@ internal sealed class LaunchState(
                 return ServeCommand.SwapServerAsync(serveManager, back, to, warn.Warn, glyphs, cannotRestore)
                     .GetAwaiter().GetResult();
             },
-            Start: m => AutoServeAsk.StartAndWaitAsync(serveManager, m, warn.Warn, CancellationToken.None, glyphs)
+            Start: m => ServerStart.StartAndWaitAsync(serveManager, m, warn.Warn, CancellationToken.None, glyphs)
                 .GetAwaiter().GetResult());
 
         if (ModelSwitchDeed.Run(outcome, outgoing, serveManager,   //the serving change, then the persist, then the arm, in that order
