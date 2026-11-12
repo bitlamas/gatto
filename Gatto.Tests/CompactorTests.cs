@@ -725,6 +725,43 @@ public class CompactorTests
         Assert.All(results, r => Assert.Contains("[elided: tool result, ", r));
     }
 
+    //a short result read early, a brief among them, stays whole while cutting the long ones is enough
+    [Fact]
+    public void A_SHORT_RESULT_STAYS_WHOLE_WHILE_THE_LONG_ONES_CAN_BE_CUT()
+    {
+        var brief = "BRIEF " + new string('b', 460);
+        var big = "DOC\n" + string.Join("\n", Enumerable.Range(0, 2_000).Select(i => $"filler line {i}"));
+        var msgs = new[] { Sys("s"), User("go"),
+            Asst("", Call("r")), Tool("r", brief),
+            Asst("", Call("a")), Tool("a", big),
+            Asst("", Call("b")), Tool("b", big) };
+
+        var shaped = Compactor.ShapeForSummary(msgs, windowTokens: 4_000, ratio: 1.0);
+        var results = shaped.Where(m => m.Role == "tool").Select(m => m.Content!).ToList();
+
+        Assert.Equal(brief, results[0]);
+        Assert.All(results.Skip(1), r => Assert.Contains("[elided: tool result, ", r));
+        Assert.True(ContextBudget.Estimate(shaped) <= 4_000 * Compactor.TargetFraction);
+    }
+
+    //when the long results are not enough the short ones are cut too, oldest first, before any message is dropped
+    [Fact]
+    public void SHORT_RESULTS_ARE_CUT_BEFORE_A_MESSAGE_IS_DROPPED()
+    {
+        var small = new string('s', 1_000);
+        var msgs = Enumerable.Range(0, 40)
+            .SelectMany(i => new[] { Asst("", Call($"c{i}")), Tool($"c{i}", small) })
+            .Prepend(User("go")).Prepend(Sys("s")).ToArray();
+
+        var shaped = Compactor.ShapeForSummary(msgs, windowTokens: 10_000, ratio: 1.0);
+        var results = shaped.Where(m => m.Role == "tool").Select(m => m.Content!).ToList();
+
+        Assert.Equal(msgs.Length, shaped.Count);
+        Assert.StartsWith("[elided: tool result, 1000 chars", results[0]);
+        Assert.Equal(small, results[^1]);
+        Assert.True(ContextBudget.Estimate(shaped) <= 10_000 * Compactor.TargetFraction);
+    }
+
     [Fact]
     public void Shape_ResultUnderTarget_On114PercentInput()
     {

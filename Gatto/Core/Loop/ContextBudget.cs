@@ -170,7 +170,7 @@ public static class ContextBudget
 
     //a result this long keeps its head when cut, a shorter one becomes a bare stub since its head would cost about what the cut saves
     internal const int HeadKeepChars = 300;
-    private const int HeadFromChars = 4 * HeadKeepChars;
+    internal const int HeadFromChars = 4 * HeadKeepChars;
 
     //the stub for a cut result, with its head above the marker when the result is long, so the first line of a file is never lost
     internal static string Cut(string content, string what, string after)

@@ -368,14 +368,16 @@ public sealed class Compactor(IChatClient client, string model, RequestShape? sh
         var target = windowTokens * TargetFraction;
         var working = new List<ChatMessage>(messages);
 
-        //pass 1: elide every tool result, oldest first, keeping its head so the summary can still name what a file began with
-        for (var i = 0; i < working.Count && Measure(working, ratio, promptLen) > target; i++)
-        {
-            if (working[i].Role != "tool") continue;
-            var content = working[i].Content ?? "";
-            var stub = ContextBudget.Cut(content, "tool result", "");
-            if (content.Length > stub.Length) working[i] = working[i] with { Content = stub };
-        }
+        //pass 1: elide tool results oldest first, the ones long enough to keep a head before any short one, which a cut turns into a bare marker
+        foreach (var keepsHead in new[] { true, false })
+            for (var i = 0; i < working.Count && Measure(working, ratio, promptLen) > target; i++)
+            {
+                if (working[i].Role != "tool") continue;
+                var content = working[i].Content ?? "";
+                if (keepsHead != content.Length >= ContextBudget.HeadFromChars) continue;
+                var stub = ContextBudget.Cut(content, "tool result", "");
+                if (content.Length > stub.Length) working[i] = working[i] with { Content = stub };
+            }
 
         //pass 1.5: shrink oversized tool-call arguments oldest first so a file body doesn't cost the whole turn
         for (var i = 0; i < working.Count && Measure(working, ratio, promptLen) > target; i++)
