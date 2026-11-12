@@ -1686,4 +1686,359 @@ public class AgentLoopTests
         Assert.Contains("finish_reason=length", result.LastError);
         Assert.Contains(obs.Warnings, w => w.Contains("removed a stray"));
     }
+
+    //a tool that answers as run_agent does, flagged or not, with a text a budget case can size, and one that cancels the turn while it runs
+    private sealed class PromptingTool(string name, bool prompted = true, string text = "done", CancellationTokenSource? cancels = null) : ITool
+    {
+        public string Name => name;
+        public string Description => "prompts the server";
+        public JsonElement ParametersSchema => JsonDocument.Parse("{\"type\":\"object\"}").RootElement;
+        public Task<ToolResult> ExecuteAsync(JsonElement args, IToolContext ctx, CancellationToken ct)
+        {
+            if (cancels is not null)
+            {
+                cancels.Cancel();
+                ct.ThrowIfCancellationRequested();
+            }
+            return Task.FromResult(new ToolResult(text) { Prompted = prompted });
+        }
+    }
+
+    private const string RereadRow = "re-read 22,051 tokens after run_agent";
+
+    private static string CachedTimings(int cached) => $$"""{"cache_n":{{cached}},"prompt_n":100,"prompt_ms":1000}""";
+
+    private static int _rowCallId;
+
+    //one round: the calls named, or a short reply when none, then the finish with the usage and timings the server sent
+    private static StreamEvent[] RowRound(Usage? usage, string? timings, params string[] calls) =>
+        calls.Length == 0
+            ? [new StreamEvent.TextDelta("ok"), new StreamEvent.Finished("stop", usage, timings)]
+            : [.. calls.Select(c => (StreamEvent)new StreamEvent.ToolCallReady(new ToolCall("r" + Interlocked.Increment(ref _rowCallId), c, "{}"))),
+                new StreamEvent.Finished("tool_calls", usage, timings)];
+
+    private static List<string> RereadRows(RecordingObserver obs) => [.. obs.Warnings.Where(w => w.StartsWith("re-read", StringComparison.Ordinal))];
+
+    private static (AgentLoop Loop, FakeChatClient Client, HookBus Hooks, RecordingObserver Obs) RowLoop(ITool[] tools,
+        int? budgetTokens = null, ICompactionHandler? compaction = null, double? autoCompactAt = null, ContextUsageState? usageState = null)
+    {
+        var client = new FakeChatClient();
+        var reg = new ToolRegistry();
+        foreach (var t in tools) reg.Register(t);
+        var hooks = new HookBus();
+        var loop = new AgentLoop(client, reg, hooks, new TestToolContext(Path.GetTempPath()), "m",
+            budgetTokens: budgetTokens, compaction: compaction, usageState: usageState, autoCompactAt: autoCompactAt);
+        return (loop, client, hooks, new RecordingObserver());
+    }
+
+    private static ITool[] AgentAndPlain(bool prompted = true) => [new PromptingTool("run_agent", prompted), new PromptingTool("plain", prompted: false)];
+
+    //the previous prompt less what the slot held, on the request after the call. round 2 reports 22,166 of its own, and a silent round 2 still spends the mark so round 3 writes nothing
+    [Theory]
+    [InlineData(0, 1990, RereadRow)]
+    [InlineData(1512, 1990, "re-read 20,539 tokens after run_agent")]
+    [InlineData(22050, 1990, null)]
+    [InlineData(22050, 22051, "re-read 1 token after run_agent")]
+    [InlineData(22051, 22051, null)]
+    [InlineData(22143, 1990, null)]
+    public async Task THE_REQUEST_AFTER_A_PROMPTING_CALL_STATES_THE_TOKENS_IT_READ_AGAIN(int cached, int heldBefore, string? row)
+    {
+        var (loop, client, _, obs) = RowLoop(AgentAndPlain());
+        client.EnqueueTurn(RowRound(new Usage(22051, 10), CachedTimings(heldBefore), "run_agent"));
+        client.EnqueueTurn(RowRound(new Usage(22166, 10), CachedTimings(cached), "plain"));
+        client.EnqueueTurn(RowRound(new Usage(22200, 10), CachedTimings(0)));
+
+        await loop.RunTurnAsync(new Conversation(null), "go", obs, default);
+
+        Assert.Equal(3, client.Requests.Count);
+        string[] expected = row is null ? [] : [row];
+        Assert.Equal(expected, RereadRows(obs));
+        Assert.DoesNotContain(client.Requests.SelectMany(r => r.Messages), m => m.Content?.Contains("re-read", StringComparison.Ordinal) == true);
+    }
+
+    [Fact]
+    public async Task AN_UNFLAGGED_TOOL_OF_THE_SAME_NAME_WRITES_NO_ROW()
+    {
+        var (loop, client, _, obs) = RowLoop(AgentAndPlain(prompted: false));
+        client.EnqueueTurn(RowRound(new Usage(22051, 10), CachedTimings(1990), "run_agent"));
+        client.EnqueueTurn(RowRound(new Usage(22166, 10), CachedTimings(0)));
+
+        await loop.RunTurnAsync(new Conversation(null), "go", obs, default);
+
+        Assert.Equal(2, client.Requests.Count);
+        Assert.Empty(RereadRows(obs));
+    }
+
+    //the finishing request's own timings decide, an earlier request's timings or a provider's cached count never stand in
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task A_REQUEST_THAT_SENT_NO_TIMINGS_WRITES_NO_ROW(bool providerCount)
+    {
+        var (loop, client, _, obs) = RowLoop(AgentAndPlain());
+        client.EnqueueTurn(RowRound(new Usage(22051, 10), CachedTimings(1990), "run_agent"));
+        client.EnqueueTurn(RowRound(new Usage(22166, 10, providerCount ? 0 : null), null));
+
+        await loop.RunTurnAsync(new Conversation(null), "go", obs, default);
+
+        Assert.Equal(2, client.Requests.Count);
+        Assert.Empty(RereadRows(obs));
+    }
+
+    //a cut between the flagged round's request and the next explains a loss of its own, so no row. the same five rounds uncut write it
+    [Theory]
+    [InlineData(1_700, false)]
+    [InlineData(100_000, true)]
+    public async Task A_MOVED_FRONTIER_WRITES_NO_ROW(int budget, bool written)
+    {
+        var usage = new ContextUsageState();
+        var big = new string('b', 5000);
+        var (loop, client, _, obs) = RowLoop([new PromptingTool("run_agent", text: new string('a', 2000)),
+            new PromptingTool("big", prompted: false, text: big), new PromptingTool("plain", prompted: false)], budgetTokens: budget, usageState: usage);
+        client.EnqueueTurn(RowRound(null, null, "big"));
+        client.EnqueueTurn(RowRound(null, null, "plain"));
+        client.EnqueueTurn(RowRound(null, null, "plain"));
+        client.EnqueueTurn(RowRound(new Usage(1000, 10), CachedTimings(900), "run_agent"));   //below the estimate of a request holding the 5,000-char result, so the ratio stays 1.0
+        client.EnqueueTurn(RowRound(null, CachedTimings(0)));
+
+        await loop.RunTurnAsync(new Conversation(null), "go", obs, default);
+
+        Assert.Equal(5, client.Requests.Count);
+        Assert.Equal(1.0, usage.Ratio);
+        Assert.Contains(client.Requests[3].Messages, m => m.Role == "tool" && m.Content == big);
+        Assert.Equal(written, client.Requests[4].Messages.Any(m => m.Role == "tool" && m.Content == big));
+        string[] expected = written ? ["re-read 1,000 tokens after run_agent"] : [];
+        Assert.Equal(expected, RereadRows(obs));
+    }
+
+    //a proactive compaction that returns nothing clears the mark, and the same two rounds with no compaction armed write the row
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task A_FAILED_PROACTIVE_COMPACTION_CLEARS_THE_MARK(bool armed)
+    {
+        var usage = new ContextUsageState();
+        var handler = armed ? new FakeCompactionHandler(null) : null;
+        var (loop, client, _, obs) = RowLoop(AgentAndPlain(), budgetTokens: 2000, compaction: handler, autoCompactAt: armed ? 0.5 : null, usageState: usage);
+        client.EnqueueTurn(RowRound(new Usage(1000, 10), CachedTimings(900), "run_agent"));   //the estimate of a 4,000-char message, so the ratio stays 1.0
+        client.EnqueueTurn(RowRound(null, CachedTimings(0)));
+
+        await loop.RunTurnAsync(new Conversation(null), new string('x', 4000), obs, default);
+
+        Assert.Equal(1.0, usage.Ratio);
+        Assert.Equal(armed ? 1 : 0, handler?.Calls ?? 0);
+        Assert.Equal(armed, obs.Warnings.Any(w => w.StartsWith("auto-compact failed", StringComparison.Ordinal)));
+        string[] expected = armed ? [] : ["re-read 1,000 tokens after run_agent"];
+        Assert.Equal(expected, RereadRows(obs));
+    }
+
+    //an adopted compaction is silent through the usage state's clear and not the mark's, so this case guards nothing of the mark
+    [Fact]
+    public async Task AN_ADOPTED_PROACTIVE_COMPACTION_WRITES_NO_ROW()
+    {
+        var handler = new FakeCompactionHandler(new CompactionResult("s", [new ChatMessage("user", "u")], null));
+        var (loop, client, _, obs) = RowLoop(AgentAndPlain(), budgetTokens: 2000, compaction: handler, autoCompactAt: 0.5);
+        client.EnqueueTurn(RowRound(new Usage(1000, 10), CachedTimings(900), "run_agent"));
+        client.EnqueueTurn(RowRound(null, CachedTimings(0)));
+
+        await loop.RunTurnAsync(new Conversation(null), new string('x', 4000), obs, default);
+
+        Assert.Equal(1, handler.Calls);
+        Assert.Empty(RereadRows(obs));
+    }
+
+    //the mark belongs to its turn, so a turn cancelled before the request after the call leaves nothing for the next one
+    [Fact]
+    public async Task THE_MARK_DIES_WITH_ITS_TURN()
+    {
+        var (loop, client, _, obs) = RowLoop(AgentAndPlain());
+        using var cts = new CancellationTokenSource();
+        client.OnRequest = () => { if (client.Requests.Count == 2) cts.Cancel(); };
+        client.EnqueueTurn(RowRound(new Usage(22051, 10), CachedTimings(1990), "run_agent"));
+        client.EnqueueTurn(RowRound(new Usage(22166, 10), CachedTimings(0)));
+        var convo = new Conversation(null);
+
+        var first = await loop.RunTurnAsync(convo, "go", obs, cts.Token);
+        client.EnqueueTurn(RowRound(new Usage(22200, 10), CachedTimings(7000), "plain"));   //the next turn's own high mark, so only a mark that outlived its turn could write
+        client.EnqueueTurn(RowRound(new Usage(22300, 10), CachedTimings(0)));
+        await loop.RunTurnAsync(convo, "again", obs, default);
+
+        Assert.Equal(TurnOutcome.Cancelled, first.Outcome);
+        Assert.Equal(4, client.Requests.Count);
+        Assert.Empty(RereadRows(obs));
+    }
+
+    //the row names the round's first call that prompted the server, as the loop holds its name, and an unflagged call before it is passed over
+    [Theory]
+    [InlineData("run_agent", "other_agent")]
+    [InlineData("other_agent", "run_agent")]
+    public async Task THE_ROW_NAMES_THE_FIRST_PROMPTING_CALL_OF_THE_ROUND(string first, string second)
+    {
+        var (loop, client, _, obs) = RowLoop([new PromptingTool("plain", prompted: false), new PromptingTool("run_agent"), new PromptingTool("other_agent")]);
+        client.EnqueueTurn(RowRound(new Usage(22051, 10), CachedTimings(1990), "plain", first, second));
+        client.EnqueueTurn(RowRound(null, CachedTimings(0)));
+
+        await loop.RunTurnAsync(new Conversation(null), "go", obs, default);
+
+        Assert.Equal([$"re-read 22,051 tokens after {first}"], RereadRows(obs));
+    }
+
+    //the row reaches the screen and never the turn's error, which keeps the warning the round raised before it
+    [Fact]
+    public async Task THE_ROW_LEAVES_THE_TURNS_ERROR_TO_THE_WARNING_BEFORE_IT()
+    {
+        var usage = new ContextUsageState();
+        var (loop, client, _, obs) = RowLoop(AgentAndPlain(), budgetTokens: 100, usageState: usage);
+        client.EnqueueTurn(RowRound(new Usage(1000, 10), CachedTimings(900), "run_agent"));   //the estimate of a 4,000-char message, so the ratio stays 1.0
+        client.EnqueueTurn(RowRound(null, CachedTimings(0)));
+
+        var result = await loop.RunTurnAsync(new Conversation(null), new string('x', 4000), obs, default);
+
+        Assert.Equal(1.0, usage.Ratio);
+        Assert.Equal(["re-read 1,000 tokens after run_agent"], RereadRows(obs));
+        Assert.StartsWith("context estimate exceeds the window", result.LastError);
+    }
+
+    //a tool_result handler that replaces the text the model reads leaves the flag the tool set
+    [Fact]
+    public async Task A_REPLACED_RESULT_KEEPS_THE_ROW()
+    {
+        var (loop, client, hooks, obs) = RowLoop(AgentAndPlain());
+        hooks.OnToolResult(_ => Task.FromResult<ToolResult?>(new ToolResult("replaced")));
+        client.EnqueueTurn(RowRound(new Usage(22051, 10), CachedTimings(1990), "run_agent"));
+        client.EnqueueTurn(RowRound(null, CachedTimings(0)));
+
+        await loop.RunTurnAsync(new Conversation(null), "go", obs, default);
+
+        Assert.Contains(client.Requests[1].Messages, m => m.Role == "tool" && m.Content == "replaced");
+        Assert.Equal([RereadRow], RereadRows(obs));
+    }
+
+    //a tool that throws returns nothing to carry the flag, as a child that failed does
+    [Fact]
+    public async Task A_THROWING_TOOL_WRITES_NO_ROW()
+    {
+        var (loop, client, _, obs) = RowLoop([new ThrowingTool()]);
+        client.EnqueueTurn(RowRound(new Usage(22051, 10), CachedTimings(1990), "bomb"));
+        client.EnqueueTurn(RowRound(null, CachedTimings(0)));
+
+        await loop.RunTurnAsync(new Conversation(null), "go", obs, default);
+
+        Assert.Equal(2, client.Requests.Count);
+        Assert.Empty(RereadRows(obs));
+    }
+
+    //a prompting call cancelled while it runs leaves no result, so the next turn reads nothing against it
+    [Fact]
+    public async Task A_PROMPTING_CALL_CANCELLED_WHILE_IT_RUNS_WRITES_NO_ROW()
+    {
+        using var cts = new CancellationTokenSource();
+        var (loop, client, _, obs) = RowLoop([new PromptingTool("run_agent", cancels: cts), new PromptingTool("plain", prompted: false)]);
+        client.EnqueueTurn(RowRound(new Usage(22051, 10), CachedTimings(1990), "run_agent"));
+        var convo = new Conversation(null);
+
+        var first = await loop.RunTurnAsync(convo, "go", obs, cts.Token);
+        client.EnqueueTurn(RowRound(new Usage(22200, 10), CachedTimings(7000), "plain"));
+        client.EnqueueTurn(RowRound(new Usage(22300, 10), CachedTimings(0)));
+        await loop.RunTurnAsync(convo, "again", obs, default);
+
+        Assert.Equal(TurnOutcome.Cancelled, first.Outcome);
+        Assert.Equal(3, client.Requests.Count);
+        Assert.Empty(RereadRows(obs));
+    }
+
+    //two prompting rounds in a row write a row each, the mark cleared at one finish and set again by that round's call
+    [Fact]
+    public async Task EACH_PROMPTING_ROUND_WRITES_ITS_OWN_ROW()
+    {
+        var (loop, client, _, obs) = RowLoop(AgentAndPlain());
+        client.EnqueueTurn(RowRound(new Usage(22051, 10), CachedTimings(1990), "run_agent"));
+        client.EnqueueTurn(RowRound(new Usage(22166, 10), CachedTimings(0), "run_agent"));
+        client.EnqueueTurn(RowRound(new Usage(22200, 10), CachedTimings(0)));
+
+        await loop.RunTurnAsync(new Conversation(null), "go", obs, default);
+
+        Assert.Equal([RereadRow, "re-read 22,166 tokens after run_agent"], RereadRows(obs));
+    }
+
+    //a template that renders the previous prompt's tail anew leaves a healthy slot a few tokens short of it. the slot still holds more than it did earlier in the turn
+    [Theory]
+    [InlineData(7105, null)]
+    [InlineData(0, "re-read 7,110 tokens after run_agent")]
+    public async Task A_TAIL_THE_TEMPLATE_RENDERS_AGAIN_IS_NO_LOSS(int cached, string? row)
+    {
+        var (loop, client, _, obs) = RowLoop(AgentAndPlain());
+        client.EnqueueTurn(RowRound(new Usage(7110, 10), CachedTimings(7058), "run_agent"));
+        client.EnqueueTurn(RowRound(new Usage(7292, 10), CachedTimings(cached)));
+
+        await loop.RunTurnAsync(new Conversation(null), "go", obs, default);
+
+        string[] expected = row is null ? [] : [row];
+        Assert.Equal(expected, RereadRows(obs));
+    }
+
+    //with no cached count from an earlier request of the turn there is nothing for the slot to fall below
+    [Fact]
+    public async Task NO_CACHED_COUNT_BEFORE_THE_CALL_WRITES_NO_ROW()
+    {
+        var (loop, client, _, obs) = RowLoop(AgentAndPlain());
+        client.EnqueueTurn(RowRound(new Usage(22051, 10), null, "run_agent"));
+        client.EnqueueTurn(RowRound(new Usage(22166, 10), CachedTimings(0)));
+
+        await loop.RunTurnAsync(new Conversation(null), "go", obs, default);
+
+        Assert.Equal(2, client.Requests.Count);
+        Assert.Empty(RereadRows(obs));
+    }
+
+    //a cut rebuilds the prompt, so the turn's high mark starts again there and a later healthy slot is not read against the uncut prompt's count
+    [Theory]
+    [InlineData(595, null)]
+    [InlineData(0, "re-read 600 tokens after run_agent")]
+    public async Task A_CUT_STARTS_THE_HIGH_MARK_AGAIN(int cached, string? row)
+    {
+        var usage = new ContextUsageState();
+        var big = new string('b', 5000);
+        var (loop, client, _, obs) = RowLoop([new PromptingTool("run_agent"), new PromptingTool("big", prompted: false, text: big),
+            new PromptingTool("plain", prompted: false), new PromptingTool("pad", prompted: false, text: new string('p', 2000))], budgetTokens: 1_700, usageState: usage);
+        client.EnqueueTurn(RowRound(null, null, "big"));
+        client.EnqueueTurn(RowRound(null, null, "plain"));
+        client.EnqueueTurn(RowRound(null, null, "plain"));
+        client.EnqueueTurn(RowRound(new Usage(1250, 10), CachedTimings(1200), "pad"));   //the uncut prompt's high mark
+        client.EnqueueTurn(RowRound(new Usage(600, 10), CachedTimings(300), "run_agent"));   //the first cut request, under its own estimate
+        client.EnqueueTurn(RowRound(null, CachedTimings(cached)));
+
+        await loop.RunTurnAsync(new Conversation(null), "go", obs, default);
+
+        Assert.Equal(6, client.Requests.Count);
+        Assert.Equal(1.0, usage.Ratio);
+        Assert.Contains(client.Requests[3].Messages, m => m.Role == "tool" && m.Content == big);
+        Assert.DoesNotContain(client.Requests[4].Messages, m => m.Role == "tool" && m.Content == big);
+        string[] expected = row is null ? [] : [row];
+        Assert.Equal(expected, RereadRows(obs));
+    }
+
+    //an adopted compaction rebuilds the prompt, before a round or in the rescue of an overflow, and the high mark starts again with it
+    [Theory]
+    [InlineData(false, 45, null)]
+    [InlineData(false, 0, "re-read 50 tokens after run_agent")]
+    [InlineData(true, 45, null)]
+    [InlineData(true, 0, "re-read 50 tokens after run_agent")]
+    public async Task AN_ADOPTED_COMPACTION_STARTS_THE_HIGH_MARK_AGAIN(bool rescue, int cached, string? row)
+    {
+        var handler = new FakeCompactionHandler(new CompactionResult("s", [new ChatMessage("user", "u")], null));
+        var (loop, client, _, obs) = rescue
+            ? RowLoop(AgentAndPlain(), compaction: handler)
+            : RowLoop(AgentAndPlain(), budgetTokens: 2000, compaction: handler, autoCompactAt: 0.5);
+        client.EnqueueTurn(RowRound(new Usage(1000, 10), CachedTimings(900), "plain"));   //the uncompacted prompt's high mark
+        if (rescue) client.EnqueueThrow(new GattoContextOverflowException("over", null, null));
+        client.EnqueueTurn(RowRound(new Usage(50, 10), CachedTimings(10), "run_agent"));
+        client.EnqueueTurn(RowRound(null, CachedTimings(cached)));
+
+        await loop.RunTurnAsync(new Conversation(null), new string('x', 4000), obs, default);
+
+        Assert.Equal(1, handler.Calls);
+        string[] expected = row is null ? [] : [row];
+        Assert.Equal(expected, RereadRows(obs));
+    }
 }

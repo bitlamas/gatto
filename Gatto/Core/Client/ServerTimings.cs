@@ -34,12 +34,45 @@ internal static class ServerTimings
         {
             using var doc = System.Text.Json.JsonDocument.Parse(timings);
             var root = doc.RootElement;
-            if (root.TryGetProperty("cache_n", out var c) && c.TryGetInt32(out var cached) && cached == 0
+            if (TryCached(root, out var cached) && cached == 0
                 && root.TryGetProperty("prompt_n", out var n) && n.TryGetInt32(out var tokens) && tokens > 0
                 && root.TryGetProperty("prompt_ms", out var d) && d.TryGetDouble(out var ms) && ms > 0)
                 return (tokens, tokens / (ms / 1000.0));
         }
         catch (System.Text.Json.JsonException) { }
         return null;
+    }
+
+    //llama-server's count of prompt tokens the slot already held, and a value that is not a number is no count
+    internal static bool TryCached(System.Text.Json.JsonElement root, out int cached)
+    {
+        cached = 0;
+        return root.ValueKind == System.Text.Json.JsonValueKind.Object
+            && root.TryGetProperty("cache_n", out var c) && c.ValueKind == System.Text.Json.JsonValueKind.Number
+            && c.TryGetInt32(out cached);
+    }
+
+    //the count of prompt tokens the slot held for this request, null when the timings say nothing
+    public static int? Cached(string? timings)
+    {
+        if (timings is not { Length: > 0 }) return null;
+        try
+        {
+            using var doc = System.Text.Json.JsonDocument.Parse(timings);
+            return TryCached(doc.RootElement, out var cached) ? cached : null;
+        }
+        catch (System.Text.Json.JsonException) { return null; }
+    }
+
+    //the tokens a slot read again because it no longer held the previous prompt, null when nothing says so
+    public static int? Lost(int previousPromptTokens, string? timings)
+    {
+        if (timings is not { Length: > 0 }) return null;
+        try
+        {
+            using var doc = System.Text.Json.JsonDocument.Parse(timings);
+            return TryCached(doc.RootElement, out var cached) && cached < previousPromptTokens ? previousPromptTokens - cached : null;
+        }
+        catch (System.Text.Json.JsonException) { return null; }
     }
 }

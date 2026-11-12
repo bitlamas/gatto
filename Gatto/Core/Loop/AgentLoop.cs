@@ -1,3 +1,4 @@
+using System.Globalization;
 using System.Text;
 using System.Text.Json;
 using Gatto.Core.Client;
@@ -196,6 +197,8 @@ public sealed class AgentLoop(
         var roundStarts = new List<int>();
         var elisionWarned = false;   //the elision warning fires once per turn rather than once per round-trip
         var stillOverWarned = false; //the same once-per-turn latch for the over-the-window warning
+        string? promptedBy = null;   //the call whose tool sent requests of its own to the server, spent by the next request that finishes in this turn
+        int? cacheHigh = null;       //the most prompt tokens the slot held for a request of this turn since the prompt was last rebuilt
         //the last warning the turn produced, and a connection failure never reaches this variable
         string? lastWarning = null;
         //the terminal round's finish_reason, so the -p exit can tell a clean stop from a token-limit cut
@@ -248,6 +251,7 @@ public sealed class AgentLoop(
                 //announce before the await, so the wait is explained while it happens. quote the same figure the trigger acted on, or the line names a different percentage
                 observer.OnWarning(
                     $"auto-compacting at {(int)Math.Round(100.0 * used / win)}% — summarizing the session, this can take a while");
+                promptedBy = null;   //the summary request goes through the same server, so a later loss is no longer the call's alone
                 var rebuilt = await compactor.CompactAsync(CompactionReason.Proactive, SoFar(), observer, turnSpan, ct);
                 if (rebuilt is not null)
                 {
@@ -256,6 +260,7 @@ public sealed class AgentLoop(
                     turnUserIndex = 1;
                     roundStarts.Clear();
                     usageState.Clear();   //clearing the usage means a re-fire needs fresh over-threshold evidence
+                    cacheHigh = null;
                     roundStarts.Add(convo.Count);
                     shaped = ShapeRequest();
                     //the same figure the trigger acted on, and used is captured above so the Clear cannot strand it
@@ -287,6 +292,9 @@ public sealed class AgentLoop(
             string? turnServed = null;
 
             var (requestMessages, elidedCount, stillOver, elidedThrough) = shaped;   //shaped after any compaction above, so it describes the live conversation
+            var previousPrompt = usageState?.LastPromptTokens;   //read before this request records its own count and frontier
+            var previousFrontier = usageState?.ElidedThrough;
+            if (elidedThrough != previousFrontier) cacheHigh = null;   //a cut rebuilt the prompt, so what the slot held before it says nothing of this one
             usageState?.NoteElided(elidedThrough);
 
             //the suffix goes on the request copy of the current user message, and the JSONL keeps the pure one
@@ -337,6 +345,16 @@ public sealed class AgentLoop(
                             if (f.Timings is not null) Volatile.Write(ref _lastTimings, f.Timings);
                             if (f.Usage is not null) Volatile.Write(ref _lastUsage, f.Usage);
                             finishReason = f.FinishReason;
+                            var cachedNow = ServerTimings.Cached(f.Timings);
+                            if (promptedBy is { } promptingCall)
+                            {
+                                promptedBy = null;
+                                //below the previous prompt and below what the slot held earlier in the turn, a template that renders the tail anew falls short of the first only
+                                if (previousPrompt is int previous && elidedThrough == previousFrontier && cachedNow < cacheHigh
+                                    && ServerTimings.Lost(previous, f.Timings) is int lost)
+                                    observer.OnWarning($"re-read {lost.ToString("N0", CultureInfo.InvariantCulture)} {Plural.Noun(lost, "token")} after {promptingCall}");   //not Warn, which would make it the turn's error text
+                            }
+                            if (cachedNow is int held && !(cacheHigh >= held)) cacheHigh = held;   //the most the slot has held for a request of this turn
                             if (f.Usage is not null)
                             {
                                 observer.OnUsage(f.Usage);
@@ -373,6 +391,7 @@ public sealed class AgentLoop(
                 turnUserIndex = 1;                                     //the rebuilt user message sits at index 1
                 roundStarts.Clear();                                   //ageing restarts on the rebuilt conversation
                 usageState?.Clear();
+                cacheHigh = null;
                 var pct = ovf.PromptTokens is int p && ovf.ContextSize is int cw and > 0
                     ? $" at {(int)Math.Round(100.0 * p / cw)}%" : "";
                 observer.OnWarning($"auto-compacted{pct} — continuing");
@@ -489,6 +508,7 @@ public sealed class AgentLoop(
                 }
                 //a tool_result hook may rewrite the result the model reads, a throwing handler leaves it unchanged. the pictures ride the tool's own result
                 var ran = result;
+                if (ran.Prompted) promptedBy ??= call.Name;   //the tool's own result, so a handler that rewrites the text cannot clear it
                 using (var resultSpan = _trace.Open(Trace.ToolResult, toolSpan.Id))
                 {
                     result = await hooks.EmitToolResultAsync(new HookPayload(Call: call, Result: result));

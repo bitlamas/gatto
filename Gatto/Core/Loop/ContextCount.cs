@@ -134,7 +134,7 @@ public static class ContextCount
         {
             using var doc = JsonDocument.Parse(timings);
             var root = doc.RootElement;
-            return root.TryGetProperty("cache_n", out var c) && c.TryGetInt32(out var cached)
+            return ServerTimings.TryCached(root, out var cached)
                 && root.TryGetProperty("prompt_n", out var p) && p.TryGetInt32(out var fresh)
                 ? new ContextCache(cached, fresh) : null;
         }

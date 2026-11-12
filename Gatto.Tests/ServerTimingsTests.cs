@@ -65,4 +65,41 @@ public class ServerTimingsTests
     [InlineData(null)]
     public void ONLY_A_READ_THAT_REUSED_NOTHING_IS_COLD(string? timings) =>
         Assert.Null(ServerTimings.ColdPrompt(timings));
+
+    //the loss is the previous prompt less what the slot still held, so a reader that returns the previous count fails the second case
+    [Theory]
+    [InlineData(0, 22051)]
+    [InlineData(1512, 20539)]
+    public void THE_LOSS_IS_THE_PREVIOUS_PROMPT_LESS_THE_CACHED_COUNT(int cached, int lost) =>
+        Assert.Equal(lost, ServerTimings.Lost(22051, $$"""{"cache_n":{{cached}},"prompt_n":22166,"prompt_ms":128000}"""));
+
+    //a slot that held the whole previous prompt, or more since it also keeps the reply, lost nothing
+    [Theory]
+    [InlineData(22051)]
+    [InlineData(22143)]
+    public void A_SLOT_THAT_HELD_THE_PREVIOUS_PROMPT_LOST_NOTHING(int cached) =>
+        Assert.Null(ServerTimings.Lost(22051, $$"""{"cache_n":{{cached}},"prompt_n":92,"prompt_ms":600}"""));
+
+    //no cache_n is nothing measured, whatever else the timings hold
+    [Theory]
+    [InlineData(null)]
+    [InlineData("")]
+    [InlineData("not json at all")]
+    [InlineData("""{"prompt_n":22166,"prompt_ms":128000}""")]
+    [InlineData("""{"cache_n":"0","prompt_n":22166}""")]
+    public void TIMINGS_WITHOUT_A_CACHED_COUNT_MEASURE_NO_LOSS(string? timings) =>
+        Assert.Null(ServerTimings.Lost(22051, timings));
+
+    [Fact]
+    public void THE_CACHED_COUNT_IS_CACHE_N() =>
+        Assert.Equal(7058, ServerTimings.Cached("""{"cache_n":7058,"prompt_n":52,"prompt_ms":4388}"""));
+
+    [Theory]
+    [InlineData(null)]
+    [InlineData("")]
+    [InlineData("not json at all")]
+    [InlineData("""{"prompt_n":22166,"prompt_ms":128000}""")]
+    [InlineData("""{"cache_n":"0","prompt_n":22166}""")]
+    public void TIMINGS_WITHOUT_A_NUMBER_FOR_CACHE_N_HOLD_NO_COUNT(string? timings) =>
+        Assert.Null(ServerTimings.Cached(timings));
 }

@@ -146,6 +146,57 @@ public sealed class ToolStackTests
         Assert.Equal(["● shell git log --oneline -5", Waiting("○ shell dotnet build --nologo"), Waiting("○ shell dotnet test --nologo")], ToolRows(w.P, 120, 30));
     }
 
+    private static List<string> ToolRegion(ChromePainter p, int width, int height) =>
+        Chrome(p, width, height).Where(r => r.Region == ChromeRegion.Tool).Select(r => r.Visible.TrimEnd()).ToList();
+
+    //a waiting call stands on its own blank as its committed block will, above the call being written and under the running one
+    [Fact]
+    public void EACH_WAITING_CALL_HAS_A_BLANK_ABOVE_IT()
+    {
+        var w = Wire(120, 30);
+        var calls = Calls(Four);
+        w.R.BeginTurn();
+        Stream(w.R, calls[0], 0);
+        Stream(w.R, calls[1], 1);
+        w.R.OnToolCallDelta("shell", FirstFragment(calls[2]), 2);
+        Assert.Equal(["", Waiting("○ shell git status --short"), "", Waiting("○ shell git log --oneline -5"), "", "● shell dotne"],
+            ToolRegion(w.P, 120, 30));
+
+        Stream(w.R, calls[2], 2);
+        Stream(w.R, calls[3], 3);
+        ((ITurnObserver)w.R).OnToolCallsRecorded(calls);
+        w.R.OnToolCallStart(calls[0]);
+        w.R.OnToolResult(calls[0], new ToolResult("M  a.cs", Gloss: "exit 0"));
+        Assert.Equal(["", Waiting("○ shell git log --oneline -5"), "", Waiting("○ shell dotnet build --nologo"), "", Waiting("○ shell dotnet test --nologo")],
+            ToolRegion(w.P, 120, 30));
+
+        w.R.OnToolCallStart(calls[1]);
+        Assert.Equal(["", "● shell git log --oneline -5", "", Waiting("○ shell dotnet build --nologo"), "", Waiting("○ shell dotnet test --nologo")],
+            ToolRegion(w.P, 120, 30));
+    }
+
+    //the folded count keeps the blank its first call had, so it never touches the running call above it
+    [Fact]
+    public void THE_FOLDED_COUNT_KEEPS_ITS_BLANK()
+    {
+        var w = Wire(120, 30);
+        var calls = Calls(Four);
+        w.R.BeginTurn();
+        for (var i = 0; i < calls.Length; i++) Stream(w.R, calls[i], i);
+        ((ITurnObserver)w.R).OnToolCallsRecorded(calls);
+        w.R.OnToolCallStart(calls[0]);
+        w.P.SetPanel(EditPrompt);
+        for (var h = 40; h >= 12; h--)
+        {
+            var rows = ToolRegion(w.P, 120, h);
+            var at = rows.IndexOf("  3 calls waiting");
+            if (at < 0) continue;
+            Assert.Equal("", rows[at - 1]);
+            return;
+        }
+        Assert.Fail("no height folded the stack");
+    }
+
     //a shell stand-in: the first call warns while it runs, the second is the prompt the user stops with Esc
     private sealed class EscAtTheSecond(StreamRenderer r, CancellationTokenSource cts) : ITool
     {
@@ -489,7 +540,7 @@ public sealed class ToolStackTests
 
     //the stack's rows are reserved like the live row's, so a tall composer windows itself before the clamp folds the stack
     [Theory]
-    [InlineData(14)]
+    [InlineData(15)]
     [InlineData(18)]
     [InlineData(24)]
     public void A_TALL_COMPOSER_LEAVES_THE_STACK_ITS_ROWS(int height)

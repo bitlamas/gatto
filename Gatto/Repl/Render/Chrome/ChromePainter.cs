@@ -401,7 +401,7 @@ public sealed class ChromePainter
         //a panel over the live call may take that call's rows, which repeat what the prompt shows, and the clamp drops them when it does
         if (State.PanelUp) return n + NewestQueuedMessageReservation(width, height);
         if (State.Tool is not null) n += 2 + (State.ToolProgress is not null ? 1 : 0);            //two rows, a blank and the tool bullet, plus one more for the progress row
-        if (State.Waiting.Count > 0) n += State.Waiting.Count + (State.Tool is null ? 1 : 0);       //a row per waiting call, and the stack's own blank when no call is live
+        n += 2 * State.Waiting.Count;                                                            //two rows per waiting call, a blank and the call, as each committed block stands
         if (State.Tool is { } live && live.Name == "shell" && State.ToolInput is { } liveCommand)   //the live shell rows past the bullet, and the wait row under them
             n += ShellBlockRender.Layout(ShellBlockInput.Live(liveCommand, RoleForTint, null), ShellBlockState.Closed, width, _theme, _glyphs).Rows.Count - 1 + (State.ToolWait is not null ? 1 : 0);
         n += NewestQueuedMessageReservation(width, height);
@@ -548,6 +548,8 @@ public sealed class ChromePainter
         //a waiting call's row is the header its block commits with, the ring and the word dim and steady, and the word wins the room as the wait suffix does
         void WaitingRow((string Name, string Args) call)
         {
+            if (fixedRows.Count > 0 && fixedRows[^1].V.Length > 0)   //a blank above each call as its committed block has, unless the row above already is one
+                fixedRows.Add(("", "", "waiting", ChromeRegion.Tool, NextRow(ChromeRegion.Tool)));
             var ring = ItemRender.ToolMarkerOf(_glyphs);
             var word = $"{_glyphs.Dot} waiting";
             var wordR = " " + _theme.Paint(word, Theme.Dim);
@@ -579,6 +581,8 @@ public sealed class ChromePainter
             //the blank above the live tool bullet separates it from the transcript above, tagged so the clamp drops it with the tool
             fixedRows.Add(("", "", "tool", ChromeRegion.Tool, NextRow(ChromeRegion.Tool)));
             for (var k = 0; k < above; k++) WaitingRow(waiting[k]);
+            if (above > 0)   //the live call's own blank under the stack, kept while the count stands and dropped with it
+                fixedRows.Add(("", "", "folded", ChromeRegion.Tool, NextRow(ChromeRegion.Tool)));
             //the off phase paints a space in the dot cell, the row repaints every tick so alignment holds
             var dot = State.BlinkOn ? _theme.Paint(ItemRender.ToolMarkerOf(_glyphs), _theme.RoleTint(RoleForTint)) : " ";
             var args = t.Args;
@@ -753,6 +757,11 @@ public sealed class ChromePainter
                     var v = GutterWrap.Hang + Gatto.Core.Plural.Of(waiting.Count, "call") + " waiting";
                     fixedRows.Insert(at, (_theme.Paint(v, Theme.Dim), v, "folded", ChromeRegion.Tool, at));
                     overflow++;
+                    if (at > 0 && fixedRows[at - 1].V.Length > 0)   //the count keeps the blank its first call had
+                    {
+                        fixedRows.Insert(at, ("", "", "folded", ChromeRegion.Tool, at));
+                        overflow++;
+                    }
                 }
             }
 

@@ -884,4 +884,37 @@ public class EndToEndTests : IDisposable
         var seen = ToolResultIn(server.RequestBodies[2]);
         Assert.Equal(Named(Assert.Single(SessionFiles())), seen);
     }
+
+    //a parent request that lost its prefix after a subagent says so on stderr, and the outcome line is the one a plain run writes
+    [Fact]
+    public async Task A_ONE_SHOT_STATES_THE_TOKENS_READ_AGAIN_AFTER_A_SUBAGENT()
+    {
+        await using var server = new FakeOpenAiServer();
+        Configure(server, ",\"auto_compact\": false");   //the reported 22,051 is far above the fake window, and a compaction would spend the parent's next reply
+        File.WriteAllText(Path.Combine(_home, "roles", "helper.json"),
+            "{\"description\":\"answers\",\"tools\":[\"shell\"],\"turns\":3,\"append\":\"You are helper.\"}");
+        server.Enqueue(new FakeResponse(Frames: new[]
+        {
+            ToolCallChunk("c1", "run_agent", new { role = "helper", task = "answer" }),
+            "data: {\"choices\":[{\"index\":0,\"delta\":{},\"finish_reason\":\"tool_calls\"}],\"usage\":{\"prompt_tokens\":22051,\"completion_tokens\":10},\"timings\":{\"cache_n\":1990,\"prompt_n\":20061,\"prompt_ms\":1000}}\n\n",
+            "data: [DONE]\n\n",
+        }));
+        server.Enqueue(Says("the helper is done"));
+        server.Enqueue(new FakeResponse(Frames: new[]
+        {
+            Chunk("{\"content\":\"done\"}"),
+            "data: {\"choices\":[{\"index\":0,\"delta\":{},\"finish_reason\":\"stop\"}],\"timings\":{\"cache_n\":0,\"prompt_n\":22100,\"prompt_ms\":1000}}\n\n",
+            "data: [DONE]\n\n",
+        }));
+        var stderr = new StringWriter();
+        Console.SetError(stderr);
+
+        var exit = await GattoApp.RunAsync(new[] { "-p", "ask the helper" });
+
+        Assert.True(exit == 0, stderr.ToString());
+        Assert.Equal(3, server.RequestCount);
+        Assert.Contains("! re-read 22,051 tokens after run_agent", stderr.ToString(), StringComparison.Ordinal);
+        using var doc = JsonDocument.Parse(stderr.ToString().Split('\n', StringSplitOptions.RemoveEmptyEntries).Last().Trim());
+        Assert.Equal("completed", doc.RootElement.GetProperty("outcome").GetString());
+    }
 }

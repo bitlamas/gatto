@@ -142,7 +142,7 @@ public sealed class RunAgentTool : ITool
         var gloss = GlossOf(role.Name, rounds, sw.Elapsed, _marks);
         //the warning row never shows for a sub-agent, so the gloss line is the only place a strip count can appear
         if (stripped > 0) gloss += $" {_marks.Dot} stripped {stripped}";
-        return new ToolResult(text, Gloss: gloss);
+        return new ToolResult(text, Gloss: gloss) { Prompted = true };   //every result here came through the child's turn, which prompts the server or was cancelled first
     }
 
     internal static string GlossOf(string name, long rounds, TimeSpan elapsed, EngineMarks marks) =>

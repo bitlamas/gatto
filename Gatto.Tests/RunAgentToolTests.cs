@@ -168,6 +168,7 @@ public sealed class RunAgentToolTests : IDisposable
         Assert.NotNull(result.Gloss);
         Assert.StartsWith("helper · 2 turns · ", result.Gloss);
         Assert.EndsWith("s", result.Gloss);
+        Assert.True(result.Prompted);
     }
 
     //the subagent gloss pluralizes per round and is built apart from the tool's own, so a one-round run must read '1 turn'
@@ -185,6 +186,7 @@ public sealed class RunAgentToolTests : IDisposable
         Assert.StartsWith("helper · 1 turn · ", result.Gloss);
         //match any duration here, including sub-second ones, the elapsed time is never the same twice
         Assert.Matches(@"^helper · 1 turn · (<1s|[1-9]\d*s)$", result.Gloss);
+        Assert.True(result.Prompted);   //the child sent its request to the session's server
     }
 
     [Fact]
@@ -218,6 +220,7 @@ public sealed class RunAgentToolTests : IDisposable
         Assert.False(result.IsError);
         Assert.StartsWith("[run_agent: response truncated — partial result]\n", result.Text);
         Assert.DoesNotContain("turn limit", result.Text);
+        Assert.True(result.Prompted);   //the request went out before the stream dropped
     }
 
     [Fact]
@@ -240,6 +243,7 @@ public sealed class RunAgentToolTests : IDisposable
         var (_, result) = obs.Results.Single();
         Assert.True(result.IsError);
         Assert.Equal("no role named 'x' — available: alpha, beta", result.Text);
+        Assert.False(result.Prompted);   //the loop's error result for a throw carries no flag
     }
 
     [Fact]
@@ -264,6 +268,7 @@ public sealed class RunAgentToolTests : IDisposable
         Assert.True(result.IsError);
         Assert.Equal(why, result.Text);
         Assert.Equal(0, child.RequestCount);
+        Assert.False(result.Prompted);
     }
 
     [Fact]
