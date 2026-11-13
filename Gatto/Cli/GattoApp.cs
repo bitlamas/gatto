@@ -754,13 +754,6 @@ public static class GattoApp
         //run for the launch resolution and again when the launch arms the model a server already holds
         private void Adopt(RoleResolution r)
         {
-            //set from the launch resolution only, so a refused /role and a later /effort cannot change what shell children read
-            if (!bare)
-            {
-                Environment.SetEnvironmentVariable("GATTO_ENDPOINT", r.EndpointName);
-                Environment.SetEnvironmentVariable("GATTO_MODEL", r.ModelString);
-                Environment.SetEnvironmentVariable("GATTO_EFFORT", EffortSwitch.Name(r.Comp.Thinking));
-            }
             state.Role = r.Role;
             state.Model = r.Model;
             state.Endpoint = r.Endpoint;
@@ -770,6 +763,8 @@ public static class GattoApp
             //the prefix RecomposeSystem falls back to when a mid-session .gatto.json edit is malformed, so it holds the last one that composed
             state.LastComposedSystem = state.Comp.SystemText;
             state.LastComposedSources = state.Comp.Sources;
+            //the launch and every committed switch write the three shell variables through the one helper, and a refused switch never reaches it
+            state.AdoptEnvironment();
         }
 
         private void RegisterTools()

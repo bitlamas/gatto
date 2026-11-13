@@ -1755,6 +1755,139 @@ public class GattoAppTests : IDisposable
         Assert.Contains("effort: low", output);
     }
 
+    //the three variables a shell child reads follow a committed /effort, /model or /role, and stay as they were when the command is refused
+
+    [Fact]
+    public async Task EffortSwitch_MovesGattoEffortForAShellChild()
+    {
+        //a shell child reads the launch's level, /effort moves one level, and the child must read the new one
+        UseHome();
+        WriteConfig("""{"endpoints":{"local":{"base_url":"http://127.0.0.1:65533"}},"default_endpoint":"local","default_model":"levels-model"}""");
+        WriteModel("levels-model", port: 65533, profileExtra: "\"thinking\":{\"low\":{},\"medium\":{},\"high\":{}}");
+        WriteRole("generalist", "{}");
+
+        Console.SetIn(new StringReader("/effort high\n/quit\n"));
+        var stdout = new StringWriter();
+        Console.SetOut(stdout);
+        using var probeRoom = GattoApp.ProbeDeadlineScope(TimeSpan.FromMilliseconds(100));   //nothing listens on this port and windows retries a refused connect for 2 s, so the probes give up at once
+        var exit = await GattoApp.RunAsync(Array.Empty<string>());
+
+        Assert.Equal(0, exit);
+        Assert.Contains("effort: high", stdout.ToString());
+        Assert.Equal("high", Environment.GetEnvironmentVariable("GATTO_EFFORT"));
+        Assert.Equal("levels-model", Environment.GetEnvironmentVariable("GATTO_MODEL"));
+        Assert.Equal("local", Environment.GetEnvironmentVariable("GATTO_ENDPOINT"));
+    }
+
+    [Fact]
+    public async Task RefusedEffort_KeepsGattoEffortForAShellChild()
+    {
+        //a level the switch does not know is refused, the variable keeps the name the launch wrote
+        UseHome();
+        WriteConfig("""{"endpoints":{"local":{"base_url":"http://127.0.0.1:65533"}},"default_endpoint":"local","default_model":"levels-model"}""");
+        WriteModel("levels-model", port: 65533, profileExtra: "\"thinking\":{\"low\":{},\"medium\":{},\"high\":{}}");
+        WriteRole("generalist", "{}");
+
+        Console.SetIn(new StringReader("/effort turbo\n/quit\n"));
+        var stdout = new StringWriter();
+        Console.SetOut(stdout);
+        using var probeRoom = GattoApp.ProbeDeadlineScope(TimeSpan.FromMilliseconds(100));   //nothing listens on this port and windows retries a refused connect for 2 s, so the probes give up at once
+        var exit = await GattoApp.RunAsync(Array.Empty<string>());
+
+        Assert.Equal(0, exit);
+        Assert.DoesNotContain("effort: turbo, saved", stdout.ToString());
+        Assert.Equal("medium", Environment.GetEnvironmentVariable("GATTO_EFFORT"));
+        Assert.Equal("levels-model", Environment.GetEnvironmentVariable("GATTO_MODEL"));
+        Assert.Equal("local", Environment.GetEnvironmentVariable("GATTO_ENDPOINT"));
+    }
+
+    [Fact]
+    public async Task ModelSwitch_MovesGattoModelForAShellChild()
+    {
+        UseHome();
+        WriteConfig("""{"endpoints":{"local":{"base_url":"http://127.0.0.1:65533"}},"default_endpoint":"local","default_model":"plain-model"}""");
+        WriteModel("plain-model", port: 65533);   //this profile declares no thinking map.
+        WriteModel("thinky-model", port: 65533,
+            profileExtra: "\"thinking\":{\"medium\":{\"chat_template_kwargs\":{\"enable_thinking\":true}}}");
+        WriteRole("generalist", "{}");
+
+        Console.SetIn(new StringReader("/model thinky-model\n/quit\n"));
+        var stdout = new StringWriter();
+        Console.SetOut(stdout);
+        using var probeRoom = GattoApp.ProbeDeadlineScope(TimeSpan.FromMilliseconds(100));   //nothing listens on this port and windows retries a refused connect for 2 s, so the probes give up at once
+        var exit = await GattoApp.RunAsync(Array.Empty<string>());
+
+        Assert.Equal(0, exit);
+        Assert.Contains("model: thinky-model", stdout.ToString());
+        Assert.Equal("thinky-model", Environment.GetEnvironmentVariable("GATTO_MODEL"));
+        Assert.Equal("local", Environment.GetEnvironmentVariable("GATTO_ENDPOINT"));
+    }
+
+    [Fact]
+    public async Task RefusedModelSwitch_KeepsGattoModelForAShellChild()
+    {
+        //a name no shelf holds is refused, the variable keeps the id the launch wrote
+        UseHome();
+        WriteConfig("""{"endpoints":{"local":{"base_url":"http://127.0.0.1:65533"}},"default_endpoint":"local","default_model":"plain-model"}""");
+        WriteModel("plain-model", port: 65533);
+        WriteRole("generalist", "{}");
+
+        Console.SetIn(new StringReader("/model gamma-model\n/quit\n"));
+        var stdout = new StringWriter();
+        Console.SetOut(stdout);
+        using var probeRoom = GattoApp.ProbeDeadlineScope(TimeSpan.FromMilliseconds(100));   //nothing listens on this port and windows retries a refused connect for 2 s, so the probes give up at once
+        var exit = await GattoApp.RunAsync(Array.Empty<string>());
+
+        Assert.Equal(0, exit);
+        Assert.Equal("plain-model", Environment.GetEnvironmentVariable("GATTO_MODEL"));
+        Assert.Equal("local", Environment.GetEnvironmentVariable("GATTO_ENDPOINT"));
+    }
+
+    [Fact]
+    public async Task RoleSwitch_MovesGattoEffortForAShellChild()
+    {
+        //the role asks for a level the launch never ran, the committed switch moves the variable through the model's map
+        UseHome();
+        WriteConfig("""{"endpoints":{"local":{"base_url":"http://127.0.0.1:65533"}},"default_endpoint":"local","default_model":"levels-model"}""");
+        WriteModel("levels-model", port: 65533, profileExtra: "\"thinking\":{\"low\":{},\"medium\":{},\"high\":{}}");
+        WriteRole("generalist", "{}");
+        WriteRole("coder", "{\"thinking\":\"high\"}");
+
+        Console.SetIn(new StringReader("/role coder\n/quit\n"));
+        var stdout = new StringWriter();
+        Console.SetOut(stdout);
+        using var probeRoom = GattoApp.ProbeDeadlineScope(TimeSpan.FromMilliseconds(100));   //nothing listens on this port and windows retries a refused connect for 2 s, so the probes give up at once
+        var exit = await GattoApp.RunAsync(Array.Empty<string>());
+
+        Assert.Equal(0, exit);
+        Assert.Contains("role: coder", stdout.ToString());
+        Assert.Equal("high", Environment.GetEnvironmentVariable("GATTO_EFFORT"));
+        Assert.Equal("levels-model", Environment.GetEnvironmentVariable("GATTO_MODEL"));
+    }
+
+    [Fact]
+    public async Task RefusedRoleSwitch_KeepsTheThreeShellVariablesForAShellChild()
+    {
+        //a role on another address is refused before anything moves, so all three variables keep the launch's values
+        UseHome();
+        WriteConfig("""{"endpoints":{"local":{"base_url":"http://127.0.0.1:65533"},"far":{"base_url":"http://127.0.0.1:65532"}},"default_endpoint":"local","default_model":"levels-model"}""");
+        WriteModel("levels-model", port: 65533, profileExtra: "\"thinking\":{\"low\":{},\"medium\":{},\"high\":{}}");
+        WriteRole("generalist", "{}");
+        WriteRole("far-role", "{\"endpoint\":\"far\",\"model\":\"levels-model\"}");
+
+        Console.SetIn(new StringReader("/role far-role\n/quit\n"));
+        var stdout = new StringWriter();
+        Console.SetOut(stdout);
+        using var probeRoom = GattoApp.ProbeDeadlineScope(TimeSpan.FromMilliseconds(100));   //nothing listens on this port and windows retries a refused connect for 2 s, so the probes give up at once
+        var exit = await GattoApp.RunAsync(Array.Empty<string>());
+
+        Assert.Equal(0, exit);
+        Assert.Contains("Restart gatto", stdout.ToString());
+        Assert.Equal("local", Environment.GetEnvironmentVariable("GATTO_ENDPOINT"));
+        Assert.Equal("levels-model", Environment.GetEnvironmentVariable("GATTO_MODEL"));
+        Assert.Equal("medium", Environment.GetEnvironmentVariable("GATTO_EFFORT"));
+    }
+
     //a model switch must reassign the chip from the new thinking map. a stale chip advertises a level that is never sent, and bare /effort shows it
 
     [Fact]

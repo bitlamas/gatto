@@ -403,6 +403,15 @@ internal sealed class LaunchState(
         return new ComposedSystem(LastComposedSystem, NextBaseline(composed.Sources));
     }
 
+    //the three variables a shell child reads, rewritten only where the launch arms or a switch commits, so a refused command moves nothing
+    internal void AdoptEnvironment()
+    {
+        if (bare) return;   //a bare run writes nothing to the environment, its caller owns it
+        Environment.SetEnvironmentVariable("GATTO_ENDPOINT", EndpointName);
+        Environment.SetEnvironmentVariable("GATTO_MODEL", ModelString);
+        Environment.SetEnvironmentVariable("GATTO_EFFORT", EffortSwitch.Name(Comp.Thinking));
+    }
+
     //re-runs the launch precedence and moves the state in place, so RecomposeSystem sees the new role at the next /new
     internal RoleSwitchResult SwitchRole(string requestedName)
     {
@@ -445,6 +454,7 @@ internal sealed class LaunchState(
         if (ThinkCap == ThinkCapability.Toggle) ApplyToggle(ThinkOn);
         var switchedTint = Role.ParsedTint();
         _launchTheme?.SetRoleTint(Role.Name, switchedTint?.Dark ?? Theme.Accent, switchedTint?.Light);
+        AdoptEnvironment();   //the switch committed, so shell children read the new role's endpoint, model and level
         return new RoleSwitchResult(true, Role.Name, ModelString, Comp.SystemText, null,
             ThinkingFooterName(), NextBaseline(Comp.Sources), switchedTint, Role.Avatar, Role.FirstMessage);
     }
@@ -495,6 +505,7 @@ internal sealed class LaunchState(
                 _runAgent.UpdateContextBudget(ContextBudget);
             }
             //the system text changes only when a folder's parts came or went, else only the baseline moves so a later continue finds the model the session ended on
+            AdoptEnvironment();   //the name-only switch committed, so shell children read the new model and its level
             return new ModelSwitchResult(true, requestedModel,
                 string.Equals(systemBefore, Comp.SystemText, StringComparison.Ordinal) ? null : Comp.SystemText,
                 ContextBudget, null, null,
@@ -593,6 +604,7 @@ internal sealed class LaunchState(
         if (ThinkCap == ThinkCapability.Toggle) { ThinkOn = DefaultThinkOn(Model); ApplyToggle(ThinkOn); }
 
         //adds a line on success, since outcome.Message is null there, and outgoing names the model the session was on
+        AdoptEnvironment();   //the serving switch committed, so shell children read the new model and the level it armed
         return new ModelSwitchResult(true, outcome.ModelId, outcome.SystemText, ContextBudget,
             SwapConfirm.SwitchNotice(confirmed, outgoing?.Id, outcome.ModelId) ?? outcome.Message,
             loaded?.NCtx, ThinkingFooterName(), ThinkCap == ThinkCapability.Toggle,
@@ -708,8 +720,16 @@ internal sealed class LaunchState(
         catch (GattoConfigException ex) { return ex.Message; }
     }
 
-    //re-resolves the thinking entry at the clamped level and mutates comp, so the footer and recompose read it, and a /role resets it
+    //the entry every effort change calls, adopting the shell variables once the level has landed so a refused one moves nothing
     internal EffortResult SetEffort(string levelArg, bool persist)
+    {
+        var landed = ApplyEffortLevel(levelArg, persist);
+        if (landed.Success) AdoptEnvironment();
+        return landed;
+    }
+
+    //re-resolves the thinking entry at the clamped level and mutates comp, so the footer and recompose read it, and a /role resets it
+    private EffortResult ApplyEffortLevel(string levelArg, bool persist)
     {
         try
         {
@@ -841,7 +861,7 @@ internal sealed class LaunchState(
             : stored.Level;
         if (level is null) return;
         if (SetEffort(level, false).Thinking is { } applied) resumed.SetThinking(applied);
-        Environment.SetEnvironmentVariable("GATTO_EFFORT", EffortSwitch.Name(Comp.Thinking));
+        AdoptEnvironment();   //a replay states its own thinking whatever the effort switch answered, so the write runs either way
     }
 
     //the model's own instructions as the composition holds them, for the note that says they changed
