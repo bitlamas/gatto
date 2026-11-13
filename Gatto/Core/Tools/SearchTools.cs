@@ -116,6 +116,7 @@ public sealed class GlobTool : ITool
         var pattern = ToolArgs.RequiredString(args, "pattern");
         var root = ToolArgs.Resolve(ctx,
             args.TryGetProperty("root", out var r) && r.ValueKind == JsonValueKind.String ? r.GetString()! : ".");
+        if (File.Exists(root)) throw new ArgumentException($"root is a file, not a folder: {root}");   //glob lists what a folder holds, and a file named as root exists, so it is not reported missing
         if (!Directory.Exists(root)) throw new ArgumentException($"root not found: {root}");
         var regex = Globbing.ToRegex(pattern);
         var matches = new List<string>();
@@ -152,22 +153,28 @@ public sealed class GrepTool : ITool
         catch (ArgumentException ex) { throw new ArgumentException($"invalid regex: {ex.Message}"); }
         var root = ToolArgs.Resolve(ctx,
             args.TryGetProperty("root", out var r) && r.ValueKind == JsonValueKind.String ? r.GetString()! : ".");
-        if (!Directory.Exists(root)) throw new ArgumentException($"root not found: {root}");
+        var single = File.Exists(root);   //a file named as root is searched alone, its rows labelled with its name
+        if (!single && !Directory.Exists(root)) throw new ArgumentException($"root not found: {root}");
         Regex? fileFilter = null;
+        string? glob = null;
         if (args.TryGetProperty("glob", out var g) && g.ValueKind == JsonValueKind.String)
         {
-            var globStr = g.GetString()!;
+            glob = g.GetString()!;
+            var globStr = glob;
             if (!globStr.Contains('/') && !globStr.Contains('\\')) globStr = "**/" + globStr;
             fileFilter = Globbing.ToRegex(globStr);
         }
 
         var outLines = new List<string>();
         var totalChars = 0;
-        foreach (var file in Globbing.Walk(root))
+        var globMatched = false;
+        IEnumerable<string> files = single ? new[] { root } : Globbing.Walk(root);
+        foreach (var file in files)
         {
             ct.ThrowIfCancellationRequested();
-            var rel = Path.GetRelativePath(root, file);
-            if (fileFilter is not null && !fileFilter.IsMatch(rel)) continue;
+            var rel = single ? Path.GetFileName(file) : Path.GetRelativePath(root, file);
+            if (fileFilter is not null && !(single ? MatchesTail(fileFilter, file) : fileFilter.IsMatch(rel))) continue;
+            globMatched = true;
             if (Globbing.LooksBinary(file)) continue;
             string[] lines;
             try { lines = File.ReadAllLines(file); } catch { continue; }
@@ -182,7 +189,19 @@ public sealed class GrepTool : ITool
                     totalChars += row.Length;
                 }
         }
+        //a glob that matched no file gets its own answer, never the one for a pattern absent from files
+        if (!globMatched && glob is not null)
+            return Task.FromResult(new ToolResult($"no file under the root matches the glob {glob}", Gloss: Plural.Of(0, "file")));
         return Task.FromResult(new ToolResult(Globbing.Capped(outLines), Gloss: Plural.Of(outLines.Count, "match", "matches")));
+    }
+
+    //a file root has no path below it, so the glob is tried on each ending of its path, its name alone included
+    private static bool MatchesTail(Regex filter, string path)
+    {
+        var parts = path.Split(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
+        for (var i = parts.Length - 1; i >= 0; i--)
+            if (filter.IsMatch(string.Join(Path.DirectorySeparatorChar, parts[i..]))) return true;
+        return false;
     }
 
     //all three bounds matter, a match count cap alone still lets a few enormous lines through

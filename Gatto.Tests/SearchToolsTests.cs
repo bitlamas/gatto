@@ -210,6 +210,79 @@ public class SearchToolsTests : IDisposable
         Assert.Contains("root not found", ex.Message);
     }
 
+    //a file named as root is searched alone and its rows carry its name
+    [Fact]
+    public async Task Grep_with_a_file_as_root_searches_that_file()
+    {
+        Seed();
+        var r = await new GrepTool().ExecuteAsync(Args(new { pattern = "findme", root = Path.Combine("src", "deep", "b.cs") }), Ctx, default);
+        Assert.Equal("b.cs:1: class B { // findme", r.Text);
+        Assert.Equal("1 match", r.Gloss);
+    }
+
+    //a pattern absent from the file named as root is the plain no matches
+    [Fact]
+    public async Task Grep_with_a_file_as_root_and_no_hit_answers_no_matches()
+    {
+        Seed();
+        var r = await new GrepTool().ExecuteAsync(Args(new { pattern = "absent", root = "readme.md" }), Ctx, default);
+        Assert.Equal(Globbing.NoMatches, r.Text);
+    }
+
+    //glob lists what a folder holds, so a file as root is refused by name instead of as missing
+    [Fact]
+    public async Task Glob_with_a_file_as_root_says_the_root_is_a_file()
+    {
+        Seed();
+        var ex = await Assert.ThrowsAsync<ArgumentException>(() => new GlobTool().ExecuteAsync(Args(new { pattern = "*", root = "readme.md" }), Ctx, default));
+        Assert.StartsWith("root is a file, not a folder: ", ex.Message);
+        Assert.DoesNotContain("root not found", ex.Message);
+    }
+
+    //a glob naming a file that does not exist is told apart from a pattern found in no file
+    [Fact]
+    public async Task Grep_with_a_glob_that_matches_no_file_names_the_glob()
+    {
+        Seed();
+        var r = await new GrepTool().ExecuteAsync(Args(new { pattern = "findme", glob = "src/missing.cs" }), Ctx, default);
+        Assert.Equal("no file under the root matches the glob src/missing.cs", r.Text);
+        Assert.Equal("0 files", r.Gloss);
+    }
+
+    //a glob that matched files where the pattern is absent keeps the plain no matches
+    [Fact]
+    public async Task Grep_with_a_glob_that_matches_files_but_no_line_answers_no_matches()
+    {
+        Seed();
+        var r = await new GrepTool().ExecuteAsync(Args(new { pattern = "absent", glob = "*.cs" }), Ctx, default);
+        Assert.Equal(Globbing.NoMatches, r.Text);
+        Assert.Equal("0 matches", r.Gloss);
+    }
+
+    //a glob is matched against the name of a file named as root, and a miss names the glob
+    [Fact]
+    public async Task Grep_with_a_file_as_root_and_a_glob_that_misses_it_names_the_glob()
+    {
+        Seed();
+        var hit = await new GrepTool().ExecuteAsync(Args(new { pattern = "findme", root = "readme.md", glob = "*.md" }), Ctx, default);
+        Assert.Equal("readme.md:1: # findme", hit.Text);
+        var miss = await new GrepTool().ExecuteAsync(Args(new { pattern = "findme", root = "readme.md", glob = "*.cs" }), Ctx, default);
+        Assert.Equal("no file under the root matches the glob *.cs", miss.Text);
+    }
+
+    //a glob with a slash is tried on the endings of a file root's path, so the path the model wrote for the file still hits
+    [Theory]
+    [InlineData("src/deep/b.cs", true)]
+    [InlineData("deep/*.cs", true)]
+    [InlineData("**/deep/b.cs", true)]
+    [InlineData("other/b.cs", false)]
+    public async Task Grep_with_a_file_as_root_matches_a_slashed_glob_on_the_ends_of_its_path(string glob, bool hits)
+    {
+        Seed();
+        var r = await new GrepTool().ExecuteAsync(Args(new { pattern = "findme", root = Path.Combine("src", "deep", "b.cs"), glob }), Ctx, default);
+        Assert.Equal(hits ? "b.cs:1: class B { // findme" : $"no file under the root matches the glob {glob}", r.Text);
+    }
+
     [Fact]
     public async Task Grep_SlashlessGlob_MatchesNestedFiles()
     {
