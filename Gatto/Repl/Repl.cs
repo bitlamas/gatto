@@ -376,7 +376,7 @@ public sealed partial class Repl(
     {
         SetReasoningPassthrough(observer, true);             //the dimmed summary is not reasoning
         string? summary;
-        var compactor = new Compactor(client, modelName, loop.RequestShape, loop.Trace);
+        var compactor = new Compactor(client, modelName, loop.RequestShape, loop.Trace, keepRejectedIn: sessions);
         try
         {
             summary = await compactor.SummarizeAsync(
@@ -384,7 +384,7 @@ public sealed partial class Repl(
                 reason: reason.ToString(), traceParent: traceParent);
         }
         finally { SetReasoningPassthrough(observer, false); }
-        _lastAutoCompactFailure = compactor.LastFailure;     //the loop's line names it when the summary is null
+        _lastAutoCompactFailure = compactor.LastFailure;   //the loop's line names it when the summary is null, with the kept replies' location inside only when no warning named it first
         if (summary is null) return null;                    //nothing is touched, the summarizer call was the only fallible work
 
         //all fallible work done, adopt atomically from here

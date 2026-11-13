@@ -77,7 +77,7 @@ public sealed class ResumeUpdateWiringTests : IDisposable
     public async Task The_summary_request_holds_the_update_ahead_of_the_typed_text()
     {
         var client = new FakeChatClient();
-        client.EnqueueTurn(new StreamEvent.TextDelta("the summary"), new StreamEvent.Finished("stop", null));
+        client.EnqueueTurn(new StreamEvent.TextDelta("Immediate next step: the summary"), new StreamEvent.Finished("stop", null));   //a reply with a heading, a bare one would take the second attempt
         var convo = new Conversation("sys");
         convo.SetPendingUpdate(Update("UPDATE 5e2d"));
         convo.AddUser("typed");

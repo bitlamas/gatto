@@ -60,6 +60,36 @@ public class SessionStoreTests : IDisposable
         Assert.Equal(1, new SessionStore(_home, _cwd).CountForCwd());                 //only the session is counted, the sidecar is left out
     }
 
+    //a rejected reply is kept only once a session file exists, no orphan a sweep could miss is ever written
+    [Fact]
+    public void KeepRejectedSummary_writes_nothing_before_the_first_save()
+    {
+        var store = new SessionStore(_home, _cwd);   //unsaved
+        Assert.Null(store.KeepRejectedSummary("x", "from the shortened copy"));
+        Assert.False(Directory.Exists(Path.Combine(_home, "sessions")));
+    }
+
+    //each rejection is appended under a line naming its attempt, and the plain-text file stays out of the session lists
+    [Fact]
+    public void KeepRejectedSummary_appends_under_attempt_lines_and_stays_out_of_the_session_list()
+    {
+        var store = new SessionStore(_home, _cwd);
+        var convo = new Conversation("sys");
+        convo.AddUser("go");
+        store.Save(convo);
+
+        var path = store.KeepRejectedSummary("the first rejection", "beside the whole conversation");
+        Assert.Equal(SessionFiles.RejectedText(store.CurrentPath!), path);
+        Assert.Equal(path, store.KeepRejectedSummary("the second rejection", "from the shortened copy"));
+
+        var text = File.ReadAllText(path!);
+        Assert.Contains("=== rejected reply beside the whole conversation ===\nthe first rejection", text);
+        Assert.Contains("=== rejected reply from the shortened copy ===\nthe second rejection", text);
+        Assert.True(text.IndexOf("first rejection") < text.IndexOf("second rejection"));   //appended, not overwritten
+        Assert.Equal(1, store.CountForCwd());
+        Assert.Equal(store.CurrentPath!, store.LatestPathForCwd());
+    }
+
     //a /context event can be written before the system record, so line 1 is not the system record and a read by position gets nothing
     [Fact]
     public void The_system_record_is_found_by_role_not_by_line()

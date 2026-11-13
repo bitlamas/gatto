@@ -72,7 +72,7 @@ file sealed class OneShotCompaction(
     public async Task<CompactionResult?> CompactAsync(
         CompactionReason reason, TurnSoFar turn, ITurnObserver observer, long traceParent, CancellationToken ct)
     {
-        var compactor = new Compactor(client, model, loop.RequestShape, loop.Trace);
+        var compactor = new Compactor(client, model, loop.RequestShape, loop.Trace, keepRejectedIn: sessions);
         var summary = await compactor.SummarizeAsync(convo, observer, ct, windowTokens: window, ratio: usage.Ratio, midTurn: true,
             reason: reason.ToString(), traceParent: traceParent);
         LastFailure = compactor.LastFailure;

@@ -343,7 +343,8 @@ public sealed partial class Repl
             convo, observer, ct, windowTokens: contextBudget, doNotRepeat: doNotRepeat);
         if (rawSummary is null)
         {
-            observer.OnWarning("compact failed — session unchanged");
+            //a rejected reply is kept beside the session file by the compactor itself, and this line names where when no earlier line of this compaction did
+            observer.OnWarning("compact failed — session unchanged" + compactor.KeepLocationOnce());
             return null;                              //null tells the caller to abort, the old session stays live
         }
         //project memory banks here because the user chose this boundary, and the stripped text is what the rest of the method sees
@@ -386,7 +387,7 @@ public sealed partial class Repl
         SetReasoningPassthrough(renderer, true);   //the dimmed summary streams as reasoning, so the preview filter must pass it through
         try
         {
-            fresh = await CompactAsync(new Compactor(client, modelName, loop.RequestShape, loop.Trace), convo, sessions, recomposeSystem, renderer, ct,
+            fresh = await CompactAsync(new Compactor(client, modelName, loop.RequestShape, loop.Trace, keepRejectedIn: sessions), convo, sessions, recomposeSystem, renderer, ct,
                 contextBudget: contextBudget, onSummary: s => capturedSummary = s,
                 doNotRepeat: doNotRepeat,
                 bankCandidates: ex =>

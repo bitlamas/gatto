@@ -14,4 +14,8 @@ public static class SessionFiles
     //the sidecar of the given kind beside a session file
     public static string Sidecar(string sessionPath, string kind) =>
         Path.Combine(Path.GetDirectoryName(sessionPath)!, Path.GetFileNameWithoutExtension(sessionPath) + "." + kind + ".jsonl");
+
+    //the compaction replies rejected as not a summary, kept beside the session as plain text, so every session glob already leaves them out
+    public static string RejectedText(string sessionPath) =>
+        Path.Combine(Path.GetDirectoryName(sessionPath)!, Path.GetFileNameWithoutExtension(sessionPath) + ".rejected.txt");
 }

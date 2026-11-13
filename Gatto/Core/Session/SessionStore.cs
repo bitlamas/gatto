@@ -107,6 +107,26 @@ public sealed class SessionStore(string homePath, string cwd)
         WriteLines(convo.Messages.Select(m => ChatJson(m, Cwd, convo.Baseline, identity)));
     }
 
+    //appends one rejected reply to the session's rejected-text file under a line naming its attempt, every rejection of the session accumulating in that one file. null when no session file exists yet, or when the write failed
+    public string? KeepRejectedSummary(string text, string attempt)
+    {
+        try
+        {
+            lock (_saveLock)
+            {
+                if (_currentFile is not { } file) return null;
+                var path = SessionFiles.RejectedText(file);
+                var held = File.Exists(path) ? File.ReadAllText(path) : "";
+                var tmp = path + ".tmp";
+                File.WriteAllText(tmp, held + $"=== rejected reply {attempt} ===\n" + text + "\n\n");
+                File.Move(tmp, path, overwrite: true);
+                return path;
+            }
+        }
+        catch (IOException) { return null; }
+        catch (UnauthorizedAccessException) { return null; }
+    }
+
     //rewrite the session file atomically from the given JSONL lines, ordered by the caller. core knows nothing about the display records, it writes lines
     public void WriteLines(IEnumerable<string> lines)
     {

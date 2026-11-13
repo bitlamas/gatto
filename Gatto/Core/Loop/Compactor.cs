@@ -8,7 +8,7 @@ using Gatto.Core.Session;
 namespace Gatto.Core.Loop;
 
 //session compaction, by /compact or automatic: a failed summary returns null, so the caller aborts and the session stays untouched. the loop's shape keeps the summary request on the server's cache
-public sealed class Compactor(IChatClient client, string model, RequestShape? shape = null, Trace? trace = null)
+public sealed class Compactor(IChatClient client, string model, RequestShape? shape = null, Trace? trace = null, SessionStore? keepRejectedIn = null)
 {
     private readonly Trace _trace = trace ?? Trace.Off;
 
@@ -65,6 +65,27 @@ public sealed class Compactor(IChatClient client, string model, RequestShape? sh
     //why the last SummarizeAsync returned null, in words a warning line can carry, and null after a summary
     public string? LastFailure { get; private set; }
 
+    //the file beside the session holding this compaction's rejected replies, null when none was rejected or nothing could be kept
+    public string? KeptRejectedPath { get; private set; }
+
+    //the clause naming the kept file, one home for the wording, shown once per compaction: the first line after a keep takes it and later lines get an empty string
+    public string KeepLocationOnce()
+    {
+        if (KeptRejectedPath is not { } kept || keepLocationShown) return "";
+        keepLocationShown = true;
+        return $", rejected replies kept at {kept}";
+    }
+
+    //an abort may be the first line shown after a keep, so the verdict carries the clause without consuming it, a caller printing its own line may still claim it
+    private string? AbortKeepClause()
+    {
+        if (LastFailure is { } verdict && KeptRejectedPath is { } kept && !keepLocationShown)
+            LastFailure = verdict + $", rejected replies kept at {kept}";
+        return null;
+    }
+
+    private bool keepLocationShown;
+
     private const string OverflowFailure = "the summary request did not fit the context window";
 
     //the continuation directive names this heading too
@@ -107,22 +128,25 @@ public sealed class Compactor(IChatClient client, string model, RequestShape? sh
         //one prompt local, so the measured length covers the primary attempt and the harsh retry alike
         var prompt = (midTurn ? TemplatePrompt + MidTurnAddendum : TemplatePrompt) + (doNotRepeat ?? "");
         LastFailure = null;
+        KeptRejectedPath = null;
+        keepLocationShown = false;
 
         var toolTokens = (int)(ContextBudget.EstimateTools(shape?.Tools ?? []) * ratio);   //the whole attempt carries the tool definitions, the shortened copy goes without them
         //the loop's last request as sent plus what came since is the prefix the server holds, so it goes whole while the summary has room beside it
         if (Resent(convo.Messages) is { } whole
             && (windowTokens is not int fit || fit <= 0 || Measure(whole, ratio, prompt.Length) + toolTokens + SummaryRoomTokens <= fit))
         {
-            var (wholeSummary, wholeOverflowed, wholeTruncated, wholeRejected) = await TryStreamAsync(new List<ChatMessage>(whole) { new("user", prompt) }, observer, ct, withTools: true);
+            var (wholeSummary, wholeOverflowed, wholeTruncated, wholeRejected) = await TryStreamAsync(new List<ChatMessage>(whole) { new("user", prompt) }, observer, ct, withTools: true, origin: "beside the whole conversation");
             var retry = wholeRejected || (windowTokens is int && (wholeOverflowed || wholeTruncated));
             if (wholeSummary is not null || !retry || ct.IsCancellationRequested)
             {
                 if (wholeOverflowed) LastFailure = OverflowFailure;
-                return wholeSummary;
+                return wholeSummary ?? AbortKeepClause();
             }
-            observer.OnWarning(wholeRejected
+            //a rejected reply stays kept even when the shortened copy then succeeds, the recovery must not lose the earlier text
+            observer.OnWarning((wholeRejected
                 ? "the reply beside the whole conversation was not a summary — summarizing a shortened copy"
-                : "the summary did not fit beside the whole conversation — summarizing a shortened copy");
+                : "the summary did not fit beside the whole conversation — summarizing a shortened copy") + KeepLocationOnce());
             LastFailure = null;
         }
 
@@ -130,15 +154,21 @@ public sealed class Compactor(IChatClient client, string model, RequestShape? sh
             ? ShapeForSummary(convo.Messages, w, ratio, promptChars: prompt.Length)
             : convo.Messages;
 
-        var (summary, overflowed, _, _) = await TryStreamAsync(Compose(shaped, prompt), observer, ct, withTools: false);
-        if (!overflowed) return summary;
+        //a rejected reply on the shortened copy earns one second attempt, a second rejection returns null, the abort and its verdict as they always were
+        var (summary, overflowed, _, rejected) = await TryStreamAsync(Compose(shaped, prompt), observer, ct, withTools: false, origin: "from the shortened copy");
+        if (rejected && !ct.IsCancellationRequested)
+        {
+            observer.OnWarning("the reply from the shortened copy was not a summary, asking it once more" + KeepLocationOnce());
+            (summary, overflowed, _, _) = await TryStreamAsync(Compose(shaped, prompt), observer, ct, withTools: false, origin: "from the shortened copy again");
+        }
+        if (!overflowed) return summary ?? AbortKeepClause();
 
         //the summarize request itself overflowed, one harsher retry and then abort
-        if (windowTokens is not int w2 || w2 <= 0) { LastFailure = OverflowFailure; return null; }
+        if (windowTokens is not int w2 || w2 <= 0) { LastFailure = OverflowFailure; return AbortKeepClause(); }
         var (harshSummary, harshOverflowed, _, _) = await TryStreamAsync(
-            Compose(HarshShape(convo.Messages, w2, ratio, promptChars: prompt.Length), prompt), observer, ct, withTools: false);
+            Compose(HarshShape(convo.Messages, w2, ratio, promptChars: prompt.Length), prompt), observer, ct, withTools: false, origin: "from the harsh copy");
         if (harshOverflowed) LastFailure = OverflowFailure;
-        return harshOverflowed ? null : harshSummary;
+        return harshSummary ?? AbortKeepClause();
     }
 
     //the room the summary needs beside the whole conversation, its reasoning included. a summary cut short there is asked again from the shortened copy
@@ -181,7 +211,7 @@ public sealed class Compactor(IChatClient client, string model, RequestShape? sh
 
     //an overflow, a cut summary or a reply that is no summary is reported so the caller can retry on another request, every other failure returns null with no retry
     private async Task<(string? Summary, bool Overflowed, bool Truncated, bool Rejected)> TryStreamAsync(
-        List<ChatMessage> messages, ITurnObserver observer, CancellationToken ct, bool withTools)
+        List<ChatMessage> messages, ITurnObserver observer, CancellationToken ct, bool withTools, string origin)
     {
         var text = new StringBuilder();
         var shown = new ControlTokens.StreamFilter();      //the summary reaches the screen stripped, as the prefix gets it
@@ -233,6 +263,8 @@ public sealed class Compactor(IChatClient client, string model, RequestShape? sh
         if (!Headings.Any(h => summary.Contains(h, StringComparison.OrdinalIgnoreCase)))
         {
             LastFailure = "the reply holds none of the summary's headings, so it is not a summary";
+            //the verdict alone leaves nothing to diagnose, so the reply goes beside the session the moment it is rejected, even if a later attempt succeeds
+            if (keepRejectedIn?.KeepRejectedSummary(summary, origin) is { } kept) KeptRejectedPath = kept;
             return (null, false, false, true);
         }
         return (summary, false, false, false);

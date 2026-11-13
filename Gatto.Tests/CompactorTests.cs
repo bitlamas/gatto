@@ -166,18 +166,194 @@ public class CompactorTests
         Assert.Contains(observer.Warnings, w => w.Contains("shortened copy"));
     }
 
-    //a call written as text on the shortened copy fails the compaction with its reason, which turns auto-compaction off for the session
+    //a call written as text on the shortened copy earns one second attempt, and a second rejection fails with its reason, which turns auto-compaction off for the session
     [Fact]
-    public async Task A_reply_that_is_no_summary_on_the_shortened_copy_fails_and_names_why()
+    public async Task A_reply_that_is_no_summary_on_the_shortened_copy_is_asked_once_more_and_the_second_rejection_names_why()
     {
         var convo = new Conversation("s");
         convo.AddUser("go");
         var client = new ScriptedClient((_, _) => new StreamEvent[] { new StreamEvent.TextDelta(TextCall), new StreamEvent.Finished("stop", null) });
         var compactor = new Compactor(client, "m");
+        var observer = new RecordingObserver();
 
-        Assert.Null(await compactor.SummarizeAsync(convo, new NullObserver(), CancellationToken.None, windowTokens: 65_536));
-        Assert.Single(client.Requests);
-        Assert.Equal("the reply holds none of the summary's headings, so it is not a summary", compactor.LastFailure);
+        Assert.Null(await compactor.SummarizeAsync(convo, observer, CancellationToken.None, windowTokens: 65_536));
+        Assert.Equal(2, client.Requests.Count);   //the shortened copy asked twice, no third
+        Assert.Equal("the reply holds none of the summary's headings, so it is not a summary", compactor.LastFailure);   //no store, so the verdict comes alone
+        Assert.Contains(observer.Warnings, w => w.Contains("asking it once more"));
+    }
+
+    //the second attempt is only for a rejection, a shortened copy that answers with a summary is not asked again
+    [Fact]
+    public async Task A_rejection_then_a_summary_on_the_shortened_copy_returns_the_summary_after_two_requests()
+    {
+        var convo = new Conversation("s");
+        convo.AddUser("go");
+        var client = new ScriptedClient((_, n) => n == 1
+            ? new StreamEvent[] { new StreamEvent.TextDelta(TextCall), new StreamEvent.Finished("stop", null) }
+            : new StreamEvent[] { new StreamEvent.TextDelta(Summary), new StreamEvent.Finished("stop", null) });
+        var compactor = new Compactor(client, "m");
+
+        Assert.Equal(Summary, await compactor.SummarizeAsync(convo, new RecordingObserver(), CancellationToken.None, windowTokens: 65_536));
+        Assert.Equal(2, client.Requests.Count);
+    }
+
+    //both rejections of one compaction go to the file beside the session, each under a line naming its attempt, and only the retry warning names that file
+    [Fact]
+    public async Task Both_rejections_are_kept_beside_the_session_and_only_the_retry_warning_names_the_file()
+    {
+        var home = Directory.CreateTempSubdirectory("gatto-home-").FullName;
+        var cwd = Directory.CreateTempSubdirectory("gatto-cwd-").FullName;
+        try
+        {
+            var sessions = new SessionStore(home, cwd);
+            var convo = new Conversation("sys");
+            convo.AddUser("go");
+            sessions.Save(convo);
+
+            var client = new ScriptedClient((_, _) => new StreamEvent[] { new StreamEvent.TextDelta(TextCall), new StreamEvent.Finished("stop", null) });
+            var compactor = new Compactor(client, "m", keepRejectedIn: sessions);
+            var observer = new RecordingObserver();
+            Assert.Null(await compactor.SummarizeAsync(convo, observer, CancellationToken.None, windowTokens: 65_536));
+
+            var kept = SessionFiles.RejectedText(sessions.CurrentPath!);
+            Assert.StartsWith("the reply holds none of the summary's headings", compactor.LastFailure);
+            Assert.DoesNotContain("rejected replies kept at", compactor.LastFailure);   //a line before it already named the file
+            var naming = Assert.Single(observer.Warnings, w => w.Contains("rejected replies kept at"));
+            Assert.Contains("asking it once more", naming);
+            var text = File.ReadAllText(kept);
+            Assert.Contains("=== rejected reply from the shortened copy ===", text);
+            Assert.Contains("=== rejected reply from the shortened copy again ===", text);
+            Assert.Equal(2, text.Split(TextCall).Length - 1);   //both replies whole
+        }
+        finally { Directory.Delete(home, true); Directory.Delete(cwd, true); }
+    }
+
+    //the recovered case: the rejection beside the whole conversation is kept even when the shortened copy is accepted, and its warning names the file
+    [Fact]
+    public async Task A_rejection_beside_the_whole_conversation_is_kept_even_when_the_shortened_copy_is_accepted()
+    {
+        var home = Directory.CreateTempSubdirectory("gatto-home-").FullName;
+        var cwd = Directory.CreateTempSubdirectory("gatto-cwd-").FullName;
+        try
+        {
+            var sessions = new SessionStore(home, cwd);
+            var convo = new Conversation("s");
+            convo.AddUser("go");
+            sessions.Save(convo);
+            var sent = convo.Messages.ToArray();
+            var shape = new RequestShape(Array.Empty<ToolSpec>(), null, null, ReasoningHistory.All, sent, sent);
+            var client = new ScriptedClient((_, n) => n == 1
+                ? new StreamEvent[] { new StreamEvent.TextDelta(TextCall), new StreamEvent.Finished("stop", null) }
+                : new StreamEvent[] { new StreamEvent.TextDelta(Summary), new StreamEvent.Finished("stop", null) });
+            var observer = new RecordingObserver();
+
+            var summary = await new Compactor(client, "m", shape, keepRejectedIn: sessions).SummarizeAsync(convo, observer, CancellationToken.None, windowTokens: 65_536);
+
+            Assert.Equal(Summary, summary);
+            var text = File.ReadAllText(SessionFiles.RejectedText(sessions.CurrentPath!));
+            Assert.Contains("=== rejected reply beside the whole conversation ===", text);
+            Assert.Contains(TextCall, text);
+            //the move to the shortened copy is the only line this compaction shows, and it carries the clause once
+            var naming = Assert.Single(observer.Warnings, w => w.Contains("rejected replies kept at"));
+            Assert.Contains("summarizing a shortened copy", naming);
+        }
+        finally { Directory.Delete(home, true); Directory.Delete(cwd, true); }
+    }
+
+    //a whole rejection then two shortened rejections: the first line shown, the move to the shortened copy, is the one line naming the kept file
+    [Fact]
+    public async Task Rejections_after_a_whole_conversation_rejection_name_the_kept_file_once()
+    {
+        var home = Directory.CreateTempSubdirectory("gatto-home-").FullName;
+        var cwd = Directory.CreateTempSubdirectory("gatto-cwd-").FullName;
+        try
+        {
+            var sessions = new SessionStore(home, cwd);
+            var convo = new Conversation("s");
+            convo.AddUser("go");
+            sessions.Save(convo);
+            var sent = convo.Messages.ToArray();
+            var shape = new RequestShape(Array.Empty<ToolSpec>(), null, null, ReasoningHistory.All, sent, sent);
+            var client = new ScriptedClient((_, _) => new StreamEvent[] { new StreamEvent.TextDelta(TextCall), new StreamEvent.Finished("stop", null) });
+            var compactor = new Compactor(client, "m", shape, keepRejectedIn: sessions);
+            var observer = new RecordingObserver();
+
+            Assert.Null(await compactor.SummarizeAsync(convo, observer, CancellationToken.None, windowTokens: 65_536));
+
+            Assert.Equal(3, client.Requests.Count);   //whole, shortened, once more
+            var text = File.ReadAllText(SessionFiles.RejectedText(sessions.CurrentPath!));
+            Assert.Contains("=== rejected reply beside the whole conversation ===", text);
+            Assert.Contains("=== rejected reply from the shortened copy ===", text);
+            Assert.Contains("=== rejected reply from the shortened copy again ===", text);
+            var naming = Assert.Single(observer.Warnings, w => w.Contains("rejected replies kept at"));
+            Assert.Contains("summarizing a shortened copy", naming);
+            Assert.DoesNotContain("rejected replies kept at",
+                Assert.Single(observer.Warnings, w => w.Contains("asking it once more")));
+            Assert.DoesNotContain("rejected replies kept at", compactor.LastFailure);
+        }
+        finally { Directory.Delete(home, true); Directory.Delete(cwd, true); }
+    }
+
+    //a rejection whose only line is the failure: the harsh copy keeps its reply and the verdict carries the location, no warning ran before it
+    [Fact]
+    public async Task A_rejection_whose_only_line_is_the_failure_names_the_kept_file()
+    {
+        var home = Directory.CreateTempSubdirectory("gatto-home-").FullName;
+        var cwd = Directory.CreateTempSubdirectory("gatto-cwd-").FullName;
+        try
+        {
+            var sessions = new SessionStore(home, cwd);
+            var convo = new Conversation("s");
+            convo.AddUser("go");
+            sessions.Save(convo);
+            //no shape, so no whole attempt, the shortened request overflows without a rejection and only the harsh request is rejected
+            var client = new ScriptedClient((_, n) => n == 1
+                ? throw new GattoContextOverflowException("over", 70_000, 65_536)
+                : new StreamEvent[] { new StreamEvent.TextDelta(TextCall), new StreamEvent.Finished("stop", null) });
+            var compactor = new Compactor(client, "m", keepRejectedIn: sessions);
+            var observer = new RecordingObserver();
+
+            Assert.Null(await compactor.SummarizeAsync(convo, observer, CancellationToken.None, windowTokens: 65_536));
+
+            Assert.DoesNotContain(observer.Warnings, w => w.Contains("rejected replies kept at"));
+            var kept = SessionFiles.RejectedText(sessions.CurrentPath!);
+            Assert.StartsWith("the reply holds none of the summary's headings", compactor.LastFailure);
+            Assert.EndsWith(kept, compactor.LastFailure);
+            Assert.Contains("=== rejected reply from the harsh copy ===", File.ReadAllText(kept));
+        }
+        finally { Directory.Delete(home, true); Directory.Delete(cwd, true); }
+    }
+
+    //each compaction claims the clause for its own first line, so a second compaction of the same session names the kept file again
+    [Fact]
+    public async Task A_second_compaction_names_the_kept_file_on_its_own_first_line()
+    {
+        var home = Directory.CreateTempSubdirectory("gatto-home-").FullName;
+        var cwd = Directory.CreateTempSubdirectory("gatto-cwd-").FullName;
+        try
+        {
+            var sessions = new SessionStore(home, cwd);
+            var convo = new Conversation("s");
+            convo.AddUser("go");
+            sessions.Save(convo);
+            var sent = convo.Messages.ToArray();
+            var shape = new RequestShape(Array.Empty<ToolSpec>(), null, null, ReasoningHistory.All, sent, sent);
+            var client = new ScriptedClient((_, n) => n is 1 or 3
+                ? new StreamEvent[] { new StreamEvent.TextDelta(TextCall), new StreamEvent.Finished("stop", null) }
+                : new StreamEvent[] { new StreamEvent.TextDelta(Summary), new StreamEvent.Finished("stop", null) });
+            var compactor = new Compactor(client, "m", shape, keepRejectedIn: sessions);
+            var first = new RecordingObserver();
+            var second = new RecordingObserver();
+
+            Assert.Equal(Summary, await compactor.SummarizeAsync(convo, first, CancellationToken.None, windowTokens: 65_536));
+            Assert.Equal(Summary, await compactor.SummarizeAsync(convo, second, CancellationToken.None, windowTokens: 65_536));
+
+            var a = Assert.Single(first.Warnings, w => w.Contains("rejected replies kept at"));
+            var b = Assert.Single(second.Warnings, w => w.Contains("rejected replies kept at"));
+            Assert.Contains("summarizing a shortened copy", a);
+            Assert.Contains("summarizing a shortened copy", b);
+        }
+        finally { Directory.Delete(home, true); Directory.Delete(cwd, true); }
     }
 
     //a heading is matched in any case and inside markdown, and the template lets a summary skip any heading, the next step included
@@ -395,7 +571,7 @@ public class CompactorTests
     {
         var convo = new Conversation("s");
         convo.AddUser("go");
-        var client = new ScriptedClient((_, _) => new StreamEvent[] { new StreamEvent.TextDelta("x"), new StreamEvent.Finished("stop", null) });
+        var client = new ScriptedClient((_, _) => new StreamEvent[] { new StreamEvent.TextDelta(Summary), new StreamEvent.Finished("stop", null) });
         await new Compactor(client, "m").SummarizeAsync(convo, new NullObserver(), CancellationToken.None, midTurn: true);
         Assert.Contains("In-flight task", client.Requests[0].Messages[^1].Content);
         await new Compactor(client, "m").SummarizeAsync(convo, new NullObserver(), CancellationToken.None, midTurn: false);
@@ -660,6 +836,46 @@ public class CompactorTests
             Assert.Equal(oldPath, sessions.CurrentPath);                  //the path still names the old file, StartNew never ran
             Assert.Equal(oldBytes, File.ReadAllBytes(oldPath));
             Assert.Single(Directory.GetFiles(Path.Combine(home, "sessions"), "*.jsonl"));
+        }
+        finally { Directory.Delete(home, true); Directory.Delete(cwd, true); }
+    }
+
+    //a manual /compact rejection keeps every rejected reply beside the session, and the failure line repeats no path an earlier warning of that compaction named
+    [Fact]
+    public async Task CompactAsync_rejection_keeps_the_replies_without_repeating_the_path()
+    {
+        var home = Directory.CreateTempSubdirectory("gatto-home-").FullName;
+        var cwd = Directory.CreateTempSubdirectory("gatto-cwd-").FullName;
+        try
+        {
+            var sessions = new SessionStore(home, cwd);
+            var convo = new Conversation("sys");
+            convo.AddUser("q");
+            convo.AddAssistant("a");
+            sessions.Save(convo);
+            var oldPath = sessions.CurrentPath!;
+            var oldBytes = File.ReadAllBytes(oldPath);
+            var sent = convo.Messages.ToArray();
+            var shape = new RequestShape(Array.Empty<ToolSpec>(), null, null, ReasoningHistory.All, sent, sent);
+
+            var client = new FakeChatClient();
+            for (var turn = 0; turn < 3; turn++)   //whole, shortened, once more, each rejected
+                client.EnqueueTurn(new StreamEvent.TextDelta(TextCall), new StreamEvent.Finished("stop", null));
+            var obs = new RecordingObserver();
+
+            Assert.Null(await Gatto.Repl.Repl.CompactAsync(
+                new Compactor(client, "m", shape, keepRejectedIn: sessions), convo, sessions, () => Composed.Text("FRESH"), obs, default));
+
+            var failed = Assert.Single(obs.Warnings, w => w.Contains("compact failed"));
+            Assert.DoesNotContain("rejected replies kept at", failed);   //the move to the shortened copy named it first
+            var naming = Assert.Single(obs.Warnings, w => w.Contains("rejected replies kept at"));
+            Assert.Contains("summarizing a shortened copy", naming);
+            var kept = File.ReadAllText(SessionFiles.RejectedText(oldPath));
+            Assert.Contains("=== rejected reply beside the whole conversation ===", kept);
+            Assert.Contains("=== rejected reply from the shortened copy ===", kept);
+            Assert.Contains("=== rejected reply from the shortened copy again ===", kept);
+            Assert.Equal(oldBytes, File.ReadAllBytes(oldPath));                              //the session itself is untouched
+            Assert.Single(Directory.GetFiles(Path.Combine(home, "sessions"), "*.jsonl"));    //the kept replies are not a session
         }
         finally { Directory.Delete(home, true); Directory.Delete(cwd, true); }
     }
