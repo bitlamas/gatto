@@ -87,16 +87,67 @@ public sealed class ArchiveTests : IDisposable
         Assert.False(Directory.Exists(At("project", "inbox", "archive")));
     }
 
+    //a taken name moves the letter under the next free number, so the inbox empties and both letters stay readable
     [Fact]
-    public void A_NAME_ALREADY_IN_THE_ARCHIVE_KEEPS_THE_LETTER_IN_THE_INBOX_WITH_ONE_ROW()
+    public void A_NAME_ALREADY_IN_THE_ARCHIVE_KEEPS_THE_LETTER_UNDER_THE_NEXT_NUMBER_WITH_ONE_ROW()
     {
         var inbox = At(".gatto", "mailbox", "gatto", "m", "r");
         Archive.Move(Letter(inbox, "a.md", "first"), "r", "s", DateTimeOffset.Now);
         var second = Letter(inbox, "a.md", "second");
 
-        Assert.Equal((false, (string?)"archive: a.md already there, letter kept in the inbox"), Archive.Move(second, "r", "s", DateTimeOffset.Now));
-        Assert.Equal("second", File.ReadAllText(second));
+        Assert.Equal((true, (string?)"archive: a.md was taken, kept as a-2.md"), Archive.Move(second, "r", "s", DateTimeOffset.Now));
+        Assert.False(File.Exists(second));
         Assert.Equal("first", File.ReadAllText(At(".gatto", "mailbox", "archive", "gatto", "m", "r", "a.md")));
+        Assert.Equal("second", File.ReadAllText(At(".gatto", "mailbox", "archive", "gatto", "m", "r", "a-2.md")));
+        Assert.StartsWith("read-by: r\n", File.ReadAllText(At(".gatto", "mailbox", "archive", "gatto", "m", "r", "a-2.md.read")));
+
+        var third = Letter(inbox, "a.md", "third");
+        Assert.Equal((true, (string?)"archive: a.md was taken, kept as a-3.md"), Archive.Move(third, "r", "s", DateTimeOffset.Now));
+        Assert.Equal("third", File.ReadAllText(At(".gatto", "mailbox", "archive", "gatto", "m", "r", "a-3.md")));
+    }
+
+    //a read file left without its letter still holds the name, so a new letter never inherits another one's read record
+    [Fact]
+    public void A_READ_FILE_ALONE_HOLDS_ITS_NAME()
+    {
+        var inbox = At(".gatto", "mailbox", "gatto", "m", "r");
+        Directory.CreateDirectory(At(".gatto", "mailbox", "archive", "gatto", "m", "r"));
+        File.WriteAllText(At(".gatto", "mailbox", "archive", "gatto", "m", "r", "a.md.read"), "read-by: other\n");
+
+        Assert.Equal((true, (string?)"archive: a.md was taken, kept as a-2.md"), Archive.Move(Letter(inbox, "a.md"), "r", "s", DateTimeOffset.Now));
+        Assert.Equal("read-by: other\n", File.ReadAllText(At(".gatto", "mailbox", "archive", "gatto", "m", "r", "a.md.read")));
+    }
+
+    //a name ending in a dot is archived without it, so the letter and its read file share one name and a second such letter takes the next number
+    [Fact]
+    public void A_NAME_ENDING_IN_A_DOT_IS_ARCHIVED_WITHOUT_IT_AND_ITS_READ_FILE_MATCHES()
+    {
+        var inbox = At(".gatto", "mailbox", "gatto", "m", "r");
+        var kept = At(".gatto", "mailbox", "archive", "gatto", "m", "r");
+
+        Assert.Equal((true, (string?)null), Archive.Move(Letter(inbox, "note.md.", "first"), "r", "s", DateTimeOffset.Now));
+        Assert.Equal("first", File.ReadAllText(Path.Combine(kept, "note.md")));
+        Assert.True(File.Exists(Path.Combine(kept, "note.md.read")));
+        Assert.False(File.Exists(Path.Combine(kept, "note.md..read")));
+
+        Assert.Equal((true, (string?)"archive: note.md. was taken, kept as note-2.md"), Archive.Move(Letter(inbox, "note.md.", "second"), "r", "s", DateTimeOffset.Now));
+        Assert.Equal("second", File.ReadAllText(Path.Combine(kept, "note-2.md")));
+        Assert.True(File.Exists(Path.Combine(kept, "note-2.md.read")));
+    }
+
+    //a letter the model or a person moved out before the turn ended is not followed: gatto writes no read file and says so in one row
+    [Fact]
+    public void A_LETTER_ALREADY_GONE_FROM_THE_INBOX_WRITES_NOTHING_AND_SAYS_SO()
+    {
+        var inbox = At(".gatto", "mailbox", "gatto", "m", "r");
+        var letter = Letter(inbox, "a.md");
+        var archived = At(".gatto", "mailbox", "archive", "gatto", "m", "r", "a.md");
+        Directory.CreateDirectory(Path.GetDirectoryName(archived)!);
+        File.Move(letter, archived);
+
+        Assert.Equal((true, (string?)"archive: a.md had already left the inbox, no read file written"), Archive.Move(letter, "r", "s", DateTimeOffset.Now));
+        Assert.True(File.Exists(archived));
+        Assert.False(File.Exists(archived + ".read"));
     }
 
     [Fact]

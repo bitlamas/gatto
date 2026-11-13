@@ -361,7 +361,7 @@ public sealed class WatchDispatchTests : IDisposable
     }
 
     [Fact]
-    public async Task A_NEW_LETTER_UNDER_AN_ARCHIVED_NAME_IS_DELIVERED_AND_KEPT_IN_THE_INBOX_WITH_ONE_ROW()
+    public async Task A_NEW_LETTER_UNDER_AN_ARCHIVED_NAME_IS_DELIVERED_AND_KEPT_UNDER_THE_NEXT_NUMBER_WITH_ONE_ROW()
     {
         var h = Saving(out _);
         Says(h.Client, "first read");
@@ -381,11 +381,12 @@ public sealed class WatchDispatchTests : IDisposable
                 File.WriteAllText(Path.Combine(Seat, "a.md"), "two");
                 second = true;
             }
-            return h.Saw("archive: a.md already there, letter kept in the inbox");
+            return h.Saw("archive: a.md was taken, kept as a-2.md");
         });
 
-        Assert.Equal("two", File.ReadAllText(Path.Combine(Seat, "a.md")));
+        Assert.False(File.Exists(Path.Combine(Seat, "a.md")));
         Assert.Equal("one", File.ReadAllText(Path.Combine(Kept, "a.md")));
+        Assert.Equal("two", File.ReadAllText(Path.Combine(Kept, "a-2.md")));
         Assert.Equal(2, h.Client.Requests.Count);
     }
 
