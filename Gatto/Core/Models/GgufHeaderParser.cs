@@ -81,6 +81,20 @@ internal static class GgufHeaderParser
         catch (NotSupportedException) { return walker.Snapshot(GgufOutcome.Truncated); }
     }
 
+    //the vocabulary's control and user-defined tokens, which the engine reads as one token wherever they stand. empty when the header holds no vocabulary, null when it could not be walked
+    public static IReadOnlyList<string>? SpecialTokens(Stream s)
+    {
+        if (!s.CanSeek)
+            throw new ArgumentException(
+                "GgufHeaderParser.SpecialTokens requires a seekable stream", nameof(s));
+        try { return new Walker(s, null).WalkSpecialTokens(); }
+        catch (IOException) { return null; }
+        catch (NotSupportedException) { return null; }
+    }
+
+    private const long ControlToken = 3;
+    private const long UserDefinedToken = 4;
+
     //ggml's own ceiling on tensor rank, a header claiming more cannot be a file whose data section this parser can find
     private const uint MaxDims = 4;
 
@@ -170,6 +184,89 @@ internal static class GgufHeaderParser
             //best effort, and it must not change the outcome above: the remote read stops before the tensor section by design
             _tensors = WalkTensors();
             return Result(GgufOutcome.Complete);
+        }
+
+        //the walk stops once both arrays are in hand and reads back the special tokens' text alone, so a large vocabulary costs one pass and a few strings
+        public IReadOnlyList<string>? WalkSpecialTokens()
+        {
+            if (!TryReadU32(out var magic) || magic != Magic) return null;
+            if (!TryReadU32(out var version) || version != SupportedVersion) return null;
+            if (!TryReadU64(out _) || !TryReadU64(out var kvCount)) return null;
+
+            long[]? at = null;
+            long[]? types = null;
+            for (ulong i = 0; i < kvCount && (at is null || types is null); i++)
+            {
+                if (ReadString(out var key) != Step.Ok || !TryReadU32(out var type)) return null;
+                var step = type == 9 && key == "tokenizer.ggml.tokens" ? ReadStringOffsets(out at)
+                    : type == 9 && key == "tokenizer.ggml.token_type" ? ReadTokenTypes(out types)
+                    : SkipValue(type, depth: 0);
+                if (step != Step.Ok) return null;
+            }
+            if (at is null && types is null) return [];
+            if (at is null || types is null || at.Length != types.Length) return null;
+
+            var special = new List<string>();
+            for (var t = 0; t < types.Length; t++)
+            {
+                if (types[t] is not (ControlToken or UserDefinedToken)) continue;
+                s.Position = at[t];
+                if (ReadString(out var text) != Step.Ok) return null;
+                special.Add(text);
+            }
+            return special;
+        }
+
+        //where each string of the array starts, null when the elements are not strings. a string takes 8 bytes at least, so the count is checked against the bytes present before it sizes anything
+        private Step ReadStringOffsets(out long[]? offsets)
+        {
+            offsets = null;
+            if (!TryReadU32(out var elemType)) return Step.Truncated;
+            if (!TryReadU64(out var count)) return Step.Truncated;
+            if (count > MaxArrayCount) return Fail($"implausibly large array count in GGUF: {count}");
+            if (elemType != 8) return SkipElements(elemType, count);
+            if ((long)count * 8 > Remaining) return Fail($"GGUF vocabulary declares {count} tokens and the file holds fewer");
+
+            var at = new long[count];
+            for (ulong i = 0; i < count; i++)
+            {
+                at[i] = s.Position;
+                var step = SkipString();
+                if (step != Step.Ok) return step;
+            }
+            offsets = at;
+            return Step.Ok;
+        }
+
+        //one type per token, null when the elements are not integers
+        private Step ReadTokenTypes(out long[]? types)
+        {
+            types = null;
+            if (!TryReadU32(out var elemType)) return Step.Truncated;
+            if (!TryReadU64(out var count)) return Step.Truncated;
+            if (count > MaxArrayCount) return Fail($"implausibly large array count in GGUF: {count}");
+            if (!IsIntType(elemType) || FixedWidth(elemType) is not { } width) return SkipElements(elemType, count);
+            if ((long)count * width > Remaining) return Fail($"GGUF vocabulary declares {count} token types and the file holds fewer");
+
+            var values = new long[count];
+            for (ulong i = 0; i < count; i++)
+            {
+                var step = ReadInt(elemType, out var v);
+                if (step != Step.Ok) return step;
+                values[i] = v ?? 0;
+            }
+            types = values;
+            return Step.Ok;
+        }
+
+        private Step SkipElements(uint elemType, ulong count)
+        {
+            for (ulong i = 0; i < count; i++)
+            {
+                var step = SkipValue(elemType, depth: 1);
+                if (step != Step.Ok) return step;
+            }
+            return Step.Ok;
         }
 
         //one entry per tensor (name, dimensions, type, offset), and the furthest end rather than the last entry's, the entries need not be ordered

@@ -57,7 +57,8 @@ public sealed class OpenAiCompatClient : IChatClient, Gatto.Core.Client.ITokenCo
         var chunks = 0;
         long bytesIn = 0;
         var firstToken = false;
-        var body = BuildBody(request, imageCache, OnImageUnavailable, returnProgress);
+        var escape = Specials?.Invoke();
+        var body = BuildBody(request, imageCache, OnImageUnavailable, returnProgress, escape);
         if (traced)
         {
             span.Set("bytes_out", Encoding.UTF8.GetByteCount(body));
@@ -288,7 +289,8 @@ public sealed class OpenAiCompatClient : IChatClient, Gatto.Core.Client.ITokenCo
         }
 
         foreach (var (_, acc) in pending)
-            yield return new StreamEvent.ToolCallReady(new ToolCall(acc.Id, acc.Name, acc.Args.ToString()));
+            yield return new StreamEvent.ToolCallReady(new ToolCall(acc.Id, acc.Name,
+                escape is null ? acc.Args.ToString() : escape.MendJson(acc.Args.ToString())));
         if (usageRaw is { } reported && OnUsage is { } onUsage)
         {
             try { onUsage(reported); }
@@ -433,7 +435,7 @@ public sealed class OpenAiCompatClient : IChatClient, Gatto.Core.Client.ITokenCo
 
     //the prompt this request renders to, counted by llama-server's template and tokenizer from the chat call's own body, null when the server answers no count
     public Task<int?> CountInputTokensAsync(ChatRequest request, CancellationToken ct) =>
-        CountAsync("/v1/chat/completions/input_tokens", BuildBody(request, imageCache, null, returnProgress),
+        CountAsync("/v1/chat/completions/input_tokens", BuildBody(request, imageCache, null, returnProgress, Specials?.Invoke()),
             root => root.TryGetProperty("input_tokens", out var n) && n.TryGetInt32(out var v) ? v : null, ct);
 
     //one part's text counted by the server's tokenizer, with no special tokens added and none parsed, null when the server answers no count
@@ -579,8 +581,11 @@ public sealed class OpenAiCompatClient : IChatClient, Gatto.Core.Client.ITokenCo
     //the login rows run again in the session after a 401 the refresh could not fix, true when the user logged in. null on -p, which keeps its line
     public Func<CancellationToken, Task<bool>>? LoginInPlace { get; set; }
 
+    //the special tokens of the model this client talks to, asked at each request so a model switch is seen. null sends every text as it is, the case of a server whose vocabulary gatto cannot read
+    public Func<SpecialTokenEscape?>? Specials { get; set; }
+
     private static string BuildBody(ChatRequest request, ImageCache images, Action<string>? onImageUnavailable,
-        bool returnProgress)
+        bool returnProgress, SpecialTokenEscape? escape)
     {
         using var ms = new MemoryStream();
         using (var w = new Utf8JsonWriter(ms))
@@ -603,13 +608,13 @@ public sealed class OpenAiCompatClient : IChatClient, Gatto.Core.Client.ITokenCo
                 if (m.Role == "system" && string.IsNullOrEmpty(m.Content))
                     continue;
                 //one message, one writer
-                RequestJson.WriteMessage(w, m, images, onImageUnavailable);
+                RequestJson.WriteMessage(w, m, images, onImageUnavailable, escape);
             }
             w.WriteEndArray();
             if (request.Tools is { Count: > 0 })
             {
                 w.WriteStartArray("tools");
-                foreach (var t in request.Tools) RequestJson.WriteTool(w, t);
+                foreach (var t in request.Tools) RequestJson.WriteTool(w, t, escape);
                 w.WriteEndArray();
                 if (request.ToolChoice is { } choice) w.WriteString("tool_choice", choice);
             }

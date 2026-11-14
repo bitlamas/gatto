@@ -969,6 +969,19 @@ public static class GattoApp
             //the REPL fills the sink when it exists, so an answer before it was built names nothing on a screen
             client.OnServed = (requested, served) => servedSink[0]?.Invoke(requested, served);
             client.ReadsServedName = !state.ServedHere();
+            string? vocabularyWarned = null;
+            client.Specials = () =>
+            {
+                //only a model gatto serves has a vocabulary gatto can read
+                if (!state.ServedHere() || state.Model is not { } served) return null;
+                var escape = SpecialTokenEscape.ForModelFile(served.ActivePath, out var unreadable);
+                if (unreadable && vocabularyWarned != served.ActivePath)
+                {
+                    vocabularyWarned = served.ActivePath;
+                    warn.Warn($"could not read the vocabulary of {Path.GetFileName(served.ActivePath)}; text holding the model's control tokens is sent as it is");
+                }
+                return escape;
+            };
             //a 401 the refresh could not fix runs the login rows again in the session, and -p keeps the provider's sentence
             var launchName = state.EndpointName;   //the client keeps the launch endpoint, so its lines name that one
             if (args.Prompt is null && state.Endpoint.Login is { } inPlace)
