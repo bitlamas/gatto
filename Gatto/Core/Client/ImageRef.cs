@@ -13,7 +13,17 @@ public sealed record ImageRef(string Path, long Bytes, string Sha256, string Med
     public static ImageRef FromFile(string path)
     {
         var bytes = File.ReadAllBytes(path);
-        return new ImageRef(path, bytes.LongLength, ShaOf(bytes), MediaTypeOf(path));
+        var media = MediaTypeOf(path);
+        //a GIF or BMP goes out as PNG, so one that cannot be decoded is refused here and not at the request
+        if (ImagePng.Converts(media))
+        {
+            try { ImagePng.Decode(bytes, media); }
+            catch (InvalidDataException e)
+            {
+                throw new InvalidOperationException($"{System.IO.Path.GetFileName(path)} cannot be read: {e.Message}");
+            }
+        }
+        return new ImageRef(path, bytes.LongLength, ShaOf(bytes), media);
     }
 
     //the display name, falling back to the file's own name

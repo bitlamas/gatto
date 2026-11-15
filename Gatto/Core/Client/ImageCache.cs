@@ -33,7 +33,19 @@ public sealed class ImageCache
             return null;
         }
 
-        var uri = "data:" + img.MediaType + ";base64," + Convert.ToBase64String(bytes);
+        //a GIF or BMP goes out as PNG, the record keeps the file as attached
+        var media = img.MediaType;
+        if (ImagePng.Converts(media))
+        {
+            try { bytes = ImagePng.Convert(bytes, media); }
+            catch (InvalidDataException e)
+            {
+                Report(img, $"{img.Name} cannot be read ({e.Message}), the model cannot see it", onUnavailable);
+                return null;
+            }
+            media = "image/png";
+        }
+        var uri = "data:" + media + ";base64," + Convert.ToBase64String(bytes);
         _bySha[img.Sha256] = uri;
         return uri;
     }
