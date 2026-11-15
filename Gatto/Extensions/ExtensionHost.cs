@@ -48,11 +48,12 @@ public static class ExtensionHost
         string home, string cwd, Func<string?> ledgerPath, Func<IUserPrompter?> prompter, Action<string> log,
         HttpMessageHandler? handler = null, Func<string, Task<IPAddress[]>>? resolver = null,
         Func<string, System.Text.Json.JsonElement?>? configSection = null,
-        IReadOnlyCollection<string>? allowedOrigins = null)
+        IReadOnlyCollection<string>? allowedOrigins = null,
+        bool canAsk = false)   //what Gatto.Ui.CanAsk tells every script, false unless the launch has someone to ask
     {
         var ledger = new CitationLedger(ledgerPath);
         var fetch = new GuardedFetch(recorder: ledger.Record, handler: handler, resolver: resolver, allowedOrigins: allowedOrigins);
-        var api = new GattoApi(home, cwd, fetch.FetchAsync, ledger.Record, prompter, log, configSection);
+        var api = new GattoApi(home, cwd, fetch.FetchAsync, ledger.Record, prompter, log, configSection, canAsk);
         return (api, ledger, fetch);
     }
 

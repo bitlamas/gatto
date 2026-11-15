@@ -186,6 +186,20 @@ public static class GattoApp
         public void Dispose() => TraceOverride.Value = false;
     }
 
+    //a test's console input read as attached, carried like the trace switch, since the test host's own stdin is redirected and a launch under test would never offer ask_user
+    private static readonly AsyncLocal<bool> AttachedInputOverride = new();
+
+    internal static IDisposable AttachedInputScope()
+    {
+        AttachedInputOverride.Value = true;
+        return new AttachedInputReset();
+    }
+
+    private sealed class AttachedInputReset : IDisposable
+    {
+        public void Dispose() => AttachedInputOverride.Value = false;
+    }
+
     //internal, so the harness's ctx never joins the public surface, and no default argument, which would make one-argument calls ambiguous
     internal static async Task<int> RunAsync(string[] argv, CommandContext? ctx)
     {
@@ -353,6 +367,7 @@ public static class GattoApp
         private List<string> launchWarnings = [];
         private Gatto.Core.WarningSink warn = null!;
         private IUserPrompter? prompter;
+        private bool canAsk;
         private SessionStore sessions = null!;
         private Gatto.Core.Trace trace = null!;
         private Gatto.Core.Span launchSpan;
@@ -501,6 +516,8 @@ public static class GattoApp
             warn = new Gatto.Core.WarningSink(bare ? _ => { } : LaunchSink(launchWarnings, carryWarnings));
             //null until the prompters are built below, so an extension that asks at load time gets the no-interactive-input error
             prompter = null;
+            //whether the prompters will hold someone to ask, decided before the extensions load and read again by the prompter build. a rich face needs stdin attached, so this holds there too
+            canAsk = bare || (args.Prompt is null && (AttachedInputOverride.Value || !Console.IsInputRedirected));   //a bare launch prices the interactive session's prefix
             sessions = new SessionStore(home, cwd);
             //read once here like the wire log, and handed down, so nothing below reads the environment for it
             trace = !bare && (TraceOverride.Value || Environment.GetEnvironmentVariable("GATTO_TRACE") == "1")
@@ -528,6 +545,7 @@ public static class GattoApp
                 home, cwd,
                 ledgerPath: () => sessions.CurrentPath is { } sp ? SessionFiles.Sidecar(sp, SessionFiles.Ledger) : null,
                 prompter: () => prompter,
+                canAsk: canAsk,
                 log: extDiag,
                 configSection: CoreReader(config.Raw),
                 allowedOrigins: allowedOrigins);
@@ -850,7 +868,7 @@ public static class GattoApp
                 else
                 {
                     permPrompter = new PlainPermissionPrompter(config.DenyReason);
-                    prompter = Console.IsInputRedirected ? null : new ConsolePrompter();
+                    prompter = canAsk ? new ConsolePrompter() : null;
                     //the plain prompter is already pump-less, so the launch ask reuses it
                     launchAsker = prompter as IWizardPrompter;
                     replPicker = new PlainListPicker(Console.Out, glyphs);

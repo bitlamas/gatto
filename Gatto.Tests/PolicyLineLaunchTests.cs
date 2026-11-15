@@ -139,23 +139,6 @@ public class PolicyLineLaunchTests : IDisposable
         Assert.DoesNotContain("never reaches the prompt", SystemOf(server.RequestBodies[0]));
     }
 
-    //no test extension is written here, since a string in a file proves nothing about the prompt
-    [Fact]
-    public async Task The_shipped_ask_user_arms_its_own_policy_line_with_no_help_from_the_test()
-    {
-        await using var server = new FakeOpenAiServer();
-        WriteConfig(server);
-        EnqueueOneAnswer(server);
-        Environment.SetEnvironmentVariable("GATTO_HOME", _home);
-        Environment.CurrentDirectory = _cwd;
-        Console.SetOut(new StringWriter());
-
-        var exit = await GattoApp.RunAsync(new[] { "-p", "hi" });
-
-        Assert.Equal(0, exit);
-        Assert.Contains("When a choice is the user's, ask with ask_user instead of choosing.", SystemOf(server.RequestBodies[0]));
-    }
-
     private static string[] RunAgentToolCallRound() => new[]
     {
         Chunk("{\"tool_calls\":[{\"index\":0,\"id\":\"t1\",\"function\":{\"name\":\"run_agent\",\"arguments\":\"{\\\"role\\\":\\\"helper\\\",\\\"task\\\":\\\"go\\\"}\"}}]}"),

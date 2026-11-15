@@ -13,6 +13,7 @@ public class SessionPrefixTests : IDisposable
     private readonly string _origCwd = Environment.CurrentDirectory;
     private readonly TextWriter _origOut = Console.Out;
     private readonly TextWriter _origErr = Console.Error;
+    private readonly TextReader _origIn = Console.In;
 
     public SessionPrefixTests()
     {
@@ -24,7 +25,7 @@ public class SessionPrefixTests : IDisposable
         var modelDir = Path.Combine(_home, "models", "test-model");
         Directory.CreateDirectory(modelDir);
         File.WriteAllText(Path.Combine(modelDir, "profile.json"),
-            "{\"files\":[{\"path\":\"m.gguf\",\"active\":true}],\"port\":1235,\"context\":8192}");
+            "{\"files\":[{\"path\":\"m.gguf\",\"active\":true}],\"port\":1235,\"context\":8192,\"auto_serve\":false}");
     }
 
     public void Dispose()
@@ -32,6 +33,7 @@ public class SessionPrefixTests : IDisposable
         Environment.CurrentDirectory = _origCwd;
         Console.SetOut(_origOut);
         Console.SetError(_origErr);
+        Console.SetIn(_origIn);
         Environment.SetEnvironmentVariable("GATTO_HOME", null);
         try { Directory.Delete(_home, true); } catch { }
         try { Directory.Delete(_cwd, true); } catch { }
@@ -40,7 +42,7 @@ public class SessionPrefixTests : IDisposable
     private static string Chunk(string deltaJson, string? finish = null) =>
         $"data: {{\"choices\":[{{\"index\":0,\"delta\":{deltaJson},\"finish_reason\":{(finish is null ? "null" : $"\"{finish}\"")}}}]}}\n\n";
 
-    //one real -p launch in the fixture home, and the first request it sent
+    //one real interactive launch in the fixture home with someone at the terminal, the session the prefix prices, and the first request it sent
     private async Task<JsonElement> LaunchedRequest(FakeOpenAiServer server)
     {
         Environment.SetEnvironmentVariable("GATTO_HOME", _home);
@@ -49,7 +51,9 @@ public class SessionPrefixTests : IDisposable
             $$$"""{"endpoints":{"local":{"base_url":"{{{server.BaseUrl}}}"}},"default_endpoint":"local","default_model":"test-model"}""");
         server.Enqueue(new FakeResponse(Frames: [Chunk("{\"content\":\"ok\"}"), Chunk("{}", finish: "stop"), "data: [DONE]\n\n"]));
         Console.SetOut(new StringWriter());
-        Assert.Equal(0, await GattoApp.RunAsync(["-p", "hello"]));
+        Console.SetIn(new StringReader("hello\n/quit\n"));
+        using (GattoApp.AttachedInputScope())
+            Assert.Equal(0, await GattoApp.RunAsync([]));
         return Assert.Single(server.RequestBodies);
     }
 
@@ -82,6 +86,8 @@ public class SessionPrefixTests : IDisposable
         Assert.Equal(tools.Select(t => t.GetProperty("parameters").GetRawText()), prefix.Tools.Select(t => t.ParametersSchema.GetRawText()));
         //the roles reach the prefix through run_agent's description, so a role file in the home is in it
         Assert.Contains(prefix.Tools, t => t.Name == "run_agent" && t.Description.Contains("reviewer: reads a diff", StringComparison.Ordinal));
+        //the interactive session offers ask_user, so the price includes it though the prefix is composed with nobody at a terminal
+        Assert.Contains(prefix.Tools, t => t.Name == "ask_user");
     }
 
     //a project's own context file is in the launch's prefix and not in the check's, and composing writes nothing to the home

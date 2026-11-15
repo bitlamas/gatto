@@ -12,8 +12,8 @@ public class ShippedTreeTests
         new(StringComparer.Ordinal)
         {
             ["extensions/ask_user.csx"] =
-                ("09718eee7ff3217f2077789a8ad0d195c68714a5102107ea42892cba322888f3",
-                 6652, "393101eb1c3d23b5a8fde984086ca4963beab513adbb1535aa35fec2e997f853"),
+                ("29333e4da565dab0b21f8892b6e5d1b142eb86207aee13153b093961ab9c4349",
+                 6790, "28a86c20c76c376f6ecd52a2e58529e472b9f8a468f5ac6d6111809e5fa8a02c"),
             ["extensions/web_search.csx"] =
                 ("eaad2d32fce3b0ce6029f453447545338eee62353c7b7814497480696566367f",
                  11837, "6ac34e291304451c3985e35920c9cd7c4e4154d90dabc1aeab9268eedf893ff0"),

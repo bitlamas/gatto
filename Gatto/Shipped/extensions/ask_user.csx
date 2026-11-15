@@ -27,7 +27,8 @@ Func<string, int, string> cap = (s, max) =>
     return sb.Append('…').ToString();
 };
 
-Gatto.Register(
+//the tool and its line below leave when nobody can answer, under -p or with stdin redirected.
+if (Gatto.Ui.CanAsk) Gatto.Register(
     "ask_user",
     "Ask the user 1-4 multiple-choice questions (2-4 options each; user can always type a free-text answer). Use for decisions you cannot make yourself. An option's description stays one short line; if you have a recommendation, mark exactly one option recommended and list it first.",
     """
@@ -103,4 +104,4 @@ Gatto.Register(
 
 //when to reach for this tool, as opposed to how to call it. the description above is the
 //per-call contract; this line is the standing rule, and it leaves with the file.
-Gatto.Policy("When a choice is the user's, ask with ask_user instead of choosing.");
+if (Gatto.Ui.CanAsk) Gatto.Policy("When a choice is the user's, ask with ask_user instead of choosing.");

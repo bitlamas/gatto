@@ -300,6 +300,24 @@ public sealed class ShippedExtensionsTests : IDisposable
         Assert.Equal(current, File.ReadAllText(Full("extensions/ask_user.csx")));
     }
 
+    //the copy v0.5.10 installed offers its tool and its line under -p, where the call can only fail, so an untouched one must upgrade in place
+    [Fact]
+    public void An_untouched_pre_can_ask_ask_user_is_upgraded_in_place_by_the_real_bytes()
+    {
+        var previous = File.ReadAllText(Path.Combine(
+            Census.SourceTree.RepoRoot(), "Gatto.Tests", "Fixtures", "ask_user-pre-can-ask.csx"));
+        var current = ShippedExtensions.Files["extensions/ask_user.csx"];
+        Assert.NotEqual(previous, current);
+
+        Directory.CreateDirectory(Full("extensions"));
+        File.WriteAllText(Full("extensions/ask_user.csx"), previous);
+
+        ShippedExtensions.EnsureWritten(
+            _home, One("extensions/ask_user.csx", current), ShippedExtensions.HistoricalHashes.ToHashSet());
+
+        Assert.Equal(current, File.ReadAllText(Full("extensions/ask_user.csx")));
+    }
+
     //the oracle.json earlier releases installed arms a gate that no longer exists, so an untouched one must upgrade in place
     [Fact]
     public void An_untouched_pre_cut_oracle_role_is_upgraded_in_place_by_the_real_bytes()

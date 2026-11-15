@@ -124,6 +124,8 @@ public static class ShippedExtensions
         "c0272134a0b119bf5d1043678f37cba7157f77f387c6bf3e7db8573e09a232f6",
         //web_search.csx while it read its search section through Config.Section, which this host no longer has
         "4c9acb8c8681dc592a8451d92fb6988736f43c0fcca8b98859fca03792ab500f",
+        //ask_user.csx while it offered its tool and its line under -p, where nobody can answer
+        "09718eee7ff3217f2077789a8ad0d195c68714a5102107ea42892cba322888f3",
     };
 
     //hashes of superseded shipped revisions, an unmodified copy that matches one is safely overwritten by the current text

@@ -40,7 +40,23 @@ public class GattoApiTests
 
     //the host api version is asserted in one test only, a second assertion could drift from it
     [Fact]
-    public void HostApiVersion_IsEight() => Assert.Equal("8", GattoApi.HostApiVersion);
+    public void HostApiVersion_IsNine() => Assert.Equal("9", GattoApi.HostApiVersion);
+
+    //a script reads the same answer for the whole session, and an api built with no word on it says nobody can answer
+    [Fact]
+    public void Ui_CanAsk_is_what_the_host_passed_and_false_by_default()
+    {
+        Assert.False(MakeApi().Ui.CanAsk);
+        var home = Directory.CreateTempSubdirectory("gatto-api-ask-").FullName;
+        try
+        {
+            var (asks, _, _) = ExtensionHost.BuildApi(home, Path.GetTempPath(), () => null, () => null, _ => { }, canAsk: true);
+            Assert.True(asks.Ui.CanAsk);
+            var (silent, _, _) = ExtensionHost.BuildApi(home, Path.GetTempPath(), () => null, () => null, _ => { });
+            Assert.False(silent.Ui.CanAsk);
+        }
+        finally { Directory.Delete(home, recursive: true); }
+    }
 
     [Fact]
     public void Config_core_reaches_scripts_and_defaults_to_null()

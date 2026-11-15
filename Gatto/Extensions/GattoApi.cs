@@ -42,7 +42,7 @@ public sealed class StagedRegistrations
 public sealed class GattoApi
 {
     //bump on any additive change to this surface, the extension cache hash includes the version so a host upgrade recompiles every .csx
-    public const string HostApiVersion = "8";
+    public const string HostApiVersion = "9";
 
     private static readonly Regex NameRx = new(@"\A[a-z0-9_]+\z", RegexOptions.Compiled);   //a dollar anchor also matches before a final newline
     private static readonly string[] ValidEvents = { "tool_call", "tool_result", "message_end", "session_summary" };
@@ -74,13 +74,14 @@ public sealed class GattoApi
         Action<string, string?, bool> recordFetch,
         Func<IUserPrompter?> prompter,
         Action<string> log,
-        Func<string, JsonElement?>? configSection = null)
+        Func<string, JsonElement?>? configSection = null,
+        bool canAsk = false)
     {
         Home = home;
         Cwd = cwd;
         Http = new GattoHttp(fetch);
         Ledger = new GattoLedger(recordFetch);
-        Ui = new GattoUi(prompter);
+        Ui = new GattoUi(prompter, canAsk);
         Config = new GattoConfigSurface(configSection);
         _log = log;
     }
@@ -303,7 +304,15 @@ public sealed class GattoLedger
 public sealed class GattoUi
 {
     private readonly Func<IUserPrompter?> _prompter;
-    internal GattoUi(Func<IUserPrompter?> prompter) => _prompter = prompter;
+
+    internal GattoUi(Func<IUserPrompter?> prompter, bool canAsk)
+    {
+        _prompter = prompter;
+        CanAsk = canAsk;
+    }
+
+    //true when someone at a terminal can answer, fixed for the session, false under -p and with stdin redirected
+    public bool CanAsk { get; }
 
     public Task<IReadOnlyList<AskAnswer>> AskAsync(IReadOnlyList<AskQuestion> questions, CancellationToken ct)
     {

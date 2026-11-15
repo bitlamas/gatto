@@ -185,11 +185,11 @@ public class GattoAppTests : IDisposable
         section.Split('\n').Where(l => l.StartsWith("  ", StringComparison.Ordinal))
             .Select(l => l.TrimStart().Split(' ')[0]).ToList();
 
-    private async Task<string> SwitchInThePlainLoop(string script)
+    private async Task<string> SwitchInThePlainLoop(string script, string? profileExtra = null)
     {
         UseHome();
         WriteConfig("""{"endpoints":{"local":{"base_url":"http://127.0.0.1:1"}},"default_endpoint":"local","glyphs":"unicode"}""");
-        WriteModel("test-model", port: 65501);
+        WriteModel("test-model", port: 65501, profileExtra);
         WriteRole("generalist", "{\"model\":\"test-model\"}");
         WriteRole("narrow", "{\"model\":\"test-model\",\"tools\":[\"grep\"]}");
 
@@ -248,7 +248,8 @@ public class GattoAppTests : IDisposable
     [Fact]
     public async Task A_COMMITTED_SWITCH_LEAVES_EVERY_OTHER_TOOL_IN_PLACE()
     {
-        var output = await SwitchInThePlainLoop("/tools\n/role narrow\n/tools\n/quit\n");
+        using var attached = GattoApp.AttachedInputScope();   //ask_user is offered only with someone at the terminal, who would also be offered a server start
+        var output = await SwitchInThePlainLoop("/tools\n/role narrow\n/tools\n/quit\n", "\"auto_serve\":false");
 
         var cut = output.IndexOf("role: narrow", StringComparison.Ordinal);
         Assert.True(cut > 0, output);

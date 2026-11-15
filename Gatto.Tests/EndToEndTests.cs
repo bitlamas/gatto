@@ -638,48 +638,6 @@ public class EndToEndTests : IDisposable
         Assert.DoesNotContain('\x1b', errOutput);
     }
 
-    //with -p the tool fails fast instead of blocking on stdin, so the turn ends and the exit code stays zero
-
-    [Fact]
-    public async Task OneShot_AskUser_NoPrompter_FailsFastWithExactMessage_NeverBlocks()
-    {
-        await using var server = new FakeOpenAiServer();
-        Environment.SetEnvironmentVariable("GATTO_HOME", _home);
-        Environment.CurrentDirectory = _cwd;
-        Directory.CreateDirectory(_home);
-        File.WriteAllText(Path.Combine(_home, "gatto.json"),
-            $$$"""{"endpoints":{"local":{"base_url":"{{{server.BaseUrl}}}"}},"default_endpoint":"local","default_model":"test-m"}""");
-
-        server.Enqueue(new FakeResponse(Frames: new[]
-        {
-            ToolCallChunk("c1", "ask_user", new
-            {
-                questions = new[]
-                {
-                    new { question = "Which db?", header = "DB", options = new[] { "sqlite", "postgres" }, multi_select = false },
-                },
-            }),
-            Chunk("{}", finish: "tool_calls"),
-            "data: [DONE]\n\n",
-        }));
-        server.Enqueue(new FakeResponse(Frames: new[]
-        {
-            Chunk("{\"content\":\"acknowledged\"}"),
-            Chunk("{}", finish: "stop"),
-            "data: [DONE]\n\n",
-        }));
-
-        var stdout = new StringWriter();
-        Console.SetOut(stdout);
-        var exit = await GattoApp.RunAsync(new[] { "-p", "ask me something" });   //no --yes and no answer supplied, so the non-interactive route runs
-
-        Assert.Equal(0, exit);   //the turn completes with exit zero even with no prompter, the loop never hangs
-        var body = server.LastRequestBody!.Value;                 //the second request includes the tool result.
-        var toolMsg = body.GetProperty("messages").EnumerateArray()
-            .Single(m => m.GetProperty("role").GetString() == "tool");
-        Assert.Equal("interactive input unavailable in non-interactive mode", toolMsg.GetProperty("content").GetString());
-    }
-
     [Fact]
     public async Task OneShot_MutatingToolWithoutYes_DeniesByDefault_NeverBlocks()
     {

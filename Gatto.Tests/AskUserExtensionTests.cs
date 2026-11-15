@@ -71,6 +71,16 @@ public sealed class AskUserExtensionTests : IDisposable
     //writes text as the only extension, loads it through the real host, and says whether the production allow-list vetted the tool
     private (ITool Tool, bool Vetted) LoadAskUser(string text, IUserPrompter? prompter)
     {
+        var (loaded, tools) = LoadInto(text, prompter, canAsk: true);
+        var tool = tools.Get("ask_user");
+        Assert.NotNull(tool);
+        var vetted = ShippedExtensions.IsVetted(Assert.Single(loaded).Source);
+        return (tool!, vetted);
+    }
+
+    //the load and commit a launch runs, with the host's word on whether anyone can answer
+    private (IReadOnlyList<LoadedExtension> Loaded, ToolRegistry Tools) LoadInto(string text, IUserPrompter? prompter, bool canAsk)
+    {
         var extDir = Path.Combine(_home, "extensions");
         Directory.CreateDirectory(extDir);
         File.WriteAllText(Path.Combine(extDir, "ask_user.csx"), text);
@@ -79,22 +89,40 @@ public sealed class AskUserExtensionTests : IDisposable
             _home, Path.GetTempPath(),
             ledgerPath: () => null,
             prompter: () => prompter,
-            log: _ => { });
+            log: _ => { },
+            canAsk: canAsk);
 
         var diags = new List<string>();
         var loaded = ExtensionHost.LoadAll(extDir, api, diags.Add);
         Assert.Empty(diags);
-        var loadedExt = Assert.Single(loaded);
+        Assert.Single(loaded);
 
         var tools = new ToolRegistry();
         var hooks = new HookBus();
         ExtensionHost.Commit(loaded, tools, hooks, new CommandRegistry(), Array.Empty<string>(), diags.Add);
         Assert.Empty(diags);
+        return (loaded, tools);
+    }
 
-        var tool = tools.Get("ask_user");
-        Assert.NotNull(tool);
-        var vetted = ShippedExtensions.IsVetted(loadedExt.Source);
-        return (tool!, vetted);
+    //with nobody to answer the shipped script loads, warns nothing and offers neither its tool nor its line
+    [Fact]
+    public void With_nobody_to_answer_the_script_loads_silent_and_offers_nothing()
+    {
+        var (loaded, tools) = LoadInto(Canonical, null, canAsk: false);
+
+        var ext = Assert.Single(loaded);
+        Assert.Null(tools.Get("ask_user"));
+        Assert.Empty(ext.Registrations.Tools);
+        Assert.Null(ext.Registrations.Policy);
+    }
+
+    //the same script with someone to answer declares the line, so the silent case above proves the guard and not a missing line
+    [Fact]
+    public void With_someone_to_answer_the_script_declares_its_line()
+    {
+        var (loaded, _) = LoadInto(Canonical, null, canAsk: true);
+
+        Assert.Equal("When a choice is the user's, ask with ask_user instead of choosing.", Assert.Single(loaded).Registrations.Policy);
     }
 
     private string Canonical => ShippedExtensions.Files["extensions/ask_user.csx"];
