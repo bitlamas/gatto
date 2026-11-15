@@ -33,8 +33,7 @@ internal static class ModelSwitch
         string? sessionId,
         string? cwd = null,
         //a delegate, since the index budget belongs to the model being switched to. the caller owns rooting, and null means memory is off
-        Func<Model, MemoryIndex.LoadResult>? loadMemory = null,
-        bool memoryNudge = false)
+        Func<Model, MemoryIndex.LoadResult>? loadMemory = null)
     {
         //load the model, and on failure nothing must change
         Model model;
@@ -55,7 +54,7 @@ internal static class ModelSwitch
         //recompose against the new model, with the role, the gates and the context files unchanged, since gates come from the role file
         var memory = loadMemory?.Invoke(model) ?? new MemoryIndex.LoadResult(null, 0);
         var comp = RoleComposition.Compose(role, model, contextFiles, endpointThinking, model.Id, Gatto.Core.OsWords.Name(), sessionId, cwd: cwd, date: DateTime.Now,
-            memoryIndex: memory.Text, memoryTruncatedLines: memory.TruncatedLines, memoryNudge: memoryNudge);
+            memoryIndex: memory.Text, memoryTruncatedLines: memory.TruncatedLines);
 
         //the caller persists and recomposes after the server work, so a failed start never leaves default_model written for weights that never loaded
         return new ModelSwitchOutcome(true, model.Id, comp.SystemText, model.Profile.Context, null,

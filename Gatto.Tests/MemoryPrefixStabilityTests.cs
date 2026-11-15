@@ -31,7 +31,7 @@ public class MemoryPrefixStabilityTests : IDisposable
         var loaded = MemoryIndex.Compose(MemoryDir.FindProjectRoot(_root), Budget);
         return RoleComposition.Compose(
             Role(), null, Array.Empty<(string, string)>(), null, modelName: "test-model", os: "Windows", sessionId: null, cwd: _root,
-            memoryIndex: loaded.Text, memoryTruncatedLines: loaded.TruncatedLines, memoryNudge: true).SystemText;
+            memoryIndex: loaded.Text, memoryTruncatedLines: loaded.TruncatedLines).SystemText;
     }
 
     [Fact]
@@ -58,8 +58,7 @@ public class MemoryPrefixStabilityTests : IDisposable
         var launchLoad = new MemoryIndex.LoadResult("- seeded fact", 0);
         Assert.Equal(systemA, RoleComposition.Compose(
             Role(), null, Array.Empty<(string, string)>(), null, modelName: "test-model", os: "Windows", sessionId: null, cwd: _root,
-            memoryIndex: launchLoad.Text, memoryTruncatedLines: launchLoad.TruncatedLines,
-            memoryNudge: true).SystemText);
+            memoryIndex: launchLoad.Text, memoryTruncatedLines: launchLoad.TruncatedLines).SystemText);
 
         //at a boundary (/new, /role, /compact, /model) the fresh composition does include the new fact
         var systemB = Recompose();
@@ -71,7 +70,7 @@ public class MemoryPrefixStabilityTests : IDisposable
     [Fact]
     public void MemoryDisabled_ComposesNoBlockAndNoNudgeEvenWithAnIndexOnDisk()
     {
-        //with memory consent off the app skips the load and passes no nudge. a seeded index still adds nothing to the prefix
+        //with memory consent off the app skips the load. a seeded index still adds nothing to the prefix
         SeedIndex("- seeded fact");
 
         var systemText = RoleComposition.Compose(

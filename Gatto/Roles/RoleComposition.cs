@@ -29,18 +29,10 @@ public static class RoleComposition
     //the one line under the identity, the tool's voice. the shell is named by the shell tool and the OS by the identity line. don't reword without a gate
     public const string BasePrompt = "Be direct; say what you conclude, and when you are unsure say so.";
 
-    //the standing write instruction, armed by memory.enabled even when no fact exists, so the first one gets written. don't reword without a gate
-    public const string MemoryNudge =
-        "When you learn something durable (a build quirk, an environment gotcha, a decision, a fact " +
-        "about this project you'd otherwise rediscover), save it with memory_write as you go. One fact " +
-        "per slug: before minting a new slug, check the Memory block for an existing entry on the same " +
-        "subject and rewrite that slug instead; delete a fact you've disproven. Don't save what the repo " +
-        "already states or what only matters to this conversation.";
-
     //the heading says what the block is and who wrote it, so the model doesn't read its own notes as instructions
     private const string MemoryHeading = "## Memory (project notes gatto keeps between sessions):";
 
-    //the staleness caveat, next to the notes rather than in the nudge so a model meets it as it reads a fact
+    //the staleness caveat, next to the notes rather than in the tool's description so a model meets it as it reads a fact
     private const string MemoryStaleness =
         "[notes were true when written — verify a path, flag, or version before relying on one]";
 
@@ -64,7 +56,6 @@ public static class RoleComposition
         DateTime? date = null,
         string? memoryIndex = null,
         int memoryTruncatedLines = 0,
-        bool memoryNudge = false,
         IReadOnlyList<(string Extension, string Line)>? policyLines = null,
         //the level saved for a model with no profile, a cloud model, read after the profile so a local model's order is unchanged
         ThinkingLevel? savedEffort = null)
@@ -100,8 +91,8 @@ public static class RoleComposition
         //fixed order, empty parts skipped. the date sits before any model/role text so model and role keep the last word. each block keeps the source /context names it by
         var labelled = new (string Label, string? Detail, string? Text)[]
             {
-                //a raw role leaves out the three blocks gatto writes on its own, and every block the user or a file supplies stays
-                ("system prompt", null, role.Raw ? null : IdentityLine(modelName, os) + "\n" + BasePrompt), ("system prompt", null, memoryNudge && !role.Raw ? MemoryNudge : null), ("system prompt", null, role.Raw ? null : envLine),
+                //a raw role leaves out the two blocks gatto writes on its own, and every block the user or a file supplies stays
+                ("system prompt", null, role.Raw ? null : IdentityLine(modelName, os) + "\n" + BasePrompt), ("system prompt", null, role.Raw ? null : envLine),
                 ("model folder", null, model?.SystemAppend), ("role", role.Name, role.Append),
                 ("extension policy", null, policyBlock),
             }

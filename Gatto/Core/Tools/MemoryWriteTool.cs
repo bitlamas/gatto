@@ -17,7 +17,15 @@ public sealed class MemoryWriteTool(Func<int> indexBudgetTokens) : ITool
         "slug to revise that fact), content (line 1: the fact as one \"- \" bullet under about 15 words, " +
         "stated as the rule to follow, never as the mistake to avoid, and never one the repo already " +
         "states; optional detail lines below), mode (\"write\" = create or overwrite the fact's file; " +
-        "\"delete\" = retire it, content must be empty).";
+        "\"delete\" = retire it, content must be empty). " + WhenToSave;
+
+    //the standing write instruction, after the contract so the model reads how and then when, in the one place it picks the tool. don't reword without a gate
+    public const string WhenToSave =
+        "When you learn something durable (a build quirk, an environment gotcha, a decision, a fact " +
+        "about this project you'd otherwise rediscover), save it with memory_write as you go. One fact " +
+        "per slug: before minting a new slug, check the Memory block for an existing entry on the same " +
+        "subject and rewrite that slug instead; delete a fact you've disproven. Don't save what the repo " +
+        "already states or what only matters to this conversation.";
 
     //content is not required, a delete call may omit it, and a write without one still fails in the body
     public JsonElement ParametersSchema => ToolArgs.Schema("""

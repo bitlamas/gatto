@@ -51,26 +51,25 @@ public class RoleCompositionTests
     private static readonly IReadOnlyList<(string Path, string Content)> NoContext =
         Array.Empty<(string, string)>();
 
-    //every source gatto composes, so a raw role and its twin differ only where raw acts. the nudge keeps the environment line third
+    //every source gatto composes, so a raw role and its twin differ only where raw acts
     private static Composition Full(bool raw) => RoleComposition.Compose(
         Role(gates: new[] { "citations" }, raw: raw, append: "ROLE APPEND", thinking: ThinkingLevel.High),
         Pk(systemAppend: "MODEL APPEND", profileSampling: Json("""{"temperature":0.3}"""),
             profileThinking: Map(("high", """{"reasoning":true}"""))),
         new[] { (@"C:\p\GATTO.md", "CONTEXT BODY") }, null, modelName: "test-model", os: "Windows", sessionId: null, cwd: @"C:\p",
-        date: new DateTime(2026, 1, 2), memoryIndex: "- MEMORY FACT", memoryNudge: true,
+        date: new DateTime(2026, 1, 2), memoryIndex: "- MEMORY FACT",
         policyLines: new[] { ("ask_user", "POLICY LINE") });
 
     [Fact]
-    public void A_RAW_ROLE_DROPS_THE_THREE_PARTS_GATTO_WRITES_AND_KEEPS_THE_REST()
+    public void A_RAW_ROLE_DROPS_THE_TWO_PARTS_GATTO_WRITES_AND_KEEPS_THE_REST()
     {
         var raw = Full(raw: true).SystemText;
         var plain = Full(raw: false).SystemText;
 
         var blocks = plain.Split("\n\n");
         Assert.Equal(Head, blocks[0]);
-        Assert.Equal(RoleComposition.MemoryNudge, blocks[1]);
-        Assert.StartsWith("Today's date:", blocks[2], StringComparison.Ordinal);
-        Assert.Equal(string.Join("\n\n", blocks.Skip(3)), raw);
+        Assert.StartsWith("Today's date:", blocks[1], StringComparison.Ordinal);
+        Assert.Equal(string.Join("\n\n", blocks.Skip(2)), raw);
         foreach (var kept in new[] { "MODEL APPEND", "ROLE APPEND", "POLICY LINE", "CONTEXT BODY", "MEMORY FACT" })
             Assert.Contains(kept, raw, StringComparison.Ordinal);
     }
@@ -120,7 +119,7 @@ public class RoleCompositionTests
             Gatto.Roles.Agents.RoleMerge.ForChild(called, caller),
             Pk(systemAppend: "MODEL APPEND"),
             contextFiles, null, modelName: "test-model", os: "Windows", sessionId: null, cwd: @"C:\p",
-            date: new DateTime(2026, 1, 2), memoryIndex: null, memoryNudge: false,
+            date: new DateTime(2026, 1, 2), memoryIndex: null,
             policyLines: null);
     }
 
@@ -134,7 +133,7 @@ public class RoleCompositionTests
 
         Assert.Equal(new[] { "system prompt", "model folder", "role", "context files" },
             c.SystemParts!.Select(p => p.Label).ToArray());
-        Assert.DoesNotContain(RoleComposition.MemoryNudge, c.SystemText, StringComparison.Ordinal);
+        Assert.DoesNotContain(Gatto.Core.Tools.MemoryWriteTool.WhenToSave, c.SystemText, StringComparison.Ordinal);
         Assert.DoesNotContain("CALLER APPEND", c.SystemText, StringComparison.Ordinal);
         Assert.Contains("CALLEE APPEND", c.SystemText, StringComparison.Ordinal);
         Assert.Contains("CONTEXT BODY", c.SystemText, StringComparison.Ordinal);
@@ -666,14 +665,14 @@ public class RoleCompositionTests
     }
 
     [Fact]
-    public void MemoryNudge_TeachesSlugReuseAndDeletion_AndDropsTheTopicPointerConvention()
+    public void WhenToSave_TeachesSlugReuseAndDeletion_AndDropsTheTopicPointerConvention()
     {
-        //the composer itself appends the pointer, so the nudge must not teach it. pin the absence, because gated text drifts back.
-        Assert.Contains("before minting a new slug", RoleComposition.MemoryNudge);
-        Assert.Contains("delete a fact you've disproven", RoleComposition.MemoryNudge);
-        Assert.Contains("Don't save what the repo already states", RoleComposition.MemoryNudge);
-        Assert.DoesNotContain("pointer", RoleComposition.MemoryNudge);
-        Assert.DoesNotContain("topic", RoleComposition.MemoryNudge);
+        //the composer itself appends the pointer, so the save instruction must not teach it. pin the absence, because gated text drifts back.
+        Assert.Contains("before minting a new slug", MemoryWriteTool.WhenToSave);
+        Assert.Contains("delete a fact you've disproven", MemoryWriteTool.WhenToSave);
+        Assert.Contains("Don't save what the repo already states", MemoryWriteTool.WhenToSave);
+        Assert.DoesNotContain("pointer", MemoryWriteTool.WhenToSave);
+        Assert.DoesNotContain("topic", MemoryWriteTool.WhenToSave);
     }
 
     [Fact]
@@ -684,38 +683,28 @@ public class RoleCompositionTests
     }
 
     [Fact]
-    public void Nudge_PresentWhenEnabled_AfterBasePrompt()
+    public void The_system_text_never_names_memory_write_even_with_facts_in_the_block()
     {
-        var c = RoleComposition.Compose(Role(append: "ROLE"), null, NoContext, null, modelName: "test-model", os: "Windows", sessionId: null, cwd: null, date: new DateTime(2026, 3, 4), memoryNudge: true);
-
-        var iBase = c.SystemText.IndexOf(RoleComposition.BasePrompt, StringComparison.Ordinal);
-        var iNudge = c.SystemText.IndexOf(RoleComposition.MemoryNudge, StringComparison.Ordinal);
-        var iDate = c.SystemText.IndexOf("Today's date:", StringComparison.Ordinal);
-        Assert.True(iBase >= 0 && iNudge > iBase + RoleComposition.BasePrompt.Length && iNudge < iDate, c.SystemText);
-    }
-
-    [Fact]
-    public void Nudge_AbsentWhenDisabled()
-    {
-        //assert on the raw substring, which also catches memory_write leaking into the system text by any other route
-        var c = RoleComposition.Compose(Role(), null, NoContext, null, modelName: "test-model", os: "Windows", sessionId: null, cwd: null, memoryNudge: false);
+        //the save instruction rides the tool, so the prompt keeps the notes and no instruction about writing them
+        var c = RoleComposition.Compose(Role(), null, NoContext, null, modelName: "test-model", os: "Windows", sessionId: null, cwd: @"C:\p", memoryIndex: "- a fact");
+        Assert.Contains("- a fact", c.SystemText, StringComparison.Ordinal);
         Assert.DoesNotContain("memory_write", c.SystemText, StringComparison.Ordinal);
     }
 
     //the three paths share one bullet shape, and the clause about what a fact states goes only where a fact is written
 
     [Fact]
-    public void THE_TOOL_TEACHES_THE_INDEX_FORMAT_THE_COMPACTION_TEMPLATE_TEACHES_and_the_nudge_does_not_repeat_it()
+    public void THE_TOOL_TEACHES_THE_INDEX_FORMAT_THE_COMPACTION_TEMPLATE_TEACHES_and_the_save_instruction_does_not_repeat_it()
     {
-        //both write paths teach the same bullet shape, and the nudge carries the trigger only, so the format is said once in the prefix
+        //both write paths teach the same bullet shape, and the save instruction carries the trigger only, so the format is said once in the prefix
         const string format = "\"- \" bullet";
 
         Assert.Contains(format, Gatto.Core.Loop.Compactor.TemplatePromptForTests, StringComparison.Ordinal);
         Assert.Contains(format, new MemoryWriteTool(() => 1000).Description, StringComparison.Ordinal);
-        Assert.DoesNotContain(format, RoleComposition.MemoryNudge, StringComparison.Ordinal);
+        Assert.DoesNotContain(format, MemoryWriteTool.WhenToSave, StringComparison.Ordinal);
     }
 
-    //the two format rules the nudge gave up live in the tool, said as rules with no reasons
+    //the two format rules the save instruction gave up live in the tool's contract, said as rules with no reasons
     [Fact]
     public void THE_MEMORY_TOOL_CARRIES_THE_LENGTH_RULE_AND_THE_REPO_RULE()
     {
@@ -724,24 +713,24 @@ public class RoleCompositionTests
         Assert.Contains("never as the mistake to avoid, and never one the repo already states;", description, StringComparison.Ordinal);
     }
 
-    //the nudge rides every prefix and says the shape of a line, so the clause stays out of it
+    //the save instruction says when to write and the contract says the shape of a line, so the clause stays out of it
     [Fact]
-    public void THE_RULE_CLAUSE_IS_IN_THE_TWO_WRITE_PATHS_AND_NOT_IN_THE_NUDGE()
+    public void THE_RULE_CLAUSE_IS_IN_THE_TWO_WRITE_PATHS_AND_NOT_IN_THE_SAVE_INSTRUCTION()
     {
         const string clause = "stated as the rule to follow, never as the mistake to avoid";
 
         Assert.Contains(clause, Gatto.Core.Loop.Compactor.TemplatePromptForTests, StringComparison.Ordinal);
         Assert.Contains(clause, new MemoryWriteTool(() => 1000).Description, StringComparison.Ordinal);
-        Assert.DoesNotContain(clause, RoleComposition.MemoryNudge, StringComparison.Ordinal);
+        Assert.DoesNotContain(clause, MemoryWriteTool.WhenToSave, StringComparison.Ordinal);
     }
 
     [Fact]
-    public void Nudge_IsIndependentOfTheIndex_SoAnEmptyProjectStillGetsToldToWrite()
+    public void THE_TOOL_DESCRIBES_ITSELF_THEN_SAYS_WHEN_TO_SAVE_ONE_SPACE_APART()
     {
-        //the nudge must reach the prompt even when the index does not exist yet.
-        var c = RoleComposition.Compose(Role(), null, NoContext, null, modelName: "test-model", os: "Windows", sessionId: null, cwd: null, memoryNudge: true);
-        Assert.Contains(RoleComposition.MemoryNudge, c.SystemText, StringComparison.Ordinal);
-        Assert.DoesNotContain("## Memory", c.SystemText, StringComparison.Ordinal);
+        //the contract opens the description, so the model reads what the tool does before when to call it
+        var description = new MemoryWriteTool(() => 1000).Description;
+        Assert.StartsWith("Save, revise, or retire one durable project fact", description, StringComparison.Ordinal);
+        Assert.EndsWith("content must be empty). " + MemoryWriteTool.WhenToSave, description, StringComparison.Ordinal);
     }
 
     [Fact]

@@ -2522,6 +2522,12 @@ public class GattoAppTests : IDisposable
             .Select(t => t.GetProperty("function").GetProperty("name").GetString()!)
             .ToList();
 
+    private static string ToolDescriptionOf(FakeOpenAiServer server, string name) =>
+        server.LastRequestBody!.Value.GetProperty("tools").EnumerateArray()
+            .Select(t => t.GetProperty("function"))
+            .First(f => f.GetProperty("name").GetString() == name)
+            .GetProperty("description").GetString()!;
+
     private async Task<FakeOpenAiServer> LaunchWithMemoryAsync(string configExtra = "", string? profileExtra = null)
     {
         var server = new FakeOpenAiServer();
@@ -2549,24 +2555,25 @@ public class GattoAppTests : IDisposable
             + "[notes were true when written — verify a path, flag, or version before relying on one]\n"
             + "- PS 5.1 has no && operator",
             system, StringComparison.Ordinal);
-        Assert.Contains(RoleComposition.MemoryNudge, system, StringComparison.Ordinal);
-        Assert.Contains("memory_write", ToolNamesOf(server));
+        Assert.DoesNotContain(Gatto.Core.Tools.MemoryWriteTool.WhenToSave, system, StringComparison.Ordinal);
+        Assert.EndsWith(" " + Gatto.Core.Tools.MemoryWriteTool.WhenToSave, ToolDescriptionOf(server, "memory_write"), StringComparison.Ordinal);
         //the -p one-shot composes the same prompt as the REPL (recall of project notes helps a one-shot, and the write path is turn-scoped)
     }
 
     [Fact]
-    public async Task Launch_NoMemoryIndex_StillNudges_ButComposesNoBlock()
+    public async Task Launch_NoMemoryIndex_StillOffersTheSaveInstruction_ButComposesNoBlock()
     {
-        //with no fact on disk yet the nudge must stay armed, so the first fact can ever be written.
+        //with no fact on disk yet the tool and its save instruction must stay offered, so the first fact can ever be written.
         await using var server = await LaunchWithMemoryAsync();
 
         var system = SystemTextOf(server);
         Assert.DoesNotContain("## Memory", system, StringComparison.Ordinal);
-        Assert.Contains(RoleComposition.MemoryNudge, system, StringComparison.Ordinal);
+        Assert.DoesNotContain(Gatto.Core.Tools.MemoryWriteTool.WhenToSave, system, StringComparison.Ordinal);
+        Assert.EndsWith(" " + Gatto.Core.Tools.MemoryWriteTool.WhenToSave, ToolDescriptionOf(server, "memory_write"), StringComparison.Ordinal);
     }
 
     [Fact]
-    public async Task Launch_MemoryDisabled_NoBlock_NoNudge_NoTool()
+    public async Task Launch_MemoryDisabled_NoBlock_NoSaveInstruction_NoTool()
     {
         WriteMemoryFacts("- a fact that must not be read");
         await using var server = await LaunchWithMemoryAsync(configExtra: ""","memory":{"enabled":false}""");
@@ -2574,8 +2581,9 @@ public class GattoAppTests : IDisposable
         var system = SystemTextOf(server);
         Assert.DoesNotContain("## Memory", system, StringComparison.Ordinal);
         Assert.DoesNotContain("a fact that must not be read", system, StringComparison.Ordinal);
-        Assert.DoesNotContain(RoleComposition.MemoryNudge, system, StringComparison.Ordinal);
         Assert.DoesNotContain("memory_write", ToolNamesOf(server));
+        //the request as sent, tools and all, with a phrase that holds no character the JSON writer escapes
+        Assert.DoesNotContain("save it with memory_write as you go", server.LastRequestBody!.Value.GetRawText(), StringComparison.Ordinal);
     }
 
     [Fact]
@@ -3438,6 +3446,9 @@ public class GattoAppTests : IDisposable
         });
     }
 
+    private static IReadOnlyList<string> ToolNames(JsonElement body) =>
+        body.GetProperty("tools").EnumerateArray().Select(t => t.GetProperty("function").GetProperty("name").GetString()!).ToList();
+
     private static string SystemOf(JsonElement body) =>
         body.GetProperty("messages").EnumerateArray()
             .First(m => m.GetProperty("role").GetString() == "system").GetProperty("content").GetString()!;
@@ -3877,13 +3888,17 @@ public class GattoAppTests : IDisposable
         var withFiles = SystemOf(server.RequestBodies[1]);
         var noFiles = SystemOf(server.RequestBodies[3]);
         Assert.Contains("the memory marker", parent, StringComparison.Ordinal);
-        Assert.Contains(RoleComposition.MemoryNudge, parent, StringComparison.Ordinal);
+        Assert.DoesNotContain(Gatto.Core.Tools.MemoryWriteTool.WhenToSave, parent, StringComparison.Ordinal);
+        Assert.Contains("memory_write", ToolNames(server.RequestBodies[0]));
         Assert.Contains("the context marker", parent, StringComparison.Ordinal);
         foreach (var child in new[] { withFiles, noFiles })
         {
             Assert.DoesNotContain("## Memory", child, StringComparison.Ordinal);
-            Assert.DoesNotContain(RoleComposition.MemoryNudge, child, StringComparison.Ordinal);
+            Assert.DoesNotContain(Gatto.Core.Tools.MemoryWriteTool.WhenToSave, child, StringComparison.Ordinal);
         }
+        //a child holds no memory_write, so the save instruction never reaches it
+        foreach (var body in new[] { server.RequestBodies[1], server.RequestBodies[3] })
+            Assert.DoesNotContain("memory_write", ToolNames(body));
         Assert.Contains("you read files", withFiles, StringComparison.Ordinal);
         Assert.Contains("the context marker", withFiles, StringComparison.Ordinal);
         Assert.DoesNotContain("the context marker", noFiles, StringComparison.Ordinal);

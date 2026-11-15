@@ -270,7 +270,7 @@ internal sealed class LaunchState(
         var memory = LoadMemory(model);
         MemoryTicks += System.Diagnostics.Stopwatch.GetTimestamp() - memoryFrom;
         var comp = RoleComposition.Compose(role, model, contextFiles, endpoint.Thinking, modelString, OsWords.Name(), SessionId, cwd: cwd, date: DateTime.Now,
-            memoryIndex: memory.Text, memoryTruncatedLines: memory.TruncatedLines, memoryNudge: memoryOn,
+            memoryIndex: memory.Text, memoryTruncatedLines: memory.TruncatedLines,
             policyLines: policyLines,
             savedEffort: endpointIsLocal ? null
                 : SavedOffered(endpointName, modelString, SavedCloudEffort(config, home, endpointName, OwnerOf(endpointName), modelString), model?.Profile.Thinking ?? endpoint.Thinking)
@@ -396,7 +396,7 @@ internal sealed class LaunchState(
         var composed = RoleComposition.Compose(
             Role, Model, contextFiles,
             Endpoint.Thinking, ModelString, OsWords.Name(), sessionId, cwd: cwd, date: DateTime.Now,
-            memoryIndex: memory.Text, memoryTruncatedLines: memory.TruncatedLines, memoryNudge: memoryOn,
+            memoryIndex: memory.Text, memoryTruncatedLines: memory.TruncatedLines,
             policyLines: policyLines);
         LastComposedSystem = composed.SystemText;
         LastComposedSources = composed.Sources;
@@ -531,8 +531,7 @@ internal sealed class LaunchState(
         //the index is re-read against the model being switched to, so the load is a delegate rather than a value read up front
         var outcome = ModelSwitch.Decide(
             modelsDir, home, requestedModel, Role, contextFiles, Endpoint.Thinking, LaunchBaseUrl, SessionId, cwd,
-            loadMemory: LoadMemory,
-            memoryNudge: memoryOn);
+            loadMemory: LoadMemory);
         if (!outcome.Success || outcome.Model is null || outcome.Composition is null)
             return new ModelSwitchResult(false, outcome.ModelId, outcome.SystemText, outcome.ContextBudget,
                 outcome.Message, null, null);   //no probe on a failed switch, nothing changed
@@ -897,13 +896,13 @@ internal sealed class LaunchState(
             : Array.Empty<(string Path, string Content)>();
         if (called.Model is null)
             return (RoleComposition.Compose(merged, Model, files, Endpoint.Thinking, ModelString, OsWords.Name(), SessionId, cwd: cwd, date: DateTime.Now,
-                memoryIndex: null, memoryNudge: false, policyLines: null,
+                memoryIndex: null, policyLines: null,
                 savedEffort: EndpointName == "local" ? null
                     : SavedOffered(EndpointName, ModelString, SavedCloudEffort(config, home, EndpointName, OwnerOf(EndpointName), ModelString), Model?.Profile.Thinking ?? Endpoint.Thinking)), ModelString);
         //the refusal check resolved the same merged role before this runs, so a throw here is a file changed in between and the loop reports it
         var res = ResolveLoaded(called.ThinkingRequested is null ? merged with { ThinkingRequested = Comp.Thinking } : merged);   //another model with no level of its own takes the session's, and --effort still wins inside
         return (RoleComposition.Compose(res.Role, res.Model, files, res.Endpoint.Thinking, res.ModelString, OsWords.Name(), SessionId, cwd: cwd, date: DateTime.Now,
-            memoryIndex: null, memoryNudge: false, policyLines: null,
+            memoryIndex: null, policyLines: null,
             savedEffort: res.EndpointName == "local" ? null : SavedCloudEffort(config, home, res.EndpointName, OwnerOf(res.EndpointName), res.ModelString)), res.ModelString);
     }
 
