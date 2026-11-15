@@ -80,10 +80,16 @@ public sealed record ReasoningItem(IReadOnlyList<string> RawLines) : TranscriptI
     //the first reasoning blocks of a session show a click teaser on the summary. it is off for later blocks, the user has learned the click by then
     public bool ClickHint { get; set; }
 
+    private bool _betweenTools;
+
+    //set when a tool call follows this block and one came before it, so the closed row shows the thought's first line
+    public bool BetweenTools { get => _betweenTools; set { if (_betweenTools != value) { _betweenTools = value; MarkContentChanged(); } } }
+
     protected override IReadOnlyList<string> RenderBody(int width, Theme theme, GlyphSet? glyphs) =>
         (Streaming, Collapsed) switch
         {
             (true, true) => ItemRender.ReasoningCapped(RawLines, theme, width, glyphs),                          //capped first-N preview while thinking
+            (false, true) when BetweenTools && ItemRender.ReasoningGlanceRow(RawLines, Elapsed, theme, width, glyphs ?? GlyphSet.Unicode) is { } glance => glance,
             (false, true) => ItemRender.ReasoningCollapsedRow(Elapsed, theme, width, ClickHint, glyphs),         //the 1-row summary of a finished block
             (true, false) => ItemRender.ReasoningRows(RawLines, theme, width),                           //streaming and expanded, the plain full rows following live
             (false, false) => ItemRender.ReasoningExpanded(RawLines, Elapsed, theme, width, ClickHint, glyphs),   //expanded and closed, the ▾ thought line over the full rows

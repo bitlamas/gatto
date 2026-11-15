@@ -236,6 +236,24 @@ public static class ItemRender
         return new[] { theme.Paint(fit, Theme.Thought) };
     }
 
+    //below this many cells for the text a thought between tool calls keeps the plain row
+    internal const int GlanceMinCells = 12;
+
+    //a thought between tool calls, its first line cut to fit and the label whole, a dot when nothing is cut
+    public static IReadOnlyList<string>? ReasoningGlanceRow(IReadOnlyList<string> rawLines, TimeSpan elapsed, Theme theme, int width,
+        GlyphSet g)
+    {
+        var lines = rawLines.Select(l => TermText.Sanitize(l).Trim()).Where(l => l.Length > 0).ToList();
+        if (lines.Count == 0) return null;
+        var first = string.Join(' ', lines[0].Split(' ', StringSplitOptions.RemoveEmptyEntries));
+        var tail = $" thought for {FormatElapsed(elapsed)}";
+        var room = width - GutterWrap.Hang.Length - 1 - Math.Max(UnicodeWidth.Of(g.Triangle), UnicodeWidth.Of(g.Dot)) - UnicodeWidth.Of(tail);
+        if (room < GlanceMinCells) return null;
+        var whole = lines.Count == 1 && UnicodeWidth.Of(first) <= room;
+        var text = whole ? first : TermText.TruncateCells(first, room, g);
+        return new[] { GutterWrap.Hang + theme.Paint(text, Theme.Thought, italic: true) + " " + theme.Paint((whole ? g.Dot : g.Triangle) + tail, Theme.Thought) };
+    }
+
     //the open reasoning block: a chevron header row, then the full reasoning rows. a null elapsed means the block is still streaming
     public static IReadOnlyList<RenderedRow> ReasoningExpandedTagged(IReadOnlyList<string> rawLines, TimeSpan? elapsed,
         Theme theme, int width, bool clickHint = false, GlyphSet? glyphs = null)

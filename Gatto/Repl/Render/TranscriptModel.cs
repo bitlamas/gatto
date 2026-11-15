@@ -100,6 +100,9 @@ public sealed class TranscriptModel(string role)
         CloseOpen();
         item.LeadingBlank = _items.Count > 0;   //one blank separator before every item after the first
         if (item is ToolBlockItem tb) tb.LinkWords = tb.CanOpen && ++_linkCount <= 2;   //a block that opens only on a narrow row takes no hint and shows the triangle there
+        //a thought between tool calls is known when the second call arrives (a call's pictures count as that call)
+        if (item is ToolBlockItem && _items.Count >= 2 && _items[^1] is ReasoningItem thought && _items[^2] is ToolBlockItem or ImageBlockItem)
+            thought.BetweenTools = true;
         _items.Add(item);
         OnAppendedOrExtended?.Invoke(item);
     }
