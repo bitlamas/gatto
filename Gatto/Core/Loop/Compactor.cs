@@ -102,28 +102,33 @@ public sealed class Compactor(IChatClient client, string model, RequestShape? sh
     public async Task<string?> SummarizeAsync(
         Conversation convo, ITurnObserver observer, CancellationToken ct,
         int? windowTokens = null, double ratio = 1.0, bool midTurn = false, string? doNotRepeat = null,
-        string reason = "Manual", long traceParent = 0)
+        string reason = "Manual", long traceParent = 0, ContextUsageState? usage = null)
     {
         using var span = _trace.Open(Trace.Compact, traceParent);
         _traceSpan = span.Id;
+        _fitTokens = null;
+        _summaryPromptTokens = null;
         if (_trace.Enabled)
         {
             span.Set("reason", reason);
             span.Set("before_tokens", ContextBudget.Estimate(convo.Messages));
         }
-        var summary = await SummarizeCoreAsync(convo, observer, ct, windowTokens, ratio, midTurn, doNotRepeat);
+        var summary = await SummarizeCoreAsync(convo, observer, ct, windowTokens, ratio, midTurn, doNotRepeat, usage);
         //the size after is the next request's prompt_tokens, so the span keeps the summary's own estimate
         if (_trace.Enabled)
         {
             span.Set("summary_tokens", summary is null ? 0 : ContextBudget.Estimate([new ChatMessage("assistant", summary)]));
             span.Set("ok", summary is null ? 0 : 1);
+            //the figure the fit test decided on beside the server's count of the summary request, so the estimate's error is one subtraction
+            if (_fitTokens is int fitTokens) span.Set("fit_tokens", fitTokens);
+            if (_summaryPromptTokens is int promptTokens) span.Set("summary_prompt_tokens", promptTokens);
         }
         return summary;
     }
 
     private async Task<string?> SummarizeCoreAsync(
         Conversation convo, ITurnObserver observer, CancellationToken ct,
-        int? windowTokens, double ratio, bool midTurn, string? doNotRepeat)
+        int? windowTokens, double ratio, bool midTurn, string? doNotRepeat, ContextUsageState? usage)
     {
         //one prompt local, so the measured length covers the primary attempt and the harsh retry alike
         var prompt = (midTurn ? TemplatePrompt + MidTurnAddendum : TemplatePrompt) + (doNotRepeat ?? "");
@@ -133,8 +138,14 @@ public sealed class Compactor(IChatClient client, string model, RequestShape? sh
 
         var toolTokens = (int)(ContextBudget.EstimateTools(shape?.Tools ?? []) * ratio);   //the whole attempt carries the tool definitions, the shortened copy goes without them
         //the loop's last request as sent plus what came since is the prefix the server holds, so it goes whole while the summary has room beside it
-        if (Resent(convo.Messages) is { } whole
-            && (windowTokens is not int fit || fit <= 0 || Measure(whole, ratio, prompt.Length) + toolTokens + SummaryRoomTokens <= fit))
+        var whole = Resent(convo.Messages);
+        //the server's count of the last request already holds the tool definitions, so with one the prompt alone is estimated, by what the conversation's growth taught
+        _fitTokens = whole is null ? null
+            : ContextBudget.UsedTokens(ContextBudget.ShapeReasoning(ContextBudget.ShapeUpdates(convo.Messages), shape?.ReasoningHistory ?? ReasoningHistory.All), usage) is int counted
+                ? counted + (int)(prompt.Length / 4 * usage!.GrowthRatio)
+                : Measure(whole, ratio, prompt.Length) + toolTokens;
+        if (whole is not null
+            && (windowTokens is not int fit || fit <= 0 || _fitTokens + SummaryRoomTokens <= fit))
         {
             var (wholeSummary, wholeOverflowed, wholeTruncated, wholeRejected) = await TryStreamAsync(new List<ChatMessage>(whole) { new("user", prompt) }, observer, ct, withTools: true, origin: "beside the whole conversation");
             var retry = wholeRejected || (windowTokens is int && (wholeOverflowed || wholeTruncated));
@@ -170,6 +181,10 @@ public sealed class Compactor(IChatClient client, string model, RequestShape? sh
         if (harshOverflowed) LastFailure = OverflowFailure;
         return harshSummary ?? AbortKeepClause();
     }
+
+    //what the trace of this compaction reports, the fit test's figure and the server's count of the last summary request
+    private int? _fitTokens;
+    private int? _summaryPromptTokens;
 
     //the room the summary needs beside the whole conversation, its reasoning included. a summary cut short there is asked again from the shortened copy
     internal const int SummaryRoomTokens = 4096;
@@ -232,12 +247,15 @@ public sealed class Compactor(IChatClient client, string model, RequestShape? sh
                     case StreamEvent.TextDelta t: text.Append(t.Text); Show(observer, shown.Push(t.Text)); break;
                     case StreamEvent.ReasoningDelta r: reasoning.Append(r.Text); Show(observer, thought.Push(r.Text)); break;
                     case StreamEvent.Truncated: truncated = true; break;
-                    case StreamEvent.Finished f: if (f.FinishReason == "length") truncated = true; break;
+                    case StreamEvent.Finished f:
+                        if (f.FinishReason == "length") truncated = true;
+                        if (f.Usage is not null) _summaryPromptTokens = f.Usage.PromptTokens;
+                        break;
                 }
             }
         }
         //must precede the generic catch, GattoContextOverflowException subtypes GattoConnectionException so the catch-all would swallow it and the harsher retry never runs
-        catch (GattoContextOverflowException) { return (null, true, false, false); }
+        catch (GattoContextOverflowException ex) { _summaryPromptTokens = ex.PromptTokens ?? _summaryPromptTokens; return (null, true, false, false); }
         catch (OperationCanceledException) { LastFailure = "stopped"; return (null, false, false, false); }  //on Ctrl+C mid-summary, abort with nothing lost
         catch (GattoConnectionException ex)                                                     //server dropped, abort with nothing lost
         {

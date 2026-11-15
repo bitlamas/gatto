@@ -1263,6 +1263,139 @@ public class AgentLoopTests
         Assert.Equal(0, handler.Calls);
     }
 
+    //a head of 8,000 chars the server counted at 1.4 times the estimate, then whole results it has not seen
+    private static (Conversation Convo, ContextUsageState Usage) HeadThenUnseen(int unseen, bool withGrowthPair)
+    {
+        var convo = new Conversation(new string('s', 8_000));
+        var usage = new ContextUsageState();
+        usage.Record(promptTokens: 2_800, estimateAtRequest: 2_000, messageCount: 1);
+        convo.AddUser("read them");
+        if (withGrowthPair)
+        {
+            convo.AddAssistant("", new[] { new ToolCall("g0", "read_file", "{}") });
+            convo.AddToolResult("g0", new ToolResult(new string('w', 16_000)));
+            var estimate = 2_000 + ContextBudget.Estimate(convo.Messages.Skip(1));
+            usage.Record(2_800 + (int)(0.9 * (estimate - 2_000)), estimate, convo.Count, comparable: true);
+        }
+        for (var i = 0; i < unseen; i++)
+        {
+            convo.AddAssistant("", new[] { new ToolCall($"c{i}", "read_file", "{}") });
+            convo.AddToolResult($"c{i}", new ToolResult(new string('w', 16_000)));
+        }
+        return (convo, usage);
+    }
+
+    //the lab's shape: the head's ratio would have counted five unseen results past 90 percent, the server's count plus their estimate leaves them near 70
+    [Fact]
+    public async Task Proactive_does_not_scale_unseen_results_by_the_heads_ratio()
+    {
+        var (convo, usage) = HeadThenUnseen(unseen: 5, withGrowthPair: false);
+        Assert.True(ContextBudget.Counts(convo.Messages, 0, usage.Ratio) >= 0.9 * 32_768, "fixture");
+        var handler = new FakeCompactionHandler(new CompactionResult("s2", new[] { new ChatMessage("user", "u") }, null));
+        var client = new FakeChatClient();
+        client.EnqueueTurn(new StreamEvent.TextDelta("done"), new StreamEvent.Finished("stop", null));
+        var observer = new RecordingObserver();
+        var loop = NewLoop(client, compaction: handler, usageState: usage, autoCompactAt: 0.9, budgetTokens: 32_768);
+
+        await loop.RunTurnAsync(convo, "go", observer, CancellationToken.None);
+
+        Assert.Equal(0, handler.Calls);
+        Assert.DoesNotContain(observer.Warnings, w => w.Contains("auto-compacting", StringComparison.Ordinal));
+    }
+
+    //with 0.9 learned from a pair, six unseen results stay under 90 percent and seven cross it, where the whole-conversation ratio crossed it at six
+    [Theory]
+    [InlineData(6, null)]
+    [InlineData(7, "auto-compacting at 96%")]
+    public async Task Proactive_fires_at_the_server_count_plus_the_growth_since(int unseen, string? line)
+    {
+        var (convo, usage) = HeadThenUnseen(unseen, withGrowthPair: true);
+        Assert.Equal(0.9, usage.GrowthRatio, precision: 3);
+        Assert.True(ContextBudget.Counts(convo.Messages, 0, usage.Ratio) >= 0.9 * 32_768, "fixture");
+        var handler = new FakeCompactionHandler(new CompactionResult("s2", new[] { new ChatMessage("user", "u") }, null));
+        var client = new FakeChatClient();
+        client.EnqueueTurn(new StreamEvent.TextDelta("done"), new StreamEvent.Finished("stop", null));
+        var observer = new RecordingObserver();
+        var loop = NewLoop(client, compaction: handler, usageState: usage, autoCompactAt: 0.9, budgetTokens: 32_768);
+
+        await loop.RunTurnAsync(convo, "go", observer, CancellationToken.None);
+
+        Assert.Equal(line is null ? 0 : 1, handler.Calls);
+        if (line is not null) Assert.Contains(observer.Warnings, w => w.StartsWith(line, StringComparison.Ordinal));
+    }
+
+    //a frontier means the server counted a cut copy, so the trigger keeps the whole-conversation estimate and its figure
+    [Fact]
+    public async Task Proactive_with_a_frontier_counts_as_before()
+    {
+        var (convo, usage) = HeadThenUnseen(unseen: 5, withGrowthPair: false);
+        usage.NoteElided(1);
+        var expected = (int)ContextBudget.Counts([.. convo.Messages, new ChatMessage("user", "go")], 0, usage.Ratio);
+        var handler = new FakeCompactionHandler(new CompactionResult("s2", new[] { new ChatMessage("user", "u") }, null));
+        var client = new FakeChatClient();
+        client.EnqueueTurn(new StreamEvent.TextDelta("done"), new StreamEvent.Finished("stop", null));
+        var observer = new RecordingObserver();
+        var loop = NewLoop(client, compaction: handler, usageState: usage, autoCompactAt: 0.9, budgetTokens: 32_768);
+
+        await loop.RunTurnAsync(convo, "go", observer, CancellationToken.None);
+
+        Assert.Equal(1, handler.Calls);
+        Assert.Contains(observer.Warnings, w => w.StartsWith($"auto-compacting at {(int)Math.Round(100.0 * expected / 32_768)}%", StringComparison.Ordinal));
+    }
+
+    //a pair teaches growth only from conversation text, so a picture in what was added or a changed tool list withholds it
+    [Theory]
+    [InlineData(false, 100, true)]
+    [InlineData(true, 100, false)]
+    [InlineData(false, 140, false)]
+    public void A_reading_is_comparable_only_over_text_and_the_same_tools(bool picture, int overhead, bool comparable)
+    {
+        var request = new List<ChatMessage> { new("system", "s"), new("user", "go"),
+            picture ? new ChatMessage("user", "[image]", Images: [new ImageRef("p.png", 10, "aa", "image/png")]) : new ChatMessage("tool", "text") };
+        Assert.Equal(comparable, AgentLoop.ComparableReading(request, previousCount: 2, sameFrontier: true, overhead, previousOverhead: 100));
+    }
+
+    [Fact]
+    public void A_moved_frontier_or_no_earlier_reading_is_not_comparable_and_an_old_picture_does_not_count()
+    {
+        var request = new List<ChatMessage> { new("system", "s"), new("user", "[image]", Images: [new ImageRef("p.png", 10, "aa", "image/png")]), new("tool", "text") };
+        Assert.False(AgentLoop.ComparableReading(request, previousCount: 2, sameFrontier: false, 100, 100));
+        Assert.False(AgentLoop.ComparableReading(request, previousCount: 2, sameFrontier: true, 100, previousOverhead: null));
+        Assert.True(AgentLoop.ComparableReading(request, previousCount: 2, sameFrontier: true, 100, 100));
+    }
+
+    private sealed class LongTextTool(ToolRegistry? registerInto = null) : ITool
+    {
+        public string Name => "long_text";
+        public string Description => "returns prose";
+        public JsonElement ParametersSchema => JsonDocument.Parse("{\"type\":\"object\"}").RootElement;
+        public Task<ToolResult> ExecuteAsync(JsonElement args, IToolContext ctx, CancellationToken ct)
+        {
+            registerInto?.Register(new EchoTool());   //the tool list changes between the two requests, as a /role swap changes it
+            return Task.FromResult(new ToolResult(new string('w', 8_000)));
+        }
+    }
+
+    //two finished requests of one turn teach the growth ratio, and a tool list that changed between them teaches nothing
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task The_loop_learns_growth_from_two_readings_unless_the_tool_list_changed(bool swap)
+    {
+        var reg = new ToolRegistry();
+        reg.Register(new LongTextTool(swap ? reg : null));
+        var client = new FakeChatClient();
+        client.EnqueueTurn(new StreamEvent.ToolCallReady(new ToolCall("c1", "long_text", "{}")), new StreamEvent.Finished("tool_calls", new Usage(3_000, 10)));
+        client.EnqueueTurn(new StreamEvent.TextDelta("done"), new StreamEvent.Finished("stop", new Usage(3_000 + 1_800, 10)));
+        var usage = new ContextUsageState();
+        var loop = new AgentLoop(client, reg, new HookBus(), new TestToolContext(Path.GetTempPath()), "m", usageState: usage);
+
+        await loop.RunTurnAsync(new Conversation("s"), "go", new RecordingObserver(), CancellationToken.None);
+
+        if (swap) Assert.Equal(1.0, usage.GrowthRatio);
+        else Assert.Equal(0.9, usage.GrowthRatio, precision: 2);
+    }
+
     [Fact]
     public async Task Proactive_FailedAttempt_OncePerTurn_AndKeepsGoing()
     {

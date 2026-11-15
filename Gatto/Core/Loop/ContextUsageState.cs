@@ -14,10 +14,28 @@ public sealed class ContextUsageState
     //every elidable tool result before this index went out trimmed, and the next request trims them again even if the ratio fell
     public int ElidedThrough { get; private set; }
 
-    public void Record(int promptTokens, int estimateAtRequest, int messageCount)
+    //what the conversation adds between two requests, read from the growth of both counts, so the fixed head's density never scales a tool result. no floor at 1, prose runs lighter than the estimate
+    public double GrowthRatio { get; private set; } = 1.0;
+
+    //the estimate the last reading went out with, the other half of a growth pair
+    private int? lastEstimate;
+
+    //a growth under this many estimated tokens teaches nothing, the template's markup around each message would swing the ratio
+    internal const int MinGrowthEstimate = 512;
+
+    //one odd pair is held to this range, so a single reading cannot make the count absurd. the low edge decides how cold the count can run
+    internal const double MinGrowthRatio = 0.75;
+    internal const double MaxGrowthRatio = 3.0;
+
+    //comparable is the caller's word that this request finished and added only conversation text since the last reading
+    public void Record(int promptTokens, int estimateAtRequest, int messageCount, bool comparable = false)
     {
+        if (comparable && LastPromptTokens is int previousPrompt && lastEstimate is int previousEstimate && LastMessageCount is int previousCount
+            && messageCount > previousCount && estimateAtRequest - previousEstimate >= MinGrowthEstimate && promptTokens > previousPrompt)
+            GrowthRatio = Math.Clamp((double)(promptTokens - previousPrompt) / (estimateAtRequest - previousEstimate), MinGrowthRatio, MaxGrowthRatio);
         LastPromptTokens = promptTokens;
         LastMessageCount = messageCount;
+        lastEstimate = estimateAtRequest;
         Ratio = estimateAtRequest > 0 ? Math.Max(1.0, (double)promptTokens / estimateAtRequest) : 1.0;
     }
 
@@ -46,7 +64,9 @@ public sealed class ContextUsageState
     {
         LastPromptTokens = null;
         LastMessageCount = null;
+        lastEstimate = null;
         Ratio = 1.0;
+        GrowthRatio = 1.0;
         ElidedThrough = 0;
     }
 }

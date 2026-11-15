@@ -200,6 +200,28 @@ public class TraceRequestTests : IDisposable
         Assert.Equal(new[] { compact.GetProperty("id").GetInt64() }, client.Parents);
     }
 
+    //the span carries the figure the fit test used and the server's count of the summary request, so the estimate's error is one subtraction
+    [Fact]
+    public async Task A_compaction_traces_its_fit_figure_and_the_summary_requests_count()
+    {
+        var client = new FakeChatClient();
+        client.EnqueueTurn(new StreamEvent.TextDelta("Task / goal: test. Current state: done."), new StreamEvent.Finished("stop", new Usage(5_400, 30), null));
+        using var trace = NewTrace();
+        var convo = new Conversation("sys");
+        convo.AddUser("a long task");
+        var sent = convo.Messages.ToArray();
+        var usage = new ContextUsageState();
+        usage.Record(5_000, 100, sent.Length);
+        var shape = new RequestShape(Array.Empty<ToolSpec>(), null, null, ReasoningHistory.All, sent, sent);
+
+        await new Compactor(client, "m", shape, trace).SummarizeAsync(convo, new RecordingObserver(), default, windowTokens: 32_768, usage: usage);
+        trace.Flush();
+
+        var compact = Named(Spans(), "compact").Single();
+        Assert.Equal(5_000 + Compactor.TemplatePromptLengthForTests / 4, compact.GetProperty("fit_tokens").GetInt32());
+        Assert.Equal(5_400, compact.GetProperty("summary_prompt_tokens").GetInt32());
+    }
+
     private sealed class ParentRecordingClient(IChatClient inner) : IChatClient
     {
         public List<long> Parents { get; } = new();

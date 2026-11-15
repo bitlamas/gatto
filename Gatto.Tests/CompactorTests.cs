@@ -399,6 +399,28 @@ public class CompactorTests
             + Compactor.TemplatePromptLengthForTests / 4);
     }
 
+    //the server's count of the head plus the estimate since decides the fit, so a conversation the head's ratio judged too big goes whole
+    [Fact]
+    public async Task The_fit_reads_the_servers_count_and_sends_the_whole_conversation()
+    {
+        var convo = new Conversation(new string('s', 8_000));
+        var usage = new ContextUsageState();
+        usage.Record(promptTokens: 2_800, estimateAtRequest: 2_000, messageCount: 1);
+        var sent = convo.Messages.ToArray();
+        convo.AddUser("read them");
+        for (var i = 0; i < 5; i++) { convo.AddAssistant("", new[] { Call($"c{i}") }); convo.AddToolResult($"c{i}", new Gatto.Core.Tools.ToolResult(new string('w', 16_000))); }
+        var tools = new[] { new ToolSpec("read_file", "reads", JsonDocument.Parse("{\"type\":\"object\"}").RootElement) };
+        var shape = new RequestShape(tools, null, null, ReasoningHistory.All, sent, sent);
+        var client = new ScriptedClient((_, _) => new StreamEvent[] { new StreamEvent.TextDelta(Summary), new StreamEvent.Finished("stop", null) });
+        Assert.True((ContextBudget.Estimate(convo.Messages) + Compactor.TemplatePromptLengthForTests / 4) * usage.Ratio + Compactor.SummaryRoomTokens > 32_768, "fixture");
+
+        await new Compactor(client, "m", shape).SummarizeAsync(convo, new NullObserver(), CancellationToken.None, windowTokens: 32_768, ratio: usage.Ratio, usage: usage);
+
+        Assert.Single(client.Requests);
+        Assert.NotNull(client.Requests[0].Tools);
+        Assert.Equal(convo.Messages, client.Requests[0].Messages.Take(convo.Messages.Count));
+    }
+
     //a conversation at 91 percent with room for the summary is sent whole, no tool result stubbed
     [Fact]
     public async Task A_conversation_past_85_percent_with_room_is_sent_whole()

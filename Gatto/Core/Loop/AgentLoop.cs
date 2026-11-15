@@ -143,6 +143,14 @@ public sealed class AgentLoop(
     private ChatMessage[]? _lastSent;
     private ChatMessage[]? _lastSentFrom;
 
+    //the tool definitions' estimate at the last reading, so a pair of readings that spans a /role swap teaches no growth
+    private int? _lastReadOverhead;
+
+    //a pair of readings teaches the growth ratio only from conversation text: the same frontier, the same tool definitions, and no picture in what was added
+    internal static bool ComparableReading(IReadOnlyList<ChatMessage> request, int? previousCount, bool sameFrontier, int overhead, int? previousOverhead) =>
+        sameFrontier && overhead == previousOverhead
+        && !(previousCount is int from && request.Skip(from).Any(m => m.Images is { Count: > 0 }));
+
     //images for this user turn, since the loop adds the user message itself, and a run_agent child passes its tool span and role. takeQueued hands over what was typed during the turn, null on every face but the rich one
     public Task<TurnResult> RunTurnAsync(
         Conversation convo, string userMessage, ITurnObserver observer, CancellationToken ct,
@@ -245,7 +253,8 @@ public sealed class AgentLoop(
             if (armed && compaction is { } compactor && autoCompactAt is double th
                 && budgetTokens is int win and > 0
                 && usageState is { LastPromptTokens: not null }
-                && (int)ContextBudget.Counts(Uncut(), overhead, usageState.Ratio) is var used
+                //an uncut last request was counted by the server, so the figure is that count plus what came since. a cut one was not the uncut conversation, which is estimated whole
+                && (usageState.ElidedThrough == 0 ? ContextBudget.UsedTokens(Uncut(), usageState) ?? 0 : (int)ContextBudget.Counts(Uncut(), overhead, usageState.Ratio)) is var used
                 && used >= th * win)
             {
                 //announce before the await, so the wait is explained while it happens. quote the same figure the trigger acted on, or the line names a different percentage
@@ -294,6 +303,8 @@ public sealed class AgentLoop(
             var (requestMessages, elidedCount, stillOver, elidedThrough) = shaped;   //shaped after any compaction above, so it describes the live conversation
             var previousPrompt = usageState?.LastPromptTokens;   //read before this request records its own count and frontier
             var previousFrontier = usageState?.ElidedThrough;
+            var previousCount = usageState?.LastMessageCount;
+            var previousOverhead = _lastReadOverhead;
             if (elidedThrough != previousFrontier) cacheHigh = null;   //a cut rebuilt the prompt, so what the slot held before it says nothing of this one
             usageState?.NoteElided(elidedThrough);
 
@@ -358,7 +369,9 @@ public sealed class AgentLoop(
                             if (f.Usage is not null)
                             {
                                 observer.OnUsage(f.Usage);
-                                usageState?.Record(f.Usage.PromptTokens, estimateAtRequest, requestMessages.Count);
+                                usageState?.Record(f.Usage.PromptTokens, estimateAtRequest, requestMessages.Count,
+                                    comparable: ComparableReading(requestMessages, previousCount, elidedThrough == previousFrontier, overhead, previousOverhead));
+                                _lastReadOverhead = overhead;
                             }
                             if (f.FinishReason == "length")
                                 Warn("response truncated by token limit (finish_reason=length)");
@@ -375,7 +388,7 @@ public sealed class AgentLoop(
                 reactiveHasRescued = true;
                 madeProgressSinceRescue = false;   //a later rescue needs fresh progress first
                 if (ovf.PromptTokens is int actual)                    //a free exact reading for the ratio estimate
-                    usageState?.Record(actual, estimateAtRequest, requestMessages.Count);
+                    usageState?.Record(actual, estimateAtRequest, requestMessages.Count, comparable: false);
                 //say it before the summarize, since the user just saw a request fail and silence would read as a hang
                 observer.OnWarning("context overflowed — compacting and retrying this turn");
                 var rebuilt = await compaction.CompactAsync(CompactionReason.Overflow, SoFar(), observer, turnSpan, ct);

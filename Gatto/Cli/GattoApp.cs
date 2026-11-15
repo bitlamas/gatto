@@ -74,7 +74,7 @@ file sealed class OneShotCompaction(
     {
         var compactor = new Compactor(client, model, loop.RequestShape, loop.Trace, keepRejectedIn: sessions);
         var summary = await compactor.SummarizeAsync(convo, observer, ct, windowTokens: window, ratio: usage.Ratio, midTurn: true,
-            reason: reason.ToString(), traceParent: traceParent);
+            reason: reason.ToString(), traceParent: traceParent, usage: usage);
         LastFailure = compactor.LastFailure;
         if (summary is null) return null;
         var (rebuilt, _) = Compactor.RebuildMidTurn(summary, convo, turn, observer, sessions, recompose, dot);

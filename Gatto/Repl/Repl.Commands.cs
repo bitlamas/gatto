@@ -335,12 +335,12 @@ public sealed partial class Repl
         Compactor compactor, Conversation convo, SessionStore? sessions,
         Func<ComposedSystem> recomposeSystem, ITurnObserver observer, CancellationToken ct,
         int? contextBudget = null, Action<string>? onSummary = null,
-        Action<MemoryPiggyback.Extraction>? bankCandidates = null, string? doNotRepeat = null)
+        Action<MemoryPiggyback.Extraction>? bankCandidates = null, string? doNotRepeat = null, ContextUsageState? usage = null)
     {
         var oldPath = sessions?.CurrentPath;          //read before StartSuccessor, which clears the path
         var lastExchange = LastTextExchange(convo);
         var rawSummary = await compactor.SummarizeAsync(
-            convo, observer, ct, windowTokens: contextBudget, doNotRepeat: doNotRepeat);
+            convo, observer, ct, windowTokens: contextBudget, doNotRepeat: doNotRepeat, usage: usage);
         if (rawSummary is null)
         {
             //a rejected reply is kept beside the session file by the compactor itself, and this line names where when no earlier line of this compaction did
@@ -389,7 +389,7 @@ public sealed partial class Repl
         {
             fresh = await CompactAsync(new Compactor(client, modelName, loop.RequestShape, loop.Trace, keepRejectedIn: sessions), convo, sessions, recomposeSystem, renderer, ct,
                 contextBudget: contextBudget, onSummary: s => capturedSummary = s,
-                doNotRepeat: doNotRepeat,
+                doNotRepeat: doNotRepeat, usage: _usageState,
                 bankCandidates: ex =>
                 {
                     var banked = BankMemory(ex.Candidates, renderer).Banked;

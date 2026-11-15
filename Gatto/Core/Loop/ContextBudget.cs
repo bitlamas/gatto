@@ -60,14 +60,14 @@ public static class ContextBudget
         return (int)(chars / CharsPerToken);
     }
 
-    //estimated tokens added since the last server reading, scaled by the ratio, and 0 when there is no reading yet
+    //estimated tokens added since the last server reading, scaled by the growth ratio, and 0 when there is no reading yet
     public static int GrowthSinceLastRequest(Conversation convo, ContextUsageState usage) =>
         GrowthSinceLastRequest(convo.Messages, usage);
 
     //the same figure over a list, which a reader off the turn's thread passes as a copy
     public static int GrowthSinceLastRequest(IReadOnlyList<ChatMessage> messages, ContextUsageState usage) =>
         usage.LastMessageCount is int from && from < messages.Count
-            ? (int)(Estimate(messages.Skip(from)) * usage.Ratio)
+            ? (int)(Estimate(messages.Skip(from)) * usage.GrowthRatio)
             : 0;
 
     //one source for the context figure, server truth plus what has been appended since, and never strip the growth term

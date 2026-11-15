@@ -381,7 +381,7 @@ public sealed partial class Repl(
         {
             summary = await compactor.SummarizeAsync(
                 convo, observer, ct, windowTokens: contextBudget, ratio: _usageState.Ratio, midTurn: true,
-                reason: reason.ToString(), traceParent: traceParent);
+                reason: reason.ToString(), traceParent: traceParent, usage: _usageState);
         }
         finally { SetReasoningPassthrough(observer, false); }
         _lastAutoCompactFailure = compactor.LastFailure;   //the loop's line names it when the summary is null, with the kept replies' location inside only when no warning named it first
