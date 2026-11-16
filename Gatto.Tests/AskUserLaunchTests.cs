@@ -31,7 +31,6 @@ public class AskUserLaunchTests : IDisposable
     {
         var rolesDir = Path.Combine(_home, "roles");
         Directory.CreateDirectory(rolesDir);
-        File.WriteAllText(Path.Combine(rolesDir, "generalist.json"), "{\"model\":\"test-model\"}");
         var modelDir = Path.Combine(_home, "models", "test-model");
         Directory.CreateDirectory(modelDir);
         File.WriteAllText(Path.Combine(modelDir, "profile.json"),

@@ -445,7 +445,7 @@ public sealed record GattoConfig(
             stopServerOnExit = ssoe.GetBoolean();
         }
 
-        //the role a bare launch runs, absent means generalist, and the launch refuses a name with no file
+        //the role a bare launch runs, absent means no role, and the launch refuses a name with no file
         string? defaultRole = null;
         if (root.TryGetProperty("default_role", out var dr2))
         {

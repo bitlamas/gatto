@@ -617,11 +617,10 @@ public class DoctorTests : IDisposable
     }
 
     [Fact]
-    public async Task THE_SHIPPED_SITTERS_PRINT_NO_TINT_LINE()
+    public async Task THE_SHIPPED_ROLE_PRINTS_NO_TINT_LINE()
     {
         WriteGreenHome();
-        WriteRole("coder", Gatto.Extensions.ShippedExtensions.Files["roles/coder.json"]);
-        WriteRole("oracle", Gatto.Extensions.ShippedExtensions.Files["roles/oracle.json"]);
+        WriteRole("raw", Gatto.Extensions.ShippedExtensions.Files["roles/raw.json"]);
         var output = new StringWriter();
 
         await NewDoctor(HealthyClient()).RunAsync(_home, _cwd, output, CancellationToken.None);
@@ -698,9 +697,9 @@ public class DoctorTests : IDisposable
     }
 
     [Fact]
-    public async Task Check4_TheEmptyRolesFixNAMES_THE_HOME_BEING_CHECKED_not_the_default_one()
+    public async Task Check4_A_HOME_WITH_NO_ROLE_FILE_PASSES_AND_NAMES_ITS_FOLDER()
     {
-        //the fix sentence must name the home under check. otherwise a second install is sent to edit a file it is not using
+        //the seat with no role needs no file, so an empty roles folder is a working home and the line gives no advice
         WriteGreenHome();
         Directory.Delete(Path.Combine(_home, "roles"), recursive: true);
 
@@ -709,16 +708,37 @@ public class DoctorTests : IDisposable
         await doctor.RunAsync(_home, _cwd, output, CancellationToken.None);
 
         var line = Line(output, "roles:");
-        Assert.Contains(Path.Combine(_home, ".shipped"), line, StringComparison.Ordinal);
-        Assert.DoesNotContain(@"~\.gatto\.shipped", line, StringComparison.Ordinal);
+        Assert.EndsWith($"roles: no role files found under {Path.Combine(_home, "roles")}", line.TrimEnd('\r'), StringComparison.Ordinal);
+        Assert.DoesNotContain("✗", line, StringComparison.Ordinal);
+    }
+
+    //a home with no role file still checks default_role, or doctor passes a home whose every bare launch exits 2
+    [Theory]
+    [InlineData("ghost", false)]
+    [InlineData("default", true)]
+    [InlineData("DEFAULT", true)]
+    public async Task Check4_DEFAULT_ROLE_IS_CHECKED_WITH_NO_ROLE_FILE_AND_DEFAULT_PASSES(string defaultRole, bool passes)
+    {
+        WriteGreenHome();
+        Directory.Delete(Path.Combine(_home, "roles"), recursive: true);
+        var config = Path.Combine(_home, "gatto.json");
+        File.WriteAllText(config, File.ReadAllText(config).Replace("\"glyphs\": \"unicode\"", $"\"glyphs\": \"unicode\", \"default_role\": \"{defaultRole}\""));
+
+        var doctor = NewDoctor(HealthyClient());
+        var output = new StringWriter();
+        await doctor.RunAsync(_home, _cwd, output, CancellationToken.None);
+
+        var line = Line(output, "roles:");
+        Assert.Equal(passes, !line.Contains("does not exist", StringComparison.Ordinal));
+        if (!passes) Assert.Contains("default_role names 'ghost', and roles\\ghost.json does not exist", line, StringComparison.Ordinal);
     }
 
     [Fact]
-    public async Task Check4_BareShippedRoleResolvesViaDefaultModel_StaysGreen()
+    public async Task Check4_A_ROLE_WITH_NO_MODEL_KEY_RESOLVES_VIA_DEFAULT_MODEL_AND_STAYS_GREEN()
     {
         //a role with no model key resolves through default_model, the same precedence the launch path uses
         WriteGreenHome();
-        File.WriteAllText(Path.Combine(_home, "roles", "generalist.json"), "{}");
+        File.WriteAllText(Path.Combine(_home, "roles", "seat.json"), "{}");
         var doctor = NewDoctor(HealthyClient());
         var output = new StringWriter();
 
@@ -1065,6 +1085,20 @@ public class DoctorTests : IDisposable
         Directory.CreateDirectory(dir);
         File.WriteAllText(Path.Combine(dir, "profile.json"),
             $$"""{"files":[{"path":"{{_modelPath.Replace("\\", "\\\\")}}","active":true}],"port":{{port}},"context":8192,"llama_server":"{{enginePath.Replace("\\", "\\\\")}}"}""");
+    }
+
+    //the seat with no role takes part in the one-server check, so a role pinned to another server still gets its info line
+    [Fact]
+    public async Task A_ROLE_PINNED_TO_ANOTHER_SERVER_THAN_THE_SEAT_WITH_NO_ROLE_GETS_THE_INFO_LINE()
+    {
+        WriteGreenHome();
+        WriteModel("second-model", Port + 1, _llamaServerPath);
+        WriteRole("pinned", """{"model":"second-model"}""");
+        var output = new StringWriter();
+
+        await NewDoctor(HealthyClient()).RunAsync(_home, _cwd, output, CancellationToken.None);
+
+        Assert.Contains("roles 'default' and 'pinned' target different gatto-managed servers", output.ToString(), StringComparison.Ordinal);
     }
 
     private static List<string> EngineRows(StringWriter output) =>

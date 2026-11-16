@@ -28,8 +28,13 @@ public sealed class TerminalTitleTests : IDisposable
     //the title composition
 
     [Fact]
-    public void THE_DEFAULT_ROLE_IS_JUST_GATTO()
-        => Assert.Equal("gatto " + TerminalTitle.Glyph, TerminalTitle.For("generalist"));
+    public void THE_STARTING_SEAT_IS_JUST_GATTO()
+        => Assert.Equal("gatto " + TerminalTitle.Glyph, TerminalTitle.For(null));
+
+    //no role name is hidden by the title itself, so a user's own generalist role shows as any other does
+    [Fact]
+    public void A_ROLE_NAMED_GENERALIST_IS_NAMED_LIKE_ANY_OTHER()
+        => Assert.Equal("gatto " + TerminalTitle.Glyph + " generalist", TerminalTitle.For("generalist"));
 
     [Fact]
     public void ANY_OTHER_ROLE_IS_NAMED_AFTER_A_SEPARATOR()
@@ -260,7 +265,7 @@ public sealed class TerminalTitleTests : IDisposable
         await h.RunAsync();
 
         Assert.True(probe.Ran, "the scripted turn never reached the tool - the harness script did not dispatch");
-        var launch = TerminalTitle.For("generalist");
+        var launch = TerminalTitle.For(null);
         //mid-turn the only title on is the launch one, so a retitle at launch fails this row
         Assert.Equal([launch], SettledTitles.Of(probe.MidTurnTitles));
         Assert.Equal([launch, TerminalTitle.Project(_cwd)], SettledTitles.Of(deed.Applied));   //one retitle, and a second turn does not repeat it
@@ -284,7 +289,21 @@ public sealed class TerminalTitleTests : IDisposable
         await h.RunAsync();
 
         Assert.Contains("turn cancelled", h.ScreenText(), StringComparison.Ordinal);
-        Assert.Equal([TerminalTitle.For("generalist")], SettledTitles.Of(deed.Applied));   //a cancelled turn sets no folder title
+        Assert.Equal([TerminalTitle.For(null)], SettledTitles.Of(deed.Applied));   //a cancelled turn sets no folder title
+    }
+
+    //the retitle after /role hides the starting seat as the title at entry does, and names a switched-to role
+    [Fact]
+    public async Task THE_RETITLE_AFTER_ROLE_FOLLOWS_THE_RULE_OF_THE_TITLE_AT_ENTRY()
+    {
+        var deed = new Deed();
+        RoleSwitchResult Switch(string name) => new(true, name, "test-model", "the " + name + " marker", null);
+        var h = new RichReplHarness(_cwd, title: deed, switchRole: Switch);
+        h.Keys.Line("/role coder").Line("/role default").Line("/quit");
+
+        await h.RunAsync();
+
+        Assert.Equal([TerminalTitle.For(null), TerminalTitle.For("coder"), TerminalTitle.For(null)], SettledTitles.Of(deed.Applied));
     }
 
     //when there is no tab to title

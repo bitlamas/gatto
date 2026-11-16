@@ -23,7 +23,6 @@ public class EndToEndTests : IDisposable
         //seed a role and a model profile, a local endpoint needs both (the port is a placeholder, each test sets its own base url)
         var rolesDir = Path.Combine(_home, "roles");
         Directory.CreateDirectory(rolesDir);
-        File.WriteAllText(Path.Combine(rolesDir, "generalist.json"), "{\"model\":\"test-model\"}");
         var modelDir = Path.Combine(_home, "models", "test-model");
         Directory.CreateDirectory(modelDir);
         File.WriteAllText(Path.Combine(modelDir, "profile.json"),
@@ -129,7 +128,7 @@ public class EndToEndTests : IDisposable
         Environment.CurrentDirectory = _cwd;
         Directory.CreateDirectory(_home);
         File.WriteAllText(Path.Combine(_home, "gatto.json"),
-            $$$"""{"endpoints":{"local":{"base_url":"{{{server.BaseUrl}}}"}},"default_endpoint":"local","default_model":"test-m"}""");
+            $$$"""{"endpoints":{"local":{"base_url":"{{{server.BaseUrl}}}"}},"default_endpoint":"local","default_model":"test-model"}""");
         server.Enqueue(new FakeResponse(Frames: new[]
         {
             Chunk("{\"content\":\"the answer is 42\"}"),
@@ -155,7 +154,7 @@ public class EndToEndTests : IDisposable
         File.WriteAllText(Path.Combine(_cwd, "hello.txt"), "file content here");
         Directory.CreateDirectory(_home);
         File.WriteAllText(Path.Combine(_home, "gatto.json"),
-            $$$"""{"endpoints":{"local":{"base_url":"{{{server.BaseUrl}}}"}},"default_endpoint":"local","default_model":"test-m"}""");
+            $$$"""{"endpoints":{"local":{"base_url":"{{{server.BaseUrl}}}"}},"default_endpoint":"local","default_model":"test-model"}""");
 
         server.Enqueue(new FakeResponse(Frames: new[]
         {
@@ -194,7 +193,7 @@ public class EndToEndTests : IDisposable
         Environment.CurrentDirectory = _cwd;
         File.WriteAllText(Path.Combine(_cwd, "hello.txt"), "file content here");
         File.WriteAllText(Path.Combine(_home, "gatto.json"),
-            $$$"""{"endpoints":{"local":{"base_url":"{{{server.BaseUrl}}}"}},"default_endpoint":"local","default_model":"test-m","auto_compact":0.9}""");
+            $$$"""{"endpoints":{"local":{"base_url":"{{{server.BaseUrl}}}"}},"default_endpoint":"local","default_model":"test-model","auto_compact":0.9}""");
         server.Enqueue(new FakeResponse(Frames: new[]
         {
             ToolCallChunk("c1", "read_file", new { path = "hello.txt" }),
@@ -239,7 +238,7 @@ public class EndToEndTests : IDisposable
         Environment.SetEnvironmentVariable("GATTO_HOME", _home);
         Environment.CurrentDirectory = _cwd;
         File.WriteAllText(Path.Combine(_home, "gatto.json"),
-            $$$"""{"endpoints":{"local":{"base_url":"{{{server.BaseUrl}}}"}},"default_endpoint":"local","default_model":"test-m","auto_compact":false}""");
+            $$$"""{"endpoints":{"local":{"base_url":"{{{server.BaseUrl}}}"}},"default_endpoint":"local","default_model":"test-model","auto_compact":false}""");
         server.Enqueue(new FakeResponse(Status: 400, Body: OverflowBody));
 
         var stderr = new StringWriter();
@@ -260,7 +259,7 @@ public class EndToEndTests : IDisposable
         Environment.CurrentDirectory = _cwd;
         Directory.CreateDirectory(_home);
         File.WriteAllText(Path.Combine(_home, "gatto.json"),
-            $$$"""{"endpoints":{"local":{"base_url":"{{{server.BaseUrl}}}"}},"default_endpoint":"local","default_model":"test-m"}""");
+            $$$"""{"endpoints":{"local":{"base_url":"{{{server.BaseUrl}}}"}},"default_endpoint":"local","default_model":"test-model"}""");
 
         server.Enqueue(new FakeResponse(Frames: new[]
         {
@@ -308,7 +307,7 @@ public class EndToEndTests : IDisposable
         Environment.CurrentDirectory = _cwd;
         Directory.CreateDirectory(_home);
         File.WriteAllText(Path.Combine(_home, "gatto.json"),
-            $$$"""{"endpoints":{"local":{"base_url":"{{{server.BaseUrl}}}"}},"default_endpoint":"local","default_model":"test-m"}""");
+            $$$"""{"endpoints":{"local":{"base_url":"{{{server.BaseUrl}}}"}},"default_endpoint":"local","default_model":"test-model"}""");
 
         server.Enqueue(new FakeResponse(Frames: new[]
         {
@@ -345,7 +344,7 @@ public class EndToEndTests : IDisposable
         Environment.CurrentDirectory = _cwd;
         Directory.CreateDirectory(_home);
         File.WriteAllText(Path.Combine(_home, "gatto.json"),
-            $$$"""{"endpoints":{"local":{"base_url":"{{{server.BaseUrl}}}"}},"default_endpoint":"local","default_model":"test-m"}""");
+            $$$"""{"endpoints":{"local":{"base_url":"{{{server.BaseUrl}}}"}},"default_endpoint":"local","default_model":"test-model"}""");
 
         //the seed session is compacted. the --continue run recomposes the system fresh, so the stored summary block must be appended again or the model loses its history
         var store = new Gatto.Core.Session.SessionStore(_home, _cwd);
@@ -379,7 +378,7 @@ public class EndToEndTests : IDisposable
         Environment.CurrentDirectory = _cwd;
         Directory.CreateDirectory(_home);
         File.WriteAllText(Path.Combine(_home, "gatto.json"),
-            $$$"""{"endpoints":{"local":{"base_url":"{{{server.BaseUrl}}}"}},"default_endpoint":"local","default_model":"test-m"}""");
+            $$$"""{"endpoints":{"local":{"base_url":"{{{server.BaseUrl}}}"}},"default_endpoint":"local","default_model":"test-model"}""");
 
         var store = new Gatto.Core.Session.SessionStore(_home, _cwd);
         var fakeEarlier = Gatto.Core.Loop.Compactor.ContextMarker + "FAKE)\n\nLOOKALIKE FROM A GATTO.MD\n\n";
@@ -412,7 +411,7 @@ public class EndToEndTests : IDisposable
         Environment.CurrentDirectory = _cwd;
         Directory.CreateDirectory(_home);
         File.WriteAllText(Path.Combine(_home, "gatto.json"),
-            $$$"""{"endpoints":{"local":{"base_url":"{{{server.BaseUrl}}}"}},"default_endpoint":"local","default_model":"test-m"}""");
+            $$$"""{"endpoints":{"local":{"base_url":"{{{server.BaseUrl}}}"}},"default_endpoint":"local","default_model":"test-model"}""");
 
         //the id form of --continue reaches past the latest session, which the bare flag would pick
         var store = new Gatto.Core.Session.SessionStore(_home, _cwd);
@@ -453,7 +452,7 @@ public class EndToEndTests : IDisposable
         Environment.CurrentDirectory = _cwd;
         Directory.CreateDirectory(_home);
         File.WriteAllText(Path.Combine(_home, "gatto.json"),
-            """{"endpoints":{"local":{"base_url":"http://127.0.0.1:1"}},"default_endpoint":"local","default_model":"test-m"}""");
+            """{"endpoints":{"local":{"base_url":"http://127.0.0.1:1"}},"default_endpoint":"local","default_model":"test-model"}""");
 
         var stderr = new StringWriter();
         Console.SetError(stderr);
@@ -470,7 +469,7 @@ public class EndToEndTests : IDisposable
         Environment.CurrentDirectory = _cwd;
         Directory.CreateDirectory(_home);
         File.WriteAllText(Path.Combine(_home, "gatto.json"),
-            """{"endpoints":{"local":{"base_url":"http://127.0.0.1:1"}},"default_endpoint":"local","default_model":"test-m"}""");
+            """{"endpoints":{"local":{"base_url":"http://127.0.0.1:1"}},"default_endpoint":"local","default_model":"test-model"}""");
 
         var sessionsDir = Path.Combine(_home, "sessions");
         Directory.CreateDirectory(sessionsDir);
@@ -492,7 +491,7 @@ public class EndToEndTests : IDisposable
         Environment.CurrentDirectory = _cwd;
         Directory.CreateDirectory(_home);
         File.WriteAllText(Path.Combine(_home, "gatto.json"),
-            """{"endpoints":{"local":{"base_url":"http://127.0.0.1:1"}},"default_endpoint":"local","default_model":"test-m"}""");
+            """{"endpoints":{"local":{"base_url":"http://127.0.0.1:1"}},"default_endpoint":"local","default_model":"test-model"}""");
 
         var stderr = new StringWriter();
         Console.SetError(stderr);
@@ -512,7 +511,7 @@ public class EndToEndTests : IDisposable
         Environment.CurrentDirectory = _cwd;
         Directory.CreateDirectory(_home);
         File.WriteAllText(Path.Combine(_home, "gatto.json"),
-            $$$"""{"endpoints":{"local":{"base_url":"{{{server.BaseUrl}}}"}},"default_endpoint":"local","default_model":"test-m"}""");
+            $$$"""{"endpoints":{"local":{"base_url":"{{{server.BaseUrl}}}"}},"default_endpoint":"local","default_model":"test-model"}""");
         server.Enqueue(new FakeResponse(Frames: new[]
         {
             Chunk("{\"content\":\"the answer is 42\"}"),
@@ -553,7 +552,7 @@ public class EndToEndTests : IDisposable
         Environment.CurrentDirectory = _cwd;
         Directory.CreateDirectory(_home);
         File.WriteAllText(Path.Combine(_home, "gatto.json"),
-            $$$"""{"endpoints":{"local":{"base_url":"{{{server.BaseUrl}}}"}},"default_endpoint":"local","default_model":"test-m"}""");
+            $$$"""{"endpoints":{"local":{"base_url":"{{{server.BaseUrl}}}"}},"default_endpoint":"local","default_model":"test-model"}""");
         server.Enqueue(new FakeResponse(Frames: new[]
         {
             Chunk("{\"content\":\"half an answ\"}"),
@@ -583,7 +582,7 @@ public class EndToEndTests : IDisposable
         Environment.CurrentDirectory = _cwd;
         Directory.CreateDirectory(_home);
         File.WriteAllText(Path.Combine(_home, "gatto.json"),
-            $$$"""{"endpoints":{"local":{"base_url":"{{{server.BaseUrl}}}"}},"default_endpoint":"local","default_model":"test-m"}""");
+            $$$"""{"endpoints":{"local":{"base_url":"{{{server.BaseUrl}}}"}},"default_endpoint":"local","default_model":"test-model"}""");
 
         server.Enqueue(new FakeResponse(Frames: new[]
         {
@@ -611,7 +610,7 @@ public class EndToEndTests : IDisposable
         Environment.CurrentDirectory = _cwd;
         Directory.CreateDirectory(_home);
         File.WriteAllText(Path.Combine(_home, "gatto.json"),
-            $$$"""{"endpoints":{"local":{"base_url":"{{{server.BaseUrl}}}"}},"default_endpoint":"local","default_model":"test-m"}""");
+            $$$"""{"endpoints":{"local":{"base_url":"{{{server.BaseUrl}}}"}},"default_endpoint":"local","default_model":"test-model"}""");
 
         server.Enqueue(new FakeResponse(Frames: new[]
         {
@@ -646,7 +645,7 @@ public class EndToEndTests : IDisposable
         Environment.CurrentDirectory = _cwd;
         Directory.CreateDirectory(_home);
         File.WriteAllText(Path.Combine(_home, "gatto.json"),
-            $$$"""{"endpoints":{"local":{"base_url":"{{{server.BaseUrl}}}"}},"default_endpoint":"local","default_model":"test-m"}""");
+            $$$"""{"endpoints":{"local":{"base_url":"{{{server.BaseUrl}}}"}},"default_endpoint":"local","default_model":"test-model"}""");
 
         server.Enqueue(new FakeResponse(Frames: new[]
         {
@@ -715,7 +714,7 @@ public class EndToEndTests : IDisposable
         Environment.SetEnvironmentVariable("GATTO_HOME", _home);
         Environment.CurrentDirectory = _cwd;
         File.WriteAllText(Path.Combine(_home, "gatto.json"),
-            $$$"""{"endpoints":{"local":{"base_url":"{{{server.BaseUrl}}}"}},"default_endpoint":"local","default_model":"test-m"{{{extra}}}}""");
+            $$$"""{"endpoints":{"local":{"base_url":"{{{server.BaseUrl}}}"}},"default_endpoint":"local","default_model":"test-model"{{{extra}}}}""");
         Console.SetOut(new StringWriter());
         Console.SetError(new StringWriter());
         if (!grant) return;

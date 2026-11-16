@@ -56,7 +56,6 @@ public class UsageLaunchTests : IDisposable
             ");");
         File.WriteAllText(Path.Combine(_home, "gatto.json"), "{\"endpoints\":{\"local\":{}},\"default_endpoint\":\"hosted\"}");
         Directory.CreateDirectory(Path.Combine(_home, "roles"));
-        File.WriteAllText(Path.Combine(_home, "roles", "generalist.json"), "{}");
     }
 
     private static FakeResponse Text(string text) => new(Frames: new[]

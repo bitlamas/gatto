@@ -98,6 +98,8 @@ Func<string, string> card = (arg) =>
     var name = str(data, "name");
     var stem = name is null ? "" : slug(name);
     if (stem.Length == 0) return "the card has no name";
+    //the seat with no role holds this name, so a card cannot become a file gatto would never load
+    if (stem == "default") return $"role 'default' is gatto with no role, so {Path.Combine("roles", "default.json")} is not written";
     var target = Path.Combine(rolesDir, stem + ".json");
     if (File.Exists(target)) return $"{Path.Combine("roles", stem + ".json")} exists, delete it first";
 

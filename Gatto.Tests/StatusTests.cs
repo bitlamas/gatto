@@ -81,7 +81,7 @@ public class StatusTests : IDisposable
         var text = output.ToString();
         Assert.Contains("endpoint: local (http://127.0.0.1:1235)", text);
         Assert.Contains("default_model: test-model", text);
-        Assert.Contains("role: generalist", text);
+        Assert.Contains("role: default (override with gatto <role>)", text);
         Assert.Contains("not serving", text);   //with no serve.json the serve state reads as not serving
         Assert.Contains("sessions for this project: 0", text);
     }

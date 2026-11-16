@@ -6,7 +6,7 @@ public class CommentOverBlankCensusTests
     //measured at the tree after every drifted comment moved onto its subject or went. what is left heads a group
     private static readonly Dictionary<string, int> Pinned = new()
     {
-        ["Gatto"] = 25,
+        ["Gatto"] = 23,
         ["Gatto.Terminal"] = 3,
         ["Gatto.Tests"] = 270,
         ["Gatto.Terminal.Tests"] = 7,

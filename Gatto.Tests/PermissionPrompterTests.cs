@@ -423,7 +423,7 @@ public class RichPermissionPrompterTests
         Assert.DoesNotContain(rows, row => row.Contains("auto-approved", StringComparison.Ordinal));
         //the tint comes from the model's role that ToolBlockItem stamps, which differs from the renderer's role here
         var raw = p.Model.Items.SelectMany(i => i.Render(p.Width, T, glyphs: GlyphSet.Unicode)).ToArray();
-        Assert.Equal("generalist", p.Model.Role);
+        Assert.Equal("default", p.Model.Role);
         Assert.StartsWith(T.Paint(ItemRender.ToolMarkerOf(glyphs: GlyphSet.Unicode), Theme.Accent), raw[0], StringComparison.Ordinal);
         Assert.DoesNotContain(T.Paint(ItemRender.ToolMarkerOf(glyphs: GlyphSet.Unicode), CoderTeal), raw[0], StringComparison.Ordinal);
         Assert.DoesNotContain(T.Paint(ItemRender.ToolMarkerOf(glyphs: GlyphSet.Unicode), Theme.Err), raw[0], StringComparison.Ordinal);

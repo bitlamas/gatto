@@ -42,6 +42,23 @@ public sealed record RoleFile(
     private static readonly HashSet<string> CallableTools = new(SubagentWiring.Builtins().Keys, StringComparer.Ordinal);
     private static readonly string CallableToolList = string.Join(", ", SubagentWiring.Builtins().Keys);
 
+    //the name of the seat with no role, which no file in roles\ can take
+    public const string DefaultName = "default";
+
+    private static RoleFile? _default;
+
+    //the seat with no role, built in code with every key at its default, so it composes exactly what an empty role file composes
+    public static RoleFile Default => _default ??= BuildDefault();
+
+    private static RoleFile BuildDefault()
+    {
+        using var doc = JsonDocument.Parse("{}");
+        return Read(doc.RootElement.Clone(), DefaultName);
+    }
+
+    //true for the seat with no role in any casing, the one name that never reaches the roles folder
+    public static bool IsDefault(string? name) => string.Equals(name, DefaultName, StringComparison.OrdinalIgnoreCase);
+
     public static RoleFile Load(string rolesDir, string name)
     {
         var path = Path.Combine(rolesDir, $"{name}.json");
@@ -180,13 +197,19 @@ public sealed record RoleFile(
     public static string? EffectiveModel(RoleFile role, string? cliOverride, string? defaultModel) =>
         cliOverride ?? role.Model ?? defaultModel;
 
-    //the .json stems in the roles folder, sorted case-insensitively, with a missing folder giving an empty list
+    //the file in roles\ named default in any casing, as it is cased on disk, which is never loaded, or null
+    public static string? DefaultFileOnDisk(string rolesDir) =>
+        Directory.Exists(rolesDir)
+            ? Directory.GetFiles(rolesDir, "*.json").Select(Path.GetFileName).FirstOrDefault(f => IsDefault(Path.GetFileNameWithoutExtension(f)))
+            : null;
+
+    //the .json stems in the roles folder but default, sorted case-insensitively, with a missing folder giving an empty list
     public static IReadOnlyList<string> ListNames(string rolesDir)
     {
         if (!Directory.Exists(rolesDir)) return Array.Empty<string>();
         return Directory.GetFiles(rolesDir, "*.json")
             .Select(Path.GetFileNameWithoutExtension)
-            .Where(n => !string.IsNullOrEmpty(n))
+            .Where(n => !string.IsNullOrEmpty(n) && !IsDefault(n))
             .Select(n => n!)
             .OrderBy(n => n, StringComparer.OrdinalIgnoreCase)
             .ToList();

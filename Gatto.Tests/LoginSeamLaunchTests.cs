@@ -28,7 +28,6 @@ public class LoginSeamLaunchTests : IDisposable
         BrowserOpen.OpenOverride.Value = _opened.Add;
         Directory.CreateDirectory(Path.Combine(_home, "extensions"));
         Directory.CreateDirectory(Path.Combine(_home, "roles"));
-        File.WriteAllText(Path.Combine(_home, "roles", "generalist.json"), "{}");
     }
 
     public void Dispose()

@@ -269,12 +269,12 @@ public sealed partial class Repl
         inputMode?.Enter();
         altScreen.RegisterExitHooks();
         altScreen.QuietWheel = !mouseEnabled;   //no mouse capture, so the wheel must not arrive as the composer's arrow keys
-        //the tab title is composed from the same roleName the banner prints, so the two cannot drift
-        altScreen.Enter(TerminalTitle.For(roleName));
+        //the tab title is composed from the same role the banner prints, so the two cannot drift
+        altScreen.Enter(TerminalTitle.For(DisplayRole()));
         if (sessionName is { } resumedName) altScreen.Name(TerminalTitle.Named(resumedName));   //a resumed session opens with its own name on the tab
 
         //the banner is the transcript's first item
-        model.Append(BannerItem(theme, roleName, roleAvatar, modelName, versionLine, _glyphs));
+        model.Append(BannerItem(theme, DisplayRole(), roleAvatar, modelName, versionLine, _glyphs));
 
         //the memory-truncation notice, a system row right after the banner and above any resumed transcript
         if (memoryWarning is not null) renderer.CommitSystem(memoryWarning);

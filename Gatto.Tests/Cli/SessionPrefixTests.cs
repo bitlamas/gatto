@@ -17,10 +17,9 @@ public class SessionPrefixTests : IDisposable
 
     public SessionPrefixTests()
     {
-        //two roles, so run_agent is offered and its description lists them, and one model on the local endpoint
+        //a role file whose description run_agent lists, and one model on the local endpoint
         var rolesDir = Path.Combine(_home, "roles");
         Directory.CreateDirectory(rolesDir);
-        File.WriteAllText(Path.Combine(rolesDir, "generalist.json"), "{\"model\":\"test-model\"}");
         File.WriteAllText(Path.Combine(rolesDir, "reviewer.json"), "{\"model\":\"test-model\",\"description\":\"reads a diff\"}");
         var modelDir = Path.Combine(_home, "models", "test-model");
         Directory.CreateDirectory(modelDir);

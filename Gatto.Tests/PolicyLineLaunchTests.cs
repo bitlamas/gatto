@@ -24,7 +24,6 @@ public class PolicyLineLaunchTests : IDisposable
     {
         var rolesDir = Path.Combine(_home, "roles");
         Directory.CreateDirectory(rolesDir);
-        File.WriteAllText(Path.Combine(rolesDir, "generalist.json"), "{\"model\":\"test-model\"}");
         var modelDir = Path.Combine(_home, "models", "test-model");
         Directory.CreateDirectory(modelDir);
         File.WriteAllText(Path.Combine(modelDir, "profile.json"),
@@ -61,7 +60,7 @@ public class PolicyLineLaunchTests : IDisposable
 
     private void WriteConfig(FakeOpenAiServer server) =>
         File.WriteAllText(Path.Combine(_home, "gatto.json"),
-            $$$"""{"endpoints":{"local":{"base_url":"{{{server.BaseUrl}}}"}},"default_endpoint":"local","default_model":"test-m"}""");
+            $$$"""{"endpoints":{"local":{"base_url":"{{{server.BaseUrl}}}"}},"default_endpoint":"local","default_model":"test-model"}""");
 
     private static string Chunk(string deltaJson, string? finish = null) =>
         $"data: {{\"choices\":[{{\"index\":0,\"delta\":{deltaJson},\"finish_reason\":{(finish is null ? "null" : $"\"{finish}\"")}}}]}}\n\n";
@@ -274,7 +273,7 @@ public class PolicyLineLaunchTests : IDisposable
         var code = SourceTree.WithoutComments(
             File.ReadAllText(Path.Combine(SourceTree.RepoRoot(), "Gatto", "Cli", "GattoApp.cs")));
 
-        Assert.Equal(1, Occurrences(code, "defaultRole: config.DefaultRole ?? \"generalist\""));
+        Assert.Equal(1, Occurrences(code, "defaultRole: config.DefaultRole ?? RoleFile.DefaultName"));
     }
 
     //match the marker by its argument, so a differently written assignment still counts and the /role path stays out

@@ -129,7 +129,7 @@ public sealed class ChromePainter
         GlyphSet? glyphs = null, ITerminalTitle? terminalTitle = null)
     {
         _surface = surface; _theme = theme; _gate = gate;
-        Model = model ?? new TranscriptModel("generalist");
+        Model = model ?? new TranscriptModel("default");
         var index = new LineIndex(Model, theme, _glyphs);
         _scroll = new ScrollController(Model, index);
         _altScreen = new AltScreen(surface, terminalTitle);   //a null title lets AltScreen fall back to its own default
@@ -819,7 +819,7 @@ public sealed class ChromePainter
     }
 
     //the role name that tints the blinking dot, set once by the Repl
-    public string RoleForTint { get; set; } = "generalist";
+    public string RoleForTint { get; set; } = "default";
 
     //the glyph set comes in as an argument, since a static that resolved its own would undo the one glyph table
     private static string ChromeTrunc(string s, int width, GlyphSet g) =>

@@ -538,7 +538,7 @@ public sealed partial class Repl(
     }
 
     //transient and never serialized (it would stack on every resume), rebuilt on launch and /new, built here so the wording can't drift. internal for the test seam, a guard on the banner must render the banner rather than the cat on its own
-    internal static CommandEchoItem BannerItem(Theme theme, string roleName, IReadOnlyList<string>? roleAvatar, string modelName, string? versionLine,
+    internal static CommandEchoItem BannerItem(Theme theme, string? roleName, IReadOnlyList<string>? roleAvatar, string modelName, string? versionLine,
         Gatto.Terminal.GlyphSet? glyphs)
     {
         var g = glyphs ?? Gatto.Terminal.GlyphSet.Unicode;
@@ -551,7 +551,7 @@ public sealed partial class Repl(
             + (Gatto.Core.GattoVersion.Build is { Length: > 0 } b ? " " + g.Dot + " build " + b : ""));
         var sep = " " + g.Dot + " ";
         rows.Add(theme.Paint("gatto", Theme.Accent, bold: true) + theme.Paint(sep, Theme.Dim)
-            + theme.Paint(roleName, theme.RoleTint(roleName)) + theme.Paint(sep, Theme.Dim)
+            + (roleName is null ? "" : theme.Paint(roleName, theme.RoleTint(roleName)) + theme.Paint(sep, Theme.Dim))
             + Gatto.Core.Models.ServedModelName.Display(modelName)
             + theme.Paint(sep, Theme.Dim) + theme.Paint(ver, Theme.Dim));
         //the up arrow is not in the glyph table yet, so it comes from g.UpKey. the hint names the key a keyboard has rather than a caret

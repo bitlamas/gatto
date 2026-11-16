@@ -20,7 +20,6 @@ public sealed class ResumeFolderTests : IDisposable
     public ResumeFolderTests()
     {
         Directory.CreateDirectory(Path.Combine(_home, "roles"));
-        File.WriteAllText(Path.Combine(_home, "roles", "generalist.json"), "{\"model\":\"test-model\"}");
         var modelDir = Path.Combine(_home, "models", "test-model");
         Directory.CreateDirectory(modelDir);
         File.WriteAllText(Path.Combine(modelDir, "profile.json"), "{\"files\":[{\"path\":\"m.gguf\",\"active\":true}],\"port\":1235,\"context\":8192}");

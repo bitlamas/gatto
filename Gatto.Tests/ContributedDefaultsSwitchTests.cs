@@ -40,7 +40,6 @@ public sealed class ContributedDefaultsSwitchTests : IDisposable
     private LaunchState State(string onEndpoint)
     {
         Directory.CreateDirectory(Path.Combine(_home, "roles"));
-        File.WriteAllText(Path.Combine(_home, "roles", "generalist.json"), "{}");
         File.WriteAllText(Path.Combine(_home, "roles", "second.json"), """{"endpoint":"second","model":"s1"}""");
         File.WriteAllText(GattoJson, """{"endpoints":{"local":{}},"default_endpoint":"hosted"}""");
         var config = GattoConfig.Load(_home);
@@ -131,7 +130,7 @@ public sealed class ContributedDefaultsSwitchTests : IDisposable
         var state = LiveState(out var warned);
         Companion("hostext", """{"defaults":{"hosted":{"effort":{"c1":"medium"}}}}""");
         File.WriteAllText(Path.Combine(_home, "roles", "helper.json"), "{}");
-        state.Role = Gatto.Roles.RoleFile.Load(Path.Combine(_home, "roles"), "generalist");
+        state.Role = Gatto.Roles.RoleFile.Default;
 
         var (comp, model) = state.ComposeChild(Gatto.Roles.RoleFile.Load(Path.Combine(_home, "roles"), "helper"));
 
@@ -144,7 +143,6 @@ public sealed class ContributedDefaultsSwitchTests : IDisposable
     private LaunchState LiveState(out List<string> warned)
     {
         Directory.CreateDirectory(Path.Combine(_home, "roles"));
-        File.WriteAllText(Path.Combine(_home, "roles", "generalist.json"), "{}");
         File.WriteAllText(GattoJson, """{"endpoints":{"local":{}},"default_endpoint":"hosted"}""");
         var config = GattoConfig.Load(_home);
         var endpoints = new Dictionary<string, EndpointConfig>(config.Endpoints, StringComparer.Ordinal)
@@ -167,7 +165,6 @@ public sealed class ContributedDefaultsSwitchTests : IDisposable
     {
         //the row steps through the levels /effort would take for that model, and lands on the entry's own default when nothing is saved
         Directory.CreateDirectory(Path.Combine(_home, "roles"));
-        File.WriteAllText(Path.Combine(_home, "roles", "generalist.json"), "{}");
         File.WriteAllText(GattoJson, """{"endpoints":{"local":{}},"default_endpoint":"hosted"}""");
         var config = GattoConfig.Load(_home);
         var map = new Dictionary<string, JsonElement?>(Levels)

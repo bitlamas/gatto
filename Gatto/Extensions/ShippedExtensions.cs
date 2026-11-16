@@ -12,10 +12,6 @@ public static class ShippedExtensions
 
     //the shipped web_search.csx registers its two tools with no readClass, so they still prompt, a DDG bot-check page throws rather than reading as no results
 
-    //each reviewer role's append is a whole reviewer prompt with nothing factored out, so editing one never changes another
-
-    //the roles/*.json append values hold escaped newlines and backslashes that load back as newlines and paths, so leave the escapes alone
-
     //the manifest prefix every shipped resource has, from the csproj glob, defined once so the loader and its guards cannot drift
     internal const string ResourcePrefix = "shipped/";
 
@@ -84,26 +80,6 @@ public static class ShippedExtensions
         "3d7e1c6bf925346044ab37c8f091a342a5554c368e88080153f303306287bf90",
         //ask_user.csx rev 6
         "3a7090326db8e0c08bf4be4063afa2b2a0be32810dc4495e61c569361b6bde62",
-        //shipped role file hashes start here, coder.json rev A
-        "4ec9937c9729b15fddea77b390baa9b40c49a6a1294823356ef42bd54c9561fd",
-        //coder.json rev B
-        "f17c804ca2366a477389c8492655354f350f105d1c0065a6e066fc88ecfff709",
-        //coder.json rev C, the last one that set a temperature
-        "bf8418827f2d76f7a536db2dc4f5203d2ea321c02d77751c6c2ea975845a46a4",
-        //coder.json rev D, the last one without a cat and a tint
-        "64b94c93cca7ab9581c7ab6b73bfc6d9168a9f8b7e54cc6999961629177fffee",
-        //oracle.json rev O1
-        "41f74b3baf05beb65aa1bc2638668eb1410b27e22f5584785c525372fdb6384a",
-        //oracle.json rev O2
-        "ccc0c9353b6e9e5dfa4552126e3d6bdb0f96c13cf3a75a0ef90a1ad0c8d5f20a",
-        //oracle.json rev O3, the last one that armed the restatement gate
-        "ce9dff2a6ebe3e50b299dc43d0de4275cb996e0e2027d6fbcb04b8f279fb0d87",
-        //oracle.json rev O4, the last one without a cat and a tint
-        "64e52929395e5c7636eb08525680200b9f6127e8b16415e6d4c5a3c0ca5818b1",
-        //coder.json rev E, the last one whose face key was cat
-        "2d6ced6fbea38159984c627faa6d2aed0bfa4ec10a3f30c157da6ed471646694",
-        //oracle.json rev O5, the last one whose face key was cat
-        "0668a903f1072318ca5532da6089bcc537e2f64ffc8e27113f54e86318ced431",
         //shipped .csx revisions from before the public-comment pass start here, ask_user.csx first
         "d9674d68295a1b9296b196e5d169267064318f0e10615b76de41342df2d8e39b",
         //web_search.csx, the revision before the public-comment pass
@@ -126,6 +102,8 @@ public static class ShippedExtensions
         "4c9acb8c8681dc592a8451d92fb6988736f43c0fcca8b98859fca03792ab500f",
         //ask_user.csx while it offered its tool and its line under -p, where nobody can answer
         "09718eee7ff3217f2077789a8ad0d195c68714a5102107ea42892cba322888f3",
+        //cards.csx while it would write a card named default, a file gatto never loads
+        "1d56f684cd3868094f6668ac49a39d96abeb41d0eafe99dff452147b4b40f469",
     };
 
     //hashes of superseded shipped revisions, an unmodified copy that matches one is safely overwritten by the current text

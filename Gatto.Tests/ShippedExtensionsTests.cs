@@ -166,40 +166,22 @@ public sealed class ShippedExtensionsTests : IDisposable
     {
         ShippedExtensions.EnsureWritten(_home);   //the overload the program calls, so the real shipped roles are the ones written
 
-        Assert.True(File.Exists(Full("roles/generalist.json")));
-        Assert.True(File.Exists(Full("roles/coder.json")));
-        Assert.True(File.Exists(Full("roles/oracle.json")));
-
-        var coder = RoleFile.Load(RolesDir, "coder");
-        //the coder append comes back as a real multi-line string
-        Assert.Contains("report what changed", coder.Append!);
-        Assert.DoesNotContain("commit", coder.Append!);   //a commit is the project's choice, the shipped role asks for none
-        Assert.Contains("\n", coder.Append!);
-
-        var oracle = RoleFile.Load(RolesDir, "oracle");
-        Assert.Equal(new[] { "citations" }, oracle.Gates);
-        //the oracle append keeps its line breaks and its Windows path through the JSON read
-        Assert.DoesNotContain("task_restate", oracle.Append!);
-        Assert.Contains("\n", oracle.Append!);
-        Assert.Contains(@"docs\specs\", oracle.Append!);
-        Assert.Contains("one at a time", oracle.Append!);
-
-        var generalist = RoleFile.Load(RolesDir, "generalist");
-        Assert.Empty(generalist.Gates);
-        Assert.Null(generalist.Append);
+        //raw is the one role a home receives, and the seat with no role needs no file
+        Assert.Equal(new[] { "raw.json" }, Directory.GetFiles(RolesDir).Select(Path.GetFileName).ToArray());
+        Assert.True(RoleFile.Load(RolesDir, "raw").Raw);
     }
 
     [Fact]
     public void StaleUnmodifiedRole_UpgradesInPlace()
     {
-        //an untouched old oracle.json whose hash is in the historical set upgrades to the current canonical
+        //an untouched old role whose hash is in the historical set upgrades to the current canonical
         const string oldText = """
             {
               "gates": ["grounding"],
               "append": "old oracle, pre-citations"
             }
             """;
-        var current = ShippedExtensions.Files["roles/oracle.json"];
+        const string current = """{ "gates": ["citations"], "append": "the current oracle" }""";
         Directory.CreateDirectory(RolesDir);
         File.WriteAllText(Full("roles/oracle.json"), oldText);
         File.WriteAllText(ManifestPath, "roles/oracle.json\n");   //the manifest row means the file is not a fresh write
@@ -228,12 +210,12 @@ public sealed class ShippedExtensionsTests : IDisposable
     public void DeletedRole_StaysDeleted()
     {
         ShippedExtensions.EnsureWritten(_home);            //the first run writes the role and manifests it
-        Assert.True(File.Exists(Full("roles/coder.json")));
-        File.Delete(Full("roles/coder.json"));             //the user deletes the role after the first run
+        Assert.True(File.Exists(Full("roles/raw.json")));
+        File.Delete(Full("roles/raw.json"));               //the user deletes the role after the first run
 
         ShippedExtensions.EnsureWritten(_home);            //the second run must not write the role back
 
-        Assert.False(File.Exists(Full("roles/coder.json")));   //the manifest row keeps the role deleted
+        Assert.False(File.Exists(Full("roles/raw.json")));     //the manifest row keeps the role deleted
     }
 
     [Fact]
@@ -318,41 +300,21 @@ public sealed class ShippedExtensionsTests : IDisposable
         Assert.Equal(current, File.ReadAllText(Full("extensions/ask_user.csx")));
     }
 
-    //the oracle.json earlier releases installed arms a gate that no longer exists, so an untouched one must upgrade in place
+    //an untouched cards.csx from before it refused the name default takes the new bytes at the next launch
     [Fact]
-    public void An_untouched_pre_cut_oracle_role_is_upgraded_in_place_by_the_real_bytes()
+    public void An_untouched_pre_default_cards_is_upgraded_in_place_by_the_real_bytes()
     {
-        var previous = File.ReadAllText(Path.Combine(
-            Census.SourceTree.RepoRoot(), "Gatto.Tests", "Fixtures", "oracle-pre-nudge-cut.json"));
-        var current = ShippedExtensions.Files["roles/oracle.json"];
+        var previous = File.ReadAllText(Path.Combine(Census.SourceTree.RepoRoot(), "Gatto.Tests", "Fixtures", "cards-pre-default.csx"));
+        var current = ShippedExtensions.Files["extensions/cards.csx"];
         Assert.NotEqual(previous, current);
 
-        Directory.CreateDirectory(Full("roles"));
-        File.WriteAllText(Full("roles/oracle.json"), previous);
+        Directory.CreateDirectory(Full("extensions"));
+        File.WriteAllText(Full("extensions/cards.csx"), previous);
 
         ShippedExtensions.EnsureWritten(
-            _home, One("roles/oracle.json", current), ShippedExtensions.HistoricalHashes.ToHashSet());
+            _home, One("extensions/cards.csx", current), ShippedExtensions.HistoricalHashes.ToHashSet());
 
-        Assert.Equal(current, File.ReadAllText(Full("roles/oracle.json")));
-    }
-
-    //an untouched coder.json or oracle.json from before the cat and tint takes the new bytes at the next launch
-    [Theory]
-    [InlineData("coder", "coder-pre-dress.json")]
-    [InlineData("oracle", "oracle-pre-dress.json")]
-    public void AN_UNTOUCHED_SITTER_FROM_BEFORE_THE_DRESS_IS_UPGRADED_IN_PLACE(string role, string fixture)
-    {
-        var previous = File.ReadAllText(Path.Combine(Census.SourceTree.RepoRoot(), "Gatto.Tests", "Fixtures", fixture));
-        var current = ShippedExtensions.Files[$"roles/{role}.json"];
-        Assert.NotEqual(previous, current);
-
-        Directory.CreateDirectory(Full("roles"));
-        File.WriteAllText(Full($"roles/{role}.json"), previous);
-
-        ShippedExtensions.EnsureWritten(
-            _home, One($"roles/{role}.json", current), ShippedExtensions.HistoricalHashes.ToHashSet());
-
-        Assert.Equal(current, File.ReadAllText(Full($"roles/{role}.json")));
+        Assert.Equal(current, File.ReadAllText(Full("extensions/cards.csx")));
     }
 
     //an untouched undo.csx from an earlier release still logs what it did not snapshot, so it must upgrade in place
@@ -373,21 +335,6 @@ public sealed class ShippedExtensionsTests : IDisposable
             _home, One("extensions/undo.csx", current), ShippedExtensions.HistoricalHashes.ToHashSet());
 
         Assert.Equal(current, File.ReadAllText(Full("extensions/undo.csx")));
-    }
-
-    //an edited copy is the user's, so it keeps its edit and gains no cat
-    [Fact]
-    public void AN_EDITED_SITTER_FROM_BEFORE_THE_DRESS_KEEPS_ITS_EDIT()
-    {
-        var edited = File.ReadAllText(Path.Combine(Census.SourceTree.RepoRoot(), "Gatto.Tests", "Fixtures", "coder-pre-dress.json"))
-            .Replace("You are the coder.", "You are my coder.");
-        Directory.CreateDirectory(Full("roles"));
-        File.WriteAllText(Full("roles/coder.json"), edited);
-
-        ShippedExtensions.EnsureWritten(
-            _home, One("roles/coder.json", ShippedExtensions.Files["roles/coder.json"]), ShippedExtensions.HistoricalHashes.ToHashSet());
-
-        Assert.Equal(edited, File.ReadAllText(Full("roles/coder.json")));
     }
 
     //no current canonical's hash may sit in the historical set, or pristine files would be rewritten forever

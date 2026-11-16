@@ -14,7 +14,7 @@ public sealed class TerminalTitle : ITerminalTitle
     public const string Glyph = "𓏲𓎨";
 
     public static string For(string? role) =>
-        string.IsNullOrWhiteSpace(role) || role.Trim() == "generalist"
+        string.IsNullOrWhiteSpace(role)
             ? "gatto " + Glyph
             : "gatto " + Glyph + " " + role.Trim();
 

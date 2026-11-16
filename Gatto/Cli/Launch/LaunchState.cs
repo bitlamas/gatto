@@ -163,11 +163,11 @@ internal sealed class LaunchState(
     //one resolution of role, endpoint, model and composition, run at launch and by /role, which fails before any client is built
     internal RoleResolution ResolveRole(string roleArg)
     {
+        //the seat with no role is built in code, so the folder is not read for it
+        if (RoleFile.IsDefault(roleArg)) return ResolveLoaded(RoleFile.Default);
         var available = RoleFile.ListNames(rolesDir);
         if (!available.Contains(roleArg, StringComparer.OrdinalIgnoreCase))
-            throw new GattoConfigException(available.Count > 0
-                ? $"unknown role '{roleArg}'. Available roles: {string.Join(", ", available)}"
-                : $"unknown role '{roleArg}'. No role files found in {rolesDir}");
+            throw new GattoConfigException($"unknown role '{roleArg}'. Available roles: {string.Join(", ", available.Prepend(RoleFile.DefaultName))}");
         //the role name takes the on-disk casing here, since the checks below are ordinal and gatto ORACLE must report oracle
         roleArg = available.First(n => string.Equals(n, roleArg, StringComparison.OrdinalIgnoreCase));
         return ResolveLoaded(RoleFile.Load(rolesDir, roleArg));

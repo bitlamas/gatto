@@ -174,7 +174,7 @@
     },
     "default_role": {
       "type": ["string", "null"],
-      "description": "the role a bare gatto runs. absent means generalist. the name must be a file under roles\\."
+      "description": "the role a bare gatto runs. absent or default means no role, and any other name must be a file under roles\\."
     },
     "wild": {
       "type": "boolean",

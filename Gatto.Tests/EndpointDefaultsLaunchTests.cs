@@ -63,7 +63,6 @@ public class EndpointDefaultsLaunchTests : IDisposable
     {
         await using var server = new FakeOpenAiServer();
         WriteConfig(Listed(server, "[\"m1\",\"m2\"]", "{\"cloudy\":{\"model\":\"m2\"}}"));
-        WriteRole("generalist", "{}");
         server.Enqueue(Completion("ok"));
 
         Assert.Equal(0, await GattoApp.RunAsync(new[] { "-p", "hi" }));
@@ -75,7 +74,6 @@ public class EndpointDefaultsLaunchTests : IDisposable
     {
         await using var server = new FakeOpenAiServer();
         WriteConfig(Listed(server, "[\"m1\"]", "{\"cloudy\":{\"model\":\"gone\"}}"));
-        WriteRole("generalist", "{}");
         server.Enqueue(Completion("ok"));
 
         Assert.Equal(0, await GattoApp.RunAsync(new[] { "-p", "hi" }));
@@ -88,7 +86,6 @@ public class EndpointDefaultsLaunchTests : IDisposable
     {
         await using var server = new FakeOpenAiServer();
         WriteConfig(Listed(server, "[\"m1\",\"m2\"]", "{\"cloudy\":{\"model\":\"m2\"}}"));
-        WriteRole("generalist", "{}");
         server.Enqueue(Completion("first"));
         Assert.Equal(0, await GattoApp.RunAsync(new[] { "-m", "m1", "-p", "first question" }));
 
@@ -105,7 +102,6 @@ public class EndpointDefaultsLaunchTests : IDisposable
         await using var second = new FakeOpenAiServer();
         WriteConfig("{\"endpoints\":{\"one\":{\"base_url\":\"" + first.BaseUrl + "\",\"models\":[\"m1\"]}," +
             "\"two\":{\"base_url\":\"" + second.BaseUrl + "\",\"models\":[\"m2\"]}},\"default_endpoint\":\"one\"}");
-        WriteRole("generalist", "{}");
         second.Enqueue(Completion("first"));
         Assert.Equal(0, await GattoApp.RunAsync(new[] { "-e", "two", "-p", "first question" }));
 
@@ -120,7 +116,6 @@ public class EndpointDefaultsLaunchTests : IDisposable
     public async Task A_default_endpoint_nobody_contributes_refuses_with_exit_2()
     {
         WriteConfig("{\"endpoints\":{\"local\":{}},\"default_endpoint\":\"acme\"}");
-        WriteRole("generalist", "{}");
 
         Assert.Equal(2, await GattoApp.RunAsync(new[] { "-p", "hi" }));
         Assert.Contains("default_endpoint 'acme' is not a configured endpoint and no extension contributes it", _err.ToString());
@@ -141,7 +136,6 @@ public class EndpointDefaultsLaunchTests : IDisposable
         await using var server = new FakeOpenAiServer();
         Hosted(server, "\"h1\", \"h2\"", """{"defaults":{"hosted":{"model":"h2"}}}""");
         WriteConfig("{\"endpoints\":{\"local\":{}},\"default_endpoint\":\"hosted\"}");
-        WriteRole("generalist", "{}");
         server.Enqueue(Completion("ok"));
 
         Assert.Equal(0, await GattoApp.RunAsync(new[] { "-p", "hi" }));
@@ -154,7 +148,6 @@ public class EndpointDefaultsLaunchTests : IDisposable
         await using var server = new FakeOpenAiServer();
         Hosted(server, "\"h1\", \"h2\"");
         WriteConfig("{\"endpoints\":{\"local\":{}},\"default_endpoint\":\"hosted\",\"defaults\":{\"hosted\":{\"model\":\"h2\"}}}");
-        WriteRole("generalist", "{}");
         server.Enqueue(Completion("ok"));
 
         Assert.Equal(0, await GattoApp.RunAsync(new[] { "-p", "hi" }));
@@ -168,7 +161,6 @@ public class EndpointDefaultsLaunchTests : IDisposable
         await using var server = new FakeOpenAiServer();
         Hosted(server, "");
         WriteConfig("{\"endpoints\":{\"local\":{}},\"default_endpoint\":\"hosted\"}");
-        WriteRole("generalist", "{}");
 
         Assert.Equal(2, await GattoApp.RunAsync(new[] { "-p", "hi" }));
         Assert.Contains("defaults.hosted.model in " + Path.Combine("extensions", "hosted.json"), _err.ToString());
@@ -181,7 +173,6 @@ public class EndpointDefaultsLaunchTests : IDisposable
         Hosted(server, "\"m1\", \"m2\"", """{"defaults":{"hosted":{"effort":{"m1":"high"}}}}""",
             thinking: ", thinking: \"{\\\"none\\\":null,\\\"low\\\":{\\\"reasoning_effort\\\":\\\"low\\\"},\\\"high\\\":{\\\"reasoning_effort\\\":\\\"high\\\"}}\"");
         WriteConfig("{\"endpoints\":{\"local\":{}},\"default_endpoint\":\"hosted\"}");
-        WriteRole("generalist", "{}");
         server.Enqueue(Completion("ok"));
 
         Assert.Equal(0, await GattoApp.RunAsync(new[] { "-p", "hi" }));
@@ -192,7 +183,6 @@ public class EndpointDefaultsLaunchTests : IDisposable
     public async Task A_local_launch_does_not_read_another_endpoints_legacy_default()
     {
         WriteConfig("{\"endpoints\":{\"local\":{},\"r\":{\"base_url\":\"https://r.test\"}},\"default_endpoint\":\"r\",\"default_model\":\"remote-model\"}");
-        WriteRole("generalist", "{}");
 
         Assert.Equal(2, await GattoApp.RunAsync(new[] { "-e", "local", "-p", "hi" }));
         Assert.Contains("has no model for local endpoint", _err.ToString());
@@ -211,7 +201,6 @@ public class EndpointDefaultsLaunchTests : IDisposable
     {
         await using var server = new FakeOpenAiServer();
         WriteConfig(WithEffort(server, "{\"m1\":\"high\"}"));
-        WriteRole("generalist", "{}");
         server.Enqueue(Completion("ok"));
 
         Assert.Equal(0, await GattoApp.RunAsync(new[] { "-p", "hi" }));
@@ -223,7 +212,6 @@ public class EndpointDefaultsLaunchTests : IDisposable
     {
         await using var server = new FakeOpenAiServer();
         WriteConfig(WithEffort(server, "{\"m1\":\"huge\"}"));
-        WriteRole("generalist", "{}");
 
         Assert.Equal(2, await GattoApp.RunAsync(new[] { "-p", "hi" }));
         Assert.Contains("defaults.cloudy.effort.m1", _err.ToString());
@@ -234,7 +222,6 @@ public class EndpointDefaultsLaunchTests : IDisposable
     {
         await using var server = new FakeOpenAiServer();
         WriteConfig(WithEffort(server, "{\"m1\":\"low\",\"m2\":\"high\"}"));
-        WriteRole("generalist", "{}");
         server.Enqueue(Completion("ok"));
         Console.SetIn(new StringReader("/model m2\nhi\n/quit\n"));
 

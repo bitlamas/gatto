@@ -26,7 +26,6 @@ public class CatalogueLaunchTests : IDisposable
         Console.SetIn(new StringReader("/quit\n"));
         Directory.CreateDirectory(Path.Combine(_home, "extensions"));
         Directory.CreateDirectory(Path.Combine(_home, "roles"));
-        File.WriteAllText(Path.Combine(_home, "roles", "generalist.json"), "{}");
         File.WriteAllText(Path.Combine(_home, "gatto.json"), "{\"endpoints\":{\"local\":{}},\"default_endpoint\":\"hosted\"}");
     }
 
@@ -179,7 +178,7 @@ public class CatalogueLaunchTests : IDisposable
 
         var o = _out.ToString();
         var read = o.IndexOf("hosted: reading the model list", StringComparison.Ordinal);
-        Assert.True(read >= 0 && read < o.IndexOf("generalist", StringComparison.Ordinal), o);
+        Assert.True(read >= 0 && read < o.IndexOf("/quit", StringComparison.Ordinal), o);
     }
 
     [Fact]
@@ -250,7 +249,7 @@ public class CatalogueLaunchTests : IDisposable
         var before = File.ReadAllBytes(CompanionFile);
         server.Enqueue(Text("one"));
         server.Enqueue(Text("two"));
-        Console.SetIn(new StringReader("hi\n/role generalist\nagain\n/quit\n"));
+        Console.SetIn(new StringReader("hi\n/role default\nagain\n/quit\n"));
 
         Assert.Equal(0, await GattoApp.RunAsync(Array.Empty<string>()));
 

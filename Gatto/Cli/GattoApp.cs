@@ -106,21 +106,13 @@ public static class GattoApp
         args.Command == "launch" && string.Equals(args.Role, "help", StringComparison.OrdinalIgnoreCase)
         && !RoleFile.ListNames(Path.Combine(home, "roles")).Any(n => string.Equals(n, args.Role, StringComparison.OrdinalIgnoreCase));
 
-    //the roles line is read from the home at print time, so the help never names a default the config overrode or a role that is not on disk
-    internal static string HelpFor(string home)
-    {
-        var roles = RoleFile.ListNames(Path.Combine(home, "roles"));
-        string? configured = null;
-        try { configured = GattoConfig.Load(home).DefaultRole; }
-        catch (GattoConfigException) { }   //a home with no config still gets its help, and the launch reports the config error itself
-        return HelpText(roles, configured ?? "generalist");
-    }
+    //the roles line is read from the home at print time, so the help never names a role that is not on disk
+    internal static string HelpFor(string home) => HelpText(RoleFile.ListNames(Path.Combine(home, "roles")));
 
-    //every role on disk, the default first and marked, and a home with no roles folder yet reads the four shipped names
-    internal static string HelpText(IReadOnlyList<string> roles, string defaultRole)
+    //what can be typed: the seat with no role first, then every role on disk, unmarked, and an empty folder adds the pattern a user's own file takes
+    internal static string HelpText(IReadOnlyList<string> roles)
     {
-        var names = roles.Count > 0 ? roles : new[] { "generalist", "coder", "oracle", "raw" };
-        var line = string.Join(" | ", names.OrderBy(r => r == defaultRole ? 0 : 1).Select(r => r == defaultRole ? r + " (default)" : r));
+        var line = string.Join(" | ", roles.Prepend(RoleFile.DefaultName));
         if (roles.Count == 0) line += " | <any ~\\.gatto\\roles\\*.json>";
         return Help.Replace("{roles}", line, StringComparison.Ordinal);
     }
@@ -588,9 +580,14 @@ public static class GattoApp
                 try { RoleFile.Load(rolesDir, name); return null; }
                 catch (GattoConfigException ex) { return ex; }
             });
-            if (picked.Refusal is { } refusal) { err.WriteLine(refusal); return 2; }
+            if (picked.Refusal is { } refusal)
+            {
+                if (picked.BrokenMessage is { } broken) err.WriteLine(broken);   //a typed broken role whose fallback names no file says both
+                err.WriteLine(refusal);
+                return 2;
+            }
             //the role the launch will resolve, the fallback past a broken pick included, so the two names cannot part
-            try { launchEndpointName = LaunchState.EndpointNameFor(launchEndpoint, RoleFile.Load(rolesDir, picked.Role), config); }
+            try { launchEndpointName = LaunchState.EndpointNameFor(launchEndpoint, RoleFile.IsDefault(picked.Role) ? RoleFile.Default : RoleFile.Load(rolesDir, picked.Role), config); }
             catch (GattoConfigException) { launchEndpointName = null; }   //the role's own resolution below refuses it with its message
             return null;
         }
@@ -741,6 +738,8 @@ public static class GattoApp
             if (brokenMessage is not null) warn.Warn(brokenMessage + $", running {launchRole} instead");
             //read here and at each /role, so a file added mid-session reaches run_agent at the next /role
             state.RoleFiles = state.LoadRoleFiles(brokenName);
+            //a file cannot take the name of the seat with no role, so the launch says once that it is not loaded
+            if (RoleFile.DefaultFileOnDisk(rolesDir) is { } shadow) warn.Warn($"role 'default' is gatto with no role, so {Path.Combine("roles", shadow)} is not loaded");
             //a session continues on the endpoint it was recorded on, checked before anything starts. a record with no endpoint is from before the field and gets no check
             if (args.Continue && (continueById ?? sessions.LatestPathForCwd()) is { } recordedPath
                 && SessionStore.LoadBaseline(recordedPath)?.Endpoint is { } recordedEndpoint
@@ -1411,7 +1410,7 @@ public static class GattoApp
                 unmanagedVisionNotice: !state.ServedHere() ? UnmanagedSession.VisionUnavailable(state.LaunchBaseUrl) : null,
                 deafWatch: deafWatch,
                 wildFromHome: config.Wild, wildPersisted: () => permissions.Wild, sandbox: sandbox,
-                defaultRole: config.DefaultRole ?? "generalist",
+                defaultRole: config.DefaultRole ?? RoleFile.DefaultName,
                 roleTint: state.Role.ParsedTint(), roleAvatar: state.Role.Avatar, firstMessage: state.Role.FirstMessage,
                 armTasks: tasks => ((AppToolContext)toolCtx).Tasks = tasks,
                 listExtensions: listExtensions, setExtension: setExtension, recomposeFor: state.RecomposeSystem,

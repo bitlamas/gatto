@@ -809,7 +809,7 @@ public sealed partial class Repl
                     s.Ctx?.RecordUsedTokens(null);         //the same for the context figure
                     s.Refresh();                           //a fresh conversation, so the ctx estimate resets too
                 },
-                s.Painter.Model, s.Renderer, BannerItem(s.Theme, roleName, roleAvatar, modelName, versionLine, s.Glyphs),
+                s.Painter.Model, s.Renderer, BannerItem(s.Theme, DisplayRole(), roleAvatar, modelName, versionLine, s.Glyphs),
                 NewConversationLine, carry);
             //said after the rotation, which would erase it, and never saved, since the tasks were this process's
             if (_endedAtNew > 0) s.Renderer.CommitSystem($"ended {Gatto.Core.Plural.Of(_endedAtNew, "background task")}", transient: true);
@@ -936,7 +936,7 @@ public sealed partial class Repl
                 //future assistant blocks take the new role's tint, committed ones read the accent
                 s.Painter.Model.Role = roleName;
                 //the tab follows the role too, until the folder title is in
-                s.Painter.AltScreen.Retitle(TerminalTitle.For(roleName));
+                s.Painter.AltScreen.Retitle(TerminalTitle.For(DisplayRole()));
                 //rebuild the objects that captured roleName and modelName at construction, and reuse the painter and ticker so the purr never blinks across the swap
                 s.Refresh();                              //this also retargets painter.Frame and RoleForTint
                 //build the renderer through the launch builder, and let the tail closure read the convo field since /new and /compact reassign it

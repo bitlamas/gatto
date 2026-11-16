@@ -23,7 +23,6 @@ public sealed class ResumeEqualityTests : IDisposable
     public ResumeEqualityTests()
     {
         Directory.CreateDirectory(Path.Combine(_home, "roles"));
-        File.WriteAllText(Path.Combine(_home, "roles", "generalist.json"), "{\"model\":\"test-model\"}");
     }
 
     public void Dispose()
@@ -249,7 +248,7 @@ public sealed class ResumeEqualityTests : IDisposable
         var file = Directory.GetFiles(Path.Combine(_home, "sessions"), "*.jsonl").Single(f => !f.EndsWith(".ledger.jsonl", StringComparison.Ordinal));
         var b = SessionStore.LoadBaseline(file);
         Assert.NotNull(b);
-        Assert.Equal((1, "generalist", "test-model", "all"), (b!.Seq, b.Role, b.Model, b.ReasoningHistory));
+        Assert.Equal((1, "default", "test-model", "all"), (b!.Seq, b.Role, b.Model, b.ReasoningHistory));
         var sent = server.RequestBodies[0].GetProperty("tools").EnumerateArray().ToList();
         Assert.Equal(sent.Select(t => t.GetProperty("function").GetProperty("name").GetString()), b.Tools.Select(t => t.Name));
         Assert.Equal(sent.Select(t => BaselineMarks.Sha256Hex(t.GetRawText())), b.Tools.Select(t => t.Sha256));

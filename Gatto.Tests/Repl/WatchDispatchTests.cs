@@ -110,8 +110,8 @@ public sealed class WatchDispatchTests : IDisposable
         h.Keys.Line("/inbox").Line("/quit");
         await h.RunAsync();
 
-        var folder = Path.Combine(_cwd, ".gatto", "mailbox", "gatto", "test-model", "generalist");
-        Assert.Equal(folder, Gatto.Repl.Repl.SeatInboxFor(_cwd, h.ModelName, "generalist"));
+        var folder = Path.Combine(_cwd, ".gatto", "mailbox", "gatto", "test-model", "default");
+        Assert.Equal(folder, Gatto.Repl.Repl.SeatInboxFor(_cwd, h.ModelName, "default"));
         Assert.True(h.Saw($"inbox open: {Shown(folder)}"), h.Written());
         Assert.Equal("*\n", File.ReadAllText(Path.Combine(folder, ".gitignore")));
     }
@@ -296,9 +296,9 @@ public sealed class WatchDispatchTests : IDisposable
         Assert.Null(h.Watch);
     }
 
-    private string Seat => Path.Combine(_cwd, ".gatto", "mailbox", "gatto", "test-model", "generalist");
+    private string Seat => Path.Combine(_cwd, ".gatto", "mailbox", "gatto", "test-model", "default");
 
-    private string Kept => Path.Combine(_cwd, ".gatto", "mailbox", "archive", "gatto", "test-model", "generalist");
+    private string Kept => Path.Combine(_cwd, ".gatto", "mailbox", "archive", "gatto", "test-model", "default");
 
     private RichReplHarness Saving(out SessionStore store) =>
         new(_cwd, width: 400, sessions: store = new SessionStore(_home, _cwd));
@@ -326,7 +326,7 @@ public sealed class WatchDispatchTests : IDisposable
         Assert.Equal("*\n", File.ReadAllText(Path.Combine(Kept, ".gitignore")));
         var id = store.Identity.IdText;
         var lines = File.ReadAllText(Path.Combine(Kept, "a.md.read")).Split('\n');
-        Assert.Equal($"read-by: gatto/test-model/generalist/{id[..8]}", lines[0]);
+        Assert.Equal($"read-by: gatto/test-model/default/{id[..8]}", lines[0]);
         Assert.Equal($"session: {id}", lines[1]);
         Assert.Single(h.Client.Requests);   //the read file sits where no watch scans and never reaches the queue
     }
@@ -763,8 +763,8 @@ public sealed class WatchDispatchTests : IDisposable
         var made = new DirectoryInfo(_cwd).EnumerateFileSystemInfos("*", SearchOption.AllDirectories)
             .Select(i => Path.GetRelativePath(_cwd, i.FullName)).Order(StringComparer.Ordinal).ToList();
         string[] want = [".gatto", Path.Combine(".gatto", "mailbox"), Path.Combine(".gatto", "mailbox", "gatto"),
-            Path.Combine(".gatto", "mailbox", "gatto", "test-model"), Path.Combine(".gatto", "mailbox", "gatto", "test-model", "generalist"),
-            Path.Combine(".gatto", "mailbox", "gatto", "test-model", "generalist", ".gitignore")];
+            Path.Combine(".gatto", "mailbox", "gatto", "test-model"), Path.Combine(".gatto", "mailbox", "gatto", "test-model", "default"),
+            Path.Combine(".gatto", "mailbox", "gatto", "test-model", "default", ".gitignore")];
         Assert.Equal(want.Order(StringComparer.Ordinal), made);
     }
 

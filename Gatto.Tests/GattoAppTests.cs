@@ -106,6 +106,19 @@ public class GattoAppTests : IDisposable
         File.WriteAllText(Path.Combine(dir, $"{name}.json"), json);
     }
 
+    //a key in the test home's gatto.json, set after WriteConfig, so what a generalist file once carried moves into the config
+    private void SetConfigKey(string key, string value)
+    {
+        var path = Path.Combine(_home, "gatto.json");
+        var node = System.Text.Json.Nodes.JsonNode.Parse(File.ReadAllText(path))!.AsObject();
+        node[key] = value;
+        File.WriteAllText(path, node.ToJsonString());
+    }
+
+    private void UseDefaultModel(string id) => SetConfigKey("default_model", id);
+
+    private void UseDefaultRole(string name) => SetConfigKey("default_role", name);
+
     private static FakeResponse Completion(string text) => new(Frames: new[]
     {
         $"data: {{\"choices\":[{{\"index\":0,\"delta\":{{\"content\":\"{text}\"}},\"finish_reason\":null}}]}}\n\n",
@@ -134,7 +147,8 @@ public class GattoAppTests : IDisposable
         WriteConfig($$$"""{"endpoints":{"local":{"base_url":"{{{server.BaseUrl}}}"}},"default_endpoint":"local"}""");
         WriteModel("test-model", port: 1235,
             profileExtra: "\"thinking\":{\"medium\":{\"chat_template_kwargs\":{\"enable_thinking\":true}}}");
-        WriteRole("generalist", "{\"model\":\"test-model\",\"sampling\":{\"temperature\":0.3}}");
+        WriteRole("seat", "{\"model\":\"test-model\",\"sampling\":{\"temperature\":0.3}}");
+        UseDefaultRole("seat");
         server.Enqueue(Completion("ok"));
 
         var stdout = new StringWriter();
@@ -155,7 +169,8 @@ public class GattoAppTests : IDisposable
         UseHome();
         WriteConfig($$$"""{"endpoints":{"local":{"base_url":"{{{server.BaseUrl}}}"}},"default_endpoint":"local"}""");
         WriteModel("test-model", port: 1235);
-        WriteRole("generalist", roleJson);
+        WriteRole("seat", roleJson);
+        UseDefaultRole("seat");
         server.Enqueue(Completion("ok"));
         Console.SetOut(new StringWriter());
         Assert.Equal(0, await GattoApp.RunAsync(new[] { "-p", "hi" }));
@@ -190,7 +205,7 @@ public class GattoAppTests : IDisposable
         UseHome();
         WriteConfig("""{"endpoints":{"local":{"base_url":"http://127.0.0.1:1"}},"default_endpoint":"local","glyphs":"unicode"}""");
         WriteModel("test-model", port: 65501, profileExtra);
-        WriteRole("generalist", "{\"model\":\"test-model\"}");
+        UseDefaultModel("test-model");
         WriteRole("narrow", "{\"model\":\"test-model\",\"tools\":[\"grep\"]}");
 
         Console.SetIn(new StringReader(script));
@@ -217,9 +232,9 @@ public class GattoAppTests : IDisposable
     [Fact]
     public async Task A_ROLE_SWITCH_BACK_REARMS_THE_SIX()
     {
-        var output = await SwitchInThePlainLoop("/role narrow\n/role generalist\n/tools\n/quit\n");
+        var output = await SwitchInThePlainLoop("/role narrow\n/role default\n/tools\n/quit\n");
 
-        var cut = output.IndexOf("role: generalist", StringComparison.Ordinal);
+        var cut = output.IndexOf("role: default", StringComparison.Ordinal);
         Assert.True(cut > 0, output);
         Assert.Equal(SeatSix.Order(), ListedTools(output[cut..]).Intersect(SeatSix).Order());
     }
@@ -232,11 +247,11 @@ public class GattoAppTests : IDisposable
         UseHome();
         WriteConfig($$$"""{"endpoints":{"local":{"base_url":"{{{server.BaseUrl}}}"}},"default_endpoint":"local","glyphs":"unicode"}""");
         WriteModel("test-model", port: 1235);
-        WriteRole("generalist", "{\"model\":\"test-model\"}");
+        UseDefaultModel("test-model");
         WriteRole("narrow", "{\"model\":\"test-model\",\"tools\":[\"grep\"]}");
         server.Enqueue(Completion("one"));
         server.Enqueue(Completion("two"));
-        Console.SetIn(new StringReader("first\n/role narrow\n/role generalist\nsecond\n/quit\n"));
+        Console.SetIn(new StringReader("first\n/role narrow\n/role default\nsecond\n/quit\n"));
         Console.SetOut(new StringWriter());
         Assert.Equal(0, await GattoApp.RunAsync(Array.Empty<string>()));
 
@@ -301,15 +316,15 @@ public class GattoAppTests : IDisposable
         UseHome();
         WriteConfig($$$"""{"endpoints":{"local":{"base_url":"{{{server.BaseUrl}}}"}},"default_endpoint":"local","glyphs":"unicode"}""");
         WriteModel("test-model", port: 1235);
-        WriteRole("generalist", """{"model":"test-model","first_message":"Hello."}""");
+        WriteRole("seat", """{"model":"test-model","first_message":"Hello."}""");
 
         Console.SetIn(new StringReader("/quit\n"));
         var stdout = new StringWriter();
         Console.SetOut(stdout);
-        Assert.Equal(0, await GattoApp.RunAsync(Array.Empty<string>()));
+        Assert.Equal(0, await GattoApp.RunAsync(new[] { "seat" }));
 
         var output = stdout.ToString();
-        var banner = output.IndexOf("gatto " + Gatto.Terminal.GlyphSet.Unicode.Dot + " generalist", StringComparison.Ordinal);
+        var banner = output.IndexOf("gatto " + Gatto.Terminal.GlyphSet.Unicode.Dot + " seat", StringComparison.Ordinal);
         Assert.True(banner >= 0, output);
         Assert.Contains("Hello.", output[banner..], StringComparison.Ordinal);
         Assert.Empty(server.RequestBodies);
@@ -352,13 +367,14 @@ public class GattoAppTests : IDisposable
         return n;
     }
 
-    private async Task<string> PlainLoopWithOpening(string generalistJson, string script, bool withServer = false)
+    private async Task<string> PlainLoopWithOpening(string seatJson, string script, bool withServer = false)
     {
         await using var server = new FakeOpenAiServer();
         UseHome();
         WriteConfig($$$"""{"endpoints":{"local":{"base_url":"{{{server.BaseUrl}}}"}},"default_endpoint":"local","glyphs":"unicode"}""");
         WriteModel("test-model", port: 1235);
-        WriteRole("generalist", generalistJson);
+        WriteRole("seat", seatJson);
+        UseDefaultRole("seat");
         WriteRole("sera", """{"model":"test-model","first_message":"I am Sera."}""");
         if (withServer) server.Enqueue(Completion("ok"));
         Console.SetIn(new StringReader(script));
@@ -384,7 +400,7 @@ public class GattoAppTests : IDisposable
             .Select(l => JsonDocument.Parse(l).RootElement.Clone())
             .Where(e => e.GetProperty("role").GetString() == "assistant").ToList();
         Assert.True(assistants.Count >= 2, "the opening and the reply");
-        Assert.All(assistants, e => Assert.Equal("generalist", e.TryGetProperty("gatto_role", out var r) ? r.GetString() : null));
+        Assert.All(assistants, e => Assert.Equal("seat", e.TryGetProperty("gatto_role", out var r) ? r.GetString() : null));
     }
 
     [Fact]
@@ -405,7 +421,7 @@ public class GattoAppTests : IDisposable
         UseHome();
         WriteConfig($$$"""{"endpoints":{"local":{"base_url":"{{{server.BaseUrl}}}"}},"default_endpoint":"local"}""");
         WriteModel("test-model", port: 1235, profileExtra: "\"sampling\":{\"temperature\":0.6}");
-        WriteRole("generalist", "{\"model\":\"test-model\"}");
+        UseDefaultModel("test-model");
         server.Enqueue(Completion("ok"));
 
         Console.SetOut(new StringWriter());
@@ -423,7 +439,7 @@ public class GattoAppTests : IDisposable
         UseHome();
         WriteConfig("""{"endpoints":{"local":{}},"default_endpoint":"local"}""");
         WriteModel("test-model", port: new Uri(server.BaseUrl).Port);
-        WriteRole("generalist", "{\"model\":\"test-model\"}");
+        UseDefaultModel("test-model");
         server.Enqueue(Completion("ok"));
 
         Console.SetOut(new StringWriter());
@@ -454,7 +470,7 @@ public class GattoAppTests : IDisposable
         UseHome();
         WriteConfig($$$"""{"endpoints":{"local":{"base_url":"{{{server.BaseUrl}}}"}},"default_endpoint":"local","default_role":"coder"}""");
         WriteModel("test-model", port: 1235);
-        WriteRole("generalist", "{\"model\":\"test-model\"}");
+        UseDefaultModel("test-model");
         WriteRole("coder", "{\"model\":\"test-model\",\"append\":\"the coder marker\"}");
         server.Enqueue(Completion("ok"));
 
@@ -472,25 +488,25 @@ public class GattoAppTests : IDisposable
         UseHome();
         WriteConfig($$$"""{"endpoints":{"local":{"base_url":"{{{server.BaseUrl}}}"}},"default_endpoint":"local","default_role":"coder"}""");
         WriteModel("test-model", port: 1235);
-        WriteRole("generalist", "{\"model\":\"test-model\"}");
+        WriteRole("plain", "{\"model\":\"test-model\"}");
         WriteRole("coder", "{\"model\":\"test-model\",\"append\":\"the coder marker\"}");
         server.Enqueue(Completion("ok"));
 
         Console.SetOut(new StringWriter());
-        var exit = await GattoApp.RunAsync(new[] { "generalist", "-p", "hi" });
+        var exit = await GattoApp.RunAsync(new[] { "plain", "-p", "hi" });
 
         Assert.Equal(0, exit);
         Assert.DoesNotContain("the coder marker", server.LastRequestBody!.Value.GetProperty("messages")[0].GetProperty("content").GetString());
     }
 
     [Fact]
-    public async Task A_DEFAULT_ROLE_WITH_NO_FILE_EXITS_2_AND_LISTS_THE_ROLES()
+    public async Task A_DEFAULT_ROLE_WITH_NO_FILE_EXITS_2_IN_ITS_OWN_SENTENCE()
     {
         await using var server = new FakeOpenAiServer();
         UseHome();
         WriteConfig($$$"""{"endpoints":{"local":{"base_url":"{{{server.BaseUrl}}}"}},"default_endpoint":"local","default_role":"ghost"}""");
         WriteModel("test-model", port: 1235);
-        WriteRole("generalist", "{\"model\":\"test-model\"}");
+        UseDefaultModel("test-model");
 
         var output = new StringWriter();
         Console.SetOut(output);
@@ -498,8 +514,7 @@ public class GattoAppTests : IDisposable
         var exit = await GattoApp.RunAsync(new[] { "-p", "hi" });
 
         Assert.Equal(2, exit);
-        Assert.Contains("ghost", output.ToString(), StringComparison.Ordinal);
-        Assert.Contains("generalist", output.ToString(), StringComparison.Ordinal);
+        Assert.Contains("default_role names 'ghost', and roles\\ghost.json does not exist", output.ToString(), StringComparison.Ordinal);
     }
 
     //an explicit base_url is the user's choice of a proxy or another machine, so the model's port never replaces it
@@ -510,7 +525,7 @@ public class GattoAppTests : IDisposable
         UseHome();
         WriteConfig($$$"""{"endpoints":{"local":{"base_url":"{{{server.BaseUrl}}}"}},"default_endpoint":"local"}""");
         WriteModel("test-model", port: 1);
-        WriteRole("generalist", "{\"model\":\"test-model\"}");
+        UseDefaultModel("test-model");
         server.Enqueue(Completion("ok"));
 
         Console.SetOut(new StringWriter());
@@ -529,7 +544,6 @@ public class GattoAppTests : IDisposable
         WriteConfig($$$"""{"endpoints":{"local":{"base_url":"http://127.0.0.1:1"},"card":{"base_url":"{{{server.BaseUrl}}}"}},"default_endpoint":"local"}""");
         WriteModel("test-model", port: 1, profileExtra: "\"auto_serve\":true,\"sampling\":{\"temperature\":0.6}");
         File.WriteAllText(Path.Combine(_home, "models", "test-model", "system-append.md"), "CARD-APPEND");
-        WriteRole("generalist", "{}");
         server.Enqueue(Completion("ok"));
 
         Console.SetOut(new StringWriter());
@@ -550,7 +564,6 @@ public class GattoAppTests : IDisposable
         UseHome();
         WriteConfig($$$"""{"endpoints":{"card":{"base_url":"{{{server.BaseUrl}}}"}},"default_endpoint":"card"}""");
         WriteModel(Path.Combine("openai", "gpt-4.1"), port: 1, profileExtra: "\"sampling\":{\"temperature\":0.6}");
-        WriteRole("generalist", "{}");
         server.Enqueue(Completion("ok"));
 
         Console.SetOut(new StringWriter());
@@ -638,7 +651,7 @@ public class GattoAppTests : IDisposable
         UseHome();
         WriteConfig($$$"""{"endpoints":{"local":{"base_url":"{{{server.BaseUrl}}}"}},"default_endpoint":"local"}""");
         WriteModel("test-model", port: 1235, profileExtra: "\"api_key\":\"s3cr3t-value\"");
-        WriteRole("generalist", "{\"model\":\"test-model\"}");
+        UseDefaultModel("test-model");
         server.Enqueue(Completion("ok"));
 
         Console.SetOut(new StringWriter());
@@ -656,7 +669,7 @@ public class GattoAppTests : IDisposable
         UseHome();
         WriteConfig($$$"""{"endpoints":{"local":{"base_url":"{{{server.BaseUrl}}}"}},"default_endpoint":"local"}""");
         WriteModel("test-model", port: 1235);
-        WriteRole("generalist", "{\"model\":\"test-model\"}");
+        UseDefaultModel("test-model");
         server.Enqueue(Completion("ok"));
 
         Console.SetOut(new StringWriter());
@@ -674,7 +687,7 @@ public class GattoAppTests : IDisposable
         UseHome();
         WriteConfig("""{"endpoints":{"local":{}},"default_endpoint":"local"}""");   //the local endpoint is written with no base_url, so the port has to come from the model
         WriteModel("test-model", port: port);
-        WriteRole("generalist", "{\"model\":\"test-model\"}");
+        UseDefaultModel("test-model");
         server.Enqueue(Completion("routed"));
 
         var stdout = new StringWriter();
@@ -700,7 +713,7 @@ public class GattoAppTests : IDisposable
         var msg = stderr.ToString();
         Assert.Contains("frobnicate", msg);
         Assert.Contains("Available roles:", msg);   //the refusal names the roles under an Available roles heading instead of printing the generic help
-        Assert.Contains("generalist", msg);         //the shipped role is written when the home initializes, so the listing must name it.
+        Assert.Contains("Available roles: default", msg);   //the seat with no role is always available, so the listing opens with it
     }
 
     [Fact]
@@ -710,12 +723,12 @@ public class GattoAppTests : IDisposable
         UseHome();
         WriteConfig("""{"endpoints":{"local":{"base_url":"http://127.0.0.1:1"}},"default_endpoint":"local"}""");
         WriteModel("test-model", port: 1);
-        WriteRole("generalist", "{\"model\":\"test-model\"}");
+        WriteRole("seat", """{"model":"test-model"}""");
 
         var stderr = new StringWriter();
         Console.SetError(stderr);
         using var probeRoom = GattoApp.ProbeDeadlineScope(TimeSpan.FromMilliseconds(100));   //nothing listens on this port and windows retries a refused connect for 2 s, so the probes give up at once
-        var exit = await GattoApp.RunAsync(new[] { "-p", "hi" });
+        var exit = await GattoApp.RunAsync(new[] { "seat", "-p", "hi" });
 
         var msg = stderr.ToString();
         Assert.NotEqual(2, exit);                      //exit 2 is the config and usage code, so this run must not end with it
@@ -732,7 +745,6 @@ public class GattoAppTests : IDisposable
         UseHome();
         WriteConfig($$$"""{"endpoints":{"local":{"base_url":"{{{server.BaseUrl}}}"}},"default_endpoint":"local","default_model":"cfg-model"}""");
         WriteModel("cfg-model", port: 1235);
-        WriteRole("generalist", "{}");   //the role file is shipped-style and holds no model key
         server.Enqueue(Completion("via-default"));
 
         var stdout = new StringWriter();
@@ -751,7 +763,6 @@ public class GattoAppTests : IDisposable
         //default_model names a model that is not on disk, so a wrong order makes Model.Load throw and the exit becomes 2
         WriteConfig($$$"""{"endpoints":{"local":{"base_url":"{{{server.BaseUrl}}}"}},"default_endpoint":"local","default_model":"nonexistent-model"}""");
         WriteModel("cli-model", port: 1235);
-        WriteRole("generalist", "{}");
         server.Enqueue(Completion("via-cli"));
 
         var stdout = new StringWriter();
@@ -770,12 +781,12 @@ public class GattoAppTests : IDisposable
         //default_model names a model that is not on disk, so the role's model must win or the load throws and the exit becomes 2
         WriteConfig($$$"""{"endpoints":{"local":{"base_url":"{{{server.BaseUrl}}}"}},"default_endpoint":"local","default_model":"nonexistent-model"}""");
         WriteModel("role-model", port: 1235);
-        WriteRole("generalist", "{\"model\":\"role-model\"}");
+        WriteRole("seat", """{"model":"role-model"}""");
         server.Enqueue(Completion("via-role"));
 
         var stdout = new StringWriter();
         Console.SetOut(stdout);
-        var exit = await GattoApp.RunAsync(new[] { "-p", "hi" });
+        var exit = await GattoApp.RunAsync(new[] { "seat", "-p", "hi" });
 
         Assert.Equal(0, exit);
         Assert.Contains("via-role", stdout.ToString());
@@ -789,12 +800,12 @@ public class GattoAppTests : IDisposable
         //only the -m model exists on disk, so this row pins the whole precedence at once
         WriteConfig($$$"""{"endpoints":{"local":{"base_url":"{{{server.BaseUrl}}}"}},"default_endpoint":"local","default_model":"nonexistent-default"}""");
         WriteModel("cli-model", port: 1235);
-        WriteRole("generalist", "{\"model\":\"nonexistent-role-model\"}");
+        WriteRole("seat", """{"model":"nonexistent-role-model"}""");
         server.Enqueue(Completion("via-cli-full"));
 
         var stdout = new StringWriter();
         Console.SetOut(stdout);
-        var exit = await GattoApp.RunAsync(new[] { "-m", "cli-model", "-p", "hi" });
+        var exit = await GattoApp.RunAsync(new[] { "seat", "-m", "cli-model", "-p", "hi" });
 
         Assert.Equal(0, exit);
         Assert.Contains("via-cli-full", stdout.ToString());
@@ -805,7 +816,6 @@ public class GattoAppTests : IDisposable
     {
         UseHome();
         WriteConfig("""{"endpoints":{"local":{"base_url":"http://127.0.0.1:1235"}},"default_endpoint":"local"}""");
-        WriteRole("generalist", "{}");   //no model comes from the role, from -m, or from the endpoint's saved model
 
         var stderr = new StringWriter();
         Console.SetError(stderr);
@@ -828,7 +838,8 @@ public class GattoAppTests : IDisposable
             {"endpoints":{"local":{"base_url":"http://127.0.0.1:1235"},"cloudy":{"base_url":"{{{server.BaseUrl}}}"}},
              "default_endpoint":"local","defaults":{"cloudy":{"model":"cloud-model-x"} } }
             """);
-        WriteRole("generalist", "{\"endpoint\":\"cloudy\"}");   //the role has no model key, so the model falls back to the endpoint's saved one
+        WriteRole("seat", "{\"endpoint\":\"cloudy\"}");   //the role has no model key, so the model falls back to the endpoint's saved one
+        UseDefaultRole("seat");
         server.Enqueue(Completion("via-cloud-default"));
 
         var stdout = new StringWriter();
@@ -865,14 +876,14 @@ public class GattoAppTests : IDisposable
         Assert.Contains("a terminal assistant that runs AI models on your own computer", help);
     }
 
-    //the roles line reads the home, so the default the config names comes first and marked, and a role not on disk is never listed
+    //the roles line reads the home, so default comes first with no mark, and a role not on disk is never listed
     [Fact]
-    public void HelpText_MARKS_THE_CONFIGURED_DEFAULT_and_lists_the_roles_on_disk()
+    public void HelpText_PUTS_DEFAULT_FIRST_and_lists_the_roles_on_disk()
     {
-        var text = GattoApp.HelpText(new[] { "coder", "generalist", "oracle" }, "coder");
-        Assert.Contains("roles:    coder (default) | generalist | oracle", text);
+        var text = GattoApp.HelpText(new[] { "coder", "generalist", "oracle" });
+        Assert.Contains("roles:    default | coder | generalist | oracle\n", text.Replace("\r", ""));
         Assert.DoesNotContain("{roles}", text);
-        Assert.Contains("roles:    generalist (default) | coder | oracle | raw | <any ~\\.gatto\\roles\\*.json>", GattoApp.HelpText(Array.Empty<string>(), "generalist"));
+        Assert.Contains("roles:    default | <any ~\\.gatto\\roles\\*.json>", GattoApp.HelpText(Array.Empty<string>()));
     }
 
     //the connect flow must leave a home whose next launch resolves a model. writing an endpoint alone would leave the setup screen's promise false
@@ -1013,7 +1024,6 @@ public class GattoAppTests : IDisposable
             {"endpoints":{"cloudy":{"base_url":"{{{server.BaseUrl}}}","context":32768}},
              "default_endpoint":"cloudy","default_model":"served-model"}
             """);
-        WriteRole("generalist", "{}");
         //the body needs model_path, since the probe returns null without it, and the window sits under default_generation_settings
         server.PropsResponse = new FakeResponse(
             Body: """{"model_path": "theirs.gguf","default_generation_settings":{"n_ctx":131072}}""");
@@ -1046,7 +1056,7 @@ public class GattoAppTests : IDisposable
         UseHome();
         WriteConfig("""{"endpoints":{"local":{"base_url":"http://127.0.0.1:1235","thinking":{"hgih":{}}}},"default_endpoint":"local"}""");
         WriteModel("test-model", port: 1235);
-        WriteRole("generalist", "{\"model\":\"test-model\"}");
+        UseDefaultModel("test-model");
 
         var stderr = new StringWriter();
         Console.SetError(stderr);
@@ -1114,7 +1124,7 @@ public class GattoAppTests : IDisposable
         //the assertions read the unicode dot, so the set is pinned rather than left to the host's terminal
         WriteConfig($$$"""{"endpoints":{"local":{"base_url":"{{{server.BaseUrl}}}"}},"default_endpoint":"local","glyphs":"unicode"}""");
         WriteModel("test-model", port: 1235);
-        WriteRole("generalist", "{\"model\":\"test-model\"}");
+        UseDefaultModel("test-model");
 
         Console.SetIn(new StringReader("/context\n/quit\n"));
         var stdout = new StringWriter();
@@ -1142,7 +1152,7 @@ public class GattoAppTests : IDisposable
         UseHome();
         WriteConfig($$$"""{"endpoints":{"local":{"base_url":"{{{server.BaseUrl}}}"}},"default_endpoint":"local"}""");
         WriteModel("test-model", port: 1235);
-        WriteRole("generalist", "{\"model\":\"test-model\"}");
+        UseDefaultModel("test-model");
         var config = Path.Combine(_home, "gatto.json");
         var before = File.ReadAllText(config);
         server.Enqueue(ToolCallThenStop("c1", "write_file",
@@ -1193,7 +1203,7 @@ public class GattoAppTests : IDisposable
         UseHome();
         WriteConfig($$$"""{"endpoints":{"local":{"base_url":"{{{server.BaseUrl}}}"}},"default_endpoint":"local"}""");
         WriteModel("test-model", port: 1235);
-        WriteRole("generalist", "{\"model\":\"test-model\"}");
+        UseDefaultModel("test-model");
         WriteRole("researcher", "{\"model\":\"test-model\",\"gates\":[\"citations\"]}");
 
         server.Enqueue(ToolCallThenStop("c1", "write_file", "{\"path\":\"a.txt\",\"content\":\"see https://made.up.test/page\"}"));
@@ -1221,7 +1231,7 @@ public class GattoAppTests : IDisposable
         WriteConfig("""{"endpoints":{"local":{"base_url":"http://127.0.0.1:1"}},"default_endpoint":"local"}""");
         WriteModel("model-a", port: 1);
         WriteModel("model-b", port: 1);
-        WriteRole("generalist", "{\"model\":\"model-a\"}");
+        UseDefaultModel("model-a");
         WriteRole("coder", "{\"model\":\"model-b\"}");
 
         Console.SetIn(new StringReader("/role coder\n/quit\n"));
@@ -1245,7 +1255,7 @@ public class GattoAppTests : IDisposable
         UseHome();
         WriteConfig("""{"endpoints":{"local":{"base_url":"http://127.0.0.1:1"}},"default_endpoint":"local"}""");
         WriteModel("model-a", port: 1);
-        WriteRole("generalist", "{\"model\":\"model-a\"}");
+        UseDefaultModel("model-a");
         WriteRole("coder", "{\"model\":\"model-a\"}");
 
         Console.SetIn(new StringReader("/role coder\n/quit\n"));
@@ -1270,7 +1280,7 @@ public class GattoAppTests : IDisposable
              "default_endpoint":"local"}
             """);
         WriteModel("model-a", port: 1);
-        WriteRole("generalist", "{\"model\":\"model-a\"}");
+        UseDefaultModel("model-a");
         WriteRole("clouder", "{\"endpoint\":\"cloudy\",\"model\":\"model-x\"}");
 
         Console.SetIn(new StringReader("/role clouder\n/quit\n"));
@@ -1294,7 +1304,8 @@ public class GattoAppTests : IDisposable
         await using var server = new FakeOpenAiServer();
         UseHome();
         WriteConfig($$$"""{"endpoints":{"local":{"base_url":"http://127.0.0.1:1"},"cloudy":{"base_url":"{{{server.BaseUrl}}}"}},"default_endpoint":"local"}""");
-        WriteRole("generalist", "{\"endpoint\":\"cloudy\",\"model\":\"model-a\"}");   //this role holds the model the session launches with.
+        WriteRole("seat", "{\"endpoint\":\"cloudy\",\"model\":\"model-a\"}");   //this role holds the model the session launches with.
+        UseDefaultRole("seat");
         WriteRole("other", "{\"endpoint\":\"cloudy\",\"model\":\"model-b\"}");        //this role holds the model /role switches to
         server.Enqueue(Completion("SUMMARY"));                                        //this completion answers the summarization turn that /compact sends
 
@@ -1318,7 +1329,6 @@ public class GattoAppTests : IDisposable
         await using var server = new FakeOpenAiServer();
         UseHome();
         WriteCloudConfig(server.BaseUrl);
-        WriteRole("generalist", "{}");
         server.Enqueue(Completion("ok"));
 
         Console.SetOut(new StringWriter());
@@ -1335,7 +1345,6 @@ public class GattoAppTests : IDisposable
         await using var server = new FakeOpenAiServer();
         UseHome();
         WriteCloudConfig(server.BaseUrl);
-        WriteRole("generalist", "{}");
         server.Enqueue(Completion("ok"));
 
         var stderr = new StringWriter();
@@ -1356,7 +1365,6 @@ public class GattoAppTests : IDisposable
         await using var server = new FakeOpenAiServer();
         UseHome();
         WriteConfig($$$"""{"endpoints":{"local":{"base_url":"http://127.0.0.1:1"},"cloudy":{"base_url":"{{{server.BaseUrl}}}"}},"default_endpoint":"local","extensions_off":["web_search","cards"]}""");
-        WriteRole("generalist", "{}");
 
         var stderr = new StringWriter();
         Console.SetError(stderr);
@@ -1375,7 +1383,6 @@ public class GattoAppTests : IDisposable
         await using var server = new FakeOpenAiServer();
         UseHome();
         WriteCloudConfig(server.BaseUrl);
-        WriteRole("generalist", "{}");
         server.Enqueue(Completion("ok"));
         Environment.SetEnvironmentVariable("GATTO_ENDPOINT", null);
 
@@ -1394,12 +1401,11 @@ public class GattoAppTests : IDisposable
         UseHome();
         WriteConfig($$$"""{"endpoints":{"local":{"base_url":"{{{server.BaseUrl}}}"},"cloudy":{"base_url":"http://127.0.0.1:1"}},"default_endpoint":"cloudy"}""");
         WriteModel("test-model", port: 1235);
-        WriteRole("generalist", "{\"model\":\"test-model\"}");
         server.Enqueue(Completion("ok"));
         Environment.SetEnvironmentVariable("GATTO_ENDPOINT", "cloudy");
 
         Console.SetOut(new StringWriter());
-        var exit = await GattoApp.RunAsync(new[] { "-e", "local", "-p", "hi" });
+        var exit = await GattoApp.RunAsync(new[] { "-e", "local", "-m", "test-model", "-p", "hi" });
 
         Assert.Equal(0, exit);
         Assert.Equal("local", Environment.GetEnvironmentVariable("GATTO_ENDPOINT"));
@@ -1412,7 +1418,6 @@ public class GattoAppTests : IDisposable
         await using var server = new FakeOpenAiServer();
         UseHome();
         WriteCloudConfig(server.BaseUrl);
-        WriteRole("generalist", "{}");
         server.Enqueue(Completion("ok"));
         Environment.SetEnvironmentVariable("GATTO_MODEL", "wrong-model");
 
@@ -1433,7 +1438,7 @@ public class GattoAppTests : IDisposable
         UseHome();
         WriteConfig($$$"""{"endpoints":{"local":{"base_url":"{{{server.BaseUrl}}}"}},"default_endpoint":"local"}""");
         WriteModel("test-model", port: 1235);
-        WriteRole("generalist", "{\"model\":\"test-model\"}");
+        UseDefaultModel("test-model");
         server.Enqueue(Completion("ok"));
         Environment.SetEnvironmentVariable("GATTO_MODEL", "wrong-model");
         Environment.SetEnvironmentVariable("GATTO_EFFORT", "high");
@@ -1460,7 +1465,8 @@ public class GattoAppTests : IDisposable
                 "high":{"reasoning":{"effort":"high"}}}}},
              "default_endpoint":"local"}
             """);
-        WriteRole("generalist", "{\"thinking\":\"high\"}");
+        WriteRole("seat", "{\"thinking\":\"high\"}");
+        UseDefaultRole("seat");
         server.Enqueue(Completion("ok"));
         Environment.SetEnvironmentVariable("GATTO_EFFORT", "none");
 
@@ -1486,7 +1492,8 @@ public class GattoAppTests : IDisposable
                 "high":{"reasoning":{"effort":"high"}}}}},
              "default_endpoint":"local"}
             """);
-        WriteRole("generalist", "{\"thinking\":\"high\"}");
+        WriteRole("seat", "{\"thinking\":\"high\"}");
+        UseDefaultRole("seat");
         server.Enqueue(Completion("ok"));
 
         Console.SetOut(new StringWriter());
@@ -1504,7 +1511,6 @@ public class GattoAppTests : IDisposable
         await using var server = new FakeOpenAiServer();
         UseHome();
         WriteCloudConfig(server.BaseUrl);
-        WriteRole("generalist", "{}");
         WriteRole("coder", "{}");
         server.Enqueue(Completion("ok"));
 
@@ -1529,7 +1535,6 @@ public class GattoAppTests : IDisposable
             {"endpoints":{"cloudy":{"base_url":"{{{server.BaseUrl}}}"}},
              "default_endpoint":"cloudy","default_model":"served-model"}
             """);
-        WriteRole("generalist", "{}");
         arrange?.Invoke();
         server.Enqueue(Completion("ok"));
         Console.SetIn(new StringReader(script + "/quit\n"));
@@ -1586,7 +1591,6 @@ public class GattoAppTests : IDisposable
             {"endpoints":{"cloudy":{"base_url":"{{{server.BaseUrl}}}"}},
              "default_endpoint":"cloudy","default_model":"served-model"}
             """);
-        WriteRole("generalist", "{}");
         server.Enqueue(Completion("ok"));
 
         Console.SetIn(new StringReader("/model other-model\nhi\n/quit\n"));
@@ -1609,7 +1613,6 @@ public class GattoAppTests : IDisposable
         WriteConfig("""{"endpoints":{"local":{"base_url":"http://127.0.0.1:1"}},"default_endpoint":"local","default_model":"qwen-model"}""");
         WriteModel("qwen-model", port: 1);
         WriteModel("gemma-model", port: 1);
-        WriteRole("generalist", "{}");
         WriteRole("coder", "{}");
 
         Console.SetIn(new StringReader("/model gemma-model\n/role coder\n/quit\n"));
@@ -1633,14 +1636,14 @@ public class GattoAppTests : IDisposable
         WriteConfig("""{"endpoints":{"local":{"base_url":"http://127.0.0.1:1"}},"default_endpoint":"local"}""");
         WriteModel("qwen-model", port: 1);
         WriteModel("gemma-model", port: 1);
-        WriteRole("generalist", "{\"model\":\"qwen-model\"}");
+        WriteRole("qwen-role", "{\"model\":\"qwen-model\"}");
         WriteRole("pinned-role", "{\"model\":\"gemma-model\"}");
 
         Console.SetIn(new StringReader("/role pinned-role\n/quit\n"));
         var stdout = new StringWriter();
         Console.SetOut(stdout);
         using var probeRoom = GattoApp.ProbeDeadlineScope(TimeSpan.FromMilliseconds(100));   //nothing listens on this port and windows retries a refused connect for 2 s, so the probes give up at once
-        var exit = await GattoApp.RunAsync(Array.Empty<string>());
+        var exit = await GattoApp.RunAsync(new[] { "qwen-role" });
 
         Assert.Equal(0, exit);
         var output = stdout.ToString();
@@ -1658,7 +1661,6 @@ public class GattoAppTests : IDisposable
         WriteConfig("""{"endpoints":{"local":{"base_url":"http://127.0.0.1:1"}},"default_endpoint":"local","default_model":"qwen-model"}""");
         WriteModel("qwen-model", port: 1);
         WriteModel("gemma-model", port: 1);
-        WriteRole("generalist", "{}");
         WriteRole("pinned-role", "{\"model\":\"qwen-model\"}");   //this role pins a model of its own, which the session model overrides.
 
         Console.SetIn(new StringReader("/model gemma-model\n/role pinned-role\n/quit\n"));
@@ -1682,7 +1684,6 @@ public class GattoAppTests : IDisposable
         WriteConfig("""{"endpoints":{"local":{"base_url":"http://127.0.0.1:1"}},"default_endpoint":"local"}""");
         WriteModel("qwen3.6-27b", port: 1);
         WriteModel("gemma-4-26b", port: 1);
-        WriteRole("generalist", "{}");
         WriteRole("coder", "{}");
 
         Console.SetIn(new StringReader("/model gemma-4-26b\n/role coder\n/quit\n"));
@@ -1713,7 +1714,6 @@ public class GattoAppTests : IDisposable
         WriteModel("beta-model", port: 65533, profileExtra:
             "\"thinking\":{\"low\":{\"chat_template_kwargs\":{\"reasoning_effort\":\"beta-low\"}},\"high\":{\"chat_template_kwargs\":{\"reasoning_effort\":\"beta-high\"}}}");
         File.WriteAllText(Path.Combine(_home, "models", "beta-model", "system-append.md"), "BETA-APPEND");
-        WriteRole("generalist", "{}");
         WriteRole("coder", "{\"append\":\"CODER-APPEND\",\"thinking\":\"high\"}");
         for (var i = 0; i < 4; i++) server.Enqueue(Completion("ok"));
 
@@ -1765,7 +1765,6 @@ public class GattoAppTests : IDisposable
         UseHome();
         WriteConfig("""{"endpoints":{"local":{"base_url":"http://127.0.0.1:65533"}},"default_endpoint":"local","default_model":"levels-model"}""");
         WriteModel("levels-model", port: 65533, profileExtra: "\"thinking\":{\"low\":{},\"medium\":{},\"high\":{}}");
-        WriteRole("generalist", "{}");
 
         Console.SetIn(new StringReader("/effort high\n/quit\n"));
         var stdout = new StringWriter();
@@ -1787,7 +1786,6 @@ public class GattoAppTests : IDisposable
         UseHome();
         WriteConfig("""{"endpoints":{"local":{"base_url":"http://127.0.0.1:65533"}},"default_endpoint":"local","default_model":"levels-model"}""");
         WriteModel("levels-model", port: 65533, profileExtra: "\"thinking\":{\"low\":{},\"medium\":{},\"high\":{}}");
-        WriteRole("generalist", "{}");
 
         Console.SetIn(new StringReader("/effort turbo\n/quit\n"));
         var stdout = new StringWriter();
@@ -1810,7 +1808,6 @@ public class GattoAppTests : IDisposable
         WriteModel("plain-model", port: 65533);   //this profile declares no thinking map.
         WriteModel("thinky-model", port: 65533,
             profileExtra: "\"thinking\":{\"medium\":{\"chat_template_kwargs\":{\"enable_thinking\":true}}}");
-        WriteRole("generalist", "{}");
 
         Console.SetIn(new StringReader("/model thinky-model\n/quit\n"));
         var stdout = new StringWriter();
@@ -1831,7 +1828,6 @@ public class GattoAppTests : IDisposable
         UseHome();
         WriteConfig("""{"endpoints":{"local":{"base_url":"http://127.0.0.1:65533"}},"default_endpoint":"local","default_model":"plain-model"}""");
         WriteModel("plain-model", port: 65533);
-        WriteRole("generalist", "{}");
 
         Console.SetIn(new StringReader("/model gamma-model\n/quit\n"));
         var stdout = new StringWriter();
@@ -1851,7 +1847,6 @@ public class GattoAppTests : IDisposable
         UseHome();
         WriteConfig("""{"endpoints":{"local":{"base_url":"http://127.0.0.1:65533"}},"default_endpoint":"local","default_model":"levels-model"}""");
         WriteModel("levels-model", port: 65533, profileExtra: "\"thinking\":{\"low\":{},\"medium\":{},\"high\":{}}");
-        WriteRole("generalist", "{}");
         WriteRole("coder", "{\"thinking\":\"high\"}");
 
         Console.SetIn(new StringReader("/role coder\n/quit\n"));
@@ -1873,7 +1868,6 @@ public class GattoAppTests : IDisposable
         UseHome();
         WriteConfig("""{"endpoints":{"local":{"base_url":"http://127.0.0.1:65533"},"far":{"base_url":"http://127.0.0.1:65532"}},"default_endpoint":"local","default_model":"levels-model"}""");
         WriteModel("levels-model", port: 65533, profileExtra: "\"thinking\":{\"low\":{},\"medium\":{},\"high\":{}}");
-        WriteRole("generalist", "{}");
         WriteRole("far-role", "{\"endpoint\":\"far\",\"model\":\"levels-model\"}");
 
         Console.SetIn(new StringReader("/role far-role\n/quit\n"));
@@ -1901,7 +1895,6 @@ public class GattoAppTests : IDisposable
         WriteModel("thinky-model", port: 65533,
             profileExtra: "\"thinking\":{\"low\":{},\"medium\":{\"chat_template_kwargs\":{\"enable_thinking\":true}},\"high\":{}}");
         WriteModel("plain-model", port: 65533);   //this profile declares no thinking map.
-        WriteRole("generalist", "{}");
 
         Console.SetIn(new StringReader("/model plain-model\n/effort\n/quit\n"));
         var stdout = new StringWriter();
@@ -1925,7 +1918,6 @@ public class GattoAppTests : IDisposable
         WriteModel("plain-model", port: 65533);   //this profile declares no thinking map.
         WriteModel("thinky-model", port: 65533,
             profileExtra: "\"thinking\":{\"medium\":{\"chat_template_kwargs\":{\"enable_thinking\":true}}}");
-        WriteRole("generalist", "{}");
 
         Console.SetIn(new StringReader("/model thinky-model\n/effort\n/quit\n"));
         var stdout = new StringWriter();
@@ -1970,7 +1962,6 @@ public class GattoAppTests : IDisposable
             WriteModel("plain-model", port: 65533);
             WriteModel("thinky-model", port: 65533,
                 profileExtra: "\"thinking\":{\"none\":{\"chat_template_kwargs\":{\"reasoning_effort\":\"none\"}},\"high\":{\"chat_template_kwargs\":{\"reasoning_effort\":\"high\"}}}");
-            WriteRole("generalist", "{}");
             Console.SetIn(new StringReader(script + "/effort\n/quit\n"));
             var stdout = new StringWriter();
             Console.SetOut(stdout);
@@ -1995,7 +1986,6 @@ public class GattoAppTests : IDisposable
             profileExtra: "\"thinking\":{\"none\":{\"chat_template_kwargs\":{\"reasoning_effort\":\"none\"}},\"high\":{\"chat_template_kwargs\":{\"reasoning_effort\":\"high\"}}}");
         WriteModel("levels-model", port: 65533,
             profileExtra: "\"thinking\":{\"low\":{},\"medium\":{},\"high\":{}}");
-        WriteRole("generalist", "{}");
 
         Console.SetIn(new StringReader("/model levels-model\n/effort medium\n/quit\n"));
         var stdout = new StringWriter();
@@ -2017,7 +2007,6 @@ public class GattoAppTests : IDisposable
         WriteConfig("""{"endpoints":{"local":{"base_url":"http://127.0.0.1:65533"}},"default_endpoint":"local","default_model":"mistral-ish","think":"on"}""");
         WriteModel("mistral-ish", port: 65533,
             profileExtra: "\"thinking\":{\"none\":{\"chat_template_kwargs\":{\"reasoning_effort\":\"none\"}},\"high\":{\"chat_template_kwargs\":{\"reasoning_effort\":\"high\"}}}");
-        WriteRole("generalist", "{}");
 
         Console.SetIn(new StringReader("/effort none\n/effort high\n/quit\n"));
         var stdout = new StringWriter();
@@ -2042,7 +2031,7 @@ public class GattoAppTests : IDisposable
         UseHome();
         WriteConfig("""{"endpoints":{"local":{}},"default_endpoint":"local"}""");
         WriteModel("qwen38-model", port: port, profileExtra: Qwen38ThinkingMap);
-        WriteRole("generalist", "{\"model\":\"qwen38-model\"}");   //with no thinking key the role takes the default level, medium
+        UseDefaultModel("qwen38-model");   //the seat sets no level, so it takes the default level, medium
         server.PropsResponse = new FakeResponse(Body:
             $$"""{"model_path":"m.gguf","chat_template":"{{BothSwitchesTemplate}}"}""");
         server.Enqueue(Completion("ok"));
@@ -2073,7 +2062,7 @@ public class GattoAppTests : IDisposable
         UseHome();
         WriteConfig("""{"endpoints":{"local":{}},"default_endpoint":"local"}""");
         WriteModel("qwen38-model", port: port, profileExtra: Qwen38ThinkingMap);
-        WriteRole("generalist", "{\"model\":\"qwen38-model\"}");
+        UseDefaultModel("qwen38-model");
         server.Enqueue(Completion("ok"));
 
         Console.SetIn(new StringReader($"/effort {requested}\n/effort\nhi\n/quit\n"));
@@ -2105,7 +2094,7 @@ public class GattoAppTests : IDisposable
         WriteConfig("""{"endpoints":{"local":{"base_url":"http://127.0.0.1:65533"}},"default_endpoint":"local"}""");
         WriteModel("high-only-model", port: 65533,
             profileExtra: "\"thinking\":{\"high\":{\"chat_template_kwargs\":{\"reasoning_effort\":\"high\"}}}");
-        WriteRole("generalist", "{\"model\":\"high-only-model\"}");
+        UseDefaultModel("high-only-model");
 
         Console.SetIn(new StringReader("/effort low\n/effort\n/quit\n"));
         var stdout = new StringWriter();
@@ -2128,7 +2117,7 @@ public class GattoAppTests : IDisposable
         UseHome();
         WriteConfig("""{"endpoints":{"local":{"base_url":"http://127.0.0.1:65534"}},"default_endpoint":"local"}""");
         WriteModel("qwen38-model", port: 65534, profileExtra: Qwen38ThinkingMap);
-        WriteRole("generalist", "{\"model\":\"qwen38-model\"}");
+        UseDefaultModel("qwen38-model");
 
         Console.SetIn(new StringReader("/effort xhigh\n/quit\n"));
         var stdout = new StringWriter();
@@ -2148,7 +2137,7 @@ public class GattoAppTests : IDisposable
         UseHome();
         WriteConfig("""{"endpoints":{"local":{"base_url":"http://127.0.0.1:65535"}},"default_endpoint":"local"}""");
         WriteModel("qwen38-model", port: 65535, profileExtra: Qwen38ThinkingMap);
-        WriteRole("generalist", "{\"model\":\"qwen38-model\"}");
+        UseDefaultModel("qwen38-model");
 
         Console.SetIn(new StringReader("/effort high\n/quit\n"));
         var stdout = new StringWriter();
@@ -2169,7 +2158,7 @@ public class GattoAppTests : IDisposable
         UseHome();
         WriteConfig("""{"endpoints":{"local":{}},"default_endpoint":"local"}""");
         WriteModel("qwen38-model", port: port, profileExtra: Qwen38ThinkingMap + ",\"default_effort\":\"xhigh\"");
-        WriteRole("generalist", "{\"model\":\"qwen38-model\"}");   //the role sets no thinking key, so the model's default governs.
+        UseDefaultModel("qwen38-model");   //the seat sets no level, so the model's default governs
         server.Enqueue(Completion("ok"));
 
         Console.SetIn(new StringReader("hi\n/quit\n"));
@@ -2196,7 +2185,6 @@ public class GattoAppTests : IDisposable
             "\"low\":{\"chat_template_kwargs\":{\"enable_thinking\":true,\"reasoning_effort\":\"low\"}}," +
             "\"medium\":{\"chat_template_kwargs\":{\"enable_thinking\":true,\"reasoning_effort\":\"medium\"}}}}}," +
             "\"default_endpoint\":\"cloudy\",\"default_model\":\"served-model\"}");
-        WriteRole("generalist", "{}");
         server.PropsResponse = new FakeResponse(Body: """{"model_path": "theirs.gguf"}""");
 
         Console.SetIn(new StringReader("/effort medium\n/quit\n"));
@@ -2220,7 +2208,6 @@ public class GattoAppTests : IDisposable
         WriteConfig("""{"endpoints":{"local":{"base_url":"http://127.0.0.1:65502"}},"default_endpoint":"local","default_model":"mistral-ish"}""");
         WriteModel("mistral-ish", port: 65502,
             profileExtra: "\"thinking\":{\"none\":{\"chat_template_kwargs\":{\"reasoning_effort\":\"none\"}},\"high\":{\"chat_template_kwargs\":{\"reasoning_effort\":\"high\"}}}");
-        WriteRole("generalist", "{}");
 
         Console.SetIn(new StringReader("/effort on\n/quit\n"));
         var stdout = new StringWriter();
@@ -2242,7 +2229,6 @@ public class GattoAppTests : IDisposable
         WriteModel("mistral-ish", port: 65503,
             profileExtra: "\"thinking\":{\"none\":{\"chat_template_kwargs\":{\"reasoning_effort\":\"none\"}},\"high\":{\"chat_template_kwargs\":{\"reasoning_effort\":\"high\"}}}," +
                           "\"default_effort\":\"high\"");
-        WriteRole("generalist", "{}");
 
         Console.SetIn(new StringReader("/effort none\n/quit\n"));
         var stdout = new StringWriter();
@@ -2266,7 +2252,6 @@ public class GattoAppTests : IDisposable
         WriteModel("mistral-ish", port: port,
             profileExtra: "\"thinking\":{\"none\":{\"chat_template_kwargs\":{\"reasoning_effort\":\"none\"}},\"high\":{\"chat_template_kwargs\":{\"reasoning_effort\":\"high\"}}}," +
                           "\"default_effort\":\"high\"");
-        WriteRole("generalist", "{}");
         server.Enqueue(Completion("ok"));
 
         Console.SetIn(new StringReader("hi\n/quit\n"));
@@ -2290,7 +2275,6 @@ public class GattoAppTests : IDisposable
         WriteModel("model-b", port: 65504,
             profileExtra: "\"thinking\":{\"none\":{\"chat_template_kwargs\":{\"reasoning_effort\":\"none\"}},\"medium\":{\"chat_template_kwargs\":{\"reasoning_effort\":\"medium\"}}}," +
                           "\"default_effort\":\"none\"");
-        WriteRole("generalist", "{}");
 
         Console.SetIn(new StringReader("/model model-b\n/effort\n/quit\n"));
         var stdout = new StringWriter();
@@ -2317,7 +2301,6 @@ public class GattoAppTests : IDisposable
         UseHome();
         WriteConfig("""{"endpoints":{"local":{}},"default_endpoint":"local","default_model":"qwen36-model"}""");
         WriteModel("qwen36-model", port: port);   //this model profile has no thinking map.
-        WriteRole("generalist", "{}");
         server.PropsResponse = new FakeResponse(Body:
             $$"""{"model_path":"m.gguf","chat_template":"{{ToggleOnlyTemplate}}"}""");
 
@@ -2341,7 +2324,6 @@ public class GattoAppTests : IDisposable
         UseHome();
         WriteConfig("""{"endpoints":{"local":{}},"default_endpoint":"local","default_model":"qwen36-model"}""");
         WriteModel("qwen36-model", port: port, profileExtra: "\"default_effort\":\"max\"");
-        WriteRole("generalist", "{}");
         server.PropsResponse = new FakeResponse(Body:
             $$"""{"model_path":"m.gguf","chat_template":"{{ToggleOnlyTemplate}}"}""");
         server.Enqueue(Completion("ok"));
@@ -2363,7 +2345,6 @@ public class GattoAppTests : IDisposable
         UseHome();
         WriteConfig("""{"endpoints":{"local":{"base_url":"http://127.0.0.1:65505"}},"default_endpoint":"local","default_model":"plain-model"}""");
         WriteModel("plain-model", port: 65505);   //this model profile has no thinking map.
-        WriteRole("generalist", "{}");
 
         Console.SetIn(new StringReader("/effort high\n/quit\n"));
         var stdout = new StringWriter();
@@ -2387,7 +2368,6 @@ public class GattoAppTests : IDisposable
         UseHome();
         WriteConfig("""{"endpoints":{"local":{}},"default_endpoint":"local","default_model":"always-thinks"}""");
         WriteModel("always-thinks", port: port);   //the profile sets no thinking map, so the template sniff decides.
-        WriteRole("generalist", "{}");
         server.PropsResponse = new FakeResponse(Body:
             $$"""{"model_path":"m.gguf","chat_template":"{{AlwaysOnTemplate}}"}""");
 
@@ -2411,7 +2391,6 @@ public class GattoAppTests : IDisposable
         WriteConfig("""{"endpoints":{"local":{}},"default_endpoint":"local","default_model":"plain-model"}""");
         WriteModel("plain-model", port: port);   //this model profile has no thinking map.
         WriteModel("qwen38-model", port: port, profileExtra: Qwen38ThinkingMap);
-        WriteRole("generalist", "{}");
         server.PropsResponse = new FakeResponse(Body:
             $$"""{"model_path":"m.gguf","chat_template":"{{BothSwitchesTemplate}}"}""");
         server.Enqueue(Completion("ok"));
@@ -2433,7 +2412,7 @@ public class GattoAppTests : IDisposable
     {
         WriteConfig($$$"""{"endpoints":{"local":{"base_url":"{{{server.BaseUrl}}}"}},"default_endpoint":"local"}""");
         WriteModel("test-model", port: 1235);
-        WriteRole("generalist", "{\"model\":\"test-model\"}");
+        UseDefaultModel("test-model");
         server.Enqueue(ToolCallThenStop("c1", "write_file", "{\"path\":\"wild-out.txt\",\"content\":\"x\"}"));
         server.Enqueue(Completion("all done"));
 
@@ -2534,7 +2513,7 @@ public class GattoAppTests : IDisposable
         UseHome();
         WriteConfig($$$"""{"endpoints":{"local":{"base_url":"{{{server.BaseUrl}}}"}},"default_endpoint":"local"{{{configExtra}}}}""");
         WriteModel("test-model", port: 1235, profileExtra: profileExtra);
-        WriteRole("generalist", "{\"model\":\"test-model\"}");
+        UseDefaultModel("test-model");
         server.Enqueue(Completion("ok"));
         Console.SetOut(new StringWriter());
         Assert.Equal(0, await GattoApp.RunAsync(new[] { "-p", "hi" }));
@@ -2607,7 +2586,7 @@ public class GattoAppTests : IDisposable
         UseHome();
         WriteConfig($$$"""{"endpoints":{"local":{"base_url":"{{{server.BaseUrl}}}"}},"default_endpoint":"local"}""");
         WriteModel("test-model", port: 1235);
-        WriteRole("generalist", "{\"model\":\"test-model\"}");
+        UseDefaultModel("test-model");
         server.Enqueue(ToolCallThenStop("c1", "memory_write",
             "{\"slug\":\"the-new-fact\",\"content\":\"- the new fact\",\"mode\":\"write\"}"));
         server.Enqueue(Completion("banked"));
@@ -2674,7 +2653,7 @@ public class GattoAppTests : IDisposable
         WriteConfig($$$"""{"endpoints":{"local":{"base_url":"{{{server.BaseUrl}}}"}},"default_endpoint":"local"}""");
         var port = new Uri(server.BaseUrl).Port;
         foreach (var id in modelIds) WriteModel(id, port: port);
-        WriteRole("generalist", $$"""{"model":"{{modelIds[0]}}"}""");
+        UseDefaultModel(modelIds[0]);
         File.WriteAllText(Path.Combine(_cwd, "GATTO.md"), MarkerAlpha);
     }
 
@@ -2870,7 +2849,7 @@ public class GattoAppTests : IDisposable
         var port = new Uri(server.BaseUrl).Port;
         WriteConfig($$$"""{"endpoints":{"local":{"base_url":"{{{server.BaseUrl}}}"}},"default_endpoint":"local"}""");
         WriteModel("test-model", port: port);
-        WriteRole("generalist", "{\"model\":\"test-model\"}");
+        UseDefaultModel("test-model");
         //the helper's profile names m.gguf bare, and the match reads a bare path against the process folder
         var held = ours ? Path.GetFullPath("m.gguf") : Path.Combine(_home, "elsewhere", "other.gguf");
         server.PropsResponse = new FakeResponse(Status: 200, Body: $$$"""
@@ -2901,7 +2880,7 @@ public class GattoAppTests : IDisposable
         var port = new Uri(server.BaseUrl).Port;
         WriteConfig($$$"""{"endpoints":{"local":{"base_url":"{{{server.BaseUrl}}}"}},"default_endpoint":"local"}""");
         WriteModel("test-model", port: port);
-        WriteRole("generalist", "{\"model\":\"test-model\"}");
+        UseDefaultModel("test-model");
         server.PropsResponse = new FakeResponse(Status: 200, Body: "{\"model\":\"test-model.gguf\"}");
         server.Enqueue(Completion("response"));
 
@@ -2944,7 +2923,6 @@ public class GattoAppTests : IDisposable
             {"endpoints":{"local":{"base_url":"{{{server.BaseUrl}}}"}},
              "default_endpoint":"local","default_model":"model-y"}
             """);
-        WriteRole("generalist", "{}");
         WriteModelWithOwnFile("model-x", port: 1);
         WriteModelWithOwnFile("model-y", port: 1);
         server.PropsResponse = new FakeResponse(Body: """{"model_path": "model-y.gguf"}""");
@@ -2977,7 +2955,6 @@ public class GattoAppTests : IDisposable
             {"endpoints":{"local":{"base_url":"{{{server.BaseUrl}}}"}},
              "default_endpoint":"local","default_model":"model-y"}
             """);
-        WriteRole("generalist", "{}");
         WriteModelWithOwnFile("model-x", port: 1);
         WriteModelWithOwnFile("model-y", port: 1);
         server.PropsResponse = new FakeResponse(Body: """{"model_path": "model-x.gguf"}""");
@@ -3006,7 +2983,6 @@ public class GattoAppTests : IDisposable
             {"endpoints":{"local":{"base_url":"{{{server.BaseUrl}}}"}},
              "default_endpoint":"local","default_model":"model-x"}
             """);
-        WriteRole("generalist", "{}");
         WriteModelWithOwnFile("model-x", port: 1);
         WriteModelWithOwnFile("model-y", port: 1);
         //the server holds Y while the default is X, a mismatch nobody asked for by name.
@@ -3043,7 +3019,6 @@ public class GattoAppTests : IDisposable
         var port = new Uri(server.BaseUrl).Port;
         var local = pinnedBaseUrl ? $$$"""{"base_url":"{{{server.BaseUrl}}}"}""" : "{}";
         WriteConfig($$$"""{"endpoints":{"local":{{{local}}}},"default_endpoint":"local","default_model":"model-x"}""");
-        WriteRole("generalist", "{}");
         //auto_serve off, so an unanswered probe can never start a process on this machine
         WriteProfile("model-x", $$$"""{"files":[{"path":"model-x.gguf","active":true}],"port":{{{port}}},"context":8192,"auto_serve":false}""");
         WriteProfile("model-y", $$$"""{"files":[{"path":"model-y.gguf","active":true},{"path":"model-y-q8.gguf"}],"port":{{{(pinnedBaseUrl ? port : 1)}}},"context":16384,"auto_serve":false}""");
@@ -3086,7 +3061,6 @@ public class GattoAppTests : IDisposable
         using var probeRoom = GattoApp.ProbeDeadlineScope(TimeSpan.FromSeconds(30));   //the assertions read the probe's answer, so the suite's load must not turn them into a race
         UseHome();
         WriteConfig($$$"""{"endpoints":{"local":{"base_url":"{{{server.BaseUrl}}}"}},"default_endpoint":"local","default_model":"model-x"}""");
-        WriteRole("generalist", "{}");
         WriteModelWithOwnFile("model-x", port: 1);
         WriteModelWithOwnFile("model-y", port: 1);
         server.PropsResponse = new FakeResponse(Body: """{"model_path": "model-y.gguf"}""");
@@ -3118,7 +3092,6 @@ public class GattoAppTests : IDisposable
         using var probeRoom = GattoApp.ProbeDeadlineScope(TimeSpan.FromSeconds(30));   //the assertions read the probe's answer, so the suite's load must not turn them into a race
         UseHome();
         WriteConfig($$$"""{"endpoints":{"local":{"base_url":"{{{server.BaseUrl}}}"}},"default_endpoint":"local","default_model":"model-x"}""");
-        WriteRole("generalist", "{}");
         WriteModelWithOwnFile("model-x", port: 1);
         WriteModelWithOwnFile("model-y", port: 1);
         server.PropsResponse = new FakeResponse(Body: """{"model_path": "model-x.gguf"}""");
@@ -3233,7 +3206,6 @@ public class GattoAppTests : IDisposable
             {"endpoints":{"local":{"base_url":"{{{server.BaseUrl}}}"}},
              "default_endpoint":"local","default_model":"model-x","stop_server_on_exit":{{{flag}}}}
             """);
-        WriteRole("generalist", "{}");
         //with no server up the fake answers /props with 404, and a declined auto serve keeps the launch from starting one
         if (serverUp)
         {
@@ -3271,7 +3243,6 @@ public class GattoAppTests : IDisposable
             {"endpoints":{"local":{"base_url":"{{{server.BaseUrl}}}"}},
              "default_endpoint":"local","default_model":"model-x"}
             """);
-        WriteRole("generalist", "{}");
         WriteModel("model-x", port: 1, profileExtra: "#auto_serve#: false".Replace('#', '"'));
 
         //a one-shot turn leaves the session the interactive launch then resumes
@@ -3305,7 +3276,6 @@ public class GattoAppTests : IDisposable
             {"endpoints":{"local":{"base_url":"{{{server.BaseUrl}}}"}},
              "default_endpoint":"local","default_model":"model-x"}
             """);
-        WriteRole("generalist", "{}");
         WriteModel("model-x", port: 1, profileExtra: "#auto_serve#: false".Replace('#', '"'));
         var stderr = new StringWriter();
         Console.SetIn(new StringReader("/quit"));
@@ -3329,7 +3299,6 @@ public class GattoAppTests : IDisposable
             {"endpoints":{"cloudy":{"base_url":"{{{server.BaseUrl}}}","context":32768}},
              "default_endpoint":"cloudy","default_model":"served-model","stop_server_on_exit":true}
             """);
-        WriteRole("generalist", "{}");
         server.PropsResponse = new FakeResponse(Body: """{"model_path": "theirs.gguf"}""");
         var record = Path.Combine(_home, "serve.json");
         File.WriteAllText(record, "{ not json");
@@ -3366,7 +3335,6 @@ public class GattoAppTests : IDisposable
             {"endpoints":{"local":{"base_url":"{{{server.BaseUrl}}}"}},
              "default_endpoint":"local","default_model":"model-x","stop_server_on_exit":false}
             """);
-        WriteRole("generalist", "{}");
         WriteModelWithOwnFile("model-x", port: 1);
         server.PropsResponse = new FakeResponse(
             Body: $$"""{"model_path": "{{one.Replace("\\", "\\\\")}}"}""");
@@ -3404,7 +3372,6 @@ public class GattoAppTests : IDisposable
         await using var server = new FakeOpenAiServer();
         UseHome();
         WriteConfig($$$"""{"endpoints":{"local":{"base_url":"{{{server.BaseUrl}}}"}},"default_endpoint":"local","default_model":"model-x"}""");
-        WriteRole("generalist", "{}");
         WriteModel("model-x", port: 1, profileExtra: "#auto_serve#: false".Replace('#', '"'));
         var folders = Directory.CreateTempSubdirectory("gatto-residue-").FullName;
         try
@@ -3470,7 +3437,7 @@ public class GattoAppTests : IDisposable
         WriteConfig($$$"""{"endpoints":{"local":{"base_url":"{{{server.BaseUrl}}}"}},"default_endpoint":"local"}""");
         WriteModel("test-model", port: 1235);
         WriteModel("other-model", port: 1235);
-        WriteRole("generalist", "{\"model\":\"test-model\"}");
+        UseDefaultModel("test-model");
         WriteRole("other", "{\"model\":\"other-model\"}");
         server.Enqueue(RunAgentCall("other"));
         server.Enqueue(Completion("done"));
@@ -3494,7 +3461,7 @@ public class GattoAppTests : IDisposable
              "default_endpoint":"local"}
             """);
         WriteModel("test-model", port: 1235);
-        WriteRole("generalist", "{\"model\":\"test-model\"}");
+        UseDefaultModel("test-model");
         WriteRole("other", "{\"endpoint\":\"cloudy\"}");
         server.Enqueue(RunAgentCall("other"));
         server.Enqueue(Completion("done"));
@@ -3516,7 +3483,7 @@ public class GattoAppTests : IDisposable
         WriteConfig("""{"endpoints":{"local":{}},"default_endpoint":"local"}""");
         WriteModel("test-model", port: new Uri(server.BaseUrl).Port);
         WriteModel("other-model", port: 1);
-        WriteRole("generalist", "{\"model\":\"test-model\"}");
+        UseDefaultModel("test-model");
         WriteRole("other", "{\"model\":\"other-model\"}");
         server.Enqueue(RunAgentCall("other"));
         server.Enqueue(Completion("done"));
@@ -3537,7 +3504,7 @@ public class GattoAppTests : IDisposable
         UseHome();
         WriteConfig("""{"endpoints":{"local":{}},"default_endpoint":"local"}""");
         WriteModel("test-model", port: new Uri(server.BaseUrl).Port);
-        WriteRole("generalist", "{\"model\":\"test-model\"}");
+        UseDefaultModel("test-model");
         WriteRole("helper", "{\"endpoint\":\"local\"}");
         server.Enqueue(RunAgentCall("helper"));
         server.Enqueue(Completion("child done"));
@@ -3562,7 +3529,8 @@ public class GattoAppTests : IDisposable
             """);
         WriteModel("a-model", port: 1235);
         WriteModel("b-model", port: 1235);
-        WriteRole("generalist", "{\"endpoint\":\"cloudy\",\"model\":\"a-model\"}");
+        WriteRole("seat", "{\"endpoint\":\"cloudy\",\"model\":\"a-model\"}");
+        UseDefaultRole("seat");
         WriteRole("cheap", "{\"model\":\"b-model\"}");
         server.Enqueue(RunAgentCall("cheap"));
         server.Enqueue(Completion("child done"));
@@ -3598,7 +3566,8 @@ public class GattoAppTests : IDisposable
             """);
         WriteModel("a-model", port: 1235);
         WriteModel("b-model", port: 1235);
-        WriteRole("generalist", "{\"endpoint\":\"cloudy\",\"model\":\"a-model\"}");
+        WriteRole("seat", "{\"endpoint\":\"cloudy\",\"model\":\"a-model\"}");
+        UseDefaultRole("seat");
         WriteRole("cheap", "{\"model\":\"b-model\"}");
         server.Enqueue(RunAgentCall("cheap"));
         server.Enqueue(Completion("child done"));
@@ -3625,7 +3594,7 @@ public class GattoAppTests : IDisposable
         UseHome();
         WriteConfig("""{"endpoints":{"local":{}},"default_endpoint":"local"}""");
         WriteModel("qwen38-model", port: port, profileExtra: Qwen38ThinkingMap);
-        WriteRole("generalist", "{\"model\":\"qwen38-model\"}");
+        UseDefaultModel("qwen38-model");
         WriteRole("helper", helper);
         server.Enqueue(Completion("first"));
         Console.SetIn(new StringReader("/effort xhigh\nhi\n/quit\n"));
@@ -3655,7 +3624,8 @@ public class GattoAppTests : IDisposable
         UseHome();
         WriteConfig($$$"""{"endpoints":{"local":{"base_url":"{{{server.BaseUrl}}}"}},"default_endpoint":"local","glyphs":"unicode"}""");
         WriteModel("test-model", port: 1235);
-        WriteRole("generalist", "{\"model\":\"test-model\",\"avatar\":[\"  avatar row one\",\"  avatar row two\"]}");
+        WriteRole("seat", "{\"model\":\"test-model\",\"avatar\":[\"  avatar row one\",\"  avatar row two\"]}");
+        UseDefaultRole("seat");
         server.Enqueue(Completion("ok"));
 
         var oneShot = new StringWriter();
@@ -3678,7 +3648,8 @@ public class GattoAppTests : IDisposable
         UseHome();
         WriteConfig($$$"""{"endpoints":{"local":{"base_url":"{{{server.BaseUrl}}}"}},"default_endpoint":"local"}""");
         WriteModel("test-model", port: 1235);
-        WriteRole("generalist", "{\"model\":\"test-model\"}");
+        UseDefaultModel("test-model");
+        WriteRole("listed", "{}");
         var projectAgents = Path.Combine(_cwd, ".gatto", "agents");
         Directory.CreateDirectory(projectAgents);
         File.WriteAllText(Path.Combine(projectAgents, "x.md"), "---\ndescription: a project agent\n---\nYou are x.\n");
@@ -3690,7 +3661,7 @@ public class GattoAppTests : IDisposable
         Assert.Equal(0, await GattoApp.RunAsync(new[] { "-p", "hi" }));
 
         var description = RunAgentDescriptionOf(server.RequestBodies[0]);
-        Assert.Contains("- generalist", description, StringComparison.Ordinal);
+        Assert.Contains("- listed", description, StringComparison.Ordinal);
         Assert.DoesNotContain("- x", description, StringComparison.Ordinal);
         Assert.DoesNotContain("x.md", stderr.ToString(), StringComparison.Ordinal);
         Assert.DoesNotContain(Path.Combine(".gatto", "agents"), stderr.ToString(), StringComparison.Ordinal);
@@ -3703,7 +3674,7 @@ public class GattoAppTests : IDisposable
         UseHome();
         WriteConfig($$$"""{"endpoints":{"local":{"base_url":"{{{server.BaseUrl}}}"}},"default_endpoint":"local"}""");
         WriteModel("test-model", port: 1235);
-        WriteRole("generalist", "{\"model\":\"test-model\"}");
+        UseDefaultModel("test-model");
         server.Enqueue(Completion("one"));
         server.Enqueue(Completion("two"));
         server.Enqueue(Completion("three"));
@@ -3711,7 +3682,7 @@ public class GattoAppTests : IDisposable
         Console.SetIn(new SteppedReader(
             ("first", null),
             ("second", () => WriteRole("added", "{\"description\":\"added later\"}")),
-            ("/role generalist", null),
+            ("/role default", null),
             ("third", null),
             ("/quit", null)));
         Console.SetOut(new StringWriter());
@@ -3732,7 +3703,7 @@ public class GattoAppTests : IDisposable
         WriteConfig($$$"""{"endpoints":{"local":{"base_url":"{{{server.BaseUrl}}}"}},"default_endpoint":"local"}""");
         WriteModel("test-model", port: 1235);
         WriteModel("other-model", port: 1235);
-        WriteRole("generalist", "{\"model\":\"test-model\"}");
+        UseDefaultModel("test-model");
         WriteRole("other", "{\"model\":\"other-model\"}");
         server.Enqueue(Completion("one"));
         server.Enqueue(Completion("two"));
@@ -3757,10 +3728,10 @@ public class GattoAppTests : IDisposable
         UseHome();
         WriteConfig($$$"""{"endpoints":{"local":{"base_url":"{{{server.BaseUrl}}}"}},"default_endpoint":"local"}""");
         WriteModel("test-model", port: 1235);
-        WriteRole("generalist", "{\"model\":\"test-model\"}");
+        UseDefaultModel("test-model");
         server.Enqueue(Completion("one"));
         Console.SetIn(new SteppedReader(
-            ("/role generalist", () => WriteRole("broken", "{ \"turns\": 0 }")),
+            ("/role default", () => WriteRole("broken", "{ \"turns\": 0 }")),
             ("first", null),
             ("/quit", null)));
         Console.SetOut(new StringWriter());
@@ -3780,7 +3751,8 @@ public class GattoAppTests : IDisposable
         UseHome();
         WriteConfig($$$"""{"endpoints":{"local":{"base_url":"{{{server.BaseUrl}}}"}},"default_endpoint":"local"}""");
         WriteModel("test-model", port: 1235);
-        WriteRole("generalist", "{\"model\":\"test-model\"}");
+        UseDefaultModel("test-model");
+        WriteRole("listed", "{}");
         WriteRole("broken", "{ \"turns\": 0 }");
         server.Enqueue(Completion("ok"));
 
@@ -3792,12 +3764,12 @@ public class GattoAppTests : IDisposable
         var warning = Assert.Single(stderr.ToString().Split('\n'), l => l.Contains("broken", StringComparison.Ordinal));
         Assert.Contains("\"turns\"", warning, StringComparison.Ordinal);
         var description = RunAgentDescriptionOf(server.RequestBodies[0]);
-        Assert.Contains("- generalist", description, StringComparison.Ordinal);
+        Assert.Contains("- listed", description, StringComparison.Ordinal);
         Assert.DoesNotContain("broken", description, StringComparison.Ordinal);
     }
 
     [Theory]
-    [InlineData(null, "generalist")]
+    [InlineData(null, "default")]
     [InlineData("coder", "coder")]
     public async Task A_BROKEN_LAUNCHED_ROLE_RUNS_THE_FALLBACK(string? defaultRole, string fallback)
     {
@@ -3806,8 +3778,8 @@ public class GattoAppTests : IDisposable
         var defaultKey = defaultRole is null ? "" : $",\"default_role\":\"{defaultRole}\"";
         WriteConfig($$$"""{"endpoints":{"local":{"base_url":"{{{server.BaseUrl}}}"}},"default_endpoint":"local"{{{defaultKey}}}}""");
         WriteModel("test-model", port: 1235);
-        WriteRole("generalist", "{\"model\":\"test-model\",\"append\":\"the generalist marker\"}");
-        WriteRole("coder", "{\"model\":\"test-model\",\"append\":\"the coder marker\"}");
+        UseDefaultModel("test-model");
+        WriteRole("coder", "{\"append\":\"the coder marker\"}");
         WriteRole("broken", "{ \"turns\": 0 }");
         server.Enqueue(Completion("ok"));
 
@@ -3818,18 +3790,18 @@ public class GattoAppTests : IDisposable
 
         var warning = Assert.Single(stderr.ToString().Split('\n'), l => l.Contains("broken", StringComparison.Ordinal));
         Assert.EndsWith($", running {fallback} instead", warning.TrimEnd('\r'), StringComparison.Ordinal);
-        Assert.Contains($"the {fallback} marker", SystemOf(server.RequestBodies[0]), StringComparison.Ordinal);
+        Assert.Equal(fallback == "coder", SystemOf(server.RequestBodies[0]).Contains("the coder marker", StringComparison.Ordinal));
     }
 
     [Fact]
-    public async Task A_BROKEN_DEFAULT_ROLE_RUNS_GENERALIST()
+    public async Task A_BROKEN_DEFAULT_ROLE_RUNS_THE_SEAT_WITH_NO_ROLE()
     {
         await using var server = new FakeOpenAiServer();
         UseHome();
         WriteConfig($$$"""{"endpoints":{"local":{"base_url":"{{{server.BaseUrl}}}"}},"default_endpoint":"local","default_role":"broken"}""");
         WriteModel("test-model", port: 1235);
-        WriteRole("generalist", "{\"model\":\"test-model\",\"append\":\"the generalist marker\"}");
-        WriteRole("broken", "{ \"turns\": 0 }");
+        UseDefaultModel("test-model");
+        WriteRole("broken", "{ \"turns\": 0, \"append\": \"the broken marker\" }");
         server.Enqueue(Completion("ok"));
 
         Console.SetOut(new StringWriter());
@@ -3838,17 +3810,17 @@ public class GattoAppTests : IDisposable
         Assert.Equal(0, await GattoApp.RunAsync(new[] { "-p", "hello" }));
 
         var warning = Assert.Single(stderr.ToString().Split('\n'), l => l.Contains("broken", StringComparison.Ordinal));
-        Assert.EndsWith(", running generalist instead", warning.TrimEnd('\r'), StringComparison.Ordinal);
-        Assert.Contains("the generalist marker", SystemOf(server.RequestBodies[0]), StringComparison.Ordinal);
+        Assert.EndsWith(", running default instead", warning.TrimEnd('\r'), StringComparison.Ordinal);
+        Assert.DoesNotContain("the broken marker", SystemOf(server.RequestBodies[0]), StringComparison.Ordinal);
     }
 
     [Fact]
-    public async Task A_BROKEN_FALLBACK_EXITS_2()
+    public async Task A_TYPED_ROLE_AND_A_DEFAULT_ROLE_BOTH_BROKEN_EXIT_2_WITH_BOTH_MESSAGES()
     {
         UseHome();
-        WriteConfig("""{"endpoints":{"local":{"base_url":"http://127.0.0.1:1235"}},"default_endpoint":"local"}""");
+        WriteConfig("""{"endpoints":{"local":{"base_url":"http://127.0.0.1:1235"}},"default_endpoint":"local","default_role":"alsobroken"}""");
         WriteModel("test-model", port: 1235);
-        WriteRole("generalist", "{ \"turns\": \"ten\" }");
+        WriteRole("alsobroken", "{ \"turns\": \"ten\" }");
         WriteRole("broken", "{ \"turns\": 0 }");
 
         Console.SetOut(new StringWriter());
@@ -3858,7 +3830,40 @@ public class GattoAppTests : IDisposable
 
         var text = stderr.ToString();
         Assert.Contains("role 'broken' has a \"turns\" of 0", text, StringComparison.Ordinal);
-        Assert.Contains("role 'generalist' has a \"turns\" of \"ten\"", text, StringComparison.Ordinal);
+        Assert.Contains("role 'alsobroken' has a \"turns\" of \"ten\"", text, StringComparison.Ordinal);
+    }
+
+    //a typed broken role falls back to default_role, and a default_role naming no file leaves nothing to run, so both lines go out
+    [Fact]
+    public async Task A_TYPED_BROKEN_ROLE_WITH_A_DEFAULT_ROLE_NAMING_NO_FILE_EXITS_2()
+    {
+        UseHome();
+        WriteConfig("""{"endpoints":{"local":{"base_url":"http://127.0.0.1:1235"}},"default_endpoint":"local","default_role":"ghost"}""");
+        WriteModel("test-model", port: 1235);
+        WriteRole("broken", "{ \"turns\": 0 }");
+
+        Console.SetOut(new StringWriter());
+        var stderr = new StringWriter();
+        Console.SetError(stderr);
+        Assert.Equal(2, await GattoApp.RunAsync(new[] { "broken", "-p", "hello" }));
+
+        var text = stderr.ToString();
+        Assert.Contains("role 'broken' has a \"turns\" of 0", text, StringComparison.Ordinal);
+        Assert.Contains("default_role names 'ghost', and roles\\ghost.json does not exist", text, StringComparison.Ordinal);
+    }
+
+    //a default_role of default is the absent key, so a bare launch runs the seat with no role
+    [Fact]
+    public async Task A_DEFAULT_ROLE_OF_DEFAULT_LAUNCHES_THE_SEAT_WITH_NO_ROLE()
+    {
+        await using var server = new FakeOpenAiServer();
+        UseHome();
+        WriteConfig($$$"""{"endpoints":{"local":{"base_url":"{{{server.BaseUrl}}}"}},"default_endpoint":"local","default_model":"test-model","default_role":"default"}""");
+        WriteModel("test-model", port: 1235);
+        server.Enqueue(Completion("ok"));
+
+        Console.SetOut(new StringWriter());
+        Assert.Equal(0, await GattoApp.RunAsync(new[] { "-p", "hi" }));
     }
 
     //the parent's request carries memory and the context files, a child carries no memory and the files only while its role allows them
@@ -3869,7 +3874,7 @@ public class GattoAppTests : IDisposable
         UseHome();
         WriteConfig($$$"""{"endpoints":{"local":{"base_url":"{{{server.BaseUrl}}}"}},"default_endpoint":"local"}""");
         WriteModel("test-model", port: 1235);
-        WriteRole("generalist", "{\"model\":\"test-model\"}");
+        UseDefaultModel("test-model");
         WriteRole("withfiles", "{\"append\":\"you read files\"}");
         WriteRole("nofiles", "{\"context_files\":false}");
         WriteMemoryFacts("- the memory marker");

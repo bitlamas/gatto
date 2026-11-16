@@ -249,7 +249,7 @@ public sealed class SessionNameTests : IDisposable
 
         await h.RunAsync();
 
-        Assert.Equal([TerminalTitle.For("generalist"), TerminalTitle.Named(Name), TerminalTitle.Project(_cwd)], SettledTitles.Of(deed.Applied));
+        Assert.Equal([TerminalTitle.For(null), TerminalTitle.Named(Name), TerminalTitle.Project(_cwd)], SettledTitles.Of(deed.Applied));
         Assert.DoesNotContain(Name, h.ScreenText(), StringComparison.Ordinal);
     }
 
@@ -331,7 +331,7 @@ public sealed class SessionNameTests : IDisposable
 
         await h.RunAsync();
 
-        Assert.Equal([TerminalTitle.For("generalist"), TerminalTitle.Named(Name)], deed.Applied);
+        Assert.Equal([TerminalTitle.For(null), TerminalTitle.Named(Name)], deed.Applied);
         Assert.Contains($"{TerminalTitle.Glyph} {Name}", h.ScreenText(), StringComparison.Ordinal);
     }
 

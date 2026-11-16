@@ -280,10 +280,11 @@ public sealed class Doctor(
     {
         if (config is null) return null;
         var byPort = new Dictionary<int, string>();   //port to the first role name seen
-        foreach (var name in RoleFile.ListNames(rolesDir))
+        //the seat with no role runs too, so it takes part beside the files
+        foreach (var name in RoleFile.ListNames(rolesDir).Prepend(RoleFile.DefaultName))
         {
             RoleFile role;
-            try { role = RoleFile.Load(rolesDir, name); }
+            try { role = RoleFile.IsDefault(name) ? RoleFile.Default : RoleFile.Load(rolesDir, name); }
             catch (GattoConfigException) { continue; }
             var endpointName = role.Endpoint ?? config.DefaultEndpoint;
             if (endpointName != "local") continue;
@@ -359,15 +360,11 @@ public sealed class Doctor(
     private static CheckResult CheckRoles(string rolesDir, string home, GattoConfig? config, Gatto.Terminal.GlyphSet g, List<string> conflicts)
     {
         var names = RoleFile.ListNames(rolesDir);
-        if (names.Count == 0)
-        {
-            //derive this path from the home under check, a fixed default sends the user to a home they are not using
-            var manifest = Path.Combine(Path.GetDirectoryName(rolesDir) ?? "", ".shipped");
-            return new CheckResult(false, $"roles: no role files found under {rolesDir} {g.Dot} run: gatto to write them (a prior deletion sticks: remove the roles/* lines from {manifest} first)");
-        }
+        //a home with no role file is a working home, the seat with no role needs none
+        var noneLine = $"roles: no role files found under {rolesDir}";
 
         if (config is null)
-            return new CheckResult(false,
+            return names.Count == 0 ? new CheckResult(true, noneLine) : new CheckResult(false,
                 "roles: cannot validate " + g.Dot + " gatto.json failed to load " + g.Dot + " fix gatto.json (see the check below), then run: gatto doctor");
 
         var problems = new List<string>();
@@ -414,11 +411,11 @@ public sealed class Doctor(
         }
 
         //the key names the role a bare launch runs, and a name with no file would refuse every bare launch
-        if (config.DefaultRole is { } dr && !names.Contains(dr, StringComparer.OrdinalIgnoreCase))
-            problems.Add($"default_role names '{dr}', and no roles\\{dr}.json exists");
+        if (config.DefaultRole is { } dr && !RoleFile.IsDefault(dr) && !names.Contains(dr, StringComparer.OrdinalIgnoreCase))
+            problems.Add($"default_role names '{dr}', and {Path.Combine("roles", dr + ".json")} does not exist");
 
         return problems.Count == 0
-            ? new CheckResult(true, $"roles: {names.Count} role(s) under {rolesDir} all valid"
+            ? new CheckResult(true, (names.Count == 0 ? noneLine : $"roles: {names.Count} role(s) under {rolesDir} all valid")
                 + (config.DefaultRole is { } named ? $" {g.Dot} default_role is {named}" : ""))
             : new CheckResult(false, $"roles: {string.Join("; ", problems)} " + g.Dot + $" fix the listed role file(s) under {rolesDir}");
     }
@@ -872,7 +869,10 @@ public static class Status
             output.WriteLine($"endpoint: {config.DefaultEndpoint} ({where})");
             output.WriteLine($"default_model: {StatusDefaultModel(home, config)}");
         }
-        output.WriteLine("role: generalist (default; override with gatto <role>)");
+        //the seat a bare gatto starts in, the one place the config key is named beside it
+        output.WriteLine(config?.DefaultRole is { } dr && !RoleFile.IsDefault(dr)
+            ? $"role: {dr} (default_role; override with gatto <role>)"
+            : "role: default (override with gatto <role>)");
 
         var manager = new ServeManager(home, config?.LlamaServer ?? "", spawn: null, lookup: null,
             http, TimeSpan.FromSeconds(1), TimeSpan.FromSeconds(1));

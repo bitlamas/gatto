@@ -21,7 +21,6 @@ public class LaunchWarningsLaunchTests : IDisposable
     {
         var rolesDir = Path.Combine(_home, "roles");
         Directory.CreateDirectory(rolesDir);
-        File.WriteAllText(Path.Combine(rolesDir, "generalist.json"), "{\"model\":\"test-model\"}");
         var modelDir = Path.Combine(_home, "models", "test-model");
         Directory.CreateDirectory(modelDir);
         File.WriteAllText(Path.Combine(modelDir, "profile.json"),
@@ -43,7 +42,7 @@ public class LaunchWarningsLaunchTests : IDisposable
     private async Task<(string Out, string Err)> LaunchPlain(FakeOpenAiServer server, string stdin = "/quit\n", string configExtra = "")
     {
         File.WriteAllText(Path.Combine(_home, "gatto.json"),
-            $$$"""{"endpoints":{"local":{"base_url":"{{{server.BaseUrl}}}"}},"default_endpoint":"local","default_model":"test-m"{{{configExtra}}}}""");
+            $$$"""{"endpoints":{"local":{"base_url":"{{{server.BaseUrl}}}"}},"default_endpoint":"local","default_model":"test-model"{{{configExtra}}}}""");
         Environment.SetEnvironmentVariable("GATTO_HOME", _home);
         Environment.CurrentDirectory = _cwd;
         var stdout = new StringWriter();

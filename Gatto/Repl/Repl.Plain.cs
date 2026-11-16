@@ -20,7 +20,7 @@ public sealed partial class Repl
         Console.WriteLine(Cats.For(roleAvatar, glyphs: _glyphs));
         //the plain banner joins with Dot, the same separator as every other row
         var sep = $" {_glyphs.Dot} ";
-        Console.WriteLine($"gatto{sep}{roleName}{sep}{Gatto.Core.Models.ServedModelName.Display(modelName)}{sep}v{Gatto.Core.GattoVersion.String}");
+        Console.WriteLine($"gatto{sep}{(DisplayRole() is { } shown ? shown + sep : "")}{Gatto.Core.Models.ServedModelName.Display(modelName)}{sep}v{Gatto.Core.GattoVersion.String}");
         Console.WriteLine("(/quit to exit, /new to reset, Ctrl+C aborts a turn)");
         //the same system line the rich path commits, printed literally here, plain has no renderer to hang the marker on
         if (memoryWarning is not null) Console.WriteLine($"{_glyphs.Sharp} " + memoryWarning);

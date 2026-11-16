@@ -21,13 +21,12 @@ public sealed class TraceLaunchTests : IDisposable
         "turn", "shape", "compact", "request", "tool", "tool.gate", "tool.exec", "shell.drain", "tool.result", "hook",
         "session.write", "resume", "launch",
         "read_file", "Completed", "Truncated", "Cancelled", "Error", "Proactive", "Overflow", "Manual",
-        "message_end", "session_summary", "gatto", "generalist", "test-model",
+        "message_end", "session_summary", "gatto", "default", "test-model",
     ];
 
     public TraceLaunchTests()
     {
         Directory.CreateDirectory(Path.Combine(_home, "roles"));
-        File.WriteAllText(Path.Combine(_home, "roles", "generalist.json"), "{\"model\":\"test-model\"}");
         var modelDir = Path.Combine(_home, "models", "test-model");
         Directory.CreateDirectory(modelDir);
         File.WriteAllText(Path.Combine(modelDir, "profile.json"),
@@ -101,7 +100,7 @@ public sealed class TraceLaunchTests : IDisposable
             //the headline number runs from launch to the turn, so the launch span ends before the turn begins
             Assert.True(launch.GetProperty("t").GetInt64() + launch.GetProperty("d").GetInt64() <= turn.GetProperty("t").GetInt64());
             Assert.Equal(0, launch.GetProperty("t").GetInt64());
-            Assert.Equal("generalist", turn.GetProperty("role").GetString());
+            Assert.Equal("default", turn.GetProperty("role").GetString());
             Assert.Equal(2, spans.Count(s => s.GetProperty("s").GetString() == "request"));
             Assert.Contains(spans, s => s.GetProperty("s").GetString() == "session.write");
             Assert.Equal("read_file", spans.Single(s => s.GetProperty("s").GetString() == "tool").GetProperty("name").GetString());

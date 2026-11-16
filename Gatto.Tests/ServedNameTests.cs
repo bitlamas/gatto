@@ -122,7 +122,6 @@ public class ServedNameTests : IDisposable
             "Gatto.Endpoint(\"hosted\", \"" + server.BaseUrl + "\", models: new[] { \"c1\", \"c2\" });");
         File.WriteAllText(Path.Combine(_home, "gatto.json"), "{\"endpoints\":{\"local\":{}},\"default_endpoint\":\"hosted\"}");
         Directory.CreateDirectory(Path.Combine(_home, "roles"));
-        File.WriteAllText(Path.Combine(_home, "roles", "generalist.json"), "{}");
     }
 
     private IReadOnlyList<JsonElement> Assistants()
@@ -149,7 +148,7 @@ public class ServedNameTests : IDisposable
 
         Assert.Equal(new string?[] { "c1-build", "c1-next", null }, Assistants().Select(ServedOf).ToArray());
         //the banner is the launch's echo and stands as printed, in whichever glyph set the run draws
-        var banner = _out.ToString().Split('\n').First(l => l.Contains("generalist", StringComparison.Ordinal));
+        var banner = _out.ToString().Split('\n').First(l => l.Contains("v" + Gatto.Core.GattoVersion.String, StringComparison.Ordinal));
         Assert.Contains(" c1 ", banner);
         Assert.DoesNotContain("c1-", banner);
         Assert.All(server.RequestBodies.Where(b => b.TryGetProperty("messages", out _)), b => Assert.Equal("c1", b.GetProperty("model").GetString()));

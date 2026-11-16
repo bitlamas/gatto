@@ -166,10 +166,10 @@ public sealed class RichReplHarness
         Gatto.Terminal.IClipboardImageNative? clipboardImages = null,
         //the wild state and its seams, passed straight through as the interactive entry passes them, absent as a session with no wild state
         Gatto.Core.Loop.Permissions.WildState? wild = null, Action<bool>? persistWild = null, Func<bool>? wildPersisted = null, bool wildFromHome = false,
-        //the home's default role and the /role seam, absent as a session that names its role and has no roles to switch to
-        string? defaultRole = null, Func<string, RoleSwitchResult>? switchRole = null,
-        //the launched role and its file's colours and rows, the generalist with none as a bare launch from a fresh home
-        string roleName = "generalist", (RgbColor Dark, RgbColor? Light)? roleTint = null, IReadOnlyList<string>? roleAvatar = null,
+        //the home's default role and the /role seam, the seat with no role as a home with no default_role
+        string? defaultRole = "default", Func<string, RoleSwitchResult>? switchRole = null,
+        //the launched role and its file's colours and rows, the seat with no role and none of them as a bare launch
+        string roleName = "default", (RgbColor Dark, RgbColor? Light)? roleTint = null, IReadOnlyList<string>? roleAvatar = null,
         string? firstMessage = null,
         //the process's sandbox, absent as off Windows
         Gatto.Core.Sandbox.SandboxState? sandbox = null,

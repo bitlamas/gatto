@@ -175,6 +175,18 @@ public sealed class CardsExtensionTests(CardsScriptFolder script) : IClassFixtur
         Assert.False(Directory.Exists(RolesDir) && Directory.GetFiles(RolesDir).Length > 0);
     }
 
+    //the seat with no role holds the name default, so a card named so is refused and writes nothing
+    [Fact]
+    public async Task A_CARD_NAMED_DEFAULT_IS_REFUSED_AND_WRITES_NOTHING()
+    {
+        var data = new Dictionary<string, object>(SeraData) { ["name"] = "Default" };
+
+        var output = await Run(WriteFile("d.json", Encoding.UTF8.GetBytes(Card("chara_card_v2", data))));
+
+        Assert.Equal("role 'default' is gatto with no role, so " + Path.Combine("roles", "default.json") + " is not written", output);
+        Assert.False(Directory.Exists(RolesDir) && Directory.GetFiles(RolesDir).Length > 0);
+    }
+
     [Fact]
     public async Task AN_EXISTING_ROLE_FILE_IS_REFUSED()
     {

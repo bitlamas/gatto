@@ -41,8 +41,8 @@ The wizard walks you through five named steps: it identifies your machine, sugge
 Then:
 
 ```powershell
-gatto            # the REPL, generalist role
-gatto coder      # or a role by name
+gatto            # the REPL, no role
+gatto raw        # or a role by name
 gatto model      # add a model
 gatto doctor     # read-only health checks, plus one request to GitHub for the latest release; paste its output into any issue
 gatto uninstall  # when you don't want to play with gatto anymore
@@ -72,7 +72,7 @@ An extension is a small C# script, a `.csx` file under `~\.gatto\extensions\`, c
 
 ## roles
 
-A role is a seat for gatto: a small JSON file that can name a model, append a prompt, arm a check or two, and give the model a cat and a colour. gatto ships eight roles: `generalist`, `coder`, `oracle`, `raw`, and four reviewers you can hand work to with `run_agent`. You can add new roles, of course: drop `reviewer.json` into `~\.gatto\roles\` and `gatto reviewer` works. More at [gatto.computer/roles](https://gatto.computer/roles/). Also a work in progress.
+A role is a seat for gatto: a small JSON file that can name a model, append a prompt, arm a check or two, and give the model a cat and a colour. A bare `gatto` runs with no role, and gatto ships one role file, `raw`. You can add new roles, of course: drop `reviewer.json` into `~\.gatto\roles\` and `gatto reviewer` works. More at [gatto.computer/roles](https://gatto.computer/roles/). Also a work in progress.
 
 ## llama.cpp serving
 

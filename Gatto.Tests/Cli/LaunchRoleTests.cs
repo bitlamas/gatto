@@ -6,7 +6,7 @@ namespace Gatto.Tests.Cli;
 //the launch's role precedence as a table, every row read from the code and not from its comments, so a reader can check any case by its line
 public class LaunchRoleTests
 {
-    private static readonly string[] Disk = ["generalist", "coder", "oracle"];
+    private static readonly string[] Disk = ["coder", "oracle"];
 
     private static (LaunchRoleResult Result, List<string> Tried) Run(string? arg, string? defaultRole, params string[] broken)
     {
@@ -20,10 +20,11 @@ public class LaunchRoleTests
     }
 
     [Theory]
-    [InlineData(null, null, "generalist")]
+    [InlineData(null, null, "default")]
     [InlineData(null, "oracle", "oracle")]
     [InlineData("coder", "oracle", "coder")]
     [InlineData("coder", null, "coder")]
+    [InlineData("default", "oracle", "default")]
     public void A_ROLE_THAT_LOADS_RUNS_AS_ASKED(string? arg, string? defaultRole, string runs)
     {
         var (r, _) = Run(arg, defaultRole);
@@ -33,41 +34,49 @@ public class LaunchRoleTests
 
     [Theory]
     [InlineData("coder", "oracle", "oracle")]
-    [InlineData("coder", null, "generalist")]
-    [InlineData("coder", "coder", "generalist")]
-    [InlineData(null, "coder", "generalist")]
-    public void A_BROKEN_ROLE_RUNS_DEFAULT_ROLE_WHEN_IT_DIFFERS_ELSE_GENERALIST_AND_CARRIES_THE_MESSAGE(string? arg, string? defaultRole, string runs)
+    [InlineData("coder", null, "default")]
+    [InlineData("coder", "coder", "default")]
+    [InlineData(null, "coder", "default")]
+    public void A_BROKEN_ROLE_RUNS_DEFAULT_ROLE_WHEN_IT_DIFFERS_ELSE_THE_SEAT_WITH_NO_ROLE_AND_CARRIES_THE_MESSAGE(string? arg, string? defaultRole, string runs)
     {
         var (r, _) = Run(arg, defaultRole, "coder");
 
         Assert.Equal(new LaunchRoleResult(runs, "coder", "coder.json is broken", null), r);
     }
 
+    //a default_role of default is the absent key, so a bare launch runs the seat with no role and a broken typed role falls back to it
     [Theory]
-    [InlineData(null, null)]
-    [InlineData(null, "generalist")]
-    [InlineData("generalist", null)]
-    [InlineData("generalist", "generalist")]
-    public void A_LAUNCH_WHOSE_FALLBACK_IS_THE_BROKEN_FILE_EXITS_WITH_THE_MESSAGE_ONLY(string? arg, string? defaultRole)
+    [InlineData("default")]
+    [InlineData("DEFAULT")]
+    public void A_DEFAULT_ROLE_OF_DEFAULT_IS_THE_ABSENT_KEY(string defaultRole)
     {
-        var (r, _) = Run(arg, defaultRole, "generalist");
-
-        Assert.Equal(new LaunchRoleResult("generalist", null, null, "generalist.json is broken"), r);
+        Assert.Equal(new LaunchRoleResult("default", null, null, null), Run(null, defaultRole).Result);
+        Assert.Equal(new LaunchRoleResult("default", "coder", "coder.json is broken", null), Run("coder", defaultRole, "coder").Result);
     }
 
-    //the refusal is gated on the fallback, not on the name, so a broken generalist with another default_role still runs
+    //the config's word gets its own sentence, a bare launch with nothing loaded and a broken typed role with its message beside it
     [Fact]
-    public void A_BROKEN_GENERALIST_RUNS_A_DEFAULT_ROLE_THAT_NAMES_ANOTHER_FILE()
+    public void A_DEFAULT_ROLE_NAMING_NO_FILE_IS_REFUSED_IN_ITS_OWN_SENTENCE()
     {
-        Assert.Equal(new LaunchRoleResult("oracle", "generalist", "generalist.json is broken", null), Run("generalist", "oracle", "generalist").Result);
+        const string refusal = "default_role names 'ghost', and roles\\ghost.json does not exist";
+        var (bare, tried) = Run(null, "ghost");
+        Assert.Equal(new LaunchRoleResult("ghost", null, null, refusal), bare);
+        Assert.Empty(tried);
+        Assert.Equal(new LaunchRoleResult("coder", "coder", "coder.json is broken", refusal), Run("coder", "ghost", "coder").Result);
+    }
+
+    [Fact]
+    public void A_TYPED_ROLE_THAT_LOADS_NEVER_CONSULTS_A_MISSING_DEFAULT_ROLE()
+    {
+        Assert.Equal(new LaunchRoleResult("coder", null, null, null), Run("coder", "ghost").Result);
     }
 
     [Fact]
     public void EVERY_COMPARISON_IGNORES_CASE_AND_THE_ASKED_SPELLING_IS_KEPT()
     {
         Assert.Equal(new LaunchRoleResult("Coder", null, null, null), Run("Coder", null).Result);
-        Assert.Equal(new LaunchRoleResult("generalist", "coder", "coder.json is broken", null), Run("Coder", "CODER", "coder").Result);
-        Assert.Equal(new LaunchRoleResult("GENERALIST", null, null, "generalist.json is broken"), Run("GENERALIST", null, "generalist").Result);
+        Assert.Equal(new LaunchRoleResult("default", "coder", "coder.json is broken", null), Run("Coder", "CODER", "coder").Result);
+        Assert.Equal(new LaunchRoleResult("Oracle", null, null, null), Run(null, "Oracle").Result);
     }
 
     [Fact]
@@ -77,14 +86,5 @@ public class LaunchRoleTests
 
         Assert.Equal(new LaunchRoleResult("nobody", null, null, null), r);
         Assert.Empty(tried);
-    }
-
-    [Fact]
-    public void A_FALLBACK_NAMING_A_MISSING_FILE_PASSES_THROUGH_FOR_THE_RESOLVER_TO_REFUSE()
-    {
-        var (r, tried) = Run("coder", "missing", "coder");
-
-        Assert.Equal(new LaunchRoleResult("missing", "coder", "coder.json is broken", null), r);
-        Assert.Equal(["coder"], tried);
     }
 }

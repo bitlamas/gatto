@@ -12,11 +12,11 @@ public class RoleHeaderTests
     private static string TopRule(RichReplHarness h) =>
         h.FinalFrame().Last(r => r.Contains("─", StringComparison.Ordinal) && r.Contains("gatto", StringComparison.Ordinal)).TrimEnd();
 
-    //succeeds for the two shipped names with a marker system text, and records each name it was asked for
+    //succeeds for coder and default with a marker system text, and records each name it was asked for
     private static Func<string, RoleSwitchResult> Switch(List<string> asked) => name =>
     {
         asked.Add(name);
-        return name.ToLowerInvariant() is "coder" or "generalist"
+        return name.ToLowerInvariant() is "coder" or "default"
             ? new RoleSwitchResult(true, name.ToLowerInvariant(), "test-model", "the " + name + " marker", null)
             : new RoleSwitchResult(false, "", null, null, "unknown role '" + name + "'");
     };
@@ -24,33 +24,33 @@ public class RoleHeaderTests
     [Fact]
     public async Task THE_RULE_READS_GATTO_ALONE_ON_THE_DEFAULT_ROLE()
     {
-        var h = new RichReplHarness(Path.GetTempPath(), defaultRole: "generalist");
+        var h = new RichReplHarness(Path.GetTempPath(), defaultRole: "default");
         h.Keys.Line("/quit");
         await h.RunAsync();
 
         Assert.EndsWith(" gatto ──", TopRule(h), StringComparison.Ordinal);
         //nothing the session ever wrote holds the long form, not only the last frame
-        Assert.DoesNotContain("gatto · generalist ─", h.Written(), StringComparison.Ordinal);
+        Assert.DoesNotContain("gatto · default ─", h.Written(), StringComparison.Ordinal);
     }
 
     [Fact]
-    public async Task ROLE_CODER_PUTS_THE_NAME_ON_THE_RULE_AND_ROLE_GENERALIST_TAKES_IT_OFF()
+    public async Task ROLE_CODER_PUTS_THE_NAME_ON_THE_RULE_AND_ROLE_DEFAULT_TAKES_IT_OFF()
     {
         var asked = new List<string>();
-        var h = new RichReplHarness(Path.GetTempPath(), defaultRole: "generalist", switchRole: Switch(asked));
+        var h = new RichReplHarness(Path.GetTempPath(), defaultRole: "default", switchRole: Switch(asked));
         h.Keys.Line("/role coder");
         await h.RunUntilAsync(() => h.ScreenText().Contains(" gatto · coder ──", StringComparison.Ordinal));
 
-        var back = new RichReplHarness(Path.GetTempPath(), defaultRole: "generalist", switchRole: Switch(asked));
-        back.Keys.Line("/role coder").Line("/role generalist").Line("/quit");
+        var back = new RichReplHarness(Path.GetTempPath(), defaultRole: "default", switchRole: Switch(asked));
+        back.Keys.Line("/role coder").Line("/role default").Line("/quit");
         await back.RunAsync();
 
         Assert.EndsWith(" gatto ──", TopRule(back), StringComparison.Ordinal);
-        Assert.Equal(["coder", "coder", "generalist"], asked);
+        Assert.Equal(["coder", "coder", "default"], asked);
     }
 
     [Fact]
-    public async Task WITH_DEFAULT_ROLE_CODER_THE_RULE_IS_QUIET_ON_CODER_AND_NAMES_GENERALIST()
+    public async Task WITH_DEFAULT_ROLE_CODER_THE_RULE_IS_QUIET_ON_CODER_AND_NAMES_DEFAULT()
     {
         var asked = new List<string>();
         var h = new RichReplHarness(Path.GetTempPath(), defaultRole: "coder", switchRole: Switch(asked));
@@ -59,9 +59,9 @@ public class RoleHeaderTests
         Assert.EndsWith(" gatto ──", TopRule(h), StringComparison.Ordinal);
 
         var g = new RichReplHarness(Path.GetTempPath(), defaultRole: "coder", switchRole: Switch(asked));
-        g.Keys.Line("/role coder").Line("/role generalist").Line("/quit");
+        g.Keys.Line("/role coder").Line("/role default").Line("/quit");
         await g.RunAsync();
-        Assert.EndsWith(" gatto · generalist ──", TopRule(g), StringComparison.Ordinal);
+        Assert.EndsWith(" gatto · default ──", TopRule(g), StringComparison.Ordinal);
     }
 
     //gatto.json's casing and the file's casing may differ, and the launch resolves either, so the rule compares as the launch does
@@ -87,13 +87,13 @@ public class RoleHeaderTests
     {
         var tealCoder = Ansi.Fg(Theme.ParseTint("#4BBECD"), true) + "coder";
 
-        var still = new RichReplHarness(Path.GetTempPath(), defaultRole: "generalist", switchRole: Coder);
+        var still = new RichReplHarness(Path.GetTempPath(), defaultRole: "default", switchRole: Coder);
         still.Keys.Line("/quit");
         await still.RunAsync();
         Assert.DoesNotContain(tealCoder, still.RawWritten(), StringComparison.Ordinal);
         Assert.DoesNotContain("（▀､▀ ７", still.Written(), StringComparison.Ordinal);
 
-        var h = new RichReplHarness(Path.GetTempPath(), defaultRole: "generalist", switchRole: Coder);
+        var h = new RichReplHarness(Path.GetTempPath(), defaultRole: "default", switchRole: Coder);
         h.Keys.Line("/role coder").Line("/new").Line("/quit");
         await h.RunAsync();
         Assert.Contains(tealCoder, h.RawWritten(), StringComparison.Ordinal);
@@ -106,13 +106,13 @@ public class RoleHeaderTests
     {
         var tealCoder = Ansi.Fg(Theme.ParseTint("#4BBECD"), true) + "coder";
 
-        var plain = new RichReplHarness(Path.GetTempPath(), defaultRole: "generalist", roleName: "coder");
+        var plain = new RichReplHarness(Path.GetTempPath(), defaultRole: "default", roleName: "coder");
         plain.Keys.Line("/quit");
         await plain.RunAsync();
         Assert.DoesNotContain(tealCoder, plain.RawWritten(), StringComparison.Ordinal);
         Assert.DoesNotContain("（▀､▀ ７", plain.Written(), StringComparison.Ordinal);
 
-        var h = new RichReplHarness(Path.GetTempPath(), defaultRole: "generalist", roleName: "coder",
+        var h = new RichReplHarness(Path.GetTempPath(), defaultRole: "default", roleName: "coder",
             roleTint: (Theme.ParseTint("#4BBECD"), null), roleAvatar: Visor);
         h.Keys.Line("/quit");
         await h.RunAsync();
@@ -120,15 +120,32 @@ public class RoleHeaderTests
         Assert.Contains("（▀､▀ ７", h.Written(), StringComparison.Ordinal);
     }
 
+    //the rich banner hides the starting seat at launch and when /new rebuilds it, and names a role switched to
+    [Fact]
+    public async Task THE_RICH_BANNER_HIDES_THE_STARTING_SEAT_AND_NAMES_A_SWITCHED_ROLE()
+    {
+        var asked = new List<string>();
+        var h = new RichReplHarness(Path.GetTempPath(), defaultRole: "default", switchRole: Switch(asked));
+        h.Keys.Line("/new").Line("/quit");
+        await h.RunAsync();
+        Assert.Contains("gatto \u00b7 test-model \u00b7 ", h.Written(), StringComparison.Ordinal);
+        Assert.DoesNotContain("\u00b7 default \u00b7", h.Written(), StringComparison.Ordinal);
+
+        var c = new RichReplHarness(Path.GetTempPath(), defaultRole: "default", switchRole: Switch(asked));
+        c.Keys.Line("/role coder").Line("/new").Line("/quit");
+        await c.RunAsync();
+        Assert.Contains("gatto \u00b7 coder \u00b7 test-model \u00b7 ", c.Written(), StringComparison.Ordinal);
+    }
+
     [Fact]
     public async Task A_BARE_ROLE_PRINTS_THE_RUNNING_ROLE_AND_SWITCHES_NOTHING()
     {
         var asked = new List<string>();
-        var h = new RichReplHarness(Path.GetTempPath(), defaultRole: "generalist", switchRole: Switch(asked));
+        var h = new RichReplHarness(Path.GetTempPath(), defaultRole: "default", switchRole: Switch(asked));
         h.Keys.Line("/role").Line("/quit");
         await h.RunAsync();
 
-        Assert.True(h.Saw("role: generalist"), h.Written());
+        Assert.True(h.Saw("role: default"), h.Written());
         Assert.Empty(asked);
         Assert.Equal("sys", h.Convo.Messages[0].Content);
         Assert.Equal("test-model", h.ModelName);
