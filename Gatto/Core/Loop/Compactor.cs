@@ -16,7 +16,12 @@ public sealed class Compactor(IChatClient client, string model, RequestShape? sh
     private long _traceSpan;
 
     //the summarizer prompt is compiled in, so a role or user text can't steer the summarizer off task
-    private const string TemplatePrompt =
+    private const string TemplatePrompt = TemplateHead + MemorySection + TemplateTail;
+
+    //a seat that cannot write memory is not asked for facts the bank would drop, and the blank line before the tail stays
+    private const string TemplateWithoutMemory = TemplateHead + TemplateTail;
+
+    private const string TemplateHead =
         "Summarize this session so it can be continued in a fresh context with nothing important " +
         "lost. Write plain prose under these headings, in this order:\n\n" +
         "Task / goal: what the user is trying to accomplish.\n" +
@@ -32,13 +37,17 @@ public sealed class Compactor(IChatClient client, string model, RequestShape? sh
         "Environment gotchas learned: shell/tool quirks discovered this session, stated exactly " +
         "(e.g. 'PowerShell 5.1 has no &&').\n" +
         "Current state: where things stand right now.\n" +
-        NextStepHeading + ": the single most useful thing to do next.\n" +
-        //keep this section last, the extractor takes everything after its heading. one template and one extractor, so it is emitted even with memory off. its words are gated, so reword them with a gate
+        NextStepHeading + ": the single most useful thing to do next.\n";
+
+    //keep this section last, the extractor takes everything after its heading. its words are gated, so reword them with a gate
+    private const string MemorySection =
         MemoryPiggyback.Heading + ": durable project facts learned this session that the next session would " +
         "otherwise rediscover. Exactly one \"- \" bullet per fact, stated as the rule to follow, never " +
         "as the mistake to avoid, no commentary, or exactly the " +
-        "word none. This must be the last section.\n\n" +
-        "Weight the headings to the work: an exploration/research turn must preserve findings in " +
+        "word none. This must be the last section.\n";
+
+    private const string TemplateTail =
+        "\nWeight the headings to the work: an exploration/research turn must preserve findings in " +
         "specific detail; an execution turn should emphasize decisions, actions, and state. Fill " +
         "what applies; don't pad the rest. Be concrete and specific — a reader with only this " +
         "summary must be able to continue without re-reading anything. Do not call tools. Keep " +
@@ -102,7 +111,7 @@ public sealed class Compactor(IChatClient client, string model, RequestShape? sh
     public async Task<string?> SummarizeAsync(
         Conversation convo, ITurnObserver observer, CancellationToken ct,
         int? windowTokens = null, double ratio = 1.0, bool midTurn = false, string? doNotRepeat = null,
-        string reason = "Manual", long traceParent = 0, ContextUsageState? usage = null)
+        string reason = "Manual", long traceParent = 0, ContextUsageState? usage = null, bool memorySection = true)
     {
         using var span = _trace.Open(Trace.Compact, traceParent);
         _traceSpan = span.Id;
@@ -113,7 +122,8 @@ public sealed class Compactor(IChatClient client, string model, RequestShape? sh
             span.Set("reason", reason);
             span.Set("before_tokens", ContextBudget.Estimate(convo.Messages));
         }
-        var summary = await SummarizeCoreAsync(convo, observer, ct, windowTokens, ratio, midTurn, doNotRepeat, usage);
+        var summary = await SummarizeCoreAsync(convo, observer, ct, windowTokens, ratio, midTurn,
+            memorySection ? TemplatePrompt : TemplateWithoutMemory, doNotRepeat, usage);
         //the size after is the next request's prompt_tokens, so the span keeps the summary's own estimate
         if (_trace.Enabled)
         {
@@ -128,10 +138,10 @@ public sealed class Compactor(IChatClient client, string model, RequestShape? sh
 
     private async Task<string?> SummarizeCoreAsync(
         Conversation convo, ITurnObserver observer, CancellationToken ct,
-        int? windowTokens, double ratio, bool midTurn, string? doNotRepeat, ContextUsageState? usage)
+        int? windowTokens, double ratio, bool midTurn, string template, string? doNotRepeat, ContextUsageState? usage)
     {
         //one prompt local, so the measured length covers the primary attempt and the harsh retry alike
-        var prompt = (midTurn ? TemplatePrompt + MidTurnAddendum : TemplatePrompt) + (doNotRepeat ?? "");
+        var prompt = (midTurn ? template + MidTurnAddendum : template) + (doNotRepeat ?? "");
         LastFailure = null;
         KeptRejectedPath = null;
         keepLocationShown = false;

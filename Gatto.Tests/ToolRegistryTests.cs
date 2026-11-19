@@ -46,13 +46,13 @@ public class ToolRegistryTests
     }
 
     [Fact]
-    public void A_HIDDEN_TOOL_IS_NEITHER_LISTED_NOR_FOUND()
+    public void A_NAME_OUTSIDE_THE_ALLOW_LIST_IS_NEITHER_LISTED_NOR_FOUND()
     {
         var reg = new ToolRegistry();
         reg.Register(new StubTool("shell"));
         reg.Register(new StubTool("grep"));
 
-        reg.Hide(["shell"]);
+        reg.Allow(["grep"]);
 
         Assert.Null(reg.Get("shell"));
         Assert.NotNull(reg.Get("grep"));
@@ -60,29 +60,79 @@ public class ToolRegistryTests
     }
 
     [Fact]
-    public void HIDE_REPLACES_THE_SET_AND_KEEPS_THE_ORDER()
+    public void ALLOW_REPLACES_THE_LIST_AND_KEEPS_THE_ORDER()
     {
         var reg = new ToolRegistry();
         foreach (var n in new[] { "a", "b", "c", "d" }) reg.Register(new StubTool(n));
 
-        reg.Hide(["a", "c"]);
+        reg.Allow(["d", "b"]);
         Assert.Equal(["b", "d"], reg.Specs().Select(s => s.Name));
-        reg.Hide(["d"]);
+        reg.Allow(["c", "a", "b"]);
         Assert.Equal(["a", "b", "c"], reg.Specs().Select(s => s.Name));
-        reg.Hide([]);
+        reg.Allow([]);
+        Assert.Empty(reg.Specs());
+        reg.Allow(null);
         Assert.Equal(["a", "b", "c", "d"], reg.Specs().Select(s => s.Name));
     }
 
     [Fact]
-    public void A_HIDDEN_NAME_THAT_IS_NOT_REGISTERED_HIDES_NOTHING()
+    public void A_TOOL_REGISTERED_AFTER_THE_LIST_IS_SET_OBEYS_IT()
+    {
+        var reg = new ToolRegistry();
+        reg.Register(new StubTool("grep"));
+        reg.Allow(["grep", "memory_write"]);
+
+        reg.Register(new StubTool("memory_write"));
+        reg.Register(new StubTool("run_agent"), extension: false);
+        reg.Register(new StubTool("ask_user"), extension: true, origin: "ask_user");
+
+        Assert.Equal(["grep", "memory_write"], reg.Specs().Select(s => s.Name));
+        Assert.Null(reg.Get("run_agent"));
+        Assert.Null(reg.Get("ask_user"));
+    }
+
+    [Fact]
+    public void A_LISTED_NAME_THAT_IS_NOT_REGISTERED_ADDS_NOTHING()
     {
         var reg = new ToolRegistry();
         reg.Register(new StubTool("grep"));
 
-        reg.Hide(["shell"]);
+        reg.Allow(["grep", "shell"]);
 
         Assert.Equal(["grep"], reg.Specs().Select(s => s.Name));
         Assert.Null(reg.Get("shell"));
+    }
+
+    [Fact]
+    public void THE_RAW_TABLE_SEES_A_NAME_THE_SEAT_LEAVES_OUT_OR_THE_USER_TURNED_OFF()
+    {
+        var armed = new ArmedSources(["web_search"]);
+        var reg = new ToolRegistry(armed);
+        reg.Register(new StubTool("grep"));
+        reg.Register(new StubTool("web_search"), extension: true, origin: "web_search");
+
+        reg.Allow([]);
+
+        Assert.True(reg.IsRegistered("grep"));
+        Assert.True(reg.IsRegistered("web_search"));
+        Assert.False(reg.IsRegistered("shell"));
+        Assert.True(reg.IsExtension("web_search"));
+    }
+
+    [Fact]
+    public void NAMES_FROM_AN_ORIGIN_IGNORE_THE_SEAT()
+    {
+        var reg = new ToolRegistry();
+        reg.Register(new StubTool("grep"));
+        reg.Register(new StubTool("ask_user"), extension: true, origin: "ask_user");
+        reg.Register(new StubTool("web_search"), extension: true, origin: "web");
+        reg.Register(new StubTool("web_fetch"), extension: true, origin: "web");
+
+        reg.Allow(["grep"]);
+
+        Assert.Equal(["web_search", "web_fetch"], reg.NamesFrom("web"));
+        Assert.Equal(["ask_user"], reg.NamesFrom("ask_user"));
+        Assert.Empty(reg.NamesFrom("none"));
     }
 
     [Theory]
@@ -144,17 +194,17 @@ public class ToolRegistryTests
         Assert.NotNull(reg.Get("web_search"));
     }
 
-    //a role resolve replaces the hidden set whole, which must not bring back what the flag holds off
+    //a role resolve replaces the list whole, which must not bring back what the flag holds off
     [Fact]
-    public void A_role_s_hide_leaves_an_off_tool_off()
+    public void A_role_s_list_leaves_an_off_tool_off()
     {
         var armed = new ArmedSources(["web_search"]);
         var reg = new ToolRegistry(armed);
         reg.Register(new StubTool("shell"));
         reg.Register(new StubTool("web_search"), extension: true, origin: "web_search");
 
-        reg.Hide(["shell"]);
-        reg.Hide([]);
+        reg.Allow(["web_search"]);
+        reg.Allow(null);
 
         Assert.Null(reg.Get("web_search"));
         Assert.Equal(["shell"], reg.Specs().Select(s => s.Name));

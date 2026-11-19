@@ -35,7 +35,7 @@ public class RealHttpClientCensusTests
         ["Gatto.Tests/PermissionPrompterTests.cs"] = new(1, "the client targets the `BaseUrl` of a fake server on a port the test bound"),
         ["Gatto.Tests/RetrySeamTests.cs"] = new(9, "each client targets the `BaseUrl` of a fake server on a port the test bound"),
         ["Gatto.Tests/RoundPersistenceTests.cs"] = new(4, "each client targets the `BaseUrl` of a fake server on a port the test bound"),
-        ["Gatto.Tests/RunAgentToolTests.cs"] = new(15, "each client targets the `BaseUrl` of a fake server on a port the test bound"),
+        ["Gatto.Tests/RunAgentToolTests.cs"] = new(18, "each client targets the `BaseUrl` of a fake server on a port the test bound"),
         ["Gatto.Tests/ServedNameTests.cs"] = new(4, "each client targets the `BaseUrl` of a fake server on a port the test bound"),
         ["Gatto.Tests/SessionBaselineTests.cs"] = new(1, "the client targets the `BaseUrl` of a fake server on a port the test bound"),
         ["Gatto.Tests/SpecialTokenEscapeTests.cs"] = new(2, "each client targets the `BaseUrl` of a fake server on a port the test bound"),

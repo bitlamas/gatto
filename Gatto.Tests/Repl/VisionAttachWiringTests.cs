@@ -267,7 +267,9 @@ public class VisionAttachWiringTests : IDisposable
     {
         //a command that falls through to a model turn keeps the user's words, which makes it the sharp case for the no-attach gate
         File.WriteAllBytes(Path.Combine(_dir, "shot.jpg"), Jpeg());
-        var h = new RichReplHarness(_dir);
+        var tools = new Gatto.Core.Tools.ToolRegistry();
+        tools.Register(new StubTool("memory_write"));   //remember dispatches only in a seat that arms the tool it names
+        var h = new RichReplHarness(_dir, tools: tools);
         h.Client.EnqueueTurn(new StreamEvent.TextDelta("banked"), new StreamEvent.Finished("stop", null));
 
         h.Keys.Line("/remember look at shot.jpg");

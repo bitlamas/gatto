@@ -178,21 +178,57 @@ public class GattoAppTests : IDisposable
     }
 
     [Fact]
-    public async Task A_SEAT_WITH_AN_EMPTY_TOOLS_ARRAY_ARMS_NONE_OF_THE_SIX()
+    public async Task A_SEAT_WITH_AN_EMPTY_TOOLS_ARRAY_ARMS_NONE_AND_SENDS_NO_TOOLS_FIELD()
     {
         await using var server = await OneShotWithGeneralist("""{"model":"test-model","tools":[]}""");
 
-        var names = ToolNamesOf(server);
-        Assert.Empty(names.Intersect(SeatSix));
-        Assert.Contains("run_agent", names);
+        Assert.False(server.LastRequestBody!.Value.TryGetProperty("tools", out _));
     }
 
     [Fact]
-    public async Task A_SEAT_WITH_THREE_TOOLS_ARMS_THOSE_THREE()
+    public async Task A_SEAT_WITH_THREE_TOOLS_ARMS_EXACTLY_THOSE_THREE()
     {
         await using var server = await OneShotWithGeneralist("""{"model":"test-model","tools":["read_file","glob","grep"]}""");
 
-        Assert.Equal(new[] { "glob", "grep", "read_file" }, ToolNamesOf(server).Intersect(SeatSix).Order());
+        Assert.Equal(new[] { "read_file", "glob", "grep" }, ToolNamesOf(server));
+    }
+
+    [Fact]
+    public async Task A_ROLE_RUN_AGENT_CANNOT_CALL_STILL_LAUNCHES_AS_A_MAIN_SEAT()
+    {
+        await using var server = await OneShotWithGeneralist("""{"model":"test-model","callable":false,"append":"MAIN SEAT TEXT"}""");
+
+        var system = server.LastRequestBody!.Value.GetProperty("messages")[0].GetProperty("content").GetString();
+        Assert.Contains("MAIN SEAT TEXT", system, StringComparison.Ordinal);
+        Assert.DoesNotContain("- seat", ToolDescriptionOf(server, "run_agent"), StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task A_HOME_WITH_NO_ROLE_FILES_OFFERS_RUN_AGENT_WITH_DEFAULT()
+    {
+        await using var server = new FakeOpenAiServer();
+        UseHome();
+        WriteConfig($$$"""{"endpoints":{"local":{"base_url":"{{{server.BaseUrl}}}"}},"default_endpoint":"local"}""");
+        WriteModel("test-model", port: 1235);
+        UseDefaultModel("test-model");
+        server.Enqueue(Completion("warm"));
+        server.Enqueue(Completion("ok"));
+        Console.SetOut(new StringWriter());
+        Assert.Equal(0, await GattoApp.RunAsync(new[] { "-p", "warm" }));   //the first launch writes the shipped role, which is then removed
+        foreach (var f in Directory.GetFiles(Path.Combine(_home, "roles"), "*.json")) File.Delete(f);
+
+        Assert.Equal(0, await GattoApp.RunAsync(new[] { "-p", "hi" }));
+
+        Assert.Empty(Directory.GetFiles(Path.Combine(_home, "roles"), "*.json"));
+        Assert.Equal("Run a named role on a task. Available roles:\n- default: a fresh context, no role text.", ToolDescriptionOf(server, "run_agent"));
+    }
+
+    [Fact]
+    public async Task A_SEAT_LISTING_RUN_AGENT_AND_A_MEMORY_TOOL_ARMS_THEM()
+    {
+        await using var server = await OneShotWithGeneralist("""{"model":"test-model","tools":["grep","recall_memory","run_agent"]}""");
+
+        Assert.Equal(new[] { "grep", "recall_memory", "run_agent" }, ToolNamesOf(server));
     }
 
     //the plain /tools rows open with two spaces and the tool's name, so the names are read off the rows and never off a description
@@ -200,7 +236,7 @@ public class GattoAppTests : IDisposable
         section.Split('\n').Where(l => l.StartsWith("  ", StringComparison.Ordinal))
             .Select(l => l.TrimStart().Split(' ')[0]).ToList();
 
-    private async Task<string> SwitchInThePlainLoop(string script, string? profileExtra = null)
+    private async Task<string> SwitchInThePlainLoop(string script, string? profileExtra = null, string[]? args = null)
     {
         UseHome();
         WriteConfig("""{"endpoints":{"local":{"base_url":"http://127.0.0.1:1"}},"default_endpoint":"local","glyphs":"unicode"}""");
@@ -212,7 +248,7 @@ public class GattoAppTests : IDisposable
         var stdout = new StringWriter();
         Console.SetOut(stdout);
         using var probeRoom = GattoApp.ProbeDeadlineScope(TimeSpan.FromMilliseconds(100));   //nothing listens on this port, so the probes give up at once
-        Assert.Equal(0, await GattoApp.RunAsync(Array.Empty<string>()));
+        Assert.Equal(0, await GattoApp.RunAsync(args ?? Array.Empty<string>()));
         return stdout.ToString();
     }
 
@@ -261,20 +297,65 @@ public class GattoAppTests : IDisposable
     }
 
     [Fact]
-    public async Task A_COMMITTED_SWITCH_LEAVES_EVERY_OTHER_TOOL_IN_PLACE()
+    public async Task A_COMMITTED_SWITCH_TO_A_LISTED_SEAT_DROPS_EVERY_TOOL_IT_DOES_NOT_LIST()
     {
         using var attached = GattoApp.AttachedInputScope();   //ask_user is offered only with someone at the terminal, who would also be offered a server start
-        var output = await SwitchInThePlainLoop("/tools\n/role narrow\n/tools\n/quit\n", "\"auto_serve\":false");
+        var output = await SwitchInThePlainLoop("/tools\n/role narrow\n/tools\n/role default\n/tools\n/quit\n", "\"auto_serve\":false");
 
         var cut = output.IndexOf("role: narrow", StringComparison.Ordinal);
-        Assert.True(cut > 0, output);
-        var before = ListedTools(output[..cut]);
-        var after = ListedTools(output[cut..]);
-        foreach (var name in new[] { "run_agent", "ask_user", "recall_memory" })
+        var back = output.IndexOf("role: default", cut, StringComparison.Ordinal);
+        Assert.True(cut > 0 && back > cut, output);
+        var table = output.IndexOf("tools armed this session", StringComparison.Ordinal);   //the banner's rows open with two spaces too
+        var before = ListedTools(output[table..cut]);
+        var narrow = ListedTools(output[cut..back]);
+        foreach (var name in new[] { "run_agent", "ask_user", "recall_memory", "memory_write", "shell", "read_file" })
         {
             Assert.Contains(name, before);
-            Assert.Contains(name, after);
+            Assert.DoesNotContain(name, narrow);
         }
+        Assert.Contains("grep", narrow);
+        Assert.Contains("1 tool armed this session", output[cut..back], StringComparison.Ordinal);
+        Assert.Equal(before, ListedTools(output[back..]));
+    }
+
+    [Fact]
+    public async Task AN_INTERACTIVE_LAUNCH_AND_A_ROLE_SWITCH_SAY_WHAT_A_LISTED_SEAT_ARMS()
+    {
+        WriteRole("listed", "{\"model\":\"test-model\",\"tools\":[\"grep\",\"ask_user\",\"frobnicate\"]}");
+        WriteRole("empty", "{\"model\":\"test-model\",\"tools\":[]}");
+        var stderr = new StringWriter();
+        Console.SetError(stderr);
+
+        await SwitchInThePlainLoop("/role listed\n/role empty\n/role default\n/quit\n");
+
+        //input is redirected, so ask_user is not offered here and reads as not armed
+        Assert.Equal(new[]
+        {
+            "! role 'listed' lists ask_user, which is not armed this session",
+            "! role 'listed' lists frobnicate, which is not armed this session",
+            "! role 'listed' arms 1 tool",
+            "! role 'empty' arms 0 tools",
+        }, stderr.ToString().Split('\n').Select(l => l.TrimEnd('\r')).Where(l => l.StartsWith("! role '", StringComparison.Ordinal)));
+    }
+
+    [Fact]
+    public async Task A_LISTED_SEAT_SAYS_ITS_ROWS_AT_AN_INTERACTIVE_LAUNCH_AND_NOT_IN_A_ONE_SHOT()
+    {
+        var stderr = new StringWriter();
+        Console.SetError(stderr);
+        WriteRole("seat", "{\"model\":\"test-model\",\"tools\":[\"grep\",\"frobnicate\"]}");
+        await SwitchInThePlainLoop("/quit\n");
+        var unlisted = stderr.ToString();
+
+        await SwitchInThePlainLoop("/quit\n", args: ["seat"]);
+        var launched = stderr.ToString()[unlisted.Length..];
+        await using var server = await OneShotWithGeneralist("{\"model\":\"test-model\",\"tools\":[\"grep\",\"frobnicate\"]}");
+        var oneShot = stderr.ToString()[(unlisted.Length + launched.Length)..];
+
+        Assert.DoesNotContain("! role '", unlisted, StringComparison.Ordinal);
+        Assert.Contains("! role 'seat' lists frobnicate, which is not armed this session", launched, StringComparison.Ordinal);
+        Assert.Contains("! role 'seat' arms 1 tool", launched, StringComparison.Ordinal);
+        Assert.DoesNotContain("! role '", oneShot, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -307,6 +388,22 @@ public class GattoAppTests : IDisposable
 
         Assert.DoesNotContain("probe", fromProject);
         Assert.Contains("probe", fromHome);
+    }
+
+    //run_agent registers after the extensions commit, so a script that took the name would end the launch on a duplicate
+    [Fact]
+    public async Task AN_EXTENSION_TOOL_NAMED_RUN_AGENT_IS_SKIPPED_AS_RESERVED()
+    {
+        Directory.CreateDirectory(Path.Combine(_home, "extensions"));
+        File.WriteAllText(Path.Combine(_home, "extensions", "taker.csx"),
+            "Gatto.Register(\"run_agent\", \"taken\", \"{\\\"type\\\":\\\"object\\\"}\", async (args, ctx, ct) => new ToolResult(\"taken\"));\n");
+        var stderr = new StringWriter();
+        Console.SetError(stderr);
+
+        var listed = ListedTools(await SwitchInThePlainLoop("/tools\n/quit\n"));
+
+        Assert.Contains("run_agent", listed);
+        Assert.Contains("extension 'taker': tool 'run_agent' collides with an already-registered tool, extension skipped", stderr.ToString());
     }
 
     [Fact]
@@ -1601,6 +1698,34 @@ public class GattoAppTests : IDisposable
         Assert.Equal(0, exit);
         Assert.Contains("gatto's own model settings only apply to servers it starts", stdout.ToString());
         Assert.Equal("served-model", server.LastRequestBody!.Value.GetProperty("model").GetString());
+    }
+
+    //a by-folder switch once composed with no policy block, so an extension's line left the prompt until the next /role or /new
+    [Fact]
+    public async Task A_BY_FOLDER_MODEL_SWITCH_KEEPS_THE_POLICY_LINE()
+    {
+        await using var server = new FakeOpenAiServer();
+        UseHome();
+        WriteConfig($$$"""{"endpoints":{"local":{"base_url":"{{{server.BaseUrl}}}"}},"default_endpoint":"local","default_model":"qwen-model"}""");
+        var port = new Uri(server.BaseUrl).Port;
+        WriteModel("qwen-model", port, "\"auto_serve\":false");
+        WriteModel("gemma-model", port, "\"auto_serve\":false");
+        Directory.CreateDirectory(Path.Combine(_home, "extensions"));
+        File.WriteAllText(Path.Combine(_home, "extensions", "zz_policy.csx"), "Gatto.Policy(\"POLICY-AFTER-SWITCH\");");
+        server.Enqueue(Completion("one"));
+        server.Enqueue(Completion("two"));
+
+        Console.SetIn(new StringReader("hi\n/model gemma-model\nhi again\n/quit\n"));
+        var stdout = new StringWriter();
+        Console.SetOut(stdout);
+        await GattoApp.RunAsync(Array.Empty<string>());
+
+        var sent = server.RequestBodies.Where(b => b.TryGetProperty("messages", out _)).ToList();
+        Assert.True(sent.Count == 2, stdout.ToString());
+        string System(int i) => sent[i].GetProperty("messages")[0].GetProperty("content").GetString()!;
+        Assert.StartsWith("You are gemma-model", System(1), StringComparison.Ordinal);
+        Assert.Contains("POLICY-AFTER-SWITCH", System(0), StringComparison.Ordinal);
+        Assert.Contains("POLICY-AFTER-SWITCH", System(1), StringComparison.Ordinal);
     }
 
     //the command /model must update the value ResolveRole consults. a stale launch value makes the local-model guard refuse every role, including the active one

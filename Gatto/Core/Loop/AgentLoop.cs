@@ -127,6 +127,9 @@ public sealed class AgentLoop(
         (stopped ? "auto-compact stopped" : "auto-compact failed" + (compaction?.LastFailure is { } why ? $": {why}" : ""))
         + " — it stays off for this session, /compact runs it";
 
+    //whether this seat's manifest holds the tool, for a command that asks the model to call it or stands in for it
+    public bool Arms(string toolName) => tools.Specs().Any(s => s.Name == toolName);
+
     //the tools, overrides and reasoning policy every request of this loop carries, read at the moment of asking so a /role or /model swap is seen
     public RequestShape RequestShape => new(tools.Specs(), samplingOverrides, bodyOverrides, reasoningHistory,
         Volatile.Read(ref _lastSent), Volatile.Read(ref _lastSentFrom));   //read whole, since /context reads it from the composer thread mid-turn

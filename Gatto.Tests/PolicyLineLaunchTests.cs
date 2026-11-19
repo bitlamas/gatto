@@ -58,9 +58,95 @@ public class PolicyLineLaunchTests : IDisposable
         File.WriteAllText(Path.Combine(dir, name), body);
     }
 
-    private void WriteConfig(FakeOpenAiServer server) =>
+    private void WriteConfig(FakeOpenAiServer server, string? defaultRole = null) =>
         File.WriteAllText(Path.Combine(_home, "gatto.json"),
-            $$$"""{"endpoints":{"local":{"base_url":"{{{server.BaseUrl}}}"}},"default_endpoint":"local","default_model":"test-model"}""");
+            $$$"""{"endpoints":{"local":{"base_url":"{{{server.BaseUrl}}}"}},"default_endpoint":"local","default_model":"test-model"{{{(defaultRole is null ? "" : $",\"default_role\":\"{defaultRole}\"")}}}}""");
+
+    private void WriteRole(string name, string json) =>
+        File.WriteAllText(Path.Combine(_home, "roles", $"{name}.json"), json);
+
+    //an extension with a tool and a line, whose line follows the seat, beside one with a line alone, which every seat keeps
+    private const string ToolLine = "call zz_tool before you guess";
+
+    private void WriteToolExtension() =>
+        WriteExtension("zz_tooled.csx",
+            "Gatto.Register(\"zz_tool\", \"a tool\", \"{\\\"type\\\":\\\"object\\\"}\", async (args, ctx, ct) => new ToolResult(\"ok\"));\n" +
+            $"Gatto.Policy(\"{ToolLine}\");\n");
+
+    private async Task<string> OneShotSystem(string? role)
+    {
+        await using var server = new FakeOpenAiServer();
+        WriteConfig(server, role);
+        EnqueueOneAnswer(server);
+        Environment.SetEnvironmentVariable("GATTO_HOME", _home);
+        Environment.CurrentDirectory = _cwd;
+        Console.SetOut(new StringWriter());
+        Assert.Equal(0, await GattoApp.RunAsync(new[] { "-p", "hello" }));
+        return SystemOf(server.RequestBodies[0]);
+    }
+
+    [Fact]
+    public async Task A_SEAT_CARRIES_A_TOOLED_LINE_ONLY_WHEN_IT_LISTS_ONE_OF_THE_TOOLS()
+    {
+        WriteToolExtension();
+        WriteExtension("zz_policy.csx", $"Gatto.Policy(\"{Line}\");");
+        WriteRole("narrow", """{"tools":["read_file","glob","grep"]}""");
+        WriteRole("wide", """{"tools":["grep","zz_tool"]}""");
+
+        var unlisted = await OneShotSystem(null);
+        var narrow = await OneShotSystem("narrow");
+        var wide = await OneShotSystem("wide");
+
+        Assert.Contains(ToolLine, unlisted, StringComparison.Ordinal);
+        Assert.DoesNotContain(ToolLine, narrow, StringComparison.Ordinal);
+        Assert.Contains(ToolLine, wide, StringComparison.Ordinal);
+        //an extension that registered no tool keeps its line in every seat
+        Assert.All(new[] { unlisted, narrow, wide }, s => Assert.Contains(Line, s, StringComparison.Ordinal));
+    }
+
+    private async Task<(string Output, IReadOnlyList<string> Systems)> InTheLoop(string script, int answers)
+    {
+        await using var server = new FakeOpenAiServer();
+        WriteConfig(server);
+        for (var i = 0; i < answers; i++) EnqueueOneAnswer(server);
+        Environment.SetEnvironmentVariable("GATTO_HOME", _home);
+        Environment.CurrentDirectory = _cwd;
+        var stdout = new StringWriter();
+        Console.SetOut(stdout);
+        Console.SetIn(new StringReader(script));
+        Assert.Equal(0, await GattoApp.RunAsync(Array.Empty<string>()));
+        Assert.Equal(answers, server.RequestCount);
+        return (stdout.ToString(), server.RequestBodies.Select(SystemOf).ToList());
+    }
+
+    [Fact]
+    public async Task A_ROLE_INTO_A_NARROWER_SEAT_COMPOSES_THE_NEW_SEATS_LINES_AND_HOLDS_THEM_STILL()
+    {
+        WriteToolExtension();
+        WriteRole("narrow", """{"tools":["grep"]}""");
+
+        var (_, systems) = await InTheLoop("hi\n/role narrow\nhi again\n/role default\n/role narrow\nonce more\n/quit\n", 3);
+
+        Assert.Contains(ToolLine, systems[0], StringComparison.Ordinal);
+        Assert.DoesNotContain(ToolLine, systems[1], StringComparison.Ordinal);
+        Assert.Equal(SessionLine.Masked(systems[1]), SessionLine.Masked(systems[2]));
+    }
+
+    [Fact]
+    public async Task TOOLS_SHOWS_ONLY_THE_LINES_OF_THE_RUNNING_SEAT()
+    {
+        WriteToolExtension();
+        WriteExtension("zz_policy.csx", $"Gatto.Policy(\"{Line}\");");
+        WriteRole("narrow", """{"tools":["grep"]}""");
+
+        var (output, _) = await InTheLoop("/tools\n/role narrow\n/tools\n/quit\n", 0);
+
+        var cut = output.IndexOf("role: narrow", StringComparison.Ordinal);
+        Assert.True(cut > 0, output);
+        Assert.Contains(ToolLine, output[..cut], StringComparison.Ordinal);
+        Assert.DoesNotContain(ToolLine, output[cut..], StringComparison.Ordinal);
+        Assert.Contains(Line, output[cut..], StringComparison.Ordinal);
+    }
 
     private static string Chunk(string deltaJson, string? finish = null) =>
         $"data: {{\"choices\":[{{\"index\":0,\"delta\":{deltaJson},\"finish_reason\":{(finish is null ? "null" : $"\"{finish}\"")}}}]}}\n\n";

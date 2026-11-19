@@ -176,7 +176,7 @@ public static class ExtensionHost
             string? clash = null;
             foreach (var (tool, _) in staged.Tools)
             {
-                if (tools.Get(tool.Name) is not null)
+                if (tools.IsRegistered(tool.Name))
                 {
                     clash = $"tool '{tool.Name}' collides with an already-registered tool";
                     break;

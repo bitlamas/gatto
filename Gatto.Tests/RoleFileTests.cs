@@ -375,29 +375,71 @@ public class RoleFileTests : IDisposable
     }
 
     [Fact]
-    public void A_SEVENTH_TOOL_NAME_IS_REFUSED()
+    public void ANY_WELL_FORMED_TOOL_NAME_LOADS()
     {
-        Write("bad", """{ "tools": ["read_file", "frobnicate"] }""");
+        Write("wide", """{ "tools": ["read_file", "frobnicate", "memory_write", "ask_user", "web_search2"] }""");
+
+        var role = RoleFile.Load(_rolesDir, "wide");
+
+        Assert.Equal(new[] { "read_file", "frobnicate", "memory_write", "ask_user", "web_search2" }, role.Tools);
+    }
+
+    [Theory]
+    [InlineData("\"Read_File\"")]
+    [InlineData("\"has space\"")]
+    [InlineData("\"\"")]
+    [InlineData("\"grep\\n\"")]
+    [InlineData("3")]
+    public void A_MALFORMED_TOOL_NAME_IS_REFUSED(string entry)
+    {
+        Write("bad", $$"""{ "tools": [{{entry}}] }""");
 
         var ex = Assert.Throws<GattoConfigException>(() => RoleFile.Load(_rolesDir, "bad"));
 
-        Assert.Contains("'bad'", ex.Message);
-        Assert.Contains("\"tools\"", ex.Message);
-        Assert.Contains("frobnicate", ex.Message);
-        foreach (var allowed in new[] { "read_file", "write_file", "edit_file", "glob", "grep", "shell" })
-            Assert.Contains(allowed, ex.Message);
+        Assert.Equal($"role 'bad' has {entry} in \"tools\"; must be a tool name of a-z, 0-9 and _", ex.Message);
     }
 
     [Fact]
-    public void RUN_AGENT_IN_TOOLS_IS_REFUSED()
+    public void A_TOOLS_VALUE_THAT_IS_NOT_AN_ARRAY_NAMES_TOOL_NAMES()
     {
-        Write("bad", """{ "tools": ["run_agent"] }""");
+        Write("bad", """{ "tools": {} }""");
 
         var ex = Assert.Throws<GattoConfigException>(() => RoleFile.Load(_rolesDir, "bad"));
 
-        Assert.Contains("'bad'", ex.Message);
-        Assert.Contains("\"tools\"", ex.Message);
-        Assert.Contains("run_agent", ex.Message);
+        Assert.Equal("role 'bad' has a \"tools\" of {}; must be an array of tool names", ex.Message);
+    }
+
+    [Fact]
+    public void RUN_AGENT_IN_TOOLS_LOADS()
+    {
+        Write("caller", """{ "tools": ["run_agent", "grep"] }""");
+
+        var role = RoleFile.Load(_rolesDir, "caller");
+
+        Assert.Equal(new[] { "run_agent", "grep" }, role.Tools);
+    }
+
+    [Fact]
+    public void CALLABLE_DEFAULTS_TO_TRUE_AND_ROUND_TRIPS()
+    {
+        Write("bare", "{}");
+        Write("main", """{ "callable": false }""");
+        Write("open", """{ "callable": true }""");
+
+        Assert.True(RoleFile.Load(_rolesDir, "bare").Callable);
+        Assert.False(RoleFile.Load(_rolesDir, "main").Callable);
+        Assert.True(RoleFile.Load(_rolesDir, "open").Callable);
+        Assert.True(RoleFile.Default.Callable);
+    }
+
+    [Fact]
+    public void A_WRONG_TYPED_CALLABLE_IS_REFUSED()
+    {
+        Write("bad", """{ "callable": "no" }""");
+
+        var ex = Assert.Throws<GattoConfigException>(() => RoleFile.Load(_rolesDir, "bad"));
+
+        Assert.Equal("role 'bad' has a \"callable\" of \"no\"; must be true or false", ex.Message);
     }
 
     [Fact]

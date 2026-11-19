@@ -315,6 +315,9 @@ public sealed partial class Repl
     internal const string RememberUsage =
         "usage: /remember <text> — bank a note to project memory, in the model's own words";
 
+    //what /remember says in a seat without the tool its prompt names, no turn is dispatched
+    internal const string RememberUnarmed = "/remember needs memory_write, which is not armed this session";
+
     //the last assistant message with text and the nearest user text before it, null when the model has not answered in text
     public static (string User, string Assistant)? LastTextExchange(Conversation convo)
     {
@@ -335,12 +338,13 @@ public sealed partial class Repl
         Compactor compactor, Conversation convo, SessionStore? sessions,
         Func<ComposedSystem> recomposeSystem, ITurnObserver observer, CancellationToken ct,
         int? contextBudget = null, Action<string>? onSummary = null,
-        Action<MemoryPiggyback.Extraction>? bankCandidates = null, string? doNotRepeat = null, ContextUsageState? usage = null)
+        Action<MemoryPiggyback.Extraction>? bankCandidates = null, string? doNotRepeat = null, ContextUsageState? usage = null,
+        bool memorySection = true)
     {
         var oldPath = sessions?.CurrentPath;          //read before StartSuccessor, which clears the path
         var lastExchange = LastTextExchange(convo);
         var rawSummary = await compactor.SummarizeAsync(
-            convo, observer, ct, windowTokens: contextBudget, doNotRepeat: doNotRepeat, usage: usage);
+            convo, observer, ct, windowTokens: contextBudget, doNotRepeat: doNotRepeat, usage: usage, memorySection: memorySection);
         if (rawSummary is null)
         {
             //a rejected reply is kept beside the session file by the compactor itself, and this line names where when no earlier line of this compaction did
@@ -373,11 +377,14 @@ public sealed partial class Repl
         _lastBankFailure = null;       //reset per compact, so a failure from an earlier one cannot leak
         _lastSuppressionUnfed = 0;     //how many index lines were dropped for budget, set below and reset per compact
 
+        //the bank follows the seat's memory_write, so a seat without it is neither asked for facts nor has any written
+        var writesMemory = loop.Arms("memory_write");
+        var bank = writesMemory ? piggyback : null;
         //the index is composed from disk because the cached system message misses facts written mid-session, and Compose is total so no try/catch is needed
         string? doNotRepeat = null;
-        if (piggyback is not null)
+        if (bank is not null)
         {
-            var index = piggyback.ComposeIndex();
+            var index = bank.ComposeIndex();
             doNotRepeat = Compactor.SuppressionAddendum(index);
             _lastSuppressionUnfed = index.TruncatedLines;
         }
@@ -389,8 +396,8 @@ public sealed partial class Repl
         {
             fresh = await CompactAsync(new Compactor(client, modelName, loop.RequestShape, loop.Trace, keepRejectedIn: sessions), convo, sessions, recomposeSystem, renderer, ct,
                 contextBudget: contextBudget, onSummary: s => capturedSummary = s,
-                doNotRepeat: doNotRepeat, usage: _usageState,
-                bankCandidates: ex =>
+                doNotRepeat: doNotRepeat, usage: _usageState, memorySection: writesMemory,
+                bankCandidates: bank is null ? null : ex =>
                 {
                     var banked = BankMemory(ex.Candidates, renderer).Banked;
                     _lastCompactBanked = (banked, ex.Dropped);

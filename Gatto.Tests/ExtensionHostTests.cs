@@ -497,6 +497,22 @@ public sealed class ExtensionHostTests : IClassFixture<RoslynWarmupFixture>, IDi
         Assert.Equal("tool 'late_tool' collides with an already-registered tool", ledger.ErrorOf("late"));
     }
 
+    //the seat's list is set before the extensions commit, so the clash check must read the raw table and not the seat
+    [Fact]
+    public void THE_COMMIT_SEES_A_CLASH_WITH_A_NAME_THE_SEAT_LEAVES_OUT()
+    {
+        WriteFile("late.csx", """Gatto.Register("late_tool", "l", "{\"type\":\"object\"}", (a,c,t) => System.Threading.Tasks.Task.FromResult(new Gatto.Core.Tools.ToolResult("ok")));""");
+        var ledger = new ExtensionLedger();
+        var loaded = ExtensionHost.LoadAll(_dir, NewApi(), _ => { }, null, ledger);
+        var tools = new ToolRegistry();
+        tools.Register(new StubTool("late_tool"));
+        tools.Allow(["grep"]);
+
+        ExtensionHost.Commit(loaded, tools, new HookBus(), new CommandRegistry(), [], _ => { }, ledger);
+
+        Assert.Equal("tool 'late_tool' collides with an already-registered tool", ledger.ErrorOf("late"));
+    }
+
     //each tool and command carries its source, the one fact the off flag reads
     [Fact]
     public void COMMIT_TAGS_EACH_TOOL_AND_COMMAND_WITH_ITS_SOURCE()

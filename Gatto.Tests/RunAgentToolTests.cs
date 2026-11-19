@@ -242,8 +242,63 @@ public sealed class RunAgentToolTests : IDisposable
 
         var (_, result) = obs.Results.Single();
         Assert.True(result.IsError);
-        Assert.Equal("no role named 'x' — available: alpha, beta", result.Text);
+        Assert.Equal("no role named 'x' — available: default, alpha, beta", result.Text);
         Assert.False(result.Prompted);   //the loop's error result for a throw carries no flag
+    }
+
+    [Fact]
+    public async Task A_ROLE_THAT_IS_NOT_CALLABLE_IS_REFUSED_AND_LEFT_OUT_OF_BOTH_LISTS()
+    {
+        await using var child = new FakeOpenAiServer();
+        var childClient = new OpenAiCompatClient(new HttpClient(), "local", new EndpointConfig(child.BaseUrl));
+        var tool = Build(childClient, FreshGate(new RecordingPermPrompter()),
+            roles: [Role(name: "alpha"), Role(name: "main") with { Callable = false }]);
+
+        var refused = await Assert.ThrowsAsync<InvalidOperationException>(() => tool.ExecuteAsync(Args("main", "t"), new TestToolContext(_dir), default));
+        var unknown = await Assert.ThrowsAsync<ArgumentException>(() => tool.ExecuteAsync(Args("x", "t"), new TestToolContext(_dir), default));
+
+        Assert.Equal("role 'main' cannot be called by run_agent — available: default, alpha", refused.Message);
+        Assert.Equal("no role named 'x' — available: default, alpha", unknown.Message);
+        Assert.DoesNotContain("main", tool.Description, StringComparison.Ordinal);
+        Assert.Equal(0, child.RequestCount);
+    }
+
+    [Fact]
+    public async Task DEFAULT_IS_CALLABLE_AND_ONLY_IN_ITS_OWN_SPELLING()
+    {
+        await using var server = new FakeOpenAiServer();
+        server.Enqueue(new FakeResponse(Frames: TextRound("from default")));
+        var client = new OpenAiCompatClient(new HttpClient(), "local", new EndpointConfig(server.BaseUrl));
+        ToolRegistry? captured = null;
+        RoleFile? composed = null;
+        var tool = Build(client, FreshGate(new RecordingPermPrompter()), roles: Array.Empty<RoleFile>(),
+            capture: r => captured = r, composeChild: r => { composed = r; return Compose(r); });
+
+        var result = await tool.ExecuteAsync(Args("default", "t"), new TestToolContext(_dir), default);
+        var cased = await Assert.ThrowsAsync<ArgumentException>(() => tool.ExecuteAsync(Args("Default", "t"), new TestToolContext(_dir), default));
+
+        Assert.Equal("from default", result.Text);
+        Assert.StartsWith("default · 1 turn · ", result.Gloss);
+        Assert.Same(RoleFile.Default, composed);
+        Assert.Equal(new[] { "edit_file", "glob", "grep", "read_file", "shell", "write_file" },
+            captured!.Specs().Select(s => s.Name).OrderBy(n => n, StringComparer.Ordinal));
+        Assert.Equal("no role named 'Default' — available: default", cased.Message);
+    }
+
+    [Fact]
+    public async Task A_CALL_TO_DEFAULT_PROMPTS_WITH_DEFAULT_AS_THE_AGENT()
+    {
+        await using var server = new FakeOpenAiServer();
+        server.Enqueue(new FakeResponse(Frames: ToolCallRound("mutate")));
+        server.Enqueue(new FakeResponse(Frames: TextRound("ok")));
+        var client = new OpenAiCompatClient(new HttpClient(), "local", new EndpointConfig(server.BaseUrl));
+        var prompter = new RecordingPermPrompter(PermissionAnswer.Once);
+        var catalog = new Dictionary<string, Func<ITool>>(StringComparer.Ordinal) { ["mutate"] = () => new MutatingTool() };
+        var tool = Build(client, FreshGate(prompter), roles: Array.Empty<RoleFile>(), catalog: catalog);
+
+        await tool.ExecuteAsync(Args("default", "go"), new TestToolContext(_dir), default);
+
+        Assert.Equal("default", Assert.Single(prompter.Requests).Agent);
     }
 
     [Fact]
@@ -369,6 +424,24 @@ public sealed class RunAgentToolTests : IDisposable
     }
 
     [Fact]
+    public void A_CHILD_NEVER_HOLDS_A_TOOL_THE_CALLING_SEAT_LACKS()
+    {
+        IReadOnlyList<string>? seat = ["read_file", "grep", "run_agent"];
+        var build = SubagentWiring.Build(FreshGate(null), bound: () => new SeatBound(seat));
+
+        var (listed, _) = build(Role(tools: ["read_file", "write_file", "grep", "run_agent"]));
+        var (unset, _) = build(Role() with { Tools = null });
+        seat = null;
+        var (free, _) = build(Role(tools: ["read_file", "write_file", "run_agent"]));
+
+        Assert.Equal(new[] { "read_file", "grep" }, listed.Specs().Select(s => s.Name));
+        Assert.Equal(new[] { "grep", "read_file" }, unset.Specs().Select(s => s.Name).OrderBy(n => n, StringComparer.Ordinal));
+        Assert.Equal(new[] { "read_file", "write_file" }, free.Specs().Select(s => s.Name));
+        Assert.Null(listed.Get("write_file"));
+        Assert.Null(free.Get("run_agent"));
+    }
+
+    [Fact]
     public async Task A_MUTATING_CALL_REACHES_THE_SHARED_GATE_WITH_THE_ROLE_LABEL()
     {
         await using var server = new FakeOpenAiServer();
@@ -398,22 +471,23 @@ public sealed class RunAgentToolTests : IDisposable
     }
 
     [Fact]
-    public void IS_AVAILABLE_FOLLOWS_THE_ROLES_FOLDER()
+    public void IS_AVAILABLE_WITH_AN_EMPTY_ROLES_FOLDER()
     {
-        Assert.False(Build(new FakeChatClient(), FreshGate(null), roles: Array.Empty<RoleFile>()).IsAvailable);
+        Assert.True(Build(new FakeChatClient(), FreshGate(null), roles: Array.Empty<RoleFile>()).IsAvailable);
         Assert.True(Build(new FakeChatClient(), FreshGate(null), roles: new[] { Role() }).IsAvailable);
     }
 
     [Fact]
-    public void THE_DESCRIPTION_LISTS_ROLES_WITH_AND_WITHOUT_A_DESCRIPTION()
+    public void THE_DESCRIPTION_LISTS_DEFAULT_FIRST_THEN_THE_CALLABLE_ROLES()
     {
         //passed out of order, the tool keeps the order it is handed
         var tool = Build(new FakeChatClient(), FreshGate(null), roles: new[]
         {
             Role(name: "beta", description: null), Role(name: "alpha", description: "does alpha"), Role(name: "gamma", description: ""),
+            Role(name: "seat", description: "a main seat") with { Callable = false },
         });
 
-        Assert.Equal("Run a named role on a task. Available roles:\n- beta\n- alpha: does alpha\n- gamma", tool.Description);
+        Assert.Equal("Run a named role on a task. Available roles:\n- default: a fresh context, no role text.\n- beta\n- alpha: does alpha\n- gamma", tool.Description);
     }
 
     [Fact]

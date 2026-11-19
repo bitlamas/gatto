@@ -1001,6 +1001,11 @@ public sealed partial class Repl
                 s.Renderer.CommitSystem(RememberUsage);
                 return false;
             }
+            if (!loop.Arms("memory_write"))
+            {
+                s.Renderer.CommitSystem(RememberUnarmed);
+                return false;
+            }
             input = CommandText.RememberPrompt(rememberArg);   //sent through the normal turn below, as if the user had typed it
         }
         if (trimmed == "/init") input = InitPrompt.Text;   //sent through the normal turn below, as if the user had typed it

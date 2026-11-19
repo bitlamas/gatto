@@ -271,7 +271,7 @@ internal sealed class LaunchState(
         MemoryTicks += System.Diagnostics.Stopwatch.GetTimestamp() - memoryFrom;
         var comp = RoleComposition.Compose(role, model, contextFiles, endpoint.Thinking, modelString, OsWords.Name(), SessionId, cwd: cwd, date: DateTime.Now,
             memoryIndex: memory.Text, memoryTruncatedLines: memory.TruncatedLines,
-            policyLines: policyLines,
+            policyLines: PolicyFor(role),
             savedEffort: endpointIsLocal ? null
                 : SavedOffered(endpointName, modelString, SavedCloudEffort(config, home, endpointName, OwnerOf(endpointName), modelString), model?.Profile.Thinking ?? endpoint.Thinking)
                   ?? EntryEffort(endpointName, modelString));
@@ -297,9 +297,24 @@ internal sealed class LaunchState(
     //gatto starts, probes, sizes and stops only the server of the endpoint named local, a model folder found on another endpoint supplies its model parts alone
     internal bool ServedHere() => EndpointName == "local";
 
-    //a role's tools key hides the six it does not name, so the loop and /tools read the one registry and the manifest keeps its order
-    internal void ArmSeatTools(RoleFile r) =>
-        Tools.Hide(r.Tools is null ? [] : SubagentWiring.Builtins().Keys.Where(n => !r.Tools.Contains(n)));
+    //a role's tools key is the seat's whole list, so the loop and /tools read the one registry and the manifest keeps its order
+    internal void ArmSeatTools(RoleFile r) => Tools.Allow(r.Tools);
+
+    //the role being composed and not the registry's list, since /role composes before it commits. an extension with no tool keeps its line in every seat
+    internal IReadOnlyList<(string Extension, string Line)> PolicyFor(RoleFile r) => r.Tools is not { } listed
+        ? policyLines
+        : [.. policyLines.Where(p => Tools.NamesFrom(p.Extension) is var names && (names.Count == 0 || names.Any(listed.Contains)))];
+
+    //read once the registry is complete, so a listed name that reads as not armed is one this session never offers
+    internal void WarnSeatTools()
+    {
+        if (Role.Tools is not { } listed) return;
+        var armed = Tools.Specs().Select(s => s.Name).ToHashSet(StringComparer.Ordinal);
+        foreach (var name in listed)
+            if (!armed.Contains(name)) warn.Warn($"role '{Role.Name}' lists {name}, which is not armed this session");
+        //the one row that tells an empty list from no key, two edits apart in a file written by hand
+        warn.Warn($"role '{Role.Name}' arms {Plural.Of(armed.Count, "tool")}");
+    }
 
     //a delegate to the Repl, so it never references Gatto.Roles, and it reads the model and base URL a /model switch left
     internal ServingProbe ProbeServing()
@@ -397,7 +412,7 @@ internal sealed class LaunchState(
             Role, Model, contextFiles,
             Endpoint.Thinking, ModelString, OsWords.Name(), sessionId, cwd: cwd, date: DateTime.Now,
             memoryIndex: memory.Text, memoryTruncatedLines: memory.TruncatedLines,
-            policyLines: policyLines);
+            policyLines: PolicyFor(Role));
         LastComposedSystem = composed.SystemText;
         LastComposedSources = composed.Sources;
         return new ComposedSystem(LastComposedSystem, NextBaseline(composed.Sources));
@@ -440,6 +455,7 @@ internal sealed class LaunchState(
         EndpointName = res.EndpointName; ModelString = res.ModelString; Comp = res.Comp;
         RoleFiles = LoadRoleFiles();   //only on a switch that commits, since run_agent's description rides every request and a refused switch must move no prefix
         ArmSeatTools(Role);   //the manifest rides every request too, so only a committed switch may change it
+        WarnSeatTools();
         LastComposedSystem = Comp.SystemText;   //updated here, the degrade target must follow the newly armed role
         LastComposedSources = Comp.Sources;
         //the newly armed model may have a tighter memory.index_budget, so warn here rather than stay silent
@@ -531,7 +547,7 @@ internal sealed class LaunchState(
         //the index is re-read against the model being switched to, so the load is a delegate rather than a value read up front
         var outcome = ModelSwitch.Decide(
             modelsDir, home, requestedModel, Role, contextFiles, Endpoint.Thinking, LaunchBaseUrl, SessionId, cwd,
-            loadMemory: LoadMemory);
+            loadMemory: LoadMemory, policyLines: PolicyFor(Role));
         if (!outcome.Success || outcome.Model is null || outcome.Composition is null)
             return new ModelSwitchResult(false, outcome.ModelId, outcome.SystemText, outcome.ContextBudget,
                 outcome.Message, null, null);   //no probe on a failed switch, nothing changed

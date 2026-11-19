@@ -241,6 +241,11 @@ public sealed partial class Repl
                     Console.WriteLine(RememberUsage);
                     continue;
                 }
+                if (!loop.Arms("memory_write"))
+                {
+                    Console.WriteLine(RememberUnarmed);
+                    continue;
+                }
                 line = CommandText.RememberPrompt(rememberArg);   //the prompt goes through the normal turn below, as if typed
             }
             if (trimmedLine == "/init") line = InitPrompt.Text;   //the prompt goes through the normal turn below, as if typed

@@ -2,6 +2,7 @@ using System.Text.Json;
 using System.Text.RegularExpressions;
 using Gatto.Core;
 using Gatto.Core.Home;
+using Gatto.Core.Tools;
 using Gatto.Roles.Models;
 using Gatto.Terminal;
 
@@ -18,7 +19,7 @@ public sealed record RoleFile(
     //null when the role file has no thinking key, since the default depends on the model, which the loader never sees
     ThinkingLevel? ThinkingRequested,
     string? Description,
-    //null arms the six built-ins when the role is called, an empty list arms none
+    //the seat's whole tool list, null arms every tool the session arms and an empty list arms none
     IReadOnlyList<string>? Tools,
     int Turns,
     bool ContextFiles,
@@ -26,7 +27,9 @@ public sealed record RoleFile(
     string? Tint,
     string? TintLight,
     //the opening line committed before the first request, refused when it holds a control token since a resume strips assistant records
-    string? FirstMessage)
+    string? FirstMessage,
+    //false keeps the role out of run_agent's list and refuses a call to it, the role still launches as a main seat
+    bool Callable = true)
 {
     public const int DefaultTurns = 10;
 
@@ -36,11 +39,7 @@ public sealed record RoleFile(
 
     //one key for the model, and the endpoint kind decides what it means. sampling belongs to the model now, so a role's sampling key is accepted and never read
     private static readonly string[] Keys =
-        { "model", "endpoint", "gates", "raw", "append", "thinking", "sampling", "description", "tools", "turns", "context_files", "avatar", "tint", "tint_light", "first_message" };
-
-    //copied once, since Builtins allocates its factories on every call and builds no tool
-    private static readonly HashSet<string> CallableTools = new(SubagentWiring.Builtins().Keys, StringComparer.Ordinal);
-    private static readonly string CallableToolList = string.Join(", ", SubagentWiring.Builtins().Keys);
+        { "model", "endpoint", "gates", "raw", "append", "thinking", "sampling", "description", "tools", "turns", "context_files", "avatar", "tint", "tint_light", "first_message", "callable" };
 
     //the name of the seat with no role, which no file in roles\ can take
     public const string DefaultName = "default";
@@ -136,16 +135,24 @@ public sealed record RoleFile(
         if (root.TryGetProperty("tools", out var tl))
         {
             if (tl.ValueKind != JsonValueKind.Array)
-                throw new GattoConfigException($"role '{name}' has a \"tools\" of {tl.GetRawText()}; must be an array of {CallableToolList}");
+                throw new GattoConfigException($"role '{name}' has a \"tools\" of {tl.GetRawText()}; must be an array of tool names");
             tools = new List<string>();
             foreach (var item in tl.EnumerateArray())
             {
-                if (item.ValueKind != JsonValueKind.String || !CallableTools.Contains(item.GetString()!))
-                    throw new GattoConfigException($"role '{name}' has {item.GetRawText()} in \"tools\"; must be one of {CallableToolList}");
+                if (item.ValueKind != JsonValueKind.String || !ToolRegistry.IsValidName(item.GetString()!))
+                    throw new GattoConfigException($"role '{name}' has {item.GetRawText()} in \"tools\"; must be a tool name of a-z, 0-9 and _");
                 if (tools.Contains(item.GetString()!))
                     throw new GattoConfigException($"role '{name}' has {item.GetRawText()} twice in \"tools\"");
                 tools.Add(item.GetString()!);
             }
+        }
+
+        var callable = true;
+        if (root.TryGetProperty("callable", out var ca))
+        {
+            if (ca.ValueKind is not (JsonValueKind.True or JsonValueKind.False))
+                throw new GattoConfigException($"role '{name}' has a \"callable\" of {ca.GetRawText()}; must be true or false");
+            callable = ca.GetBoolean();
         }
 
         var turns = DefaultTurns;
@@ -190,7 +197,7 @@ public sealed record RoleFile(
         if (firstMessage is not null && ControlTokens.Strip(firstMessage).Count > 0)
             throw new GattoConfigException($"role '{name}' has a \"first_message\" holding a control token");
 
-        return new RoleFile(name, model, endpoint, gates, raw, append, thinking, description, tools, turns, contextFiles, avatar, tint, tintLight, firstMessage);
+        return new RoleFile(name, model, endpoint, gates, raw, append, thinking, description, tools, turns, contextFiles, avatar, tint, tintLight, firstMessage, callable);
     }
 
     //the override wins, then the role's own model, then gatto.json's default_model, shared so the launch and doctor agree

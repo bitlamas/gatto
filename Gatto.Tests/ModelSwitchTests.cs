@@ -120,6 +120,19 @@ public class ModelSwitchTests : IDisposable
         Assert.DoesNotContain("Model:", outcome.SystemText, StringComparison.Ordinal);
     }
 
+    //a by-folder switch once composed with no policy block, so the line left the prompt until the next /role or /new
+    [Fact]
+    public void A_SWITCH_KEEPS_THE_POLICY_LINES_IT_IS_HANDED()
+    {
+        CreateModel("qwen3.6-35b");
+        var outcome = ModelSwitch.Decide(_modelsDir, _home, "qwen3.6-35b", MinimalRole(),
+            Array.Empty<(string, string)>(), null, "http://127.0.0.1:1235", sessionId: null,
+            policyLines: [("ask_user", "stop and ask when a choice is the user's")]);
+
+        Assert.True(outcome.Success);
+        Assert.Contains("stop and ask when a choice is the user's", outcome.SystemText, StringComparison.Ordinal);
+    }
+
     [Fact]
     public void DescribeProbe_UnknownLoadedFile_FallsBackToFileName()
     {

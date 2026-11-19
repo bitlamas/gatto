@@ -46,7 +46,7 @@ public sealed class MemoryPiggybackWiringTests : IDisposable
 
     //every bank call is recorded, which proves auto-compaction never reaches the closure rather than merely writing nothing
     private Fixture NewFixture(string? scriptedSummary, bool memoryOn = true,
-        string recomposed = "freshly recomposed system prompt", int indexBudget = 1000)
+        string recomposed = "freshly recomposed system prompt", int indexBudget = 1000, bool? armsMemoryWrite = null)
     {
         var sessions = new SessionStore(_home, _cwd);
         var convo = new Conversation("original system prompt");
@@ -73,7 +73,10 @@ public sealed class MemoryPiggybackWiringTests : IDisposable
                   ComposeIndex: () => { composeCalls++; return MemoryIndex.Compose(_cwd, indexBudget); })
             : null;
 
-        var loop = new AgentLoop(client, new ToolRegistry(), hooks, new TestToolContext(_cwd), "m");
+        //the launch registers memory_write only with memory on, and a seat's list can still leave it out
+        var tools = new ToolRegistry();
+        if (armsMemoryWrite ?? memoryOn) tools.Register(new StubTool("memory_write"));
+        var loop = new AgentLoop(client, tools, hooks, new TestToolContext(_cwd), "m");
         var repl = new Gatto.Repl.Repl(
             loop, convo, "generalist", "m", sessions, client, null, 1000, _cwd,
             () => Composed.Text(recomposed),
@@ -110,6 +113,35 @@ public sealed class MemoryPiggybackWiringTests : IDisposable
         Assert.Equal(0, fx.ComposeCalls());
         Assert.DoesNotContain(Compactor.SuppressionPreamble, LastPrompt(fx));
         Assert.DoesNotContain("nginx binds", LastPrompt(fx));
+    }
+
+    [Fact]
+    public async Task A_SEAT_WITHOUT_MEMORY_WRITE_IS_NOT_ASKED_FOR_FACTS_AND_BANKS_NONE()
+    {
+        MemoryDir.Write(_cwd, "nginx-binding", "- nginx binds 127.0.0.1");
+        var fx = NewFixture(SummaryWith("- a fact the model offered anyway"), armsMemoryWrite: false);
+
+        await fx.Repl.HandleCompactAsync(new RecordingObserver(), CancellationToken.None);
+
+        var prompt = LastPrompt(fx);
+        Assert.DoesNotContain(MemoryPiggyback.Heading, prompt, StringComparison.Ordinal);
+        Assert.DoesNotContain(Compactor.SuppressionPreamble, prompt, StringComparison.Ordinal);
+        Assert.Equal(0, fx.ComposeCalls());
+        Assert.Empty(fx.BankCalls);
+        Assert.Single(MemoryDir.FactFiles(_cwd));
+        Assert.EndsWith("the whole summary under 1200 words (shorter when the work is simple).", prompt, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task A_SEAT_WITH_MEMORY_WRITE_SENDS_THE_WHOLE_TEMPLATE_AND_BANKS()
+    {
+        var fx = NewFixture(SummaryWith("- something genuinely new"));
+
+        await fx.Repl.HandleCompactAsync(new RecordingObserver(), CancellationToken.None);
+
+        Assert.Equal(Compactor.TemplatePromptForTests, LastPrompt(fx));
+        Assert.Single(fx.BankCalls);
+        Assert.Contains("something genuinely new", ComposedIndex(), StringComparison.Ordinal);
     }
 
     [Fact]

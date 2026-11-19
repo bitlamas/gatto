@@ -10,7 +10,7 @@ using Gatto.Roles.Serve;
 
 namespace Gatto.Roles.Agents;
 
-//runs a named role in a fresh loop sharing only the parent's permission gate, its registry holds no run_agent so it can't nest
+//runs a named role, or default, in a fresh loop sharing only the parent's permission gate, its registry holds no run_agent so it can't nest
 public sealed class RunAgentTool : ITool
 {
     private readonly Func<IReadOnlyList<RoleFile>> _roles;
@@ -71,7 +71,9 @@ public sealed class RunAgentTool : ITool
         get
         {
             var sb = new StringBuilder("Run a named role on a task. Available roles:");
-            foreach (var r in _roles())
+            //first, with a line that says what the mechanism does, since a bare name at the head reads as the ordinary pick
+            sb.Append("\n- ").Append(RoleFile.DefaultName).Append(": a fresh context, no role text.");
+            foreach (var r in _roles().Where(r => r.Callable))
             {
                 sb.Append("\n- ").Append(r.Name);
                 if (!string.IsNullOrEmpty(r.Description)) sb.Append(": ").Append(r.Description);
@@ -80,8 +82,12 @@ public sealed class RunAgentTool : ITool
         }
     }
 
-    //true only when at least one role loads, an empty roles folder offers no run_agent to the model
-    public bool IsAvailable => _roles().Count > 0;
+    //default is always callable, so a home with no role file still offers run_agent
+    public bool IsAvailable => true;
+
+    //the names the description lists, which both refusals name, so the model is never pointed at a role it cannot call
+    private string Callable(IReadOnlyList<RoleFile> roles) =>
+        string.Join(", ", roles.Where(r => r.Callable).Select(r => r.Name).Prepend(RoleFile.DefaultName));
 
     public JsonElement ParametersSchema => ToolArgs.Schema("""
         {"type":"object","properties":{"role":{"type":"string"},"task":{"type":"string"}},"required":["role","task"]}
@@ -93,11 +99,13 @@ public sealed class RunAgentTool : ITool
         var task = ToolArgs.RequiredString(args, "task");
 
         var roles = _roles();
-        var role = roles.FirstOrDefault(r => r.Name == roleName);
+        //matched exactly like every other name here, so Default answers only to its own spelling
+        var role = roleName == RoleFile.DefaultName ? RoleFile.Default : roles.FirstOrDefault(r => r.Name == roleName);
         if (role is null)
             //throw here, the loop turns it into an error result with exactly this message
-            throw new ArgumentException(
-                $"no role named '{roleName}' — available: {string.Join(", ", roles.Select(r => r.Name))}");
+            throw new ArgumentException($"no role named '{roleName}' — available: {Callable(roles)}");
+        if (!role.Callable)
+            throw new InvalidOperationException($"role '{role.Name}' cannot be called by run_agent — available: {Callable(roles)}");
         if (_refuseRole(role) is { } why) throw new InvalidOperationException(why);
 
         //the child starts from its own composition and no parent history, sharing the parent's tool context

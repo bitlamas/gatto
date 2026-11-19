@@ -645,12 +645,14 @@ public class ReplRememberTests : IDisposable
         Console.SetOut(_origOut);
     }
 
-    private (string output, FakeChatClient client) RunRemember(string stdin)
+    private (string output, FakeChatClient client) RunRemember(string stdin, bool armsMemoryWrite = true)
     {
         var client = new FakeChatClient();
         //enqueued turns are consumed only on real dispatch, so an unused turn does not fail the usage case.
         client.EnqueueTurn(new StreamEvent.TextDelta("ok"), new StreamEvent.Finished("stop", null));
-        var loop = new AgentLoop(client, new ToolRegistry(), new HookBus(), new TestToolContext(Path.GetTempPath()), "m");
+        var tools = new ToolRegistry();
+        if (armsMemoryWrite) tools.Register(new StubTool("memory_write"));
+        var loop = new AgentLoop(client, tools, new HookBus(), new TestToolContext(Path.GetTempPath()), "m");
         var convo = new Conversation("sys");
         var repl = new Gatto.Repl.Repl(
             loop, convo, "generalist", "m", null, client, null, null, Path.GetTempPath(),
@@ -672,6 +674,15 @@ public class ReplRememberTests : IDisposable
         Assert.Single(client.Requests);
         var sent = client.Requests[0].Messages.Single(m => m.Role == "user");
         Assert.Equal(Gatto.Repl.Commands.CommandText.RememberPrompt("what we just figured out about the slots poll"), sent.Content);
+    }
+
+    [Fact]
+    public void Remember_in_a_seat_without_memory_write_says_so_and_dispatches_no_turn()
+    {
+        var (output, client) = RunRemember("/remember the slots poll\n/quit\n", armsMemoryWrite: false);
+
+        Assert.Contains("/remember needs memory_write, which is not armed this session", output, StringComparison.Ordinal);
+        Assert.Empty(client.Requests);
     }
 
     [Fact]

@@ -438,6 +438,7 @@ public static class GattoApp
             await ServeAsync();
             if (CommitExtensions() is { } commitExit) return commitExit;
             BuildLoop();
+            if (args.Prompt is null) state.WarnSeatTools();   //run_agent registers inside BuildLoop, so only here is the registry whole
             Resume();
             return args.Prompt is { } prompt ? await RunOneShotAsync(prompt) : await RunReplAsync();
         }
@@ -545,7 +546,7 @@ public static class GattoApp
             var reservedTools = new List<string>
             {
                 new ReadFileTool().Name, new WriteFileTool().Name, new EditFileTool().Name,
-                new GlobTool().Name, new GrepTool().Name, new ShellTool().Name,
+                new GlobTool().Name, new GrepTool().Name, new ShellTool().Name, "run_agent",
             };
             if (memoryOn) reservedTools.AddRange(new[] { "memory_write", "recall_memory" });
             var off = (config.ExtensionsOff ?? []).ToHashSet(StringComparer.Ordinal);
@@ -1186,11 +1187,11 @@ public static class GattoApp
         }
 
         //one constructor for the session's run_agent and the prefix's, so the description a request carries is built the same way in both
-        private RunAgentTool NewRunAgent() => new(   //a role may only name the six core built-ins, so a child's registry can never hold run_agent, ask_user or an extension tool
+        private RunAgentTool NewRunAgent() => new(   //a child's catalog is the six core built-ins, so its registry can never hold run_agent, ask_user or an extension tool
             roles: () => state.RoleFiles,
             refuseRole: state.RefuseRole,
             composeChild: state.ComposeChild,
-            subagentWiring: SubagentWiring.Build(gate, diag: warn.Warn),   //a fresh registry per call over the shared gate, which tags each of its prompts with the role's name
+            subagentWiring: SubagentWiring.Build(gate, diag: warn.Warn, bound: () => new SeatBound(state.Role.Tools)),   //a fresh registry per call over the shared gate, which tags each of its prompts with the role's name
             client: client,
             requestSettings: state.RequestSettings,
             parentCtx: toolCtx,
@@ -1349,9 +1350,8 @@ public static class GattoApp
             Func<IReadOnlyList<Gatto.Repl.Prompts.ToolInfo>> listTools = () => tools.Specs()
                 .Select(s => new Gatto.Repl.Prompts.ToolInfo(s.Name, s.Description, toolOrigins.GetValueOrDefault(s.Name)))
                 .ToList();
-            //the same list the prompt was composed from, so /tools cannot show a policy the model was never told
-            var policyRows = policyLines.ToList();
-            Func<IReadOnlyList<(string Extension, string Line)>> listPolicy = () => policyRows;
+            //the running seat's lines by the filter the prompt was composed with, read at each view so a /role moves them too
+            Func<IReadOnlyList<(string Extension, string Line)>> listPolicy = () => state.PolicyFor(state.Role);
             //every source discovery found, read at each view so a toggle shows at once, with the names its committed registrations hold
             var servingSource = state.Endpoint.Owner;
             Func<IReadOnlyList<Gatto.Repl.Prompts.ExtensionView>> listExtensions = () => [.. extLedger.Names.Select(name =>
