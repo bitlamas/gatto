@@ -78,21 +78,30 @@ internal static class LlamaServerProbe
     }
 
     //llama-server's backend name for this device, such as Vulkan0, or null. -dev takes it, never the product name
-    public static string? DeviceNamed(string exePath, string gpuName, TimeSpan deadline)
+    public static string? DeviceNamed(string exePath, string gpuName, TimeSpan deadline, string? held = null)
     {
         var run = Capture(exePath, "--list-devices", deadline);
         return run.StartError is null && !run.TimedOut && run.ExitCode == 0
-            ? DeviceIn(run.Stdout + "\n" + run.Stderr, gpuName)
+            ? DeviceIn(run.Stdout + "\n" + run.Stderr, gpuName, held)
             : null;
     }
 
     //one listing line is two spaces, the backend name, a colon, the product name and its memory in brackets
-    private static readonly Regex DeviceLine = new(@"^\s*(?<dev>[A-Za-z]+\d+):\s+(?<name>.+?)\s+\(\d+ MiB, \d+ MiB free\)\s*$",
+    private static readonly Regex DeviceLine = new(@"^\s*(?<dev>[A-Za-z]+\d+):\s+(?<name>.+?)\s+\(\d+ MiB, (?<free>[0-9]+) MiB free\)\s*$",
         RegexOptions.Multiline | RegexOptions.CultureInvariant);
 
-    //an exact product-name match, so a near name never pins a model to the wrong card
-    internal static string? DeviceIn(string listing, string gpuName) =>
-        DeviceLine.Matches(listing).FirstOrDefault(m => m.Groups["name"].Value.Trim() == gpuName.Trim())?.Groups["dev"].Value;
+    //an exact product-name match, so a near name never pins the wrong card. among cards of 1 name the emptiest wins, and a tie goes to the backend name already held
+    internal static string? DeviceIn(string listing, string gpuName, string? held = null)
+    {
+        var named = DeviceLine.Matches(listing).Where(m => m.Groups["name"].Value.Trim() == gpuName.Trim()).ToList();
+        if (named.Count == 0) return null;
+        var most = named.Max(Free);
+        var emptiest = named.Where(m => Free(m) == most).Select(m => m.Groups["dev"].Value).ToList();
+        return held is not null && emptiest.Contains(held) ? held : emptiest[0];
+    }
+
+    private static ulong Free(Match line) =>
+        ulong.TryParse(line.Groups["free"].Value, System.Globalization.NumberStyles.None, System.Globalization.CultureInfo.InvariantCulture, out var mib) ? mib : 0;
 
     //one bounded spawn for every question asked of the binary, the deadline the only bound and the whole tree killed on expiry
     private static (string? StartError, bool TimedOut, int ExitCode, string Stdout, string Stderr) Capture(

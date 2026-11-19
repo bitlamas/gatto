@@ -98,4 +98,25 @@ public class LlamaServerBuildTests
     [InlineData("NVIDIA TestGPU TST 1111 Laptop GPU", null)]
     public void A_DEVICE_IS_FOUND_BY_ITS_EXACT_PRODUCT_NAME(string gpu, string? expected) =>
         Assert.Equal(expected, LlamaServerProbe.DeviceIn(Listing, gpu));
+
+    private static string Twins(int freeOf0, int freeOf1, int freeOf2) => "Available devices:\r\n"
+        + $"  Vulkan0: Invented Twin Card (16000 MiB, {freeOf0} MiB free)\r\n"
+        + $"  Vulkan1: Invented Other Card (8000 MiB, 7900 MiB free)\r\n"
+        + $"  Vulkan2: Invented Twin Card (16000 MiB, {freeOf1} MiB free)\r\n"
+        + $"  Vulkan3: Invented Twin Card (16000 MiB, {freeOf2} MiB free)\r\n";
+
+    //cards of 1 product name are told apart by nothing but their free memory, so the emptiest takes the model and the held name breaks a tie
+    [Theory]
+    [InlineData(2000, 15000, 9000, null, "Vulkan2")]
+    [InlineData(2000, 15000, 9000, "Vulkan0", "Vulkan2")]
+    [InlineData(15000, 15000, 9000, null, "Vulkan0")]
+    [InlineData(15000, 15000, 9000, "Vulkan2", "Vulkan2")]
+    [InlineData(15000, 15000, 9000, "Vulkan3", "Vulkan0")]
+    [InlineData(15000, 15000, 15000, "Vulkan1", "Vulkan0")]
+    public void AMONG_CARDS_OF_ONE_NAME_THE_EMPTIEST_WINS_AND_THE_HELD_NAME_BREAKS_A_TIE(int free0, int free1, int free2, string? held, string expected) =>
+        Assert.Equal(expected, LlamaServerProbe.DeviceIn(Twins(free0, free1, free2), "Invented Twin Card", held));
+
+    [Fact]
+    public void A_SINGLE_CARD_OF_THE_NAME_IS_TAKEN_WHATEVER_NAME_IS_HELD() =>
+        Assert.Equal("Vulkan1", LlamaServerProbe.DeviceIn(Twins(1, 2, 3), "Invented Other Card", "Vulkan0"));
 }

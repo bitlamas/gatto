@@ -33,6 +33,15 @@ public sealed class ServeManager
     //the /props probe's own deadline, null for the probe's default, so a test can give a fake server room that the suite's load takes
     private readonly TimeSpan? _probeDeadline;
 
+    //the backend name a card has right now, from the engine's path, the card's product name and the name the profile holds. null when the engine cannot say
+    private readonly Func<string, string, string, string?> _deviceFor;
+
+    //the listing is 1 short run of the engine, bounded so a hung binary cannot hold a start
+    private static readonly TimeSpan DeviceListingDeadline = TimeSpan.FromSeconds(15);
+
+    private static readonly string[] DeviceFlags = { "-dev", "--device" };
+    private static readonly string[] DraftDeviceFlags = { "-devd", "--device-draft", "--spec-draft-device" };
+
     //each health read holds its own deadline, since a timeout on the client would bound every caller's read beneath its token
     private static readonly TimeSpan HealthReadDeadline = TimeSpan.FromSeconds(5);
 
@@ -63,8 +72,11 @@ public sealed class ServeManager
         HttpClient http,
         TimeSpan pollInterval,
         TimeSpan pollTimeout,
-        TimeSpan? probeDeadline = null)
+        TimeSpan? probeDeadline = null,
+        Func<string, string, string, string?>? deviceFor = null)
     {
+        _deviceFor = deviceFor ?? ((exe, name, held) =>
+            Gatto.Core.Acquire.LlamaServerProbe.DeviceNamed(exe, name, DeviceListingDeadline, held));
         _homePath = homePath;
         _llamaServerPath = llamaServerPath;
         _spawn = spawn ?? DefaultSpawn;
@@ -123,7 +135,7 @@ public sealed class ServeManager
             SecretFile.Write(apiKeyFile, apiKey + Environment.NewLine);
         }
 
-        foreach (var arg in ServeArgs.Compose(model.Profile, apiKeyFile))
+        foreach (var arg in await OnTheNamedCardAsync(model.Profile, serverPath, ServeArgs.Compose(model.Profile, apiKeyFile), ct).ConfigureAwait(false))
             psi.ArgumentList.Add(arg);
 
         var proc = _spawn(psi);
@@ -180,6 +192,28 @@ public sealed class ServeManager
         //the server is still coming up. it keeps running and serve.json stays, the user checks with gatto serve status
         listener.StillLoading(model.Id, proc.Pid);
         return 0;
+    }
+
+    //the engine's device order moves between starts, so the product name is the pin and its backend name is read again here. no name, no device flag or a list of cards goes as written
+    private async Task<IReadOnlyList<string>> OnTheNamedCardAsync(ModelProfile profile, string serverPath, IReadOnlyList<string> argv, CancellationToken ct)
+    {
+        if (profile.Device is not { } named) return argv;
+        var at = -1;
+        for (var i = 0; i + 1 < argv.Count; i++)
+            if (DeviceFlags.Contains(argv[i])) at = i + 1;   //the engine takes the last one
+        //none is the engine's word for no offload, a choice the name must not undo
+        if (at < 0 || argv[at].Contains(',') || argv[at] == "none") return argv;
+        var held = argv[at];
+        //off the caller's thread, so a loading row keeps its timer and a cancel is heard. an abandoned listing ends on its own deadline
+        var now = await Task.Run(() => _deviceFor(serverPath, named, held), CancellationToken.None).WaitAsync(ct).ConfigureAwait(false);
+        if (now is null || now == held) return argv;
+
+        var moved = argv.ToList();
+        moved[at] = now;
+        //the draft model was pinned beside the main one, so it follows only when it sat on the same card
+        for (var i = 0; i + 1 < moved.Count; i++)
+            if (DraftDeviceFlags.Contains(moved[i]) && moved[i + 1] == held) moved[i + 1] = now;
+        return moved;
     }
 
     //the engine names the card it took in 1 log line before any weight moves, and a bracketed id follows the name, so a greedy name keeps its own parentheses
