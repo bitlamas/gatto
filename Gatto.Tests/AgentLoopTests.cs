@@ -644,7 +644,7 @@ public class AgentLoopTests
     [Fact]
     public async Task MaxRounds_StopsWithoutExecutingPendingCalls_AndReturnsTruncated()
     {
-        //at the round cap the pending tool call is dropped and the turn ends Truncated (the sub-agent turn budget)
+        //the capped round's call is refused, and a closing round that calls again ends the turn Truncated with neither call run
         var executed = false;
         var client = new FakeChatClient();
         var reg = new ToolRegistry();
@@ -654,12 +654,163 @@ public class AgentLoopTests
         client.EnqueueTurn(
             new StreamEvent.ToolCallReady(new ToolCall("c1", "probe", "{}")),
             new StreamEvent.Finished("tool_calls", null));
+        client.EnqueueTurn(
+            new StreamEvent.ToolCallReady(new ToolCall("c2", "probe", "{}")),
+            new StreamEvent.Finished("tool_calls", null));
 
         var outcome = await loop.RunTurnAsync(new Conversation(null), "go", new RecordingObserver(), default);
 
         Assert.Equal(TurnOutcome.Truncated, outcome.Outcome);
-        Assert.False(executed);            //the loop must not execute a call left over from a capped round.
-        Assert.Single(client.Requests);    //the loop must send no request after the cap.
+        Assert.Equal(TruncationKind.Length, outcome.Truncation);
+        Assert.False(executed);
+        Assert.Equal(2, client.Requests.Count);   //one closing request and no more
+    }
+
+    //a loop capped at 3 whose first rounds each call the probe once, ids r1 and on
+    private static (AgentLoop Loop, FakeChatClient Client, Conversation Convo, Func<int> Ran) CappedAt3(int probeRounds, HookBus? hooks = null)
+    {
+        var ran = 0;
+        var client = new FakeChatClient();
+        var reg = new ToolRegistry();
+        reg.Register(new ProbeTool(() => ran++));
+        var loop = new AgentLoop(client, reg, hooks ?? new HookBus(), new TestToolContext(Path.GetTempPath()), "m", maxRounds: 3);
+        for (var i = 1; i <= probeRounds; i++)
+            client.EnqueueTurn(
+                new StreamEvent.ToolCallReady(new ToolCall($"r{i}", "probe", "{}")),
+                new StreamEvent.Finished("tool_calls", null));
+        return (loop, client, new Conversation(null), () => ran);
+    }
+
+    private static ChatMessage ResultOf(Conversation convo, string id) => convo.Messages.Single(m => m.Role == "tool" && m.ToolCallId == id);
+
+    [Fact]
+    public async Task A_CALL_AT_THE_CAP_IS_NOT_RUN_AND_A_CLOSING_ROUND_TAKES_THE_ANSWER()
+    {
+        var (loop, client, convo, ran) = CappedAt3(3);
+        client.EnqueueTurn(new StreamEvent.TextDelta("the answer"), new StreamEvent.Finished("stop", null));
+
+        var outcome = await loop.RunTurnAsync(convo, "go", new RecordingObserver(), default);
+
+        Assert.Equal(TurnOutcome.Completed, outcome.Outcome);
+        Assert.Equal(4, outcome.Rounds);
+        Assert.Equal(4, client.Requests.Count);
+        Assert.Equal(2, ran());
+        var refused = ResultOf(convo, "r3");
+        Assert.Equal(LoopErrors.TurnLimitLast, refused.Content);
+        Assert.True(refused.IsError);
+        Assert.Equal("the answer", convo.Messages[^1].Content);
+    }
+
+    [Fact]
+    public async Task THREE_CALLS_AT_THE_CAP_ARE_TOLD_TO_ANSWER_ONCE_ON_THE_LAST()
+    {
+        var (loop, client, convo, ran) = CappedAt3(2);
+        client.EnqueueTurn(
+            new StreamEvent.ToolCallReady(new ToolCall("a", "probe", "{}")),
+            new StreamEvent.ToolCallReady(new ToolCall("b", "probe", "{}")),
+            new StreamEvent.ToolCallReady(new ToolCall("c", "probe", "{}")),
+            new StreamEvent.Finished("tool_calls", null));
+        client.EnqueueTurn(new StreamEvent.TextDelta("done"), new StreamEvent.Finished("stop", null));
+
+        await loop.RunTurnAsync(convo, "go", new RecordingObserver(), default);
+
+        Assert.Equal(2, ran());
+        Assert.Equal(
+            new[] { LoopErrors.TurnLimit, LoopErrors.TurnLimit, LoopErrors.TurnLimitLast },
+            new[] { "a", "b", "c" }.Select(id => ResultOf(convo, id).Content));
+        Assert.Equal("turn limit reached: this call was not run.", LoopErrors.TurnLimit);
+        Assert.Equal("turn limit reached: this call was not run. No more calls will run. Reply with the answer to the task.", LoopErrors.TurnLimitLast);
+    }
+
+    [Fact]
+    public async Task THE_CLOSING_REQUEST_REPEATS_THE_CAP_REQUEST_BYTE_FOR_BYTE()
+    {
+        var (loop, client, convo, _) = CappedAt3(3);
+        client.EnqueueTurn(new StreamEvent.TextDelta("done"), new StreamEvent.Finished("stop", null));
+        //a request can hold the live message list, so each is copied as it goes out
+        var sent = new List<(string[] Messages, string Tools)>();
+        client.OnRequest = () =>
+        {
+            var r = client.Requests[^1];
+            sent.Add(([.. r.Messages.Select(m => JsonSerializer.Serialize(m))], JsonSerializer.Serialize(r.Tools)));
+        };
+
+        await loop.RunTurnAsync(convo, "go", new RecordingObserver(), default);
+
+        var (third, fourth) = (sent[2], sent[3]);
+        Assert.True(fourth.Messages.Length > third.Messages.Length);
+        Assert.Equal(third.Messages, fourth.Messages.Take(third.Messages.Length));
+        Assert.Equal(third.Tools, fourth.Tools);
+    }
+
+    [Fact]
+    public async Task A_CLOSING_ROUND_THAT_CALLS_AGAIN_ENDS_TRUNCATED_AT_THE_LIMIT()
+    {
+        var (loop, client, convo, ran) = CappedAt3(4);
+
+        var outcome = await loop.RunTurnAsync(convo, "go", new RecordingObserver(), default);
+
+        Assert.Equal(TurnOutcome.Truncated, outcome.Outcome);
+        Assert.Equal(TruncationKind.Length, outcome.Truncation);
+        Assert.Equal(4, client.Requests.Count);
+        Assert.Equal(2, ran());
+        Assert.DoesNotContain(convo.Messages, m => m.Role == "tool" && m.ToolCallId == "r4");
+    }
+
+    [Fact]
+    public async Task A_TURN_THAT_ANSWERS_INSIDE_ITS_TURNS_SENDS_NO_CLOSING_REQUEST()
+    {
+        var (loop, client, convo, _) = CappedAt3(1);
+        client.EnqueueTurn(new StreamEvent.TextDelta("done"), new StreamEvent.Finished("stop", null));
+
+        var outcome = await loop.RunTurnAsync(convo, "go", new RecordingObserver(), default);
+
+        Assert.Equal(TurnOutcome.Completed, outcome.Outcome);
+        Assert.Equal(2, client.Requests.Count);
+        Assert.DoesNotContain(convo.Messages, m => m.Content is { } c && c.StartsWith("turn limit reached"));
+    }
+
+    [Fact]
+    public async Task A_CANCEL_AT_THE_CAP_ANSWERS_EACH_CALL_CANCELLED_AND_SENDS_NO_CLOSING_REQUEST()
+    {
+        var (loop, client, convo, ran) = CappedAt3(2);
+        using var cts = new CancellationTokenSource();
+        //the hold is taken by the first turn that yields an event, so it is armed only when the cap round's request arrives
+        client.OnRequest = () =>
+        {
+            if (client.Requests.Count == 3) client.HoldAfterFirstEvent = _ => { cts.Cancel(); return Task.CompletedTask; };
+        };
+        client.EnqueueTurn(new StreamEvent.ToolCallReady(new ToolCall("r3", "probe", "{}")));
+
+        var outcome = await loop.RunTurnAsync(convo, "go", new RecordingObserver(), cts.Token);
+
+        Assert.Equal(TurnOutcome.Cancelled, outcome.Outcome);
+        Assert.Equal(3, client.Requests.Count);
+        Assert.Equal(2, ran());
+        var answered = ResultOf(convo, "r3");
+        Assert.Equal(LoopErrors.Cancelled, answered.Content);
+        Assert.True(answered.IsError);
+    }
+
+    [Fact]
+    public async Task NO_HOOK_FIRES_FOR_A_REFUSED_CALL()
+    {
+        var hooks = new HookBus();
+        var (calls, results) = (0, 0);
+        hooks.On(HookEvent.ToolCall, _ => { calls++; return Task.CompletedTask; });
+        hooks.On(HookEvent.ToolResult, _ => { results++; return Task.CompletedTask; });
+        var client = new FakeChatClient();
+        var reg = new ToolRegistry();
+        reg.Register(new EchoTool());
+        var loop = new AgentLoop(client, reg, hooks, new TestToolContext(Path.GetTempPath()), "m", maxRounds: 1);
+        client.EnqueueTurn(
+            new StreamEvent.ToolCallReady(new ToolCall("c1", "echo", "{\"msg\":\"yo\"}")),
+            new StreamEvent.Finished("tool_calls", null));
+        client.EnqueueTurn(new StreamEvent.TextDelta("done"), new StreamEvent.Finished("stop", null));
+
+        await loop.RunTurnAsync(new Conversation(null), "go", new RecordingObserver(), default);
+
+        Assert.Equal((0, 0), (calls, results));
     }
 
     [Fact]

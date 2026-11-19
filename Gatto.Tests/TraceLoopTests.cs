@@ -34,6 +34,33 @@ public class TraceLoopTests : IDisposable
         return client;
     }
 
+    //one loop, two turns: the first spends its closing round and the second answers inside its turns, so the flag of the first must not reach the second
+    [Fact]
+    public async Task The_turn_span_says_closing_only_for_the_turn_that_ran_the_round()
+    {
+        var reg = new ToolRegistry();
+        reg.Register(new EchoTool());
+        using var trace = NewTrace();
+        var client = new FakeChatClient();
+        var loop = new AgentLoop(client, reg, new HookBus(), new TestToolContext(_dir), "m", maxRounds: 1, trace: trace);
+        client.EnqueueTurn(
+            new StreamEvent.ToolCallReady(new ToolCall("c1", "echo", "{\"msg\":\"yo\"}")),
+            new StreamEvent.Finished("tool_calls", null, null));
+        client.EnqueueTurn(new StreamEvent.TextDelta("the answer"), new StreamEvent.Finished("stop", null, null));
+        client.EnqueueTurn(new StreamEvent.TextDelta("short"), new StreamEvent.Finished("stop", null, null));
+        var convo = new Conversation("sys");
+
+        await loop.RunTurnAsync(convo, "first", new RecordingObserver(), default);
+        await loop.RunTurnAsync(convo, "second", new RecordingObserver(), default);
+        trace.Flush();
+
+        var turns = Spans().Where(s => s.GetProperty("s").GetString() == "turn").ToList();
+        Assert.Equal(2, turns.Count);
+        Assert.Equal(1, turns[0].GetProperty("closing").GetInt32());
+        Assert.Equal(2, turns[0].GetProperty("rounds").GetInt32());
+        Assert.False(turns[1].TryGetProperty("closing", out _));
+    }
+
     [Fact]
     public async Task A_tool_round_writes_every_loop_span_under_its_parent()
     {

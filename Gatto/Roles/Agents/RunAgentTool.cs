@@ -140,11 +140,13 @@ public sealed class RunAgentTool : ITool
         //the loop strips the deltas before the observer sees them, so the count comes from the loop, and a second strip could join a token the first one split
         var text = observer.FinalText;
         var stripped = subLoop.LastReplyStripped;
-        if (result.Outcome == TurnOutcome.Truncated)
-            //a spent turn budget returns the partial work, and the round count tells the cap apart from a dropped stream
-            text = rounds >= role.Turns
-                ? $"[run_agent: turn limit ({role.Turns}) reached — partial result]\n" + text
-                : "[run_agent: response truncated — partial result]\n" + text;
+        //the outcome picks the words, so a dropped stream in the last rounds never reads as the turn limit
+        if (result.Truncation == TruncationKind.Length)
+            text = $"[run_agent: turn limit ({role.Turns}) reached — partial result]\n" + text;
+        else if (result.Outcome == TurnOutcome.Truncated)
+            text = "[run_agent: response truncated — partial result]\n" + text;
+        else if (result.Outcome == TurnOutcome.Completed && observer.Closing)
+            text = $"[run_agent: turn limit ({role.Turns}) reached]\n" + text;   //a whole answer, but the caller still learns the child was stopped
 
         //one round is the common case, a question needing no tool call finishes that way
         var gloss = GlossOf(role.Name, rounds, sw.Elapsed, _marks);
@@ -156,14 +158,21 @@ public sealed class RunAgentTool : ITool
     internal static string GlossOf(string name, long rounds, TimeSpan elapsed, EngineMarks marks) =>
         $"{name} {marks.Dot} {Plural.Of(rounds, "turn")} {marks.Dot} {ElapsedText.Of(elapsed)}";
 
-    //keeps only the last round's text, a round ending in tool calls has its text cleared
+    //keeps only the last round's text, a round whose calls ran or were refused has its text cleared
     private sealed class FinalTextObserver : ITurnObserver
     {
         private readonly StringBuilder _final = new();
         public string FinalText => _final.ToString();
+        //set once the turn limit refused a call, and it stays set, so only the outcome tells a cancel apart
+        public bool Closing { get; private set; }
         public void OnTextDelta(string t) => _final.Append(t);
         public void OnReasoningDelta(string t) { }
         public void OnToolCallStart(ToolCall c) => _final.Clear();
+        public void OnToolCallRefused(ToolCall c)
+        {
+            _final.Clear();
+            Closing = true;
+        }
         public void OnToolResult(ToolCall c, ToolResult r) { }
         public void OnWarning(string m) { }
         public void OnUsage(Usage u) { }

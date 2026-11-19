@@ -194,7 +194,8 @@ public sealed class RunAgentToolTests : IDisposable
     {
         await using var server = new FakeOpenAiServer();
         server.Enqueue(new FakeResponse(Frames: ToolCallRound("read_file")));
-        //only one round is enqueued, so the cap must stop the loop before a second request goes out
+        server.Enqueue(new FakeResponse(Frames: ToolCallRound("read_file")));
+        //the closing round calls again, so the cap must stop the loop before a third request goes out
         var client = new OpenAiCompatClient(new HttpClient(), "local", new EndpointConfig(server.BaseUrl));
         var tool = Build(client, FreshGate(new RecordingPermPrompter()),
             roles: new[] { Role(turns: 1) });
@@ -203,7 +204,7 @@ public sealed class RunAgentToolTests : IDisposable
 
         Assert.False(result.IsError);   //the turn cap returns a partial result rather than an error
         Assert.StartsWith("[run_agent: turn limit (1) reached — partial result]\n", result.Text);
-        Assert.Equal(1, server.RequestCount);
+        Assert.Equal(2, server.RequestCount);
     }
 
     [Fact]
@@ -221,6 +222,111 @@ public sealed class RunAgentToolTests : IDisposable
         Assert.StartsWith("[run_agent: response truncated — partial result]\n", result.Text);
         Assert.DoesNotContain("turn limit", result.Text);
         Assert.True(result.Prompted);   //the request went out before the stream dropped
+    }
+
+    //a child on the fake client whose first rounds each ask for read_file, ids r1 and on, and the closing turn is the test's
+    private static FakeChatClient CallRounds(int count)
+    {
+        var client = new FakeChatClient();
+        for (var i = 1; i <= count; i++)
+            client.EnqueueTurn(new StreamEvent.ToolCallReady(new ToolCall($"r{i}", "read_file", "{}")), new StreamEvent.Finished("tool_calls", null));
+        return client;
+    }
+
+    private Task<ToolResult> RunHelper(FakeChatClient client, int turns, CancellationToken ct = default) =>
+        Build(client, FreshGate(new RecordingPermPrompter()), roles: new[] { Role(turns: turns) })
+            .ExecuteAsync(Args("helper", "do it"), new TestToolContext(_dir), ct);
+
+    [Fact]
+    public async Task A_CLOSING_ROUND_ANSWER_COMES_UNDER_THE_TURN_LIMIT_LINE()
+    {
+        var client = CallRounds(3);
+        client.EnqueueTurn(new StreamEvent.TextDelta("the report"), new StreamEvent.Finished("stop", null));
+
+        var result = await RunHelper(client, turns: 3);
+
+        Assert.False(result.IsError);
+        Assert.Equal("[run_agent: turn limit (3) reached]\nthe report", result.Text);
+        Assert.Equal(4, client.Requests.Count);
+    }
+
+    [Fact]
+    public async Task TEXT_BESIDE_THE_REFUSED_CALL_IS_NOT_PART_OF_THE_REPORT()
+    {
+        var client = CallRounds(2);
+        client.EnqueueTurn(
+            new StreamEvent.TextDelta("one more read first"),
+            new StreamEvent.ToolCallReady(new ToolCall("r3", "read_file", "{}")),
+            new StreamEvent.Finished("tool_calls", null));
+        client.EnqueueTurn(new StreamEvent.TextDelta("the report"), new StreamEvent.Finished("stop", null));
+
+        var result = await RunHelper(client, turns: 3);
+
+        Assert.Equal("[run_agent: turn limit (3) reached]\nthe report", result.Text);
+    }
+
+    [Fact]
+    public async Task A_CLOSING_ROUND_THAT_CALLS_AGAIN_RETURNS_THE_PARTIAL_MARKER()
+    {
+        var result = await RunHelper(CallRounds(4), turns: 3);
+
+        Assert.StartsWith("[run_agent: turn limit (3) reached — partial result]\n", result.Text);
+    }
+
+    //a drop in the cap round or in the closing round is a dropped stream, whatever the round count says
+    [Theory]
+    [InlineData(2)]
+    [InlineData(3)]
+    public async Task A_DROPPED_STREAM_AT_THE_LIMIT_READS_AS_TRUNCATED(int callRoundsBefore)
+    {
+        var client = CallRounds(callRoundsBefore);
+        client.EnqueueTurn(new StreamEvent.TextDelta("part"), new StreamEvent.Truncated());
+
+        var result = await RunHelper(client, turns: 3);
+
+        Assert.StartsWith("[run_agent: response truncated — partial result]\n", result.Text);
+        Assert.DoesNotContain("turn limit", result.Text);
+    }
+
+    //an empty closing round and one of white space both end Completed, so the line opens the result and nothing readable follows
+    [Theory]
+    [InlineData("")]
+    [InlineData("  ")]
+    public async Task A_CLOSING_ROUND_WITH_NOTHING_TO_READ_STILL_SAYS_THE_LIMIT(string said)
+    {
+        var client = CallRounds(3);
+        client.EnqueueTurn(said.Length == 0
+            ? [new StreamEvent.Finished("stop", null)]
+            : [new StreamEvent.TextDelta(said), new StreamEvent.Finished("stop", null)]);
+
+        var result = await RunHelper(client, turns: 3);
+
+        Assert.Equal("[run_agent: turn limit (3) reached]\n" + said, result.Text);
+    }
+
+    [Fact]
+    public async Task A_CLOSING_ROUND_CANCELLED_BEFORE_ANY_TEXT_SAYS_NO_LIMIT()
+    {
+        var client = CallRounds(3);
+        client.EnqueueTurn(new StreamEvent.TextDelta("too late"), new StreamEvent.Finished("stop", null));
+        using var cts = new CancellationTokenSource();
+        client.OnRequest = () => { if (client.Requests.Count == 4) cts.Cancel(); };
+
+        var result = await RunHelper(client, turns: 3, cts.Token);
+
+        Assert.DoesNotContain("[run_agent", result.Text);
+        Assert.Equal(4, client.Requests.Count);
+    }
+
+    [Fact]
+    public async Task THE_GLOSS_COUNTS_THE_CLOSING_ROUND()
+    {
+        var client = CallRounds(2);
+        client.EnqueueTurn(new StreamEvent.TextDelta("the report"), new StreamEvent.Finished("stop", null));
+
+        var result = await RunHelper(client, turns: 2);
+
+        Assert.StartsWith("helper · 3 turns · ", result.Gloss);
     }
 
     [Fact]

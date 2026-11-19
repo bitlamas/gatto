@@ -9,7 +9,7 @@ namespace Gatto.Core.Loop;
 
 public enum TurnOutcome { Completed, Truncated, Cancelled }
 
-//the two ways a truncated turn happens, a mid-stream drop and the subagent round cap. the Length member means the round cap, which only run_agent reaches
+//the two ways a truncated turn happens, a mid-stream drop and a subagent's closing round that calls a tool again. the Length member means the turn limit, which only run_agent reaches
 public enum TruncationKind { Length, Stream }
 
 //the full shape of a finished turn, where finish_reason tells a token-limit stop from a clean one
@@ -25,6 +25,12 @@ public static class LoopErrors
 
     //the answer of a call a stopped turn never ran, which a resumed session reads to draw the call cancelled
     public const string Cancelled = "cancelled";
+
+    //the answer of a call the turn limit refused, every call of the round but the last
+    public const string TurnLimit = "turn limit reached: this call was not run.";
+
+    //the last refused call's answer, so the order to answer is said once, in the record nearest to where the model writes next
+    public const string TurnLimitLast = TurnLimit + " No more calls will run. Reply with the answer to the task.";
 }
 
 public interface ITurnObserver
@@ -37,6 +43,8 @@ public interface ITurnObserver
     void OnToolCallsRecorded(IReadOnlyList<ToolCall> calls) { }
     //a saved call a stopped round answered as cancelled, told right after its answer and before the line, so a renderer commits it where the record holds it
     void OnToolCallCancelled(ToolCall call) { }
+    //a call the turn limit refused, never saved through OnToolCallsRecorded and never started, told once per call after its answer
+    void OnToolCallRefused(ToolCall call) { }
     //a queued message the loop delivered at a round boundary, told after its record is saved, so a renderer commits it where the record sits
     void OnQueuedDelivered(ChatMessage record) { }
     //the images a tool read this round, told after their record is saved, so a renderer draws them where the record sits
@@ -70,6 +78,9 @@ public sealed class AgentLoop(
 
     //the round the turn reached, read by the turn span when the turn ends in an exception
     private int _traceRounds;
+
+    //whether the turn ran its closing round, read by the turn span the way the round count is
+    private bool _traceClosing;
 
     //the text a turn's prompt reads as, the head line alone for a background end so its output never rides a continuation
     internal static string PromptOf(ChatMessage record) =>
@@ -184,6 +195,7 @@ public sealed class AgentLoop(
             if (agent is null) span.Set("seq", seq);
             else span.Set("agent", agent);
             span.Set("rounds", result?.Rounds ?? _traceRounds);
+            if (_traceClosing) span.Set("closing", 1);
             span.Set("result", result?.Outcome.ToString() ?? "Error");
             span.Set("role", agent ?? TraceRole);
             span.Set("model", model);
@@ -215,8 +227,12 @@ public sealed class AgentLoop(
         //the terminal round's finish_reason, so the -p exit can tell a clean stop from a token-limit cut
         string? finishReason = null;
         void Warn(string message) { observer.OnWarning(message); lastWarning = message; }
-        //a round is one StreamAsync round-trip, which maxRounds caps for a subagent turn. at the cap, pending tool calls never run and the turn ends Truncated
+        //a round is one StreamAsync round-trip, which maxRounds caps for a subagent turn. at the cap the round's calls are refused and one closing round asks for the answer
         var round = 0;
+        var closing = false;
+        //both entries reach this method, so a reused loop never reports the last turn's figures
+        _traceRounds = 0;
+        _traceClosing = false;
         //a rescue may fire more than once per turn, since a fresh oversized result is a new problem
         var reactiveHasRescued = false;
         var madeProgressSinceRescue = false;
@@ -469,9 +485,27 @@ public sealed class AgentLoop(
                 return new TurnResult(TurnOutcome.Completed, finishReason, null, round, lastWarning);
             }
 
-            //at the round cap the pending calls never run and the caller reports a partial result rather than an error
+            //at the round cap no call runs. a closing round that calls again ends Truncated, and the caller reports a partial result rather than an error
             if (maxRounds is int cap && round >= cap)
-                return new TurnResult(TurnOutcome.Truncated, finishReason, TruncationKind.Length, round, lastWarning);
+            {
+                if (closing)
+                    return new TurnResult(TurnOutcome.Truncated, finishReason, TruncationKind.Length, round, lastWarning);
+                if (ct.IsCancellationRequested)
+                {
+                    //these calls were never saved or announced, so each is answered here and none is told to the observer as a cancelled row
+                    foreach (var stopped in calls)
+                        convo.AddToolResult(stopped.Id, new ToolResult(LoopErrors.Cancelled, IsError: true));
+                    Warn(TurnLines.RemainingCancelled);
+                    return new TurnResult(TurnOutcome.Cancelled, finishReason, null, round, lastWarning);
+                }
+                for (var j = 0; j < calls.Count; j++)
+                {
+                    convo.AddToolResult(calls[j].Id, new ToolResult(j == calls.Count - 1 ? LoopErrors.TurnLimitLast : LoopErrors.TurnLimit, IsError: true));
+                    observer.OnToolCallRefused(calls[j]);
+                }
+                closing = _traceClosing = true;
+                continue;
+            }
 
             //persist before running the calls, so a tool that hangs still leaves its call in the session file
             Persist(convo, observer);
