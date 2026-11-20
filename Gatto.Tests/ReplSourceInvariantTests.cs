@@ -24,8 +24,13 @@ public class ReplSourceInvariantTests
     {
         var src = ReplSource();
 
+        //a branch written with the gate's matcher is a dispatch too, and the pattern must keep finding one or it guards nothing
+        var matched = Regex.Matches(src, @"TryMatchCommand\(trimmed(?:Line)?,\s*""(/[a-z][a-z0-9-]*)""");
+        Assert.Contains(matched, m => m.Groups[1].Value == "/sandbox");
+
         var dispatched = Regex.Matches(src, @"trimmed(?:Line)?\s*==\s*""(/[a-z][a-z0-9-]*)""")
             .Concat(Regex.Matches(src, @"trimmed(?:Line)?\.StartsWith\(""(/[a-z][a-z0-9-]*) """))
+            .Concat(matched)
             .Select(m => m.Groups[1].Value)
             .Distinct(StringComparer.Ordinal)
             .ToList();

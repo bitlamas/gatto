@@ -115,6 +115,11 @@ public sealed partial class Repl
                 Console.WriteLine(HandleSandbox(sandboxArg));
                 continue;
             }
+            if (SlashGate.TryMatchCommand(trimmedLine, "/save", out var saveArg))
+            {
+                Console.WriteLine(HandleSave(saveArg));
+                continue;
+            }
             if (trimmedLine == "/safe")
             {
                 Console.WriteLine(HandleSafe());

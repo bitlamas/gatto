@@ -474,6 +474,42 @@ public sealed partial class Repl
 
     internal const string SandboxUsage = "usage: /sandbox [on]";
 
+    //writes the last reply to the path the user typed, or to a name of its own on a bare save, and never replaces a file. the model cannot type a command, so only the gatto home is refused
+    internal string HandleSave(string arg)
+    {
+        if (LastTextExchange(convo)?.Assistant is not { } text) return "nothing to save";
+        if (arg.Length == 0) arg = BareSaveName(cwd, DateTime.Now);
+        try
+        {
+            var path = Gatto.Core.Tools.ToolArgs.Resolve(cwd, arg);
+            if (WithSeparator(path).StartsWith(WithSeparator(Path.GetFullPath(Gatto.Core.Home.GattoHome.Resolve())), StringComparison.OrdinalIgnoreCase))
+                return SaveIntoHome;
+            var dir = Path.GetDirectoryName(path);
+            if (!string.IsNullOrEmpty(dir)) Directory.CreateDirectory(dir);
+            var bytes = System.Text.Encoding.UTF8.GetBytes(text);
+            FileStream file;
+            //the open is the refusal, so a file that appears after any earlier look is still never replaced
+            try { file = new FileStream(path, FileMode.CreateNew, FileAccess.Write); }
+            catch (IOException) when (File.Exists(path)) { return TermText.Sanitize($"{arg} exists"); }
+            using (file) file.Write(bytes);
+            return TermText.Sanitize($"saved {Plural.Of(bytes.Length, "byte")} to {path}");
+        }
+        catch (Exception ex) { return TermText.Sanitize($"not saved: {ex.Message}"); }
+    }
+
+    //a folder path with one trailing separator, so a sibling whose name starts with the home's is not read as inside it
+    private static string WithSeparator(string path) => path.EndsWith(Path.DirectorySeparatorChar) ? path : path + Path.DirectorySeparatorChar;
+
+    //the working folder's name and the local time to the second, so a bare save asks no model and costs no request
+    internal static string BareSaveName(string cwd, DateTime now)
+    {
+        var folder = Path.GetFileName(Path.TrimEndingDirectorySeparator(cwd));
+        var stamp = now.ToString("yyyyMMdd-HHmmss", System.Globalization.CultureInfo.InvariantCulture);
+        return (folder.Length > 0 ? folder + "-" : "") + stamp + ".md";
+    }
+
+    internal const string SaveIntoHome = "/save does not write into the gatto home";
+
     //the exact inverse of a bare /wild that turned wild on, for this session only
     private string HandleSafe()
     {

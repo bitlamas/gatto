@@ -837,6 +837,11 @@ public sealed partial class Repl
             s.Renderer.CommitSystem(HandleSandbox(sandboxArg));
             return false;
         }
+        if (SlashGate.TryMatchCommand(trimmed, "/save", out var saveArg))
+        {
+            s.Renderer.CommitSystem(HandleSave(saveArg));
+            return false;
+        }
         if (trimmed == "/safe")
         {
             s.Renderer.CommitSystem(HandleSafe());

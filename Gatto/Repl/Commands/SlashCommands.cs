@@ -74,6 +74,7 @@ public static class SlashCommands
         new("/inbox", "[folder|off]", "let other AI tools on this PC write to gatto"),
         //like /remember, the input becomes InitPrompt and is dispatched as if typed
         new("/init", "", "survey the project, write GATTO.md", ReachesModel: true),
+        new("/save", "[path]", "write the last reply to a file"),
         new("/quit", "", "exit"),
     ];
 

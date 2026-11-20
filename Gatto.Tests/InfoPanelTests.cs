@@ -26,6 +26,7 @@ public class InfoPanelTests
     [InlineData("/new", false)]
     [InlineData("/wild", false)]
     [InlineData("/remember a fact", false)]
+    [InlineData("/save x.md", false)]
     [InlineData("what is in the context", false)]
     public void Only_a_command_that_reads_and_changes_nothing_bypasses_the_queue(string input, bool bypasses) =>
         Assert.Equal(bypasses, SlashCommands.BypassesQueue(input));
