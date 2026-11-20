@@ -27,8 +27,8 @@ public class ShippedTreeTests
                 ("ca3121440f2b159c3e9f633dfc675995e470e11c1831b7b921e6b640090b4c41",
                  16, "02cf45d5dc440c228801dcf7378a19136ed3e7315a6fd291ff34bff644d957ee"),
             ["roles/reader.json"] =
-                ("5621cbe801a98d5867fab744742543d78b63c84dcb85796c04ed37986bdfb400",
-                 340, "d244f31fa8726d3e6705d3b51386eaad7a7032fb3bbb9dcbddb721924f608667"),
+                ("b0314dbe3c1214caf97193734272762d12c4908f2aa61f64b4bfa1da0566cd7b",
+                 353, "9fb05617a880b841a30f3c599f29dc3b5e3d83415e32dae65eca6ace1ff96bfb"),
             ["roles/researcher.json"] =
                 ("434532ada74e8f4a9b1f7f8bfeed16b533defb94f74642606414d968b8671a50",
                  435, "370219d022359f3bdd12f971f486987cf6c16e0e11772122c3531987d3c97628"),

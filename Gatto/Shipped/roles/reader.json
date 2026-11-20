@@ -1,6 +1,6 @@
 {
   "description": "Reads, searches and explains. Cannot write a file or run a command.",
-  "tools": ["read_file", "glob", "grep", "recall_memory", "web_search", "web_fetch", "ask_user"],
+  "tools": ["read_file", "glob", "grep", "recall_memory", "web_search", "web_fetch", "ask_user", "run_agent"],
   "gates": ["citations"],
   "avatar": ["  /l、", "（▀､▀ ７", "  l  ~ヽ", "  じしf_,)ノ"],
   "tint": "#4BBECD",

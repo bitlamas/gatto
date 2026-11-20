@@ -173,6 +173,7 @@ public sealed class ShippedExtensionsTests : IDisposable
         Assert.Equal(["citations"], reader.Gates);
         Assert.DoesNotContain(reader.Tools!, t => t is "write_file" or "edit_file" or "shell");   //the model in this seat cannot write a file or run a command
         Assert.True(reader.Callable);   //so run_agent's description lists it
+        Assert.Contains("run_agent", reader.Tools!);   //so the seat can call the reviewer, and its child holds no tool the seat lacks
         var researcher = RoleFile.Load(RolesDir, "researcher");
         Assert.Equal(["citations"], researcher.Gates);
         Assert.Equal("research", researcher.WriteDir);

@@ -92,6 +92,20 @@ public sealed class ShippedReviewerTests : IDisposable
         Assert.Equal(["glob", "read_file"], two.Specs().Select(s => s.Name).Order(StringComparer.Ordinal));
     }
 
+    //the shipped reader calls roles, and whatever it calls holds its three file tools at most: no writer and no shell through a child
+    [Fact]
+    public void A_CHILD_OF_THE_READER_HOLDS_NO_WRITER_AND_NO_SHELL()
+    {
+        var reviewer = Reviewer();
+        var reader = RoleFile.Load(RolesDir, "reader");
+        var store = PermissionStore.Load(_home, _home, out _);
+        var build = SubagentWiring.Build(new PermissionGate(store, null, false), _home, bound: () => new SeatBound(reader.Tools));
+        var writer = RoleFile.Default with { Name = "writer", Tools = ["read_file", "glob", "grep", "write_file", "edit_file", "shell"] };
+
+        foreach (var called in new[] { RoleFile.Default, reviewer, writer })
+            Assert.Equal(["glob", "grep", "read_file"], build(called).Tools.Specs().Select(s => s.Name).Order(StringComparer.Ordinal));
+    }
+
     //a home that already holds its own reviewer.json keeps every byte of it, since no reviewer.json ever shipped
     [Fact]
     public void A_HOMES_OWN_REVIEWER_KEEPS_ITS_BYTES()
