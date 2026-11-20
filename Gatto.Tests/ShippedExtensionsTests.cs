@@ -166,9 +166,32 @@ public sealed class ShippedExtensionsTests : IDisposable
     {
         ShippedExtensions.EnsureWritten(_home);   //the overload the program calls, so the real shipped roles are the ones written
 
-        //raw is the one role a home receives, and the seat with no role needs no file
-        Assert.Equal(new[] { "raw.json" }, Directory.GetFiles(RolesDir).Select(Path.GetFileName).ToArray());
+        //raw, reader and researcher are the roles a home receives, and the seat with no role needs no file
+        Assert.Equal(new[] { "raw.json", "reader.json", "researcher.json" }, Directory.GetFiles(RolesDir).Select(Path.GetFileName).Order(StringComparer.Ordinal).ToArray());
         Assert.True(RoleFile.Load(RolesDir, "raw").Raw);
+        var reader = RoleFile.Load(RolesDir, "reader");
+        Assert.Equal(["citations"], reader.Gates);
+        Assert.DoesNotContain(reader.Tools!, t => t is "write_file" or "edit_file" or "shell");   //the model in this seat cannot write a file or run a command
+        Assert.True(reader.Callable);   //so run_agent's description lists it
+        var researcher = RoleFile.Load(RolesDir, "researcher");
+        Assert.Equal(["citations"], researcher.Gates);
+        Assert.Equal("research", researcher.WriteDir);
+        Assert.Contains("write_file", researcher.Tools!);
+        Assert.DoesNotContain("shell", researcher.Tools!);   //write_dir bounds the file tools alone, so the seat holds no shell
+        Assert.False(researcher.Callable);   //as a child it would hold no web tool, so run_agent never lists it
+    }
+
+    //a home that already holds its own researcher.json, as a seat's home can, keeps every byte of it
+    [Fact]
+    public void A_HOMES_OWN_RESEARCHER_KEEPS_ITS_BYTES()
+    {
+        const string own = """{ "append": "my own researcher, addressing my own inbox" }""";
+        Directory.CreateDirectory(RolesDir);
+        File.WriteAllText(Full("roles/researcher.json"), own);
+
+        ShippedExtensions.EnsureWritten(_home);   //the real shipped files, whose researcher.json differs from this one
+
+        Assert.Equal(own, File.ReadAllText(Full("roles/researcher.json")));
     }
 
     [Fact]

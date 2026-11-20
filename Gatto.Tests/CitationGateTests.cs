@@ -26,7 +26,7 @@ public sealed class CitationGateTests
         new(ledger, _ => fileText) { Armed = true };
 
     [Fact]
-    public async Task Fabricated_url_appends_the_reminder_with_the_three_exits()
+    public async Task A_never_fetched_url_appends_the_reminder_with_the_three_exits()
     {
         var ledger = new CitationLedger(() => null);
         var gate = ArmedGate(ledger, "The answer is at https://example.com/foo per my research.");
@@ -36,7 +36,7 @@ public sealed class CitationGateTests
         Assert.NotNull(res);
         Assert.False(res!.IsError);
         Assert.Contains("wrote 3 bytes", res.Text);
-        Assert.Contains("[citation gate] FABRICATED (never seen this session):", res.Text);
+        Assert.Contains("[citation gate] not fetched and in no search result this session:", res.Text);
         Assert.Contains("https://example.com/foo", res.Text);
         Assert.Contains("Fetch and read each with web_fetch", res.Text);
         Assert.Contains("replace it with a source you did read", res.Text);
@@ -55,7 +55,7 @@ public sealed class CitationGateTests
         var res = await gate.OnToolResultAsync(payload);
 
         Assert.NotNull(res);
-        Assert.Contains("FABRICATED", res!.Text);
+        Assert.Contains("not fetched and in no search result", res!.Text);
     }
 
     [Fact]
@@ -79,7 +79,7 @@ public sealed class CitationGateTests
     }
 
     [Fact]
-    public async Task Search_only_seen_url_is_UNREAD_warned_alongside_a_fabricated_never_blocks()
+    public async Task A_url_seen_only_in_a_search_is_listed_beside_a_never_fetched_one_never_blocks()
     {
         var ledger = new CitationLedger(() => null);
         ledger.Record("query", "results include https://seen.com/bar among others", searchOnly: true);
@@ -89,14 +89,14 @@ public sealed class CitationGateTests
 
         Assert.NotNull(res);
         Assert.False(res!.IsError);                                        //the gate warns but never blocks.
-        Assert.Contains("FABRICATED", res.Text);
+        Assert.Contains("not fetched and in no search result", res.Text);
         Assert.Contains("https://fab.com/x", res.Text);
-        Assert.Contains("UNREAD (seen only in search results):", res.Text);
+        Assert.Contains("\nin a search result, not fetched: https://seen.com/bar", res.Text);
         Assert.Contains("https://seen.com/bar", res.Text);
     }
 
     [Fact]
-    public async Task Unread_only_without_any_fabricated_does_not_block()
+    public async Task A_search_seen_url_alone_writes_no_note()
     {
         var ledger = new CitationLedger(() => null);
         ledger.Record("query", "results include https://seen.com/bar", searchOnly: true);
@@ -147,7 +147,7 @@ public sealed class CitationGateTests
         var res = await gate.OnToolResultAsync(Write("out.md"));
 
         Assert.NotNull(res);
-        Assert.Contains("FABRICATED", res!.Text);
+        Assert.Contains("not fetched and in no search result", res!.Text);
         Assert.DoesNotContain("QUOTE_MISMATCH", res.Text);
     }
 
@@ -163,7 +163,20 @@ public sealed class CitationGateTests
         Assert.Null(await gate.OnToolResultAsync(Write("out.md")));
     }
 
-    private const string LastNoteForOut = "\nLast note for out.md: a later write to it gets no citation note.";
+    //the process keeps one gate across /new, so a reset gives a spent file its notes again
+    [Fact]
+    public async Task A_RESET_GIVES_A_SPENT_FILE_ITS_NOTES_AGAIN()
+    {
+        var gate = ArmedGate(new CitationLedger(() => null), "cite https://fab.com/x here");
+        for (var i = 0; i < 3; i++) await gate.OnToolResultAsync(Write("out.md"));
+        Assert.Null(await gate.OnToolResultAsync(Write("out.md")));
+
+        gate.Reset();
+
+        Assert.NotNull(await gate.OnToolResultAsync(Write("out.md")));
+    }
+
+    private const string LastNoteForOut ="\nLast note for out.md: a later write to it gets no citation note.";
 
     //only the third note says it is the last, and the line is the note's final one
     [Fact]
@@ -184,7 +197,7 @@ public sealed class CitationGateTests
 
     //the line follows the warnings, so a note with an unread URL still ends with it
     [Fact]
-    public async Task THE_LAST_NOTE_LINE_COMES_AFTER_THE_UNREAD_LINE()
+    public async Task THE_LAST_NOTE_LINE_COMES_AFTER_THE_SEARCH_LINE()
     {
         var ledger = new CitationLedger(() => null);
         ledger.Record("query", "results include https://seen.com/y", searchOnly: true);
@@ -194,7 +207,7 @@ public sealed class CitationGateTests
         await gate.OnToolResultAsync(Write("out.md"));
         var third = (await gate.OnToolResultAsync(Write("out.md")))!.Text;
 
-        Assert.Contains("\nUNREAD (seen only in search results): https://seen.com/y" + LastNoteForOut, third);
+        Assert.Contains("\nin a search result, not fetched: https://seen.com/y" + LastNoteForOut, third);
     }
 
     [Fact]
@@ -263,6 +276,46 @@ public sealed class CitationGateTests
     {
         var ledger = new CitationLedger(() => null);
         var gate = ArmedGate(ledger, "A plain deliverable with no URLs at all.");
+
+        Assert.Null(await gate.OnToolResultAsync(Write("out.md")));
+    }
+
+    //the gate reads back what the write tools wrote, by their own resolver, a ~ path included
+    [Fact]
+    public async Task A_WRITE_TO_A_TILDE_PATH_IS_READ_BACK_WHERE_IT_WENT()
+    {
+        var cwd = Path.Combine(Path.GetTempPath(), "gate-cwd");
+        var written = ToolArgs.Resolve(cwd, "~\\notes.md");
+        var asked = new List<string>();
+        var gate = new CitationGate(new CitationLedger(() => null), p => { asked.Add(p); return p == written ? "cite https://fab.com/x here" : null; },
+            p => ToolArgs.Resolve(cwd, p)) { Armed = true };
+
+        var res = await gate.OnToolResultAsync(Write("~\\\\notes.md"));
+
+        Assert.Equal([written], asked);
+        Assert.Contains("not fetched and in no search result", res!.Text);
+    }
+
+    //one file written by two spellings, another case or a leading .\, spends one budget
+    [Theory]
+    [InlineData("research\\\\Notes.md", "research\\\\notes.md")]
+    [InlineData(".\\\\a.md", "a.md")]
+    public async Task TWO_SPELLINGS_OF_ONE_FILE_SHARE_ITS_THREE_NOTES(string first, string second)
+    {
+        var cwd = Path.Combine(Path.GetTempPath(), "gate-cwd");
+        var gate = new CitationGate(new CitationLedger(() => null), _ => "cite https://fab.com/x here", p => ToolArgs.Resolve(cwd, p)) { Armed = true };
+
+        for (var i = 0; i < 3; i++) Assert.NotNull(await gate.OnToolResultAsync(Write(first)));
+
+        Assert.Null(await gate.OnToolResultAsync(Write(second)));
+    }
+
+    //a path the resolver refuses leaves nothing to read, and the write goes through untouched
+    [Fact]
+    public async Task A_PATH_THE_RESOLVER_REFUSES_WRITES_NO_NOTE()
+    {
+        var gate = new CitationGate(new CitationLedger(() => null), _ => "cite https://fab.com/x here",
+            _ => throw new ArgumentException("bad path")) { Armed = true };
 
         Assert.Null(await gate.OnToolResultAsync(Write("out.md")));
     }

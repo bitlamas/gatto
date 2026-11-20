@@ -46,6 +46,7 @@ public sealed partial class Repl
         //plain prints subagent progress as a bracketed line like its [tool] rows, and the sink is a one-slot holder filled once a renderer exists
         if (subagentProgressSink is { Length: > 0 })
             subagentProgressSink[0] = m => Console.WriteLine("[agent] " + m);
+        if (citedSink is { Length: > 0 }) citedSink[0] = KeepCited;
         CancellationTokenSource? turnCts = null;
         Console.CancelKeyPress += (_, e) =>
         {
@@ -100,6 +101,7 @@ public sealed partial class Repl
                 _usageState.Clear();                   //the old usage reading describes the conversation that just ended
                 loop.ResetStripWarning();              //a fresh session reports its own first leak
                 loop.ResetAutoCompact();               //a fresh session may auto-compact again
+                newSession?.Invoke();                  //and a gate keeps nothing of the session that ended
                 Console.WriteLine(NewConversationLine);
                 if (SeedFirstMessage(convo, firstMessage))
                     ReplayTranscript(convo.Messages, renderer, u => Console.WriteLine("\n> " + u), PlainBackgroundEcho, echoImages: m => Console.WriteLine(PlainRenderer.ImageLine(m, _glyphs)));
@@ -262,9 +264,11 @@ public sealed partial class Repl
                 turnCts = CancellationTokenSource.CreateLinkedTokenSource(appCt);
             }
             renderer.BeginTurn();   //reset the hide-reasoning state, a Ctrl+C mid-reasoning must not leave it set
+            TakeCited();
+            var kept = false;
             try
             {
-                await RunTurnGuardedAsync(loop, convo, line, renderer, sessions, turnCts.Token, serverGone: serverGone);
+                kept = await RunTurnGuardedAsync(loop, convo, line, renderer, sessions, turnCts.Token, serverGone: serverGone);
             }
             finally
             {
@@ -275,6 +279,9 @@ public sealed partial class Repl
                 }
                 Console.WriteLine();
             }
+            //the plain face has no click, so its row names every link
+            if (TakeCited() is { } cited && kept)
+                Console.WriteLine($"{_glyphs.Sharp} {CitedItem.Head}{string.Join($" {_glyphs.Dot} ", cited.Select(CitedItem.Drawn))}");
             MaybeOfferCompact(renderer);
         }
         return 0;

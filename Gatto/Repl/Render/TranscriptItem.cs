@@ -477,6 +477,72 @@ public sealed record LetterItem(LetterText Letter) : TranscriptItem
         Rows(width, theme, glyphs).Select(r => new RowWrap(r.Continuation, r.PrefixCells)).ToList();
 }
 
+//the links a reply cited that the session never showed the model, folded as a letter folds: the links that fit one row, then a row with how many more. never saved, so a resume draws none, and never cut
+public sealed record CitedItem(IReadOnlyList<string> Links) : TranscriptItem
+{
+    public const string Head = "cited, not seen this session: ";
+
+    //a link is drawn without its scheme, and sanitized since the model wrote it
+    internal static string Drawn(string link) =>
+        TermText.Sanitize(link.StartsWith("https://", StringComparison.Ordinal) ? link[8..] : link.StartsWith("http://", StringComparison.Ordinal) ? link[7..] : link);
+
+    //a row of links that fit has nothing to open, and the count reads the width alone, so an open row stays a focus stop
+    public bool Opens(int width) => Hidden(width) > 0;
+
+    private int Hidden(int width) => Links.Count - Fitting(width, GlyphSet.Unicode).Count;
+
+    //the links the head's row holds. a first link too long for it is held whole and wraps, since the link is what the row is for
+    private List<string> Fitting(int width, GlyphSet g)
+    {
+        var room = width - 2 - UnicodeWidth.Of(Head);
+        var sep = $" {g.Dot} ";
+        var shown = new List<string>();
+        var used = 0;
+        foreach (var link in Links.Select(Drawn))
+        {
+            var cost = (shown.Count > 0 ? UnicodeWidth.Of(sep) : 0) + UnicodeWidth.Of(link);
+            if (used + cost > room) break;
+            shown.Add(link);
+            used += cost;
+        }
+        if (shown.Count == 0 && Links.Count > 0) shown.Add(Drawn(Links[0]));
+        return shown;
+    }
+
+    private List<RenderedRow> Rows(int width, Theme theme, GlyphSet? glyphs)
+    {
+        var g = glyphs ?? GlyphSet.Unicode;
+        var sep = $" {g.Dot} ";
+        var marker = theme.Paint(g.Sharp, Theme.Warn) + " ";
+        var rows = new List<RenderedRow>();
+        var shown = Collapsed || !Opens(width) ? Fitting(width, g) : [.. Links.Select(Drawn)];
+        //the links wrapped under the hang as a system row wraps, the head in the system ink and the links dim
+        var budget = width > 2 ? width - 2 : 0;
+        var segs = SoftWrap.Wrap(Head + string.Join(sep, shown), budget, budget);
+        for (var i = 0; i < segs.Count; i++)
+        {
+            var text = segs[i].Text;
+            var painted = i == 0 && text.StartsWith(Head, StringComparison.Ordinal)
+                ? theme.Paint(Head, Theme.Warn) + theme.Paint(text[Head.Length..], Theme.Dim)
+                : theme.Paint(text, i == 0 ? Theme.Warn : Theme.Dim);
+            rows.Add(new((i == 0 ? marker : GutterWrap.Hang) + painted, i > 0, i > 0 ? GutterWrap.Hang.Length : 0));
+        }
+        if (Opens(width))
+        {
+            var lead = $"{g.Elbow} " + (Collapsed ? $"{g.Ellipsis} {Hidden(width)} more {g.Dot} " : "");
+            var link = Collapsed ? ShellBlockRender.ExpandWords : ShellBlockRender.CollapseWords;
+            rows.Add(new(GutterWrap.Hang + theme.Paint(lead, Theme.Dim) + theme.Paint(link, Theme.Thought), false));
+        }
+        return rows;
+    }
+
+    protected override IReadOnlyList<string> RenderBody(int width, Theme theme, GlyphSet? glyphs) =>
+        Rows(width, theme, glyphs).Select(r => r.Text).ToList();
+
+    protected override IReadOnlyList<RowWrap> RowWrapsBody(int width, Theme theme, GlyphSet? glyphs) =>
+        Rows(width, theme, glyphs).Select(r => new RowWrap(r.Continuation, r.PrefixCells)).ToList();
+}
+
 //the pictures a tool read, one dim row per image under the system marker, drawn from the record live and on restore. the picture itself is never drawn
 public sealed record ImageBlockItem(IReadOnlyList<string> Lines) : TranscriptItem
 {

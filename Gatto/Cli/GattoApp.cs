@@ -365,6 +365,7 @@ public static class GattoApp
         private Gatto.Core.Span launchSpan;
         private Action<string> extDiag = null!;
         private Gatto.Core.Web.CitationLedger ledger = null!;
+        private CitationGate citationGate = null!;
         private IReadOnlyList<LoadedExtension> loadedExtensions = [];
         private IReadOnlyList<LoadedExtension> committedExtensions = [];
         //every source discovery found, in its order, and what became of each, read by the help panel's extensions tab
@@ -1156,16 +1157,12 @@ public static class GattoApp
 
         private void BuildLoop()
         {
-            //the same ledger the fetch recorder writes, or every citation would score as fabricated
-            var citationGate = new CitationGate(ledger, p =>
+            //the same ledger the fetch recorder writes, or every citation would read as never fetched. the path comes resolved as the write tools resolve it, a ~ included
+            citationGate = new CitationGate(ledger, abs =>
             {
-                try
-                {
-                    var abs = Path.GetFullPath(Path.IsPathRooted(p) ? p : Path.Combine(cwd, p));
-                    return File.Exists(abs) ? File.ReadAllText(abs) : null;
-                }
+                try { return File.Exists(abs) ? File.ReadAllText(abs) : null; }
                 catch (Exception) { return null; }
-            })
+            }, p => Gatto.Core.Tools.ToolArgs.Resolve(cwd, p))
             { Armed = state.Comp.Gates.Contains(CitationGate.Name) };
             hooks.OnToolResult(citationGate.OnToolResultAsync);   //always registered, so a /role can still arm it
 
@@ -1176,7 +1173,7 @@ public static class GattoApp
 
             loop = new AgentLoop(client, tools, hooks, toolCtx, state.ModelString, state.Comp.Sampling, state.Comp.ThinkingBody, state.ContextBudget,
                 promptSuffix: state.Comp.ThinkingSuffix,
-                reasoningHistory: state.ReasoningHistory, trace: trace) { TraceRole = state.Role.Name };
+                reasoningHistory: state.ReasoningHistory, trace: trace) { TraceRole = state.Role.Name, OnShown = citationGate.OnShown };
             //the services the switches use, handed over once the loop exists, since the role resolves before any of them does
             state.UseServices(loop, runAgent, citationGate, probeHttp, probeDeadline, prompter, launchTheme);
 
@@ -1264,6 +1261,14 @@ public static class GattoApp
 
                 //restore from the sidecar beside the resumed file, they stay in memory and a new save writes its own
                 ledger.RestoreFrom(SessionFiles.Sidecar(contPath, SessionFiles.Ledger));
+                //what the session was shown, from every file of its chain, so a reply after the resume is read as one before it
+                var chain = SessionStore.IdentityOf(contPath) is { } chainOf ? sessions.ChainOf(chainOf.Id) : [];
+                citationGate.Reset();
+                citationGate.Rebuild((chain.Count > 0 ? chain : [contPath]).Select(f =>
+                {
+                    var folder = SessionStore.CwdOf(f) ?? cwd;
+                    return ((IReadOnlyList<ChatMessage>)sessions.LoadPath(f), (Func<string, string>)(p => Gatto.Core.Tools.ToolArgs.Resolve(folder, p)));
+                }));
                 resumedFrom = sessions.Identity.Name is { } resumedName ? $"{resumedName} ({SessionStamp(contPath)})" : SessionStamp(contPath);   //a named session is resumed by its name
                 //the count is gatto's estimate, the server's own arrives on the first request after this mark
                 resumeSpan.Set("records", prior.Count);
@@ -1399,6 +1404,11 @@ public static class GattoApp
             //a non-local endpoint that names no models has no rows to offer, the local shelf is not its to switch to
             var unlistedRemote = !state.ServedHere() && state.Listed is not { Count: > 0 };
 
+            //the reply check reads an interactive turn alone, so -p draws no row and its stdout stays the model's text
+            var citedSink = new Action<IReadOnlyList<string>>?[1];
+            citationGate.Cited = links => citedSink[0]?.Invoke(links);
+            hooks.On(HookEvent.MessageEnd, citationGate.OnMessageEndAsync);
+
             //the hint reads the same two locals as the reuse line, so the two sentences cannot disagree about what is loaded
             var repl = new Gatto.Repl.Repl(loop, convo, state.Role.Name, state.ModelString, sessions, client, state.Endpoint.Context, state.ContextBudget, cwd, state.RecomposeSystem, state.SwitchRole, wildState, on => permissions.SetWild(on, persist: true), hooks, themeMode, subagentProgress, resumedFrom: resumedFrom, reasoning: config.ReasoningMode, thinkingName: initialThinkingName, setEffort: state.SetEffort, listEfforts: state.ListEfforts, glyphs: glyphs, purrSet: Gatto.Repl.Render.Chrome.PurrFrames.RandomFromPool, versionLine: CommandBanner.DottedVersion(Gatto.Core.GattoVersion.String, Gatto.Core.GattoVersion.Build ?? "", CommandBanner.IsDevBuild(), glyphs), pump: pump, chrome: chrome, switchModel: state.SwitchModel, setDefault: id => ModelSwitch.Persist(home, state.EndpointName, state.OwnerOf(state.EndpointName), id),   //the role name as ResolveRole cased it from disk, which the banner and the status line key on
                         launchServing: state.LaunchServing, probeServing: state.ProbeServing, listModels: unlistedRemote ? null : state.ListModels, picker: replPicker, slotsReader: slotsReader, warn: warn, altScreen: config.AltScreen, dumpOnExit: config.DumpOnExit, thinkingIsToggle: state.ThinkCap == ThinkCapability.Toggle, thinkingIsUnavailable: state.ThinkingUnavailable(), mouseEnabled: config.Mouse && config.AltScreen && pump is not null, wheelLines: config.WheelLines, copyOnSelect: config.CopyOnSelect, resumedPath: continuePath, resumeLine: resumeLine,
@@ -1424,6 +1434,7 @@ public static class GattoApp
                 loginNow: state.Endpoint.Login is { } sessionLogin ? ct => SessionLoginAsync(sessionLogin, sessionEndpoint, ct) : null,
                 logoutNow: state.Endpoint.Logout is { } logout ? () => { logout(); return $"logged out of {sessionEndpoint}"; } : null,
                 noLoginLine: $"endpoint {state.EndpointName} has no login",
+                newSession: citationGate.Reset, citedSink: citedSink,
                 noAllowanceLine: state.ServedHere() ? Gatto.Repl.Repl.LocalAllowance
                     : usageMeter.Read().HasReader ? null : $"endpoint {state.EndpointName} reports no allowance",
                 //read when /context asks, so a /role or /model since is followed. the shape is the loop's last request, its tools split by origin

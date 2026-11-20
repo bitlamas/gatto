@@ -1173,6 +1173,48 @@ public sealed class MouseControllerTests
         Assert.False(h.Model.Items[1].Collapsed);
     }
 
+    private static CitedItem Cited() =>
+        new CitedItem(["https://one.example/a", "https://two.example/b", "https://three.example/c", "https://four.example/d"]) { Collapsed = true, LeadingBlank = true };
+
+    //a cited row folds as a letter does: its head and its last row open it, and a second click on the head closes it
+    [Fact]
+    public void A_CLICK_ON_A_FOLDED_CITED_ROW_OPENS_IT_AND_A_SECOND_CLOSES_IT()
+    {
+        var h = Build(60, 20, 3, Prose("hi"), Cited());
+        h.Paint();
+        h.ClickRow(h.RowWhere(t => t is ItemTarget { ItemIndex: 1, LastRow: true }));
+        Assert.False(h.Model.Items[1].Collapsed);
+        Assert.Equal(1, h.Focus.Focused);
+        h.Paint();
+        h.ClickRow(h.RowWhere(t => t is ItemTarget { ItemIndex: 1, HeaderRow: true }));
+        Assert.True(h.Model.Items[1].Collapsed);
+    }
+
+    //a press on an open row's links, away from the gutter, starts a copy and leaves the row open
+    [Fact]
+    public void A_PRESS_ON_AN_OPEN_CITED_ROWS_LINKS_LEAVES_IT_OPEN()
+    {
+        var item = Cited();
+        item.Collapsed = false;
+        var h = Build(60, 20, 3, Prose("hi"), item);
+        h.Paint();
+        var linkRow = h.RowOfCell(1, 2);   //the wrapped links under the head
+        h.PressAt(10, linkRow);
+        h.ReleaseAt(10, linkRow);
+        Assert.False(h.Model.Items[1].Collapsed);
+    }
+
+    //every link on one row leaves nothing to open, so the row is no target and a click on it changes nothing
+    [Fact]
+    public void A_CITED_ROW_THAT_FITS_IS_NO_TARGET()
+    {
+        var h = Build(80, 20, 3, Prose("hi"), new CitedItem(["https://one.example/a"]) { Collapsed = true, LeadingBlank = true });
+        h.Paint();
+        h.ClickRow(h.RowWhere(t => t is ItemTarget { ItemIndex: 1, HeaderRow: true }));
+        Assert.True(h.Model.Items[1].Collapsed);
+        Assert.Null(h.Focus.Focused);
+    }
+
     private static bool BareMove(Harness h, int x, int y) =>
         h.Mc.Handle(new MouseEvent(x, y, MouseKind.Move, MouseButton.None, 0, 0), h.W, h.VpRows);
 

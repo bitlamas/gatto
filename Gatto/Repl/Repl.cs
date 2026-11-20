@@ -171,8 +171,28 @@ public sealed partial class Repl(
     string? noAllowanceLine = null,   //the sentence /usage says alone, on a local endpoint or one with no reader
     //the endpoint's handshake run again, returning the account label, and its logout returning the line said. null names no login
     Func<CancellationToken, Task<string>>? loginNow = null, Func<string>? logoutNow = null,
-    string? noLoginLine = null)   //what /login and /logout say on an endpoint without the seam
+    string? noLoginLine = null,   //what /login and /logout say on an endpoint without the seam
+    //what a role gate keeps for one session, cleared at /new through the caller since Repl never sees Roles. null clears nothing
+    Action? newSession = null,
+    //a one-slot holder the face fills, where a gate hands the links of a reply the session never showed. null draws no row
+    Action<IReadOnlyList<string>>?[]? citedSink = null)
 {
+    //the links the turn's last reply cited unseen, held until the turn ends, since the gate names them inside it
+    private IReadOnlyList<string>? _cited;
+    private readonly object _citedLock = new();
+
+    private void KeepCited(IReadOnlyList<string> links) { lock (_citedLock) _cited = links; }
+
+    private IReadOnlyList<string>? TakeCited()
+    {
+        lock (_citedLock)
+        {
+            var taken = _cited;
+            _cited = null;
+            return taken;
+        }
+    }
+
     //the next session's identity and the prompt that names it, made together so the prompt and the file agree. null identity when there is no store
     private (Gatto.Core.SessionIdentity? Next, Func<ComposedSystem> Compose) NextSession()
     {

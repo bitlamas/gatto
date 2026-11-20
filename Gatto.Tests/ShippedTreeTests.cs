@@ -4,7 +4,7 @@ using Gatto.Extensions;
 
 namespace Gatto.Tests;
 
-//the five shipped files are real files under Gatto/Shipped, and these pins hold their exact bytes
+//the seven shipped files are real files under Gatto/Shipped, and these pins hold their exact bytes
 public class ShippedTreeTests
 {
     //the vetted hash folds newlines, so the byte and sha columns are what catch a line-ending change
@@ -26,6 +26,12 @@ public class ShippedTreeTests
             ["roles/raw.json"] =
                 ("ca3121440f2b159c3e9f633dfc675995e470e11c1831b7b921e6b640090b4c41",
                  16, "02cf45d5dc440c228801dcf7378a19136ed3e7315a6fd291ff34bff644d957ee"),
+            ["roles/reader.json"] =
+                ("5621cbe801a98d5867fab744742543d78b63c84dcb85796c04ed37986bdfb400",
+                 340, "d244f31fa8726d3e6705d3b51386eaad7a7032fb3bbb9dcbddb721924f608667"),
+            ["roles/researcher.json"] =
+                ("434532ada74e8f4a9b1f7f8bfeed16b533defb94f74642606414d968b8671a50",
+                 435, "370219d022359f3bdd12f971f486987cf6c16e0e11772122c3531987d3c97628"),
         };
 
     [Fact]
@@ -41,10 +47,11 @@ public class ShippedTreeTests
         finally { Directory.Delete(dir, recursive: true); }
     }
 
-    //raw is the one role file a home receives, the seven gatto once shipped are gone from the tree
+    //raw, reader and researcher are the role files a home receives, the seven gatto once shipped are gone from the tree
     [Fact]
-    public void RAW_IS_THE_ONE_SHIPPED_ROLE() =>
-        Assert.Equal(new[] { "roles/raw.json" }, ShippedExtensions.Files.Keys.Where(k => k.StartsWith("roles/", StringComparison.Ordinal)).ToArray());
+    public void RAW_READER_AND_RESEARCHER_ARE_THE_SHIPPED_ROLES() =>
+        Assert.Equal(["roles/raw.json", "roles/reader.json", "roles/researcher.json"],
+            ShippedExtensions.Files.Keys.Where(k => k.StartsWith("roles/", StringComparison.Ordinal)).Order(StringComparer.Ordinal).ToArray());
 
     [Fact]
     public void SHIPPED_KEYS_ARE_EXACTLY_THESE()

@@ -560,6 +560,14 @@ public sealed class SessionStore(string homePath, string cwd)
         throw new GattoConfigException($"--continue {id}: no saved session matches this id");
     }
 
+    //every file of one session, its compactions' successors and its resumes, oldest first. a file whose record names no session, or that another process holds, is left out
+    public IReadOnlyList<string> ChainOf(Guid id) =>
+        Directory.Exists(SessionsDir)
+            ? [.. Directory.EnumerateFiles(SessionsDir, "*.jsonl")
+                .Where(f => !SessionFiles.IsSidecar(f) && SafeIdentityOf(f)?.Id == id)
+                .OrderBy(File.GetLastWriteTimeUtc)]
+            : [];
+
     //a file another process holds or one that went away reads as no identity, so one such file never fails a resume by name
     private static SessionIdentity? SafeIdentityOf(string path)
     {
@@ -572,6 +580,7 @@ public sealed class SessionStore(string homePath, string cwd)
     public static SessionIdentity? IdentityOf(string path)
     {
         DateTimeOffset? first = null;
+        var origin = false;
         foreach (var line in File.ReadLines(path))
         {
             if (line.Length == 0) continue;
@@ -579,12 +588,16 @@ public sealed class SessionStore(string homePath, string cwd)
             {
                 using var doc = JsonDocument.Parse(line);
                 var el = doc.RootElement;
-                if (el.TryGetProperty("role", out var r) && r.GetString() == "system"
-                    && SessionIdentity.Parse(Text(el, "session_id"), Text(el, "session_start"), Text(el, "session_name")) is { } named)
-                    return named;
+                if (el.TryGetProperty("role", out var r) && r.GetString() == "system")
+                {
+                    if (SessionIdentity.Parse(Text(el, "session_id"), Text(el, "session_start"), Text(el, "session_name")) is { } named)
+                        return named;
+                    origin = true;   //a file carries one system record, so one that names no session settles it and the rest of an old file is never read
+                }
                 if (first is null && Text(el, "ts") is { } ts
                     && DateTimeOffset.TryParse(ts, CultureInfo.InvariantCulture, DateTimeStyles.None, out var at))
                     first = at;
+                if (origin && first is not null) break;
             }
             catch (JsonException) { }
         }

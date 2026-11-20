@@ -150,6 +150,7 @@ public sealed partial class Repl
         //bound through s.Renderer so a /role swap can't orphan it, the sink is a holder because the tool is built before any renderer exists
         if (subagentProgressSink is { Length: > 0 })
             subagentProgressSink[0] = m => s.Renderer.OnSubagentProgress(m);
+        if (citedSink is { Length: > 0 }) citedSink[0] = KeepCited;
         s.Refresh = () => { RefreshStatus(); s.Frame = frame; };
         s.Refresh();
         //stashed where this local and s can both reach it, idempotent and null when mouse is off

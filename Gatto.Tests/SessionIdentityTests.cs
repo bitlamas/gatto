@@ -134,6 +134,24 @@ public class SessionIdentityTests : IDisposable
         Assert.Equal(new DateTimeOffset(2026, 10, 6, 8, 13, 29, TimeSpan.Zero), identity.Start);
     }
 
+    //the read ends at the first system record once it has a time, so a resume never reads an old file to its end. a later record naming a session proves it stopped
+    [Fact]
+    public void THE_READ_STOPS_AT_A_SYSTEM_RECORD_THAT_NAMES_NO_SESSION()
+    {
+        var path = Path.Combine(_home, "abc-0639268568497889356.jsonl");
+        File.WriteAllLines(path,
+        [
+            """{"role":"system","content":"x","schema_version":1}""",
+            """{"role":"user","content":"y","ts":"2026-10-06T08:13:29.0000000Z"}""",
+            """{"role":"system","content":"z","session_id":"6f1c2a4e-3b5d-4c7e-8f90-a1b2c3d4e5f6","session_start":"2026-10-06T08:13:29+00:00"}""",
+        ]);
+
+        var identity = SessionStore.IdentityOf(path)!;
+
+        Assert.Equal(SessionIdentity.Project("abc-0639268568497889356.jsonl"), identity.Id);
+        Assert.Equal(new DateTimeOffset(2026, 10, 6, 8, 13, 29, TimeSpan.Zero), identity.Start);
+    }
+
     private sealed class SessionContext(string cwd, SessionIdentity? session) : IToolContext
     {
         public string Cwd => cwd;

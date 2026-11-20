@@ -596,6 +596,22 @@ public sealed class StreamRenderer : ITurnObserver
         },
         () => _surface.Write("\n" + _glyphs.Sharp + " " + TermText.Sanitize(LetterText.Head(record.Watch ?? "")) + "\n"));
 
+    //the links a reply cited that the session never showed, under the reply once its block has closed, folded as a letter is
+    public void CommitCited(IReadOnlyList<string> links) => Guarded(
+        () =>
+        {
+            if (_inReasoning) CloseReasoningBlock();
+            else FlushOpenLine();
+            if (_last != LastWrite.None) _blankPending = true;
+            var item = new CitedItem(links) { Collapsed = true };
+            _model?.Append(item);
+            CommitRows([.. item.Render(_surface.Width, _theme, _glyphs).Skip(item.LeadingBlank ? 1 : 0)]);
+            _last = LastWrite.Text;
+            _blockOpen = false;
+            _blankPending = true;
+        },
+        () => _surface.Write("\n" + _glyphs.Sharp + " " + CitedItem.Head + string.Join($" {_glyphs.Dot} ", links.Select(CitedItem.Drawn)) + "\n"));
+
     //the turn's dim completion line, one blank row under the output and truncated to one row. the bracket calls it after EndTurn so the timer is still live
     public void CommitCompletion(string line) => Guarded(
         () =>

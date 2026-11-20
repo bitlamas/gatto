@@ -1,0 +1,10 @@
+{
+  "description": "Researches a question on the web and writes sourced findings to a file under research\\.",
+  "tools": ["read_file", "glob", "grep", "write_file", "edit_file", "recall_memory", "web_search", "web_fetch", "ask_user"],
+  "write_dir": "research",
+  "callable": false,
+  "gates": ["citations"],
+  "avatar": ["  /l、", "（＞､ｏ７", "  l  ~ヽ", "  じしf_,)ノ"],
+  "tint": "#B88AAF",
+  "tint_light": "#834E8F"
+}

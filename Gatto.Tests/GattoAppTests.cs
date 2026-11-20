@@ -1290,7 +1290,86 @@ public class GattoAppTests : IDisposable
             .Select(m => m.GetProperty("content").GetString()!).ToList();
         Assert.Equal(2, toolMsgs.Count);
         Assert.DoesNotContain("[citation gate]", toolMsgs[0]);
-        Assert.Contains("[citation gate] FABRICATED", toolMsgs[1]);
+        Assert.Contains("[citation gate] not fetched and in no search result this session", toolMsgs[1]);
+    }
+
+    private void UseGatedHome(FakeOpenAiServer server)
+    {
+        UseHome();
+        WriteConfig($$$"""{"endpoints":{"local":{"base_url":"{{{server.BaseUrl}}}"}},"default_endpoint":"local","glyphs":"unicode"}""");
+        WriteModel("test-model", port: 1235);
+        UseDefaultModel("test-model");
+        WriteRole("gated", "{\"model\":\"test-model\",\"gates\":[\"citations\"]}");
+    }
+
+    private static List<string> CitedRows(StringWriter stdout) =>
+        [.. stdout.ToString().Split('\n').Select(l => l.TrimEnd('\r')).Where(l => l.Contains("cited, not seen", StringComparison.Ordinal))];
+
+    //the reply that ends a turn is read: a link the user typed is seen, and an invented one is named under the reply
+    [Fact]
+    public async Task A_REPLY_CITING_A_LINK_NEVER_SHOWN_PRINTS_ONE_ROW_NAMING_IT()
+    {
+        await using var server = new FakeOpenAiServer();
+        UseGatedHome(server);
+        server.Enqueue(Completion("Per https://typed.test/doc and https://made.up.test/page, yes."));
+        var stdout = new StringWriter();
+        Console.SetIn(new StringReader("is https://typed.test/doc right?\n/quit\n"));
+        Console.SetOut(stdout);
+
+        Assert.Equal(0, await GattoApp.RunAsync(new[] { "gated" }));
+
+        Assert.Equal(["♯ cited, not seen this session: made.up.test/page"], CitedRows(stdout));
+    }
+
+    //a one-shot reads no reply, so its stdout stays the model's text
+    [Fact]
+    public async Task A_ONE_SHOT_PRINTS_NO_CITED_ROW()
+    {
+        await using var server = new FakeOpenAiServer();
+        UseGatedHome(server);
+        server.Enqueue(Completion("See https://made.up.test/page."));
+        var stdout = new StringWriter();
+        Console.SetOut(stdout);
+
+        Assert.Equal(0, await GattoApp.RunAsync(new[] { "gated", "-p", "hi" }));
+
+        Assert.Empty(CitedRows(stdout));
+    }
+
+    //a seat without the gate reads no reply
+    [Fact]
+    public async Task A_SEAT_WITHOUT_THE_GATE_PRINTS_NO_CITED_ROW()
+    {
+        await using var server = new FakeOpenAiServer();
+        UseGatedHome(server);
+        server.Enqueue(Completion("See https://made.up.test/page."));
+        var stdout = new StringWriter();
+        Console.SetIn(new StringReader("hi\n/quit\n"));
+        Console.SetOut(stdout);
+
+        Assert.Equal(0, await GattoApp.RunAsync(Array.Empty<string>()));
+
+        Assert.Empty(CitedRows(stdout));
+    }
+
+    //a link the session was shown before a resume is still seen after it, and the reply that cites it draws no row for it
+    [Fact]
+    public async Task A_LINK_SHOWN_BEFORE_A_RESUME_IS_SEEN_AFTER_IT()
+    {
+        await using var server = new FakeOpenAiServer();
+        UseGatedHome(server);
+        server.Enqueue(Completion("noted"));
+        Console.SetIn(new StringReader("keep https://typed.test/doc in mind\n/quit\n"));
+        Console.SetOut(new StringWriter());
+        Assert.Equal(0, await GattoApp.RunAsync(new[] { "gated" }));
+
+        server.Enqueue(Completion("As https://typed.test/doc says, and https://made.up.test/page adds."));
+        var stdout = new StringWriter();
+        Console.SetIn(new StringReader("go on\n/quit\n"));
+        Console.SetOut(stdout);
+        Assert.Equal(0, await GattoApp.RunAsync(new[] { "gated", "--continue" }));
+
+        Assert.Equal(["♯ cited, not seen this session: made.up.test/page"], CitedRows(stdout));
     }
 
     private List<string> ToolResults(FakeOpenAiServer server) =>

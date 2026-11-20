@@ -806,6 +806,7 @@ public sealed partial class Repl
                     _usageState.Clear();                   //the old reading describes a conversation that is gone
                     loop.ResetStripWarning();              //a fresh session reports its own first leak
                     loop.ResetAutoCompact();               //a fresh session may auto-compact again
+                    newSession?.Invoke();                  //and a gate keeps nothing of the session that ended
                     s.Ctx?.RecordUsedTokens(null);         //the same for the context figure
                     s.Refresh();                           //a fresh conversation, so the ctx estimate resets too
                 },
@@ -1039,6 +1040,7 @@ public sealed partial class Repl
         var turnCt = s.TurnCts.Token;
         bool turnCancelled, kept;
         deafWatch?.Arm();
+        TakeCited();
         try
         {
             kept = await run(turnCt);
@@ -1049,6 +1051,8 @@ public sealed partial class Repl
             deafWatch?.Disarm();
             lock (_ctsLock) { s.TurnCts?.Dispose(); s.TurnCts = null; }
         }
+        //the reply's block has closed, and a turn that rolled back takes its links with it
+        if (TakeCited() is { } cited && kept) s.Renderer.CommitCited(cited);
         _settle?.Invoke(kept);
         //name the session's folder in the tab once a turn ran to its end, a cancelled turn is not that boundary
         if (!turnCancelled) s.Painter.AltScreen.SetFinalTitle(TerminalTitle.Project(cwd));

@@ -192,7 +192,9 @@ public sealed class RichReplHarness
         //what /usage reads and the sentence it says alone, absent as a local session
         Func<bool, CancellationToken, Task<AllowanceReport>>? readAllowance = null, string? allowanceEndpoint = null, string? noAllowanceLine = null,
         //the login seams, absent as a local session
-        Func<CancellationToken, Task<string>>? loginNow = null, Func<string>? logoutNow = null, string? noLoginLine = null)
+        Func<CancellationToken, Task<string>>? loginNow = null, Func<string>? logoutNow = null, string? noLoginLine = null,
+        //what /new clears in a gate, and the slot a gate names a reply's unseen links into, absent as a seat with no gate
+        Action? newSession = null, Action<IReadOnlyList<string>>?[]? citedSink = null)
     {
         Surface = new VtScreenSurface(width, height);
         _tap = new TappedSurface(Surface, _changes);
@@ -242,7 +244,7 @@ public sealed class RichReplHarness
             roleTint: roleTint, roleAvatar: roleAvatar, firstMessage: firstMessage,
             armTasks: tasks => _context.Tasks = tasks,
             readAllowance: readAllowance, allowanceEndpoint: allowanceEndpoint, noAllowanceLine: noAllowanceLine,
-            loginNow: loginNow, logoutNow: logoutNow, noLoginLine: noLoginLine);
+            loginNow: loginNow, logoutNow: logoutNow, noLoginLine: noLoginLine, newSession: newSession, citedSink: citedSink);
     }
 
     //the tool context the loop runs on, which the rich face arms with its background tasks as the app context is armed

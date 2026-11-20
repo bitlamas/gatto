@@ -116,6 +116,23 @@ public sealed class AgentLoop(
     //persist after each tool result, so a killed run still leaves a transcript. null unless a caller sets it, keeping a subagent out of the parent's file
     public Action<Conversation>? OnRoundPersisted { get; set; }
 
+    //each record the session puts before the model: the turn's user records as they enter, and the head of the prompt with its seeded opening whenever it changes. a child loop has none
+    public Action<ChatMessage>? OnShown { get; set; }
+
+    //the system record last passed to OnShown, so a head is passed once however many requests carry it
+    private ChatMessage? _shownHead;
+
+    //a replaced head is a new object at index 0 wherever it was composed, a launch, a resume, /role, /new, /model or a compaction
+    private void ShowHead(Conversation convo)
+    {
+        if (OnShown is not { } shown) return;
+        var messages = convo.Messages;
+        if (messages.Count == 0 || messages[0].Role != "system" || ReferenceEquals(messages[0], _shownHead)) return;
+        _shownHead = messages[0];
+        shown(messages[0]);
+        for (var i = 1; i < messages.Count && messages[i].Role == "assistant"; i++) shown(messages[i]);   //a first_message is seeded only under a fresh head
+    }
+
     //arm auto-compaction after construction, since the handler wraps a Repl that is built later. the session and -p call it, subagent loops never do
     public void EnableAutoCompact(ICompactionHandler? newCompaction, ContextUsageState? newUsageState, double? newAutoCompactAt)
     {
@@ -256,6 +273,7 @@ public sealed class AgentLoop(
         //the image record the last round appended, which the next request alone may withdraw
         ChatMessage? imageRecord = null;
         convo.Append(userRecord);
+        OnShown?.Invoke(userRecord);
         while (true)
         {
             round++;
@@ -367,6 +385,7 @@ public sealed class AgentLoop(
             }
 
             var estimateAtRequest = ContextBudget.Estimate(requestMessages) + overhead;
+            ShowHead(convo);   //after any compaction above, so its new head is shown before the reply it answers
             _lastSent = requestMessages.ToArray();
             _lastSentFrom = convo.Messages.ToArray();
 
@@ -618,6 +637,7 @@ public sealed class AgentLoop(
                         ? convo.BackgroundRecord(end.Number, end.Text, end.Gloss, end.IsError)
                         : convo.UserRecord(typed.Text, watch: typed.Watch);
                     convo.Append(record);
+                    OnShown?.Invoke(record);
                     records.Add(record);
                 }
                 //a compaction's continuation carries an end as its head line, never its output

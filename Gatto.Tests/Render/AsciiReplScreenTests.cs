@@ -46,6 +46,7 @@ public class AsciiReplScreenTests
             "C:\\box\\mailbox\\m\\a.md\n\n<!-- letter:a -->\nfrom: f\nre: r\nkind: letter\n\none\ntwo\nthree\n<!-- /letter -->\n", Watch: "C:\\box\\mailbox\\m\\a.md"))),
         ("images", ImageBlockItem.From(new Gatto.Core.Client.ChatMessage("user", "images read this round: a.png (70 bytes); already shown: b.png",
             Images: [new Gatto.Core.Client.ImageRef("C:\\proj\\a.png", 70, "aa", "image/png")], By: "read_file"))),
+        ("cited", new CitedItem(["https://one.example/a", "https://two.example/b", "https://three.example/c", "https://four.example/d"]) { Collapsed = true }),
     ];
 
     //the chrome is composed under the ascii set like the transcript. the purr line is chrome rather than an item, so it belongs in this block
