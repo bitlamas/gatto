@@ -163,6 +163,51 @@ public sealed class CitationGateTests
         Assert.Null(await gate.OnToolResultAsync(Write("out.md")));
     }
 
+    private const string LastNoteForOut = "\nLast note for out.md: a later write to it gets no citation note.";
+
+    //only the third note says it is the last, and the line is the note's final one
+    [Fact]
+    public async Task THE_THIRD_NOTE_FOR_A_PATH_SAYS_IT_IS_THE_LAST()
+    {
+        var ledger = new CitationLedger(() => null);
+        var gate = ArmedGate(ledger, "cite https://fab.com/x here");
+
+        var first = (await gate.OnToolResultAsync(Write("out.md")))!.Text;
+        var second = (await gate.OnToolResultAsync(Write("out.md")))!.Text;
+        var third = (await gate.OnToolResultAsync(Write("out.md")))!.Text;
+
+        Assert.DoesNotContain("Last note", first);
+        Assert.DoesNotContain("Last note", second);
+        Assert.EndsWith(LastNoteForOut, third);
+        Assert.Null(await gate.OnToolResultAsync(Write("out.md")));
+    }
+
+    //the line follows the warnings, so a note with an unread URL still ends with it
+    [Fact]
+    public async Task THE_LAST_NOTE_LINE_COMES_AFTER_THE_UNREAD_LINE()
+    {
+        var ledger = new CitationLedger(() => null);
+        ledger.Record("query", "results include https://seen.com/y", searchOnly: true);
+        var gate = ArmedGate(ledger, "cite https://fab.com/x and https://seen.com/y here");
+
+        await gate.OnToolResultAsync(Write("out.md"));
+        await gate.OnToolResultAsync(Write("out.md"));
+        var third = (await gate.OnToolResultAsync(Write("out.md")))!.Text;
+
+        Assert.Contains("\nUNREAD (seen only in search results): https://seen.com/y" + LastNoteForOut, third);
+    }
+
+    [Fact]
+    public async Task ANOTHER_PATHS_FIRST_NOTE_DOES_NOT_SAY_LAST()
+    {
+        var ledger = new CitationLedger(() => null);
+        var gate = ArmedGate(ledger, "cite https://fab.com/x here");
+
+        for (var i = 0; i < 3; i++) await gate.OnToolResultAsync(Write("a.md"));
+
+        Assert.DoesNotContain("Last note", (await gate.OnToolResultAsync(Write("b.md")))!.Text);
+    }
+
     [Fact]
     public async Task A_different_file_keeps_its_own_counter()
     {

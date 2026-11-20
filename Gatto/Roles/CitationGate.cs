@@ -11,6 +11,9 @@ namespace Gatto.Roles;
 //checks every URL a model writes against the ledger of what it fetched, warns on an invented source, and stops after three rounds
 public sealed class CitationGate(CitationLedger ledger, Func<string, string?> readFile)
 {
+    //the name a role writes in its gates to arm this gate
+    public const string Name = "citations";
+
     private const int MaxRounds = 3;
 
     //the tools whose written result is checked, write_file and edit_file
@@ -92,6 +95,9 @@ public sealed class CitationGate(CitationLedger ledger, Func<string, string?> re
             sb.Append("\nUNREAD (seen only in search results): ").Append(string.Join(", ", unread));
         foreach (var m in mismatches)
             sb.Append("\nQUOTE_MISMATCH: ").Append(m);
+        //the spent budget is said on its last note, so the silence after it is not read as a clean write
+        if (seen + 1 == MaxRounds)
+            sb.Append("\nLast note for ").Append(path).Append(": a later write to it gets no citation note.");
 
         return Task.FromResult<ToolResult?>(result with { Text = sb.ToString() });
     }

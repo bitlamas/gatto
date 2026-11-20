@@ -1161,7 +1161,7 @@ public static class GattoApp
                 }
                 catch (Exception) { return null; }
             })
-            { Armed = state.Comp.Gates.Contains("citations") };
+            { Armed = state.Comp.Gates.Contains(CitationGate.Name) };
             hooks.OnToolResult(citationGate.OnToolResultAsync);   //always registered, so a /role can still arm it
 
             //a one-slot holder the Repl fills once its renderer exists, and on -p it stays empty so stdout stays byte-pure

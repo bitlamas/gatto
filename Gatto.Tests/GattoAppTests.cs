@@ -138,16 +138,16 @@ public class GattoAppTests : IDisposable
     //the real template names both switches, so a sniff that stops at enable_thinking answers Toggle for a genuine multi-level map
     private const string BothSwitchesTemplate = "enable_thinking ... reasoning_effort";
 
-    //a role carries no sampling: the one it still holds is dropped on the path that used to send it, and the thinking body still arrives
+    //a role carries no sampling, so a seat whose model profile has none sends no temperature, and the thinking body still arrives
     [Fact]
-    public async Task Launch_RoleSamplingIsNotSent_TheThinkingBodyStillIs()
+    public async Task Launch_ARoleSendsNoSampling_TheThinkingBodyStillIs()
     {
         await using var server = new FakeOpenAiServer();
         UseHome();
         WriteConfig($$$"""{"endpoints":{"local":{"base_url":"{{{server.BaseUrl}}}"}},"default_endpoint":"local"}""");
         WriteModel("test-model", port: 1235,
             profileExtra: "\"thinking\":{\"medium\":{\"chat_template_kwargs\":{\"enable_thinking\":true}}}");
-        WriteRole("seat", "{\"model\":\"test-model\",\"sampling\":{\"temperature\":0.3}}");
+        WriteRole("seat", "{\"model\":\"test-model\"}");
         UseDefaultRole("seat");
         server.Enqueue(Completion("ok"));
 
@@ -1263,33 +1263,6 @@ public class GattoAppTests : IDisposable
         var toolMsg = server.LastRequestBody!.Value.GetProperty("messages").EnumerateArray()
             .Single(m => m.GetProperty("role").GetString() == "tool");
         Assert.Contains(Gatto.Core.Loop.Permissions.PermissionGate.HomeWrite, toolMsg.GetProperty("content").GetString());
-    }
-
-    //a role file written by an older gatto may still name the grounding gate, and it must add no tool and no text to a result
-    [Fact]
-    public async Task A_role_naming_the_retired_grounding_gate_adds_no_tool_and_no_reminder()
-    {
-        await using var server = new FakeOpenAiServer();
-        UseHome();
-        WriteConfig($$$"""{"endpoints":{"local":{"base_url":"{{{server.BaseUrl}}}"}},"default_endpoint":"local"}""");
-        WriteModel("test-model", port: 1235);
-        WriteRole("oracle", "{\"model\":\"test-model\",\"gates\":[\"grounding\"]}");
-
-        server.Enqueue(ToolCallThenStop("c1", "write_file", "{\"path\":\"a.txt\",\"content\":\"x\"}"));
-        server.Enqueue(Completion("done"));
-
-        Console.SetIn(new StringReader("write the file\n/quit\n"));
-        var stdout = new StringWriter();
-        Console.SetOut(stdout);
-        var exit = await GattoApp.RunAsync(new[] { "oracle", "--yes" });
-
-        Assert.Equal(0, exit);
-        var body = server.LastRequestBody!.Value;
-        var toolMsg = body.GetProperty("messages").EnumerateArray().Single(m => m.GetProperty("role").GetString() == "tool");
-        Assert.DoesNotContain("task_restate", toolMsg.GetProperty("content").GetString());
-        var names = body.GetProperty("tools").EnumerateArray().Select(t => t.GetProperty("function").GetProperty("name").GetString()).ToList();
-        Assert.Contains("write_file", names);   //the list is the real one, so the absence below is not an empty read
-        Assert.DoesNotContain("task_restate", names);
     }
 
     //the citation gate follows the role: unarmed under a role without it, armed by a /role to one that names it
@@ -3891,6 +3864,48 @@ public class GattoAppTests : IDisposable
         var description = RunAgentDescriptionOf(server.RequestBodies[0]);
         Assert.Contains("- listed", description, StringComparison.Ordinal);
         Assert.DoesNotContain("broken", description, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task A_ROLE_FILE_WITH_AN_UNKNOWN_GATE_IS_SKIPPED_WITH_ITS_SENTENCE()
+    {
+        await using var server = new FakeOpenAiServer();
+        UseHome();
+        WriteConfig($$$"""{"endpoints":{"local":{"base_url":"{{{server.BaseUrl}}}"}},"default_endpoint":"local"}""");
+        WriteModel("test-model", port: 1235);
+        UseDefaultModel("test-model");
+        WriteRole("typo", "{\"gates\":[\"citation\"]}");
+        server.Enqueue(Completion("ok"));
+
+        Console.SetOut(new StringWriter());
+        var stderr = new StringWriter();
+        Console.SetError(stderr);
+        Assert.Equal(0, await GattoApp.RunAsync(new[] { "-p", "hello" }));
+
+        var warning = Assert.Single(stderr.ToString().Split('\n'), l => l.Contains("typo", StringComparison.Ordinal));
+        Assert.Equal("! role 'typo' has \"citation\" in \"gates\" (known: citations)", warning.TrimEnd('\r'));
+        Assert.DoesNotContain("typo", RunAgentDescriptionOf(server.RequestBodies[0]), StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task A_LAUNCHED_ROLE_WITH_AN_UNKNOWN_GATE_RUNS_THE_SEAT_WITH_NO_ROLE()
+    {
+        await using var server = new FakeOpenAiServer();
+        UseHome();
+        WriteConfig($$$"""{"endpoints":{"local":{"base_url":"{{{server.BaseUrl}}}"}},"default_endpoint":"local"}""");
+        WriteModel("test-model", port: 1235);
+        UseDefaultModel("test-model");
+        WriteRole("typo", "{\"gates\":[\"citation\"],\"append\":\"the typo marker\"}");
+        server.Enqueue(Completion("ok"));
+
+        Console.SetOut(new StringWriter());
+        var stderr = new StringWriter();
+        Console.SetError(stderr);
+        Assert.Equal(0, await GattoApp.RunAsync(new[] { "typo", "-p", "hello" }));
+
+        var warning = Assert.Single(stderr.ToString().Split('\n'), l => l.Contains("typo", StringComparison.Ordinal));
+        Assert.Equal("! role 'typo' has \"citation\" in \"gates\" (known: citations), running default instead", warning.TrimEnd('\r'));
+        Assert.DoesNotContain("the typo marker", SystemOf(server.RequestBodies[0]), StringComparison.Ordinal);
     }
 
     [Theory]

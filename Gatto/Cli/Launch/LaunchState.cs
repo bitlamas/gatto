@@ -464,7 +464,7 @@ internal sealed class LaunchState(
         _loop.UpdateOverrides(ModelString, Comp.Sampling, Comp.ThinkingBody, Comp.ThinkingSuffix);
 
         //armed for the new role, the ledger has been recording upstream all along so a switch never starts blind
-        _citationGate.Armed = Comp.Gates.Contains("citations");
+        _citationGate.Armed = Comp.Gates.Contains(CitationGate.Name);
 
         //recompose overwrote the toggle body, so re-apply the session's on/off choice after a /role
         if (ThinkCap == ThinkCapability.Toggle) ApplyToggle(ThinkOn);

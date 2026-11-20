@@ -64,10 +64,9 @@ public class RoleFileTests : IDisposable
             {
               "model": "qwen3.6-35b",
               "endpoint": "local",
-              "gates": ["grounding"],
+              "gates": ["citations"],
               "append": "discipline text",
-              "thinking": "high",
-              "sampling": { "temperature": 0.3 }
+              "thinking": "high"
             }
             """);
 
@@ -76,7 +75,7 @@ public class RoleFileTests : IDisposable
         Assert.Equal("coder", role.Name);
         Assert.Equal("qwen3.6-35b", role.Model);
         Assert.Equal("local", role.Endpoint);
-        Assert.Equal(new[] { "grounding" }, role.Gates);
+        Assert.Equal(new[] { "citations" }, role.Gates);
         Assert.Equal("discipline text", role.Append);
         Assert.Equal(ThinkingLevel.High, role.ThinkingRequested);
     }
@@ -523,19 +522,58 @@ public class RoleFileTests : IDisposable
         Assert.Empty(role.Gates);
     }
 
-    //sampling belongs to the model, so a role that still holds the key, well formed or not, loads without it and says nothing
+    [Fact]
+    public void A_GATE_NAME_GATTO_DOES_NOT_KNOW_FAILS_THE_LOAD()
+    {
+        Write("typo", """{ "gates": ["citation"] }""");
+
+        var ex = Assert.Throws<GattoConfigException>(() => RoleFile.Load(_rolesDir, "typo"));
+
+        Assert.Equal("role 'typo' has \"citation\" in \"gates\" (known: citations)", ex.Message);
+    }
+
+    [Fact]
+    public void A_GATE_NAME_IN_ANOTHER_CASING_LOADS_AS_WRITTEN()
+    {
+        Write("caps", """{ "gates": ["Citations"] }""");
+
+        Assert.Equal(new[] { "Citations" }, RoleFile.Load(_rolesDir, "caps").Gates);
+    }
+
+    [Fact]
+    public void AN_EMPTY_GATE_NAME_FAILS_THE_LOAD()
+    {
+        Write("blank", """{ "gates": [""] }""");
+
+        var ex = Assert.Throws<GattoConfigException>(() => RoleFile.Load(_rolesDir, "blank"));
+
+        Assert.Equal("role 'blank' has \"\" in \"gates\" (known: citations)", ex.Message);
+    }
+
+    //a known name beside an unknown one still fails, and the message names the unknown one
+    [Fact]
+    public void ONE_UNKNOWN_GATE_BESIDE_A_KNOWN_ONE_FAILS_THE_LOAD()
+    {
+        Write("mixed", """{ "gates": ["citations", "grounding"] }""");
+
+        var ex = Assert.Throws<GattoConfigException>(() => RoleFile.Load(_rolesDir, "mixed"));
+
+        Assert.Contains("\"grounding\"", ex.Message);
+        Assert.DoesNotContain("\"citations\"", ex.Message);
+    }
+
+    //sampling belongs to the model, so a role that holds the key, well formed or not, fails the load as any unknown key does
     [Theory]
     [InlineData("""{ "sampling": { "temperature": 0.3, "top_p": 0.9 } }""")]
     [InlineData("""{ "sampling": "hot" }""")]
     [InlineData("""{ "sampling": { "model": "x" } }""")]
-    public void Load_reads_a_role_that_still_holds_sampling_without_it(string json)
+    public void A_ROLE_THAT_HOLDS_SAMPLING_FAILS_THE_LOAD(string json)
     {
         Write("coder", json);
 
-        var role = RoleFile.Load(_rolesDir, "coder");
+        var ex = Assert.Throws<GattoConfigException>(() => RoleFile.Load(_rolesDir, "coder"));
 
-        Assert.Equal("coder", role.Name);
-        Assert.DoesNotContain(typeof(RoleFile).GetProperties(), p => p.Name == "Sampling");
+        Assert.Equal("unknown key in role 'coder': sampling", ex.Message);
     }
 
     [Fact]

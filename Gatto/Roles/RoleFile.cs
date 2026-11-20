@@ -37,9 +37,12 @@ public sealed record RoleFile(
     public (RgbColor Dark, RgbColor? Light)? ParsedTint() =>
         Tint is { } t ? (Theme.ParseTint(t), TintLight is { } l ? Theme.ParseTint(l) : null) : null;
 
-    //one key for the model, and the endpoint kind decides what it means. sampling belongs to the model now, so a role's sampling key is accepted and never read
+    //one key for the model, and the endpoint kind decides what it means
     private static readonly string[] Keys =
-        { "model", "endpoint", "gates", "raw", "append", "thinking", "sampling", "description", "tools", "turns", "context_files", "avatar", "tint", "tint_light", "first_message", "callable" };
+        { "model", "endpoint", "gates", "raw", "append", "thinking", "description", "tools", "turns", "context_files", "avatar", "tint", "tint_light", "first_message", "callable" };
+
+    //the gate names gatto knows, so a misspelt gate fails the load instead of arming nothing
+    private static readonly string[] KnownGates = { CitationGate.Name };
 
     //the name of the seat with no role, which no file in roles\ can take
     public const string DefaultName = "default";
@@ -98,6 +101,8 @@ public sealed record RoleFile(
             {
                 if (item.ValueKind != JsonValueKind.String)
                     throw new GattoConfigException($"role '{name}' has a non-string entry in \"gates\"");
+                if (!KnownGates.Contains(item.GetString()!, StringComparer.OrdinalIgnoreCase))
+                    throw new GattoConfigException($"role '{name}' has {item.GetRawText()} in \"gates\" (known: {string.Join(", ", KnownGates)})");
                 gates.Add(item.GetString()!);
             }
         }
