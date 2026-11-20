@@ -166,8 +166,8 @@ public sealed class ShippedExtensionsTests : IDisposable
     {
         ShippedExtensions.EnsureWritten(_home);   //the overload the program calls, so the real shipped roles are the ones written
 
-        //raw, reader and researcher are the roles a home receives, and the seat with no role needs no file
-        Assert.Equal(new[] { "raw.json", "reader.json", "researcher.json" }, Directory.GetFiles(RolesDir).Select(Path.GetFileName).Order(StringComparer.Ordinal).ToArray());
+        //raw, reader, researcher and reviewer are the roles a home receives, and the seat with no role needs no file
+        Assert.Equal(new[] { "raw.json", "reader.json", "researcher.json", "reviewer.json" }, Directory.GetFiles(RolesDir).Select(Path.GetFileName).Order(StringComparer.Ordinal).ToArray());
         Assert.True(RoleFile.Load(RolesDir, "raw").Raw);
         var reader = RoleFile.Load(RolesDir, "reader");
         Assert.Equal(["citations"], reader.Gates);

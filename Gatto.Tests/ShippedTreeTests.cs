@@ -4,7 +4,7 @@ using Gatto.Extensions;
 
 namespace Gatto.Tests;
 
-//the seven shipped files are real files under Gatto/Shipped, and these pins hold their exact bytes
+//the eight shipped files are real files under Gatto/Shipped, and these pins hold their exact bytes
 public class ShippedTreeTests
 {
     //the vetted hash folds newlines, so the byte and sha columns are what catch a line-ending change
@@ -32,6 +32,9 @@ public class ShippedTreeTests
             ["roles/researcher.json"] =
                 ("434532ada74e8f4a9b1f7f8bfeed16b533defb94f74642606414d968b8671a50",
                  435, "370219d022359f3bdd12f971f486987cf6c16e0e11772122c3531987d3c97628"),
+            ["roles/reviewer.json"] =
+                ("f113c3b3f6248b3e52f852900928a93cf3d077190d3f5d27970345c6bdc47889",
+                 752, "4a4130a182455e1dd860b180c8b74b907334fe4123d1bbcca5167f1d72430b0c"),
         };
 
     [Fact]
@@ -47,10 +50,10 @@ public class ShippedTreeTests
         finally { Directory.Delete(dir, recursive: true); }
     }
 
-    //raw, reader and researcher are the role files a home receives, the seven gatto once shipped are gone from the tree
+    //raw, reader, researcher and reviewer are the role files a home receives, the seven gatto once shipped are gone from the tree
     [Fact]
-    public void RAW_READER_AND_RESEARCHER_ARE_THE_SHIPPED_ROLES() =>
-        Assert.Equal(["roles/raw.json", "roles/reader.json", "roles/researcher.json"],
+    public void THE_FOUR_SHIPPED_ROLES_ARE_RAW_READER_RESEARCHER_AND_REVIEWER() =>
+        Assert.Equal(["roles/raw.json", "roles/reader.json", "roles/researcher.json", "roles/reviewer.json"],
             ShippedExtensions.Files.Keys.Where(k => k.StartsWith("roles/", StringComparison.Ordinal)).Order(StringComparer.Ordinal).ToArray());
 
     [Fact]

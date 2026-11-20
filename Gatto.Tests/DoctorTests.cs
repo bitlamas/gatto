@@ -616,15 +616,17 @@ public class DoctorTests : IDisposable
         }, TintLines(output));
     }
 
+    //every shipped tint reads at 4.5:1 or more on its ground, so a colour that slips under the line shows here by name
     [Fact]
-    public async Task THE_SHIPPED_ROLE_PRINTS_NO_TINT_LINE()
+    public async Task THE_SHIPPED_ROLES_PRINT_NO_TINT_LINE()
     {
         WriteGreenHome();
-        WriteRole("raw", Gatto.Extensions.ShippedExtensions.Files["roles/raw.json"]);
+        Gatto.Extensions.ShippedExtensions.EnsureWritten(_home);   //the real shipped files, as a first launch writes them
         var output = new StringWriter();
 
         await NewDoctor(HealthyClient()).RunAsync(_home, _cwd, output, CancellationToken.None);
 
+        Assert.Contains("reviewer", Gatto.Roles.RoleFile.ListNames(Path.Combine(_home, "roles")));
         Assert.StartsWith("✓", Line(output, "roles:"));
         Assert.Empty(TintLines(output));
     }
