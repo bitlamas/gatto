@@ -589,6 +589,80 @@ public class ContextBudgetTests
         Assert.Equal(100 + 2 * ContextBudget.ImageTokensEstimate, ContextBudget.Estimate([two]));
     }
 
+    //what one cut of a 1000-char result takes off a count, its text less its stub's, by the growth ratio
+    private static double PerCut(IReadOnlyList<ChatMessage> cut, int at, double growth) => (1000 - cut[at].Content!.Length) / 4.0 * growth;
+
+    //the server's count under the 90% line decides, where the estimate by the ratio would cut
+    [Fact]
+    public void A_COUNT_UNDER_THE_LINE_CUTS_NOTHING_WHERE_THE_RATIO_WOULD()
+    {
+        var msgs = Rounds(40);   //about 10000 estimated, twice that by a ratio of 2 against a window of 20000
+
+        var (byRatio, cutByRatio, _, _) = ContextBudget.Apply(msgs, 20_000, msgs.Count, ratio: 2.0);
+        var (byCount, cutByCount, stillOver, through) = ContextBudget.Apply(msgs, 20_000, msgs.Count, ratio: 2.0, countTokens: 15_000);
+
+        Assert.True(cutByRatio > 0);
+        Assert.Equal((0, 0, false), (cutByCount, through, stillOver));
+        Assert.Same(msgs, byCount);
+    }
+
+    //a first cut starts on the count where the estimate by the ratio stays under the line, and goes down to 60% of the count less what it saved
+    [Fact]
+    public void A_COUNT_OVER_THE_LINE_STARTS_A_FIRST_CUT_DOWN_TO_THE_LOWER_LINE()
+    {
+        var msgs = Rounds(40);   //about 10000 estimated, half of a window of 20000
+
+        var (result, elided, stillOver, _) = ContextBudget.Apply(msgs, 20_000, msgs.Count, countTokens: 18_500);
+
+        Assert.Equal((int)Math.Ceiling((18_500 - 12_000) / PerCut(result, 2, 1.0)), elided);
+        Assert.False(stillOver);
+    }
+
+    //the still-over flag reads the count on the early return and after the cut, and the newest rounds stay whole
+    [Fact]
+    public void A_COUNT_OVER_THE_WINDOW_IS_STILL_OVER_AND_THE_NEWEST_ROUNDS_STAY_WHOLE()
+    {
+        var msgs = Rounds(40);
+        var protect = msgs.Count - 6;
+
+        var (_, none, overUncut, _) = ContextBudget.Apply(msgs, 20_000, protect, extend: false, countTokens: 25_000);
+        var (result, elided, overCut, _) = ContextBudget.Apply(msgs, 20_000, protect, countTokens: 100_000);
+
+        Assert.Equal((0, true), (none, overUncut));
+        Assert.Equal(37, elided);
+        Assert.True(overCut);
+        Assert.All(result.Skip(protect), m => Assert.DoesNotContain("[elided:", m.Content ?? "", StringComparison.Ordinal));
+    }
+
+    //the results below the frontier were stubs in the request the server counted, so cutting them again takes nothing off the count
+    [Theory]
+    [InlineData(27_100, true)]
+    [InlineData(26_900, false)]
+    public void THE_RECUT_BELOW_THE_FRONTIER_SAVES_NOTHING_FROM_THE_COUNT(int count, bool extends)
+    {
+        var msgs = Rounds(80);   //tools at 2, 4 and on, so a frontier of 41 holds twenty of them
+
+        var (result, elided, _, _) = ContextBudget.Apply(msgs, 30_000, msgs.Count, ratio: 2.0, elidedThrough: 41, countTokens: count);
+
+        var more = extends ? (int)Math.Ceiling((count - 18_000) / PerCut(result, 42, 1.0)) : 0;
+        Assert.Equal(20 + more, elided);
+    }
+
+    //a tool's picture record saves its pictures by the constant, never by the growth ratio, less the line it grows by
+    [Fact]
+    public void A_CUT_PICTURE_SAVES_ITS_CONSTANT_LESS_ITS_LONGER_LINE()
+    {
+        var msgs = Rounds(20);
+        msgs.Insert(1, Read("a.png"));
+
+        var (result, elided, _, _) = ContextBudget.Apply(msgs, 10_000, msgs.Count, countTokens: 9_000, growthRatio: 3.0);
+
+        var tail = result[1].Content!.Length - msgs[1].Content!.Length;
+        var picture = ContextBudget.Saving(msgs[1], result[1], 3.0);
+        Assert.Equal(ContextBudget.ImageTokensEstimate - tail / 4.0 * 3.0, picture);
+        Assert.Equal(1 + (int)Math.Ceiling((9_000 - picture - 6_000) / PerCut(result, 3, 3.0)), elided);
+    }
+
     //a typed picture is carried anywhere, a tool's only at or past the frontier
     [Fact]
     public void THE_CARRIED_SHAS_ARE_TYPED_ONES_ANYWHERE_AND_TOOL_ONES_AT_OR_PAST_THE_FRONTIER()

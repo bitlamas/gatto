@@ -14,6 +14,9 @@ public sealed class ContextUsageState
     //every elidable tool result before this index went out trimmed, and the next request trims them again even if the ratio fell
     public int ElidedThrough { get; private set; }
 
+    //the frontier the last reading was taken at. a request that cut and gave no reading leaves it behind, and its count would hold the cut results whole
+    public int? ReadingFrontier { get; private set; }
+
     //what the conversation adds between two requests, read from the growth of both counts, so the fixed head's density never scales a tool result. no floor at 1, prose runs lighter than the estimate
     public double GrowthRatio { get; private set; } = 1.0;
 
@@ -35,6 +38,7 @@ public sealed class ContextUsageState
             GrowthRatio = Math.Clamp((double)(promptTokens - previousPrompt) / (estimateAtRequest - previousEstimate), MinGrowthRatio, MaxGrowthRatio);
         LastPromptTokens = promptTokens;
         LastMessageCount = messageCount;
+        ReadingFrontier = ElidedThrough;
         lastEstimate = estimateAtRequest;
         Ratio = estimateAtRequest > 0 ? Math.Max(1.0, (double)promptTokens / estimateAtRequest) : 1.0;
     }
@@ -64,6 +68,7 @@ public sealed class ContextUsageState
     {
         LastPromptTokens = null;
         LastMessageCount = null;
+        ReadingFrontier = null;
         lastEstimate = null;
         Ratio = 1.0;
         GrowthRatio = 1.0;

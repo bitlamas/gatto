@@ -1336,6 +1336,164 @@ public class AgentLoopTests
             Assert.Equal(Wire(last[i]), Wire(first[i]));
     }
 
+    //a reply cut short keeps the cut its request went out with, so a resume after it re-cuts what the server last read
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public async Task A_session_whose_last_reply_was_cut_short_resumes_at_its_frontier(bool cancel)
+    {
+        var convo = Grown(13);
+        var live = ReadAt(convo, 1.3);
+        using var stop = new CancellationTokenSource();
+        var client = new FakeChatClient();
+        if (cancel)
+        {
+            client.EnqueueTurn(new StreamEvent.TextDelta("half"), new StreamEvent.TextDelta(" more"));
+            client.HoldAfterFirstEvent = _ => { stop.Cancel(); return Task.CompletedTask; };
+        }
+        else client.EnqueueTurn(new StreamEvent.TextDelta("half"), new StreamEvent.Truncated());
+
+        var result = await NewLoop(client, usageState: live, budgetTokens: 1_000).RunTurnAsync(convo, "next", new RecordingObserver(), stop.Token);
+        Assert.Equal(cancel ? TurnOutcome.Cancelled : TurnOutcome.Truncated, result.Outcome);
+        Assert.True(live.ElidedThrough > 0, "the request cut nothing, so the test proves nothing");
+
+        var json = Gatto.Core.Session.SessionStore.ChatJson(convo.Messages[^1]);
+        var record = Gatto.Core.Session.SessionStore.ParseChatElement(JsonDocument.Parse(json).RootElement);
+        Assert.Equal("half" + TurnLines.TruncatedMark, record.Content);
+        var resumed = new ContextUsageState();
+        resumed.SeedFrom([.. convo.Messages.SkipLast(1), record]);
+
+        Assert.Equal(live.ElidedThrough, resumed.ElidedThrough);
+    }
+
+    //an 8,000-char result the server reads at about twice the estimate, so the count and the estimate by the ratio decide apart
+    private static Conversation TwiceCounted()
+    {
+        var convo = new Conversation("sys");
+        convo.Load([new ChatMessage("user", "old"), new ChatMessage("assistant", null, [new ToolCall("c1", "shell", "{}")]),
+            new ChatMessage("tool", new string('a', 8000), ToolCallId: "c1"), new ChatMessage("assistant", "ok")]);
+        return convo;
+    }
+
+    private static AgentLoop ReadingLoop(FakeChatClient client, ToolRegistry tools, ContextUsageState usage, int budget) =>
+        new(client, tools, new HookBus(), new TestToolContext(Path.GetTempPath()), "m", budgetTokens: budget, usageState: usage);
+
+    //the count decides only on the head its reading was taken with and with no picture since, else the request falls back to the estimate by the ratio
+    [Theory]
+    [InlineData("same", 6_000, false)]
+    [InlineData("system", 6_000, true)]
+    [InlineData("tools", 6_000, true)]
+    [InlineData("picture", 7_500, true)]
+    public async Task THE_COUNT_DECIDES_ONLY_ON_THE_HEAD_ITS_READING_WAS_TAKEN_WITH(string change, int budget, bool cut)
+    {
+        var convo = TwiceCounted();
+        var tools = new ToolRegistry();
+        tools.Register(new PromptingTool("plain", prompted: false));
+        var client = new FakeChatClient();
+        client.EnqueueTurn(new StreamEvent.TextDelta("done"), new StreamEvent.Finished("stop", new Usage(4_000, 10)));   //about 1.97 for each estimated token
+        client.EnqueueTurn(new StreamEvent.TextDelta("again"), new StreamEvent.Finished("stop", null));
+        var loop = ReadingLoop(client, tools, new ContextUsageState(), budget);
+
+        await loop.RunTurnAsync(convo, "go", new RecordingObserver(), CancellationToken.None);
+        if (change == "system") convo.ReplaceSystem("sys two", null);
+        if (change == "tools") tools.Register(new PromptingTool("extra", prompted: false));
+        if (change == "picture") await loop.RunTurnAsync(convo, "look", new RecordingObserver(), CancellationToken.None, images: [new ImageRef(@"C:\proj\a.png", 70, "a.png", "image/png")]);
+        else await loop.RunTurnAsync(convo, new string('q', 4_000), new RecordingObserver(), CancellationToken.None);
+
+        Assert.Equal(cut, client.Requests[1].Messages[3].Content!.Contains("[elided: shell result, 8000 chars", StringComparison.Ordinal));
+    }
+
+    //a request that cut and gave no reading leaves the reading at the old frontier. the next request falls back, since that count holds the cut results whole
+    [Fact]
+    public async Task A_CUT_WITH_NO_READING_IS_FOLLOWED_BY_A_FALLBACK_AND_NO_SECOND_CUT()
+    {
+        var convo = new Conversation("sys");
+        List<ChatMessage> old = [new("user", "old")];
+        for (var i = 0; i < 6; i++)
+        {
+            old.Add(new ChatMessage("assistant", null, [new ToolCall($"c{i}", "shell", "{}")]));
+            old.Add(new ChatMessage("tool", new string('a', 1000), ToolCallId: $"c{i}"));
+        }
+        old.Add(new ChatMessage("assistant", "ok"));
+        convo.Load(old);   //tools at 3, 5 and on to 13
+        var tools = new ToolRegistry();
+        tools.Register(new PromptingTool("plain", prompted: false));
+        var usage = new ContextUsageState();
+        var client = new FakeChatClient();
+        client.EnqueueTurn(new StreamEvent.TextDelta("done"), new StreamEvent.Finished("stop", new Usage(3_000, 10)));
+        client.EnqueueTurn(new StreamEvent.TextDelta("half"), new StreamEvent.TextDelta(" more"));
+        client.EnqueueTurn(new StreamEvent.TextDelta("again"), new StreamEvent.Finished("stop", null));
+        var loop = ReadingLoop(client, tools, usage, 3_600);
+        using var stop = new CancellationTokenSource();
+
+        await loop.RunTurnAsync(convo, "go", new RecordingObserver(), CancellationToken.None);
+        client.HoldAfterFirstEvent = _ => { stop.Cancel(); return Task.CompletedTask; };
+        var cancelled = await loop.RunTurnAsync(convo, new string('q', 1_200), new RecordingObserver(), stop.Token);
+        var cutTo = usage.ElidedThrough;
+        await loop.RunTurnAsync(convo, "again", new RecordingObserver(), CancellationToken.None);
+
+        Assert.Equal(TurnOutcome.Cancelled, cancelled.Outcome);
+        Assert.Equal(12, cutTo);   //the count of 3,301 against the 3,240 line cut five results
+        Assert.Equal(12, usage.ElidedThrough);
+        Assert.Equal(new string('a', 1000), client.Requests[2].Messages[13].Content);
+    }
+
+    //a server that reads every request at one fixed ratio of the estimate, so the count is exact and a cut lands under the lower line
+    private sealed class RatioServer(double ratio, int rounds, string tool) : IChatClient
+    {
+        public List<ChatRequest> Requests { get; } = [];
+        public List<int> Prompts { get; } = [];
+
+        public async IAsyncEnumerable<StreamEvent> StreamAsync(ChatRequest request,
+            [System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken ct = default)
+        {
+            Requests.Add(request);
+            var prompt = (int)((ContextBudget.Estimate(request.Messages) + ContextBudget.EstimateTools(request.Tools ?? [])) * ratio);
+            Prompts.Add(prompt);
+            if (Requests.Count <= rounds) yield return new StreamEvent.ToolCallReady(new ToolCall($"p{Requests.Count}", tool, "{}"));
+            else yield return new StreamEvent.TextDelta("done");
+            yield return new StreamEvent.Finished(Requests.Count <= rounds ? "tool_calls" : "stop", new Usage(prompt, 10));
+            await Task.CompletedTask;
+        }
+    }
+
+    //on a server whose count is the estimate times one ratio, a cut goes to 60% and the next waits for 30% of the window to grow. another server makes the savings an estimate
+    [Fact]
+    public async Task ON_A_FIXED_RATIO_SERVER_THE_FRONTIER_MOVES_ONCE_FOR_EACH_30_PERCENT()
+    {
+        var server = new RatioServer(1.5, rounds: 90, tool: "pad");
+        var tools = new ToolRegistry();
+        tools.Register(new PromptingTool("pad", prompted: false, text: new string('p', 2400)));   //600 estimated, 900 counted, each round
+        var loop = new AgentLoop(server, tools, new HookBus(), new TestToolContext(Path.GetTempPath()), "m", budgetTokens: 30_000);
+
+        await loop.RunTurnAsync(new Conversation("sys"), "go", new RecordingObserver(), CancellationToken.None);
+
+        var frontiers = server.Requests.Select(r => r.Messages.ToList().FindLastIndex(m => m.Content?.Contains("[elided:", StringComparison.Ordinal) == true)).ToList();
+        var moves = Enumerable.Range(1, frontiers.Count - 1).Where(i => frontiers[i] != frontiers[i - 1]).ToList();
+        Assert.True(moves.Count >= 2, $"the frontier moved {moves.Count} times, too few to measure a gap");
+        Assert.All(moves.Zip(moves.Skip(1)), gap => Assert.True(gap.Second - gap.First >= 9, $"the frontier moved at requests {gap.First} and {gap.Second}"));
+        Assert.All(moves, at => Assert.InRange(server.Prompts[at], 17_000, 18_000));   //each cut lands under the 18,000 line by less than one result's 757, so the savings went by the learned 1.5
+    }
+
+    //the count is the footer's figure when the request list is the conversation, and it is withheld when the reading does not describe the request
+    [Fact]
+    public void THE_COUNT_IS_THE_FOOTERS_FIGURE_AND_IS_WITHHELD_WHEN_THE_READING_DOES_NOT_DESCRIBE_THE_REQUEST()
+    {
+        List<ChatMessage> messages = [new("system", "sys"), new("user", "go")];
+        var usage = new ContextUsageState();
+        usage.Record(1_000, 900, messages.Count);
+        messages.Add(new ChatMessage("assistant", new string('r', 4_000)));
+
+        Assert.Equal(ContextBudget.UsedTokens(messages, usage), AgentLoop.CountFor(messages, usage, 25, 25, "sys"));
+        Assert.Equal(2_000, AgentLoop.CountFor(messages, usage, 25, 25, "sys"));
+        Assert.Null(AgentLoop.CountFor(messages, usage, 25, 26, "sys"));
+        Assert.Null(AgentLoop.CountFor(messages, usage, 25, 25, "another"));
+        Assert.Null(AgentLoop.CountFor(messages, new ContextUsageState(), 25, 25, "sys"));
+        Assert.Null(AgentLoop.CountFor([.. messages, new ChatMessage("user", "look", Images: [new ImageRef(@"C:\proj\a.png", 70, "a.png", "image/png")])], usage, 25, 25, "sys"));
+        usage.NoteElided(1);
+        Assert.Null(AgentLoop.CountFor(messages, usage, 25, 25, "sys"));
+    }
+
     private sealed class WideTool : ITool
     {
         public string Name => "wide";
@@ -2082,7 +2240,7 @@ public class AgentLoopTests
         client.EnqueueTurn(RowRound(null, null, "big"));
         client.EnqueueTurn(RowRound(null, null, "plain"));
         client.EnqueueTurn(RowRound(null, null, "plain"));
-        client.EnqueueTurn(RowRound(new Usage(1000, 10), CachedTimings(900), "run_agent"));   //below the estimate of a request holding the 5,000-char result, so the ratio stays 1.0
+        client.EnqueueTurn(RowRound(new Usage(1100, 10), CachedTimings(900), "run_agent"));   //below the 1329 estimated, so the ratio stays 1.0, and with the 500 the next round adds the count of 1600 crosses the 1530 line of the small window
         client.EnqueueTurn(RowRound(null, CachedTimings(0)));
 
         await loop.RunTurnAsync(new Conversation(null), "go", obs, default);
@@ -2091,7 +2249,7 @@ public class AgentLoopTests
         Assert.Equal(1.0, usage.Ratio);
         Assert.Contains(client.Requests[3].Messages, m => m.Role == "tool" && m.Content == big);
         Assert.Equal(written, client.Requests[4].Messages.Any(m => m.Role == "tool" && m.Content == big));
-        string[] expected = written ? ["re-read 1,000 tokens after run_agent"] : [];
+        string[] expected = written ? ["re-read 1,100 tokens after run_agent"] : [];
         Assert.Equal(expected, RereadRows(obs));
     }
 

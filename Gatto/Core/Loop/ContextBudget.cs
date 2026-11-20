@@ -107,15 +107,16 @@ public static class ContextBudget
         return working ?? messages;
     }
 
-    //elides the oldest results past 90% by the server's ratio down to 60%, never from protectFromIndex, always up to elidedThrough, and only that when extend is false
+    //elides the oldest results past 90% down to 60%, never from protectFromIndex, always up to elidedThrough, and only that when extend is false. a count given decides in place of the ratio
     public static (IReadOnlyList<ChatMessage> Messages, int ElidedCount, bool StillOver, int ElidedThrough) Apply(
         IReadOnlyList<ChatMessage> messages, int? budgetTokens, int protectFromIndex, double ratio = 1.0, int elidedThrough = 0,
-        int overheadTokens = 0, bool extend = true)
+        int overheadTokens = 0, bool extend = true, int? countTokens = null, double growthRatio = 1.0)
     {
         if (budgetTokens is not int budget || budget <= 0)
             return (messages, 0, false, elidedThrough);
 
-        double Counted(IReadOnlyList<ChatMessage> m) => Counts(m, overheadTokens, ratio);
+        var saved = 0.0;   //what the cuts of this call took off the count, the re-cuts below the frontier never add to it
+        double Counted(IReadOnlyList<ChatMessage> m) => countTokens is int count ? count - saved : Counts(m, overheadTokens, ratio);
         var elideAt = budget * ElideAtFraction;
         if (elidedThrough <= 0 && (!extend || Counted(messages) < elideAt))
             return (messages, 0, Counted(messages) > budget, 0);   //nothing trimmed before and nothing to start, so the request goes whole
@@ -157,11 +158,25 @@ public static class ContextBudget
         if (extend && Counted(working) >= elideAt)
         {
             var target = budget * ElideDownToFraction;
-            for (var i = elidedThrough; i < limit && Counted(working) >= target; i++) CutAt(i);
+            for (var i = elidedThrough; i < limit && Counted(working) >= target; i++)
+            {
+                var before = working[i];
+                CutAt(i);
+                if (countTokens is not null) saved += Saving(before, working[i], growthRatio);
+            }
         }
 
         var stillOver = Counted(working) > budget;   //compared with the full budget, above the 90% elision threshold
         return (elided == 0 ? messages : working, elided, stillOver, through);
+    }
+
+    //what one cut takes off the server's count: its text by the growth ratio, its pictures by the constant. a tool's picture record grows its line, so the text part can be negative
+    internal static double Saving(ChatMessage before, ChatMessage after, double growthRatio)
+    {
+        if (ReferenceEquals(before, after)) return 0;
+        var chars = (before.Content?.Length ?? 0) - (after.Content?.Length ?? 0);
+        var images = (before.Images?.Count ?? 0) - (after.Images?.Count ?? 0);
+        return (double)chars / CharsPerToken * growthRatio + images * ImageTokensEstimate;
     }
 
     //what a request of these messages costs the server, the fixed tool definitions included, in the server's tokens

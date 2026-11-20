@@ -160,6 +160,23 @@ public sealed class AgentLoop(
     //the tool definitions' estimate at the last reading, so a pair of readings that spans a /role swap teaches no growth
     private int? _lastReadOverhead;
 
+    //the system text at the last reading, since a /role with the same tools and another head keeps the usage and the count would carry the old head
+    private string? _lastReadSystem;
+
+    //the system record's text, and null for a conversation whose first record is not one
+    private static string? SystemText(IReadOnlyList<ChatMessage> messages) =>
+        messages.Count > 0 && messages[0].Role == "system" ? messages[0].Content : null;
+
+    //the server's count of this request before any new cut, given when the last reading describes it: this frontier, this head, no picture since. a picture is priced by a ratio taught on text
+    internal static int? CountFor(IReadOnlyList<ChatMessage> uncut, ContextUsageState? usage, int overhead, int? readOverhead, string? readSystem) =>
+        usage is { LastPromptTokens: not null, LastMessageCount: int from } u
+        && u.ReadingFrontier == u.ElidedThrough
+        && overhead == readOverhead
+        && SystemText(uncut) == readSystem
+        && !uncut.Skip(from).Any(m => m.Images is { Count: > 0 })
+            ? ContextBudget.UsedTokens(uncut, u)
+            : null;
+
     //a pair of readings teaches the growth ratio only from conversation text: the same frontier, the same tool definitions, and no picture in what was added
     internal static bool ComparableReading(IReadOnlyList<ChatMessage> request, int? previousCount, bool sameFrontier, int overhead, int? previousOverhead) =>
         sameFrontier && overhead == previousOverhead
@@ -254,11 +271,13 @@ public sealed class AgentLoop(
             (IReadOnlyList<ChatMessage> Messages, int ElidedCount, bool StillOver, int ElidedThrough) ShapeRequest()
             {
                 using var span = _trace.Open(Trace.Shape, turnSpan);
+                var uncut = Uncut();
                 var shapedNow = ContextBudget.Apply(
-                    Uncut(),
+                    uncut,
                     budgetTokens,
                     ContextBudget.ElideBefore(roundStarts, turnUserIndex),
-                    usageState?.Ratio ?? 1.0, usageState?.ElidedThrough ?? 0, overhead, extend: !armed);
+                    usageState?.Ratio ?? 1.0, usageState?.ElidedThrough ?? 0, overhead, extend: !armed,
+                    countTokens: CountFor(uncut, usageState, overhead, _lastReadOverhead, _lastReadSystem), growthRatio: usageState?.GrowthRatio ?? 1.0);
                 span.Set("msgs", shapedNow.Messages.Count);
                 span.Set("elided", shapedNow.ElidedCount);
                 span.Set("elided_through", shapedNow.ElidedThrough);
@@ -391,6 +410,7 @@ public sealed class AgentLoop(
                                 usageState?.Record(f.Usage.PromptTokens, estimateAtRequest, requestMessages.Count,
                                     comparable: ComparableReading(requestMessages, previousCount, elidedThrough == previousFrontier, overhead, previousOverhead));
                                 _lastReadOverhead = overhead;
+                                _lastReadSystem = SystemText(requestMessages);
                             }
                             if (f.FinishReason == "length")
                                 Warn("response truncated by token limit (finish_reason=length)");
@@ -456,10 +476,13 @@ public sealed class AgentLoop(
                 _stripWarned = true;
             }
 
+            //the reply records how its request was cut, and the ratio the next one will use, only when something was cut. a reply cut short records it too, so a resume re-cuts what the server last read
+            var shape = usageState is { ElidedThrough: > 0 } us ? new ShapeMark(us.ElidedThrough, us.Ratio) : null;
+
             if (truncated)
             {
                 //mark the partial output and drop the in-flight calls, a Ctrl+C says cancelled rather than truncated
-                convo.AddAssistant(cleanText + TurnLines.TruncatedMark, reasoningContent: cleanReasoning, stripped: strippedCount);
+                convo.AddAssistant(cleanText + TurnLines.TruncatedMark, reasoningContent: cleanReasoning, stripped: strippedCount, shape: shape);
                 var what = cancelled ? "turn cancelled" : "turn truncated";
                 Warn(TurnLines.Discarded(what, begun.Count));
                 return new TurnResult(
@@ -475,8 +498,6 @@ public sealed class AgentLoop(
                 return new TurnResult(TurnOutcome.Completed, finishReason, null, round, lastWarning);
             }
 
-            //the reply records how its request was cut, and the ratio the next one will use, only when something was cut
-            var shape = usageState is { ElidedThrough: > 0 } us ? new ShapeMark(us.ElidedThrough, us.Ratio) : null;
             convo.AddAssistant(cleanText, calls.Count > 0 ? calls : null, turnUsage, turnTimings, cleanReasoning, strippedCount, shape, turnServed);
 
             if (calls.Count == 0)

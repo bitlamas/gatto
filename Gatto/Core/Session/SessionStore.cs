@@ -237,7 +237,7 @@ public sealed class SessionStore(string homePath, string cwd)
                 w.WritePropertyName("timings");
                 w.WriteRawValue(m.Timings);
             }
-            //written only when the request was cut, so an uncut record stays byte-identical, and the ratio in full so a resume cuts the same results
+            //written only when the request was cut, so an uncut record stays byte-identical. the frontier makes a resume cut the same results, and the ratio decides whether its first request cuts further
             if (m.Shape is { } shape)
             {
                 w.WriteNumber("elided_through", shape.ElidedThrough);
