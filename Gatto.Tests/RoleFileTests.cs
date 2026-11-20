@@ -562,6 +562,61 @@ public class RoleFileTests : IDisposable
         Assert.DoesNotContain("\"citations\"", ex.Message);
     }
 
+    [Theory]
+    [InlineData("research")]
+    [InlineData(@"research\2026")]
+    [InlineData("research/2026")]
+    [InlineData(".")]
+    [InlineData("a..b")]
+    public void A_WRITE_DIR_INSIDE_THE_WORKING_FOLDER_LOADS_AS_WRITTEN(string value)
+    {
+        Write("notes", $"{{ \"write_dir\": {JsonSerializer.Serialize(value)} }}");
+
+        Assert.Equal(value, RoleFile.Load(_rolesDir, "notes").WriteDir);
+    }
+
+    [Fact]
+    public void A_ROLE_WITH_NO_WRITE_DIR_HAS_NO_LIMIT()
+    {
+        Write("plain", "{}");
+
+        Assert.Null(RoleFile.Load(_rolesDir, "plain").WriteDir);
+        Assert.Null(RoleFile.Default.WriteDir);
+    }
+
+    [Theory]
+    [InlineData("")]
+    [InlineData("  ")]
+    [InlineData(@"..\x")]
+    [InlineData(@"a\..\b")]
+    [InlineData("a/../b")]
+    [InlineData(@"C:\x")]
+    [InlineData(@"\x")]
+    [InlineData("C:x")]
+    [InlineData(@"\\server\share")]
+    [InlineData(@"~\x")]
+    [InlineData("a:b")]
+    [InlineData("a*b")]
+    public void A_WRITE_DIR_THAT_LEAVES_THE_WORKING_FOLDER_FAILS_THE_LOAD(string value)
+    {
+        var raw = JsonSerializer.Serialize(value);
+        Write("notes", $"{{ \"write_dir\": {raw} }}");
+
+        var ex = Assert.Throws<GattoConfigException>(() => RoleFile.Load(_rolesDir, "notes"));
+
+        Assert.Equal($"role 'notes' has a \"write_dir\" of {raw} (must name a folder inside the working folder)", ex.Message);
+    }
+
+    [Fact]
+    public void A_WRITE_DIR_THAT_IS_NOT_A_STRING_FAILS_THE_LOAD_WITH_ITS_RAW_VALUE()
+    {
+        Write("notes", """{ "write_dir": 5 }""");
+
+        var ex = Assert.Throws<GattoConfigException>(() => RoleFile.Load(_rolesDir, "notes"));
+
+        Assert.Equal("role 'notes' has a \"write_dir\" of 5 (must name a folder inside the working folder)", ex.Message);
+    }
+
     //sampling belongs to the model, so a role that holds the key, well formed or not, fails the load as any unknown key does
     [Theory]
     [InlineData("""{ "sampling": { "temperature": 0.3, "top_p": 0.9 } }""")]

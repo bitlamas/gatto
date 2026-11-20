@@ -88,7 +88,7 @@ public sealed class RunAgentToolTests : IDisposable
         IReadOnlyDictionary<string, Func<ITool>>? catalog = null,
         Action<ToolRegistry>? capture = null)
     {
-        var build = SubagentWiring.Build(gate, catalog);
+        var build = SubagentWiring.Build(gate, Path.GetTempPath(), catalog);
         if (capture is null) return build;
         return role =>
         {
@@ -517,7 +517,7 @@ public sealed class RunAgentToolTests : IDisposable
     [Fact]
     public void TOOLS_UNSET_ARMS_THE_SIX_AND_AN_EMPTY_LIST_ARMS_NONE()
     {
-        var build = SubagentWiring.Build(FreshGate(null));
+        var build = SubagentWiring.Build(FreshGate(null), Path.GetTempPath());
 
         var (unset, _) = build(Role() with { Tools = null });
         var (none, _) = build(Role(tools: Array.Empty<string>()));
@@ -533,7 +533,7 @@ public sealed class RunAgentToolTests : IDisposable
     public void A_CHILD_NEVER_HOLDS_A_TOOL_THE_CALLING_SEAT_LACKS()
     {
         IReadOnlyList<string>? seat = ["read_file", "grep", "run_agent"];
-        var build = SubagentWiring.Build(FreshGate(null), bound: () => new SeatBound(seat));
+        var build = SubagentWiring.Build(FreshGate(null), Path.GetTempPath(), bound: () => new SeatBound(seat));
 
         var (listed, _) = build(Role(tools: ["read_file", "write_file", "grep", "run_agent"]));
         var (unset, _) = build(Role() with { Tools = null });
@@ -545,6 +545,56 @@ public sealed class RunAgentToolTests : IDisposable
         Assert.Equal(new[] { "read_file", "write_file" }, free.Specs().Select(s => s.Name));
         Assert.Null(listed.Get("write_file"));
         Assert.Null(free.Get("run_agent"));
+    }
+
+    private static HookPayload WriteTo(string path) =>
+        new(Call: new ToolCall("c1", "write_file", JsonSerializer.Serialize(new { path, content = "x" })));
+
+    //the gate says yes to everything here, so a throw is the limit's and not the gate's
+    private async Task<string?> ChildRefusal(SeatBound? seat, RoleFile called, string path)
+    {
+        var build = SubagentWiring.Build(FreshGate(null, autoYes: true), _dir, bound: seat is null ? null : () => seat);
+        var (_, hooks) = build(called);
+        try { await hooks.EmitToolCallAsync(WriteTo(path)); return null; }
+        catch (InvalidOperationException ex) { return ex.Message; }
+    }
+
+    [Fact]
+    public async Task A_CHILD_OF_A_ROLE_WITH_WRITE_DIR_IS_HELD_TO_THAT_FOLDER()
+    {
+        var seat = new SeatBound(null, "research");
+
+        Assert.Equal("this role writes only under research", await ChildRefusal(seat, Role(), "a.md"));
+        Assert.Null(await ChildRefusal(seat, Role(), @"research\a.md"));
+    }
+
+    [Fact]
+    public async Task A_CALLED_ROLE_IS_HELD_TO_ITS_OWN_WRITE_DIR_FROM_A_ROLE_WITH_NONE()
+    {
+        var called = Role() with { WriteDir = "own" };
+
+        Assert.Equal("this role writes only under own", await ChildRefusal(new SeatBound(null), called, "a.md"));
+        Assert.Equal("this role writes only under own", await ChildRefusal(null, called, "a.md"));
+        Assert.Null(await ChildRefusal(null, called, @"own\a.md"));
+    }
+
+    [Fact]
+    public async Task TWO_FOLDERS_THAT_DO_NOT_NEST_REFUSE_A_CHILDS_EVERY_WRITE_NAMING_BOTH()
+    {
+        var seat = new SeatBound(null, "a");
+        var called = Role() with { WriteDir = "b" };
+
+        Assert.Equal("a write must be inside both a and b", await ChildRefusal(seat, called, @"a\x.md"));
+        Assert.Equal("a write must be inside both a and b", await ChildRefusal(seat, called, @"b\x.md"));
+    }
+
+    [Fact]
+    public async Task THE_SAME_FOLDER_FROM_BOTH_SIDES_IS_ONE_LIMIT()
+    {
+        var seat = new SeatBound(null, "research");
+        var called = Role() with { WriteDir = "research" };
+
+        Assert.Equal("this role writes only under research", await ChildRefusal(seat, called, "a.md"));
     }
 
     [Fact]

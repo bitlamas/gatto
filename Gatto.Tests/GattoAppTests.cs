@@ -1293,6 +1293,121 @@ public class GattoAppTests : IDisposable
         Assert.Contains("[citation gate] FABRICATED", toolMsgs[1]);
     }
 
+    private List<string> ToolResults(FakeOpenAiServer server) =>
+        server.LastRequestBody!.Value.GetProperty("messages").EnumerateArray()
+            .Where(m => m.GetProperty("role").GetString() == "tool")
+            .Select(m => m.GetProperty("content").GetString()!).ToList();
+
+    private async Task<(FakeOpenAiServer Server, string Stdout)> WriteDirSession(string script, string[] args, params string[] paths)
+    {
+        var server = new FakeOpenAiServer();
+        UseHome();
+        WriteConfig($$$"""{"endpoints":{"local":{"base_url":"{{{server.BaseUrl}}}"}},"default_endpoint":"local"}""");
+        WriteModel("test-model", port: 1235);
+        UseDefaultModel("test-model");
+        WriteRole("notes", "{\"model\":\"test-model\",\"write_dir\":\"research\"}");
+        for (var i = 0; i < paths.Length; i++)
+        {
+            server.Enqueue(ToolCallThenStop($"c{i}", "write_file", JsonSerializer.Serialize(new { path = paths[i], content = "x" })));
+            server.Enqueue(Completion("done"));
+        }
+        Console.SetIn(new StringReader(script));
+        var stdout = new StringWriter();
+        Console.SetOut(stdout);
+        Assert.Equal(0, await GattoApp.RunAsync(args));
+        return (server, stdout.ToString());
+    }
+
+    //the limit runs ahead of the gate, so a write outside the folder is refused with no prompt and nothing written
+    [Fact]
+    public async Task A_WRITE_OUTSIDE_THE_ROLES_FOLDER_IS_BLOCKED_BEFORE_ANYONE_IS_ASKED()
+    {
+        var (server, stdout) = await WriteDirSession("write it\n/quit\n", ["notes"], "a.txt");
+        await using var owned = server;
+
+        Assert.Equal(new[] { "blocked: this role writes only under research" }, ToolResults(server));
+        Assert.False(File.Exists(Path.Combine(_cwd, "a.txt")));
+        Assert.DoesNotContain("Do you want to proceed", stdout, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task A_WRITE_INSIDE_THE_ROLES_FOLDER_RUNS_AND_MAKES_THE_FOLDER()
+    {
+        var (server, _) = await WriteDirSession("write it\n/quit\n", ["notes", "--yes"], @"research\a.txt");
+        await using var owned = server;
+
+        Assert.StartsWith("wrote", Assert.Single(ToolResults(server)), StringComparison.Ordinal);
+        Assert.Equal("x", File.ReadAllText(Path.Combine(_cwd, "research", "a.txt")));
+    }
+
+    //the yes flag passes the gate, and the limit is not the gate. a /role to a role without the key lifts it at the next call
+    [Fact]
+    public async Task THE_LIMIT_HOLDS_UNDER_YES_AND_FOLLOWS_A_ROLE_SWITCH()
+    {
+        var (server, _) = await WriteDirSession("write one\n/role default\nwrite two\n/quit\n", ["notes", "--yes"], "a.txt", "a.txt");
+        await using var owned = server;
+
+        var results = ToolResults(server);
+        Assert.Equal("blocked: this role writes only under research", results[0]);
+        Assert.StartsWith("wrote", results[1], StringComparison.Ordinal);
+        Assert.True(File.Exists(Path.Combine(_cwd, "a.txt")));
+    }
+
+    [Theory]
+    [InlineData("{\"model\":\"test-model\",\"write_dir\":\"research\"}", true)]
+    [InlineData("{\"model\":\"test-model\",\"write_dir\":\"research\",\"tools\":[\"read_file\",\"shell\"]}", true)]
+    [InlineData("{\"model\":\"test-model\",\"write_dir\":\"research\",\"tools\":[\"read_file\",\"write_file\"]}", false)]
+    [InlineData("{\"model\":\"test-model\",\"tools\":[\"shell\"]}", false)]
+    public async Task THE_SHELL_ROW_IS_SAID_AT_A_LAUNCH_AND_A_ROLE_SWITCH_WHEN_THE_ROLE_HOLDS_BOTH(string roleJson, bool said)
+    {
+        const string Row = "! role 'seat': shell is not limited by write_dir";
+        var stderr = new StringWriter();
+        Console.SetError(stderr);
+        WriteRole("seat", roleJson);
+
+        await SwitchInThePlainLoop("/quit\n", args: ["seat"]);
+        var launched = stderr.ToString();
+        await SwitchInThePlainLoop("/role seat\n/quit\n");
+        var switched = stderr.ToString()[launched.Length..];
+
+        Assert.Equal(said ? 1 : 0, launched.Split('\n').Count(l => l.TrimEnd('\r') == Row));
+        Assert.Equal(said ? 1 : 0, switched.Split('\n').Count(l => l.TrimEnd('\r') == Row));
+    }
+
+    [Fact]
+    public async Task A_ONE_SHOT_SAYS_NO_SHELL_ROW()
+    {
+        var stderr = new StringWriter();
+        Console.SetError(stderr);
+        await using var server = await OneShotWithGeneralist("{\"model\":\"test-model\",\"write_dir\":\"research\"}");
+
+        Assert.DoesNotContain("shell is not limited", stderr.ToString(), StringComparison.Ordinal);
+    }
+
+    //the launch hands the role's folder to the child's wiring, so a subagent's write outside it is refused too
+    [Fact]
+    public async Task A_SUBAGENT_OF_A_ROLE_WITH_WRITE_DIR_IS_HELD_TO_ITS_FOLDER()
+    {
+        await using var server = new FakeOpenAiServer();
+        UseHome();
+        WriteConfig($$$"""{"endpoints":{"local":{"base_url":"{{{server.BaseUrl}}}"}},"default_endpoint":"local"}""");
+        WriteModel("test-model", port: 1235);
+        UseDefaultModel("test-model");
+        WriteRole("notes", "{\"model\":\"test-model\",\"write_dir\":\"research\"}");
+        server.Enqueue(ToolCallThenStop("p1", "run_agent", "{\"role\":\"default\",\"task\":\"write it\"}"));
+        server.Enqueue(ToolCallThenStop("k1", "write_file", "{\"path\":\"a.txt\",\"content\":\"x\"}"));
+        server.Enqueue(Completion("child done"));
+        server.Enqueue(Completion("done"));
+
+        Console.SetIn(new StringReader("go\n/quit\n"));
+        Console.SetOut(new StringWriter());
+        Assert.Equal(0, await GattoApp.RunAsync(new[] { "notes", "--yes" }));
+
+        var childTool = server.RequestBodies[2].GetProperty("messages").EnumerateArray().Single(m => m.GetProperty("role").GetString() == "tool");
+        Assert.Equal("blocked: this role writes only under research", childTool.GetProperty("content").GetString());
+        Assert.False(File.Exists(Path.Combine(_cwd, "a.txt")));
+    }
+
     [Fact]
     public async Task RoleSwitch_LocalModelChange_SameBaseUrl_IsRefused_NamingBothModelsAndRestart()
     {

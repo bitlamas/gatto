@@ -438,7 +438,7 @@ public static class GattoApp
             await ServeAsync();
             if (CommitExtensions() is { } commitExit) return commitExit;
             BuildLoop();
-            if (args.Prompt is null) state.WarnSeatTools();   //run_agent registers inside BuildLoop, so only here is the registry whole
+            if (args.Prompt is null) { state.WarnSeatTools(); state.WarnWriteDirShell(); }   //run_agent registers inside BuildLoop, so only here is the registry whole
             Resume();
             return args.Prompt is { } prompt ? await RunOneShotAsync(prompt) : await RunReplAsync();
         }
@@ -967,6 +967,11 @@ public static class GattoApp
             wildState = new WildState { On = (permissions.Wild || config.Wild) && wildForbiddenBy is null, ForbiddenBy = wildForbiddenBy };
 
             gate = new PermissionGate(permissions, permPrompter, autoYes: args.Yes, wild: wildState, home: home);
+            //ahead of the gate, so a write outside the role's folder is refused before anyone is asked. the role is read at each call, so a /role moves the limit
+            hooks.On(HookEvent.ToolCall, payload =>
+                state.Role?.WriteDir is { } dir && payload.Call is { } call && RoleWriteLimit.Refusal(cwd, [dir], call, RoleWriteLimit.OnDisk) is { } refusal
+                    ? throw new InvalidOperationException(refusal)
+                    : Task.CompletedTask);
             hooks.On(HookEvent.ToolCall, gate.CheckAsync);
             //the wire log is read once here from GATTO_DEBUG_WIRE and never in the request path, so off costs a null field
             var wireLog = WireLog.FromFlag(
@@ -1191,7 +1196,7 @@ public static class GattoApp
             roles: () => state.RoleFiles,
             refuseRole: state.RefuseRole,
             composeChild: state.ComposeChild,
-            subagentWiring: SubagentWiring.Build(gate, diag: warn.Warn, bound: () => new SeatBound(state.Role.Tools)),   //a fresh registry per call over the shared gate, which tags each of its prompts with the role's name
+            subagentWiring: SubagentWiring.Build(gate, cwd, diag: warn.Warn, bound: () => new SeatBound(state.Role.Tools, state.Role.WriteDir)),   //a fresh registry per call over the shared gate, which tags each of its prompts with the role's name
             client: client,
             requestSettings: state.RequestSettings,
             parentCtx: toolCtx,

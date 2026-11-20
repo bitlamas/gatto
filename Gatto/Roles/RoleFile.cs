@@ -29,7 +29,9 @@ public sealed record RoleFile(
     //the opening line committed before the first request, refused when it holds a control token since a resume strips assistant records
     string? FirstMessage,
     //false keeps the role out of run_agent's list and refuses a call to it, the role still launches as a main seat
-    bool Callable = true)
+    bool Callable = true,
+    //the one folder under the working folder that write_file and edit_file may write in, as the file wrote it, null for no limit
+    string? WriteDir = null)
 {
     public const int DefaultTurns = 10;
 
@@ -39,7 +41,7 @@ public sealed record RoleFile(
 
     //one key for the model, and the endpoint kind decides what it means
     private static readonly string[] Keys =
-        { "model", "endpoint", "gates", "raw", "append", "thinking", "description", "tools", "turns", "context_files", "avatar", "tint", "tint_light", "first_message", "callable" };
+        { "model", "endpoint", "gates", "raw", "append", "thinking", "description", "tools", "turns", "context_files", "avatar", "tint", "tint_light", "first_message", "callable", "write_dir" };
 
     //the gate names gatto knows, so a misspelt gate fails the load instead of arming nothing
     private static readonly string[] KnownGates = { CitationGate.Name };
@@ -202,7 +204,26 @@ public sealed record RoleFile(
         if (firstMessage is not null && ControlTokens.Strip(firstMessage).Count > 0)
             throw new GattoConfigException($"role '{name}' has a \"first_message\" holding a control token");
 
-        return new RoleFile(name, model, endpoint, gates, raw, append, thinking, description, tools, turns, contextFiles, avatar, tint, tintLight, firstMessage, callable);
+        //read by hand, so a number gets the same sentence and its raw value as a path that leaves the working folder
+        string? writeDir = null;
+        if (root.TryGetProperty("write_dir", out var wd) && wd.ValueKind != JsonValueKind.Null)
+        {
+            if (wd.ValueKind != JsonValueKind.String || !NamesAFolderInside(wd.GetString()!))
+                throw new GattoConfigException($"role '{name}' has a \"write_dir\" of {wd.GetRawText()} (must name a folder inside the working folder)");
+            writeDir = wd.GetString();
+        }
+
+        return new RoleFile(name, model, endpoint, gates, raw, append, thinking, description, tools, turns, contextFiles, avatar, tint, tintLight, firstMessage, callable, writeDir);
+    }
+
+    //relative, with no .. segment, no leading ~ the tools would read as the user's folder, and no character a folder name cannot hold. the test is by segment, so a..b is a name
+    private static bool NamesAFolderInside(string value)
+    {
+        if (string.IsNullOrWhiteSpace(value) || Path.IsPathRooted(value)) return false;
+        var segments = value.Split('\\', '/');
+        if (segments[0] == "~") return false;
+        var invalid = Path.GetInvalidFileNameChars();
+        return segments.All(s => s != ".." && s.IndexOfAny(invalid) < 0);
     }
 
     //the override wins, then the role's own model, then gatto.json's default_model, shared so the launch and doctor agree

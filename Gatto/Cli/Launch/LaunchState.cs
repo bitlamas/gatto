@@ -316,6 +316,13 @@ internal sealed class LaunchState(
         warn.Warn($"role '{Role.Name}' arms {Plural.Of(armed.Count, "tool")}");
     }
 
+    //a role whose file tools are held to a folder still has a shell that writes anywhere, so it says so. a role with no tools key holds the shell too
+    internal void WarnWriteDirShell()
+    {
+        if (Role.WriteDir is not null && Tools.Specs().Any(s => s.Name == "shell"))
+            warn.Warn($"role '{Role.Name}': shell is not limited by write_dir");
+    }
+
     //a delegate to the Repl, so it never references Gatto.Roles, and it reads the model and base URL a /model switch left
     internal ServingProbe ProbeServing()
     {
@@ -456,6 +463,7 @@ internal sealed class LaunchState(
         RoleFiles = LoadRoleFiles();   //only on a switch that commits, since run_agent's description rides every request and a refused switch must move no prefix
         ArmSeatTools(Role);   //the manifest rides every request too, so only a committed switch may change it
         WarnSeatTools();
+        WarnWriteDirShell();
         LastComposedSystem = Comp.SystemText;   //updated here, the degrade target must follow the newly armed role
         LastComposedSources = Comp.Sources;
         //the newly armed model may have a tighter memory.index_budget, so warn here rather than stay silent
