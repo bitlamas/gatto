@@ -1,7 +1,7 @@
 {
-  "release": "b12015",
-  "generated": "2026-10-30",
-  "note": "read from the extracted b12015 windows-vulkan-x64 release folder, every .exe except llama-server.exe itself",
+  "release": "b12359",
+  "generated": "2026-11-20",
+  "note": "read from the extracted b12359 windows-vulkan-x64 release folder, every .exe except llama-server.exe itself",
   "executables": [
     "ggml-rpc-server.exe",
     "llama-batched-bench.exe",

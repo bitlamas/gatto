@@ -18,8 +18,8 @@
     "predicate a caller could render as a tick -- the same asymmetry SupportedArchitectures keeps",
     "by shipping WillNotLoad and deliberately having no Supports."
   ],
-  "reviewed": "2026-10-30",
-  "architectures_release": "b12015",
+  "reviewed": "2026-11-20",
+  "architectures_release": "b12359",
 
   "_ladder_comment": [
     "Render order, and it is a decision: gemma first is what the least expert user sees, and",
@@ -199,7 +199,7 @@
     "tier the Hub publishes and restamps. A release that adds models without an engine bump is",
     "RELEASE.md's step, not this test's."
   ],
-  "current_tier_release": "b12015",
+  "current_tier_release": "b12359",
   "current_tier": {
     "qwen": "3.8"
   }

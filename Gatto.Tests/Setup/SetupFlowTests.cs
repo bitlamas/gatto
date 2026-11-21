@@ -26,7 +26,7 @@ public class SetupFlowTests
         public List<string> TypedIds { get; } = [];
         public AuditionOutcome Audition { get; init; } = AuditionOutcome.Passed;
         public Gatto.Roles.Serve.LlamaAsset? Asset { get; init; } =
-            new("llama-b12015-bin-win-cuda-12.4-x64.zip", "cudart-llama-bin-win-cu12.4-x64.zip",
+            new("llama-b12359-bin-win-cuda-12.4-x64.zip", "cudart-llama-bin-win-cu12.4-x64.zip",
                 "an NVIDIA adapter", "CUDA");
         public Gatto.Core.Acquire.ProbeShape Shape { get; init; } = Gatto.Core.Acquire.ProbeShape.ClassicServer;
         //the build the engine reports, when its shape reports one. null falls back to LlamaAssetSteering.PinnedRelease, the commonest real machine
@@ -1112,9 +1112,9 @@ public class SetupFlowTests
         {
             Llama = null, Model = true,
             Asset = new Gatto.Roles.Serve.LlamaAsset(
-                "llama-b12015-bin-win-vulkan-x64.zip", null, "an AMD discrete card", "Vulkan"),
-            Offer = new EngineFetchOffer(@"C:\Users\you\.gatto\llama\b12015\", new EnginePair(
-                new EngineAsset("llama-b12015-bin-win-vulkan-x64.zip", "https://example.invalid/z",
+                "llama-b12359-bin-win-vulkan-x64.zip", null, "an AMD discrete card", "Vulkan"),
+            Offer = new EngineFetchOffer(@"C:\Users\you\.gatto\llama\b12359\", new EnginePair(
+                new EngineAsset("llama-b12359-bin-win-vulkan-x64.zip", "https://example.invalid/z",
                     new string('a', 64), 1), null)),
         });
         var steer = Assert.IsType<SetupScreen.Choice>(flow.StartPastOpening());
@@ -1169,7 +1169,7 @@ public class SetupFlowTests
 
         foreach (var s in flow.Emitted)
             foreach (var port in new[] { "1234", "1235", "8080" })
-                Assert.DoesNotContain(port, Rendered(s), StringComparison.Ordinal);
+                Assert.DoesNotMatch($@"(?<!\d){port}(?!\d)", Rendered(s));   //a whole number only, since the pinned release b12359 holds 1235
     }
 
     [Fact]
@@ -2869,7 +2869,7 @@ ew.gguf", model.GgufPath);
 
         var body = string.Join(" ", ask.BodyRows!);
         Assert.Contains("futurearch", body, StringComparison.Ordinal);   //the architecture string is the actionable fact, so the message must name it.
-        Assert.Contains("b12015", body, StringComparison.Ordinal);        //the row names the pinned release, since the claim is about that build
+        Assert.Contains("b12359", body, StringComparison.Ordinal);        //the row names the pinned release, since the claim is about that build
         //the screen must say the change covers this model only, since the wording otherwise reads like a whole-install change.
         Assert.Contains("this model only", body, StringComparison.Ordinal);
         //the screen must not call the model unsupported.
@@ -3171,8 +3171,8 @@ ew.gguf", model.GgufPath);
         var flow = new SetupFlow(new FakeProbes
         {
             Llama = null,
-            Offer = new EngineFetchOffer(@"C:\Users\you\.gatto\llama\b12015\", new EnginePair(
-                new EngineAsset("llama-b12015-bin-win-cuda-12.4-x64.zip", "https://example.invalid/s",
+            Offer = new EngineFetchOffer(@"C:\Users\you\.gatto\llama\b12359\", new EnginePair(
+                new EngineAsset("llama-b12359-bin-win-cuda-12.4-x64.zip", "https://example.invalid/s",
                     new string('a', 64), 1),
                 new EngineAsset("cudart-llama-bin-win-cuda-12.4-x64.zip", "https://example.invalid/c",
                     new string('b', 64), 66_060_288))),
@@ -3198,8 +3198,8 @@ ew.gguf", model.GgufPath);
         {
             Llama = null,
             Asset = new Gatto.Roles.Serve.LlamaAsset(
-                "llama-b12015-bin-win-vulkan-x64.zip", null, "an AMD discrete card", "Vulkan"),
-            Offer = new EngineFetchOffer(@"C:\Users\you\.gatto\llama\b12015\", null),
+                "llama-b12359-bin-win-vulkan-x64.zip", null, "an AMD discrete card", "Vulkan"),
+            Offer = new EngineFetchOffer(@"C:\Users\you\.gatto\llama\b12359\", null),
         });
         var view = Assert.IsType<SetupScreen.Choice>(flow.StartPastOpening()).Engine!.Value;
         var body = string.Join(" ", EngineFetchView.Rows(view, 100, glyphs: GlyphSet.Unicode).Select(r => r.Text));
@@ -3601,7 +3601,7 @@ ew.gguf", model.GgufPath);
         {
             Llama = null,
             Asset = asset,
-            Offer = new EngineFetchOffer(@"C:\Users\you\.gatto\llama\b12015\", new EnginePair(
+            Offer = new EngineFetchOffer(@"C:\Users\you\.gatto\llama\b12359\", new EnginePair(
                 new EngineAsset(asset.ZipName, "https://example.invalid/z", new string('a', 64), 1),
                 asset.CudartZipName is { Length: > 0 } c
                     ? new EngineAsset(c, "https://example.invalid/c", new string('b', 64), 1)
@@ -3761,15 +3761,15 @@ ew.gguf", model.GgufPath);
             //the model already exists, so the only gap is llama.cpp and the flow stops at the engine step.
             Llama = null, Model = true,
             Asset = new Gatto.Roles.Serve.LlamaAsset(
-                "llama-b12015-bin-win-vulkan-x64.zip", null, "an AMD discrete card", "Vulkan"),
-            Offer = new EngineFetchOffer(@"C:\Users\you\.gatto\llama\b12015\", null),
+                "llama-b12359-bin-win-vulkan-x64.zip", null, "an AMD discrete card", "Vulkan"),
+            Offer = new EngineFetchOffer(@"C:\Users\you\.gatto\llama\b12359\", null),
         });
         var arm = Assert.IsType<SetupScreen.Choice>(flow.StartPastOpening());
         var text = string.Join("\n", flow.Emitted.Select(Rendered))
             + "\n" + string.Join("\n", EngineFetchView.Rows(arm.Engine!.Value, 100, glyphs: GlyphSet.Unicode).Select(r => r.Text));
 
-        Assert.Contains("llama-b12015-bin-win-vulkan-x64.zip", text, StringComparison.Ordinal);
-        Assert.Contains("github.com/ggml-org/llama.cpp/releases/tag/b12015", text, StringComparison.Ordinal);
+        Assert.Contains("llama-b12359-bin-win-vulkan-x64.zip", text, StringComparison.Ordinal);
+        Assert.Contains("github.com/ggml-org/llama.cpp/releases/tag/b12359", text, StringComparison.Ordinal);
         //the screen also says what to do once the download arrives, and the return checks the folder gatto named
         Assert.Contains("Done, check that folder", string.Join(" ", arm.Options.Select(o => o.Label)),
             StringComparison.Ordinal);
@@ -3784,9 +3784,9 @@ ew.gguf", model.GgufPath);
         {
             Llama = null, Model = true,
             Asset = new Gatto.Roles.Serve.LlamaAsset(
-                "llama-b12015-bin-win-cuda-12.4-x64.zip", "cudart-llama-bin-win-cuda-12.4-x64.zip",
+                "llama-b12359-bin-win-cuda-12.4-x64.zip", "cudart-llama-bin-win-cuda-12.4-x64.zip",
                 "an NVIDIA adapter", "CUDA"),
-            Offer = new EngineFetchOffer(@"C:\Users\you\.gatto\llama\b12015\", null),
+            Offer = new EngineFetchOffer(@"C:\Users\you\.gatto\llama\b12359\", null),
         });
         var arm = Assert.IsType<SetupScreen.Choice>(flow.StartPastOpening());
         var text = string.Join("\n", EngineFetchView.Rows(arm.Engine!.Value, 100, glyphs: GlyphSet.Unicode).Select(r => r.Text));
@@ -3906,10 +3906,10 @@ ew.gguf", model.GgufPath);
     public void THE_FOUND_ENGINE_UNDER_THE_USERS_FOLDER_READS_AS_A_TILDE()
     {
         var found = Assert.IsType<SetupScreen.Choice>(new SetupFlow(
-            new FakeProbes { Llama = @"C:\Users\you\.gatto\llama\b12015\llama-server.exe" }).StartPastOpening());
+            new FakeProbes { Llama = @"C:\Users\you\.gatto\llama\b12359\llama-server.exe" }).StartPastOpening());
 
         Assert.Equal(SetupFlow.FoundKey, found.Key);
-        Assert.Contains(found.BodyRows!, r => r.Text.EndsWith(@"~\.gatto\llama\b12015\llama-server.exe", StringComparison.Ordinal));
+        Assert.Contains(found.BodyRows!, r => r.Text.EndsWith(@"~\.gatto\llama\b12359\llama-server.exe", StringComparison.Ordinal));
         Assert.DoesNotContain(found.BodyRows!, r => r.Text.Contains(@"C:\Users\you\", StringComparison.Ordinal));
     }
 

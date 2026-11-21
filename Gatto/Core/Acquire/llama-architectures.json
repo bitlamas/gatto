@@ -11,8 +11,8 @@
     "R52: this file bumps in the SAME COMMIT as LlamaAssetSteering.PinnedRelease, and a test reads",
     "both. A set generated from one release and shipped beside another is worse than no set."
   ],
-  "release": "b12015",
-  "generated": "2026-10-30",
+  "release": "b12359",
+  "generated": "2026-11-20",
   "source": "src/llama-arch.cpp (LLM_ARCH_NAMES)",
   "architectures": [
     "afmoe",
@@ -32,6 +32,7 @@
     "chatglm",
     "clef",
     "clip",
+    "clover_moe",
     "codeshell",
     "cogvlm",
     "cohere2",
@@ -96,6 +97,7 @@
     "jina-bert-v3",
     "k2-horizon",
     "kimi-k3",
+    "kimi-k31",
     "kimi-linear",
     "kolibri1",
     "laguna",
@@ -114,6 +116,7 @@
     "mamba2",
     "maple",
     "mellum",
+    "metis16",
     "mimo2",
     "minicpm",
     "minicpm3",
@@ -163,6 +166,7 @@
     "qwen3vlmoe",
     "qwen4exp",
     "refact",
+    "ricursive",
     "rnd1",
     "rwkv6",
     "rwkv6qwen2",
@@ -181,6 +185,7 @@
     "talkie",
     "vllm-decision2",
     "wavtokenizer-dec",
+    "xing4_0",
     "xverse"
   ]
 }
