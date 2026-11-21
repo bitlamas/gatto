@@ -27,31 +27,54 @@ public sealed class ThoughtGlanceTests
         var it = Thought("That RecursiveKey line hack-ish approach is wrong, the parameter parsing is the issue here", "second line");
         var row = Plain(Assert.Single(it.Render(60, T, U)));
 
-        Assert.StartsWith("  That RecursiveKey", row, StringComparison.Ordinal);
-        Assert.EndsWith($"{U.Ellipsis} {U.Triangle} thought for 5s", row, StringComparison.Ordinal);
+        Assert.StartsWith($"{U.Triangle} That RecursiveKey", row, StringComparison.Ordinal);
+        Assert.EndsWith($"{U.Ellipsis} (thought for 5s)", row, StringComparison.Ordinal);
         Assert.Equal(60, UnicodeWidth.Of(row));
     }
 
     [Fact]
-    public void The_label_follows_a_short_line_directly()
+    public void Short_lines_join_on_one_row_between_the_chevron_and_the_bracketed_time()
     {
         var row = Plain(Assert.Single(Thought("Now the stamp script.", "and then the page").Render(80, T, U)));
-        Assert.Equal($"  Now the stamp script. {U.Triangle} thought for 5s", row);
+        Assert.Equal($"{U.Triangle} Now the stamp script. and then the page (thought for 5s)", row);
     }
 
     [Fact]
-    public void A_row_that_holds_the_whole_thought_marks_its_label_with_a_dot()
+    public void Lines_that_outgrow_the_row_join_then_cut_with_an_ellipsis_before_the_time()
     {
-        //nothing is hidden, so the label shows no triangle to open
-        var row = Plain(Assert.Single(Thought("", "Now the stamp script.", "  ").Render(80, T, U)));
-        Assert.Equal($"  Now the stamp script. {U.Dot} thought for 5s", row);
+        var row = Plain(Assert.Single(Thought("I have a lot of info on Opencode.", "the docs list the commands", "and the flags too").Render(60, T, U)));
+        Assert.Equal(60, UnicodeWidth.Of(row));
+        Assert.StartsWith($"{U.Triangle} I have a lot of info on Opencode. the", row, StringComparison.Ordinal);   //the second line follows the first with one space
+        Assert.EndsWith($"{U.Ellipsis} (thought for 5s)", row, StringComparison.Ordinal);
     }
 
     [Fact]
-    public void A_one_line_thought_cut_to_fit_keeps_the_triangle()
+    public void Inner_space_runs_and_leading_blanks_join_with_single_spaces()
+    {
+        var row = Plain(Assert.Single(Thought("  a   b  ", "   c     d").Render(80, T, U)));
+        Assert.Equal($"{U.Triangle} a b c d (thought for 5s)", row);
+    }
+
+    [Fact]
+    public void A_row_that_holds_the_whole_thought_shows_no_ellipsis()
+    {
+        var row = Plain(Assert.Single(Thought("", "Now the stamp script.", "  ").Render(80, T, U)));
+        Assert.Equal($"{U.Triangle} Now the stamp script. (thought for 5s)", row);
+    }
+
+    [Fact]
+    public void A_thought_that_fills_the_room_exactly_is_not_cut()
+    {
+        //60 cells less the chevron and its space and the 17 of the bracketed time leave 41
+        var row = Plain(Assert.Single(Thought(new string('z', 41)).Render(60, T, U)));
+        Assert.Equal($"{U.Triangle} {new string('z', 41)} (thought for 5s)", row);
+    }
+
+    [Fact]
+    public void A_one_line_thought_cut_to_fit_ends_in_the_ellipsis_and_the_time()
     {
         var row = Plain(Assert.Single(Thought(new string('x', 200)).Render(50, T, U)));
-        Assert.EndsWith($"{U.Ellipsis} {U.Triangle} thought for 5s", row, StringComparison.Ordinal);
+        Assert.EndsWith($"{U.Ellipsis} (thought for 5s)", row, StringComparison.Ordinal);
         Assert.Equal(50, UnicodeWidth.Of(row));
     }
 
@@ -59,7 +82,8 @@ public sealed class ThoughtGlanceTests
     public void The_ascii_set_cuts_with_its_own_marks_and_never_passes_the_width()
     {
         var row = Plain(Assert.Single(Thought(new string('y', 200), "more").Render(50, T, GlyphSet.Ascii)));
-        Assert.EndsWith(GlyphSet.Ascii.Triangle + " thought for 5s", row, StringComparison.Ordinal);
+        Assert.StartsWith(GlyphSet.Ascii.Triangle + " y", row, StringComparison.Ordinal);
+        Assert.EndsWith(GlyphSet.Ascii.Ellipsis + " (thought for 5s)", row, StringComparison.Ordinal);
         Assert.True(UnicodeWidth.Of(row) <= 50);
     }
 

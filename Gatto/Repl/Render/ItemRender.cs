@@ -172,13 +172,55 @@ public static class ItemRender
         GlyphSet? glyphs)
         => ProseRunTagged(rawLines, theme, role, width, glyphs).Select(r => r.Text).ToList();
 
-    //the reasoning rows: dim-italic, hang-indented and unmarked
+    //the reasoning rows: the model's markdown under the thought italic base, hang-indented and unmarked
     public static List<RenderedRow> ReasoningRowsTagged(IReadOnlyList<string> rawLines, Theme theme, int width)
+        => ThoughtMarkdownRowsTagged(rawLines, theme, width, GutterWrap.Hang, GutterWrap.Hang, 0, null);
+
+    //the plain thought rows with the markdown unparsed, kept for the session lead block
+    public static List<RenderedRow> ThoughtPlainRowsTagged(IReadOnlyList<string> rawLines, Theme theme, int width)
     {
         var rows = new List<RenderedRow>();
         foreach (var raw in rawLines)
             rows.AddRange(GutterWrap.RowsTagged(GutterWrap.Hang, GutterWrap.Hang, raw, width,
                 s => theme.Paint(s, Theme.Thought, italic: true)));
+        return rows;
+    }
+
+    //reasoning lines as markdown: the thought italic base returns after every styled span, the block state threads, a fence stays literal
+    private static List<RenderedRow> ThoughtMarkdownRowsTagged(IReadOnlyList<string> rawLines, Theme theme, int width,
+        string firstGutter, string contGutter, int firstLeadCells, GlyphSet? glyphs)
+    {
+        var baseStyle = Ansi.Fg(theme.Map(Theme.Thought), theme.TrueColor) + Ansi.Italic;
+        var textWidth = width - GutterWrap.Hang.Length;
+        var rows = new List<RenderedRow>();
+        var block = BlockState.Normal;
+        foreach (var rawLine in rawLines)
+        {
+            //reasoning is model text, so a line is sanitized before the parser reads it
+            var r = MarkdownLine.RenderLine(TermText.Sanitize(rawLine), block, theme, textWidth, Theme.Thought, glyphs);
+            block = r.Next;
+            if (r.FenceClose) continue;
+            if (r.Spans is null)
+            {
+                //a rule or a fence line arrives already wrapped to the text budget and keeps the caller's gutter
+                var noSpan = r.Rows ?? new[] { r.Styled ?? "" };
+                for (var i = 0; i < noSpan.Count; i++)
+                    rows.Add(new RenderedRow((i == 0 ? firstGutter : contGutter) + noSpan[i], i > 0,
+                        i > 0 ? GutterWrap.Hang.Length : 0, i == 0 ? firstLeadCells : 0));
+                continue;
+            }
+            var rowStyle = r.LineStyle + baseStyle;
+            var wrapped = SpanWrap.Wrap(r.Spans, textWidth - r.FirstPrefixCells, textWidth - r.ContPrefixCells);
+            for (var i = 0; i < wrapped.Count; i++)
+            {
+                var sb = new StringBuilder(i == 0 ? firstGutter : contGutter);
+                sb.Append(i == 0 ? r.FirstPrefix : r.ContPrefix).Append(rowStyle).Append(theme.Paint(wrapped[i], rowStyle, Theme.Thought));
+                sb.Append(Ansi.Reset);
+                //a wrap row drops the two-cell gutter plus the block's own continuation indent on a copy rejoin
+                rows.Add(new RenderedRow(sb.ToString(), i > 0, i > 0 ? GutterWrap.Hang.Length + r.ContPrefixCells : 0,
+                    i == 0 ? firstLeadCells : 0));
+            }
+        }
         return rows;
     }
 
@@ -239,19 +281,38 @@ public static class ItemRender
     //below this many cells for the text a thought between tool calls keeps the plain row
     internal const int GlanceMinCells = 12;
 
-    //a thought between tool calls, its first line cut to fit and the label whole, a dot when nothing is cut
+    //a thought between tool calls: the chevron, its non-blank lines joined on one row cut to fit, and the time whole in brackets
     public static IReadOnlyList<string>? ReasoningGlanceRow(IReadOnlyList<string> rawLines, TimeSpan elapsed, Theme theme, int width,
         GlyphSet g)
     {
-        var lines = rawLines.Select(l => TermText.Sanitize(l).Trim()).Where(l => l.Length > 0).ToList();
+        var lines = rawLines.Select(l => GlanceShape(TermText.Sanitize(l).Trim())).Where(l => l.Length > 0).ToList();
         if (lines.Count == 0) return null;
-        var first = string.Join(' ', lines[0].Split(' ', StringSplitOptions.RemoveEmptyEntries));
-        var tail = $" thought for {FormatElapsed(elapsed)}";
-        var room = width - GutterWrap.Hang.Length - 1 - Math.Max(UnicodeWidth.Of(g.Triangle), UnicodeWidth.Of(g.Dot)) - UnicodeWidth.Of(tail);
+        //each line collapses its inner space runs, and the join leaves one space between lines
+        var joined = string.Join(' ', lines.Select(l => string.Join(' ', l.Split(' ', StringSplitOptions.RemoveEmptyEntries))));
+        //the row stays one flat paint, so inline markers drop and their text stays
+        joined = string.Concat(InlineStyler.Parse(joined).Select(s => s.Text));
+        var head = g.Triangle + " ";
+        var tail = $" (thought for {FormatElapsed(elapsed)})";
+        var room = width - UnicodeWidth.Of(head) - UnicodeWidth.Of(tail);
         if (room < GlanceMinCells) return null;
-        var whole = lines.Count == 1 && UnicodeWidth.Of(first) <= room;
-        var text = whole ? first : TermText.TruncateCells(first, room, g);
-        return new[] { GutterWrap.Hang + theme.Paint(text, Theme.Thought, italic: true) + " " + theme.Paint((whole ? g.Dot : g.Triangle) + tail, Theme.Thought) };
+        var text = UnicodeWidth.Of(joined) <= room ? joined : TermText.TruncateCells(joined, room, g);
+        return new[] { theme.Paint(head, Theme.Thought) + theme.Paint(text, Theme.Thought, italic: true) + theme.Paint(tail, Theme.Thought) };
+    }
+
+    //the glance row carries no markdown shape, so a leading bullet, number or heading marker drops from a line before the join
+    private static string GlanceShape(string line)
+    {
+        if (line.Length > 0 && line[0] == '#')
+        {
+            var h = 0;
+            while (h < line.Length && line[h] == '#') h++;
+            return h <= 6 && h < line.Length && line[h] == ' ' ? line[(h + 1)..] : line;
+        }
+        if (line.Length > 1 && (line[0] == '-' || line[0] == '*' || line[0] == '+') && line[1] == ' ') return line[2..];
+        var d = 0;
+        while (d < line.Length && char.IsDigit(line[d])) d++;
+        return d > 0 && d <= 3 && d + 1 < line.Length && (line[d] == '.' || line[d] == ')') && line[d + 1] == ' '
+            ? line[(d + 2)..] : line;
     }
 
     //the open reasoning block: a chevron header row, then the full reasoning rows. a null elapsed means the block is still streaming
@@ -265,9 +326,8 @@ public static class ItemRender
         //the full reasoning sits under the same dim rail an expanded tool uses, which marks the open block and gives a click target
         var gutter = $"{g.Box.Vertical} ";
         rows.Add(new RenderedRow(theme.Paint(gutter, Theme.Dim), false, 0, GutterWrap.Hang.Length));
-        foreach (var raw in rawLines)
-            rows.AddRange(GutterWrap.RowsTagged(theme.Paint(gutter, Theme.Dim), theme.Paint(gutter, Theme.Dim),
-                raw, width, s => theme.Paint(s, Theme.Thought, italic: true), theme.Paint(gutter, Theme.Dim)));
+        rows.AddRange(ThoughtMarkdownRowsTagged(rawLines, theme, width,
+            theme.Paint(gutter, Theme.Dim), theme.Paint(gutter, Theme.Dim), GutterWrap.Hang.Length, glyphs));
         return rows;
     }
 

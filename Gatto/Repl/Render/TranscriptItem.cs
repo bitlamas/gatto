@@ -619,10 +619,10 @@ public sealed record SessionLeadItem(string Text, ChatMessage? After) : EventIte
     public Gatto.Core.Memory.MemoryBankOutcome? Memory { get; init; }
 
     protected override IReadOnlyList<string> RenderBody(int width, Theme theme, GlyphSet? glyphs) =>
-        ItemRender.ReasoningRows(Text.Split('\n'), theme, width);
+        ItemRender.ThoughtPlainRowsTagged(Text.Split('\n'), theme, width).Select(r => r.Text).ToList();
 
     protected override IReadOnlyList<RowWrap> RowWrapsBody(int width, Theme theme, GlyphSet? glyphs) =>
-        ItemRender.ReasoningRowsTagged(Text.Split('\n'), theme, width).Select(r => new RowWrap(r.Continuation, r.PrefixCells)).ToList();
+        ItemRender.ThoughtPlainRowsTagged(Text.Split('\n'), theme, width).Select(r => new RowWrap(r.Continuation, r.PrefixCells)).ToList();
 }
 
 //gatto's own painted content, already render-ready, so Render emits the rows verbatim
