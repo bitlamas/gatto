@@ -41,6 +41,10 @@ public sealed class ChromeTicker(ChromePainter painter, object gate, ISlotsReade
     //the last prompt_progress chunk of the request, and 0 means none arrived so the prefill row keeps using /slots
     private long _streamTotal;
     private long _streamProcessed;
+    //bumped by the progress chunk that completes a prefill. an answer polled before that bump can hold the previous task's n_decoded, so the poll and the tick both read this epoch
+    private int _prefillEpoch;
+    //the epoch the tick last saw. a newer one means the held answer predates the prefill end, so the tick drops it before drawing
+    private int _seenEpoch;
 
     public Action<Exception>? OnFault { get; set; }
 
@@ -158,12 +162,13 @@ public sealed class ChromeTicker(ChromePainter painter, object gate, ISlotsReade
     //a streaming tool call ends the prefill phase here, without moving the token count, since its argument fragments are not decoded prose
     public void MarkStreaming() => Interlocked.Exchange(ref _emitted, 1);
 
-    //a prompt_progress chunk gives the row the server's real total, with no ~. a chunk means nothing has decoded yet, so the row goes back to prefill
+    //a prompt_progress chunk gives the row the server's real total, with no ~. a chunk means nothing has decoded yet, so the row goes back to prefill, and a completed chunk bumps the poll epoch
     public void SetPromptProgress(long total, long processed)
     {
         Interlocked.Exchange(ref _streamTotal, total);
         Interlocked.Exchange(ref _streamProcessed, processed);
         Interlocked.Exchange(ref _emitted, 0);
+        if (total > 0 && processed >= total) Interlocked.Increment(ref _prefillEpoch);
     }
     //feeds the purr's Σ
     public void AddToolResultChars(long chars) => Interlocked.Add(ref _toolChars, chars);
@@ -256,20 +261,24 @@ public sealed class ChromeTicker(ChromePainter painter, object gate, ISlotsReade
                     }
                     else
                     {
+                        //an epoch newer than the tick's means the held answer predates the prefill end, so the tick drops it. the row reads the estimate until a fresh poll lands. the interval resets so that poll kicks on this same tick
+                        var epoch = Volatile.Read(ref _prefillEpoch);
+                        if (epoch != _seenEpoch) { _seenEpoch = epoch; _slots = null; _lastPollMs = -1; }
                         //poll /slots for the whole turn, since its count is the truth and the estimate is only the fallback with no reader wired
                         if (slotsReader is not null && (_lastPollMs < 0 || ms - _lastPollMs >= PollIntervalMs))
                         {
                             _lastPollMs = ms;
                             _ = PollSlotsAsync(ct);   //fire and forget, so the paint never waits on this poll
                         }
-                        //the row shows reading context only while nothing has streamed and no tool runs. the tool clause matters, since a tool round streams no text either
+                        //the row shows reading context only while nothing has streamed and no tool runs. the tool clause matters, since a tool round streams no text either, and a chunk that reached its total ends the prefill, since empty decode streams nothing
+                        var streamTotal = Interlocked.Read(ref _streamTotal);
                         var prefilling = Interlocked.CompareExchange(ref _emitted, 0, 0) == 0
-                            && painter.State.Tool is null;
-                        //the highest decode count is latched only when not prefilling, since the slot still holds the previous task's n_decoded
+                            && painter.State.Tool is null
+                            && !(streamTotal > 0 && Interlocked.Read(ref _streamProcessed) >= streamTotal);
+                        //the highest decode count is latched only when not prefilling, since the slot still holds the previous task's n_decoded. the epoch drop above keeps a prefill-era answer out of it
                         if (!prefilling && _slots is { } s) _maxDown = Math.Max(_maxDown, s.Decoded);
 
                         //the thinking suffix is added here, keeping PurrRow a pure static. a stream progress chunk makes the row read the stream's numbers only, one source per row
-                        var streamTotal = Interlocked.Read(ref _streamTotal);
                         var rowSlots = prefilling && streamTotal > 0
                             ? new SlotProgress(streamTotal, Interlocked.Read(ref _streamProcessed), 0, true)
                             : _slots;
@@ -300,13 +309,14 @@ public sealed class ChromeTicker(ChromePainter painter, object gate, ISlotsReade
     private async Task PollSlotsAsync(CancellationToken ct)
     {
         if (Interlocked.Exchange(ref _polling, 1) == 1) return;
+        var epoch = Volatile.Read(ref _prefillEpoch);   //the answer applies only if no prefill completed while the request was out
         try
         {
             //the poll runs on its own timeout. an aborted /slots request makes llama-server log a cancel task, and the turn token still gates applying the answer
             using var timeout = new CancellationTokenSource(PollTimeoutMs);
             var p = await slotsReader!.ReadAsync(timeout.Token).ConfigureAwait(false);
             //a null answer means no information, so keep the last count, since it only ever moves forward
-            lock (gate) { if (p is not null && !ct.IsCancellationRequested) _slots = p; }
+            lock (gate) { if (p is not null && !ct.IsCancellationRequested && epoch == Volatile.Read(ref _prefillEpoch)) _slots = p; }
         }
         //a failed poll keeps the last answer, since the server only answers between batches and polls fail most when the wait is long
         catch (Exception) { }

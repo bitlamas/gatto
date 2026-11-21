@@ -47,6 +47,43 @@ file sealed class BlockingSlotsReader : ISlotsReader
     }
 }
 
+//a reader that answers the first read from memory and parks every later read. a test can hold a fresh answer back past the paints that must show the guard
+file sealed class AnswerThenBlockingSlotsReader : ISlotsReader
+{
+    private int _reads;
+    public int Reads => Volatile.Read(ref _reads);
+
+    //marked at each poll, so a test waits on the poll itself
+    public Changes Polled { get; } = new();
+    public SlotProgress? Result { get; set; }
+    public TaskCompletionSource<bool> Release { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+
+    public async Task<SlotProgress?> ReadAsync(CancellationToken ct)
+    {
+        Polled.Mark();
+        if (Interlocked.Increment(ref _reads) == 1) return Result;
+        await Release.Task.ConfigureAwait(false);
+        return Result;
+    }
+}
+
+//a reader that parks in ReadAsync until released, then answers the held result once, so a later poll cannot re-answer the count the test parked
+file sealed class HeldSlotsReader : ISlotsReader
+{
+    private int _answered;
+    public TaskCompletionSource<bool> Entered { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+    public TaskCompletionSource<bool> Release { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+    public SlotProgress? Result { get; set; }
+
+    public async Task<SlotProgress?> ReadAsync(CancellationToken ct)
+    {
+        Entered.TrySetResult(true);
+        var first = Interlocked.Exchange(ref _answered, 1) == 0;   //only the parked read carries the held count
+        await Release.Task.ConfigureAwait(false);
+        return first ? Result : null;
+    }
+}
+
 //one timer owns the purr row and the tool dot's blink for the whole turn, and only StartTurn and StopTurn start and stop it.
 public class ChromeTickerTests
 {
@@ -765,6 +802,119 @@ public class ChromeTickerTests
         Assert.Contains("reading context", seen!, StringComparison.Ordinal);
         Assert.EndsWith("· 4.1k/15k", seen!, StringComparison.Ordinal);
         Assert.DoesNotContain("~", seen!, StringComparison.Ordinal);
+    }
+
+    //the last progress chunk ends the reading context phase, so a model decoding empty thoughts that stream nothing still shows the server's decode count
+    [Fact]
+    public async Task THE_LAST_PROGRESS_CHUNK_ENDS_READING_CONTEXT_AND_THE_ROW_READS_THE_DECODE_COUNT()
+    {
+        var (_, painter, gate) = NewPainter();
+        var reader = new FakeSlotsReader(new SlotProgress(20480, 20480, Decoded: 9_451, Processing: true));
+        var ticker = new ChromeTicker(painter, gate, reader);
+        ticker.StartTurn("x", promptTokensEstimate: 85_000);
+        ticker.MarkStreaming();
+        ticker.SetPromptProgress(total: 9_760, processed: 9_760);   //nothing ever streams through AddTokenChars, so only the completed chunk can end the prefill
+
+        await Polled(reader.Polled, () => reader.Calls, 1);
+        await NextPaints(painter, 2);   //two paints after the poll, so a tick that read its answer has drawn
+        var seen = painter.State.PurrText;
+        ticker.StopTurn();
+
+        Assert.NotNull(seen);
+        Assert.DoesNotContain("reading context", seen!, StringComparison.Ordinal);
+        Assert.EndsWith("↓ 9.5k", seen!, StringComparison.Ordinal);
+    }
+
+    //a partial progress chunk keeps the reading context phase, since only a chunk reaching its total ends it
+    [Fact]
+    public async Task A_PARTIAL_CHUNK_STILL_READS_CONTEXT()
+    {
+        var (_, painter, gate) = NewPainter();
+        var reader = new FakeSlotsReader(new SlotProgress(20480, 20480, Decoded: 9_451, Processing: true));
+        var ticker = new ChromeTicker(painter, gate, reader);
+        ticker.StartTurn("x", promptTokensEstimate: 85_000);
+        ticker.MarkStreaming();
+        ticker.SetPromptProgress(total: 9_760, processed: 4_096);
+
+        await Polled(reader.Polled, () => reader.Calls, 1);
+        await NextPaints(painter, 2);   //two paints after the poll, so the row is read after its answer landed
+        var seen = painter.State.PurrText;
+        ticker.StopTurn();
+
+        Assert.NotNull(seen);
+        Assert.Contains("reading context", seen!, StringComparison.Ordinal);
+        Assert.DoesNotContain("9.5k", seen!, StringComparison.Ordinal);
+    }
+
+    //a /slots answer read while the prefill ran can hold the previous task's n_decoded. the completing chunk's epoch drops it, so it reaches neither the live row nor the completion line
+    [Fact]
+    public async Task AN_ANSWER_POLLED_DURING_THE_PREFILL_NEVER_SHOWS_AFTER_IT()
+    {
+        var (_, painter, gate) = NewPainter();
+        var reader = new HeldSlotsReader { Result = new SlotProgress(20480, 20480, Decoded: 202, Processing: true) };
+        var ticker = new ChromeTicker(painter, gate, reader);
+        ticker.StartTurn("x");
+
+        await reader.Entered.Task.WaitAsync(Waits.Bound);   //the first poll is parked mid-request with the previous task's count
+        ticker.SetPromptProgress(total: 9_760, processed: 9_760);   //the prefill ends while that answer is still in flight
+        reader.Release.TrySetResult(true);
+
+        await NextPaints(painter, 2);   //two paints after the drop, so a tick that read the row has drawn
+        var live = painter.State.PurrText;
+        var completion = ticker.CompletionRow();
+        ticker.StopTurn();
+
+        Assert.DoesNotContain("202", live ?? "");
+        Assert.DoesNotContain("202", completion ?? "");
+    }
+
+    //an answer held from before the completing chunk is dropped by the tick's catch-up clear, not by the poll check, since its poll landed before the epoch moved. removing only the clear shows the stale count
+    [Fact]
+    public async Task AN_ANSWER_HELD_DURING_THE_PREFILL_NEVER_SHOWS_AFTER_THE_CLEAR()
+    {
+        var (_, painter, gate) = NewPainter();
+        var reader = new AnswerThenBlockingSlotsReader { Result = new SlotProgress(20480, 20480, Decoded: 202, Processing: true) };
+        var ticker = new ChromeTicker(painter, gate, reader);
+        ticker.StartTurn("x");
+        ticker.SetPromptProgress(total: 9_760, processed: 4_096);
+
+        await Polled(reader.Polled, () => reader.Reads, 1);   //the first read answers at once, so the 202 lands and stays held
+        await NextPaints(painter, 2);   //two paints with the answer held, so the row has drawn over it
+        reader.Result = new SlotProgress(20480, 20480, Decoded: 41, Processing: true);   //later reads answer the new count, but park until released
+        ticker.SetPromptProgress(total: 9_760, processed: 9_760);   //the epoch moves while only the stale answer is held
+
+        await NextPaints(painter, 2);   //two paints after the clear ran, so a tick that read the row has drawn
+        var live = painter.State.PurrText;
+        reader.Release.TrySetResult(true);   //the fresh answer lands now, and the row must move to it
+        await Painted(painter, () => painter.State.PurrText?.EndsWith("↓ 41", StringComparison.Ordinal) == true, () => $"the row read {painter.State.PurrText}");
+        var completion = ticker.CompletionRow();
+        ticker.StopTurn();
+
+        Assert.DoesNotContain("202", live ?? "");
+        Assert.DoesNotContain("202", completion ?? "");
+    }
+
+    //the poll's epoch check drops an answer that was issued before the completing chunk and lands after the tick's catch-up ran. removing only that check lets the stale count onto the row
+    [Fact]
+    public async Task AN_ANSWER_APPLIED_AFTER_THE_CATCH_UP_IS_DROPPED_BY_THE_POLL_CHECK()
+    {
+        var (_, painter, gate) = NewPainter();
+        var reader = new HeldSlotsReader { Result = new SlotProgress(20480, 20480, Decoded: 202, Processing: true) };
+        var ticker = new ChromeTicker(painter, gate, reader);
+        ticker.StartTurn("x");
+
+        await reader.Entered.Task.WaitAsync(Waits.Bound);   //the first poll is parked with the previous task's count
+        ticker.SetPromptProgress(total: 9_760, processed: 9_760);   //the prefill ends while that answer is still out
+        await NextPaints(painter, 2);   //the tick's clear has run, so only the poll's own epoch check stands between the answer and the row
+
+        reader.Release.TrySetResult(true);
+        await NextPaints(painter, 2);   //two paints after the landing, so a tick that could apply the answer has drawn
+        var live = painter.State.PurrText;
+        var completion = ticker.CompletionRow();
+        ticker.StopTurn();
+
+        Assert.DoesNotContain("202", live ?? "");
+        Assert.DoesNotContain("202", completion ?? "");
     }
 
     [Fact]
