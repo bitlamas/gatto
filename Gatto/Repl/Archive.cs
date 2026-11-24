@@ -6,6 +6,9 @@ namespace Gatto.Repl;
 //where a handed-over letter is kept: the archive mirrors the inbox under the nearest .gatto\mailbox above it, read from the letter's own path and never from the live watch
 internal static class Archive
 {
+    //the archive's top folder under the mailbox, one name for the guard and the mirror
+    private const string Top = ".archive";
+
     //the archive folder of an inbox, null when no .gatto\mailbox sits above it or the inbox is under the archive already. the path's structure decides, so a role named archive or mailbox mirrors too
     public static string? FolderFor(string inbox)
     {
@@ -15,7 +18,7 @@ internal static class Archive
             if (!Named(dir, "mailbox") || Path.GetDirectoryName(dir) is not { } parent || !Named(parent, ".gatto")) continue;
             var relative = Path.GetRelativePath(dir, full);
             var first = relative.Split(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar)[0];
-            return first.Equals("archive", StringComparison.OrdinalIgnoreCase) ? null : Path.Combine(dir, "archive", relative);
+            return first.Equals(Top, StringComparison.OrdinalIgnoreCase) ? null : Path.Combine(dir, Top, relative);
         }
         return null;
     }

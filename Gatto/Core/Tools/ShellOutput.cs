@@ -16,8 +16,40 @@ public sealed record ShellOutput(IReadOnlyList<string> Stdout, IReadOnlyList<str
     public string? LastStderr => Stderr.LastOrDefault(l => l.Trim().Length > 0);
 
     //the stderr line a result row shows, trimmed. an error record of PowerShell ends with its position and id lines, so those give way to the message above them
-    public string? ErrorLine =>
-        (Stderr.LastOrDefault(l => l.Trim().Length > 0 && !IsRecordLine(l.Trim())) ?? LastStderr)?.Trim();
+    public string? ErrorLine
+    {
+        get
+        {
+            string? message = null, last = null;
+            int messageAt = -1, lastAt = -1;
+            var tail = false;
+            var block = new List<string>();   //the lines since the last blank or record line, the message among them
+            for (var i = 0; i < Stderr.Count; i++)
+            {
+                var line = Stderr[i];
+                var trimmed = line.Trim();
+                if (trimmed.Length == 0) { block.Clear(); continue; }
+                tail = IsRecordLine(trimmed) || (tail && char.IsWhiteSpace(line[0]));   //a long id line wraps at the console width, and the rest keeps an indent and no plus
+                if (tail)
+                {
+                    if (RecordPosition.IsMatch(trimmed) && block.Count > 0) { message = MessageOf(block); messageAt = i; }
+                    block.Clear();
+                }
+                else
+                {
+                    block.Add(trimmed);
+                    last = trimmed;
+                    lastAt = i;
+                }
+            }
+            return (lastAt > messageAt ? last : message) ?? LastStderr?.Trim();
+        }
+    }
+
+    //the message opens at the nearest line above the position led by a command and a spaced colon, since earlier stderr joins the block. with no such line, the line above the position
+    private static string MessageOf(List<string> block) => block.LastOrDefault(CommandLead.IsMatch) ?? block[^1];
+
+    private static readonly Regex CommandLead = new(@"^\S.*? : ", RegexOptions.CultureInvariant);
 
     private static readonly Regex RecordPosition = new(@"^At (line:\d+|.+:\d+) char:\d+$", RegexOptions.CultureInvariant);
 

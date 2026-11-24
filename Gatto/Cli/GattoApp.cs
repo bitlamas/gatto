@@ -2,6 +2,7 @@ using System.Diagnostics;
 using System.Text;
 using System.Text.Json;
 using Gatto.Cli.Diagnose;
+using Gatto.Cli.Inbox;
 using Gatto.Cli.Install;
 using Gatto.Cli.Launch;
 using Gatto.Cli.Setup;
@@ -97,7 +98,7 @@ public static class GattoApp
         gatto, a terminal assistant that runs AI models on your own computer
         usage: gatto [role|command] [options]
           roles:    {roles}
-          commands: setup | serve start [model] [--detach] | serve stop|status | doctor | status | audition | model new [gguf] [id] | sessions sweep <date> | update | uninstall
+          commands: setup | serve start [model] [--detach] | serve stop|status | doctor | status | audition | model new [gguf] [id] | sessions sweep <date> | update | uninstall | inbox open|off
           options:  -m <model>  -p <prompt>  -e <endpoint>  --effort <level>  --continue[ <id>]  --yes  --sandbox  --version  -h
         """;
 
@@ -117,8 +118,11 @@ public static class GattoApp
         return Help.Replace("{roles}", line, StringComparison.Ordinal);
     }
 
-    //the null ctx is the production path, and only the outermost return holds a fatal exit open so it can be read
-    public static async Task<int> RunAsync(string[] argv) => FatalPause.Hold(await RunAsync(argv, null));
+    //the null ctx is the production path, and only the outermost return holds a fatal exit open, the inbox wake exit exempt by design
+    public static async Task<int> RunAsync(string[] argv) =>
+        argv.Length >= 1 && argv[0] == "inbox"
+            ? await RunAsync(argv, null)
+            : FatalPause.Hold(await RunAsync(argv, null));
 
     //a test's hand on the launch login's cancel, carried in its own async flow, and null in production where Esc and Ctrl+C hold it
     internal static readonly AsyncLocal<CancellationTokenSource?> LoginCancelOverride = new();
@@ -213,7 +217,31 @@ public static class GattoApp
             return 0;
         }
 
-        //one file check per launch, silent and best-effort, since the leftover unlocks when the old process exits and the next launch clears it
+        //the inbox dispatch stays before the launch sweeps: a hook runs at every turn's end and must not sweep a folder gatto update is using
+        if (argv.Length >= 1 && argv[0] == "inbox")
+        {
+            try
+            {
+                var inboxArgs = ArgRouter.Parse(argv);
+                //help is the one parse that is not the command, and it falls through to the inner path whose writes are the pinned ones
+                if (inboxArgs.Command == "inbox")
+                    return await InboxCommand.RunAsync(inboxArgs.Subcommand!, InboxCommand.Io.Production(ctx?.Home ?? GattoHome.Resolve()));
+            }
+            catch (ArgumentException ex)
+            {
+                Console.Error.WriteLine(ex.Message);
+                Console.Error.WriteLine(HelpFor(ctx?.Home ?? GattoHome.Resolve()));
+                return 2;
+            }
+            catch (Exception ex)
+            {
+                Console.Error.WriteLine(
+                    Environment.GetEnvironmentVariable("GATTO_DEBUG") == "1" ? ex.ToString() : ex.Message);
+                return 1;
+            }
+        }
+
+        //a folder read per launch, silent and best-effort, since each aside unlocks when its old process exits and the next launch clears it
         SelfInstall.SweepOld(Path.GetDirectoryName(Environment.ProcessPath) ?? "");
 
         //a killed download leaves a partial behind, so this sweep runs on every launch and never creates the folder

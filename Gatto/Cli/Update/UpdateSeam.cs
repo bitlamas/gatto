@@ -9,14 +9,14 @@ internal sealed record UpdateSite(
     string InstallDir,
     bool ExePresent,
     string? InstalledVersion,
-    IReadOnlyList<int> SiblingGattos,
-    bool OldStillHeld)
+    IReadOnlyList<int> SiblingGattos)
 {
-    public static UpdateSite Probe()
+    //the inbox hooks of this install are watchers, not sessions, so the pid files take them out of the sibling count
+    public static UpdateSite Probe(string home)
     {
         var dir = SelfInstall.DefaultDir();
         return new UpdateSite(dir, SelfInstall.IsInstalled(), SelfInstall.InstalledVersion(dir),
-            UninstallSite.Siblings(), SelfInstall.OldStillHeld(dir));
+            UninstallSite.Siblings(home));
     }
 }
 

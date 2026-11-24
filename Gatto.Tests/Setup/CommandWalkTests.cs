@@ -132,7 +132,8 @@ public class CommandWalkTests : IDisposable
                     + (keep.Count > 0 ? " keep:" + string.Join(";", keep) : " keep:none"));
                 return TreeFailures;
             },
-            dir => Log.Add("arm-sweeper:" + dir));
+            dir => Log.Add("arm-sweeper:" + dir),
+            home => Log.Add("end-inbox-hooks:" + home));
     }
 
     private static readonly ConsoleKeyInfo Enter = new('\r', ConsoleKey.Enter, false, false, false);
@@ -182,7 +183,8 @@ public class CommandWalkTests : IDisposable
         Assert.Equal(0, exit);
         //the log has no remove-tree, the user kept the home, so keeping is honoured by the deed as well as the map.
         Assert.Equal(
-            ["remove-path:" + Path.Combine(_home, "installdir"),
+            ["end-inbox-hooks:" + _home,
+             "remove-path:" + Path.Combine(_home, "installdir"),
              "arm-sweeper:" + Path.Combine(_home, "installdir")],
             acts.Log);
         //the two closing sentences are plain rows at column zero, the layer's default voice.

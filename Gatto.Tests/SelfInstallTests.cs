@@ -69,20 +69,33 @@ public class SelfInstallTests : IDisposable
         Assert.Null(SelfInstall.Apply(source2, into));
 
         Assert.Equal("new build", File.ReadAllText(SelfInstall.ExeIn(into)));
-        Assert.Equal("old build", File.ReadAllText(SelfInstall.ExeIn(into) + SelfInstall.OldSuffix));
+        Assert.Equal("old build", File.ReadAllText(SelfInstall.ExeIn(into) + ".old-1"));
     }
 
     [Fact]
-    public void THE_SWEEP_REMOVES_A_PREDECESSOR_and_is_silent_when_there_is_none()
+    public void THE_SWEEP_REMOVES_EVERY_FREE_ASIDE_and_leaves_a_held_one_and_a_bare_old()
     {
         var into = Path.Combine(_dir, "install");
         Assert.Null(SelfInstall.Apply(MakeExe("v1.exe"), into));
         Assert.Null(SelfInstall.Apply(MakeExe("v2.exe"), into));
-        var aside = SelfInstall.ExeIn(into) + SelfInstall.OldSuffix;
-        Assert.True(File.Exists(aside));
+        var first = SelfInstall.ExeIn(into) + ".old-1";
+        Assert.True(File.Exists(first));
+        Assert.Null(SelfInstall.Apply(MakeExe("v3.exe"), into));
+        var second = SelfInstall.ExeIn(into) + ".old-2";
+        Assert.True(File.Exists(second));
+        var bare = SelfInstall.ExeIn(into) + ".old";
+        File.WriteAllText(bare, "from the old scheme");
+        var named = SelfInstall.ExeIn(into) + ".old-x";
+        File.WriteAllText(named, "not a numbered aside");
 
-        SelfInstall.SweepOld(into);
-        Assert.False(File.Exists(aside));
+        using (var held = new FileStream(second, FileMode.Open, FileAccess.Read, FileShare.None))
+            SelfInstall.SweepOld(into);
+
+        //the free aside goes, a held one, the bare name from the retired scheme and a name with no number stay
+        Assert.False(File.Exists(first));
+        Assert.True(File.Exists(second));
+        Assert.True(File.Exists(bare));
+        Assert.True(File.Exists(named));
 
         //the sweep runs on every launch, so on a clean or missing folder it must be quiet and harmless
         SelfInstall.SweepOld(into);
@@ -90,17 +103,19 @@ public class SelfInstallTests : IDisposable
     }
 
     [Fact]
-    public void A_THIRD_INSTALL_DOES_NOT_TRIP_OVER_THE_SECONDS_LEFTOVER()
+    public void AN_INSTALL_SUCCEEDS_WHILE_A_HELD_ASIDE_KEEPS_ITS_OLD_BUILD()
     {
-        //a third install reuses the predecessor name the second left, now that the file is deletable
+        //an older process holds its aside open, so the install moves the target to the next free name rather than failing
         var into = Path.Combine(_dir, "install");
         Assert.Null(SelfInstall.Apply(MakeExe("v1.exe", "one"), into));
         Assert.Null(SelfInstall.Apply(MakeExe("v2.exe", "two"), into));
 
-        Assert.Null(SelfInstall.Apply(MakeExe("v3.exe", "three"), into));
+        using (var held = new FileStream(SelfInstall.ExeIn(into) + ".old-1", FileMode.Open, FileAccess.Read, FileShare.None))
+            Assert.Null(SelfInstall.Apply(MakeExe("v3.exe", "three"), into));
 
         Assert.Equal("three", File.ReadAllText(SelfInstall.ExeIn(into)));
-        Assert.Equal("two", File.ReadAllText(SelfInstall.ExeIn(into) + SelfInstall.OldSuffix));
+        Assert.Equal("one", File.ReadAllText(SelfInstall.ExeIn(into) + ".old-1"));
+        Assert.Equal("two", File.ReadAllText(SelfInstall.ExeIn(into) + ".old-2"));
     }
 
     [Fact]

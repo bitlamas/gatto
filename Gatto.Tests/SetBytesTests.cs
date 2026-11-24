@@ -102,6 +102,7 @@ public class SetBytesTests : IDisposable
         ("Gatto/Cli/Install/Uninstall.cs", "the gatto EXE's size, which is one file by definition"),
         ("Gatto/Core/Loop/Permissions/PermissionGate.cs", "the size of the one file a write would replace, never a model"),
         ("Gatto/Core/Tools/FileTools.cs", "an image's own size against the image ceiling, one file by definition, never a model"),
+        ("Gatto/Cli/Inbox/ClaudeSeat.cs", "a session transcript's own length, the offset a letter's receipt is read past, never a model"),
     ];
 
     //a production file that reads a model path's length directly is the shard defect returning under a new name
@@ -142,6 +143,7 @@ public class SetBytesTests : IDisposable
     [InlineData("Gatto/Core/Acquire/HubFetch.cs")]
     [InlineData("Gatto/Cli/Install/Uninstall.cs")]
     [InlineData("Gatto/Core/Tools/FileTools.cs")]
+    [InlineData("Gatto/Cli/Inbox/ClaudeSeat.cs")]
     public void AND_EVERY_EXEMPT_FILE_REALLY_CARRIES_THE_READ_IT_IS_EXEMPT_FOR(string rel)
     {
         Assert.Contains(rel, Exempt.Select(e => e.File));

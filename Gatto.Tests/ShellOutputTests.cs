@@ -54,6 +54,62 @@ public sealed class ShellOutputTests : IDisposable
         Assert.Null(ShellOutput.Empty.ErrorLine);
     }
 
+    //stderr a native command wrote just before the record joins the record's block, and the row still names the record's message
+    [Fact]
+    public void Lines_written_before_a_record_do_not_take_the_row()
+    {
+        var o = new ShellOutput(Array.Empty<string>(), new[]
+        {
+            "git: 'foo' is not a git command. See 'git --help'.",
+            "",
+            "The most similar command is",
+            "\thook",
+            "Get-Item : Cannot find path 'C:\\zz_nope' because it does not exist.",
+            "At line:1 char:10",
+            "+ git foo; Get-Item C:/zz_nope",
+            "+          ~~~~~~~~~~~~~~~~~~",
+            "    + CategoryInfo          : ObjectNotFound: (C:\\zz_nope:String) [Get-Item], ItemNotFoundException",
+            "    + FullyQualifiedErrorId : PathNotFound,Microsoft.PowerShell.Commands.GetItemCommand",
+            " ",
+        }, Array.Empty<string>());
+        Assert.Equal("Get-Item : Cannot find path 'C:\\zz_nope' because it does not exist.", o.ErrorLine);
+        var thrown = new ShellOutput(Array.Empty<string>(), new[] { "a line before", "boom", "At line:1 char:1", "+ throw 'boom'" },
+            Array.Empty<string>());
+        Assert.Equal("boom", thrown.ErrorLine);   //a thrown message has no command lead, so the line above the position is its message
+    }
+
+    //a record whose id line wrapped mid-word keeps its message, and the wrapped piece is never the row
+    [Fact]
+    public void A_wrapped_record_line_is_part_of_the_record()
+    {
+        var o = new ShellOutput(Array.Empty<string>(), new[]
+        {
+            "Get-ChildItem : Cannot find path 'C:\\x\\.git' because it does not exist.",
+            "At line:2 char:1",
+            "+ Get-ChildItem .git",
+            "+ ~~~~~~~~~~~~~~~~~~",
+            "    + CategoryInfo          : ObjectNotFound: (C:\\x\\.git:String) [Get-ChildItem], ItemNotFoundE  ",
+            "   xception",
+            "    + FullyQualifiedErrorId : PathNotFound,Microsoft.PowerShell.Commands.GetChildItemCommand",
+            "",
+        }, Array.Empty<string>());
+        Assert.Equal("Get-ChildItem : Cannot find path 'C:\\x\\.git' because it does not exist.", o.ErrorLine);
+        var two = new ShellOutput(Array.Empty<string>(), new[]
+        {
+            "first : one", "At line:1 char:1", "+ first", "    + CategoryInfo : x, AE", "   xception", "",
+            "second : two", "At line:2 char:1", "+ second", "    + CategoryInfo : y, BE", "   xception",
+        }, Array.Empty<string>());
+        Assert.Equal("second : two", two.ErrorLine);   //the last record's message, past the first record's wrapped piece
+    }
+
+    //a long path makes this machine's PowerShell wrap the record's id line, and the row still names the message
+    [Fact]
+    public async Task A_real_wrapped_PowerShell_error_gives_its_message_line()
+    {
+        var o = ShellOutput.Parse((await Run("Get-ChildItem C:\\no_such_dir_for_gatto_tests\\" + new string('w', 90) + "\\.git")).Text);
+        Assert.StartsWith("Get-ChildItem : Cannot find path", o.ErrorLine, StringComparison.Ordinal);
+    }
+
     //the same through the real tool, so the record lines are the ones this machine's PowerShell writes
     [Fact]
     public async Task A_real_PowerShell_error_gives_its_message_line()

@@ -15,9 +15,10 @@ public static class ArgRouter
 {
     //a word gatto acts on must never read as a role name, and the child word comes from HardwareProbe.ChildWord so it has one home
     private static readonly string[] Reserved =
-        { "serve", "doctor", "status", "audition", "model", "setup", "uninstall", "update", "sessions",
+        { "serve", "doctor", "status", "audition", "model", "setup", "uninstall", "update", "sessions", "inbox",
           Gatto.Core.Hardware.HardwareProbe.ChildWord };
     private static readonly string[] ServeSubcommands = { "start", "stop", "status" };
+    private static readonly string[] InboxSubcommands = { "hook", "open", "off" };
 
     public static ParsedArgs Parse(string[] argv)
     {
@@ -101,7 +102,7 @@ public static class ArgRouter
         : arg.StartsWith("--prompt=", StringComparison.Ordinal) ? arg[9..]
         : null;
 
-    //a reserved command takes a bare subcommand and one bare target. only serve checks its subcommand, and a bare gatto serve means status
+    //a reserved command takes a bare subcommand and one bare target. serve and inbox check their subcommand, and a bare gatto serve means status where a bare gatto inbox is a usage error
     private static ParsedArgs ParseReserved(string[] argv, string? role)
     {
         //asking for help must never run the command, a dropped flag once started a full audition
@@ -123,6 +124,14 @@ public static class ArgRouter
             if (!ServeSubcommands.Contains(sub))
                 throw new ArgumentException(
                     $"unknown serve subcommand '{sub}'. Valid: {string.Join(", ", ServeSubcommands)}");
+        }
+
+        //a bare gatto inbox runs nothing, the hook is what the other harness calls and open and off are what the skill runs
+        if (command == "inbox")
+        {
+            if (sub is null) throw new ArgumentException("gatto inbox needs a subcommand. Valid: hook, open, off");
+            if (!InboxSubcommands.Contains(sub))
+                throw new ArgumentException($"unknown inbox subcommand '{sub}'. Valid: hook, open, off");
         }
 
         //model takes new as its one subcommand, and RunModelAsync refuses a target or any other subcommand. audition reads its first bare token as the target rather than a subcommand, so shift it out of sub here

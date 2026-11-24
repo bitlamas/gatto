@@ -326,7 +326,7 @@ public sealed class EngineUpdateTests : IDisposable
             (_, _, _) => Task.FromResult<string?>(null), (_, _) => null, (_, _) => null, runInstalled ?? ((_, _) => Task.FromResult(0)));
         var acts = f.Acts();
         return UpdateCommand.RunAsync(new CommandContext(_out, _home, true, Theme: null), CancellationToken.None,
-            new UpdateSite(@"C:\Programs\gatto", true, installed, [], false), gattoActs, _ => gattoAnswer,
+            new UpdateSite(@"C:\Programs\gatto", true, installed, []), gattoActs, _ => gattoAnswer,
             EngineSite.Probe(_home, acts.Probe, _ => null), acts, spec => { _asks++; _asked = spec; return 0; });
     }
 

@@ -22,7 +22,7 @@ internal static class UninstallCommand
         }
 
         var home = ctx.Home;
-        var where = site ?? UninstallSite.Probe();
+        var where = site ?? UninstallSite.Probe(home);
         var deeds = acts ?? UninstallActs.Production;
         var installDir = where.InstallDir;
 
@@ -118,6 +118,9 @@ internal static class UninstallCommand
         }
         else if (running is { } left)
             cli.Say(UninstallConsent.LeftRunning(left));
+
+        //the hooks of this install end before anything is removed, since gatto is leaving, and each wait is bounded by the deed itself
+        deeds.EndInboxHooks(home);
 
         //remove the PATH entry first, so a failure here leaves an installed gatto rather than a dangling entry. the outcome is captured for the sentence below
         var pathRemoved = false;

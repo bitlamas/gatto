@@ -25,7 +25,7 @@ internal static class UpdateCommand
             if (code == Updated)
             {
                 if ((acts ?? UpdateActs.Production).RunInstalled is not { } run) return 0;
-                var dir = (site ?? UpdateSite.Probe()).InstallDir;
+                var dir = (site ?? UpdateSite.Probe(ctx.Home)).InstallDir;
                 try { return await run(dir, ct).ConfigureAwait(false); }
                 catch (System.ComponentModel.Win32Exception ex)
                 {
@@ -53,7 +53,7 @@ internal static class UpdateCommand
         CommandBanner.WriteHeader(ctx.Out, ctx.Theme, "update", g, stamp: ctx.Stamp); //the header goes first, before every resolution that can throw, so a closing row never appears above a missing header
 
         //the subject is the install directory, since a first install belongs to the wizard
-        var where = site ?? UpdateSite.Probe();
+        var where = site ?? UpdateSite.Probe(ctx.Home);
         var deeds = acts ?? UpdateActs.Production;
         if (!where.ExePresent)
         {
@@ -102,14 +102,6 @@ internal static class UpdateCommand
             }
             cli.Say($"you're on the latest release ({running}).");
             return 0;
-        }
-
-        //the probe happens at the top, so a doomed update never spends the download, and the sentence is gatto's own rather than the OS's
-        if (where.OldStillHeld)
-        {
-            cli.Say("an older gatto session is still holding the previous binary. Close it and "
-                + "run gatto update again.");
-            return 1;
         }
 
         //the ask takes no pre-selected default, and declining it exits 0 since nothing changed by the user's choice

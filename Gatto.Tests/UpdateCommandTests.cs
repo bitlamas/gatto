@@ -20,8 +20,8 @@ public class UpdateCommandTests : IDisposable
 
     private static UpdateSite Site(
         bool exePresent = true, string? installed = "0.4.1",
-        int[]? siblings = null, bool oldHeld = false) =>
-        new(@"C:\Programs\gatto", exePresent, installed, siblings ?? [], oldHeld);
+        int[]? siblings = null) =>
+        new(@"C:\Programs\gatto", exePresent, installed, siblings ?? []);
 
     private static Release Rel(string tag = "v0.4.2", string? sha = "ab12", string asset = "gatto-0.4.2-win-x64.zip") =>
         new(new UpdateState(DateTimeOffset.UnixEpoch, tag, false),
@@ -149,17 +149,6 @@ public class UpdateCommandTests : IDisposable
     }
 
     //row 5: probed before the download
-
-    //the held binary is read at probe time, so a doomed update refuses without spending the download
-    [Fact]
-    public async Task A_HELD_PREVIOUS_BINARY_REFUSES_BEFORE_SPENDING_THE_DOWNLOAD()
-    {
-        var deeds = new Deeds();
-        Assert.Equal(1, await Run(Site(oldHeld: true), deeds));
-        Assert.Equal(0, deeds.Downloads);
-        Assert.Equal(0, _asks);
-        Assert.DoesNotContain("cannot access the file", Output, StringComparison.OrdinalIgnoreCase);
-    }
 
     //row 6: the ask
 

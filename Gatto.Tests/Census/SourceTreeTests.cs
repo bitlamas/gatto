@@ -7,7 +7,7 @@ public class SourceTreeTests
     [Fact]
     public void EVERY_COMMAND_FILE_IN_CLI_IS_IN_THE_LAUNCH_LIST_OR_EXCLUDED_BY_NAME()
     {
-        string[] excluded = ["Gatto/Cli/Hardware/MachineProbeCommand.cs", "Gatto/Cli/Update/UpdateCommand.cs"];
+        string[] excluded = ["Gatto/Cli/Hardware/MachineProbeCommand.cs", "Gatto/Cli/Update/UpdateCommand.cs", "Gatto/Cli/Inbox/InboxCommand.cs"];
         string Rel(string f) => Path.GetRelativePath(SourceTree.RepoRoot(), f).Replace('\\', '/');
         var listed = SourceTree.LaunchAndCommands().ToList();
         Assert.All(listed, f => Assert.True(File.Exists(f), $"{Rel(f)} is in the launch list and not on disk"));

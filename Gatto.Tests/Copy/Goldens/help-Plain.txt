@@ -2,7 +2,7 @@
 gatto, a terminal assistant that runs AI models on your own computer
 usage: gatto [role|command] [options]
   roles:    default | <any ~\.gatto\roles\*.json>
-  commands: setup | serve start [model] [--detach] | serve stop|status | doctor | status | audition | model new [gguf] [id] | sessions sweep <date> | update | uninstall
+  commands: setup | serve start [model] [--detach] | serve stop|status | doctor | status | audition | model new [gguf] [id] | sessions sweep <date> | update | uninstall | inbox open|off
   options:  -m <model>  -p <prompt>  -e <endpoint>  --effort <level>  --continue[ <id>]  --yes  --sandbox  --version  -h
 
 --- stderr ---

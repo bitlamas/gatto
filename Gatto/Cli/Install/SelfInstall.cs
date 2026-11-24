@@ -16,11 +16,11 @@ internal enum InstallState
     DevBuild,
 }
 
-//put a copy where PATH can find it. a running exe can be renamed aside but not deleted, so a later launch sweeps the .old file
+//put a copy where PATH can find it. a running exe can be renamed aside but not deleted, so it moves to a numbered aside name and a later launch sweeps those
 internal static class SelfInstall
 {
     private const string ExeName = "gatto.exe";
-    internal const string OldSuffix = ".old";
+    private const string AsidePrefix = ExeName + ".old-";   //the free aside names: gatto.exe.old-1, -2, ...
 
     //per-user, no elevation, and the conventional home for a user-scoped program
     public static string DefaultDir() => Path.Combine(
@@ -44,20 +44,6 @@ internal static class SelfInstall
             return plus >= 0 ? pv[..plus] : pv;
         }
         catch (Exception) { return null; }   //an unreadable exe is an unknown version, so return null
-    }
-
-    //the .old file exists and can't be opened exclusively, so a running session still holds it
-    public static bool OldStillHeld(string dir)
-    {
-        var aside = ExeIn(dir) + OldSuffix;
-        if (!File.Exists(aside)) return false;
-        try
-        {
-            using var _ = new FileStream(aside, FileMode.Open, FileAccess.Read, FileShare.None);
-            return false;
-        }
-        catch (IOException) { return true; }
-        catch (Exception) { return false; }   //a permissions fault means the file is free, only a sharing violation counts as held
     }
 
     //what to offer, pure so every branch is testable. the frameworkDependent parameter stays required, or a caller would offer an install that cannot work
@@ -102,13 +88,12 @@ internal static class SelfInstall
             Directory.CreateDirectory(dir);
             var target = ExeIn(dir);
 
-            //copying onto a running exe fails, so rename the old one aside first and the copy gets a free name
+            //a running exe moves to the first free aside name, so one that an older process still holds never blocks the copy
             if (File.Exists(target))
             {
-                var aside = target + OldSuffix;
-                //a leftover .old is deleted here, and if it can't be, the install fails rather than overwriting a file in use
-                if (File.Exists(aside)) File.Delete(aside);
-                File.Move(target, aside);
+                var n = 1;
+                while (File.Exists(Path.Combine(dir, AsidePrefix + n))) n++;
+                File.Move(target, Path.Combine(dir, AsidePrefix + n));
             }
 
             File.Copy(sourceExe, target, overwrite: false);
@@ -117,15 +102,17 @@ internal static class SelfInstall
         catch (Exception ex) { return $"couldn't install gatto to {dir}: {ex.Message}"; }
     }
 
-    //best-effort removal of a predecessor, silent when there is none or it is still locked. the next launch tries again
+    //best-effort removal of the numbered asides, each in its own try, silent when one is still held by an older process. the next launch tries again
     public static void SweepOld(string dir)
     {
-        try
+        string[] asides;
+        try { asides = Directory.GetFiles(dir, AsidePrefix + "*"); }
+        catch (Exception) { return; }   //no readable folder, nothing to sweep
+        foreach (var aside in asides)
         {
-            var aside = ExeIn(dir) + OldSuffix;
-            if (File.Exists(aside)) File.Delete(aside);
+            if (!int.TryParse(Path.GetFileName(aside)[AsidePrefix.Length..], out var n) || n < 1) continue;
+            try { File.Delete(aside); } catch (Exception) { }   //still held, the next launch tries again
         }
-        catch (Exception) { } //still held by an old process, so the next launch tries again
     }
 
     private static bool SameFolder(string? exePath, string dir)

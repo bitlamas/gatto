@@ -14,6 +14,10 @@ internal sealed class Watch : IDisposable
     private const int LastRetryMs = 2000;
 
     private readonly Func<Watch, string, bool> _enqueue;
+    private readonly Func<Watch, string, string, bool>? _take;   //a caller outside the repl takes the path and the raw body itself
+    private readonly Action<Watch>? _passEnded;   //says one pass finished and handed something over
+    private readonly TimeSpan? _tick;   //an idle wait's bound, so a caller outside the repl can check things on a quiet folder
+    private readonly Func<bool>? _keepWatching;   //the caller's own reason to go on watching, false ends the watch
     private readonly Action<string> _row;
     private readonly object _lock = new();
     private readonly HashSet<string> _seen = new(StringComparer.OrdinalIgnoreCase);   //the delivery guard by path, a name leaves it when its letter is archived
@@ -53,21 +57,31 @@ internal sealed class Watch : IDisposable
         Kick();
     }
 
-    private Watch(string folder, Func<Watch, string, bool> enqueue, Action<string> row, bool pause)
+    private Watch(string folder, Func<Watch, string, bool> enqueue, Action<string> row, bool pause,
+        Func<Watch, string, string, bool>? take, Action<Watch>? passEnded, TimeSpan? tick, Func<bool>? keepWatching)
     {
         Folder = folder;
         _enqueue = enqueue;
         _row = row;
         _pause = pause;
+        _take = take;
+        _passEnded = passEnded;
+        _tick = tick;
+        _keepWatching = keepWatching;
     }
 
-    //creates the folder and its .gitignore when absent and builds the watcher, a throw arms nothing. the enqueue sink drops a letter for a watch that is no longer the armed one. hold takes the letters present before the first scan can
-    public static Watch Arm(string folder, Func<Watch, string, bool> enqueue, Action<string> row, bool hold = false, bool pause = false)
+    //creates the folder and its .gitignore when absent and builds the watcher, a throw arms nothing. the enqueue sink drops a letter for a watch that is no longer the armed one
+    public static Watch Arm(string folder, Func<Watch, string, bool> enqueue, Action<string> row, bool hold = false, bool pause = false,
+        //hold takes the letters present before the first scan can, a given held set of full paths replaces that listing and hold is ignored. take, passEnded, tick and keepWatching serve a caller outside the repl
+        IReadOnlyCollection<string>? held = null, Func<Watch, string, string, bool>? take = null,
+        Action<Watch>? passEnded = null, TimeSpan? tick = null, Func<bool>? keepWatching = null)
     {
         var full = Path.GetFullPath(folder);
         CreateFolder(full);
-        var w = new Watch(full, enqueue, row, pause);
-        if (hold)
+        var w = new Watch(full, enqueue, row, pause, take, passEnded, tick, keepWatching);
+        if (held is not null)
+            foreach (var path in held) w._held.Add(path);
+        else if (hold)
             foreach (var path in Directory.GetFiles(full, "*.md", SearchOption.TopDirectoryOnly))
                 if (Path.GetExtension(path).Equals(".md", StringComparison.OrdinalIgnoreCase)) w._held.Add(path);
         var events = new FileSystemWatcher(full, "*.md") { IncludeSubdirectories = false, NotifyFilter = NotifyFilters.FileName };
@@ -111,10 +125,21 @@ internal sealed class Watch : IDisposable
         {
             while (true)
             {
+                if (_keepWatching is { } keep && !keep())
+                {
+                    Dispose();
+                    return;
+                }
                 if (Scan())
                 {
                     await _kick.WaitAsync(retry, _off.Token);
                     retry = Math.Min(retry * 2, LastRetryMs);
+                }
+                else if (_tick is { } idle)
+                {
+                    //the tick bounds the idle wait so a caller outside the repl sees a lost arm or a gone process on a quiet folder
+                    await _kick.WaitAsync(idle, _off.Token);
+                    retry = FirstRetryMs;
                 }
                 else
                 {
@@ -127,9 +152,18 @@ internal sealed class Watch : IDisposable
         catch (ObjectDisposedException) { }
     }
 
-    //one pass in name order, each unseen letter within the budget read and handed over. true when one was locked or empty and needs another try
+    //one pass handed over what it could, then the caller outside the repl hears that the pass ended. true when one letter was locked or empty and needs another try
     private bool Scan()
     {
+        var again = Pass(out var accepted);
+        if (accepted > 0 && _passEnded is { } ended && !_off.IsCancellationRequested) ended(this);
+        return again;
+    }
+
+    //one pass in name order, each unseen letter within the budget read and handed over, accepted counting what a sink took. the budget return leaves the loop mid-pass
+    private bool Pass(out int accepted)
+    {
+        accepted = 0;
         string[] paths;
         try { paths = Directory.GetFiles(Folder, "*.md", SearchOption.TopDirectoryOnly); }
         catch (Exception) { return true; }   //a folder gone or locked for a moment is tried again
@@ -143,11 +177,11 @@ internal sealed class Watch : IDisposable
                 if (_off.IsCancellationRequested || _paused || (_pause ? _count + _pending : _pending) >= K) return again;
                 if (_seen.Contains(path) || _held.Contains(path)) continue;
             }
-            string? text;
-            try { text = Read(path); }
+            string? body;
+            try { body = ReadBody(path); }
             catch (Exception e) when (e is FileNotFoundException or DirectoryNotFoundException) { continue; }
             catch (Exception e) when (e is IOException or UnauthorizedAccessException) { again = true; continue; }
-            if (text is null) { again = true; continue; }
+            if (body is null) { again = true; continue; }
             lock (_lock)
             {
                 if (_off.IsCancellationRequested || _paused) return again;
@@ -155,20 +189,27 @@ internal sealed class Watch : IDisposable
                 _handed.Add(Path.GetFileName(path));
                 _pending++;
             }
-            if (!_enqueue(this, text))
-                lock (_lock) { _seen.Remove(path); _pending--; }
+            var handed = _take is { } take ? take(this, path, body) : _enqueue(this, DefaultText(path, body));
+            if (handed) accepted++;
+            else lock (_lock) { _seen.Remove(path); _pending--; }
         }
         return again;
     }
 
-    //the path, a blank line and the body. a writer holding the file refuses a shared read, so a letter is never read mid-write, and an empty file is one not written yet
-    private static string? Read(string path)
+    //the body alone, a writer holding the file refuses a shared read so a letter is never read mid-write, and an empty file is one not written yet
+    private static string? ReadBody(string path)
     {
-        string body;
         using (var file = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read))
         using (var reader = new StreamReader(file, new UTF8Encoding(false), detectEncodingFromByteOrderMarks: true))
-            body = reader.ReadToEnd();
-        if (body.Length == 0) return null;
+        {
+            var body = reader.ReadToEnd();
+            return body.Length == 0 ? null : body;
+        }
+    }
+
+    //the text the repl takes: the path, a blank line and the body. an oversize body goes as its path and size, named with the archive when the letter has one
+    private static string DefaultText(string path, string body)
+    {
         //a letter past what a tool result may carry goes as its path, so a file dropped in the folder cannot fill the context by itself
         if (body.Length <= GrepTool.MaxTotalChars) return path + "\n\n" + body;
         var said = $"this letter holds {body.Length} characters, more than a tool result may carry; read_file reads it";

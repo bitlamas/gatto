@@ -50,6 +50,32 @@ public class ArgRouterTests
         Assert.Equal("doctor", ArgRouter.Parse(new[] { "doctor" }).Command);
     }
 
+    //the hook is what the other harness runs and open and off are what its skill runs, so the three subcommands parse and a bare inbox is a usage error
+    [Theory]
+    [InlineData("hook")]
+    [InlineData("open")]
+    [InlineData("off")]
+    public void Inbox_takes_exactly_its_three_subcommands(string sub)
+    {
+        var p = ArgRouter.Parse(["inbox", sub]);
+        Assert.Equal("inbox", p.Command);
+        Assert.Equal(sub, p.Subcommand);
+    }
+
+    [Fact]
+    public void A_BARE_INBOX_IS_A_USAGE_ERROR()
+    {
+        var ex = Assert.Throws<ArgumentException>(() => ArgRouter.Parse(["inbox"]));
+        Assert.Equal("gatto inbox needs a subcommand. Valid: hook, open, off", ex.Message);
+    }
+
+    [Fact]
+    public void AN_UNKNOWN_INBOX_SUBCOMMAND_IS_A_USAGE_ERROR()
+    {
+        var ex = Assert.Throws<ArgumentException>(() => ArgRouter.Parse(["inbox", "wobble"]));
+        Assert.Equal("unknown inbox subcommand 'wobble'. Valid: hook, open, off", ex.Message);
+    }
+
     //the probe spawns gatto with this word, so it must stay reserved (a role file named after it would hijack that launch)
     [Fact]
     public void The_probe_word_is_reserved_and_never_a_role_name()

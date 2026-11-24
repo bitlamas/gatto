@@ -150,8 +150,8 @@ public class DoctorTests : IDisposable
         WriteGreenHome();
         var mailbox = Path.Combine(_cwd, ".gatto", "mailbox");
         Plant(Path.Combine(mailbox, "gatto", "m", "r", "2026-09-10-x.md"), 100, new DateTime(2026, 9, 10, 12, 0, 0));
-        Plant(Path.Combine(mailbox, "archive", "gatto", "m", "r", "2026-08-01-y.md"), 100, new DateTime(2026, 8, 1, 12, 0, 0));
-        Plant(Path.Combine(mailbox, "archive", "gatto", "m", "r", "2026-08-01-y.md.read"), 100, new DateTime(2026, 7, 1, 12, 0, 0));
+        Plant(Path.Combine(mailbox, ".archive", "gatto", "m", "r", "2026-08-01-y.md"), 100, new DateTime(2026, 8, 1, 12, 0, 0));
+        Plant(Path.Combine(mailbox, ".archive", "gatto", "m", "r", "2026-08-01-y.md.read"), 100, new DateTime(2026, 7, 1, 12, 0, 0));
 
         var output = new StringWriter();
         await NewDoctor(HealthyClient()).RunAsync(_home, _cwd, output, CancellationToken.None);

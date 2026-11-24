@@ -298,7 +298,7 @@ public sealed class WatchDispatchTests : IDisposable
 
     private string Seat => Path.Combine(_cwd, ".gatto", "mailbox", "gatto", "test-model", "default");
 
-    private string Kept => Path.Combine(_cwd, ".gatto", "mailbox", "archive", "gatto", "test-model", "default");
+    private string Kept => Path.Combine(_cwd, ".gatto", "mailbox", ".archive", "gatto", "test-model", "default");
 
     private RichReplHarness Saving(out SessionStore store) =>
         new(_cwd, width: 400, sessions: store = new SessionStore(_home, _cwd));
@@ -392,7 +392,7 @@ public sealed class WatchDispatchTests : IDisposable
 
     [Theory]
     [InlineData("inbox")]
-    [InlineData(".gatto\\mailbox\\archive\\gatto\\x\\y")]
+    [InlineData(".gatto\\mailbox\\.archive\\gatto\\x\\y")]
     public async Task AN_INBOX_WITH_NO_MAILBOX_ROOT_OR_UNDER_THE_ARCHIVE_ARCHIVES_NOTHING_AND_SAYS_NOTHING(string folder)
     {
         var h = Saving(out _);
@@ -415,7 +415,7 @@ public sealed class WatchDispatchTests : IDisposable
         Assert.True(File.Exists(Path.Combine(inbox, "a.md")));
         Assert.False(h.Saw("archive: ") || h.Saw("archive failed"), h.Written());
         if (folder == "inbox") Assert.False(Directory.Exists(Path.Combine(_cwd, ".gatto")));
-        else Assert.False(Directory.Exists(Path.Combine(_cwd, ".gatto", "mailbox", "archive", "archive")));
+        else Assert.False(Directory.Exists(Path.Combine(_cwd, ".gatto", "mailbox", ".archive", ".archive")));
     }
 
     [Fact]
@@ -769,7 +769,7 @@ public sealed class WatchDispatchTests : IDisposable
     }
 
     [Fact]
-    public void ONE_WATCHER_IS_BUILT_IN_THE_WHOLE_PROGRAM_AND_ONE_HELPER_ARMS_IT()
+    public void ONE_WATCHER_IS_BUILT_IN_THE_WHOLE_PROGRAM_AND_THE_REPL_AND_THE_INBOX_COMMAND_ARM_IT()
     {
         var sites = Census.SourceTree.ProductionFiles()
             .SelectMany(f => File.ReadAllLines(f).Select(line => (f, line)))
@@ -777,11 +777,11 @@ public sealed class WatchDispatchTests : IDisposable
             .Select(p => Path.GetFileName(p.f))
             .ToList();
         Assert.Equal(["Watch.cs"], sites);
-        var arms = Census.SourceTree.ProductionFilesUnder("Repl")
+        var arms = Census.SourceTree.ProductionFiles()
             .SelectMany(f => File.ReadAllLines(f).Select(line => (f, line)))
             .Where(p => p.line.Contains("Watch.Arm(", StringComparison.Ordinal))
             .Select(p => Path.GetFileName(p.f))
             .ToList();
-        Assert.Equal(["Repl.Commands.cs"], arms);
+        Assert.Equal(["InboxCommand.cs", "Repl.Commands.cs"], arms.Order(StringComparer.Ordinal).ToArray());
     }
 }

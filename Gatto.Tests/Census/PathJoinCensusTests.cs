@@ -29,6 +29,7 @@ public class PathJoinCensusTests
     private static readonly (string File, string Line)[] NotPaths =
     [
         ("Gatto.Terminal/FocusKey.cs", @"public static string MoveKeyNameOf(GlyphSet g) => $""Ctrl+{g.UpKey}/{g.DownKey}"";"),   //a key name shown
+        ("Gatto/Cli/Inbox/InboxCommand.cs", @"var (moved, row) = Archive.Move(path, ""claude/"" + seat + ""/"" + entry.SessionId[..8], entry.SessionId, DateTimeOffset.Now);"),   //a read-by line, which a letter writes with slashes
         ("Gatto/Cli/LlamaFetch.cs", @"var prefix = from.Length == 0 ? """" : from + ""/"";"),   //a zip entry name, which uses a slash by format
         ("Gatto/Cli/Setup/SetupFlow.ModelFetch.cs", @"private static string HubLabel(string repoId) => ""huggingface.co/"" + repoId;"),   //a label shown
         ("Gatto/Cli/Setup/Shelves/Pane.cs", @"var tail = $""{g.Ellipsis}\\"" + string.Join('\\', segs[i..]);"),   //a cut path shown in a row

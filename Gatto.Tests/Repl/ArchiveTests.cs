@@ -18,29 +18,29 @@ public sealed class ArchiveTests : IDisposable
     [Fact]
     public void THE_ARCHIVE_MIRRORS_THE_INBOX_AT_WHATEVER_DEPTH_IT_HAS()
     {
-        Assert.Equal(At(".gatto", "mailbox", "archive", "gatto", "m", "r"), Archive.FolderFor(At(".gatto", "mailbox", "gatto", "m", "r")));
-        Assert.Equal(At(".gatto", "mailbox", "archive", "h", "s"), Archive.FolderFor(At(".gatto", "mailbox", "h", "s")));
-        Assert.Equal(At(".gatto", "mailbox", "archive", "h", "n", "coder"), Archive.FolderFor(At(".gatto", "mailbox", "h", "n", "coder")));
+        Assert.Equal(At(".gatto", "mailbox", ".archive", "gatto", "m", "r"), Archive.FolderFor(At(".gatto", "mailbox", "gatto", "m", "r")));
+        Assert.Equal(At(".gatto", "mailbox", ".archive", "h", "s"), Archive.FolderFor(At(".gatto", "mailbox", "h", "s")));
+        Assert.Equal(At(".gatto", "mailbox", ".archive", "h", "n", "coder"), Archive.FolderFor(At(".gatto", "mailbox", "h", "n", "coder")));
     }
 
     [Fact]
     public void THE_NAMES_COMPARE_AS_THE_FILE_SYSTEM_DOES()
     {
-        Assert.Equal(At(".gatto", "Mailbox", "archive", "gatto", "m", "r"), Archive.FolderFor(At(".gatto", "Mailbox", "gatto", "m", "r")));
-        Assert.Null(Archive.FolderFor(At(".gatto", "mailbox", "Archive", "gatto", "m", "r")));
+        Assert.Equal(At(".gatto", "Mailbox", ".archive", "gatto", "m", "r"), Archive.FolderFor(At(".gatto", "Mailbox", "gatto", "m", "r")));
+        Assert.Null(Archive.FolderFor(At(".gatto", "mailbox", ".Archive", "gatto", "m", "r")));
     }
 
     [Fact]
     public void A_ROLE_NAMED_MAILBOX_OR_ARCHIVE_MIRRORS_TO_ITS_OWN_PATH()
     {
-        Assert.Equal(At(".gatto", "mailbox", "archive", "gatto", "m", "mailbox"), Archive.FolderFor(At(".gatto", "mailbox", "gatto", "m", "mailbox")));
-        Assert.Equal(At(".gatto", "mailbox", "archive", "gatto", "m", "archive"), Archive.FolderFor(At(".gatto", "mailbox", "gatto", "m", "archive")));
+        Assert.Equal(At(".gatto", "mailbox", ".archive", "gatto", "m", "mailbox"), Archive.FolderFor(At(".gatto", "mailbox", "gatto", "m", "mailbox")));
+        Assert.Equal(At(".gatto", "mailbox", ".archive", "gatto", "m", "archive"), Archive.FolderFor(At(".gatto", "mailbox", "gatto", "m", "archive")));
     }
 
     [Fact]
     public void A_FOLDER_UNDER_THE_ARCHIVE_OR_WITH_NO_ROOT_ARCHIVES_NOTHING()
     {
-        Assert.Null(Archive.FolderFor(At(".gatto", "mailbox", "archive", "h", "s")));
+        Assert.Null(Archive.FolderFor(At(".gatto", "mailbox", ".archive", "h", "s")));
         Assert.Null(Archive.FolderFor(At("project", "inbox")));
         Assert.Null(Archive.FolderFor(At("mailbox", "proj", "inbox")));   //that mailbox has no .gatto parent
         Assert.Null(Archive.FolderFor(At(".gatto", "mailbox")));
@@ -62,10 +62,10 @@ public sealed class ArchiveTests : IDisposable
 
         Assert.Equal((true, (string?)null), Archive.Move(letter, "gatto/m/r/0123abcd", "0123abcd-0000-0000-0000-000000000000", now));
 
-        var kept = At(".gatto", "mailbox", "archive", "gatto", "m", "r", "a.md");
+        var kept = At(".gatto", "mailbox", ".archive", "gatto", "m", "r", "a.md");
         Assert.False(File.Exists(letter));
         Assert.Equal("the letter", File.ReadAllText(kept));
-        Assert.Equal("*\n", File.ReadAllText(At(".gatto", "mailbox", "archive", "gatto", "m", "r", ".gitignore")));
+        Assert.Equal("*\n", File.ReadAllText(At(".gatto", "mailbox", ".archive", "gatto", "m", "r", ".gitignore")));
         var bytes = File.ReadAllBytes(kept + ".read");
         Assert.False(bytes.Length >= 3 && bytes[0] == 0xEF && bytes[1] == 0xBB && bytes[2] == 0xBF);
         Assert.DoesNotContain((byte)'\r', bytes);
@@ -84,7 +84,7 @@ public sealed class ArchiveTests : IDisposable
         var letter = Letter(At("project", "inbox"), "a.md");
         Assert.Equal((false, (string?)null), Archive.Move(letter, "r", "s", DateTimeOffset.Now));
         Assert.True(File.Exists(letter));
-        Assert.False(Directory.Exists(At("project", "inbox", "archive")));
+        Assert.False(Directory.Exists(At("project", "inbox", ".archive")));
     }
 
     //a taken name moves the letter under the next free number, so the inbox empties and both letters stay readable
@@ -97,13 +97,13 @@ public sealed class ArchiveTests : IDisposable
 
         Assert.Equal((true, (string?)"archive: a.md was taken, kept as a-2.md"), Archive.Move(second, "r", "s", DateTimeOffset.Now));
         Assert.False(File.Exists(second));
-        Assert.Equal("first", File.ReadAllText(At(".gatto", "mailbox", "archive", "gatto", "m", "r", "a.md")));
-        Assert.Equal("second", File.ReadAllText(At(".gatto", "mailbox", "archive", "gatto", "m", "r", "a-2.md")));
-        Assert.StartsWith("read-by: r\n", File.ReadAllText(At(".gatto", "mailbox", "archive", "gatto", "m", "r", "a-2.md.read")));
+        Assert.Equal("first", File.ReadAllText(At(".gatto", "mailbox", ".archive", "gatto", "m", "r", "a.md")));
+        Assert.Equal("second", File.ReadAllText(At(".gatto", "mailbox", ".archive", "gatto", "m", "r", "a-2.md")));
+        Assert.StartsWith("read-by: r\n", File.ReadAllText(At(".gatto", "mailbox", ".archive", "gatto", "m", "r", "a-2.md.read")));
 
         var third = Letter(inbox, "a.md", "third");
         Assert.Equal((true, (string?)"archive: a.md was taken, kept as a-3.md"), Archive.Move(third, "r", "s", DateTimeOffset.Now));
-        Assert.Equal("third", File.ReadAllText(At(".gatto", "mailbox", "archive", "gatto", "m", "r", "a-3.md")));
+        Assert.Equal("third", File.ReadAllText(At(".gatto", "mailbox", ".archive", "gatto", "m", "r", "a-3.md")));
     }
 
     //a read file left without its letter still holds the name, so a new letter never inherits another one's read record
@@ -111,11 +111,11 @@ public sealed class ArchiveTests : IDisposable
     public void A_READ_FILE_ALONE_HOLDS_ITS_NAME()
     {
         var inbox = At(".gatto", "mailbox", "gatto", "m", "r");
-        Directory.CreateDirectory(At(".gatto", "mailbox", "archive", "gatto", "m", "r"));
-        File.WriteAllText(At(".gatto", "mailbox", "archive", "gatto", "m", "r", "a.md.read"), "read-by: other\n");
+        Directory.CreateDirectory(At(".gatto", "mailbox", ".archive", "gatto", "m", "r"));
+        File.WriteAllText(At(".gatto", "mailbox", ".archive", "gatto", "m", "r", "a.md.read"), "read-by: other\n");
 
         Assert.Equal((true, (string?)"archive: a.md was taken, kept as a-2.md"), Archive.Move(Letter(inbox, "a.md"), "r", "s", DateTimeOffset.Now));
-        Assert.Equal("read-by: other\n", File.ReadAllText(At(".gatto", "mailbox", "archive", "gatto", "m", "r", "a.md.read")));
+        Assert.Equal("read-by: other\n", File.ReadAllText(At(".gatto", "mailbox", ".archive", "gatto", "m", "r", "a.md.read")));
     }
 
     //a name ending in a dot is archived without it, so the letter and its read file share one name and a second such letter takes the next number
@@ -123,7 +123,7 @@ public sealed class ArchiveTests : IDisposable
     public void A_NAME_ENDING_IN_A_DOT_IS_ARCHIVED_WITHOUT_IT_AND_ITS_READ_FILE_MATCHES()
     {
         var inbox = At(".gatto", "mailbox", "gatto", "m", "r");
-        var kept = At(".gatto", "mailbox", "archive", "gatto", "m", "r");
+        var kept = At(".gatto", "mailbox", ".archive", "gatto", "m", "r");
 
         Assert.Equal((true, (string?)null), Archive.Move(Letter(inbox, "note.md.", "first"), "r", "s", DateTimeOffset.Now));
         Assert.Equal("first", File.ReadAllText(Path.Combine(kept, "note.md")));
@@ -141,7 +141,7 @@ public sealed class ArchiveTests : IDisposable
     {
         var inbox = At(".gatto", "mailbox", "gatto", "m", "r");
         var letter = Letter(inbox, "a.md");
-        var archived = At(".gatto", "mailbox", "archive", "gatto", "m", "r", "a.md");
+        var archived = At(".gatto", "mailbox", ".archive", "gatto", "m", "r", "a.md");
         Directory.CreateDirectory(Path.GetDirectoryName(archived)!);
         File.Move(letter, archived);
 
@@ -155,21 +155,21 @@ public sealed class ArchiveTests : IDisposable
     {
         var letter = Letter(At(".gatto", "mailbox", "gatto", "m", "r"), "a.md");
         Assert.Equal((true, (string?)null), Archive.Move(letter, null, null, DateTimeOffset.Now));
-        Assert.True(File.Exists(At(".gatto", "mailbox", "archive", "gatto", "m", "r", "a.md")));
-        Assert.False(File.Exists(At(".gatto", "mailbox", "archive", "gatto", "m", "r", "a.md.read")));
+        Assert.True(File.Exists(At(".gatto", "mailbox", ".archive", "gatto", "m", "r", "a.md")));
+        Assert.False(File.Exists(At(".gatto", "mailbox", ".archive", "gatto", "m", "r", "a.md.read")));
     }
 
     [Fact]
     public void A_READ_FILE_THAT_CANNOT_BE_WRITTEN_IS_ONE_ROW_AND_THE_MOVE_STANDS()
     {
         var letter = Letter(At(".gatto", "mailbox", "gatto", "m", "r"), "a.md");
-        Directory.CreateDirectory(At(".gatto", "mailbox", "archive", "gatto", "m", "r", "a.md.read"));
+        Directory.CreateDirectory(At(".gatto", "mailbox", ".archive", "gatto", "m", "r", "a.md.read"));
 
         var (moved, row) = Archive.Move(letter, "r", "s", DateTimeOffset.Now);
 
         Assert.True(moved);
         Assert.StartsWith("archive: a.md moved, its read file failed: ", row);
         Assert.False(File.Exists(letter));
-        Assert.True(File.Exists(At(".gatto", "mailbox", "archive", "gatto", "m", "r", "a.md")));
+        Assert.True(File.Exists(At(".gatto", "mailbox", ".archive", "gatto", "m", "r", "a.md")));
     }
 }

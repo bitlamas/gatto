@@ -342,7 +342,7 @@ public sealed class WatchTests : IDisposable
         var path = Path.Combine(inbox, "big.md");
         File.WriteAllText(path, new string('x', 60_000));
         WaitFor(1);
-        var kept = Path.Combine(_root, ".gatto", "mailbox", "archive", "gatto", "m", "r", "big.md");
+        var kept = Path.Combine(_root, ".gatto", "mailbox", ".archive", "gatto", "m", "r", "big.md");
         Assert.Equal(path + "\n\nthis letter holds 60000 characters, more than a tool result may carry; read_file reads it; when this turn ends gatto moves it to " + kept,
             Assert.Single(Got()));
     }
