@@ -31,12 +31,13 @@ public sealed class InboxCommandTests : IDisposable
     private static string Rel => Path.Combine(".gatto", "mailbox", "claude", Seat);
 
     //the shell the harness sets: the session id, the pid, and the project folder as the variable brings it
-    private Func<string, string?> Env(string? sid = null, int? pid = null, string? dir = null) =>
+    private Func<string, string?> Env(string? sid = null, int? pid = null, string? dir = null, string? attended = null) =>
         name => name switch
         {
             "CLAUDE_CODE_SESSION_ID" => sid,
             "CLAUDE_PID" => pid?.ToString(),
             "CLAUDE_PROJECT_DIR" => dir,
+            "CLAUDE_CODE_SESSION_ATTENDED" => attended,
             _ => null,
         };
 
@@ -274,6 +275,20 @@ public sealed class InboxCommandTests : IDisposable
         Assert.Equal(_sid, State.ArmFor(Inbox)?.Arm.SessionId);
     }
 
+    //an inbox moved with nothing in it says empty, as the open row does, never a count of zero
+    [Fact]
+    public async Task A_MOVE_OF_AN_EMPTY_INBOX_SAYS_EMPTY()
+    {
+        Seed(inbox: Inbox);
+        Seed(_other, inbox: Inbox);
+        State.WriteArm(new InboxState.Arm(Seat, Inbox, _other, Claude));
+
+        Assert.Equal(0, await InboxCommand.RunAsync("open", Io(Env(_sid, 4242, _proj))));
+        Assert.Equal(
+            $"inbox moved: {Rel}, from session {_other[..8]} to this session; empty; watching from the end of this turn",
+            _out.ToString().TrimEnd());
+    }
+
     [Fact]
     public async Task OPEN_WITH_NO_RECORD_AND_WITH_NO_SEAT_SAY_SO_WITH_EXIT_TWO()
     {
@@ -292,6 +307,18 @@ public sealed class InboxCommandTests : IDisposable
         Assert.Equal(2, await InboxCommand.RunAsync("open", Io(Env(pid: 4242, dir: _proj))));
         Assert.Equal("inbox: not a claude session", _out.ToString().TrimEnd());
         Assert.Equal(2, await InboxCommand.RunAsync("off", Io(Env(sid: _sid))));
+    }
+
+    //an unattended session ends with its turn, so open refuses it and writes no arm
+    [Fact]
+    public async Task OPEN_IN_AN_UNATTENDED_SESSION_REFUSES_WITH_EXIT_TWO()
+    {
+        Seed();
+
+        Assert.Equal(2, await InboxCommand.RunAsync("open", Io(Env(_sid, 4242, _proj, attended: "0"))));
+        Assert.Equal("inbox not opened: this session runs unattended (claude -p) and ends with its turn", _out.ToString().TrimEnd());
+        Assert.Null(State.ArmFor(Inbox));
+        Assert.Null(State.ReadSession(_sid)!.Inbox);
     }
 
     [Fact]
@@ -558,6 +585,40 @@ public sealed class InboxCommandTests : IDisposable
         Assert.Equal(0, await InboxCommand.RunAsync("hook", io).WaitAsync(TimeSpan.FromSeconds(10)));
         Assert.Equal(Fresh, State.ArmFor(Inbox)?.Arm.Claude);
         Assert.Equal(Fresh, State.ReadSession(_sid)!.Claude);
+    }
+
+    //an unattended resume of an armed session leaves the arm and the record as they were and returns without a watcher
+    [Fact]
+    public async Task AN_UNATTENDED_RESUME_TAKES_NO_ARM_AND_WATCHES_NOTHING()
+    {
+        var old = new InboxState.Proc(111, 1);
+        Seed(inbox: Inbox, claude: old);
+        State.WriteArm(new InboxState.Arm(Seat, Inbox, _sid, old));
+        WriteLetter("a.md");
+        var io = Io(Env(_sid, 9000, _proj, attended: "0"),
+            new StringReader(Stdin(_sid, "SessionStart", source: "resume", transcript: Transcript)),
+            live: [Claude, Fresh, old]);
+
+        Assert.Equal(0, await InboxCommand.RunAsync("hook", io).WaitAsync(TimeSpan.FromSeconds(10)));
+        Assert.Equal(old, State.ArmFor(Inbox)?.Arm.Claude);
+        Assert.Equal(old, State.ReadSession(_sid)!.Claude);
+        Assert.False(File.Exists(Path.Combine(_home, "claude", "claude-" + _sid + ".pid")));
+        Assert.Equal("", _err.ToString());
+    }
+
+    //the end of an unattended turn in the arm's own session and process wakes nothing and returns at once
+    [Fact]
+    public async Task AN_UNATTENDED_STOP_IN_THE_ARMED_SESSION_RETURNS_WITHOUT_A_WAKE()
+    {
+        Seed(inbox: Inbox);
+        State.WriteArm(new InboxState.Arm(Seat, Inbox, _sid, Claude));
+        WriteLetter("a.md");
+        var io = Io(Env(_sid, 4242, _proj, attended: "0"), new StringReader(Stdin(_sid, transcript: Transcript)));
+
+        Assert.Equal(0, await InboxCommand.RunAsync("hook", io).WaitAsync(TimeSpan.FromSeconds(10)));
+        Assert.Equal("", _err.ToString());
+        Assert.Empty(State.ReadSession(_sid)!.Delivered);
+        Assert.NotNull(State.ArmFor(Inbox));
     }
 
     //an unarmed session watches nothing, a lost arm ends the watcher, and a loss after the batch stops the wake

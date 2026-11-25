@@ -54,6 +54,9 @@ internal static class InboxCommand
         return (id, claude);
     }
 
+    //claude sets this to 0 in a session no one attends, as under -p, in the hook and in the tool shell alike. an absent value counts as attended
+    private static bool Unattended(Io io) => io.Env("CLAUDE_CODE_SESSION_ATTENDED") == "0";
+
     //one line to the caller's writer, returned as the exit code so every row reads as the flow's end
     private static int Row(Io io, string line, int exit)
     {
@@ -68,6 +71,7 @@ internal static class InboxCommand
         try
         {
             if (Session(io) is not { } session) return Row(io, "inbox: not a claude session", 2);
+            if (Unattended(io)) return Row(io, "inbox not opened: this session runs unattended (claude -p) and ends with its turn", 2);
             var record = state.ReadSession(session.Id);
             if (record is null)
                 return Row(io, "inbox not opened: no record of this session; start a new Claude session in this folder", 2);
@@ -106,12 +110,10 @@ internal static class InboxCommand
                 return r with { Inbox = inbox, Known = known, Delivered = [] };
             });
             state.WriteArm(new InboxState.Arm(seat, inbox, session.Id, session.Claude));
-            var count = Gatto.Core.Plural.Of(known.Length, "letter");
+            var waiting = known.Length > 0 ? $"{Gatto.Core.Plural.Of(known.Length, "letter")} already there, not delivered" : "empty";
             if (moved)
-                return Row(io, $"inbox moved: {shown}, from session {prev!.SessionId[..8]} to this session; {count} already there, not delivered{watching}", 0);
-            return Row(io, known.Length > 0
-                ? $"inbox open: {shown}, {count} already there, not delivered{watching}"
-                : $"inbox open: {shown}, empty{watching}", 0);
+                return Row(io, $"inbox moved: {shown}, from session {prev!.SessionId[..8]} to this session; {waiting}{watching}", 0);
+            return Row(io, $"inbox open: {shown}, {waiting}{watching}", 0);
         }
         catch (Exception ex) { return Row(io, "inbox not opened: " + ex.Message, 1); }
     }
@@ -145,7 +147,10 @@ internal static class InboxCommand
         var pidWritten = false;
         try
         {
-            var stdin = JsonNode.Parse(io.In.ReadToEnd());
+            var input = io.In.ReadToEnd();
+            //an unattended session ends with its turn and nothing could wake it, so a resume there takes no arm and no watcher holds it open
+            if (Unattended(io)) return 0;
+            var stdin = JsonNode.Parse(input);
             sessionId = Text(stdin, "session_id");
             var transcript = Text(stdin, "transcript_path");
             var hookEvent = Text(stdin, "hook_event_name");
