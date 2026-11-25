@@ -116,12 +116,12 @@ public class UpdateCheckTests : IDisposable
     [Fact]
     public void SILENCE_HAS_THREE_MEANINGS_AND_SAYS_WHICH()
     {
-        //the tag stays raw, v and all, SilenceNote quotes it as Line does
-        Assert.Equal("this build (0.4.1) is ahead of the latest release (v0.4.0)",
+        //both versions take the one display form, SilenceNote reads it as Line does
+        Assert.Equal("this build (v0.4.1) is ahead of the latest release (v0.4.0)",
             UpdateCheck.SilenceNote("v0.4.0", "0.4.1"));
 
         //the build level with the release
-        Assert.Equal("you're on the latest release (0.4.1)",
+        Assert.Equal("you're on the latest release (v0.4.1)",
             UpdateCheck.SilenceNote("v0.4.1", "0.4.1"));
 
         //an unreadable tag must not report latest, the note can only say the two couldn't be compared
@@ -261,7 +261,7 @@ public class UpdateCheckTests : IDisposable
     {
         var s = new UpdateState(Now, "v0.4.2", false);
 
-        Assert.Equal("gatto v0.4.2 is out (you're on 0.4.1): run gatto update",
+        Assert.Equal("gatto v0.4.2 is out (you're on v0.4.1): run gatto update",
             UpdateCheck.Line(s, "0.4.1", installed: true));
 
         var notInstalled = UpdateCheck.Line(s, "0.4.1", installed: false)!;

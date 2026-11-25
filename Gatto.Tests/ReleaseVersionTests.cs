@@ -95,4 +95,13 @@ public class ReleaseVersionTests
         Assert.Equal("0.4.0", ReleaseVersion.Bare("v0.4.0"));
         Assert.DoesNotContain("v", ReleaseVersion.Bare("v0.4.0"), StringComparison.Ordinal);
     }
+
+    //the display form every update sentence prints, exactly one leading v however many it arrived with
+    [Fact]
+    public void WithV_gives_a_version_exactly_one_leading_v()
+    {
+        Assert.Equal("v0.4.2", ReleaseVersion.WithV("v0.4.2"));
+        Assert.Equal("v0.4.2", ReleaseVersion.WithV("0.4.2"));
+        Assert.Equal("v0.4.2", ReleaseVersion.WithV("vv0.4.2"));
+    }
 }

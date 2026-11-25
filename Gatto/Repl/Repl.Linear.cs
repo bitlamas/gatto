@@ -268,6 +268,7 @@ public sealed partial class Repl
                     rejected = null;
                     if (text.Trim().Length == 0) continue;
                     var typed = text;
+                    text = SlashAliases.Resolve(text);
                     //the placeholders beside a command seed the next Read here, where no restore can race the reseed
                     string? carry = null;
                     if (CommandAmongPlaceholders(text, KnownCommands()) is { } split) (text, carry) = split;

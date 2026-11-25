@@ -37,6 +37,15 @@ internal readonly record struct ReleaseVersion(int Major, int Minor, int Patch)
     public static string Bare(string? tag) =>
         tag is { Length: > 1 } t && (t[0] == 'v' || t[0] == 'V') && char.IsDigit(t[1]) ? t[1..] : (tag ?? "");
 
+    //the display form of a gatto version for update sentences: exactly one leading v however many it arrived with, and text that is no version comes back as it came
+    public static string WithV(string? text)
+    {
+        if (text is not { Length: > 0 }) return text ?? "";
+        var t = text;
+        while (t.Length > 0 && (t[0] == 'v' || t[0] == 'V')) t = t[1..];
+        return TryParseRunning(t, out _) ? "v" + t : text;
+    }
+
     //component by component, and equal is not newer, the caller reads that as being on the latest
     public bool IsNewerThan(ReleaseVersion o) =>
         Major != o.Major ? Major > o.Major

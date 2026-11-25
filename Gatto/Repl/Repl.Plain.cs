@@ -73,6 +73,7 @@ public sealed partial class Repl
             firstLine = false;
             if (line.Trim().Length == 0) continue;
 
+            line = SlashAliases.Resolve(line);
             //both faces call this gate before the command chain and before the send, so a mistyped command is refused in one place
             var gate = SlashGate.GateSlash(line, KnownCommands());
             if (gate.Refused)

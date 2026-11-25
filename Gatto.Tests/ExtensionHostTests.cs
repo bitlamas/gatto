@@ -217,6 +217,25 @@ public sealed class ExtensionHostTests : IClassFixture<RoslynWarmupFixture>, IDi
         Assert.NotNull(tools.Get("mine_tool"));
     }
 
+    //an alias name is gatto's like the command it stands for, so an extension registering it is refused at load
+    [Fact]
+    public void AN_ALIAS_NAME_IS_REFUSED_NAMING_THE_FILE()
+    {
+        WriteFile("mine.csx", """
+            Gatto.Command("/clear", "", "mine", (arg, ct) => Task.FromResult(""));
+            """);
+        var loaded = ExtensionHost.LoadAll(_dir, NewApi(), _ => { });
+        var tools = new ToolRegistry();
+        var hooks = new HookBus();
+        var commands = new CommandRegistry();
+        var diags = new List<string>();
+        ExtensionHost.Commit(loaded, tools, hooks, commands,
+            [.. Gatto.Repl.Commands.SlashCommands.All.Select(c => c.Name), .. Gatto.Repl.Commands.SlashAliases.Names],
+            diags.Add);
+        Assert.Equal(["mine.csx: /clear is gatto's"], diags);
+        Assert.False(commands.TryGet("/clear", out _));
+    }
+
     [Fact]
     public void THE_SECOND_FILE_TO_REGISTER_A_NAME_IS_REFUSED_IN_FILE_NAME_ORDER()
     {

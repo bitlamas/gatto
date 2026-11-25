@@ -46,22 +46,22 @@ internal static class UpdateCheck
 
         return state.Security
             //a security release says so, since a reader who sees that word acts differently from one who reads "update available"
-            ? $"gatto {latest} is out and it's a SECURITY release (you're on {running}): {next}"
-            : $"gatto {latest} is out (you're on {running}): {next}";
+            ? $"gatto {ReleaseVersion.WithV(latest)} is out and it's a SECURITY release (you're on {ReleaseVersion.WithV(running)}): {next}"
+            : $"gatto {ReleaseVersion.WithV(latest)} is out (you're on {ReleaseVersion.WithV(running)}): {next}";
     }
 
     //what to say when Line is silent, using the same comparison so the two surfaces can't disagree. an unreadable tag is never the latest release
     public static string SilenceNote(string? latest, string running)
     {
         if (latest is not { Length: > 0 })
-            return $"couldn't compare this build ({running}) with GitHub's answer";
+            return $"couldn't compare this build ({ReleaseVersion.WithV(running)}) with GitHub's answer";
 
         if (!ReleaseVersion.TryParse(latest, out var theirs) || !ReleaseVersion.TryParseRunning(running, out var mine))
-            return $"couldn't compare this build ({running}) with the tag GitHub reported ({latest})";
+            return $"couldn't compare this build ({ReleaseVersion.WithV(running)}) with the tag GitHub reported ({ReleaseVersion.WithV(latest)})";
 
         return mine.IsNewerThan(theirs)
-            ? $"this build ({running}) is ahead of the latest release ({latest})"
-            : $"you're on the latest release ({running})";
+            ? $"this build ({ReleaseVersion.WithV(running)}) is ahead of the latest release ({ReleaseVersion.WithV(latest)})"
+            : $"you're on the latest release ({ReleaseVersion.WithV(running)})";
     }
 
     //a projection of ParseRelease, so the weekly line and the update command never read one payload two ways. null on anything unexpected, a shape we don't recognise is not an update

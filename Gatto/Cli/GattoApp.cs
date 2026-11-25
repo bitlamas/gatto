@@ -1159,7 +1159,7 @@ public static class GattoApp
         {
             commands = new Gatto.Core.Commands.CommandRegistry(state.Armed);
             //every extension that committed, in discovery order, and a tool-less one is a legal load with no tool row
-            (committedExt, committedExtensions) = ExtensionHost.Commit(loadedExtensions, tools, hooks, commands, Gatto.Repl.Commands.SlashCommands.All.Select(c => c.Name), extDiag, extLedger);
+            (committedExt, committedExtensions) = ExtensionHost.Commit(loadedExtensions, tools, hooks, commands, Gatto.Repl.Commands.SlashCommands.All.Select(c => c.Name).Concat(Gatto.Repl.Commands.SlashAliases.Names), extDiag, extLedger);
             //the early pass should have skipped it already, and a launch must not run on the endpoint of an extension that did not commit
             if (state.Endpoint.Owner is { } owner && !committedExtensions.Any(e => e.Name == owner))
             {

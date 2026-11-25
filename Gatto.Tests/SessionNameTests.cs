@@ -266,15 +266,15 @@ public sealed class SessionNameTests : IDisposable
         Assert.Contains($"{TerminalTitle.Glyph} {Name}", screen, StringComparison.Ordinal);
     }
 
-    //types /name while the turn runs and reads the composer and the file before the turn may end
-    private sealed class NameMidTurnTool(RichReplHarness h, SessionStore store, List<string> seen) : ITool
+    //types a naming command while the turn runs and reads the composer and the file before the turn may end
+    private sealed class NameMidTurnTool(RichReplHarness h, SessionStore store, List<string> seen, string verb = "/name") : ITool
     {
         public string Name => "hold";
         public string Description => "holds the turn open";
         public JsonElement ParametersSchema => JsonDocument.Parse("""{"type":"object"}""").RootElement;
         public async Task<ToolResult> ExecuteAsync(JsonElement args, IToolContext ctx, CancellationToken ct)
         {
-            h.Keys.Line("/name " + SessionNameTests.Name);
+            h.Keys.Line(verb + " " + SessionNameTests.Name);
             var shown = await h.UntilAsync(() => h.ScreenText().Contains($"{TerminalTitle.Glyph} {SessionNameTests.Name}", StringComparison.Ordinal), Waits.Bound);
             lock (seen)
             {
@@ -306,6 +306,27 @@ public sealed class SessionNameTests : IDisposable
         Assert.Equal(Name, SessionStore.IdentityOf(store.CurrentPath!)!.Name);
     }
 
+    //the rename alias takes the same mid-turn arm as /name and the turn's own save carries it
+    [Fact]
+    public async Task RENAME_MID_TURN_SHOWS_AT_ONCE_AND_THE_TURNS_SAVE_WRITES_IT()
+    {
+        var store = new SessionStore(_home, _cwd);
+        var deed = new Deed();
+        var reg = new ToolRegistry();
+        var h = new RichReplHarness(_cwd, tools: reg, title: deed, sessions: store);
+        var seen = new List<string>();
+        reg.Register(new NameMidTurnTool(h, store, seen, "/rename"));
+        h.Client.EnqueueTurn(new StreamEvent.ToolCallReady(new ToolCall("c1", "hold", "{}")), new StreamEvent.Finished("tool_calls", null));
+        h.Client.EnqueueTurn(new StreamEvent.TextDelta("second round"), new StreamEvent.Finished("stop", null));
+        h.Keys.Line("go").Line("/quit");
+
+        await h.RunAsync();
+
+        Assert.Equal(["composer named", "file unnamed"], seen);
+        Assert.Contains(TerminalTitle.Named(Name), SettledTitles.Of(deed.Applied));
+        Assert.Equal(Name, SessionStore.IdentityOf(store.CurrentPath!)!.Name);
+    }
+
     //at rest the composer writes the file itself, since no turn will save before a quit
     [Fact]
     public async Task NAME_AT_REST_IN_THE_RICH_LOOP_IS_ON_DISK_AT_ONCE()
@@ -313,6 +334,19 @@ public sealed class SessionNameTests : IDisposable
         var store = new SessionStore(_home, _cwd);
         var h = new RichReplHarness(_cwd, sessions: store);
         h.Keys.Line("/name " + Name).Line("/quit");
+
+        await h.RunAsync();
+
+        Assert.Equal(Name, SessionStore.IdentityOf(store.CurrentPath!)!.Name);
+    }
+
+    //the rename alias at rest lands on the same seam as /name
+    [Fact]
+    public async Task RENAME_AT_REST_IN_THE_RICH_LOOP_IS_ON_DISK_AT_ONCE()
+    {
+        var store = new SessionStore(_home, _cwd);
+        var h = new RichReplHarness(_cwd, sessions: store);
+        h.Keys.Line("/rename " + Name).Line("/quit");
 
         await h.RunAsync();
 
@@ -397,6 +431,24 @@ public sealed class SessionNameTests : IDisposable
         var repl = PlainRepl(Convo(), store);
         Console.SetOut(new StringWriter());
         Console.SetIn(new StringReader("/name " + Name + "\n/quit\n"));
+
+        await repl.RunAsync(CancellationToken.None);
+
+        var path = store.CurrentPath;
+        Assert.NotNull(path);
+        Assert.True(File.Exists(path));
+        Assert.Equal(Name, SessionStore.IdentityOf(path)!.Name);
+        Assert.Equal(Path.GetFullPath(path), Path.GetFullPath(SessionStore.ResolvePathById(_home, Name)));
+    }
+
+    //the rename alias on the plain face writes the same identity before any turn and resolves
+    [Fact]
+    public async Task A_RENAME_ALIAS_SET_BEFORE_ANY_TURN_IS_ON_DISK_AT_ONCE_AND_RESOLVES()
+    {
+        var store = new SessionStore(_home, _cwd);
+        var repl = PlainRepl(Convo(), store);
+        Console.SetOut(new StringWriter());
+        Console.SetIn(new StringReader("/rename " + Name + "\n/quit\n"));
 
         await repl.RunAsync(CancellationToken.None);
 

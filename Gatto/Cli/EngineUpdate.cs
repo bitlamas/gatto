@@ -263,7 +263,8 @@ internal static class EngineUpdate
         return new(
             TitleRows: [],
             Question: new PromptQuestion(fetch ? $"Update llama.cpp to {pin}?" : $"Update the model settings for {pin}?"),
-            Options: [new SelectOption("Yes, update"), new SelectOption("Not now")],
+            //the yes rides the shared constant, so the program's question and the engine's change together
+            Options: [new SelectOption(UpdateConsent.YesUpdate), new SelectOption("Not now")],
             FooterHint: $"{g.ArrowsKey} choose {g.Dot} Enter confirm {g.Dot} Esc leave",
             NoInitialCursor: true);
     }

@@ -27,23 +27,23 @@ internal delegate int? UpdateAsker(SelectSpec spec);
 internal static class UpdateConsent
 {
     //the one spelling of the yes on both update questions, the program's and the engine's
-    internal const string YesUpdate = "Yes — update";
+    internal const string YesUpdate = "Yes - update";
 
     //the ask as data, so a test can assert its shape without a terminal, and it sets NoInitialCursor
-    public static SelectSpec SpecFor(string latest, string running, long bytes, string installDir,
+    public static SelectSpec SpecFor(string latest, string running, long bytes,
         string notesUrl, Gatto.Terminal.GlyphSet? glyphs)
     {
         var g = glyphs ?? Gatto.Terminal.GlyphSet.Unicode;
         return new(
             TitleRows: [],
             Question: new PromptQuestion(
-                $"download {(bytes / 1024d / 1024d):0.0} MB and replace {Path.Combine(installDir, "gatto.exe")}?"),
+                $"download {(bytes / 1024d / 1024d):0.0} MB and replace current gatto?"),
             Options: [new SelectOption(YesUpdate), new SelectOption("Not now")],
             FooterHint: $"{g.ArrowsKey} choose {g.Dot} Enter confirm {g.Dot} Esc leave",
             BodyRows:
             [
                 //say "you're on", matching the weekly line's phrasing so one fact reads one way
-                new BodyRow($"gatto {latest} is out — you're on {running}."),
+                new BodyRow($"gatto {ReleaseVersion.WithV(latest)} is out, you're on {ReleaseVersion.WithV(running)}."),
                 //the release notes sit here rather than in the weekly line, where they are useful at the moment of deciding
                 new BodyRow($"what changed: {notesUrl}"),
             ],

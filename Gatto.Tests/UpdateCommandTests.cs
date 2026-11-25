@@ -230,6 +230,38 @@ public class UpdateCommandTests : IDisposable
         //don't count carriage returns, Blank writes one of its own after the progress region
     }
 
+    //the blank row written after the yes, asserted on the bytes between the ask and the first download row
+    [Fact]
+    public async Task A_BLANK_ROW_OPENS_THE_DOWNLOAD_after_the_answer()
+    {
+        var deeds = new Deeds { ProgressSteps = 1 };
+        var lenAtAsk = -1;
+        await UpdateCommand.RunAsync(Ctx(), CancellationToken.None, Site(), deeds.Acts(),
+            _ => { lenAtAsk = Output.Length; return 0; });
+
+        var firstReport = Output.IndexOf("\rdownloading", StringComparison.Ordinal);
+        Assert.True(firstReport > 0, "the download row must exist");
+        Assert.True(lenAtAsk >= 0, "the ask must have happened");
+        //between the answer and the first report sits one blank row and nothing else
+        Assert.Equal(Environment.NewLine, Output[lenAtAsk..firstReport]);
+    }
+
+    //the question names no path, the yes is one spelling, and the last row says the folder once with no full stop after it
+    [Fact]
+    public async Task THE_QUESTION_ITS_YES_AND_THE_LAST_ROW_ARE_WORDED_ONCE()
+    {
+        Gatto.Repl.Prompts.SelectSpec? asked = null;
+        await UpdateCommand.RunAsync(Ctx(), CancellationToken.None, Site(), new Deeds().Acts(),
+            spec => { asked = spec; return 0; });
+
+        Assert.NotNull(asked);
+        Assert.EndsWith(" MB and replace current gatto?", asked.Question.Text, StringComparison.Ordinal);
+        Assert.Equal("Yes - update", asked.Options[0].Label);
+        var last = Output.TrimEnd().Split('\n')[^1].TrimEnd('\r');
+        Assert.StartsWith("updated gatto v", last, StringComparison.Ordinal);
+        Assert.EndsWith(@" at C:\Programs\gatto\", last, StringComparison.Ordinal);
+    }
+
     //rows 7-9: the deeds
 
     //the progress row must be closed on the failure path too, Say writes onto the open row otherwise

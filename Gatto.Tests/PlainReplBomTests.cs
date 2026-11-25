@@ -34,6 +34,11 @@ public sealed class PlainReplBomTests
     public void A_quit_behind_a_byte_order_mark_ends_the_session_and_sends_nothing() =>
         Assert.Empty(Run(Bom + "/quit\n").Requests);
 
+    //the alias ends the plain loop too, so a message typed after it never sends
+    [Fact]
+    public void An_exit_alias_ends_the_session_and_the_line_after_it_sends_nothing() =>
+        Assert.Empty(Run("/exit\nhello\n").Requests);
+
     [Fact]
     public void A_message_behind_a_byte_order_mark_reaches_the_model_without_it()
     {

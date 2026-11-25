@@ -18,6 +18,18 @@ public class RichReplHarnessSmokeTests
         Assert.Equal(0, exit);
     }
 
+    //the alias resolves above the gate, so the run ends on it exactly as on the declared command
+    [Fact]
+    public async Task RichLoop_ExitsCleanlyOnTheExitAlias()
+    {
+        var h = new RichReplHarness(Path.GetTempPath());
+        h.Keys.Line("/exit");
+
+        var exit = await h.RunAsync();
+
+        Assert.Equal(0, exit);
+    }
+
     //this runs the join between the loop and the clock's pause, an unwired sink leaves every other guard green while the clock counts
     [Fact]
     public async Task RichLoop_ArmsTheModalWaitSink_SoTheTurnClockCanPause()

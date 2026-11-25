@@ -85,7 +85,7 @@ internal static class UpdateCommand
         if (!ReleaseVersion.TryParse(release.State.Latest, out var latest)
             || !ReleaseVersion.TryParse(running, out var have))
         {
-            cli.Say($"couldn't compare versions ({release.State.Latest ?? "?"} vs {running ?? "?"}). "
+            cli.Say($"couldn't compare versions ({ReleaseVersion.WithV(release.State.Latest ?? "?")} vs {ReleaseVersion.WithV(running ?? "?")}). "
                 + "Nothing was changed.");
             return 0;   //nothing was asked of this phase and nothing failed, and the engine phase does not depend on the comparison
         }
@@ -95,18 +95,18 @@ internal static class UpdateCommand
             //equal and older both download nothing and neither is a failure, so the engine phase follows either
             if (have.IsNewerThan(latest))
             {
-                //both versions print without the v, or the tag and the running version read as two kinds of thing
-                cli.Say($"the latest release ({ReleaseVersion.Bare(release.State.Latest)}) is older "
-                    + $"than this gatto ({running}). Nothing was changed.");
+                //both versions take the one display form here too, or the tag and the running version read as two kinds of thing
+                cli.Say($"the latest release ({ReleaseVersion.WithV(release.State.Latest)}) is older "
+                    + $"than this gatto ({ReleaseVersion.WithV(running)}). Nothing was changed.");
                 return 0;
             }
-            cli.Say($"you're on the latest release ({running}).");
+            cli.Say($"you're on the latest release ({ReleaseVersion.WithV(running)}).");
             return 0;
         }
 
         //the ask takes no pre-selected default, and declining it exits 0 since nothing changed by the user's choice
         var asker = ask ?? UpdateConsent.Prompter(ctx);
-        var spec = UpdateConsent.SpecFor(release.State.Latest!, running!, zip.Size, where.InstallDir,
+        var spec = UpdateConsent.SpecFor(release.State.Latest!, running!, zip.Size,
             release.NotesUrl, CommandBanner.GlyphsFor(ctx.Home));
         var answer = asker(spec);
 
@@ -115,6 +115,9 @@ internal static class UpdateCommand
             cli.Say("nothing was changed.");
             return 0;
         }
+
+        //one blank row between the question's key row and the download row, so the two never touch
+        cli.Blank();
 
         //the zip is swept on every exit from here, success included, since the installed copy is the artifact
         string? downloaded = null;
@@ -162,9 +165,9 @@ internal static class UpdateCommand
         }
 
         //the report names live sessions only when there are any, and the count comes from the list the probe read
-        cli.Say($"updated gatto {running} {g.Right} {release.State.Latest} at {where.InstallDir}.");
+        cli.Say($"updated gatto {ReleaseVersion.WithV(running)} {g.Right} {ReleaseVersion.WithV(release.State.Latest)} at {where.InstallDir.TrimEnd('\\')}\\");
         if (where.SiblingGattos.Count is > 0 and var n)
-            cli.Say($"{n} session{(n == 1 ? " is" : "s are")} still on {running}. "
+            cli.Say($"{n} session{(n == 1 ? " is" : "s are")} still on {ReleaseVersion.WithV(running)}. "
                 + "They'll pick it up when you restart them.");
 
         return Updated;
