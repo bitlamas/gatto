@@ -1,4 +1,5 @@
 //the harness's own oracles, every test built on RichReplHarness is meaningless when they fail. each run drives the whole rich loop, so it takes seconds
+using Gatto.Core.Client;
 using Gatto.Tests.Fakes;
 
 namespace Gatto.Tests;
@@ -56,5 +57,20 @@ public class RichReplHarnessSmokeTests
         var iNew = screen.IndexOf("new conversation", StringComparison.Ordinal);
         Assert.True(iBanner >= 0, $"the banner never reached the frame:\n{screen}");
         Assert.True(iNew > iBanner, $"the rotation's line must follow the banner:\n{screen}");
+    }
+
+    //a turn the test holds and never releases still ends with the run, so a stalled script fails at its bound and never hangs the suite
+    [Fact]
+    public async Task A_HELD_TURN_THAT_IS_NEVER_RELEASED_FAILS_AT_THE_BOUND()
+    {
+        var h = new RichReplHarness(Path.GetTempPath());
+        h.Client.EnqueueTurn(new StreamEvent.TextDelta("never shown"), new StreamEvent.Finished("stop", null));
+        h.Client.HoldNextTurn = _ => new TaskCompletionSource().Task;
+        h.Keys.Line("hello");
+
+        var run = h.RunUntilAsync(() => false, timeoutMs: 2000);
+
+        var ex = await Assert.ThrowsAsync<TimeoutException>(() => run.WaitAsync(TimeSpan.FromSeconds(30)));
+        Assert.Contains("the condition never held within 2000ms", ex.Message);
     }
 }

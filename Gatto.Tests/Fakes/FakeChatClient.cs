@@ -18,7 +18,7 @@ public sealed class FakeChatClient : IChatClient
     //called after each request is recorded, so a waiting test wakes on the request
     public Action? OnRequest { get; set; }
 
-    //awaited once, before the next turn's first event, so a test holds a turn open on its own condition
+    //awaited once, before the next turn's first event, so a test holds a turn open on its own condition. both holds end with the turn's token, so a test whose stages stall fails at its bound and never hangs the suite
     private Func<CancellationToken, Task>? _hold;
     public Func<CancellationToken, Task>? HoldNextTurn { get => _hold; set => _hold = value; }
 
@@ -33,14 +33,14 @@ public sealed class FakeChatClient : IChatClient
         OnRequest?.Invoke();
         var turn = _turns.Dequeue();
         if (turn is Exception ex) throw ex;
-        if (Interlocked.Exchange(ref _hold, null) is { } hold) await hold(ct);
+        if (Interlocked.Exchange(ref _hold, null) is { } hold) await hold(ct).WaitAsync(ct);
         if (FirstEventDelayMs > 0) await Task.Delay(FirstEventDelayMs, ct);
         var first = true;
         foreach (var e in (StreamEvent[])turn)
         {
             ct.ThrowIfCancellationRequested();
             yield return e;
-            if (first && Interlocked.Exchange(ref _holdAfterFirst, null) is { } after) await after(ct);
+            if (first && Interlocked.Exchange(ref _holdAfterFirst, null) is { } after) await after(ct).WaitAsync(ct);
             first = false;
         }
         await Task.CompletedTask;
