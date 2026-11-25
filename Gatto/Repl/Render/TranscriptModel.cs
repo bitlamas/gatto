@@ -100,10 +100,23 @@ public sealed class TranscriptModel(string role)
         CloseOpen();
         item.LeadingBlank = _items.Count > 0;   //one blank separator before every item after the first
         if (item is ToolBlockItem tb) tb.LinkWords = tb.CanOpen && ++_linkCount <= 2;   //a block that opens only on a narrow row takes no hint and shows the triangle there
-        //a thought between tool calls is known when the second call arrives (a call's pictures count as that call)
-        if (item is ToolBlockItem && _items.Count >= 2 && _items[^1] is ReasoningItem thought && _items[^2] is ToolBlockItem or ImageBlockItem)
-            thought.BetweenTools = true;
+        //the second call's block stamps the mark too, a mark already set when its bullet appeared changes nothing
+        if (item is ToolBlockItem) MarkThoughtBetweenTools();
         _items.Add(item);
         OnAppendedOrExtended?.Invoke(item);
+    }
+
+    //a closed thought is between tools when a call came before it and one follows, a call's pictures count as that call
+    public void MarkThoughtBetweenTools()
+    {
+        if (_items.Count >= 2 && _items[^1] is ReasoningItem thought && _items[^2] is ToolBlockItem or ImageBlockItem)
+            thought.BetweenTools = true;
+    }
+
+    //a call previewed in the chrome but never run takes the mark back, so a thought followed by no call keeps the plain summary row
+    public void TakeBackThoughtBetweenTools()
+    {
+        if (_items.Count >= 2 && _items[^1] is ReasoningItem thought && _items[^2] is ToolBlockItem or ImageBlockItem)
+            thought.BetweenTools = false;
     }
 }

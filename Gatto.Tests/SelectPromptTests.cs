@@ -1,4 +1,8 @@
 using System.Text.RegularExpressions;
+using Gatto.Cli;
+using Gatto.Cli.Install;
+using Gatto.Cli.Update;
+using Gatto.Core.Loop.Permissions;
 using Gatto.Repl.Input;
 using Gatto.Repl.Prompts;
 using Gatto.Repl.Render;
@@ -2685,5 +2689,115 @@ public class SelectPromptTests
 
         Assert.Equal(0, Chosen(outcome));
         Assert.Contains(RowsOf(surface.Text), r => r.Contains('❯'));
+    }
+
+    //the update question's shape as data: two body rows, a question, two options and a key row, shared by both faces
+    private static SelectSpec ConsentLike(bool flush) => new(
+        TitleRows: [],
+        Question: new PromptQuestion("download 37.3 MB and replace current gatto?"),
+        Options: [new SelectOption("Yes - update"), new SelectOption("Not now")],
+        FooterHint: "arrows move · enter confirms",
+        BodyRows:
+        [
+            new BodyRow("gatto v0.5.12 is out, you're on v0.5.11."),
+            new BodyRow("what changed: https://github.com/bitlamas/gatto/releases/tag/v0.5.12"),
+        ],
+        Flush: flush);
+
+    //paints once at one width and hands back the whole stream's rows, blank rows kept, so both faces compare in full
+    private static string[] Painted(SelectSpec spec, int width)
+    {
+        var surface = new RecordingSurface { Width = width };
+        new SelectPrompt(surface, T, new ScriptedKeys([Special(ConsoleKey.Enter)])).Show(spec);
+        return TermText.StripAnsiForWidth(surface.Text).Split('\n').Select(r => r.Trim('\r')).ToArray();
+    }
+
+    //a question a command asks outside the repl: its own rows take column 0, the options sit two cells in
+    [Fact]
+    public void FLUSH_layout_puts_body_question_and_key_rows_at_column_zero()
+    {
+        var rows = Painted(ConsentLike(flush: true), 70);
+
+        Assert.Equal(new[]
+        {
+            "gatto v0.5.12 is out, you're on v0.5.11.",
+            "what changed: https://github.com/bitlamas/gatto/releases/tag/v0.5.12",
+            "",
+            "download 37.3 MB and replace current gatto?",
+            "",
+            "  ❯ 1. Yes - update",
+            "    2. Not now",
+            "",
+            "arrows move · enter confirms",
+            "",
+        }, rows);
+
+        var marked = rows.Single(r => r.Contains('❯'));
+        var unmarked = rows.Single(r => r.Contains("Not now"));
+        Assert.Equal(2, marked.IndexOf('❯'));
+        Assert.Equal(marked.IndexOf("Yes - update"), unmarked.IndexOf("Not now"));
+    }
+
+    //the same spec's rows with Flush false, written from a run on the untouched branch before any edit
+    [Fact]
+    public void FLUSH_false_paints_the_rows_the_unchanged_face_painted()
+    {
+        Assert.Equal(new[]
+        {
+            "  gatto v0.5.12 is out, you're on v0.5.11.",
+            "  what changed: https://github.com/bitlamas/gatto/releases/tag/v0.5.12",
+            "",
+            "  download 37.3 MB and replace current gatto?",
+            "",
+            "❯ 1. Yes - update",
+            "  2. Not now",
+            "",
+            "  arrows move · enter confirms",
+            "",
+        }, Painted(ConsentLike(flush: false), 70));
+    }
+
+    //a forty-cell word fills a forty-cell screen when the question is flush, and cannot on the indented face
+    [Fact]
+    public void FLUSH_question_wraps_at_the_full_width()
+    {
+        var longWord = new string('z', 40);
+        var spec = new SelectSpec(
+            TitleRows: [], Question: new PromptQuestion(longWord),
+            Options: [new SelectOption("ok")], Flush: true);
+
+        Assert.Contains(longWord, Painted(spec, 40));
+        Assert.DoesNotContain(longWord, Painted(spec with { Flush = false }, 40));
+    }
+
+    //the three questions asked outside the repl flush, a wizard question and the permission prompt keep the indent
+    [Fact]
+    public void THE_three_command_questions_flush_and_the_repl_prompts_do_not()
+    {
+        Assert.True(UpdateConsent.SpecFor(
+            "0.5.12", "0.5.11", 37_300_000,
+            "https://github.com/bitlamas/gatto/releases/tag/v0.5.12", glyphs: null).Flush);
+        Assert.True(EngineUpdate.SpecFor("b9999", fetch: true, glyphs: null).Flush);
+
+        var screen = new RecordingSurface { Width = 70 };
+        var ask = UninstallConsent.Prompter(T, screen, new ScriptedKeys([Special(ConsoleKey.Enter)]), glyphs: null);
+        Assert.Equal(0, ask("remove gatto from this machine?", ["Yes - remove", "Not now"]));
+        var asked = TermText.StripAnsiForWidth(screen.Text).Split('\n').Select(r => r.Trim('\r')).ToArray();
+        Assert.Contains("remove gatto from this machine?", asked);
+
+        var swap = new RecordingSurface { Width = 70 };
+        new RichPrompter(swap, T, new ScriptedKeys([Special(ConsoleKey.Escape)]))
+            .AskOne(SwapConfirm.QuantSwitch("old-model", "q4", "q8"));
+        var swapRows = TermText.StripAnsiForWidth(swap.Text).Split('\n').Select(r => r.Trim('\r')).ToArray();
+        Assert.Contains("  Run old-model on q4 from now on?", swapRows);
+
+        SelectSpec? permission = null;
+        var prompter = new RichPermissionPrompter(
+            new RecordingSurface { Width = 80 }, T, new ScriptedKeys([]))
+        {
+            ShowForTest = s => { permission = s; return new SelectOutcome.Chosen(0); },
+        };
+        prompter.AskWithReason(new PermissionRequest("shell", "git status --short", "git status"));
+        Assert.False(permission!.Flush);
     }
 }

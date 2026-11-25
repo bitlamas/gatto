@@ -266,7 +266,8 @@ internal static class EngineUpdate
             //the yes rides the shared constant, so the program's question and the engine's change together
             Options: [new SelectOption(UpdateConsent.YesUpdate), new SelectOption("Not now")],
             FooterHint: $"{g.ArrowsKey} choose {g.Dot} Enter confirm {g.Dot} Esc leave",
-            NoInitialCursor: true);
+            NoInitialCursor: true,
+            Flush: true);
     }
 
     private static void Good(CliSurface cli, Gatto.Terminal.GlyphSet g, string text, string detail) =>

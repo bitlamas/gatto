@@ -141,7 +141,9 @@ public sealed record SelectSpec(
     //a token another thread signals to end the prompt as a cancel, so a prompt that must take the panel slot can close this one first
     CancellationToken Close = default,
     //non-null makes this a panel, which draws, keys and routes by its own contract. null is a prompt as it always was
-    PanelFields? Panel = null);
+    PanelFields? Panel = null,
+    //the rows of the question start at column 0 and the options sit two cells in, for a question a command asks outside the REPL
+    bool Flush = false);
 
 //how a SelectPrompt resolved, the widget gives no meaning to any outcome, the callers do
 public abstract record SelectOutcome
@@ -329,6 +331,12 @@ public sealed partial class SelectPrompt(   //single-select, multi-select and th
 
         //the watch's live row, null on every screen that does not watch so those screens render as before
         string? pollRow = null;
+
+        //the flush question puts its rows at column 0, the indented face keeps the two cells. a row family reads these instead of Indent
+        var edge = spec.Flush ? "" : Indent;
+        //a flush option gains the two cells the question gave up, so the caret column is four wide and the mark sits at column 2
+        var atCaret = spec.Flush ? Indent + CursorGlyph : CursorGlyph;
+        var offCaret = spec.Flush ? Indent + Indent : Indent;
 
         if (painter is null)
         {
@@ -639,7 +647,7 @@ public sealed partial class SelectPrompt(   //single-select, multi-select and th
                     _ => 0,
                 };
                 //the row's own indent on top of the region's chrome, leading spaces in Text would be lost the moment it wraps. the Hang field is what continuations take
-                var pad = Indent.Length + prefixCells + Math.Max(0, b.Indent);
+                var pad = edge.Length + prefixCells + Math.Max(0, b.Indent);
                 var contPad = pad + Math.Max(0, b.Hang);
                 var bodyBudget = w <= 0 ? 0 : Math.Max(1, w - pad);
                 var contBudget = w <= 0 ? 0 : Math.Max(1, w - contPad);
@@ -650,10 +658,10 @@ public sealed partial class SelectPrompt(   //single-select, multi-select and th
                     var own = new string(' ', Math.Max(0, b.Indent));
                     var lead = s > 0 ? new string(' ', contPad) : b.Kind switch
                     {
-                        BodyRowKind.Question => Indent + own + theme.Paint(_glyphs.Loaded, Theme.Dim) + " ",
-                        BodyRowKind.Answer => Indent + own + "  " + theme.Paint($"{_glyphs.Right}", Theme.Accent) + " ",
-                        BodyRowKind.Skipped => Indent + own + "  " + theme.Paint($"{_glyphs.Right}", Theme.Dim) + " ",
-                        _ => Indent + own,
+                        BodyRowKind.Question => edge + own + theme.Paint(_glyphs.Loaded, Theme.Dim) + " ",
+                        BodyRowKind.Answer => edge + own + "  " + theme.Paint($"{_glyphs.Right}", Theme.Accent) + " ",
+                        BodyRowKind.Skipped => edge + own + "  " + theme.Paint($"{_glyphs.Right}", Theme.Dim) + " ",
+                        _ => edge + own,
                     };
                     var text = b.Kind switch
                     {
@@ -706,14 +714,14 @@ public sealed partial class SelectPrompt(   //single-select, multi-select and th
             //the strip is painted here so its chips go through Sanitize. no row here may soft-wrap, the inline path rewinds over the rows it wrote
             if (spec.Tabs is { Count: > 0 } tabs)
             {
-                var budget = w <= 0 ? 0 : Math.Max(1, w - Indent.Length);
+                var budget = w <= 0 ? 0 : Math.Max(1, w - edge.Length);
                 var strip = new StringBuilder();
                 var stripCells = 0;
 
                 void FlushStrip()
                 {
                     if (strip.Length == 0) return;
-                    rows.Add(Fit(Indent + strip, w));
+                    rows.Add(Fit(edge + strip, w));
                     strip.Clear();
                     stripCells = 0;
                 }
@@ -750,7 +758,7 @@ public sealed partial class SelectPrompt(   //single-select, multi-select and th
             foreach (var title in spec.TitleRows)
             {
                 //compose the title row here rather than in the caller, so every text goes through Sanitize
-                var titleRow = Indent + theme.Paint(TermText.Sanitize(title.Text), Theme.Bright, bold: true);
+                var titleRow = edge + theme.Paint(TermText.Sanitize(title.Text), Theme.Bright, bold: true);
                 if (title.Code is { } code) titleRow += theme.Chip(TermText.Sanitize(code));
                 if (title.MarkLegend is { } legend)
                     titleRow += "   " + theme.Paint(_glyphs.Loaded, Theme.Accent) + " "
@@ -787,14 +795,14 @@ public sealed partial class SelectPrompt(   //single-select, multi-select and th
                     };
                     var signCells = detail.Kind == DetailKind.None ? 0 : 3;
                     RgbColor? ground = detail.Kind switch { DetailKind.Added => Theme.DiffAddedBg, DetailKind.Removed => Theme.DiffRemovedBg, _ => null };
-                    var pad = Indent.Length + gutterCells + signCells;
+                    var pad = edge.Length + gutterCells + signCells;
                     var detailBudget = w <= 0 ? 0 : Math.Max(1, w - pad);
                     var detailPlain = TermText.Sanitize(detail.Text);
                     var segs = SoftWrap.Wrap(detailPlain, detailBudget, detailBudget);
                     if (segs.Count == 0 && detail.Kind != DetailKind.None) segs = new[] { new WrapSeg("", 0) };
                     if (segs.Count == 0)
                     {
-                        if (gutterCells > 0) rows.Add(Fit(Indent + theme.Paint(gutter, Theme.Dim), w));
+                        if (gutterCells > 0) rows.Add(Fit(edge + theme.Paint(gutter, Theme.Dim), w));
                         continue;
                     }
                     var detailCoded = !detail.Dim && detail.Roles is not null && detail.Roles.Count == detailPlain.Length;
@@ -809,7 +817,7 @@ public sealed partial class SelectPrompt(   //single-select, multi-select and th
                             : detailCoded && string.CompareOrdinal(detailPlain, detailStart, segs[s].Text, 0, segs[s].Text.Length) == 0
                                 ? theme.PaintRuns(SyntaxHighlight.Runs(detailPlain, detail.Roles!, detailStart, segs[s].Text.Length), null, detail.Language)
                                 : detail.Kind == DetailKind.None ? segs[s].Text : theme.Paint(segs[s].Text, Theme.CodeBlockFg);
-                        rows.Add(Fit(Indent + (ground is { } bg ? theme.Ground(lead + text, bg) : lead + text), w));
+                        rows.Add(Fit(edge + (ground is { } bg ? theme.Ground(lead + text, bg) : lead + text), w));
                         detailStart += segs[s].SourceChars;
                     }
                 }
@@ -824,11 +832,11 @@ public sealed partial class SelectPrompt(   //single-select, multi-select and th
                 var qHead = TermText.Sanitize(question.Text);
                 var qCode = question.Code is { } code ? TermText.Sanitize(code) : "";
                 var qPlain = qHead + qCode + TermText.Sanitize(question.After);
-                var qBudget = w <= 0 ? 0 : Math.Max(1, w - Indent.Length);
+                var qBudget = w <= 0 ? 0 : Math.Max(1, w - edge.Length);
                 var qAt = 0;
                 foreach (var seg in SoftWrap.Wrap(qPlain, qBudget, qBudget))
                 {
-                    rows.Add(Fit(Indent + (question.Warn ? theme.Paint(seg.Text, Theme.Warn) : Chipped(seg.Text, qAt, qHead.Length, qCode.Length)), w));
+                    rows.Add(Fit(edge + (question.Warn ? theme.Paint(seg.Text, Theme.Warn) : Chipped(seg.Text, qAt, qHead.Length, qCode.Length)), w));
                     qAt += seg.SourceChars;
                 }
                 //one blank between the question and its options, and it belongs here since every prompt in gatto goes through this widget
@@ -858,7 +866,7 @@ public sealed partial class SelectPrompt(   //single-select, multi-select and th
 
             //headings hang at the label column, which stays constant for the render. a caller laying a table out to width minus that column lines up with its cells
             var headings = spec.HeadingsAt?.Invoke(w);
-            var labelCol = LabelColumn(anyMarked, multi, spec.Numbered);
+            var labelCol = LabelColumn(anyMarked, multi, spec.Numbered) + (spec.Flush ? Indent.Length : 0);
 
             for (var i = 0; i < count; i++)
             {
@@ -872,7 +880,7 @@ public sealed partial class SelectPrompt(   //single-select, multi-select and th
                             //an empty heading text is a spacer, emitted as a blank line rather than labelCol spaces so a frame has no trailing whitespace
                             rows.Add(h.Text.Length == 0 ? "" : Fit(new string(' ', labelCol) + h.Text, w));
 
-                var caret = i == atCursor ? CursorGlyph : Indent;
+                var caret = i == atCursor ? atCaret : offCaret;
                 //a disabled row or one past NumberedRows loses the digit but keeps its slot. with Numbered false the column is absent so a caller's table keeps those cells
                 var disabled = opt is { Disabled: true };
                 var number = !spec.Numbered
@@ -993,7 +1001,7 @@ public sealed partial class SelectPrompt(   //single-select, multi-select and th
                 if (opt?.Description is { } description)
                 {
                     //the pad indents past the number and dot column, so the text reads as a child of its option. a fixed 2-cell gutter would leave these rows too wide
-                    var pad = new string(' ', Indent.Length + number.Length + dot.Length + box.Length);
+                    var pad = new string(' ', UnicodeWidth.Of(caret) + number.Length + dot.Length + box.Length);
                     var budget = w - pad.Length;
 
                     //split the description on its newlines before it is sanitized, since Sanitize would eat them. a blank line stays a blank row so a pane can breathe
@@ -1008,7 +1016,7 @@ public sealed partial class SelectPrompt(   //single-select, multi-select and th
 
                 //one row says the options past the last digit are unnumbered and the arrow keys reach them. it comes after that option is fully rendered
                 if (spec.Numbered && i == NumberedRows - 1 && count > NumberedRows)
-                    rows.Add(Fit(Indent + theme.Paint(
+                    rows.Add(Fit(edge + theme.Paint(
                         "the rest have no number — use the arrow keys", Theme.Dim), w));
             }
 
@@ -1016,7 +1024,7 @@ public sealed partial class SelectPrompt(   //single-select, multi-select and th
             {
                 //the Next row is chrome rather than an option, unnumbered with no checkbox or description. the blank row above keeps it from reading as an option missing its box
                 rows.Add("");
-                var caret = atCursor == count ? CursorGlyph : Indent;
+                var caret = atCursor == count ? atCaret : offCaret;
                 //the pad repeats the number, dot and box columns, so the label sits where an option's label sits
                 var pad = new string(' ', (spec.Numbered ? NumberWidth + 2 : 0)
                     + (anyMarked ? MarkPad.Length : 0) + BoxOff.Length);
@@ -1028,7 +1036,7 @@ public sealed partial class SelectPrompt(   //single-select, multi-select and th
             if (pollRow is { Length: > 0 } watching && spec.Poll?.RenderRow != false)
             {
                 rows.Add("");
-                rows.Add(Fit(Indent + theme.Paint(TermText.Sanitize(watching), Theme.Dim), w));
+                rows.Add(Fit(edge + theme.Paint(TermText.Sanitize(watching), Theme.Dim), w));
             }
 
             //a null hint and a null legend mean no footer row at all. the legend shares the hint's row, right-aligned, and takes its own row when it can't fit
@@ -1040,17 +1048,17 @@ public sealed partial class SelectPrompt(   //single-select, multi-select and th
 
                 //measure the sanitized text before painting it, since the pad comes from display cells and paint adds escapes
                 var shared = hintText is not null && legendText is not null && w > 0
-                    && Indent.Length + UnicodeWidth.Of(hintText) + 1 + UnicodeWidth.Of(legendText) <= w;
+                    && edge.Length + UnicodeWidth.Of(hintText) + 1 + UnicodeWidth.Of(legendText) <= w;
 
                 if (shared)
                 {
-                    var pad = w - Indent.Length - UnicodeWidth.Of(hintText!) - UnicodeWidth.Of(legendText!);
-                    rows.Add(Indent + theme.Paint(hintText!, Theme.Dim) + new string(' ', pad)
+                    var pad = w - edge.Length - UnicodeWidth.Of(hintText!) - UnicodeWidth.Of(legendText!);
+                    rows.Add(edge + theme.Paint(hintText!, Theme.Dim) + new string(' ', pad)
                         + theme.Paint(legendText!, Theme.Dim));
                 }
                 else
                 {
-                    if (hintText is not null) rows.Add(Fit(Indent + theme.Paint(hintText, Theme.Dim), w));
+                    if (hintText is not null) rows.Add(Fit(edge + theme.Paint(hintText, Theme.Dim), w));
                     if (legendText is not null) foreach (var r in LegendRows(legendText, w)) rows.Add(r);
                 }
             }
@@ -1062,13 +1070,13 @@ public sealed partial class SelectPrompt(   //single-select, multi-select and th
         List<string> LegendRows(string text, int width)
         {
             var cells = UnicodeWidth.Of(text);
-            if (width <= 0) return [Indent + theme.Paint(text, Theme.Dim)];
-            if (cells + Indent.Length <= width)
+            if (width <= 0) return [edge + theme.Paint(text, Theme.Dim)];
+            if (cells + edge.Length <= width)
                 return [new string(' ', width - cells) + theme.Paint(text, Theme.Dim)];
 
-            var budget = Math.Max(1, width - Indent.Length);
+            var budget = Math.Max(1, width - edge.Length);
             return [.. SoftWrap.Wrap(text, budget, budget)
-                .Select(s => Indent + theme.Paint(s.Text, Theme.Dim))];
+                .Select(s => edge + theme.Paint(s.Text, Theme.Dim))];
         }
 
         //the detail separators are full-width '-' dashes, lighter than the frame's rule so they read as an inner seam

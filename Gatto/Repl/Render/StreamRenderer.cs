@@ -308,6 +308,9 @@ public sealed class StreamRenderer : ITurnObserver
             if (name is { Length: > 0 }) _written[index] = (TermText.Sanitize(name), partialArguments);
             if (_written.Count > 0) ShowWritten();
 
+            //the live bullet says a call is coming, so the closed thought above it takes its one-line row now
+            _model?.MarkThoughtBetweenTools();
+
             PaintTail();
         },
         () => { });
@@ -457,6 +460,8 @@ public sealed class StreamRenderer : ITurnObserver
     //drops the live row once its call has a block, or once the turn that ran it ends
     private void ClearLiveTool()
     {
+        //a dropped call never follows its thought, and a call that ran or was cancelled re-stamps the mark at its append
+        _model?.TakeBackThoughtBetweenTools();
         _painter.State.Tool = null;
         _painter.State.ToolWait = null;
         _painter.State.ToolProgress = null;

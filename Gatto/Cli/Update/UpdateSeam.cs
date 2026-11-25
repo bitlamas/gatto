@@ -47,7 +47,8 @@ internal static class UpdateConsent
                 //the release notes sit here rather than in the weekly line, where they are useful at the moment of deciding
                 new BodyRow($"what changed: {notesUrl}"),
             ],
-            NoInitialCursor: true);
+            NoInitialCursor: true,
+            Flush: true);
     }
 
     //the real prompt on whatever screen the context names, the same construction UninstallConsent.Prompter makes

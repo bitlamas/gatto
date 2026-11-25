@@ -79,7 +79,8 @@ internal static class UninstallConsent
             TitleRows: [],
             Question: new PromptQuestion(question),
             Options: [.. options.Select(o => new SelectOption(o))],
-            FooterHint: Footer);
+            FooterHint: Footer,
+            Flush: true);
 
         //no theme means a plain terminal (a redirected run never reaches this far)
         return new SelectPrompt(surface, theme ?? new Theme(TermCaps.Plain),

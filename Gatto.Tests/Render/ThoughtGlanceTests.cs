@@ -1,6 +1,12 @@
 using System.Text.RegularExpressions;
+using Gatto.Core.Client;
+using Gatto.Core.Home;
+using Gatto.Core.Tools;
+using Gatto.Repl.Input;
 using Gatto.Repl.Render;
+using Gatto.Repl.Render.Chrome;
 using Gatto.Terminal;
+using Gatto.Terminal.Tests.Fakes;
 using Xunit;
 
 namespace Gatto.Tests.Render;
@@ -164,5 +170,87 @@ public sealed class ThoughtGlanceTests
         var thoughts = model.Items.OfType<ReasoningItem>().ToList();
         Assert.Equal(2, thoughts.Count);
         Assert.All(thoughts, t => Assert.False(t.BetweenTools));
+    }
+
+    //the live bullet is chrome, so the mark's driver needs a painter. mirrors the Make harness of StreamRendererTests
+    private static (StreamRenderer R, TranscriptModel M) Live()
+    {
+        var s = new RecordingSurface { Width = 80 };
+        var gate = new object();
+        var painter = new ChromePainter(s, T, gate, new TranscriptModel("coder"))
+        {
+            Frame = new InputFrame(s, T, "coder",
+                new StatusInfo(@"C:\proj", "qwen", "coder", new CtxState(), @"C:\Users\x"), glyphs: GlyphSet.Unicode),
+            RoleForTint = "coder",
+        };
+        var r = new StreamRenderer(painter, s, T, "coder", new ChromeTicker(painter, gate), gate,
+            model: painter.Model, convoTail: () => null);
+        return (r, painter.Model);
+    }
+
+    //the first streamed fragment of a call is already a call, so the thought above takes its row before any second block exists
+    [Fact]
+    public void A_thought_takes_its_row_when_the_next_call_starts_streaming()
+    {
+        var (r, m) = Live();
+        var first = new ToolCall("i", "read_file", """{"path":"a.cs"}""");
+        r.OnToolCallStart(first);
+        r.OnToolResult(first, new ToolResult("ok", Gloss: "1 line"));
+        r.OnReasoningDelta("the next thing is a call");
+
+        r.OnToolCallDelta("read_file", "{\"pat", 0);
+
+        var thought = Assert.IsType<ReasoningItem>(m.Items[^1]);   //still the last item, no second block was appended
+        Assert.True(thought.BetweenTools);
+    }
+
+    //a call dropped before it was saved follows the thought nowhere, so the mark leaves with the live bullet
+    [Fact]
+    public void A_thought_gives_the_row_back_when_the_streamed_call_is_dropped()
+    {
+        var (r, m) = Live();
+        var first = new ToolCall("i", "read_file", """{"path":"a.cs"}""");
+        r.OnToolCallStart(first);
+        r.OnToolResult(first, new ToolResult("ok", Gloss: "1 line"));
+        r.OnReasoningDelta("the next thing is a call");
+        r.OnToolCallDelta("read_file", "{\"pat", 0);
+        var thought = Assert.IsType<ReasoningItem>(m.Items[^1]);
+        Assert.True(thought.BetweenTools);
+
+        r.EndTurn();   //the turn dies with the call half-assembled, and no block follows the thought
+
+        Assert.False(thought.BetweenTools);
+    }
+
+    //the completing call commits its block and the mark it already stamped stands, as today
+    [Fact]
+    public void The_row_stands_when_the_previewed_call_completes()
+    {
+        var (r, m) = Live();
+        var first = new ToolCall("i", "read_file", """{"path":"a.cs"}""");
+        r.OnToolCallStart(first);
+        r.OnToolResult(first, new ToolResult("ok", Gloss: "1 line"));
+        r.OnReasoningDelta("the next thing is a call");
+        r.OnToolCallDelta("read_file", "{\"pat", 0);
+        var thought = Assert.IsType<ReasoningItem>(m.Items[^1]);
+
+        var second = new ToolCall("j", "read_file", """{"path":"b.cs"}""");
+        r.OnToolCallStart(second);
+        r.OnToolResult(second, new ToolResult("ok", Gloss: "1 line"));
+
+        Assert.True(thought.BetweenTools);
+        Assert.IsType<ToolBlockItem>(m.Items[^1]);
+    }
+
+    //the first thought of a turn has no call before it, so a streaming call does not make it between tools
+    [Fact]
+    public void A_first_thought_stays_plain_when_a_call_starts()
+    {
+        var (r, m) = Live();
+        r.OnReasoningDelta("the first thought of the turn");
+
+        r.OnToolCallDelta("read_file", "{\"pat", 0);
+
+        Assert.False(Assert.IsType<ReasoningItem>(m.Items[^1]).BetweenTools);
     }
 }
