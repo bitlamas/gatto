@@ -293,6 +293,13 @@ public sealed partial class Repl
                         rejected = carry;
                         continue;
                     }
+                    //these few command forms answer at once while a turn runs too, and every other form waits in the queue as it always has
+                    if (SayNow(text, s))
+                    {
+                        lock (s.Gate) { if (!stopped) RedrawLocked(idleView); }
+                        rejected = carry;
+                        continue;
+                    }
                     //what runs opens on this task, at rest and during a turn alike, the same panel Down and Enter and a press on the cell open
                     if (text.Trim() == "/tasks")
                     {
@@ -828,10 +835,7 @@ public sealed partial class Repl
         }
         if (SlashGate.TryMatchCommand(trimmed, "/wild", out var wildArg))
         {
-            //one ♯ row per line, CommitSystem strips a newline so two sentences in one call would mash together
-            foreach (var line in HandleWild(wildArg).Split('\n'))
-                s.Renderer.CommitSystem(line);
-            s.Refresh();                                   //the wild toggle changed, the footer chip must follow
+            SayWild(wildArg, s.Renderer.CommitSystem, s);
             return false;
         }
         if (SlashGate.TryMatchCommand(trimmed, "/sandbox", out var sandboxArg))
@@ -846,8 +850,7 @@ public sealed partial class Repl
         }
         if (trimmed == "/safe")
         {
-            s.Renderer.CommitSystem(HandleSafe());
-            s.Refresh();
+            SaySafe(s.Renderer.CommitSystem, s);
             return false;
         }
         if (SlashGate.TryMatchCommand(trimmed, "/permissions", out var permArg))

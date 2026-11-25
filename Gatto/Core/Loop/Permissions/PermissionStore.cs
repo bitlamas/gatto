@@ -33,6 +33,7 @@ public sealed class PermissionStore
     private readonly List<string> _writeDirs = new();
     private readonly List<string> _tools = new();
     private bool _wild;
+    private readonly object _sync = new();   //one lock for every read and write of the lists and the file, since the composer and the turn both grant
     private bool _attachMany;
 
     //wild mode for this project, as set this session or persisted in the file
@@ -134,24 +135,30 @@ public sealed class PermissionStore
         if (ShellChainingGuard.IsChained(command))
             return false;
         var trimmed = command.TrimStart();
-        foreach (var prefix in _shellPrefixes)
-            if (prefix.Length > 0 && trimmed.StartsWith(prefix, StringComparison.OrdinalIgnoreCase)
-                && (trimmed.Length == prefix.Length || char.IsWhiteSpace(trimmed[prefix.Length])))
-                return true;
-        return false;
+        lock (_sync)
+        {
+            foreach (var prefix in _shellPrefixes)
+                if (prefix.Length > 0 && trimmed.StartsWith(prefix, StringComparison.OrdinalIgnoreCase)
+                    && (trimmed.Length == prefix.Length || char.IsWhiteSpace(trimmed[prefix.Length])))
+                    return true;
+            return false;
+        }
     }
 
     //the granted directory is matched with a trailing separator, so a grant on proj never covers proj2
     public bool AllowsWrite(string fullPath)
     {
         var normalized = TerminateWithSeparator(Path.GetFullPath(fullPath));
-        foreach (var dir in _writeDirs)
+        lock (_sync)
         {
-            var baseDir = TerminateWithSeparator(Path.GetFullPath(dir));
-            if (normalized.StartsWith(baseDir, StringComparison.OrdinalIgnoreCase))
-                return true;
+            foreach (var dir in _writeDirs)
+            {
+                var baseDir = TerminateWithSeparator(Path.GetFullPath(dir));
+                if (normalized.StartsWith(baseDir, StringComparison.OrdinalIgnoreCase))
+                    return true;
+            }
+            return false;
         }
-        return false;
     }
 
     //append the separator when it is missing, both sides terminated so the grant itself matches and a name-prefix sibling doesn't
@@ -160,49 +167,72 @@ public sealed class PermissionStore
 
     public void GrantShellPrefix(string prefix, bool persist)
     {
-        if (!AddShellPrefix(prefix))
-            return;       //empty or duplicate, so there is nothing new to persist
-        if (persist)
-            Persist();
+        lock (_sync)
+        {
+            if (!AddShellPrefix(prefix))
+                return;       //empty or duplicate, so there is nothing new to persist
+            if (persist)
+                Persist();
+        }
     }
 
     public void GrantWriteDir(string dir, bool persist)
     {
-        if (!AddWriteDir(dir))
-            return;
-        if (persist)
-            Persist();
+        lock (_sync)
+        {
+            if (!AddWriteDir(dir))
+                return;
+            if (persist)
+                Persist();
+        }
     }
 
     //an exact match on the tool name, a grant on web_search covers only web_search
-    public bool AllowsTool(string toolName) => _tools.Contains(toolName, StringComparer.Ordinal);
+    public bool AllowsTool(string toolName)
+    {
+        lock (_sync) return _tools.Contains(toolName, StringComparer.Ordinal);
+    }
 
     public void GrantTool(string toolName, bool persist)
     {
-        if (!AddTool(toolName))
-            return;       //empty or duplicate, so there is nothing new to persist
-        if (persist)
-            Persist();
+        lock (_sync)
+        {
+            if (!AddTool(toolName))
+                return;       //empty or duplicate, so there is nothing new to persist
+            if (persist)
+                Persist();
+        }
     }
 
     //sets wild for the session, and off is written by leaving the key out so the file stays minimal
     public void SetWild(bool on, bool persist)
     {
-        _wild = on;
-        if (persist) Persist();
+        lock (_sync)
+        {
+            _wild = on;
+            if (persist) Persist();
+        }
     }
 
     //the standing yes to a batch of pasted images, always persisted, since the question it answers is asked once per project
     public void GrantAttachMany()
     {
-        _attachMany = true;
-        Persist();
+        lock (_sync)
+        {
+            _attachMany = true;
+            Persist();
+        }
     }
 
     //permissions listing and revoke
 
     //shell prefixes, then write dirs, then tools: the one order a listing and RevokeAt both number, so an index names the same entry in both
     public IReadOnlyList<PermissionEntry> ListEntries()
+    {
+        lock (_sync) return ListLocked();
+    }
+
+    private List<PermissionEntry> ListLocked()
     {
         var entries = new List<PermissionEntry>(_shellPrefixes.Count + _writeDirs.Count + _tools.Count);
         foreach (var p in _shellPrefixes) entries.Add(new PermissionEntry(PermissionKind.ShellPrefix, p));
@@ -214,7 +244,12 @@ public sealed class PermissionStore
     //remove at this index, the exact slot the listing printed, so two entries that alias to one directory can't both go
     public PermissionEntry? RevokeAt(int index)
     {
-        var entries = ListEntries();
+        lock (_sync) return RevokeLocked(index);
+    }
+
+    private PermissionEntry? RevokeLocked(int index)
+    {
+        var entries = ListLocked();
         if (index < 0 || index >= entries.Count)
             return null;
         var entry = entries[index];

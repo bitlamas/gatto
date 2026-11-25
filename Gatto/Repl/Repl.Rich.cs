@@ -195,10 +195,7 @@ public sealed partial class Repl
         {
             lock (gate)
             {
-                //one CommitSystem call per line, a newline inside one call is stripped and two rows mash together
-                foreach (var line in HandleWild("").Split('\n'))
-                    s.Renderer.CommitSystem(line);
-                s.Refresh();          //the footer's wild chip must reflect the flip
+                SayWild("", s.Renderer.CommitSystem, s);
                 painter.Repaint();
             }
         });

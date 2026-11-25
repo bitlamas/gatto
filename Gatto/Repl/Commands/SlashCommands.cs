@@ -45,10 +45,11 @@ public static class SlashCommands
     [
         new("/help", "", "this screen", BypassesQueue: true),
         new("/new", "", "reset the conversation"),
+        //the bare show answers at once during a turn, a name to switch to waits in the queue
         new("/role", "[name]", "show or switch role"),
         //acts at once on the composer like /inbox, at rest and during a turn, and answers in a line, so no bypass flag
         new("/name", "[text]", "name this session, on the composer and the tab"),
-        //quant is named here so a verb the dispatch accepts is findable in /help. add stays out, since its only outcome is a sentence pointing at gatto model
+        //quant is named here so /help lists a verb the dispatch accepts, and the bare quant answers at once during a turn while add stays out
         new("/model", "[name|quant]", "show or switch the model, or manage its files"),
         //a toggle-only model gets the same verb, with a picker offering just none and on
         new("/effort", "[level]", "show or set thinking effort"),
@@ -57,14 +58,16 @@ public static class SlashCommands
         //the input becomes an ordinary prompt, so the command falls through to a real turn and reaches the model
         new("/remember", "<text>", "bank a note to project memory, in the model's own words",
             ReachesModel: true),
-        //the key name comes from WildKeys, so /help can't drift from the real keymap
+        //the key name comes from WildKeys so /help cannot drift, and the toggle with always and never answer at once during a turn while any other argument waits
         new("/wild", "[always|never]", "no prompts (" + Gatto.Terminal.WildKeys.KeyName + " toggles)"),
+        //answers at once during a turn too, it has no argument to wait on
         new("/safe", "", "prompts back on"),
+        //the bare show answers at once during a turn, on and off wait in the queue
         new("/sandbox", "[on]", "show the sandbox state, or turn it on for this process"),
         new("/permissions", "[all|revoke <n>]", "review + revoke standing permission grants"),
         new("/tools", "", "list the tools armed this session", BypassesQueue: true),
         new("/context", "", "show what fills the context window", BypassesQueue: true),
-        //it may read the provider first, so it waits in the queue like any command that does more than read local state
+        //with a reader it may read the provider first, so it waits in the queue, and the reader-less sentence answers at once during a turn
         new("/usage", "", "what the provider reports as left, and the session's cost"),
         new("/login", "", "log in to this session's endpoint again"),
         new("/logout", "", "log out of this session's endpoint and forget its secret"),

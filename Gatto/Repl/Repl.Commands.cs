@@ -71,10 +71,13 @@ public sealed partial class Repl
         catch (Exception ex) { return TermText.Sanitize(ex.Message); }
     }
 
+    //the reader-less allowance sentence, the line UsageLinesAsync returns when there is no reader
+    private string NoAllowanceLine => noAllowanceLine ?? LocalAllowance;
+
     //what /usage says on either face: a reader-less endpoint's sentence and its cost, else a fresh read, said before the wait, then the report
     private async Task<IReadOnlyList<string>> UsageLinesAsync(Action<string> say, CancellationToken ct)
     {
-        if (readAllowance is null) return [noAllowanceLine ?? LocalAllowance];
+        if (readAllowance is null) return [NoAllowanceLine];
         var held = await readAllowance(false, ct);
         if (noAllowanceLine is not null) return held.Cost is { } cost ? [noAllowanceLine, UsageText.CostLine(cost)] : [noAllowanceLine];
         //a reader of each response has nothing to ask the provider, so what it holds is drawn and no read is announced
@@ -165,6 +168,50 @@ public sealed partial class Repl
         else line = ArmWatch(arg.Length == 0 ? SeatInbox() : Path.Combine(cwd, arg), hold: false, s, queue);
         s.Renderer.CommitSystemBetweenBlocks(line);
         return true;
+    }
+
+    //these forms answer on the composer thread while a turn runs, at rest every one keeps the path and the rows it has today
+    private bool SayNow(string text, RichState s)
+    {
+        bool inFlight;
+        lock (_ctsLock) inFlight = s.TurnCts is not null;
+        if (!inFlight) return false;
+        var trimmed = text.Trim();
+        if (SlashGate.TryMatchCommand(trimmed, "/wild", out var wildArg))
+        {
+            if (wildArg.Length > 0 && wildArg != "always" && wildArg != "never") return false;
+            SayWild(wildArg, line => s.Renderer.CommitSystemBetweenBlocks(line), s);
+            return true;
+        }
+        if (trimmed == "/safe")
+        {
+            SaySafe(line => s.Renderer.CommitSystemBetweenBlocks(line), s);
+            return true;
+        }
+        //a bare /role names the running role, a name to switch to waits in the queue
+        if (trimmed == "/role")
+        {
+            s.Renderer.CommitSystemBetweenBlocks(CommandText.RoleLine(roleName));
+            return true;
+        }
+        //the bare show answers at once, on and off wait in the queue
+        if (trimmed == "/sandbox")
+        {
+            s.Renderer.CommitSystemBetweenBlocks(HandleSandbox(""));
+            return true;
+        }
+        if (SlashGate.TryMatchCommand(trimmed, "/model", out var modelArg) && modelArg == QuantArg)
+        {
+            SayModelQuant(line => s.Renderer.CommitSystemBetweenBlocks(line));
+            return true;
+        }
+        //a reader of the provider waits in the queue, the reader-less sentence needs no wait
+        if (trimmed == "/usage" && readAllowance is null)
+        {
+            s.Renderer.CommitSystemBetweenBlocks(NoAllowanceLine);
+            return true;
+        }
+        return false;
     }
 
     //the seat's inbox for the model and role running now
@@ -453,6 +500,14 @@ public sealed partial class Repl
         }
     }
 
+    //the /wild answer through either sink, the Shift+Tab key and the slash command cannot drift
+    private void SayWild(string arg, Action<string> say, RichState s)
+    {
+        //one say call per line, a newline inside one call is stripped and two rows mash together
+        foreach (var line in HandleWild(arg).Split('\n')) say(line);
+        s.Refresh();          //the footer's wild chip must reflect the flip
+    }
+
     //the mode is for the process: /sandbox says its state, on turns it on, and off names what keeps it on
     internal string HandleSandbox(string arg)
     {
@@ -517,6 +572,13 @@ public sealed partial class Repl
         if (!wild.On) return "wild mode is off";
         wild.On = false;
         return CommandText.WildLine(false, _glyphs);
+    }
+
+    //the /safe answer through either sink
+    private void SaySafe(Action<string> say, RichState s)
+    {
+        say(HandleSafe());
+        s.Refresh();
     }
 
     internal const string ToolsUnavailable = "the tool list is unavailable in this session";
@@ -759,6 +821,13 @@ public sealed partial class Repl
     }
 
 
+    //the two answers a bare /model quant gives, the refusal of an unmanaged endpoint else the file rows, said through the caller's sink
+    private void SayModelQuant(Action<string> say)
+    {
+        if (unmanagedNotice is { Length: > 0 } unmanaged) say(unmanaged);
+        else say(CommandText.QuantLines(modelFiles, _glyphs));
+    }
+
     //the one body behind /model, it returns true only when a switch happened and hands the caller the line to say in its place
     private bool HandleModelCommand(string trimmed, ITurnObserver picker, Action<string> say,
         out string? switchNotice, out string? effortNotice)
@@ -789,7 +858,7 @@ public sealed partial class Repl
         //the bare /model quant lists the files the model holds, it is read-only and answers false so the caller must not refresh the chip
         if (arg == QuantArg)
         {
-            say(CommandText.QuantLines(modelFiles, _glyphs));
+            SayModelQuant(say);
             return false;
         }
 
