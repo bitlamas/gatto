@@ -243,9 +243,9 @@ public sealed class ChromeTicker(ChromePainter painter, object gate, ISlotsReade
                     var toolTokens = Interlocked.Read(ref _toolChars) / 4;   //the turn's tool-result tokens (Σ)
                     //the tick keeps ms as the wall clock for the grace gate, the poll cadence and the blink. the user reads only shown, which is the work clock
                     var shown = Math.Max(0, ShownMs(ms));
-                    if (painter.State.PanelUp)
+                    if (painter.State.PanelUp && _wait.Open)
                     {
-                        //with the panel up the tool row shows the waiting suffix and the dot goes solid, since nothing is executing while gatto waits
+                        //with a prompt the turn waits on, the tool row shows the waiting suffix and the dot goes solid. an answer panel opens no wait and keeps the purr
                         painter.State.PurrText = null;
                         //the waiting row counts the prompt's own age, since the turn clock is frozen while it is up
                         painter.State.ToolWait = WaitingRow(_wait.OpenAt(ms), tokens, toolTokens,

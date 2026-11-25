@@ -81,6 +81,25 @@ public sealed class PanelPlacementTests
             + string.Join("\n", tightBlock.Rows.Select(r => $"{r.Region}: {r.Visible}")));
     }
 
+    //an answer panel as tall as /help keeps the purr row during a turn, so the height clamp never takes it before the tool rows
+    [Theory]
+    [InlineData(40)] [InlineData(20)]
+    public void AN_INFO_PANEL_DURING_A_TURN_KEEPS_THE_PURR_ROW(int h)
+    {
+        var (p, _) = Wire(120, h);
+        p.State.PurrText = "purr 3s";
+        p.State.Tool = ("shell", "dir");
+        p.SetInfoPanel((_, _) => Panel(23));
+
+        var block = p.ComposeChromeBlock(120, h);
+        var dump = $"h={h}:\n" + string.Join("\n", block.Rows.Select(r => $"{r.Region}: {r.Visible}"));
+
+        Assert.True(block.Rows.Any(r => r.Region == ChromeRegion.Purr && r.Visible.Contains("purr 3s", StringComparison.Ordinal)),
+            $"the purr row is gone, {dump}");
+        Assert.True(block.Rows.Any(r => r.Region == ChromeRegion.Prompt), $"the panel is gone, {dump}");
+        Assert.True(block.Rows.Count <= h - 3, $"the block is taller than its budget, {dump}");
+    }
+
     [Fact]
     public void Panel_ReplacesEditorRows_KeepsRulesAndStatus()
     {

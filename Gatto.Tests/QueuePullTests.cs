@@ -290,6 +290,32 @@ public class QueuePullTests : IDisposable
         Assert.Equal([0, 1, 2], rows.Select(r => r.RegionRow));
     }
 
+    //a queued message taller than the window shows its head and counts the rest, so the purr and the open paragraph keep their rows
+    [Theory]
+    [InlineData(30)] [InlineData(43)]
+    public void A_QUEUED_MESSAGE_TALLER_THAN_THE_WINDOW_KEEPS_THE_PURR_AND_THE_OPEN_PARAGRAPH(int height)
+    {
+        var p = Painter(120, height);
+        p.State.PurrText = "purrrrr    34s";
+        p.State.TailRaw = "p4w1 p4w2 p4w3";
+        p.State.QueueTexts = [string.Join("\n", Enumerable.Range(1, 150).Select(i => $"q{i:000}"))];
+
+        var rows = p.ComposeChromeBlock(120, height).Rows.ToList();
+        var dump = $"h={height}:\n" + string.Join("\n", rows.Select(r => $"{r.Region}: {r.Visible}"));
+        var queue = rows.Where(r => r.Region == ChromeRegion.Queue && r.Visible.Trim().Length > 0).ToList();
+        var cap = height / 3;
+        var band = Ansi.Bg(T.Map(Theme.UserInputBg), T.TrueColor);
+
+        Assert.True(rows.Any(r => r.Visible.Contains("purrrrr", StringComparison.Ordinal)), $"the purr is gone, {dump}");
+        Assert.True(rows.Any(r => r.Region == ChromeRegion.Tail && r.Visible.Contains("p4w3", StringComparison.Ordinal)),
+            $"the open paragraph is gone, {dump}");
+        Assert.True(queue.Count == cap, $"the message holds {queue.Count} rows, not {cap}, {dump}");
+        Assert.Equal(GlyphSet.Unicode.Prompt + " q001", queue[0].Visible.Trim());
+        Assert.Equal($"{GlyphSet.Unicode.Down} {150 - (cap - 1)} more", queue[^1].Visible.Trim());
+        Assert.Contains(band, queue[^1].Rendered, StringComparison.Ordinal);
+        Assert.True(rows.Count <= height - 3, $"the block is taller than its budget, {dump}");
+    }
+
     //the chrome rows must never outgrow the viewport, and nothing else in this file would catch an overgrown one
     [Theory]
     [InlineData(10)] [InlineData(16)] [InlineData(24)] [InlineData(40)]

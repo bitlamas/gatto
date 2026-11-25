@@ -493,6 +493,7 @@ public class ChromeTickerTests
         }
         var ticker = new ChromeTicker(painter, gate);
         ticker.StartTurn(Cats.Face(GlyphSet.Unicode));
+        ticker.BeginUserWait();   //the pump opens the wait when a prompt takes focus
 
         await Painted(painter, () => painter.State.ToolWait is not null, () => "the waiting row never came");
 
@@ -504,6 +505,26 @@ public class ChromeTickerTests
 
         ticker.StopTurn();
         Assert.Null(painter.State.ToolWait);
+    }
+
+    [Fact]
+    public async Task AnswerPanelUp_ThePurrStays_AndTheToolRowShowsNoWait()
+    {
+        //an answer such as /help takes focus without a wait, so the clock runs and the purr keeps its row
+        var (_, painter, gate) = NewPainter();
+        lock (gate)
+        {
+            painter.State.Tool = ("shell", "dir");
+            painter.State.PanelRows = new[] { "  /help", "  /new resets" };
+        }
+        var ticker = new ChromeTicker(painter, gate);
+        ticker.StartTurn(Cats.Face(GlyphSet.Unicode));
+
+        await Painted(painter, () => painter.State.PurrText is not null, () => "the purr never came under an info panel");
+
+        Assert.Contains("purr", painter.State.PurrText!, StringComparison.Ordinal);
+        Assert.Null(painter.State.ToolWait);
+        ticker.StopTurn();
     }
 
     private static int Frames(RecordingSurface surface, object gate)
@@ -527,6 +548,7 @@ public class ChromeTickerTests
         }
         var ticker = new ChromeTicker(painter, gate);
         ticker.StartTurn(Cats.Face(GlyphSet.Unicode));
+        ticker.BeginUserWait();   //the pump opens the wait when a prompt takes focus
         var sw = Stopwatch.StartNew();
         while (sw.ElapsedMilliseconds < 2500) await Task.Delay(20);
         var frames = Frames(surface, gate);
@@ -566,12 +588,14 @@ public class ChromeTickerTests
         }
         var ticker = new ChromeTicker(painter, gate);
         ticker.StartTurn(Cats.Face(GlyphSet.Unicode));
+        ticker.BeginUserWait();   //the pump opens the wait when a prompt takes focus
 
         await Painted(painter, () => painter.State.ToolWait is not null, () => "the waiting row never came");
         Assert.NotNull(painter.State.ToolWait);
         Assert.Null(painter.State.PurrText);
 
         lock (gate) { painter.State.PanelRows = null; }
+        ticker.EndUserWait();
 
         await Painted(painter, () => painter.State.PurrText is not null, () => "the purr never came back");
 
@@ -1052,6 +1076,7 @@ public class ChromeTickerTests
             painter.State.Tool = ("write_file", "out.txt");
             painter.State.PanelRows = new[] { "  Do you want to proceed?", "❯ 1. Yes" };
         }
+        ticker.BeginUserWait();   //the pump opens the wait when a prompt takes focus
         Assert.True(SpinWait.SpinUntil(() => painter.State.ToolWait is not null, TimeSpan.FromSeconds(30)), "the waiting row never came");
         var waiting = painter.State.ToolWait!;
         ticker.StopTurn();

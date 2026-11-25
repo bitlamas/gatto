@@ -393,7 +393,7 @@ public sealed class ChromePainter
         return Math.Max(1, budgetRows - furniture - ReservedLiveRows(width, height));
     }
 
-    //rows the frame reserves while a turn is live, and the purr line stays even though PurrText is null whenever a panel is up
+    //rows the frame reserves while a turn is live, and a prompt the turn waits on clears PurrText, so its two rows go to the prompt
     private int ReservedLiveRows(int width, int height)
     {
         var n = 0;
@@ -413,9 +413,19 @@ public sealed class ChromePainter
     {
         var q = State.QueueTexts;
         if (q.Count == 0) return 0;
-        var newestRows = QueueBlock(q[^1], width).Count;
+        return 1 + NewestQueueBlock(q[^1], width, height).Count + (q.Count > 1 ? 1 : 0);   //a blank, the newest message capped, and a roll-up row when older ones exist
+    }
+
+    //a message over the cap keeps its head and counts the rest on its last row, so the purr and the live tail keep their rows
+    private List<(string R, string V)> NewestQueueBlock(QueueEntryView entry, int width, int height)
+    {
+        var rows = QueueBlock(entry, width);
         var cap = Math.Max(1, height / 3);
-        return 1 + Math.Min(newestRows, cap) + (q.Count > 1 ? 1 : 0);   //a blank, the newest message capped, and a roll-up row when older ones exist
+        if (height <= 0 || rows.Count <= cap) return rows;
+        var hidden = rows.Count - (cap - 1);
+        var v = $"{GutterWrap.Hang}{_glyphs.Down} {hidden} more";
+        var band = entry.Task ? "" : Ansi.Bg(_theme.Map(Theme.UserInputBg), _theme.TrueColor) + Ansi.ClearToEol;
+        return [.. rows.Take(cap - 1), (band + HiddenMark(_glyphs.Down, hidden), v)];
     }
 
     //both Compose and the reservation wrap through this, so the rows offered and the rows enforced come from one wrap
@@ -695,7 +705,7 @@ public sealed class ChromePainter
         //the queue shows the user's own messages, and the newest are the ones that fit since the composer is below the block
         if (q.Count > 0)
         {
-            var newest = QueueBlock(q[^1], width);
+            var newest = NewestQueueBlock(q[^1], width, height);
             var cap = Math.Max(1, height / 3);
             var queueRoom = budgetRows - frameRows - fixedRows.Count - 1 - newest.Count;
             var queueAvail = Math.Max(0, Math.Min(cap - newest.Count, queueRoom));
