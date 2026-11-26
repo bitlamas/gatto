@@ -479,43 +479,28 @@ public class ReplLinearLoopTests
         }
     }
 
-    //the parked composer never repaints, so a restore has to ask for one, or the message stays invisible
-
-    private sealed class ParkedComposerSource : IComposerSource
-    {
-        public bool KeyAvailable => false;
-        public ComposerInput Read() => throw new InvalidOperationException("the composer is parked");
-    }
-
-    private static LineEditor ParkedComposer() =>
-        new(new ParkedComposerSource(),
-            new History(Path.Combine(Directory.CreateTempSubdirectory("gatto-rc-").FullName, "h.txt")));
+    //the restore never writes the editor from the dispatcher's thread, it hands the text down the composer's channel for the editor to insert and paint
 
     [Fact]
-    public void RestoreComposer_WritesTheMessageBack_AndAsksForARepaint()
+    public void RestoreComposer_PostsTheMessageToTheComposer()
     {
-        var editor = ParkedComposer();
-        EditorView? painted = null;
-        var restore = Gatto.Repl.Repl.BuildRestoreComposer(new object(), editor, v => painted = v, () => false);
+        var posted = new List<ComposerInput>();
+        var restore = Gatto.Repl.Repl.BuildRestoreComposer(posted.Add, () => false);
 
-        restore("describe shot.jpg");
+        restore("describe shot.jpg\nand this");
 
-        Assert.NotNull(painted);
-        Assert.Equal("describe shot.jpg", string.Join("\n", painted!.Lines));
-        Assert.Equal("describe shot.jpg".Length, painted.CursorCol);
+        Assert.Equal(new ComposerInput[] { new ComposerInput.Insert("describe shot.jpg\nand this") }, posted);
     }
 
     [Fact]
-    public void RestoreComposer_OnATornDownSession_NeitherWritesNorPaints()
+    public void RestoreComposer_OnATornDownSession_PostsNothing()
     {
-        var editor = ParkedComposer();
-        var painted = 0;
-        var restore = Gatto.Repl.Repl.BuildRestoreComposer(new object(), editor, _ => painted++, () => true);
+        var posted = new List<ComposerInput>();
+        var restore = Gatto.Repl.Repl.BuildRestoreComposer(posted.Add, () => true);
 
         restore("describe shot.jpg");
 
-        Assert.Equal(0, painted);
-        Assert.Equal("", string.Join("\n", editor.Snapshot().Lines));
+        Assert.Empty(posted);
     }
 }
 

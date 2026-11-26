@@ -261,6 +261,49 @@ public class InputPumpTests
         Assert.Equal('j', Read(pump.Composer)!.Value.KeyChar);
     }
 
+    [Fact]
+    public void TryRead_OnAnEmptyChannel_AnswersFalseAfterTheTimeout()
+    {
+        var pump = new InputPump(new KeyInputSource(new FeedSource()));
+        pump.Start();
+        Assert.False(pump.Composer.TryRead(20, out var input));
+        Assert.Null(input);
+    }
+
+    [Fact]
+    public void TryRead_WithAQueuedKey_AnswersIt()
+    {
+        var pump = new InputPump(new KeyInputSource(new FeedSource()));
+        pump.Start();
+        pump.InjectToComposer(K('q'));
+        Assert.True(pump.Composer.TryRead(30000, out var input));
+        Assert.Equal('q', Assert.IsType<ComposerInput.Key>(input).K.KeyChar);
+    }
+
+    //a timed take on a completed channel answers false, so the source has to throw the way the blocking read does
+    [Fact]
+    public async Task TryRead_OnADeadPump_Throws()
+    {
+        var pump = new InputPump(new KeyInputSource(new DeadSource()));
+        pump.Start();
+        var t = Task.Run(() => Assert.ThrowsAny<InvalidOperationException>((Action)(() => pump.Composer.TryRead(30000, out _))));
+        await t.WaitAsync(TimeSpan.FromSeconds(30));
+    }
+
+    private sealed class ThrowingPeekSource : IComposerSource
+    {
+        public ComposerInput Read() => throw new InvalidOperationException("nothing to read");
+        public bool KeyAvailable => throw new InvalidOperationException("peek failed");
+    }
+
+    [Fact]
+    public void TryRead_DefaultBody_CountsAThrowingPeekAsNothingPending()
+    {
+        IComposerSource source = new ThrowingPeekSource();
+        Assert.False(source.TryRead(10, out var input));
+        Assert.Null(input);
+    }
+
     //keys and select gestures share one ComposerInput channel, in arrival order. draining it leaves the editor thread the only writer of selection state
 
     [Fact]

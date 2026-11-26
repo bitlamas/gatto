@@ -614,7 +614,7 @@ public sealed partial class Repl(
     //long enough to read a short sentence, and gone before it starts to look stuck
     private const int PasteHintSeconds = 4;
 
-    //the live paste hint, or null once a transient one has expired, the image-count hint never expires
+    //the live image paste hint, or null once it has expired
     private string? LivePasteHint()
     {
         if (_pasteHint is null) return null;

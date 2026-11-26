@@ -40,12 +40,28 @@ public sealed class LineEditor(IComposerSource input, History history, Func<int>
     private static readonly System.Text.RegularExpressions.Regex PlaceholderShape =
         new(@"^\[Image #\d+\]$", System.Text.RegularExpressions.RegexOptions.Compiled);
 
-    //type text at the cursor as if the user had, single lines only since a newline would corrupt the line and column bookkeeping
-    public void InsertAtCursor(string text)
+    //type text at the cursor as if the user had, a newline in it splitting the line
+    public void InsertAtCursor(string text) => InsertText(text);
+
+    //text typed at the caret in one edit after the prelude a printable key runs, split into lines on LF with the caret left at its end
+    private void InsertText(string text)
     {
-        if (text.Length == 0 || text.Contains('\n')) return;
-        _lines[_line] = _lines[_line].Insert(_col, text);
-        _col += text.Length;
+        _selectedCell = null;
+        if (HasComposerSelection) { var (s, e) = SelRange()!.Value; DeleteRange(s, e); }
+        if (_chords is not null && _chords.Armed != Chord.None)
+        {
+            _chords.Disarm();
+            _onHintChanged?.Invoke();
+        }
+        _completionToken = null;
+        if (text.Length == 0) return;
+        var parts = text.Split('\n');
+        var tail = _lines[_line][_col..];
+        _lines[_line] = _lines[_line][.._col] + parts[0];
+        for (var i = 1; i < parts.Length; i++) _lines.Insert(_line + i, parts[i]);
+        _line += parts.Length - 1;
+        _col = _lines[_line].Length;
+        _lines[_line] += tail;
     }
     //the queue pull: every queued message in order and the queue emptied in the same call, so a pull can't half-happen
     private Func<IReadOnlyList<string>>? _pullQueue;
@@ -70,8 +86,101 @@ public sealed class LineEditor(IComposerSource input, History history, Func<int>
     private StatusCell? _selectedCell;
     public StatusCell? SelectedCell => _selectedCell;
 
-    //a paste's trailing newline is an Enter with a bursty predecessor and nothing behind it, so it's stripped and a paste never auto-submits
-    private bool _thisBursty, _prevBursty;
+    //the wait for more of a burst once nothing is pending, longer than the gaps between the batches of one paste and shorter than the gap between typed keys
+    private const int SettleMs = 10;
+
+    //the input that ended a burst, run next and kept across a submit so a key typed right behind Enter is not lost
+    private ComposerInput? _held;
+
+    //a burst over either bound stands in the buffer as one token, and its text goes out at submit
+    private const int PasteLines = 4;
+    private const int PasteChars = 1000;
+
+    //each token's text by its number, kept for the editor's life and read and written on the editor's thread only
+    private readonly Dictionary<int, (string Token, string Text)> _pastes = [];
+    private int _pasteCount;
+
+    //the number of the newest token while its hint stands, 0 for none since numbers start at 1, written here and read by the status refresh on another thread
+    private volatile int _hintPaste;
+
+    //the top rule's hint while pasting the newest paste again would expand it, null otherwise
+    public string? PasteAgainHint => _hintPaste != 0 ? "paste again to expand" : null;
+
+    private static readonly System.Text.RegularExpressions.Regex PasteToken =
+        new(@"\[Pasted text #(\d+) \+\d+ lines?\]", System.Text.RegularExpressions.RegexOptions.Compiled);
+
+    private static bool IsLong(string text) =>
+        text.Length > PasteChars || text.Count(c => c == '\n') + 1 > PasteLines;
+
+    //a new token for the text, stored under the next number
+    private string NewToken(string text)
+    {
+        var n = ++_pasteCount;
+        var lines = text.Count(c => c == '\n') + 1;
+        var token = $"[Pasted text #{n} +{lines} {(lines == 1 ? "line" : "lines")}]";
+        _pastes[n] = (token, text);
+        return token;
+    }
+
+    //whole text entering the composer stands over either bound as one token with no hint, and a text a stored token already holds takes that token again
+    private string Collapse(string text)
+    {
+        if (!IsLong(text)) return text;
+        foreach (var p in _pastes.Values) if (p.Text == text) return p.Token;
+        return NewToken(text);
+    }
+
+    //each stored token in the text becomes its text in one pass, so a stored text that itself holds a token string goes out as it was pasted
+    private string Expand(string text) => _pastes.Count == 0 ? text : PasteToken.Replace(text, m =>
+        int.TryParse(m.Groups[1].ValueSpan, out var n) && _pastes.TryGetValue(n, out var p) && p.Token == m.Value
+            ? p.Text : m.Value);
+
+    //the stored tokens on a line as column spans, while a typed token string with nothing stored stays plain text
+    private List<(int Start, int End)> Spans(int line)
+    {
+        var spans = new List<(int Start, int End)>();
+        if (_pastes.Count == 0) return spans;
+        foreach (System.Text.RegularExpressions.Match m in PasteToken.Matches(_lines[line]))
+            if (int.TryParse(m.Groups[1].ValueSpan, out var n) && _pastes.TryGetValue(n, out var p) && p.Token == m.Value)
+                spans.Add((m.Index, m.Index + m.Length));
+        return spans;
+    }
+
+    private (int Start, int End)? Inside(int line, int col)
+    {
+        foreach (var s in Spans(line)) if (s.Start < col && col < s.End) return s;
+        return null;
+    }
+
+    private (int Start, int End)? EndingAt(int line, int col)
+    {
+        foreach (var s in Spans(line)) if (s.End == col) return s;
+        return null;
+    }
+
+    private (int Start, int End)? StartingAt(int line, int col)
+    {
+        foreach (var s in Spans(line)) if (s.Start == col) return s;
+        return null;
+    }
+
+    //a token is removed whole, the caret left where it began
+    private void RemoveSpan((int Start, int End) t)
+    {
+        _lines[_line] = _lines[_line].Remove(t.Start, t.End - t.Start);
+        _col = t.Start;
+    }
+
+    //an entry goes once its token is in neither the buffer nor the draft a history walk keeps, so a removed token never comes back
+    private void Prune()
+    {
+        if (_pastes.Count == 0) return;
+        var buffer = string.Join("\n", _lines);
+        var draft = history.Draft ?? "";
+        foreach (var (n, p) in _pastes.ToList())
+            if (!buffer.Contains(p.Token, StringComparison.Ordinal) && !draft.Contains(p.Token, StringComparison.Ordinal))
+                _pastes.Remove(n);
+    }
 
     //blocks until submit and repaints on every buffer or cursor change, with an up-arrow pull from the queue replacing the composer
     public string Read(Action<EditorView> redraw, string? initial = null,
@@ -94,7 +203,7 @@ public sealed class LineEditor(IComposerSource input, History history, Func<int>
         _completionToken = null;
         _lines = string.IsNullOrEmpty(initial)
             ? new List<string> { "" }
-            : new List<string>(initial.Split('\n'));
+            : new List<string>(Collapse(initial).Split('\n'));
         if (_lines.Count == 0) _lines.Add("");
         _line = _lines.Count - 1;
         _col = _lines[_line].Length;
@@ -103,37 +212,63 @@ public sealed class LineEditor(IComposerSource input, History history, Func<int>
         while (true)
         {
             ComposerInput ev;
-            try { ev = input.Read(); readFailures = 0; }
-            catch (Exception)
+            if (_held is { } held) { ev = held; _held = null; }
+            else
             {
-                //skip a failed read and keep editing, and a source that fails every time escapes to the app backstop instead of spinning
-                if (++readFailures >= MaxConsecutiveReadFailures) throw;
-                continue;
+                try { ev = input.Read(); readFailures = 0; }
+                catch (Exception)
+                {
+                    //skip a failed read and keep editing, and a source that fails every time escapes to the app backstop instead of spinning
+                    if (++readFailures >= MaxConsecutiveReadFailures) throw;
+                    continue;
+                }
             }
 
             if (ev is ComposerInput.Key(var k))
             {
-                //sample the burst state for this key before handling it, and a source whose KeyAvailable throws counts as not bursty
-                _prevBursty = _thisBursty;
-                try { _thisBursty = input.KeyAvailable; } catch (Exception) { _thisBursty = false; }
-                try
+                //a text key with more input behind it starts a burst, which lands as one edit and one paint, and every key takes the sample
+                var pending = Pending();
+                if (IsTextKey(k) && pending)
                 {
-                    if (Handle(k) is { } submitted) return submitted;
+                    var text = Gather(k, out var keys, out _held, out var fault);
+                    if (keys > 1) LandBurst(text, redraw);
+                    else
+                    {
+                        ClearHint();
+                        if (Run(k) is { } typed) return typed;   //a lone key with only a gesture or a chord behind it is typed
+                        Paint(redraw);
+                    }
+                    if (fault is not null && ++readFailures >= MaxConsecutiveReadFailures)
+                        System.Runtime.ExceptionServices.ExceptionDispatchInfo.Throw(fault);
+                    continue;
                 }
-                catch (Exception) { } //exotic key state, ignore the key
+                //a host that passes Ctrl+V through makes the key expand the hinted paste, as pasting again does
+                if (IsCtrlV(k) && TryExpand(null)) { Paint(redraw); ClearHint(); continue; }
+                ClearHint();
+                if (Run(k) is { } submitted) return submitted;
             }
-            else if (ev is ComposerInput.OpenBackground open)
+            else
             {
-                //a press on a cell opens it at once, with no selection step, and the open says its own failure
-                _selectedCell = null;
-                _openCell?.Invoke(open.Watch ? StatusCell.Watch : StatusCell.Shells);
-            }
-            else if (ev is ComposerInput.Select sel)
-            {
-                //the gesture arrives already resolved against a layout snapshot, so this thread only sets the selection and does no layout work
-                if (sel.Kind == ComposerGesture.Begin) BeginComposerSelect(sel.Line, sel.Col);
-                else if (sel.Kind == ComposerGesture.Extend) ExtendComposerSelect(sel.Line, sel.Col);
-                else ClearComposerSelection();
+                ClearHint();
+                if (ev is ComposerInput.OpenBackground open)
+                {
+                    //a press on a cell opens it at once, with no selection step, and the open says its own failure
+                    _selectedCell = null;
+                    _openCell?.Invoke(open.Watch ? StatusCell.Watch : StatusCell.Shells);
+                }
+                else if (ev is ComposerInput.Select sel)
+                {
+                    //the gesture arrives already resolved against a layout snapshot, so this thread only sets the selection and does no layout work
+                    if (sel.Kind == ComposerGesture.Begin) BeginComposerSelect(sel.Line, sel.Col);
+                    else if (sel.Kind == ComposerGesture.Extend) ExtendComposerSelect(sel.Line, sel.Col);
+                    else ClearComposerSelection();
+                }
+                else if (ev is ComposerInput.Insert handedBack)
+                {
+                    //a refused message comes back whole at the caret, a long one as a token
+                    try { InsertText(Collapse(handedBack.Text)); }
+                    catch (Exception) { }   //exotic editor state, as a burst would be
+                }
             }
             Paint(redraw);
         }
@@ -146,6 +281,99 @@ public sealed class LineEditor(IComposerSource input, History history, Func<int>
         catch (ComposerPaintException) { throw; }               //already tagged, so it's rethrown as is
         catch (Exception ex) { throw new ComposerPaintException(ex); }
     }
+
+    //a key handled as typed, where an exotic key state is ignored
+    private string? Run(ConsoleKeyInfo k)
+    {
+        try { return Handle(k); }
+        catch (Exception) { return null; }
+    }
+
+    //a peek that throws counts as nothing pending
+    private bool Pending()
+    {
+        try { return input.KeyAvailable; }
+        catch (Exception) { return false; }
+    }
+
+    //a key a paste can carry: a character with Control and Alt both held or both not (AltGr is the pair), a bare Enter or a bare Tab
+    private static bool IsTextKey(ConsoleKeyInfo k)
+    {
+        if (k.Key is ConsoleKey.Enter or ConsoleKey.Tab) return k.Modifiers == 0;
+        var ctrl = k.Modifiers.HasFlag(ConsoleModifiers.Control);
+        return k.KeyChar >= ' ' && ctrl == k.Modifiers.HasFlag(ConsoleModifiers.Alt);
+    }
+
+    //text keys read without a paint until the input runs dry past the settle wait, the first other input handed back to run next and a failed read ending it
+    private string Gather(ConsoleKeyInfo first, out int keys, out ComposerInput? next, out Exception? fault)
+    {
+        var sb = new System.Text.StringBuilder();
+        Append(sb, first);
+        keys = 1;
+        next = null;
+        fault = null;
+        while (true)
+        {
+            ComposerInput? ev;
+            try
+            {
+                if (Pending()) ev = input.Read();
+                else if (!input.TryRead(SettleMs, out ev)) break;
+            }
+            catch (Exception ex) { fault = ex; break; }
+            if (ev is ComposerInput.Key(var k) && IsTextKey(k)) { Append(sb, k); keys++; continue; }
+            next = ev;
+            break;
+        }
+        return sb.ToString();
+    }
+
+    private static void Append(System.Text.StringBuilder sb, ConsoleKeyInfo k) =>
+        sb.Append(k.Key switch { ConsoleKey.Enter => '\n', ConsoleKey.Tab => '\t', _ => k.KeyChar });
+
+    //a burst goes in verbatim, a backslash before a newline included, and the newline that ends it is dropped so a paste never submits
+    private void LandBurst(string text, Action<EditorView> redraw)
+    {
+        if (text.EndsWith('\n')) text = text[..^1];
+        if (TryExpand(text)) { Paint(redraw); ClearHint(); return; }
+        ClearHint();
+        var hint = 0;
+        try
+        {
+            if (IsLong(text)) { var token = NewToken(text); hint = _pasteCount; InsertText(token); }
+            else InsertText(text);
+        }
+        catch (Exception) { }   //exotic editor state, the burst is dropped as a key would be
+        Paint(redraw);
+        //the hint is set after the composer paint, so no frame shows it over the composer the paste replaced
+        if (hint != 0) { _hintPaste = hint; _onHintChanged?.Invoke(); }
+    }
+
+    //the newest paste pasted again, or a null text for a Ctrl+V key, with the caret at its token's end replaces the token by its text, and the entry goes
+    private bool TryExpand(string? text)
+    {
+        if (_hintPaste == 0 || HasComposerSelection || !_pastes.TryGetValue(_hintPaste, out var p)) return false;
+        if (text is not null && text != p.Text) return false;
+        if (EndingAt(_line, _col) is not { } t || _lines[_line][t.Start..t.End] != p.Token) return false;
+        try
+        {
+            _pastes.Remove(_hintPaste);
+            RemoveSpan(t);
+            InsertText(p.Text);
+        }
+        catch (Exception) { }   //exotic editor state, as a burst would be
+        return true;
+    }
+
+    private void ClearHint()
+    {
+        if (_hintPaste == 0) return;
+        _hintPaste = 0;
+        _onHintChanged?.Invoke();
+    }
+
+    private static bool IsCtrlV(ConsoleKeyInfo k) =>
+        k.Key == ConsoleKey.V && k.Modifiers.HasFlag(ConsoleModifiers.Control) && !k.Modifiers.HasFlag(ConsoleModifiers.Alt);
 
     private string? Handle(ConsoleKeyInfo k)
     {
@@ -201,12 +429,6 @@ public sealed class LineEditor(IComposerSource input, History history, Func<int>
                 _col--;
                 SplitLine();
                 return null;
-            case ConsoleKey.Enter when _thisBursty:   //a queued key behind this Enter means a pasted newline, so split the line
-                SplitLine();
-                return null;
-            //strip the newline at the end of a pasted burst so a paste never auto-submits, the user presses Enter to send
-            case ConsoleKey.Enter when _prevBursty:
-                return null;
             case ConsoleKey.Enter:
                 return Submit();
 
@@ -218,7 +440,7 @@ public sealed class LineEditor(IComposerSource input, History history, Func<int>
                     var s = _lines[_line]; var i = _col;
                     while (i > 0 && s[i - 1] == ' ') i--;      //skip spaces first, matching DeleteWordBack's boundary
                     while (i > 0 && s[i - 1] != ' ') i--;      //then back to the start of the word
-                    _col = i;
+                    _col = Inside(_line, i)?.Start ?? i;
                 }
                 else if (_line > 0) { _line--; _col = _lines[_line].Length; }
                 return null;
@@ -229,7 +451,7 @@ public sealed class LineEditor(IComposerSource input, History history, Func<int>
                     var s = _lines[_line]; var i = _col; var n = s.Length;
                     while (i < n && s[i] == ' ') i++;
                     while (i < n && s[i] != ' ') i++;          //then to the end of the word
-                    _col = i;
+                    _col = Inside(_line, i)?.End ?? i;
                 }
                 else if (_line < _lines.Count - 1) { _line++; _col = 0; }
                 return null;
@@ -270,8 +492,9 @@ public sealed class LineEditor(IComposerSource input, History history, Func<int>
                 return null;
 
             case ConsoleKey.Backspace:
-                //backspace over an image placeholder removes it whole, a half-deleted "[Image #7" would still look like an attachment
-                if (PlaceholderEndingAt(_lines[_line], _col) is int start)
+                //backspace over a paste token or an image placeholder removes it whole, a half-deleted "[Image #7" would still look like an attachment
+                if (EndingAt(_line, _col) is { } token) RemoveSpan(token);
+                else if (PlaceholderEndingAt(_lines[_line], _col) is int start)
                 {
                     _lines[_line] = _lines[_line].Remove(start, _col - start);
                     _col = start;
@@ -289,15 +512,18 @@ public sealed class LineEditor(IComposerSource input, History history, Func<int>
                     _line--;
                     _col = junction;
                 }
+                Prune();
                 return null;
             case ConsoleKey.Delete:
-                if (_col < _lines[_line].Length)
+                if (StartingAt(_line, _col) is { } ahead) RemoveSpan(ahead);
+                else if (_col < _lines[_line].Length)
                     _lines[_line] = _lines[_line].Remove(_col, 1);
                 else if (_line < _lines.Count - 1)
                 {
                     _lines[_line] += _lines[_line + 1];
                     _lines.RemoveAt(_line + 1);
                 }
+                Prune();
                 return null;
 
             //an AltGr-composed character arrives as Ctrl+Alt, so it must insert rather than fire the chord
@@ -306,10 +532,12 @@ public sealed class LineEditor(IComposerSource input, History history, Func<int>
                 _lines = new List<string> { "" };
                 _line = 0;
                 _col = 0;
+                Prune();
                 return null;
             case ConsoleKey.W when k.Modifiers.HasFlag(ConsoleModifiers.Control)
                                    && !k.Modifiers.HasFlag(ConsoleModifiers.Alt):
                 DeleteWordBack();
+                Prune();
                 return null;
 
             //select the whole buffer, anchor at the start and caret at the end, only when the composer holds something
@@ -327,6 +555,7 @@ public sealed class LineEditor(IComposerSource input, History history, Func<int>
                     _lines = new List<string> { "" };
                     _line = 0;
                     _col = 0;
+                    Prune();
                 }
                 _onHintChanged?.Invoke();
                 return null;
@@ -340,13 +569,6 @@ public sealed class LineEditor(IComposerSource input, History history, Func<int>
             //this case must precede default, since Alt+V arrives with a printable KeyChar and default would type a v
             case ConsoleKey.V when IsAltOnly(k) && OnPasteImage is not null:
                 OnPasteImage.Invoke();
-                return null;
-
-            //a tab inside a burst is pasted text, kept as the tab it was so the model receives the text as copied
-            case ConsoleKey.Tab when k.Modifiers == 0 && (_thisBursty || _prevBursty):
-                _completionToken = null;   //a tab typed next must start a fresh cycle, not complete a token the paste moved away from
-                _lines[_line] = _lines[_line].Insert(_col, "\t");
-                _col++;
                 return null;
 
             //bare Tab only, since Shift+Tab is wild mode and never reaches this switch
@@ -387,22 +609,27 @@ public sealed class LineEditor(IComposerSource input, History history, Func<int>
         _col = 0;
     }
 
+    //the message goes out with every token replaced by its text, so the history, the queue and the request all hold what was pasted
     private string Submit()
     {
-        var joined = string.Join("\n", _lines);
-        if (joined.Trim().Length > 0) history.Record(joined);
-        return joined;
+        var sent = Expand(string.Join("\n", _lines));
+        if (sent.Trim().Length > 0) history.Record(sent);
+        _pastes.Clear();
+        return sent;
     }
 
+    //a token is stepped over whole, so the caret never stands inside one
     private void MoveLeft()
     {
-        if (_col > 0) _col--;
+        if (EndingAt(_line, _col) is { } t) _col = t.Start;
+        else if (_col > 0) _col--;
         else if (_line > 0) { _line--; _col = _lines[_line].Length; }
     }
 
     private void MoveRight()
     {
-        if (_col < _lines[_line].Length) _col++;
+        if (StartingAt(_line, _col) is { } t) _col = t.End;
+        else if (_col < _lines[_line].Length) _col++;
         else if (_line < _lines.Count - 1) { _line++; _col = 0; }
     }
 
@@ -420,8 +647,12 @@ public sealed class LineEditor(IComposerSource input, History history, Func<int>
     private ((int Line, int Col) Start, (int Line, int Col) End)? SelRange()
     {
         if (_selAnchor is not { } a) return null;
-        var caret = (_line, _col);
-        return Before(a, caret) ? (a, caret) : (caret, a);
+        (int Line, int Col) caret = (_line, _col);
+        var (s, e) = Before(a, caret) ? (a, caret) : (caret, a);
+        //an end inside a token widens to its edge, so a selection that covers part of one covers all of it
+        if (Inside(s.Line, s.Col) is { } ts) s = (s.Line, ts.Start);
+        if (Inside(e.Line, e.Col) is { } te) e = (e.Line, te.End);
+        return (s, e);
     }
 
     private static bool Before((int Line, int Col) x, (int Line, int Col) y) =>
@@ -437,18 +668,19 @@ public sealed class LineEditor(IComposerSource input, History history, Func<int>
         _lines.Insert(s.Line, joined);
         _line = s.Line; _col = s.Col;
         _selAnchor = null;
+        Prune();
     }
 
-    //the selected text for a copy, an empty string when nothing is selected
+    //the selected text for a copy with each token expanded, the text that would be sent, and an empty string when nothing is selected
     private string TextOfRange()
     {
         if (SelRange() is not { } r) return "";
-        if (r.Start.Line == r.End.Line) return _lines[r.Start.Line][r.Start.Col..r.End.Col];
+        if (r.Start.Line == r.End.Line) return Expand(_lines[r.Start.Line][r.Start.Col..r.End.Col]);
         var sb = new System.Text.StringBuilder();
         sb.Append(_lines[r.Start.Line][r.Start.Col..]);
         for (var li = r.Start.Line + 1; li < r.End.Line; li++) { sb.Append('\n'); sb.Append(_lines[li]); }
         sb.Append('\n'); sb.Append(_lines[r.End.Line][..r.End.Col]);
-        return sb.ToString();
+        return Expand(sb.ToString());
     }
 
     //the composer-selection extend gesture, which the range-consume block above must never treat as a consume key
@@ -461,20 +693,23 @@ public sealed class LineEditor(IComposerSource input, History history, Func<int>
 
     private int ClampCol(int line, int col) => Math.Clamp(col, 0, _lines[ClampLine(line)].Length);
 
-    //set the anchor and put the caret there, clamped against the buffer so a stale mouse gesture can't index out of range
+    //set the anchor and the caret there, clamped so a stale gesture can't index out of range, a click inside a token landing on its nearer edge
     public void BeginComposerSelect(int line, int col)
     {
         var clampedLine = ClampLine(line);
-        _selAnchor = (clampedLine, ClampCol(clampedLine, col));
-        _line = _selAnchor.Value.Line; _col = _selAnchor.Value.Col;
+        var c = ClampCol(clampedLine, col);
+        if (Inside(clampedLine, c) is { } t) c = c - t.Start <= t.End - c ? t.Start : t.End;
+        _selAnchor = (clampedLine, c);
+        _line = clampedLine; _col = c;
         _onComposerSelectionSet?.Invoke();
     }
 
-    //move the caret to a clamped position, arming the anchor at the old caret if none is live
+    //move the caret to a clamped position with the anchor armed at the old caret if none is live, a head inside a token going to its far edge
     public void ExtendComposerSelect(int line, int col)
     {
         if (_selAnchor is null) _selAnchor = (_line, _col);
         _line = ClampLine(line); _col = ClampCol(_line, col);
+        if (Inside(_line, _col) is { } t) _col = Before(_selAnchor.Value, (_line, t.Start)) ? t.End : t.Start;
     }
 
     //drop the live selection, called from the gesture drain so the pump thread never writes the anchor itself
@@ -515,6 +750,7 @@ public sealed class LineEditor(IComposerSource input, History history, Func<int>
         {
             if (up) { if (_line > 0) { _line--; ClampCol(); } else if (!TryPullQueue()) PullHistory(older: true); }
             else { if (_line < _lines.Count - 1) { _line++; ClampCol(); } else SelectCellOrRecall(); }
+            LeaveToken(up);
             return;
         }
 
@@ -531,6 +767,13 @@ public sealed class LineEditor(IComposerSource input, History history, Func<int>
             if (row < layout.RowCount - 1) (_line, _col) = layout.ComposerCellToPosition(row + 1, cell);
             else SelectCellOrRecall();                               //the bottom display row recalls newer history, or the draft, or selects the cell
         }
+        LeaveToken(up);
+    }
+
+    //a row move that lands inside a token goes on to its start going up and its end going down, so a wrapped token never sends the caret back
+    private void LeaveToken(bool up)
+    {
+        if (Inside(_line, _col) is { } t) _col = up ? t.Start : t.End;
     }
 
     //the drawn column nearest the desired cell without overshooting, called by ComposerLayout, which maps it back to a source column
@@ -569,6 +812,8 @@ public sealed class LineEditor(IComposerSource input, History history, Func<int>
     {
         var text = older ? history.Older(string.Join("\n", _lines)) : history.Newer();
         if (text is null) return false;
+        //an entry is whole text entering, while the draft Down brings back at the end of a walk is the message being written and returns as it was
+        if (history.Walking) text = Collapse(text);
         _lines = new List<string>(text.Split('\n'));
         if (_lines.Count == 0) _lines.Add("");
         _line = _lines.Count - 1;
@@ -578,10 +823,12 @@ public sealed class LineEditor(IComposerSource input, History history, Func<int>
 
     private void DeleteWordBack()
     {
+        if (EndingAt(_line, _col) is { } t) { RemoveSpan(t); return; }
         string cur = _lines[_line];
         int i = _col;
         while (i > 0 && cur[i - 1] == ' ') i--;       //back over the spaces before the word
         while (i > 0 && cur[i - 1] != ' ') i--;       //then back over the word itself
+        i = Inside(_line, i)?.Start ?? i;             //a word that starts inside a token takes the token with it
         _lines[_line] = cur.Remove(i, _col - i);
         _col = i;
     }
@@ -607,7 +854,7 @@ public sealed class LineEditor(IComposerSource input, History history, Func<int>
         if (_pullQueue?.Invoke() is not { Count: > 0 } queued) return false;
 
         var typed = string.Join("\n", _lines);
-        var pulled = string.Join("\n\n", queued);
+        var pulled = string.Join("\n\n", queued.Select(Collapse));   //each queued message stands alone, so the typed text and short messages stay text
         var whole = typed.Length == 0 ? pulled : pulled + "\n\n" + typed;
 
         _lines = [.. whole.Split('\n')];

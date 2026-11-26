@@ -88,7 +88,7 @@ public sealed class InputPump
         try { _composer.Add(new ComposerInput.Key(k)); } catch (InvalidOperationException) { } //pump dead, drop it
     }
 
-    //gestures go onto the same channel as keys, arrival order kept, one writer of selection. the coordinates must already be resolved, this only enqueues
+    //gestures and a text handed back go onto the same channel as keys, arrival order kept, one writer of the composer. a gesture's coordinates must already be resolved, this only enqueues
     public void EnqueueComposerGesture(ComposerInput gesture)
     {
         try { _composer.Add(gesture); } catch (InvalidOperationException) { } //pump dead, drop it
@@ -352,6 +352,15 @@ public sealed class InputPump
     private sealed class ChannelComposerSource(BlockingCollection<ComposerInput> ch, Func<bool> sourcePeek) : IComposerSource
     {
         public ComposerInput Read() => ch.Take();
+
+        //a dead pump throws here as Take does, since a timed take on a completed channel only answers false
+        public bool TryRead(int timeoutMs, out ComposerInput? input)
+        {
+            if (ch.TryTake(out var item, timeoutMs)) { input = item; return true; }
+            if (ch.IsCompleted) throw new InvalidOperationException("the composer channel is complete");
+            input = null;
+            return false;
+        }
 
         public bool KeyAvailable
         {

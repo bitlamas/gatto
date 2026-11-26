@@ -99,8 +99,8 @@ public sealed partial class Repl
         void Redraw(EditorView v) { lock (s.Gate) RedrawLocked(v); }
         void RedrawLast() { lock (s.Gate) RedrawLocked(lastView); }
 
-        //armed before the first dispatch, where the editor and Redraw both live, so the first refusal can restore the text
-        _restoreComposer = BuildRestoreComposer(s.Gate, editor, Redraw, () => stopped);
+        //armed before the first dispatch, so the first refusal can hand the text back down the composer's channel
+        _restoreComposer = BuildRestoreComposer(handedBack => s.Pump?.EnqueueComposerGesture(handedBack), () => stopped);
 
         //the repaint any thread can call, take the gate, rebuild the frame, repaint, and skip it once stopped
         void RepaintChrome() { lock (s.Gate) { if (!stopped) { s.Refresh(); s.Painter.Repaint(); } } }
@@ -595,7 +595,7 @@ public sealed partial class Repl
             {
                 //commit only the cause's own sentence, the user still has to resend this message
                 foreach (var line in attach.RefusalLines!) s.Renderer.CommitSystem(line);
-                _restoreComposer?.Invoke(input);
+                _restoreComposer?.Invoke(submitted);
                 return false;
             }
             //clear the pending pastes only on the path that sends, so a command typed after an image keeps the image attached

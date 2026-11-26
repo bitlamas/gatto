@@ -11,6 +11,9 @@ public abstract record ComposerInput
 
     //a press on a status line background cell, which opens it from the editor's own thread with no selection step, the watch cell when true and the shells when false
     public sealed record OpenBackground(bool Watch = false) : ComposerInput;
+
+    //a text handed back to the composer, a refused message, inserted at the caret on the editor's own thread
+    public sealed record Insert(string Text) : ComposerInput;
 }
 
 //which end of a composer-select gesture Select names, plus Clear, sent when a transcript selection starts elsewhere and drops the composer's own
@@ -24,4 +27,13 @@ public interface IComposerSource
 
     //a non-consuming peek for pending input, true for a gesture in the channel as well as a key
     bool KeyAvailable { get; }
+
+    //the next input when one is pending and false otherwise, a source that can wait out the timeout overrides it, and a peek that throws counts as nothing pending
+    bool TryRead(int timeoutMs, out ComposerInput? input)
+    {
+        bool pending;
+        try { pending = KeyAvailable; } catch (Exception) { pending = false; }
+        input = pending ? Read() : null;
+        return pending;
+    }
 }

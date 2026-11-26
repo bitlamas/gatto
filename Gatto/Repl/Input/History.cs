@@ -15,6 +15,12 @@ public sealed class History
 
     public IReadOnlyList<string> Entries => _entries;
 
+    //the message being written, kept while a walk shows older entries and null at rest
+    public string? Draft => _draft;
+
+    //true while a walk shows an entry, and false again once Newer has handed the draft back
+    public bool Walking => _walk != -1;
+
     public History(string filePath)
     {
         _path = filePath;

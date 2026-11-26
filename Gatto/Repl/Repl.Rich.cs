@@ -44,7 +44,7 @@ public sealed partial class Repl
         var painter = new ChromePainter(surface, theme, gate, model, wheelLines,
             glyphs: _glyphs,
             terminalTitle: _terminalTitle,
-            //a mouse composer gesture goes down the same channel as keys, this is the only caller of EnqueueComposerGesture and it runs under the gate
+            //a mouse composer gesture goes down the same channel as keys, and this caller runs under the gate
             onComposerSelect: (line, col, kind) => keys.EnqueueComposerGesture(new ComposerInput.Select(line, col, kind)))
             { RoleForTint = roleName, ChromeScrolls = mouseEnabled };   //the wheel takes the chrome away only where a wheel reaches gatto
         var scroll = painter.Scroll;
@@ -132,8 +132,8 @@ public sealed partial class Repl
                 Model = ShownModel, Role = roleName, Branch = GitBranch.Read(cwd), SessionName = sessionName,
                 TokensUp = tokensUp, TokensDown = tokensDown, Wild = wild?.On == true, Thinking = thinkingName,
                 ThinkingToggle = thinkingToggle, Hints = picked.Hints, HintIndex = picked.Index,
-                //an expired arm yields null at repaint so the chord hint vanishes on its own, and the paste hint wins over it
-                ChordHint = LivePasteHint() ?? chords.Hint,
+                //an expired arm yields null at repaint so the chord hint vanishes on its own, the image paste hint wins, then the text paste's, then the chord's
+                ChordHint = LivePasteHint() ?? editor.PasteAgainHint ?? chords.Hint,
                 Allowance = usage?.Footer, Cost = usage?.Cost,
             };
             frame = new InputFrame(surface, theme, DisplayRole(), status, _glyphs, KnownCommands);
@@ -408,15 +408,9 @@ public sealed partial class Repl
         lock (gate) { if (!stopped()) { painter.Selection.Clear(); painter.Repaint(); } }
     };
 
-    //the insert alone writes a buffer nothing paints while the composer task is parked, so redraw, and do nothing after teardown
-    internal static Action<string> BuildRestoreComposer(
-        object gate, LineEditor editor, Action<EditorView> redraw, Func<bool> stopped) => text =>
+    //the text goes down the composer's channel, so the editor inserts and paints it on its own thread, and nothing goes after teardown
+    internal static Action<string> BuildRestoreComposer(Action<ComposerInput> post, Func<bool> stopped) => text =>
     {
-        lock (gate)
-        {
-            if (stopped()) return;
-            editor.InsertAtCursor(text);
-            redraw(editor.Snapshot());
-        }
+        if (!stopped()) post(new ComposerInput.Insert(text));
     };
 }

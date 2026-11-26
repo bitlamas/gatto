@@ -54,11 +54,58 @@ public class RefusalClearsTheComposerTests
         var source = System.IO.File.ReadAllText(System.IO.Path.Combine(RepoRoot(), "Gatto", "Repl", "Repl.Linear.cs"))
             .Replace("\r\n", "\n");
 
-        //the attach refusal still restores the composer text and the command refusal does not
-        Assert.Contains("foreach (var line in attach.RefusalLines!) s.Renderer.CommitSystem(line);\n                _restoreComposer?.Invoke(input);",
+        //the attach refusal still restores the text as it was typed, a // escape's two slashes included, and the command refusal does not
+        Assert.Contains("foreach (var line in attach.RefusalLines!) s.Renderer.CommitSystem(line);\n                _restoreComposer?.Invoke(submitted);",
             source, System.StringComparison.Ordinal);
         Assert.DoesNotContain("s.Renderer.CommitSystem(gate.Refusal!);\n            _restoreComposer",
             source, System.StringComparison.Ordinal);
+    }
+
+    private sealed class OnePng : Gatto.Terminal.IClipboardImageNative
+    {
+        public Gatto.Terminal.ClipboardImageKind Available() => Gatto.Terminal.ClipboardImageKind.Png;
+        public byte[]? ReadPng() => [0x89, (byte)'P', (byte)'N', (byte)'G', 0x0D, 0x0A, 0x1A, 0x0A, 0x07];
+        public IReadOnlyList<string> ReadFileDrop() => [];
+    }
+
+    private static readonly System.ConsoleKeyInfo AltV = new('v', System.ConsoleKey.V, false, true, false);
+    private static readonly System.ConsoleKeyInfo ShiftEnter = new('\r', System.ConsoleKey.Enter, true, false, false);
+
+    //a pasted image sent to a model that cannot see is refused at attach, the one refusal that hands the message back
+    private static RichReplHarness BlindHarness() =>
+        new(System.IO.Path.GetTempPath(), visionAvailable: false, clipboardImages: new OnePng());
+
+    private static void Type(RichReplHarness h, string text)
+    {
+        foreach (var c in text) h.Keys.Key(new System.ConsoleKeyInfo(c, System.ConsoleKey.NoName, false, false, false));
+    }
+
+    [Fact]
+    public async Task A_refused_escaped_message_comes_back_with_both_slashes()
+    {
+        var h = BlindHarness();
+        Type(h, "//look ");
+        h.Keys.Key(AltV).Line("");
+
+        await h.RunForAsync(() => h.Saw("can't see images"), BadWindow);
+
+        Assert.Contains("❯ //look [Image #1]", h.ScreenText(), System.StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task A_refused_message_of_two_lines_comes_back_whole()
+    {
+        var h = BlindHarness();
+        Type(h, "look");
+        h.Keys.Key(ShiftEnter);
+        Type(h, "here ");
+        h.Keys.Key(AltV).Line("");
+
+        await h.RunForAsync(() => h.Saw("can't see images"), BadWindow);
+
+        var screen = h.ScreenText();
+        Assert.Contains("❯ look", screen, System.StringComparison.Ordinal);
+        Assert.Contains("here [Image #1]", screen, System.StringComparison.Ordinal);
     }
 
     private static string RepoRoot()
