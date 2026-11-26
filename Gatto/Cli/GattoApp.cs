@@ -225,7 +225,7 @@ public static class GattoApp
                 var inboxArgs = ArgRouter.Parse(argv);
                 //help is the one parse that is not the command, and it falls through to the inner path whose writes are the pinned ones
                 if (inboxArgs.Command == "inbox")
-                    return await InboxCommand.RunAsync(inboxArgs.Subcommand!, InboxCommand.Io.Production(ctx?.Home ?? GattoHome.Resolve()));
+                    return await InboxCommand.RunAsync(inboxArgs.Subcommand!, InboxCommand.Io.Production(ctx?.Home ?? GattoHome.Resolve()), inboxArgs.Model);
             }
             catch (ArgumentException ex)
             {

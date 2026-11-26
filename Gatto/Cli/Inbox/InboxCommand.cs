@@ -38,11 +38,11 @@ internal static class InboxCommand
             null);
     }
 
-    //the subcommand picks the flow, and only the hook waits: open and off print one line and are done
-    public static async Task<int> RunAsync(string sub, Io io) => sub switch
+    //the subcommand picks the flow, and only the hook waits: open and off print one line and are done. the model is the one open was told, null for the transcript's rule
+    public static async Task<int> RunAsync(string sub, Io io, string? model = null) => sub switch
     {
         "hook" => await Hook(io),
-        "open" => Open(io),
+        "open" => Open(io, model),
         _ => Off(io),
     };
 
@@ -65,7 +65,7 @@ internal static class InboxCommand
     }
 
     //arms the seat's inbox for the session this shell runs in: one row of the table, the arm written last so the last open wins
-    private static int Open(Io io)
+    private static int Open(Io io, string? told)
     {
         var state = io.State;
         try
@@ -75,7 +75,8 @@ internal static class InboxCommand
             var record = state.ReadSession(session.Id);
             if (record is null)
                 return Row(io, "inbox not opened: no record of this session; start a new Claude session in this folder", 2);
-            var model = ClaudeSeat.NewestModel(record.TranscriptPath) ?? record.Model;
+            //a told model wins, the transcript is a turn behind on the first turn after a start or a switch
+            var model = told ?? ClaudeSeat.NewestModel(record.TranscriptPath) ?? record.Model;
             if (ClaudeSeat.FromModelId(model) is not { } seat)
                 return Row(io, "inbox not opened: this model has no claude seat", 2);
             var inbox = ClaudeSeat.Inbox(record.ProjectFolder, seat);
@@ -91,31 +92,59 @@ internal static class InboxCommand
                     ? $"inbox open: {shown}, already open in this session; no watcher is running, see {state.LogPath(session.Id)}"
                     : $"inbox open: {shown}, already open in this session", 0);
             }
-            var letters = ClaudeSeat.Letters(inbox);
-            //a session holds one arm, so its arms to other inboxes go before this one is written
-            foreach (var other in state.ArmsNaming(session.Id))
-                if (!InboxState.SameInbox(other.Inbox, inbox)) state.DeleteArm(other);
             var prev = held?.Arm;
             var moved = prev is not null && prev.SessionId != session.Id;
-            var known = letters.ToArray();
-            state.Update(session.Id, r =>
-            {
-                if (r is null) return null;
-                //taking the record's own inbox back keeps its delivered entries, and their names stay out of the known list
-                if (r.Inbox is { } old && InboxState.SameInbox(old, inbox))
-                {
-                    known = [.. letters.Where(n => !r.Delivered.Any(d => d.Name.Equals(n, StringComparison.OrdinalIgnoreCase)))];
-                    return r with { Known = known };
-                }
-                return r with { Inbox = inbox, Known = known, Delivered = [] };
-            });
-            state.WriteArm(new InboxState.Arm(seat, inbox, session.Id, session.Claude));
-            var waiting = known.Length > 0 ? $"{Gatto.Core.Plural.Of(known.Length, "letter")} already there, not delivered" : "empty";
+            var waiting = Waiting(Take(state, session.Id, session.Claude, seat, inbox)) ?? "empty";
             if (moved)
                 return Row(io, $"inbox moved: {shown}, from session {prev!.SessionId[..8]} to this session; {waiting}{watching}", 0);
             return Row(io, $"inbox open: {shown}, {waiting}{watching}", 0);
         }
         catch (Exception ex) { return Row(io, "inbox not opened: " + ex.Message, 1); }
+    }
+
+    //arms an inbox for a session, run by open and by a stop that follows the model. returns the names held back as known
+    private static string[] Take(InboxState state, string sessionId, InboxState.Proc claude, string seat, string inbox)
+    {
+        var letters = ClaudeSeat.Letters(inbox);
+        //a session holds one arm, so its arms to other inboxes go before this one is written
+        foreach (var other in state.ArmsNaming(sessionId))
+            if (!InboxState.SameInbox(other.Inbox, inbox)) state.DeleteArm(other);
+        var known = letters.ToArray();
+        state.Update(sessionId, r =>
+        {
+            if (r is null) return null;
+            //taking the record's own inbox back keeps its delivered entries, and their names stay out of the known list
+            if (r.Inbox is { } old && InboxState.SameInbox(old, inbox))
+            {
+                known = [.. letters.Where(n => !r.Delivered.Any(d => d.Name.Equals(n, StringComparison.OrdinalIgnoreCase)))];
+                return r with { Known = known };
+            }
+            return r with { Inbox = inbox, Known = known, Delivered = [] };
+        });
+        state.WriteArm(new InboxState.Arm(seat, inbox, sessionId, claude));
+        return known;
+    }
+
+    //the clause naming the letters an arm holds back, null when none wait. open and the move both write it, so their rows cannot drift
+    private static string? Waiting(string[] known) =>
+        known.Length > 0 ? $"{Gatto.Core.Plural.Of(known.Length, "letter")} already there, not delivered" : null;
+
+    //a turn ran on a model of another seat: a free inbox, or one a gone process holds, takes the arm along, and one a live session holds closes it. null when the model gives no other seat
+    private static string? Follow(Io io, InboxState state, InboxState.Session record, string sessionId, InboxState.Proc claude,
+        string transcript, InboxState.Arm held)
+    {
+        if (ClaudeSeat.NewestModel(transcript) is not { } model || ClaudeSeat.FromModelId(model) is not { } seat) return null;
+        var inbox = ClaudeSeat.Inbox(record.ProjectFolder, seat);
+        if (InboxState.SameInbox(inbox, held.Inbox)) return null;
+        var shown = ClaudeSeat.Shown(inbox, record.ProjectFolder);
+        if (state.ArmFor(inbox)?.Arm is { } other && other.SessionId != sessionId && io.Alive(other.Claude))
+        {
+            state.DeleteArm(held);
+            return $"inbox closed: this session now runs {model}, and {shown} is open in session {other.SessionId[..8]}; /inbox takes it";
+        }
+        Watch.CreateFolder(inbox);
+        var waiting = Waiting(Take(state, sessionId, claude, seat, inbox));
+        return $"inbox moved: {shown}; this session now runs {model}" + (waiting is null ? "" : "; " + waiting);
     }
 
     //closes the session's inbox: only the arm's holder closes it, and every other case prints its row and changes nothing
@@ -205,6 +234,14 @@ internal static class InboxCommand
 
             //a session that lost the arm watches nothing
             if (state.ArmFor(inbox) is not { } holder || holder.Arm.SessionId != sessionId) return 0;
+
+            //a stop's transcript holds the turn's lines, so it names the model the session now runs, and the row of a moved or closed arm is the wake
+            if (hookEvent == "Stop" && Follow(io, state, record, sessionId, proc, transcript, holder.Arm) is { } followed)
+            {
+                io.Err.Write(followed);
+                io.Err.Flush();
+                return 2;
+            }
 
             //one watcher per session: the lock is held for the hook's life and the operating system frees it when the process dies
             gate = await TakeLock(io, state, sessionId, holder.Written);

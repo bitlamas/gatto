@@ -126,12 +126,16 @@ public static class ArgRouter
                     $"unknown serve subcommand '{sub}'. Valid: {string.Join(", ", ServeSubcommands)}");
         }
 
+        string? model = null;
         //a bare gatto inbox runs nothing, the hook is what the other harness calls and open and off are what the skill runs
         if (command == "inbox")
         {
             if (sub is null) throw new ArgumentException("gatto inbox needs a subcommand. Valid: hook, open, off");
             if (!InboxSubcommands.Contains(sub))
                 throw new ArgumentException($"unknown inbox subcommand '{sub}'. Valid: hook, open, off");
+            //the skill tells open the model id from the seat's own prompt
+            if (Array.IndexOf(argv, "--model") is var at and >= 0)
+                model = at + 1 < argv.Length ? argv[at + 1] : throw new ArgumentException("missing value for --model");
         }
 
         //model takes new as its one subcommand, and RunModelAsync refuses a target or any other subcommand. audition reads its first bare token as the target rather than a subcommand, so shift it out of sub here
@@ -140,6 +144,6 @@ public static class ArgRouter
         //only the sessions sweep takes --yes here, since setup falls through to a launch that reads it as tool approval
         var yes = command == "sessions" && argv.Any(a => a == "--yes");
 
-        return new ParsedArgs(command, role, null, null, false, yes, sub, target, Detach: detach, Json: json);
+        return new ParsedArgs(command, role, model, null, false, yes, sub, target, Detach: detach, Json: json);
     }
 }

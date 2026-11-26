@@ -63,6 +63,18 @@ public class ArgRouterTests
     }
 
     [Fact]
+    public void INBOX_OPEN_TAKES_THE_MODEL_ID_AFTER_ITS_FLAG()
+    {
+        var p = ArgRouter.Parse(["inbox", "open", "--model", "claude-tail-5-5[1m]"]);
+        Assert.Equal("open", p.Subcommand);
+        Assert.Equal("claude-tail-5-5[1m]", p.Model);
+        Assert.Null(p.Target);
+        Assert.Null(ArgRouter.Parse(["inbox", "open"]).Model);
+        var ex = Assert.Throws<ArgumentException>(() => ArgRouter.Parse(["inbox", "open", "--model"]));
+        Assert.Equal("missing value for --model", ex.Message);
+    }
+
+    [Fact]
     public void A_BARE_INBOX_IS_A_USAGE_ERROR()
     {
         var ex = Assert.Throws<ArgumentException>(() => ArgRouter.Parse(["inbox"]));

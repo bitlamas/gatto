@@ -89,6 +89,12 @@ public sealed class InboxCommandTests : IDisposable
     private static string Notice(string letterPath) => JsonSerializer.Serialize("inbox: " + letterPath,
         new JsonSerializerOptions { Encoder = System.Text.Encodings.Web.JavaScriptEncoder.UnsafeRelaxedJsonEscaping });
 
+    //one assistant line of the transcript naming the model that answered
+    private static string Answer(string model) => "{\"type\":\"assistant\",\"message\":{\"model\":\"" + model + "\"}}\n";
+
+    private string MidInbox => ClaudeSeat.Inbox(_proj, "mid-5-5");
+    private static string RelMid => Path.Combine(".gatto", "mailbox", "claude", "mid-5-5");
+
     private string WriteLetter(string name, string body = "a body")
     {
         Directory.CreateDirectory(Inbox);
@@ -299,6 +305,51 @@ public sealed class InboxCommandTests : IDisposable
         Seed(inbox: Inbox, model: null);
         Assert.Equal(2, await InboxCommand.RunAsync("open", Io(Env(_sid, 4242, _proj))));
         Assert.Contains("this model has no claude seat", _out.ToString(), StringComparison.Ordinal);
+    }
+
+    //open told the model arms that model's seat, since the transcript is a turn behind on the first turn after a switch
+    [Fact]
+    public async Task OPEN_TOLD_THE_MODEL_ARMS_ITS_SEAT_WHERE_THE_PLAIN_OPEN_ARMS_THE_START_MODELS()
+    {
+        Seed(model: "claude-first-5-5");
+
+        Assert.Equal(0, await InboxCommand.RunAsync("open", Io(Env(_sid, 4242, _proj))));
+        Assert.Equal("first-5-5", State.ArmsNaming(_sid).Single().Seat);
+
+        Assert.Equal(0, await InboxCommand.RunAsync("open", Io(Env(_sid, 4242, _proj)), "claude-tail-5-5"));
+        Assert.Equal(Seat, State.ArmsNaming(_sid).Single().Seat);
+        Assert.EndsWith($"inbox open: {Rel}, empty; watching from the end of this turn", _out.ToString().TrimEnd(), StringComparison.Ordinal);
+    }
+
+    //the transcript's newest answer is the model before the switch, and the told model still wins
+    [Fact]
+    public async Task OPEN_TOLD_THE_MODEL_WINS_OVER_AN_ANSWER_OF_THE_MODEL_BEFORE_THE_SWITCH()
+    {
+        Seed(model: "claude-first-5-5");
+        File.WriteAllText(Transcript, Answer("claude-mid-5-5"));
+
+        Assert.Equal(0, await InboxCommand.RunAsync("open", Io(Env(_sid, 4242, _proj)), "claude-tail-5-5"));
+        Assert.Equal(Seat, State.ArmsNaming(_sid).Single().Seat);
+    }
+
+    [Fact]
+    public async Task OPEN_TOLD_A_MODEL_WITH_NO_SEAT_SAYS_SO_AND_WRITES_NO_ARM()
+    {
+        Seed(model: "claude-tail-5-5");
+
+        Assert.Equal(2, await InboxCommand.RunAsync("open", Io(Env(_sid, 4242, _proj)), "local-model-7b"));
+        Assert.Equal("inbox not opened: this model has no claude seat", _out.ToString().TrimEnd());
+        Assert.Empty(State.ArmsNaming(_sid));
+        Assert.Null(State.ReadSession(_sid)!.Inbox);
+    }
+
+    [Fact]
+    public async Task OPEN_TOLD_A_MODEL_WITH_A_BRACKET_TAIL_ARMS_THE_SEAT_WITHOUT_IT()
+    {
+        Seed(model: "claude-first-5-5");
+
+        Assert.Equal(0, await InboxCommand.RunAsync("open", Io(Env(_sid, 4242, _proj)), "claude-tail-5-5[1m]"));
+        Assert.Equal(Seat, State.ArmsNaming(_sid).Single().Seat);
     }
 
     [Fact]
@@ -1071,6 +1122,141 @@ public sealed class InboxCommandTests : IDisposable
         //the entry left the delivered list in the settle and the wake handed the letter over again
         Assert.Equal(2, exit);
         Assert.Contains("a body", _err.ToString(), StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task A_STOP_ON_THE_ARMED_SEATS_MODEL_KEEPS_THE_ARM_AND_SAYS_NOTHING()
+    {
+        Seed(inbox: Inbox);
+        Directory.CreateDirectory(Inbox);
+        State.WriteArm(new InboxState.Arm(Seat, Inbox, _sid, Claude));
+        var written = State.ArmFor(Inbox)!.Value.Written;
+        File.WriteAllText(Transcript, Answer("claude-tail-5-5"));
+        var hook = InboxCommand.RunAsync("hook", Io(Env(_sid, 4242, _proj), new StringReader(Stdin(_sid, transcript: Transcript))));
+        await WaitWatching(_sid);
+
+        Assert.Equal("", _err.ToString());
+        Assert.Equal(written, State.ArmFor(Inbox)!.Value.Written);
+        await StopWatching(hook);
+    }
+
+    [Fact]
+    public async Task A_STOP_ON_ANOTHER_SEATS_MODEL_MOVES_THE_ARM_TO_ITS_FREE_INBOX()
+    {
+        WriteLetter("a.md");
+        //handed over and not yet received by a live process, so the settle keeps the entry and the move drops it
+        Seed(inbox: Inbox, delivered: [new InboxState.DeliveredEntry("a.md", _sid, Claude, Transcript)]);
+        State.WriteArm(new InboxState.Arm(Seat, Inbox, _sid, Claude));
+        File.WriteAllText(Transcript, Answer("claude-tail-5-5") + Answer("claude-mid-5-5"));
+
+        var exit = await InboxCommand.RunAsync("hook", Io(Env(_sid, 4242, _proj), new StringReader(Stdin(_sid, transcript: Transcript))))
+            .WaitAsync(TimeSpan.FromSeconds(10));
+
+        Assert.Equal(2, exit);
+        Assert.Equal($"inbox moved: {RelMid}; this session now runs claude-mid-5-5", _err.ToString());
+        Assert.Equal(_sid, State.ArmFor(MidInbox)?.Arm.SessionId);
+        Assert.Null(State.ArmFor(Inbox));
+        var record = State.ReadSession(_sid)!;
+        Assert.Equal(MidInbox, record.Inbox);
+        Assert.Empty(record.Delivered);
+        Assert.True(File.Exists(Path.Combine(Inbox, "a.md")));
+    }
+
+    [Fact]
+    public async Task A_MOVE_ONTO_AN_INBOX_WITH_A_LETTER_COUNTS_IT_AND_HOLDS_IT_BACK()
+    {
+        Seed(inbox: Inbox);
+        State.WriteArm(new InboxState.Arm(Seat, Inbox, _sid, Claude));
+        Directory.CreateDirectory(MidInbox);
+        File.WriteAllText(Path.Combine(MidInbox, "w.md"), "waiting", new UTF8Encoding(false));
+        File.WriteAllText(Transcript, Answer("claude-mid-5-5"));
+
+        Assert.Equal(2, await InboxCommand.RunAsync("hook", Io(Env(_sid, 4242, _proj), new StringReader(Stdin(_sid, transcript: Transcript))))
+            .WaitAsync(TimeSpan.FromSeconds(10)));
+        Assert.Equal($"inbox moved: {RelMid}; this session now runs claude-mid-5-5; 1 letter already there, not delivered", _err.ToString());
+        Assert.Equal(["w.md"], State.ReadSession(_sid)!.Known);
+    }
+
+    [Fact]
+    public async Task A_STOP_ON_A_SEAT_A_LIVE_SESSION_HOLDS_CLOSES_THIS_ARM_AND_TAKES_NOTHING()
+    {
+        Seed(inbox: Inbox);
+        State.WriteArm(new InboxState.Arm(Seat, Inbox, _sid, Claude));
+        State.WriteArm(new InboxState.Arm("mid-5-5", MidInbox, _other, Fresh));
+        var theirs = State.ArmFor(MidInbox)!.Value.Written;
+        File.WriteAllText(Transcript, Answer("claude-mid-5-5"));
+
+        var exit = await InboxCommand.RunAsync("hook",
+            Io(Env(_sid, 4242, _proj), new StringReader(Stdin(_sid, transcript: Transcript)), live: [Claude, Fresh]))
+            .WaitAsync(TimeSpan.FromSeconds(10));
+
+        Assert.Equal(2, exit);
+        Assert.Equal($"inbox closed: this session now runs claude-mid-5-5, and {RelMid} is open in session {_other[..8]}; /inbox takes it",
+            _err.ToString());
+        Assert.Equal(_other, State.ArmFor(MidInbox)?.Arm.SessionId);
+        Assert.Equal(theirs, State.ArmFor(MidInbox)!.Value.Written);
+        Assert.Empty(State.ArmsNaming(_sid));
+    }
+
+    [Fact]
+    public async Task A_STOP_ON_A_SEAT_A_GONE_PROCESS_HOLDS_MOVES_THE_ARM()
+    {
+        Seed(inbox: Inbox);
+        State.WriteArm(new InboxState.Arm(Seat, Inbox, _sid, Claude));
+        State.WriteArm(new InboxState.Arm("mid-5-5", MidInbox, _other, new InboxState.Proc(77, 77)));
+        File.WriteAllText(Transcript, Answer("claude-mid-5-5"));
+
+        Assert.Equal(2, await InboxCommand.RunAsync("hook", Io(Env(_sid, 4242, _proj), new StringReader(Stdin(_sid, transcript: Transcript))))
+            .WaitAsync(TimeSpan.FromSeconds(10)));
+        Assert.Equal($"inbox moved: {RelMid}; this session now runs claude-mid-5-5", _err.ToString());
+        Assert.Equal(_sid, State.ArmFor(MidInbox)?.Arm.SessionId);
+        Assert.Null(State.ArmFor(Inbox));
+    }
+
+    //a session start reads no turn, so the arm stays where it is and the watcher starts on it
+    [Fact]
+    public async Task A_SESSION_START_NEVER_FOLLOWS_THE_MODEL()
+    {
+        Seed(inbox: Inbox);
+        Directory.CreateDirectory(Inbox);
+        State.WriteArm(new InboxState.Arm(Seat, Inbox, _sid, Claude));
+        File.WriteAllText(Transcript, Answer("claude-mid-5-5"));
+        var hook = InboxCommand.RunAsync("hook",
+            Io(Env(_sid, 4242, _proj), new StringReader(Stdin(_sid, "SessionStart", transcript: Transcript))));
+        await WaitWatching(_sid);
+
+        Assert.Equal("", _err.ToString());
+        Assert.Equal(_sid, State.ArmFor(Inbox)?.Arm.SessionId);
+        Assert.Null(State.ArmFor(MidInbox));
+        await StopWatching(hook);
+    }
+
+    [Fact]
+    public async Task A_STOP_WITH_NO_INBOX_IN_THE_RECORD_NEVER_FOLLOWS_THE_MODEL()
+    {
+        Seed();
+        File.WriteAllText(Transcript, Answer("claude-mid-5-5"));
+
+        Assert.Equal(0, await InboxCommand.RunAsync("hook", Io(Env(_sid, 4242, _proj), new StringReader(Stdin(_sid, transcript: Transcript))))
+            .WaitAsync(TimeSpan.FromSeconds(10)));
+        Assert.Equal("", _err.ToString());
+        Assert.Empty(State.ArmsNaming(_sid));
+    }
+
+    //the old inbox settles before the move, so a received letter reaches the archive in the stop that moves the arm
+    [Fact]
+    public async Task A_RECEIVED_LETTER_OF_THE_OLD_INBOX_IS_ARCHIVED_BY_THE_STOP_THAT_MOVES_THE_ARM()
+    {
+        var path = WriteLetter("a.md");
+        Seed(inbox: Inbox, delivered: [new InboxState.DeliveredEntry("a.md", _sid, Claude, Transcript)]);
+        State.WriteArm(new InboxState.Arm(Seat, Inbox, _sid, Claude));
+        File.WriteAllText(Transcript, TranscriptLine("user", path) + "\n" + Answer("claude-mid-5-5"));
+
+        Assert.Equal(2, await InboxCommand.RunAsync("hook", Io(Env(_sid, 4242, _proj), new StringReader(Stdin(_sid, transcript: Transcript))))
+            .WaitAsync(TimeSpan.FromSeconds(10)));
+        Assert.True(File.Exists(Path.Combine(_proj, ".gatto", "mailbox", ".archive", "claude", Seat, "a.md")));
+        Assert.False(File.Exists(path));
+        Assert.Equal(_sid, State.ArmFor(MidInbox)?.Arm.SessionId);
     }
 
     //a letter landing after the pass closed is refused by the sink and left for the next watcher
