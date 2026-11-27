@@ -40,6 +40,7 @@ internal sealed class PanelState
     private readonly object _lock = new();
     private readonly Queue<PanelGesture> _gestures = new();
     private PanelLayout? _layout;
+    private int _held;
     private int _layoutTab;
     private bool _banded;   //a key word wears the hover band, read by the pump thread under the lock
     private int _tab;
@@ -177,8 +178,14 @@ internal sealed class PanelState
         return [.. KeysHere.Where(k => k.Key == "Esc")];
     }
 
-    //the factory's half, under the painter's gate: the frame it just composed, for the tab it composed
-    public void Record(PanelLayout layout, int tab) { lock (_lock) { _layout = layout; _layoutTab = tab; } }
+    //the factory's half, under the painter's gate: the frame it just composed, for the tab it composed, and the rows it drew
+    public void Record(PanelLayout layout, int tab, int drawn = 0)
+    {
+        lock (_lock) { _layout = layout; _layoutTab = tab; _held = Math.Max(_held, drawn); }
+    }
+
+    //the tallest the panel has drawn since it opened, cut to the room, so a detail, a search or a shorter tab never moves its top
+    public int Held(int room) { lock (_lock) return Math.Min(_held, room); }
 
     public PanelLayout? Layout { get { lock (_lock) return _layout; } }
 

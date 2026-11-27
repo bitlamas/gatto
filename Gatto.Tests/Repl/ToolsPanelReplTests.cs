@@ -1,5 +1,6 @@
 using Gatto.Core.Client;
 using Gatto.Repl.Prompts;
+using Gatto.Repl.Render;
 using Gatto.Repl.Render.Chrome;
 using Gatto.Tests.Fakes;
 
@@ -188,6 +189,38 @@ public sealed class ToolsPanelReplTests : IDisposable
         held.SetResult();
         Assert.True(await h.UntilAsync(() => h.Saw(line), Waits.Bound), "the line never printed after the block closed");
         await Shows(h, s => s.Contains("first half second half"), "the reply was cut");
+        h.Keys.Line("/quit");
+        await run;
+    }
+
+    //a detail takes the room its list took and pads to the list's height when it is shorter, so Enter and Esc never move the panel's top
+    [Theory]
+    [InlineData(2)]
+    [InlineData(60)]
+    public async Task A_DETAIL_TAKES_THE_ROOM_ITS_LIST_TOOK(int lines)
+    {
+        var longest = new ToolInfo("aaa_long", string.Join("\n", Enumerable.Range(0, lines).Select(i => $"line {i} of the text")), null);
+        IReadOnlyList<ToolInfo> forty = [longest, .. Enumerable.Range(1, 39).Select(i => new ToolInfo($"tool_{i:00}", $"Tool {i}.", null))];
+        var chrome = new ChromeHandle();
+        var h = new RichReplHarness(_cwd, width: 120, height: 40, chrome: chrome, listTools: () => forty, listPolicy: () => AskPolicy);
+        var run = h.RunAsync(60_000);
+        int PromptRows() => chrome.Painter!.ComposeChromeBlock(120, 40).Rows.Count(r => r.Region == ChromeRegion.Prompt);
+
+        h.Keys.Line("/tools");
+        await Shows(h, s => s.Contains("tools · 40 armed") && s.Contains("Enter detail"), "the panel never listed the forty tools");
+        var list = PromptRows();
+        await Press(h, EnterKey);
+        await Shows(h, s => s.Contains("of the text") && s.Contains("Esc back"), "Enter never opened the long tool's text");
+        var detail = PromptRows();
+        await Press(h, Esc);
+        await Shows(h, s => s.Contains("Enter detail") && !s.Contains("Esc back"), "Esc in the detail never returned to the list");
+        var back = PromptRows();
+
+        Assert.Equal(chrome.Painter!.RoomRowsAvailable(), list);
+        Assert.Equal(list, detail);
+        Assert.Equal(list, back);
+        await Press(h, Esc);
+        await Release(h);
         h.Keys.Line("/quit");
         await run;
     }

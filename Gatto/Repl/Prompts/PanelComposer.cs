@@ -36,12 +36,12 @@ internal static class PanelComposer
     private readonly record struct Piece(string Text, RgbColor? Ink = null, bool Bold = false, RgbColor? Band = null, PanelHit? Hit = null);
 
     internal static PanelFrame Compose(PanelFields panel, IReadOnlyList<SelectOption> options, bool numbered,
-        PanelView view, int w, int room, Theme theme, GlyphSet glyphs)
+        PanelView view, int w, int room, Theme theme, GlyphSet glyphs, int padTo = 0)
     {
         var inside = Margins.Inside(w <= 0 ? 80 : w);
         var tint = panel.Role is { } role ? theme.RoleTint(role) : Theme.Accent;
         var unbounded = room <= 0 || room == int.MaxValue;
-        if (view.Detail is not null) return ComposeDetail(panel, options.Count, view, w, room, unbounded, theme, glyphs, tint);
+        if (view.Detail is not null) return ComposeDetail(panel, options.Count, view, w, room, unbounded, theme, glyphs, tint, padTo);
 
         var hasSubtitle = panel.Subtitle is { Length: > 0 };
         var hasHeader = view.Shown.Count > 0   //a header over nothing names no cells
@@ -49,7 +49,7 @@ internal static class PanelComposer
         var under = UnderPieces(panel, view, theme, glyphs);
         var hasUnder = under is not null;
 
-        //the rows that are not the body, shed in order when the body would get fewer than three
+        //the rows that are not the body, shed in order when the body would get fewer than three, or fewer than a shorter list shows
         var blankTop = true;
         var blankUnder = hasUnder;
         var blankKeys = true;
@@ -58,10 +58,11 @@ internal static class PanelComposer
         int Body(bool box) => unbounded ? int.MaxValue : room - Fixed(box);
 
         var box = panel.SearchWhenLong && (view.InBox || view.Draft.Length > 0 || options.Count > Body(false));
+        var floor = Math.Min(MinBody, Math.Max(1, view.Shown.Count));   //an empty match still draws its one row
         if (!unbounded)
         {
             //the blanks first, then the row under the list, then the subtitle. the title, the box and the key row never shed
-            while (Body(box) < MinBody)
+            while (Body(box) < floor)
             {
                 if (blankTop) blankTop = false;
                 else if (blankUnder) blankUnder = false;
@@ -101,24 +102,32 @@ internal static class PanelComposer
         if (hasUnder) rows.Add(under!);
         if (blankKeys) rows.Add([]);
         rows.Add(KeyPieces(panel, view, digitless, w <= 0 ? 80 : w, theme, glyphs, tint));
+        Pad(rows, padTo);
 
         var (painted, hits) = Render(rows, w, theme, glyphs);
         return new PanelFrame(painted, new PanelLayout(w, room, bodyRows, offset, hits));
     }
 
+    //blank rows above the key row up to the height the panel holds, so a shorter view never moves the panel's top
+    private static void Pad(List<List<Piece>> rows, int padTo)
+    {
+        while (rows.Count < padTo) rows.Insert(rows.Count - 1, []);
+    }
+
     //the detail replaces the body: the title, the open row's label as the subtitle, the rows windowed from the offset the state parked, the detail's keys
     private static PanelFrame ComposeDetail(PanelFields panel, int total, PanelView view, int w, int room, bool unbounded,
-        Theme theme, GlyphSet glyphs, RgbColor tint)
+        Theme theme, GlyphSet glyphs, RgbColor tint, int padTo)
     {
         var detail = Physical(view.DetailRows ?? [], w);
         var hasSubtitle = view.DetailLabel is { Length: > 0 };
         var blankTop = true;
         var blankKeys = true;
         int Body() => unbounded ? int.MaxValue : room - 1 - (hasSubtitle ? 1 : 0) - (blankTop ? 1 : 0) - (blankKeys ? 1 : 0) - 1;
+        var floor = Math.Min(MinBody, Math.Max(1, detail.Count));
         if (!unbounded)
         {
             //the blanks first, then the subtitle, the same order as the list's
-            while (Body() < MinBody)
+            while (Body() < floor)
             {
                 if (blankTop) blankTop = false;
                 else if (blankKeys) blankKeys = false;
@@ -138,6 +147,7 @@ internal static class PanelComposer
         if (down) rows.Add([new(Indent), new($"{glyphs.Down} {detail.Count - offset - count} more", Theme.Dim)]);
         if (blankKeys) rows.Add([]);
         rows.Add(KeyPieces(panel, view, false, w <= 0 ? 80 : w, theme, glyphs, tint));
+        Pad(rows, padTo);
 
         var (painted, hits) = Render(rows, w, theme, glyphs);
         return new PanelFrame(painted, new PanelLayout(w, room, bodyRows, offset, hits, view.Detail, bodyStart, count, detail.Count));

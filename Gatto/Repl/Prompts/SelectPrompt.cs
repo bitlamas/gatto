@@ -598,7 +598,7 @@ public sealed partial class SelectPrompt(   //single-select, multi-select and th
             var picked = (bool[])selected.Clone();
             var draft = freeBuf.ToString();
             published = painter!.SetPanelFactory((w, room) =>
-                new PanelContent(Rows(w, room, atCursor, picked, draft, out var inputCaret), inputCaret, spec.KeepsRoom));
+                new PanelContent(Rows(w, room, atCursor, picked, draft, out var inputCaret), inputCaret), keepsRoom: spec.KeepsRoom);
         }
 
         void RenderInline(List<string> rows)

@@ -1535,6 +1535,35 @@ public class SelectPromptTests
         Assert.Contains(Ansi.ShowCursor, LastPaint(surface.Text), StringComparison.Ordinal);
     }
 
+    //a prompt the turn waits on keeps the half, so its reader keeps the transcript above it, and only a prompt that asks for the room gets it
+    [Fact]
+    public void A_PROMPT_KEEPS_THE_HALF_UNLESS_IT_KEEPS_THE_ROOM()
+    {
+        int PromptRows(bool keepsRoom)
+        {
+            var surface = new RecordingSurface { Width = 120, Height = 40 };   //the shared helper builds a height of 0, where no panel has room
+            var gate = new object();
+            var status = new StatusInfo(@"C:\proj", "qwen", "coder", new CtxState(), @"C:\Users\x");
+            var painter = new ChromePainter(surface, T, gate)
+            {
+                Frame = new InputFrame(surface, T, "coder", status, glyphs: GlyphSet.Unicode),
+                RoleForTint = "coder",
+            };
+            var handle = new ChromeHandle { Painter = painter, Renderer = new StreamRenderer(painter, surface, T, "coder", new ChromeTicker(painter, gate), gate) };
+            var rows = 0;
+            var keys = new ProbingKeys(_ => rows = painter.ComposeChromeBlock(120, 40).Rows.Count(r => r.Region == ChromeRegion.Prompt),
+                [Special(ConsoleKey.Escape)]);
+            var options = Enumerable.Range(0, 60).Select(i => new SelectOption($"option {i}")).ToArray();
+            new SelectPrompt(new RecordingSurface(), T, keys, pump: null, chrome: handle).Show(Spec(options) with { KeepsRoom = keepsRoom });
+            return rows;
+        }
+
+        var half = PromptRows(false);
+        var room = PromptRows(true);
+        Assert.True(half <= 20, $"a prompt drew {half} rows at 120x40");
+        Assert.True(room > 20, $"a prompt that keeps the room drew {room} rows at 120x40");
+    }
+
     [Fact]
     public void NoPainter_CursorHiddenDuringPrompt_RestoredAfter()
     {

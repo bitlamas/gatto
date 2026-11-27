@@ -7,7 +7,7 @@ using Gatto.Terminal;
 namespace Gatto.Repl.Render.Chrome;
 
 //the rows a panel factory composes for one width, plus where the caret goes in them. a null caret means the panel takes no input and the cursor stays hidden
-public readonly record struct PanelContent(IReadOnlyList<string> Rows, (int Row, int Col)? Caret = null, bool KeepsRoom = false);   //true takes the whole room rather than half the window
+public readonly record struct PanelContent(IReadOnlyList<string> Rows, (int Row, int Col)? Caret = null);
 
 //one queued row as the chrome draws it, a background task's end marked so it never shows under the user's marker
 public readonly record struct QueueEntryView(string Text, bool Task)
@@ -51,7 +51,7 @@ public sealed class ChromeState
     public (int Row, int Col)? PanelCaret;
     //the panel is an answer to read, not a prompt: Esc or a key closes it, and any prompt that sets its own panel replaces it
     public bool PanelInfo;
-    //the panel takes the whole room the furniture leaves rather than half the window, a permission prompt whose detail is what the user approves
+    //the panel takes the whole room the furniture leaves rather than half the window, set by the publish for a list and for a permission prompt
     public bool PanelKeepsRoom;
     public EditorView Composer = new(new List<string> { "" }, 0, 0);
     //the predicate every panel read site uses, true only when the panel has rows (an empty panel would park the caret on nothing)
@@ -78,6 +78,11 @@ public sealed class ChromePainter
     private bool _tornDown;
     //the layout the last Compose built, so the mouse reads the snapshot the displayed frame used
     private ComposerLayout? _lastComposerLayout;
+    //the rows the last Compose dropped from a too-tall panel's top, the rows it showed, and which of them it gave to a mark
+    private int _panelDrop;
+    private int _panelShown;
+    private bool _panelMarkTop;
+    private bool _panelMarkBottom;
     //the status line's pieces by column as last painted, what a press on that row resolves through
     private IReadOnlyList<StatusCellSpan> _lastStatusCells = [];
 
@@ -148,7 +153,16 @@ public sealed class ChromePainter
             statusCellAt: StatusCellAt, onStatusHint: d => StatusHintSink?.Invoke(d), onStatusCell: c => StatusCellSink?.Invoke(c),
             onStatusHover: over => StatusCellHovered = over,
             panelHoldsKeys: () => State.PanelUp && !State.PanelInfo,
-            panelMouse: (e, row, w, h) => State.PanelMouse?.Invoke(e, row, w, h) == true);
+            panelMouse: PanelRoute);
+    }
+
+    //a cropped panel's row read against the layout its factory composed, and a mark row is no row of it: a press there routes nothing, a move there leaves
+    private bool PanelRoute(MouseEvent e, int row, int width, int height)
+    {
+        if (State.PanelMouse is not { } route) return false;
+        var mark = row >= 0 && ((row == 0 && _panelMarkTop) || (row == _panelShown - 1 && _panelMarkBottom));
+        if (mark && e.Kind == MouseKind.Press) return true;
+        return route(e, mark && e.Kind == MouseKind.Move ? -1 : row < 0 ? row : row + _panelDrop, width, height);
     }
 
     //the status piece under a column of the last painted status line, null between pieces
@@ -203,7 +217,7 @@ public sealed class ChromePainter
 
     //the caret-aware form, the factory reports the caret at each width and the panel's own height budget so a vertical resize re-asks it. it returns the factory the slot holds, the one its owner's clear names
     public Func<int, int, PanelContent> SetPanelFactory(Func<int, int, PanelContent> factory,
-        Func<MouseEvent, int, int, int, bool>? mouse = null)
+        Func<MouseEvent, int, int, int, bool>? mouse = null, bool keepsRoom = false)
     {
         lock (_gate)
         {
@@ -211,9 +225,9 @@ public sealed class ChromePainter
             State.PanelFactory = factory;
             State.PanelMouse = mouse;   //a factory published without a route drops the one the slot held
             State.PanelInfo = false;
-            State.PanelKeepsRoom = false;   //a new panel is first asked at the half, its own content then says whether it keeps the room
+            State.PanelKeepsRoom = keepsRoom;   //the publish says it, so the first ask is already at the panel's own room
             _composerScroll.Reset();   //a new factory is always a new panel, so reset the scroll
-            RefreshPanel(factory(_surface.Width, PanelRowsAvailable()));
+            RefreshPanel(factory(_surface.Width, PanelRowsAvailable(panelUp: true)));   //the rows are not stored yet, and the room is read as it will be with them up
             DriveCompositor();
             return factory;
         }
@@ -282,7 +296,6 @@ public sealed class ChromePainter
             _composerScroll.Reset();
         State.PanelRows = content.Rows;
         State.PanelCaret = content.Caret;
-        State.PanelKeepsRoom = content.KeepsRoom;
         State.PanelCaretVisible = content.Caret is not null;
     }
 
@@ -356,33 +369,42 @@ public sealed class ChromePainter
     //how many rows a panel may use before Compose drops them from the top, the same expression the clamp uses. an unknown height comes back as 0
     public int PanelRowsAvailable()
     {
-        lock (_gate) return _surface.Height <= 0 ? 0 : PanelRowsAvailable(_surface.Width, _surface.Height);
+        lock (_gate) return PanelRowsAvailable(State.PanelUp);
     }
 
-    //a panel holds at most half the window's rows and the composer at most a third, so the transcript keeps the rest whatever the content
+    private int PanelRowsAvailable(bool panelUp) =>
+        _surface.Height <= 0 ? 0 : PanelRowsAvailable(_surface.Width, _surface.Height, panelUp);
+
+    //a panel that does not keep the room holds at most half the window and the composer at most a third, so the transcript keeps the rest
     private const int PanelShare = 2;
     private const int ComposerShare = 3;
 
-    //the room a panel that keeps it is given, the same expression the clamp uses for a permission prompt
+    //the room a panel that keeps it is given, a list or a permission prompt, the same expression the clamp uses
     internal int RoomRowsAvailable()
     {
-        lock (_gate) return _surface.Height <= 0 ? 0 : RoomRows(_surface.Width, _surface.Height);
+        lock (_gate) return _surface.Height <= 0 ? 0 : RoomRows(_surface.Width, _surface.Height, State.PanelUp);
     }
 
-    private int PanelRowsAvailable(int width, int height)
+    private int PanelRowsAvailable(int width, int height, bool panelUp)
     {
-        var room = RoomRows(width, height);
+        var room = RoomRows(width, height, panelUp);
         return State.PanelKeepsRoom ? room : Share(room, height, PanelShare);
     }
 
-    private int ComposerRowsAvailable(int width, int height) => Share(RoomRows(width, height), height, ComposerShare);
+    private int ComposerRowsAvailable(int width, int height) => Share(RoomRows(width, height, State.PanelUp), height, ComposerShare);
 
     //the share counts the whole window, the rows the user sees, and never exceeds the room the frame's furniture leaves
     private static int Share(int room, int height, int parts) =>
         room == int.MaxValue ? room : Math.Min(room, Math.Max(1, height / parts));
 
     //takes the width and height it was handed rather than the surface, and keeps int.MaxValue for an unknown height
-    private int RoomRows(int width, int height)
+    private int RoomRows(int width, int height, bool panelUp)
+    {
+        var room = RoomBeforeHold(width, height, panelUp);
+        return room - Hold(room, panelUp);
+    }
+
+    private int RoomBeforeHold(int width, int height, bool panelUp)
     {
         var budgetRows = BudgetRows(height);
         if (budgetRows == int.MaxValue) return int.MaxValue;
@@ -390,16 +412,23 @@ public sealed class ChromePainter
         //measures the frame's own furniture through the same composition the clamp uses, and one probe row is enough because a panel row is single-physical
         var probe = Frame.Compose(State.Composer, panelRows: ProbePanel, panelCaret: null);
         var furniture = probe.TotalRows - probe.PanelRowCount;
-        return Math.Max(1, budgetRows - furniture - ReservedLiveRows(width, height));
+        return Math.Max(1, budgetRows - furniture - ReservedLiveRows(width, height, panelUp));
     }
 
-    //rows the frame reserves while a turn is live, and a prompt the turn waits on clears PurrText, so its two rows go to the prompt
-    private int ReservedLiveRows(int width, int height)
+    //a searchable list draws whole in its title, its box, one option and its key row, and under that the frame crops it
+    private const int MinListRoom = 4;
+
+    //the blank under the purr that a list taking the room leaves standing during a turn, given up when the room left would crop the list
+    private int Hold(int room, bool panelUp) =>
+        panelUp && State.PanelKeepsRoom && State.PurrText is not null && room != int.MaxValue && room - 1 >= MinListRoom ? 1 : 0;
+
+    //rows the frame reserves while a turn is live, a prompt the turn waits on clears PurrText so they go to it, and a list adds the hold
+    private int ReservedLiveRows(int width, int height, bool panelUp)
     {
         var n = 0;
-        if (State.PurrText is not null) n += 2;                                                  //two rows, a blank and the purr line
-        //a panel over the live call may take that call's rows, which repeat what the prompt shows, and the clamp drops them when it does
-        if (State.PanelUp) return n + NewestQueuedMessageReservation(width, height);
+        if (State.PurrText is not null) n += 2;                                                  //a blank and the purr line, and a list's hold is the blank under them
+        //a panel up may take the live call's rows, a prompt repeats what the call asks and a list covers the turn, and the clamp drops them when it does
+        if (panelUp) return n + NewestQueuedMessageReservation(width, height);
         if (State.Tool is not null) n += 2 + (State.ToolProgress is not null ? 1 : 0);            //two rows, a blank and the tool bullet, plus one more for the progress row
         n += 2 * State.Waiting.Count;                                                            //two rows per waiting call, a blank and the call, as each committed block stands
         if (State.Tool is { } live && live.Name == "shell" && State.ToolInput is { } liveCommand)   //the live shell rows past the bullet, and the wait row under them
@@ -650,7 +679,9 @@ public sealed class ChromePainter
 
         //a factory panel re-derives its rows from the live width every compose, so a resize repaint re-wraps them, and the allowance comes with it
         if (State.PanelFactory is { } panelFactory)
-            RefreshPanel(panelFactory(width, PanelRowsAvailable(width, height)));
+            RefreshPanel(panelFactory(width, PanelRowsAvailable(width, height, State.PanelUp)));
+        //read after the refresh, so it sees the panel this frame draws
+        var hold = Hold(RoomBeforeHold(width, height, State.PanelUp), State.PanelUp);
         //an empty panel is not a panel, so SetPanel([]) leaves the editor rows showing. the frame guards it too, this read is the product rule
         var panel = State.PanelUp ? State.PanelRows : null;
         var panelCaret = panel is null ? null : State.PanelCaret;
@@ -658,8 +689,11 @@ public sealed class ChromePainter
         var facts = (BackgroundFactsReader?.Invoke() ?? default) with { Hovered = StatusCellHovered };
         var frame = Frame.Compose(State.Composer, panelRows: panel, panelCaret: panelCaret, facts: facts);
         //asks PanelRowsAvailable rather than comparing TotalRows, so the offered and enforced numbers stay one expression, and each call makes a probe frame
-        var panelAllowed = PanelRowsAvailable(width, height);
+        var panelAllowed = PanelRowsAvailable(width, height, State.PanelUp);
         var caretInWindow = true;
+        _panelDrop = 0;
+        _panelShown = panel?.Count ?? 0;
+        _panelMarkTop = _panelMarkBottom = false;
         if (panel is { } tall && tall.Count > panelAllowed)
         {
             //the window is the ComposerScroll offset, following shows the tail while a detached scroll shows earlier rows. it runs even at offset 0
@@ -668,9 +702,13 @@ public sealed class ChromePainter
             var window = tall.Skip(drop).Take(panelAllowed).ToList();
             if (window.Count >= MarkedWindowRows)
             {
-                if (drop > 0) window[0] = HiddenMark(_glyphs.Up, drop + 1, State.PanelInfo ? "PgUp" : null);
-                if (drop + window.Count < tall.Count) window[^1] = HiddenMark(_glyphs.Down, tall.Count - drop - window.Count + 1, State.PanelInfo ? "PgDn" : null);
+                _panelMarkTop = drop > 0;
+                _panelMarkBottom = drop + window.Count < tall.Count;
+                if (_panelMarkTop) window[0] = HiddenMark(_glyphs.Up, drop + 1, State.PanelInfo ? "PgUp" : null);
+                if (_panelMarkBottom) window[^1] = HiddenMark(_glyphs.Down, tall.Count - drop - window.Count + 1, State.PanelInfo ? "PgDn" : null);
             }
+            _panelDrop = drop;
+            _panelShown = window.Count;
             panel = window;
             if (panelCaret is { } pc)
             {
@@ -707,7 +745,7 @@ public sealed class ChromePainter
         {
             var newest = NewestQueueBlock(q[^1], width, height);
             var cap = Math.Max(1, height / 3);
-            var queueRoom = budgetRows - frameRows - fixedRows.Count - 1 - newest.Count;
+            var queueRoom = budgetRows - frameRows - fixedRows.Count - 1 - newest.Count - hold;
             var queueAvail = Math.Max(0, Math.Min(cap - newest.Count, queueRoom));
 
             var older = new List<List<(string R, string V)>>();
@@ -747,15 +785,20 @@ public sealed class ChromePainter
                     fixedRows.Add((r, v, b == blocks.Count - 1 ? NewestQueue : "queue", ChromeRegion.Queue, first + b));
         }
 
-        var room = budgetRows - frameRows - fixedRows.Count;
+        var room = budgetRows - frameRows - fixedRows.Count - hold;
         var tailStart = room >= tailRows.Count ? 0 : Math.Max(0, tailRows.Count - Math.Max(0, room));
 
-        //drop whole categories in order, older queue, notice, the waiting calls, their count, tool, purr, and the newest message last, so a queued message is never hidden before the purr
+        //drop whole categories in order, older queue, notice, the waiting calls, their count, tool, purr, and the newest message last, so a queued message is never hidden before the purr. a list's hold goes with the purr
         var keptTail = tailRows.Count - tailStart;
-        var overflow = keptTail + fixedRows.Count + frameRows - budgetRows;
+        var overflow = keptTail + fixedRows.Count + frameRows - budgetRows + hold;
+        //under a panel the live call's rows are the panel's to take, so they go before the older messages and their count
+        var order = State.PanelUp
+            ? new[] { "notice", "waiting", "folded", "tool", "queue", "purr", NewestQueue }
+            : new[] { "queue", "notice", "waiting", "folded", "tool", "purr", NewestQueue };
         if (overflow > 0)
-            foreach (var category in new[] { "queue", "notice", "waiting", "folded", "tool", "purr", NewestQueue })
+            foreach (var category in order)
             {
+                if (category == "purr") overflow -= hold;
                 if (overflow <= 0) break;
                 var at = fixedRows.FindIndex(row => row.Category == category);
                 var before = fixedRows.Count;
@@ -782,7 +825,7 @@ public sealed class ChromePainter
         }
         foreach (var (r, v, _, region, regionRow) in fixedRows) Row(r, v, region, regionRow);
 
-        //the blank between the last chrome row and the frame, added only when the budget has a spare row so it yields to content
+        //the blank between the last chrome row and the frame, added only when the budget has a spare row, which a list's hold keeps for it during a turn
         var gap = budgetRows == int.MaxValue || built.Count + frameRows + 1 <= budgetRows;
         if (gap) Row("", "");
         //never truncate frame rows, their counts are physical and cutting them would desync the caret park. region Composer marks the typed text and Rule the furniture

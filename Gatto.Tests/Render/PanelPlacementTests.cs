@@ -1,4 +1,5 @@
 using Gatto.Repl.Input;
+using Gatto.Repl.Prompts;
 using Gatto.Repl.Render;
 using Gatto.Repl.Render.Chrome;
 using Gatto.Terminal;
@@ -35,11 +36,23 @@ public sealed class PanelPlacementTests
     private static string[] Panel(int n) =>
         Enumerable.Range(0, n).Select(i => $"  p{i:00}").ToArray();
 
-    //a panel that keeps the whole room, as a permission prompt does, so a test of the room's arithmetic reads the room and not the half
-    private static void RoomPanel(ChromePainter p, int n) => p.SetPanelFactory((_, _) => new PanelContent(Panel(n), KeepsRoom: true));
+    //a panel that keeps the whole room, as a list or a permission prompt does, so a test of the room's arithmetic reads the room and not the half
+    private static void RoomPanel(ChromePainter p, int n) => p.SetPanelFactory((_, _) => new PanelContent(Panel(n)), keepsRoom: true);
+
+    //a list composed by the real composer and published as every list is, with no search box, so its fixed rows are the title, two blanks and the key row
+    private static void ListPanel(ChromePainter p, int n)
+    {
+        var options = Enumerable.Range(0, n).Select(i => new SelectOption($"option-{i:00}")).ToList();
+        var view = new PanelView(0, [.. Enumerable.Range(0, n)], 0, "", false, 0, null, null, null);
+        var fields = new PanelFields("list", [new FooterKey("Esc", "close")], SearchWhenLong: false);
+        p.SetPanelFactory((w, room) => new PanelContent(PanelComposer.Compose(fields, options, false, view, w, room, T, GlyphSet.Unicode).Rows),
+            keepsRoom: true);
+    }
 
     private static List<ChromeRow> Rows(ChromePainter p, int w, int h, ChromeRegion region) =>
         p.ComposeChromeBlock(w, h).Rows.Where(r => r.Region == region).ToList();
+
+    private static string Dump(ChromeBlock block) => string.Join("\n", block.Rows.Select(r => $"{r.Region}: {r.Visible}"));
 
     //the newest queued message must stay on screen in a short window while a turn runs, with and without the panel
     [Fact]
@@ -660,5 +673,297 @@ public sealed class PanelPlacementTests
         var panelled = p.ComposeChromeBlock(60, 20);
         Assert.Equal(2, panelled.Rows.Count(r => r.Region == ChromeRegion.Prompt));
         Assert.DoesNotContain(panelled.Rows, r => r.Visible.Contains("typing here", StringComparison.Ordinal));
+    }
+
+    //a list longer than the room takes it all with one mark at its foot, and the transcript keeps three rows that end the conversation
+    [Theory]
+    [InlineData(40, 34, 31)]
+    [InlineData(20, 14, 51)]   //the half would give ten rows here, the room gives fourteen
+    public void A_LIST_LONGER_THAN_THE_ROOM_TAKES_THE_ROOM_AND_THE_TRANSCRIPT_KEEPS_THREE_ROWS(int h, int room, int hidden)
+    {
+        var (p, s) = Wire(120, h);
+        p.Model.Append(new AssistantBlockItem([.. Enumerable.Range(0, 200).Select(i => $"t{i:000}")], Role));
+        p.NotifyCommitted();
+        ListPanel(p, 60);
+        p.Repaint();
+
+        var block = p.ComposeChromeBlock(120, h);
+        var panel = block.Rows.Where(r => r.Region == ChromeRegion.Prompt).Select(r => r.Visible).ToList();
+        var dump = Dump(block);
+        Assert.Equal(room, p.RoomRowsAvailable());
+        Assert.True(room == panel.Count, dump);
+        Assert.True(panel.Count(r => r.Contains($"↓ {hidden} more", StringComparison.Ordinal)) == 1, dump);
+        Assert.False(panel.Any(r => r.TrimStart().StartsWith("↑ ", StringComparison.Ordinal)), dump);   //the key row names the arrows, an up mark is the arrow and a count
+        Assert.Equal(h - 3, block.Rows.Count);
+        Assert.Contains(s.Viewport.Take(3), r => r.Contains("t199", StringComparison.Ordinal));
+    }
+
+    //a short list draws its own rows and leaves the rest to the transcript, with no mark
+    [Fact]
+    public void A_LIST_OF_FOUR_IS_AS_TALL_AS_ITS_ROWS()
+    {
+        var (p, _) = Wire(120, 40);
+        ListPanel(p, 4);
+
+        var panel = Rows(p, 120, 40, ChromeRegion.Prompt).Select(r => r.Visible).ToList();
+        Assert.Equal(8, panel.Count);
+        Assert.DoesNotContain(panel, r => r.Contains(" more", StringComparison.Ordinal));
+    }
+
+    //a panel published without the room, a prompt or an answer, keeps the half
+    [Fact]
+    public void A_PANEL_PUBLISHED_WITHOUT_THE_ROOM_STAYS_AT_THE_HALF()
+    {
+        var (p, _) = Wire(120, 40);
+        p.SetPanelFactory((_, _) => new PanelContent(Panel(60)));
+        Assert.Equal(20, p.PanelRowsAvailable());
+        Assert.Equal(20, Rows(p, 120, 40, ChromeRegion.Prompt).Count);
+
+        var (info, _) = Wire(120, 40);
+        info.SetInfoPanel((_, _) => Panel(60));
+        Assert.Equal(20, info.PanelRowsAvailable());
+        Assert.Equal(20, Rows(info, 120, 40, ChromeRegion.Prompt).Count);
+    }
+
+    //every ask of a panel that keeps the room is at that room, the first one of a cold open included, at rest and with a call live
+    [Theory]
+    [InlineData(false, false)]
+    [InlineData(true, false)]
+    [InlineData(true, true)]
+    public void A_ROOM_PANEL_IS_ASKED_AT_ITS_ROOM_EVERY_TIME(bool purr, bool call)
+    {
+        var (p, _) = Wire(120, 40);
+        if (purr) p.State.PurrText = "purr 3s";
+        if (call)
+        {
+            p.State.Tool = ("shell", "dir");
+            p.State.ToolInput = string.Join("\n", Enumerable.Range(1, 6).Select(i => $"Write-Output {i}"));
+        }
+        var asked = new List<int>();
+        Func<int, int, PanelContent> factory = (_, room) => { asked.Add(room); return new PanelContent(Panel(60)); };
+
+        p.SetPanelFactory(factory, keepsRoom: true);
+        p.Repaint();
+        p.Repaint();
+        p.SetPanelFactory(factory, keepsRoom: true);
+
+        var room = p.RoomRowsAvailable();
+        Assert.True(asked.Count >= 5, $"the factory was asked {asked.Count} times");
+        Assert.True(asked.All(r => r == room), $"room {room}, asked at {string.Join(", ", asked)}");
+    }
+
+    //the rows above the frame's top rule, nearest first
+    private static List<ChromeRow> Above(ChromeBlock block)
+    {
+        var top = block.Rows.ToList().FindIndex(r => r.Region == ChromeRegion.Rule);
+        return [.. block.Rows.Take(top).Reverse()];
+    }
+
+    //a list in a turn, its 60 options longer than any room
+    private static (ChromePainter P, VtScreenSurface S) ListInATurn(int h)
+    {
+        var (p, s) = Wire(120, h);
+        p.State.PurrText = "purr 3s";
+        ListPanel(p, 60);
+        return (p, s);
+    }
+
+    [Fact]
+    public void A_LIST_IN_A_TURN_STANDS_UNDER_BLANK_PURR_BLANK()
+    {
+        var (p, _) = ListInATurn(40);
+        var block = p.ComposeChromeBlock(120, 40);
+        var above = Above(block);
+        var dump = Dump(block);
+
+        Assert.True(block.Rows.Count(r => r.Region == ChromeRegion.Prompt) == 31, dump);
+        Assert.True(above[0].Visible.Length == 0, dump);
+        Assert.True(above[1].Region == ChromeRegion.Purr && above[1].Visible.Contains("purr 3s", StringComparison.Ordinal), dump);
+        Assert.True(above[2].Visible.Length == 0, dump);
+    }
+
+    //the live call's rows go under a full list and come back when it closes, and the purr's three rows stand
+    [Fact]
+    public void A_FULL_LIST_TAKES_THE_LIVE_CALLS_ROWS()
+    {
+        var (p, _) = ListInATurn(40);
+        p.State.Tool = ("shell", "dir");
+        p.State.ToolInput = "dir";
+        p.State.Waiting = [("read_file", "a.txt"), ("read_file", "b.txt")];
+        var block = p.ComposeChromeBlock(120, 40);
+        var above = Above(block);
+        var dump = Dump(block);
+
+        Assert.False(block.Rows.Any(r => r.Region is ChromeRegion.Tool or ChromeRegion.Notice), dump);
+        Assert.True(above[0].Visible.Length == 0 && above[1].Region == ChromeRegion.Purr && above[2].Visible.Length == 0, dump);
+        Assert.True(block.Rows.Count(r => r.Region == ChromeRegion.Prompt) == 31, dump);
+
+        p.SetPanel(null);
+        Assert.Contains(p.ComposeChromeBlock(120, 40).Rows, r => r.Region == ChromeRegion.Tool);
+    }
+
+    //one live row over the budget is shed for the blank, it does not take the blank's row
+    [Fact]
+    public void A_FULL_LIST_SHEDS_A_PROGRESS_ROW_FOR_THE_BLANK()
+    {
+        var (p, _) = ListInATurn(40);
+        p.State.ToolProgress = "agent · turn 2";
+        var block = p.ComposeChromeBlock(120, 40);
+        var above = Above(block);
+        var dump = Dump(block);
+
+        Assert.False(block.Rows.Any(r => r.Region == ChromeRegion.Tool), dump);
+        Assert.True(above[0].Visible.Length == 0 && above[1].Region == ChromeRegion.Purr, dump);
+    }
+
+    //the newest queued message keeps its place between the purr and the frame, at its cap of a third of the window
+    [Fact]
+    public void A_QUEUED_MESSAGE_KEEPS_ITS_PLACE_UNDER_THE_PURR()
+    {
+        var (p, _) = ListInATurn(40);
+        p.State.QueueTexts = [string.Join("\n", Enumerable.Range(0, 150).Select(i => $"line {i}"))];
+        var block = p.ComposeChromeBlock(120, 40);
+        var above = Above(block);
+        var dump = Dump(block);
+
+        Assert.True(block.Rows.Count(r => r.Region == ChromeRegion.Prompt) == 17, dump);
+        Assert.True(above[0].Visible.Length == 0, dump);
+        Assert.True(above.Skip(1).Take(13).All(r => r.Region == ChromeRegion.Queue), dump);
+        Assert.True(above[1].Visible.Contains(" more", StringComparison.Ordinal), dump);
+        Assert.True(above[14].Visible.Length == 0 && above[15].Region == ChromeRegion.Purr && above[16].Visible.Length == 0, dump);
+    }
+
+    //a streaming answer under a full list does not take the blank's row, and with no panel it keeps its row
+    [Fact]
+    public void A_STREAMING_TAIL_YIELDS_TO_THE_BLANK()
+    {
+        var (p, _) = ListInATurn(40);
+        p.State.TailRaw = "a streamed line";
+        var block = p.ComposeChromeBlock(120, 40);
+        var dump = Dump(block);
+
+        Assert.False(block.Rows.Any(r => r.Region == ChromeRegion.Tail), dump);
+        Assert.True(Above(block)[0].Visible.Length == 0, dump);
+
+        p.SetPanel(null);
+        Assert.Contains(p.ComposeChromeBlock(120, 40).Rows, r => r.Region == ChromeRegion.Tail);
+    }
+
+    //on a short window the list gives up rows before the purr, and the blank is kept only while the room it leaves holds a list whole
+    [Theory]
+    [InlineData(8)] [InlineData(9)] [InlineData(10)] [InlineData(11)] [InlineData(12)] [InlineData(13)] [InlineData(14)]
+    public void THE_PANEL_GIVES_UP_ROWS_BEFORE_THE_PURR(int h)
+    {
+        var (p, _) = ListInATurn(h);
+        var block = p.ComposeChromeBlock(120, h);
+        var prompt = block.Rows.Count(r => r.Region == ChromeRegion.Prompt);
+        var purr = block.Rows.Any(r => r.Region == ChromeRegion.Purr);
+        var dump = $"h={h}:\n" + Dump(block);
+
+        if (h == 8)
+        {
+            Assert.False(purr, dump);
+            return;
+        }
+        Assert.True(purr, dump);
+        if (h >= 13)
+        {
+            Assert.True(prompt == h - 9, dump);
+            Assert.True(Above(block)[0].Visible.Length == 0, dump);
+        }
+        else Assert.True(prompt == h - 8, dump);   //the row is not held, so the room is the plain one
+    }
+
+    //two queued messages and a live call in a turn, one row over the budget under a full panel
+    private static void TwoQueuedAndACall(ChromePainter p)
+    {
+        p.State.PurrText = "purr 3s";
+        p.State.Tool = ("shell", "dir");
+        p.State.QueueTexts = ["older msg", "newest msg"];
+    }
+
+    //under a panel the live call's rows are the panel's to take, so they go before the count of the older messages
+    [Fact]
+    public void THE_OLDER_MESSAGES_COUNT_STANDS_UNDER_A_LIST_WITH_A_LIVE_CALL()
+    {
+        var (p, _) = Wire(120, 40);
+        TwoQueuedAndACall(p);
+        ListPanel(p, 60);
+        var block = p.ComposeChromeBlock(120, 40);
+        var dump = Dump(block);
+
+        Assert.True(block.Rows.Any(r => r.Region == ChromeRegion.Queue && r.Visible.Contains("(+1 more)", StringComparison.Ordinal)), dump);
+        Assert.False(block.Rows.Any(r => r.Region == ChromeRegion.Tool), dump);
+        Assert.True(block.Rows.Count <= 37, dump);
+    }
+
+    [Fact]
+    public void THE_OLDER_MESSAGES_COUNT_STANDS_UNDER_A_PERMISSION_PROMPT_WITH_A_LIVE_CALL()
+    {
+        var (p, _) = Wire(120, 40);
+        TwoQueuedAndACall(p);
+        RoomPanel(p, 1);
+        RoomPanel(p, p.PanelRowsAvailable());
+        var block = p.ComposeChromeBlock(120, 40);
+        var dump = Dump(block);
+
+        Assert.True(block.Rows.Any(r => r.Region == ChromeRegion.Queue && r.Visible.Contains("(+1 more)", StringComparison.Ordinal)), dump);
+        Assert.False(block.Rows.Any(r => r.Region == ChromeRegion.Tool), dump);
+        Assert.True(block.Rows.Count <= 37, dump);
+    }
+
+    //with no panel the older messages and their count go first, then the live call, so here both go and one row is left
+    [Fact]
+    public void WITH_NO_PANEL_THE_SHED_ORDER_IS_UNCHANGED()
+    {
+        var (p, _) = Wire(60, 12);
+        TwoQueuedAndACall(p);
+        var block = p.ComposeChromeBlock(60, 12);
+        var above = block.Rows.TakeWhile(r => r.Region != ChromeRegion.Rule).Select(r => (r.Region, r.Visible.Trim())).ToList();
+
+        Assert.Equal([(ChromeRegion.Purr, ""), (ChromeRegion.Purr, "purr 3s"), (ChromeRegion.Queue, ""), (ChromeRegion.Queue, "❯ newest msg"),
+            (ChromeRegion.Other, "")], above);
+        Assert.Equal(9, block.Rows.Count);
+    }
+
+    //a click on a panel the frame cropped from its top reaches the row its factory composed, and a click on the mark reaches nothing
+    [Theory]
+    [InlineData(9)]    //a room of three crops the top row of four and marks the next
+    [InlineData(10)]   //a room of four shows all four
+    public void A_CROPPED_PANELS_CLICKS_LAND_ON_THEIR_ROWS(int h)
+    {
+        var (p, s) = Wire(60, h);
+        var pressed = new List<int>();
+        Func<MouseEvent, int, int, int, bool> route = (e, row, _, _) =>
+        {
+            if (e.Kind == MouseKind.Press) pressed.Add(row);
+            return true;
+        };
+        p.SetPanelFactory((_, _) => new PanelContent(Panel(4)), route, keepsRoom: true);
+        p.Repaint();
+        int Y(string text) => Enumerable.Range(0, h).First(y => s.Viewport[y].Contains(text, StringComparison.Ordinal));
+        void Click(int y) => p.Mouse.Handle(new MouseEvent(4, y, MouseKind.Press, MouseButton.Left, 0, 0), 60, p.ViewportRows());
+
+        Assert.Equal(h - 6, p.PanelRowsAvailable());
+        Click(Y("p03"));
+        Assert.Equal([3], pressed);
+        if (h == 9)
+        {
+            Click(Y("↑ 2 more"));
+            Assert.Equal([3], pressed);
+        }
+    }
+
+    //a list that takes the turn's wait has no purr and holds no third row
+    [Fact]
+    public void A_ROOM_PANEL_WITH_NO_PURR_RESERVES_NO_THIRD_ROW()
+    {
+        var (p, _) = Wire(120, 40);
+        ListPanel(p, 60);
+        var block = p.ComposeChromeBlock(120, 40);
+
+        Assert.Equal(34, p.RoomRowsAvailable());
+        Assert.Equal(34, block.Rows.Count(r => r.Region == ChromeRegion.Prompt));
+        Assert.Equal(37, block.Rows.Count);
     }
 }

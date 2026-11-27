@@ -519,4 +519,42 @@ public class PanelComposerTests
         Assert.DoesNotContain("size", rows[2]);
         Assert.Equal("", rows[2][..rows[2].IndexOf("ctx", StringComparison.Ordinal)].Trim());
     }
+
+    private static readonly PanelFields Bare = new("list", [new FooterKey("Esc", "close")]);
+
+    //a list of one fits whole with its blanks at five rows, so none of them is shed
+    [Fact]
+    public void A_list_of_one_at_a_room_of_five_keeps_its_blanks()
+    {
+        var rows = Plain(Compose(Bare, [new SelectOption("only")], View(1), room: 5, numbered: false));
+
+        Assert.Equal(5, rows.Count);
+        Assert.Equal("  list", rows[0].TrimEnd());
+        Assert.Equal("", rows[1]);
+        Assert.Contains("only", rows[2], StringComparison.Ordinal);
+        Assert.Equal("", rows[3]);
+        Assert.Contains("Esc close", rows[4], StringComparison.Ordinal);
+    }
+
+    //a view shorter than the height the panel holds pads blank rows above its key row, so the title and the key row stay where they were
+    [Fact]
+    public void A_view_shorter_than_its_held_height_pads_above_the_key_row()
+    {
+        var rows = Plain(PanelComposer.Compose(Model(), Models(3), true, View(3), 80, 20, T, GlyphSet.Unicode, padTo: 12));
+
+        Assert.Equal(12, rows.Count);
+        Assert.Equal("  model", rows[0]);
+        Assert.All(rows[7..11], r => Assert.Equal("", r));
+        Assert.StartsWith("  Enter switch", rows[11], StringComparison.Ordinal);
+    }
+
+    //a search that matches nothing draws one row, so its floor is one and the panel fills its room
+    [Fact]
+    public void An_empty_match_at_a_room_of_five_keeps_its_blanks()
+    {
+        var rows = Plain(Compose(Bare, Models(3), View(3, cursor: -1, draft: "zzz", shown: []), room: 5));
+
+        Assert.Equal(5, rows.Count);
+        Assert.Contains("nothing matches", rows[2], StringComparison.Ordinal);
+    }
 }

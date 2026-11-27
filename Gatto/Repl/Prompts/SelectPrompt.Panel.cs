@@ -83,10 +83,10 @@ public sealed partial class SelectPrompt
             var options = state.OptionsOf(view.Tab);
             published = painter!.SetPanelFactory((w, room) =>
             {
-                var frame = PanelComposer.Compose(panel, options, spec.Numbered, view, w, room, theme, _glyphs);
-                state.Record(frame.Layout, view.Tab);
-                return new PanelContent(frame.Rows, null, spec.KeepsRoom);
-            }, route);
+                var frame = PanelComposer.Compose(panel, options, spec.Numbered, view, w, room, theme, _glyphs, padTo: state.Held(room));
+                state.Record(frame.Layout, view.Tab, frame.Rows.Count);
+                return new PanelContent(frame.Rows);
+            }, route, keepsRoom: true);   //every view of a list takes the room, so Enter and Esc never resize it
         }
 
         //no painter, so the surface's height is the room and the panel windows here too

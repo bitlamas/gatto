@@ -81,6 +81,38 @@ public sealed class HelpPanelReplTests : IDisposable
             listTools: () => [.. home.Tools.Specs().Select(s => new ToolInfo(s.Name, s.Description, null))],
             listExtensions: home.Views, setExtension: home.Set);
 
+    //the panel holds the tallest height it drew, so a narrowed search and a shorter tab pad to it and its top never moves
+    [Fact]
+    public async Task A_SEARCH_AND_A_SHORTER_TAB_KEEP_THE_PANELS_HEIGHT()
+    {
+        var home = new Home(_home);
+        var chrome = new Gatto.Repl.Render.Chrome.ChromeHandle();
+        var h = new RichReplHarness(_cwd, width: 120, height: 20, chrome: chrome, tools: home.Tools, commands: home.Commands,
+            listTools: () => [.. home.Tools.Specs().Select(s => new ToolInfo(s.Name, s.Description, null))],
+            listExtensions: home.Views, setExtension: home.Set);
+        var run = h.RunAsync(60_000);
+        int PromptRows() => chrome.Painter!.ComposeChromeBlock(120, 20).Rows.Count(r => r.Region == Gatto.Repl.Render.ChromeRegion.Prompt);
+
+        h.Keys.Line("/help");
+        await Shows(h, s => s.Contains("Enter compose"), "the panel never opened");
+        var list = PromptRows();
+        foreach (var c in "?mod") await Press(h, new ConsoleKeyInfo(c, ConsoleKey.None, false, false, false));
+        await Shows(h, s => s.Contains("Esc back") && s.Contains("/model"), "the search never narrowed the list");
+        var searched = PromptRows();
+        await Press(h, Esc);
+        await Press(h, Esc);
+        await Press(h, Right);
+        await Shows(h, s => s.Contains("wild mode on or off"), "the shortcuts tab never showed");
+        var tab = PromptRows();
+
+        Assert.Equal(list, searched);
+        Assert.Equal(list, tab);
+        await Press(h, Esc);
+        await Release(h);
+        h.Keys.Line("/quit");
+        await run;
+    }
+
     private string[]? OffInFile()
     {
         var root = JsonDocument.Parse(File.ReadAllText(Path.Combine(_home, "gatto.json"))).RootElement;
@@ -122,7 +154,7 @@ public sealed class HelpPanelReplTests : IDisposable
         var run = h.RunAsync(60_000);
 
         h.Keys.Line("/help");
-        await Shows(h, s => s.Contains("help    commands    shortcuts    extensions") && s.Contains("this screen") && s.Contains("↓ 14 more"),
+        await Shows(h, s => s.Contains("help    commands    shortcuts    extensions") && s.Contains("this screen") && s.Contains("↓ 5 more"),
             "the commands tab never listed the built-ins and the registered row under the tabbed title");
         await Shows(h, s => s.Contains("↑↓ move   Enter compose   ←→ tabs   Esc close"), "the commands tab's key row");
         await Press(h, Right);
