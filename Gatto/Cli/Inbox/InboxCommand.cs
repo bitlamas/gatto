@@ -140,11 +140,12 @@ internal static class InboxCommand
         if (state.ArmFor(inbox)?.Arm is { } other && other.SessionId != sessionId && io.Alive(other.Claude))
         {
             state.DeleteArm(held);
-            return $"inbox closed: this session now runs {model}, and {shown} is open in session {other.SessionId[..8]}; /inbox takes it";
+            return $"not a failure. inbox closed: this session now runs {model}, and {shown} is open in session {other.SessionId[..8]}. nothing is asked of you; the user can type /inbox to take it.";
         }
         Watch.CreateFolder(inbox);
         var waiting = Waiting(Take(state, sessionId, claude, seat, inbox));
-        return $"inbox moved: {shown}; this session now runs {model}" + (waiting is null ? "" : "; " + waiting);
+        return $"not a failure. inbox moved: {shown}; this session now runs {model}" + (waiting is null ? "" : "; " + waiting)
+            + ". nothing is asked of you or the user.";
     }
 
     //closes the session's inbox: only the arm's holder closes it, and every other case prints its row and changes nothing
@@ -388,7 +389,11 @@ internal static class InboxCommand
     {
         var include = letters.Select(l => l.Body.Length <= PerLetterChars).ToArray();
         if (letters.Where((_, i) => include[i]).Sum(l => l.Body.Length) > WakeChars) Array.Fill(include, false);
-        return string.Join("\n\n", letters.Select((l, i) => "inbox: " + l.Path + "\n\n"
+        //the harness labels every wake an error, so the first words answer the label before the path and the letter are read
+        var head = letters.Count == 1
+            ? "not a failure. a letter from another agent arrived for you; act on it. nothing is asked of the user."
+            : $"not a failure. {letters.Count} letters from other agents arrived for you; act on them. nothing is asked of the user.";
+        return head + "\n\n" + string.Join("\n\n", letters.Select((l, i) => "inbox: " + l.Path + "\n\n"
             + (include[i] ? l.Body : "the body was not included; read the file at that path and act on what it says")));
     }
 

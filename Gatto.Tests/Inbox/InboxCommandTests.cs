@@ -947,9 +947,24 @@ public sealed class InboxCommandTests : IDisposable
         var io = Io(Env(_sid, 4242, _proj), new StringReader(Stdin(_sid, transcript: Transcript)));
 
         Assert.Equal(2, await InboxCommand.RunAsync("hook", io).WaitAsync(TimeSpan.FromSeconds(10)));
-        Assert.Equal($"inbox: {a}\n\nfirst body\n\ninbox: {Path.Combine(Inbox, "b.md")}\n\nsecond body",
+        Assert.Equal("not a failure. 2 letters from other agents arrived for you; act on them. nothing is asked of the user.\n\n"
+            + $"inbox: {a}\n\nfirst body\n\ninbox: {Path.Combine(Inbox, "b.md")}\n\nsecond body",
             _err.ToString());
         Assert.Equal("", _out.ToString());
+    }
+
+    //the first words answer the label the harness puts on a wake, ahead of the path
+    [Fact]
+    public async Task ONE_LETTER_WAKES_WITH_A_FIRST_LINE_SAYING_IT_IS_NOT_A_FAILURE()
+    {
+        Seed(inbox: Inbox);
+        State.WriteArm(new InboxState.Arm(Seat, Inbox, _sid, Claude));
+        var a = WriteLetter("a.md", "the body");
+        var io = Io(Env(_sid, 4242, _proj), new StringReader(Stdin(_sid, transcript: Transcript)));
+
+        Assert.Equal(2, await InboxCommand.RunAsync("hook", io).WaitAsync(TimeSpan.FromSeconds(10)));
+        Assert.Equal("not a failure. a letter from another agent arrived for you; act on it. nothing is asked of the user.\n\n"
+            + $"inbox: {a}\n\nthe body", _err.ToString());
     }
 
     //one oversize letter goes as its path, the bodies beside it stay
@@ -1153,7 +1168,7 @@ public sealed class InboxCommandTests : IDisposable
             .WaitAsync(TimeSpan.FromSeconds(10));
 
         Assert.Equal(2, exit);
-        Assert.Equal($"inbox moved: {RelMid}; this session now runs claude-mid-5-5", _err.ToString());
+        Assert.Equal($"not a failure. inbox moved: {RelMid}; this session now runs claude-mid-5-5. nothing is asked of you or the user.", _err.ToString());
         Assert.Equal(_sid, State.ArmFor(MidInbox)?.Arm.SessionId);
         Assert.Null(State.ArmFor(Inbox));
         var record = State.ReadSession(_sid)!;
@@ -1173,7 +1188,7 @@ public sealed class InboxCommandTests : IDisposable
 
         Assert.Equal(2, await InboxCommand.RunAsync("hook", Io(Env(_sid, 4242, _proj), new StringReader(Stdin(_sid, transcript: Transcript))))
             .WaitAsync(TimeSpan.FromSeconds(10)));
-        Assert.Equal($"inbox moved: {RelMid}; this session now runs claude-mid-5-5; 1 letter already there, not delivered", _err.ToString());
+        Assert.Equal($"not a failure. inbox moved: {RelMid}; this session now runs claude-mid-5-5; 1 letter already there, not delivered. nothing is asked of you or the user.", _err.ToString());
         Assert.Equal(["w.md"], State.ReadSession(_sid)!.Known);
     }
 
@@ -1191,7 +1206,7 @@ public sealed class InboxCommandTests : IDisposable
             .WaitAsync(TimeSpan.FromSeconds(10));
 
         Assert.Equal(2, exit);
-        Assert.Equal($"inbox closed: this session now runs claude-mid-5-5, and {RelMid} is open in session {_other[..8]}; /inbox takes it",
+        Assert.Equal($"not a failure. inbox closed: this session now runs claude-mid-5-5, and {RelMid} is open in session {_other[..8]}. nothing is asked of you; the user can type /inbox to take it.",
             _err.ToString());
         Assert.Equal(_other, State.ArmFor(MidInbox)?.Arm.SessionId);
         Assert.Equal(theirs, State.ArmFor(MidInbox)!.Value.Written);
@@ -1208,7 +1223,7 @@ public sealed class InboxCommandTests : IDisposable
 
         Assert.Equal(2, await InboxCommand.RunAsync("hook", Io(Env(_sid, 4242, _proj), new StringReader(Stdin(_sid, transcript: Transcript))))
             .WaitAsync(TimeSpan.FromSeconds(10)));
-        Assert.Equal($"inbox moved: {RelMid}; this session now runs claude-mid-5-5", _err.ToString());
+        Assert.Equal($"not a failure. inbox moved: {RelMid}; this session now runs claude-mid-5-5. nothing is asked of you or the user.", _err.ToString());
         Assert.Equal(_sid, State.ArmFor(MidInbox)?.Arm.SessionId);
         Assert.Null(State.ArmFor(Inbox));
     }
