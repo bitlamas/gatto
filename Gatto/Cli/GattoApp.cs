@@ -1277,14 +1277,14 @@ public static class GattoApp
                 else
                 {
                     //the launch composed before the identity was adopted, so the lead is composed again to name the session this file continues
-                    var lead = state.RecomposeSystem(sessions.Identity).Text;
-                    //a reset leads with that composition, one sequence above the stored one
+                    var composed = state.RecomposeSystem(sessions.Identity);
+                    //a reset leads with that composition and its own sources, one sequence above the stored one
                     state.BaselineSeq = (stored?.Seq ?? 0) + 1;
-                    var fresh = convo.Baseline! with { Seq = state.BaselineSeq };
+                    var fresh = composed.Baseline! with { Seq = state.BaselineSeq };
                     //the last marker, a GATTO.md that documents it can put an earlier one in the system prompt
                     var idx = priorSystem?.LastIndexOf(Compactor.ContextMarker, StringComparison.Ordinal) ?? -1;
                     //re-append the compaction block, the fresh system dropped it and the model resumes with no context behind the lead
-                    convo.ReplaceSystem(idx >= 0 ? lead + "\n\n" + priorSystem![idx..] : lead, fresh);
+                    convo.ReplaceSystem(idx >= 0 ? composed.Text + "\n\n" + priorSystem![idx..] : composed.Text, fresh);
                 }
 
                 //restore from the sidecar beside the resumed file, they stay in memory and a new save writes its own

@@ -239,6 +239,32 @@ public sealed class ResumeEqualityTests : IDisposable
         Assert.Equal(2, SessionStore.LoadBaseline(files[^1])!.Seq);
     }
 
+    //the file changes between the launch read and the recompose, so the launch's baseline names the old text
+    [Fact]
+    public async Task A_RESET_RESUME_STORES_THE_SOURCES_OF_THE_TEXT_IT_LEADS_WITH()
+    {
+        await using var server = new FakeOpenAiServer();
+        Home(server);
+        var gattoMd = Path.Combine(_cwd, "GATTO.md");
+        File.WriteAllText(gattoMd, "EARLIER CONTEXT 41d2\n");
+        await Run(server, "-p", "first");
+        Directory.CreateDirectory(Path.Combine(_home, "extensions"));
+        File.WriteAllText(Path.Combine(_home, "extensions", "planted_tool.csx"),
+            """Gatto.Register("planted_tool", "a planted tool", "{\"type\":\"object\"}", (a,c,t) => System.Threading.Tasks.Task.FromResult(new Gatto.Core.Tools.ToolResult("ok")));""");
+        const string later = "LATER CONTEXT 9e07\n";
+        server.OnNextRequest = () => File.WriteAllText(gattoMd, later);
+        await Run(server, "-p", "second", "--continue");
+        Assert.Null(server.OnNextRequest);
+        var files = Directory.GetFiles(Path.Combine(_home, "sessions"), "*.jsonl").Where(f => !f.EndsWith(".ledger.jsonl", StringComparison.Ordinal)).OrderBy(f => f, StringComparer.Ordinal).ToList();
+        var system = File.ReadLines(files[^1]).Select(l => JsonDocument.Parse(l).RootElement)
+            .First(e => e.TryGetProperty("role", out var r) && r.GetString() == "system").GetProperty("content").GetString()!;
+        Assert.Contains("LATER CONTEXT 9e07", system, StringComparison.Ordinal);
+        Assert.DoesNotContain("EARLIER CONTEXT 41d2", system, StringComparison.Ordinal);
+        var mark = SessionStore.LoadBaseline(files[^1])!.Sources.ContextFiles
+            .Single(f => string.Equals(Path.GetFileName(f.Path), "GATTO.md", StringComparison.OrdinalIgnoreCase));
+        Assert.Equal(BaselineMarks.Sha256Hex(later), mark.Sha256);
+    }
+
     [Fact]
     public async Task A_session_saved_by_the_launch_holds_its_baseline()
     {

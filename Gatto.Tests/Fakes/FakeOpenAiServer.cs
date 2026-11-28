@@ -49,6 +49,10 @@ public sealed class FakeOpenAiServer : IAsyncDisposable
     public string? InputTokensRaw { get; private set; }
     public List<string> Tokenized { get; } = new();
 
+    //run once on the next request, a probe included, so a test can edit the disk between two launch reads
+    public Action? OnNextRequest { get => _onNext; set => _onNext = value; }
+    private Action? _onNext;
+
     public FakeOpenAiServer()
     {
         HttpListener? started = null;
@@ -76,6 +80,7 @@ public sealed class FakeOpenAiServer : IAsyncDisposable
             HttpListenerContext ctx;
             try { ctx = await _listener.GetContextAsync(); }
             catch { break; }
+            Interlocked.Exchange(ref _onNext, null)?.Invoke();
 
             //route a GET /props before the queue and before the body read (a GET has no body), so it consumes no queued chat response
             if (ctx.Request.HttpMethod == "GET" && ctx.Request.Url?.AbsolutePath == "/props")
